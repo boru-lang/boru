@@ -159,6 +159,12 @@ type vmContext struct {
 	// (enterCallbackUnit): its root RET applies the CallBoru return
 	// discipline (checkCallBoruContract) rather than __RC's.
 	rootRetTrim bool
+	// rootRetNamed marks a re-entrant run entered as a NAMED fn call —
+	// InvokeCompiledStrict, the module-fn dispatch (NUR191): its root RET
+	// applies the frame's own contract (checkReturnContract with the
+	// frame's count discipline) exactly as the spliced frame's __RC and the
+	// interpreter's CallBoruStrict do. Never set together with rootRetTrim.
+	rootRetNamed bool
 	// frameDepth counts live VM activations — user-call frames AND re-entrant
 	// run() invocations (a closure invoked from a native handler via
 	// invokeClosure starts a FRESH run with its own frames slice). The per-run
@@ -301,20 +307,29 @@ func RunUnit(ref *compiler.CompiledFnRef, r *core.Registry, args []core.Value) (
 	if ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) {
 		return nil, fmt.Errorf("bytecode: unit index %d out of range", ref.Unit)
 	}
+	return runUnit(ref, r, args, false)
+}
+
+// runUnit is RunUnit with the entry's discipline: named is a NAMED fn call
+// (InvokeCompiledStrict), whose root RET takes the frame's return contract
+// rather than the fn-value seam's trim (NUR191).
+func runUnit(ref *compiler.CompiledFnRef, r *core.Registry, args []core.Value, named bool) ([]core.Value, error) {
 	return runVMEntry(ref.Prog, r, core.StepLimitFor(r, core.DefaultStepLimit), func(vc *vmContext) ([]core.Value, error) {
-		return vc.enterCallbackUnit(r, ref.Unit, bindUnitLocals(r, &ref.Prog.Fns[ref.Unit], args, ref.Captures))
+		return vc.enterCallbackUnit(r, ref.Unit, bindUnitLocals(r, &ref.Prog.Fns[ref.Unit], args, ref.Captures), named)
 	})
 }
 
 // enterCallbackUnit is enterBodyUnit for the fn-VALUE seam (RunUnit and
 // runUnitNested — InvokeCallback's compiled path): the unit's root RET takes
 // the CallBoru return discipline (rootRetTrim → checkCallBoruContract)
-// instead of __RC's. The flag is scoped to this entry: a closure the body
-// invokes through the TOKEN seam (invokeClosureOn) enters with it cleared.
-func (vc *vmContext) enterCallbackUnit(reg *core.Registry, unit int, locals []core.Value) ([]core.Value, error) {
-	prev := vc.rootRetTrim
-	vc.rootRetTrim = true
-	defer func() { vc.rootRetTrim = prev }()
+// instead of __RC's — or, for a NAMED fn call (named: InvokeCompiledStrict,
+// the module-fn dispatch), the frame's own contract (rootRetNamed, NUR191).
+// The flags are scoped to this entry: a closure the body invokes through the
+// TOKEN seam (invokeClosureOn) enters with them cleared.
+func (vc *vmContext) enterCallbackUnit(reg *core.Registry, unit int, locals []core.Value, named bool) ([]core.Value, error) {
+	prev, prevNamed := vc.rootRetTrim, vc.rootRetNamed
+	vc.rootRetTrim, vc.rootRetNamed = !named, named
+	defer func() { vc.rootRetTrim, vc.rootRetNamed = prev, prevNamed }()
 	// The value's own frame: its call args are the leading locals (inputs
 	// fill the leading param slots, captures the trailing ones).
 	fn := &vc.p.Fns[unit]
@@ -510,14 +525,21 @@ func runVMEntry(p *compiler.Program, r *core.Registry, stepLimit int, enter func
 // payload, or a unit index outside its own program's table (a compile/run
 // drift). InvokeCallback then falls back to the interpreter, unchanged.
 func (vc *vmContext) runUnitNested(h any, args []core.Value) ([]core.Value, bool, error) {
-	ref, ok := h.(*compiler.CompiledFnRef)
-	if !ok || ref.Prog == nil || ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) {
+	var ref *compiler.CompiledFnRef
+	named := false
+	switch v := h.(type) {
+	case namedUnitRef:
+		ref, named = v.ref, true
+	case *compiler.CompiledFnRef:
+		ref = v
+	}
+	if ref == nil || ref.Prog == nil || ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) {
 		return nil, false, nil
 	}
 	if ref.Prog != vc.p {
-		return vc.runForeignUnit(ref, args)
+		return vc.runForeignUnit(ref, args, named)
 	}
-	res, err := vc.enterCallbackUnit(vc.r, ref.Unit, bindUnitLocals(vc.r, &vc.p.Fns[ref.Unit], args, ref.Captures))
+	res, err := vc.enterCallbackUnit(vc.r, ref.Unit, bindUnitLocals(vc.r, &vc.p.Fns[ref.Unit], args, ref.Captures), named)
 	return res, true, err
 }
 
@@ -681,6 +703,26 @@ func (vc *vmContext) unmatchedLambdaBody(reg *core.Registry, body core.Value, cl
 		return nil, reg.BoruError("signature_error",
 			fmt.Sprintf("no matching lambda signature for %d argument(s)", len(inputs)), ""), true
 	}
+	// A NAMED value's no-match is the word's raise, not a park: the
+	// interpreter steps `h/v` under its name and raises uncalled_function
+	// when no signature admits the step's candidates (execFnDefLiteral) —
+	// `0 fold h/v [1 2]` over a body that returns a List raised at step 1
+	// interpreted and answered `[fn (Integer, Integer)]` compiled, this arm
+	// applying the anonymous value's data rule to a named one (NUR205).
+	// RetName is the def's name (nameClosureValue / fnValueRetSpec); an
+	// anonymous lambda carries none and keeps the data rule below.
+	// Anchored where the interpreter anchors it: at the reference's own
+	// token (`h/v`, 1:60 in the fold row), which the value carries as
+	// RetPos (fnValueRetSpec records where the reference was written).
+	if cl.RetName != "" {
+		pos := cl.RetPos
+		if pos.Row == 0 {
+			pos = body.Pos()
+		}
+		return nil, reg.BoruErrorHintAt("uncalled_function",
+			"call to '"+cl.RetName+"' matched no signature", cl.RetName,
+			"hint: check the call's argument types and arity — or use "+cl.RetName+"/v to push the function as a value deliberately", pos), true
+	}
 	// The value renders as the interpreter's own lambda renders — `fn
 	// (Integer)` — not as a body unit's payload (nameStoredClosure's rule,
 	// vm_dyn_words.go, over the unit's declared contract).
@@ -704,9 +746,9 @@ func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, ar
 	if p, foreign := vc.closureProgram(cl); foreign {
 		// The token seam's foreign arm: the hosted root RET takes __RC's
 		// discipline, whatever seam the enclosing unit was entered through.
-		prev := vc.rootRetTrim
-		vc.rootRetTrim = false
-		defer func() { vc.rootRetTrim = prev }()
+		prev, prevNamed := vc.rootRetTrim, vc.rootRetNamed
+		vc.rootRetTrim, vc.rootRetNamed = false, false
+		defer func() { vc.rootRetTrim, vc.rootRetNamed = prev, prevNamed }()
 		return vc.hostForeign(p, reg, cl.Unit, args, cl.Captures, false)
 	}
 	// Inputs fill the leading param slots, captures the trailing ones
@@ -715,10 +757,23 @@ func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, ar
 	// a second copy of the loop.
 	// The TOKEN seam's entry: the root RET takes __RC's discipline, whatever
 	// seam the enclosing unit was entered through.
-	prev := vc.rootRetTrim
-	vc.rootRetTrim = false
+	prev, prevNamed := vc.rootRetTrim, vc.rootRetNamed
+	vc.rootRetTrim, vc.rootRetNamed = false, false
+	// A unit that stands for a fn VALUE's body — a named fn's or a lambda's,
+	// compiled at the callback slot with the value's own param contract
+	// (CompiledFn.Params; a quotation body carries none and runs in the
+	// caller's frame) — is a frame the interpreter's dispatch would have
+	// opened for the value, whose `args` is the value's own call args:
+	// pushRootArgs brackets it as the fn-value seam brackets its units.
+	// Without it the body's `args` read the ENCLOSING frame's list — none
+	// at the top level — so `def g fn [[n:Integer] [Any] [do [args]]]
+	// each g/v [1 2]` raised `args: not inside a function` per element for
+	// the interpreter's `[[1] [2]]` (NUR166).
+	if fn := &vc.p.Fns[cl.Unit]; len(fn.Params) > 0 && fn.NArgs > 0 && fn.NArgs <= len(args) {
+		defer pushRootArgs(reg, vc.p, args[:fn.NArgs])()
+	}
 	res, err := vc.enterBodyUnit(reg, cl.Unit, bindUnitLocals(reg, &vc.p.Fns[cl.Unit], args, cl.Captures))
-	vc.rootRetTrim = prev
+	vc.rootRetTrim, vc.rootRetNamed = prev, prevNamed
 	if err != nil {
 		return res, err
 	}
@@ -852,6 +907,25 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 		window[i] = stack[len(stack)-1-i]
 	}
 	mr := core.MatchSignature(sigs, window, core.WordInfo{ArgCount: n})
+	if mr == nil || mr.Sig == nil {
+		// The recorded count is the check pass's PICK over a gradual
+		// residual — `call {} svc  call {} svc`, whose second call matched
+		// the three-operand overload with the first call's undeclared
+		// result standing in for the third Map — and the run may refute
+		// it: the interpreter's matcher takes the overload the live values
+		// fit, so the seat tries the word's other arities over the same
+		// stack top before it raises (NUR147: a `vm:poly-no-match` defer,
+		// `1 1` by whole-program fallback, an internal error forced).
+		for k := n - 1; k >= 1; k-- {
+			if !polyHasArity(sigs, k) {
+				continue
+			}
+			if alt := core.MatchSignature(sigs, window[:k], core.WordInfo{ArgCount: k}); alt != nil && alt.Sig != nil && alt.Sig.DispatchHandler() != nil {
+				mr, n, window = alt, k, window[:k]
+				break
+			}
+		}
+	}
 	if mr == nil || mr.Sig == nil || mr.Sig.DispatchHandler() == nil {
 		// No runtime match. The interpreter's signature_error is built from its
 		// live tape / forward-collection state (engine.go sigError) — the
@@ -1555,6 +1629,43 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 	}
 	if !core.IsAppliableFn(fnVal) {
 		return stack, nil, nil // not callable: [args, fn] is already the interpreter's trailing residual
+	}
+	// A NAME-read lead whose only overloads take NO argument, under a window
+	// (NUR176: `(k x)` over a 0-arg `k`, `(1 2 c)` over a 0-arg `c`), is not
+	// a no-match: the interpreter dispatches the bare read as a WORD where it
+	// stands — the fn fires over nothing — and then steps the window's other
+	// tokens on their own: a leading window's arguments AFTER the result (a
+	// fn value dispatching over it, a literal landing beside it), a trailing
+	// window's beneath it. That is the island's own semantics over the
+	// window in its WRITTEN order, so hand it the window that way (the args
+	// ride top-down, the last-written first; head.Leading says which side of
+	// the lead they were written on), the lead marked applied so the
+	// island's re-step dispatches an anonymous 0-arg value as the word
+	// dispatch did. An event-produced or `/v`-delivered lead has no name to
+	// dispatch under, and keeps the no-match below.
+	if fd, ok := fnVal.Data.(core.FnDefInfo); ok && n > 0 && head.Name != "" && core.FnValueOnlyZeroArgSigs(fd) {
+		fd.Applied = true
+		fnVal.Data = fd
+		island := make([]core.Value, 0, n+1)
+		if !head.Leading {
+			for i := n - 1; i >= 0; i-- {
+				island = append(island, args[i])
+			}
+		}
+		island = append(island, fnVal)
+		if head.Leading {
+			for i := n - 1; i >= 0; i-- {
+				island = append(island, args[i])
+			}
+		}
+		results, err := vc.islandRun(reg, island)
+		if err != nil {
+			return nil, nil, stampAt(err, curDebug, pc, reg)
+		}
+		if err := vc.screenResults(results, "dynamic trailing-top result at a 0-arg lead", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+			return nil, nil, err
+		}
+		return append(stack[:base], results...), nil, nil
 	}
 	if err := noMatchIfSigged(reg, fnVal, args, curDebug, pc, reg, head); err != nil {
 		return nil, nil, err
@@ -2651,7 +2762,15 @@ func deoptPrefix(spec *compiler.DeoptSpec, frameBase, top int, stack, locals []c
 // place — never a push — so shadow depth and undef behaviour match the
 // interpreter). A slot a later check-time undef popped skips the write: the
 // interpreter would have discarded the binding too.
-func bindGlobal(curReg *core.Registry, gb *compiler.GlobalBindSpec, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+//
+// A write-back paired with a dyn-scope bind of the same def
+// (GlobalBindSpec.AfterDynScope) ADOPTS that bind's install instead: the
+// entry bindDynScope pushed through the interpreter's own installer is the
+// persisted binding, taken off the dyn-bind trail so no unwind pops it, and
+// nothing is pushed — one entry under the name, as the interpreter's one
+// `def` leaves (NUR168's second finding). The stack is consumed exactly as
+// the write would consume it.
+func (vc *vmContext) bindGlobal(curReg *core.Registry, gb *compiler.GlobalBindSpec, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
 	// The write PUSHES — the interpreter's own `def`: the check pass's
 	// install was rolled back before the run (core.RestoreBindingsForReplay),
 	// so there is no kept slot to overwrite, and the twin table's
@@ -2660,6 +2779,9 @@ func bindGlobal(curReg *core.Registry, gb *compiler.GlobalBindSpec, stack []core
 	// flip).
 	write := func(v core.Value) {
 		curReg.Defs.Push(gb.Name, core.StripAscribed(v))
+	}
+	if gb.AfterDynScope && vc.adoptDynBind(curReg, gb.Name) {
+		write = func(core.Value) {}
 	}
 	if gb.Splice {
 		// The S5 first-value loop bind: the region's first value sits at a
@@ -2676,7 +2798,11 @@ func bindGlobal(curReg *core.Registry, gb *compiler.GlobalBindSpec, stack []core
 		return nil, vmErrAt(curDebug, pc, "BIND_GLOBAL underflow")
 	}
 	// Ascription hygiene on both bind arms: a stored binding holds the REAL
-	// value (interpreter def parity).
+	// value (interpreter def parity). A fn value takes the def's name here
+	// too, as installDef names what it binds (NUR168) — on the stack copy
+	// as well, so the local store that follows the peek holds the named
+	// value the interpreter's binding holds.
+	stack[len(stack)-1] = nameClosureValue(stack[len(stack)-1], gb.Name)
 	write(stack[len(stack)-1])
 	if gb.Pop {
 		return stack[:len(stack)-1], nil
@@ -2705,6 +2831,45 @@ func (vc *vmContext) ensureInvoker(reg *core.Registry) {
 	// field and passes itself.
 	reg.Invoker = vc.invokeClosureOn
 	vc.foreignInvokers = append(vc.foreignInvokers, reg)
+}
+
+// bindFnType executes one OpBindFnType (compiler/go/bytecode.go): the front
+// door's name check against the run's reservations, the reservation, the
+// check-time node bound as an adopted entry on the dyn-bind trail, so the
+// unit's RET pops it as it pops the unit's value defs.
+func (vc *vmContext) bindFnType(reg *core.Registry, spec *compiler.FnTypeBindSpec) error {
+	if err := core.TypeNameFree(reg, spec.Name); err != nil {
+		return err
+	}
+	vc.dynBinds = append(vc.dynBinds, dynBindEntry{reg: reg, name: spec.Name, depth: reg.Defs.Depth(spec.Name)})
+	reg.Defs.PushTypeAdopted(spec.Name, spec.Entry.TypeDef, spec.Entry.Body)
+	core.ReserveTypeParts(reg, spec.Name)
+	return nil
+}
+
+// adoptDynBind takes the dyn-bind trail's top entry off the trail when it is
+// the install of name on reg — the OpBindDynScope a paired write-back
+// (GlobalBindSpec.AfterDynScope) follows — so that install persists as the
+// binding the write-back would have pushed. False, and the trail untouched,
+// when the top entry is another name's: the write-back then pushes as before.
+func (vc *vmContext) adoptDynBind(reg *core.Registry, name string) bool {
+	n := len(vc.dynBinds)
+	if n == 0 || vc.dynBinds[n-1].reg != reg || vc.dynBinds[n-1].name != name {
+		return false
+	}
+	vc.dynBinds = vc.dynBinds[:n-1]
+	return true
+}
+
+// polyHasArity reports whether some non-fallback overload takes exactly k
+// arguments — the arities the poly seat retries at (callPoly, NUR147).
+func polyHasArity(sigs []core.Signature, k int) bool {
+	for i := range sigs {
+		if !sigs[i].Fallback && sigs[i].TotalArgs() == k {
+			return true
+		}
+	}
+	return false
 }
 
 func (vc *vmContext) unwindDynBinds(base int) {
@@ -2869,15 +3034,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// interpreter's undefined_word for the name seated at this pc.
 			if v := locals[in.Arg]; v.IsUnboundSlot() {
 				name, _ := storeNameAt(p, curUnit, pc)
-				var extra []string
-				if curUnit >= 0 && curUnit < len(p.Fns) {
-					for _, ln := range p.Fns[curUnit].LocalNames {
-						if ln != "" {
-							extra = append(extra, ln)
-						}
-					}
-				}
-				return nil, stampAt(core.UndefinedWordDiagWith(curReg, curReg.Source, name, debugPosAt(curDebug, pc), extra), curDebug, pc, curReg)
+				return nil, stampAt(core.UndefinedWordDiagWith(curReg, curReg.Source, name, debugPosAt(curDebug, pc), localNameCandidates(p, curUnit)), curDebug, pc, curReg)
 			}
 			stack = append(stack, locals[in.Arg])
 		case compiler.OpStoreLocal:
@@ -3006,7 +3163,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if len(frames) > 0 {
 				fb = frames[len(frames)-1].stackBase
 			}
-			ns, unit, sigArgs, err := vc.dispatchGeneric(p, &p.Generics[in.Arg], stack, locals, fb, curReg, curDebug, pc)
+			ns, unit, sigArgs, err := vc.dispatchGeneric(p, &p.Generics[in.Arg], stack, locals, fb, curReg, curDebug, pc, curUnit)
 			if err != nil {
 				return nil, err
 			}
@@ -3446,7 +3603,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			stack = ns
 		case compiler.OpBindGlobal:
-			ns, err := bindGlobal(curReg, &p.GlobalBinds[in.Arg], stack, curDebug, pc)
+			ns, err := vc.bindGlobal(curReg, &p.GlobalBinds[in.Arg], stack, curDebug, pc)
 			if err != nil { //covergate:allow bindGlobal's only error path is its own allow-listed defensive underflow guard, unreachable without a bytecode-level fault (§compiler)
 				return nil, err
 			}
@@ -3457,7 +3614,20 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// transition (Arg indexes Program.BindTwins) at this — its
 			// source — position. Replay, never re-execution: the IDENTICAL
 			// entry the check pass produced goes back in (§6.5).
-			core.ApplyBindTwin(curReg, p.BindTwins[in.Arg], p.BindTwinEntries[in.Arg])
+			if err := core.ApplyBindTwin(curReg, p.BindTwins[in.Arg], p.BindTwinEntries[in.Arg]); err != nil {
+				// A type twin whose name a run-time mint ahead of it holds
+				// (core.ApplyBindTwin's doc): the interpreter's `def` at
+				// this position raises the same type_error.
+				return nil, stampAt(err, curDebug, pc, curReg)
+			}
+		case compiler.OpBindFnType:
+			// A fn unit's own per-call type install (the opcode's doc): the
+			// name checked and reserved as the interpreter's `def T` checks
+			// and reserves it — a second call of the frame raises the same
+			// type_error — and the check-time node bound for the frame.
+			if err := vc.bindFnType(curReg, &p.FnTypeBinds[in.Arg]); err != nil {
+				return nil, stampAt(err, curDebug, pc, curReg)
+			}
 		case compiler.OpBindResident:
 			// The arm-resident twin (§6.5's each-body recovery): executes
 			// inside a compiled per-invocation unit, once per invocation,
@@ -3524,7 +3694,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// never deferred, since an effect performed before the read
 				// fences the re-run into an internal error.
 				if p.SpecUndefNames[name] || p.LiveReadNames[name] {
-					return nil, stampAt(core.UndefinedWordDiag(curReg, curReg.Source, name, debugPosAt(curDebug, pc)), curDebug, pc, curReg)
+					return nil, stampAt(core.UndefinedWordDiagWith(curReg, curReg.Source, name, debugPosAt(curDebug, pc), localNameCandidates(p, curUnit)), curDebug, pc, curReg)
 				}
 				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-miss", "dynamic-scope read miss for `"+name+"`; the compiled runtime cannot execute it")
 			}
@@ -3596,10 +3766,28 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					// over the aligned residual, never the count (`walk … cb/v`
 					// over a 0-value body runs clean interpreted).
 					trimmed, err = stack, checkCallBoruContract(r, contract, stack, core.SrcPos{})
+				} else if len(frames) == 0 && vc.rootRetNamed {
+					// The root RET of a unit entered as a NAMED fn call
+					// (InvokeCompiledStrict: the module-fn dispatch): the
+					// frame's own contract — the count as __RC enforces it,
+					// the fresh operand stack being the frame's (NUR191).
+					trimmed, err = checkReturnContract(r, contract, stack, 0, true, core.SrcPos{})
 				} else {
 					trimmed, err = checkReturnContract(r, contract, stack, stackBase, len(frames) > 0, core.SrcPos{})
 				}
 				if err != nil {
+					// A nested frame's contract error anchors at the CALL —
+					// the token the interpreter's ReturnCheck marker carries
+					// (`h` in `def h fn [[][Integer][1 2]] end h`, 1:33) —
+					// not at the body's last instruction (NUR118).
+					if len(frames) > 0 {
+						fr := frames[len(frames)-1]
+						callDebug := p.Debug
+						if fr.retUnit >= 0 && fr.retUnit < len(p.Fns) {
+							callDebug = p.Fns[fr.retUnit].Debug
+						}
+						return nil, stampAt(err, callDebug, fr.retPC-1, curReg)
+					}
 					return nil, stampAt(err, curDebug, pc, curReg)
 				}
 				stack = trimmed
@@ -3760,6 +3948,30 @@ func debugPosAt(debug []core.SrcPos, pc int) core.SrcPos {
 		return debug[pc]
 	}
 	return core.SrcPos{}
+}
+
+// localNameCandidates is the did-you-mean pool's compiled half: the names
+// of the running unit's frame locals — its params and captures, its loop
+// variables, its promoted body-local defs — which the interpreter holds as
+// defs in the registry the suggestion pool reads, and which a compiled
+// frame keeps in slots the registry never sees (NUR146: `def k 5  for 2 [
+// if (k eq 5) [undef k] [] ]` suggested `i` interpreted and nothing
+// compiled). The main unit's table is Program.LocalNames; a fn unit's is
+// its CompiledFn.LocalNames. Spill temps are anonymous and skipped.
+func localNameCandidates(p *compiler.Program, curUnit int) []string {
+	var names []string
+	if curUnit >= 0 && curUnit < len(p.Fns) {
+		names = p.Fns[curUnit].LocalNames
+	} else {
+		names = p.LocalNames
+	}
+	var out []string
+	for _, n := range names {
+		if n != "" {
+			out = append(out, n)
+		}
+	}
+	return out
 }
 
 func stampAt(err error, debug []core.SrcPos, pc int, r *core.Registry) error {

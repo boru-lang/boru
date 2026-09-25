@@ -45,7 +45,23 @@ func (vc *vmContext) polyNoMatchRaise(r *core.Registry, pr *compiler.PolyRef, fn
 	if reorder == "" {
 		reorder = core.ReorderHintFor(pr.Word, fn, stackTuple)
 	}
-	ae := core.NoMatchDiag(r.Source, pr.Word, fn, written, spec.Pos, reorder)
+	// The recorded anchor is the word's own position; a word the source
+	// never wrote — the `dot` a lens expands to under `apply` (`5 $.name
+	// apply`) — has none, and neither has the debug table at this pc, so
+	// the raise rendered "source position unknown" where the interpreter
+	// underlined the first written value (its own fallback for a
+	// positionless site: the first candidate that carries one). Anchor at
+	// that value too (NUR171).
+	pos := spec.Pos
+	if pos.Row == 0 {
+		for _, w := range written {
+			if w.Pos().Row > 0 {
+				pos = w.Pos()
+				break
+			}
+		}
+	}
+	ae := core.NoMatchDiag(r.Source, pr.Word, fn, written, pos, reorder)
 	return stampAt(ae, curDebug, pc, r)
 }
 

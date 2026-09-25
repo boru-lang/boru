@@ -84,7 +84,7 @@ func PopLiveBinding(r *Registry, name string) {
 	if r == nil {
 		return
 	}
-	if e, ok := r.Defs.PopEntry(name); ok && e.TypeDef != nil && e.Minted {
-		r.Types.Retire(e.TypeDef)
+	if e, ok := r.Defs.PopEntry(name); ok && e.TypeDef != nil && e.Minted && !r.Defs.HoldsType(e.TypeDef) {
+		r.Types.Retire(e.TypeDef) // the last pop retires the node (NUR135)
 	}
 }

@@ -43,7 +43,7 @@ var knownCompileFailures = map[string]string{
 
 	// GRADUATED 2026-07-15 (the LAST corpus compile failure — compile failures reached 0):
 	// the each variadic-if row. Its dispatch half records an offset-form
-	// rematch (DispatchSpec.WrittenOff); the branch merge seats the 1-vs-2
+	// rematch (DispatchSpec.Written); the branch merge seats the 1-vs-2
 	// arm residual via the all-inert re-push (captureInertArmResidual — the
 	// loop-side capture mirrored to branch arms) and the variadic merge; the
 	// terminal rematch seats its const operand UNDER the live region top
@@ -55,9 +55,10 @@ var knownCompileFailures = map[string]string{
 	// exit — compiles to a runtime rematch. Its match probed a WIDER window
 	// (3 positions) than the tuple its error renders (the single stack
 	// value: the forward walk breaks at the `true`/`false` WORD tokens), so
-	// DispatchSpec carries NWritten, proven a leading prefix of the window
-	// by ID at the record gate; the VM re-matches the full window and
-	// renders over window[:NWritten], byte-identical to the interpreter.
+	// DispatchSpec carries Written — the attempted window's indices, proven
+	// exactly window values by ID at the record gate; the VM re-matches the
+	// full window and renders over the tuple, byte-identical to the
+	// interpreter.
 
 	// GRADUATED 2026-07-14 (word-splice): a PARKED `__SP` marker (def-bound,
 	// collected by value — never stepped before the dispatch) is identical at

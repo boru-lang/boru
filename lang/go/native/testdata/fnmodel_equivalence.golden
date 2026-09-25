@@ -239,6 +239,7 @@ WORD dot
   [Scalar/Atom Node/Xml] barrier=1 quote={0} returns=[Any]
   [Scalar/Atom Node] barrier=1 quote={0} +returnsfn
   [Scalar/Atom Scalar/Micron] barrier=1 quote={0} +returnsfn
+  [Scalar/Atom None] barrier=1 quote={0} returns=[None]
   [Any None] barrier=1 returns=[None]
 WORD dotr
   [Scalar/String Ideal/Module] barrier=1 +returnsfn
@@ -256,6 +257,7 @@ WORD dotr
   [Scalar/Atom Node/Xml] barrier=1 quote={0} +returnsfn
   [Scalar/Atom Node] barrier=1 quote={0} +returnsfn
   [Scalar/Atom Scalar/Micron] barrier=1 quote={0} +returnsfn
+  [Scalar/Atom None] barrier=1 quote={0} +returnsfn
   [Any None] barrier=1 +returnsfn
 WORD drop
   [Any] barrier=0
@@ -377,6 +379,7 @@ WORD get
   [Scalar/Atom Node/Xml] barrier=1 returns=[Any]
   [Scalar/Atom Node] barrier=1 +returnsfn
   [Scalar/Atom Scalar/Micron] barrier=1 +returnsfn
+  [Scalar/Atom None] barrier=1 returns=[None]
   [Any None] barrier=1 returns=[None]
 WORD getpath
   [Ideal/Reach Any] barrier=2 returns=[Any]
@@ -397,6 +400,7 @@ WORD getr
   [Scalar/Atom Node/Xml] barrier=1 +returnsfn
   [Scalar/Atom Node] barrier=1 +returnsfn
   [Scalar/Atom Scalar/Micron] barrier=1 +returnsfn
+  [Scalar/Atom None] barrier=1 +returnsfn
   [Any None] barrier=1 +returnsfn
 WORD gt
   [Scalar Scalar] barrier=2 runcheck typearg={1} returns=[Scalar]

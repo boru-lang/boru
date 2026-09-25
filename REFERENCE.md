@@ -603,6 +603,7 @@ value your **source** wrote:
 
 ```
 {a:1} dot b                   # returns None — engine-produced absence
+{a:1}.b.c                     # returns None — a read THROUGH a missing member stays None
 {a:none}                      # returns {a:none} — source-written value
 def P refine Record [name:String nick:(String tor none)]
 make P {name:"Bob"}           # returns {name:'Bob' nick:None}

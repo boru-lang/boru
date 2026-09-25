@@ -1473,6 +1473,10 @@ type ForCont struct {
 	// and `while [true] []` trips evaluation_limit instead of hanging.
 	WhileCond   []Value
 	WhileInBody bool
+	// CondPos is the condition operand's own position — where a condition
+	// that produced no value is reported, on both lanes (the compiled
+	// terminal trap anchors there; NUR130).
+	CondPos SrcPos
 }
 
 // IfCont holds the continuation state for a mark/move-driven if statement.

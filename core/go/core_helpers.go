@@ -433,7 +433,9 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			if callReg.AnalysisScopeID() == r.AnalysisScopeID() {
 				target = callReg
 			}
-			return target.CallBoruNamed(&s, args, fnDefCopy.Captured, fnDefCopy.Name)
+			// A named call: the frame's return count on this path too
+			// (NUR191, CallBoruStrict).
+			return target.CallBoruStrict(&s, args, fnDefCopy.Captured, fnDefCopy.Name, SrcPos{})
 		}
 		// Retag typed-container args up front so EVERY access path in the body —
 		// named binding, the args stack (args.N), and unnamed body-token pushes —

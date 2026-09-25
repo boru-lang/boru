@@ -86,19 +86,19 @@ keep the two in sync in the same commit.
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
-| [NUR154](#nur154) | A `case` over a FACTORY-PRODUCED clause list miscompiles: `def mk fn [[n:Integer][List][quote [1 'one' 'many']]] end case 1 (mk 0)` is `'one'` interpreted and raises `case_error: clause list must be a concrete list of match/block pairs` compiled — silent, exit 0 until the raise, on the DEFAULT lane. The compiled `case` lowers its clause operand as a static literal; a quoted list a fn returns is a run-time value it must read, or refuse. Row `lang/spec/code-bodies.tsv:L142`; one of the five differential mismatches the expanded corpus exposed (#471) | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
+| [NUR154](#nur154) | FIXED 2026-09-25 as a sound decline (the computed clause list — the handoff log's entry of that date): the check pass traps a non-list clause operand only when it is CONCRETE; a carrier or dynamic operand (a fn's returned list) is a list or not at run time, so the dispatch's own gate declines it and the fallback answers `'one'`; the corpus and sweep pins are retired. The original text: A `case` over a FACTORY-PRODUCED clause list miscompiles: `def mk fn [[n:Integer][List][quote [1 'one' 'many']]] end case 1 (mk 0)` is `'one'` interpreted and raises `case_error: clause list must be a concrete list of match/block pairs` compiled — silent, exit 0 until the raise, on the DEFAULT lane. The compiled `case` lowers its clause operand as a static literal; a quoted list a fn returns is a run-time value it must read, or refuse. Row `lang/spec/code-bodies.tsv:L142`; one of the five differential mismatches the expanded corpus exposed (#471) | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
 | [NUR155](#nur155) | FIXED 2026-09-23 (the typed callback's contract — the handoff log's entry of that date): the VM's token seam matches a lambda-derived callback BODY unit's declared contract per element (`unmatchedLambdaBody`, eng/go/vm.go) — a list body's no-match hands back the inputs with the fn value on top, as stepping the value leaves them, a map body's raises the map arm's `no matching lambda signature`; each-variants L216 agrees and left `knownDivergences`, and the map fold `0 fold ([acc:Integer kv:KeyVal] => [acc add kv.v]) {a:"s" b:1}` (compiled `[0s1]` for the interpreter's raise) closed with it. The original text: A TYPED callback over a HETEROGENEOUS collection is applied to every element compiled where the interpreter applies it only to the matching ones: `each ([x:Integer] => [typeof x]) [1 'a' [2] {b:1} true none]` is `[Integer fn… fn… fn… fn… fn…]` interpreted (a non-matching element leaves the fn VALUE as data, no_signature swallowed) and `[Integer ProperString List Map Boolean None]` compiled. The compiled callback dispatch drops the per-element signature match the interpreter performs; it must keep it, or refuse a collection it cannot prove homogeneous. Row `lang/spec/each-variants.tsv:L215` | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
 | [NUR156](#nur156) | FIXED 2026-09-22 (the quotation-body def reads — the handoff log's entry of that date): two defects, neither module-specific. The check-mode model of `apply` kept a `/v`-marked reach group's QUOTE (the runtime handler clears it), so a quoted concrete lead parked on the pass and the re-step recorded nothing — the model now delivers the value unquoted; and a bare read of a module-scope def bound to a fn-valued member is the interpreter's WORD dispatch in every unit that reads it, where the closure unit captured the VALUE — NoteWordRead names the read on the unit, the closure-body replay arms on a named def read of a tagged member, and the VM's word island dispatches through the registry's own binding. L102 and L103 agree with parity; L104 now DECLINES loudly in the dynamic-scope def family, where its local twin always did. Still open, pinned (`TestDefReadWordDispatchPending`): the same def read at the MAIN program (`5 f` is `[5 fn]`) and inside a named fn unit (a dynamic-scope-read bail). The original text: A MODULE-EXPORT fn value is not APPLIED by the compiled lane: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply` is `6` interpreted and leaves `5` and the unapplied fn compiled; `def f M.tbl.inc end each [f] [1 2 3]` returns three fn VALUES for `[2 3 4]`; and `while [i lt 3] [def i (i M.inc/v apply)]` never advances and ends in `tape_exhausted`. Rows `lang/spec/module-composition.tsv:L102–L104`. NOT closed by NUR152's home stamp (measured on ceb067c): the value carries the right home, the `apply` lowering of a module-homed fn value is what does not fire | the corpus expansion (2026-09-17); flagged by the Codex review of #471 |
-| [NUR157](#nur157) | Under a registry, a signature whose parameter is a PREDICATE-TYPED container does not unify with its own text: `def Pos fnpred n:Integer [n gt 0]  def T fnsig [[xs:[:Pos]] [Boolean]]  ((fn [[xs:[:Pos]] [Boolean] [true]]) unify T)` is `~unify-fail` — the registry-armed pre-pass resolves the atom `Pos` inside one pattern and runs the predicate against the other pattern's ATOM instead of comparing two references to the same type. Unarmed (`Unify` without a registry) the pair admits | threading the unify registry through the kernel (2026-09-18, #471); found by the review's differential, kept verbatim as HEAD's verdict |
-| [NUR158](#nur158) | A capturing CLOSURE at a dispatch-modifier word's poly seat raises `illegal_ref` compiled where the interpreter wraps it: `def mk fn [[k:Integer][Function][([a:Integer b:Integer] => [(a sub b) add k])]]  def mk2 fn [[][Map][{a:(mk 100)}]]  def m (mk2)  m.a/u 10 3` is `93` interpreted and `illegal_ref: usurp requires a function value, got Function` compiled — the VM hands the poly'd native a `ClosurePayload` its `FnDefInfo` validation rejects. The TYPED-carrier form (`def r (usurp (mk 100))`) is closed by the value-form declaration; the dynamic-Any `m.a` form stays open | the handler-migration line's fn-operand pilot (2026-09-18, design/HANDLER-MIGRATION-LINE.0.md); found by the pilot's differential probe |
+| [NUR157](#nur157) | FIXED 2026-09-25 (two references to one predicate — the handoff log's entry of that date): the armed pre-pass in `unifyInner` unifies two references that resolve to the SAME predicate type as the type before either is run as a membership test, so `[:Pos] unify [:Pos]` and the fn-shape row admit under a registry as they did without one; `[:Pos]` against `[:Neg]` still fails and membership rows are unchanged. The original text: Under a registry, a signature whose parameter is a PREDICATE-TYPED container does not unify with its own text: `def Pos fnpred n:Integer [n gt 0]  def T fnsig [[xs:[:Pos]] [Boolean]]  ((fn [[xs:[:Pos]] [Boolean] [true]]) unify T)` is `~unify-fail` — the registry-armed pre-pass resolves the atom `Pos` inside one pattern and runs the predicate against the other pattern's ATOM instead of comparing two references to the same type. Unarmed (`Unify` without a registry) the pair admits | threading the unify registry through the kernel (2026-09-18, #471); found by the review's differential, kept verbatim as HEAD's verdict |
+| [NUR158](#nur158) | FIXED 2026-09-25 (the closure at the wrap — the handoff log's entry of that date): the four dispatch-modifier words bridge a compiled closure to its fn definition (`ClosureAsFnDef`) before asserting the payload, so `m.a/u 10 3` over a capturing closure read out of a map is 93 on both lanes, `/s`, `/f` and `/2` alike. The original text: A capturing CLOSURE at a dispatch-modifier word's poly seat raises `illegal_ref` compiled where the interpreter wraps it: `def mk fn [[k:Integer][Function][([a:Integer b:Integer] => [(a sub b) add k])]]  def mk2 fn [[][Map][{a:(mk 100)}]]  def m (mk2)  m.a/u 10 3` is `93` interpreted and `illegal_ref: usurp requires a function value, got Function` compiled — the VM hands the poly'd native a `ClosurePayload` its `FnDefInfo` validation rejects. The TYPED-carrier form (`def r (usurp (mk 100))`) is closed by the value-form declaration; the dynamic-Any `m.a` form stays open | the handler-migration line's fn-operand pilot (2026-09-18, design/HANDLER-MIGRATION-LINE.0.md); found by the pilot's differential probe |
 | [NUR159](#nur159) | FIXED 2026-09-23 (the branch result's re-step — the handoff log's entry of that date): the recorder's branch event tells the collapse and the residual arms that a merged value MAY be a fn (`MayBeFn`, with an arg-taking flag), so the check pass notes the re-step landing on it, the lowering lands it after the merge, and the trailing / mixed arms apply an unsettled value over the values beneath it; what is left declines. Was: a NAMED fn value in a branch position is APPLIED by the interpreter and pushed as data by the compiled lane: `def one fn [[][Integer][1]] end if true one/v [2]` is `1` interpreted and `fn one` compiled; the factory (`if true (mk) [2]`) and module-export (`if true M.one [2]`) forms of the same cell agree on both lanes, the lambda and container forms fail to compile | the generated sweep (design/FULL-COMPILATION-REPLAN.0.md S0, 2026-09-18), cell `if` × named-fn |
 | [NUR160](#nur160) | FIXED 2026-09-23 (the typed callback's contract): the `apply` word's pending-application arm admits a factory's baked fn CONST beside a produced closure (`producedConstLambda`), and the program's pending apply lowers over an EMPTY window too (a 0-arg closure fires, a wider one stays data) — `7 5 (mk) apply` is `[7 6]`, the named twin `[inc/v]` `[7 6]`, `(mk0) apply` 1 and `5 (mk0) apply` `[5 1]` (both silent on main); the sweep pin is retired. The original text: The apply of a FACTORY-built fn value does not fire on the compiled lane when a value sits below it on the stack: `7 def mk fn [[][Function][([n:Integer] => [n add 1])]] end 5 (mk) apply` is `[7 6]` interpreted and `[7 5 fn (Integer)]` compiled, while the clean-stack `def mk … end 5 (mk) apply` compiles with parity | the generated sweep, the prefix-stack call form of `apply` × factory |
 | [NUR161](#nur161) | An `afn` whose BODY is a fn value read from a container returns the value on both lanes — `def m {f: ([n:Integer] => [n add 1])} end def f ([x:Integer] afn m.f) end f 5` is `fn (Integer)` — but with a value below on the stack the compiled lane APPLIES it to that value: `7 … f 5` is `[7 fn (Integer)]` interpreted and `[8]` compiled | the generated sweep, the prefix-stack call form of `afn` × container RESOLVED 2026-09-22 (loud compile failure) as a side effect of NUR177's fix: the residual no longer carries the container read's identity |
-| [NUR162](#nur162) | The compiler PANICS disassembling a program whose `word` body is a fn value once the program is wrapped in a paren group or a module body: `(def dbl word ([] => [1]) end 5 dbl)` — `disasmUnit`'s `OpCallNative` arm dereferences a nil signature entry (`compiler/go/bytecode.go:1578`); the plain form compiles with parity (`5 fn`) | the generated sweep, the paren-group and module-body call forms of `word` × lambda; `vary.Classify` now recovers a panic (`vary.Panicked`) |
-| [NUR167](#nur167) | A fn body that MINTS A TYPE, applied as a callback under compilation, conflicts one call early: `def f fn [[n:Integer][Integer][def T (class {}) n]] end each f/v [1 2]` raises `type: name part "T" conflicts with an existing type name` at element 1 interpreted (the second call re-mints) and at element 0 compiled — the check pass ran the body and its mint persists on the compiled path (RunAutoValues keeps the pass's runtime-visible installs for OpPushType), so the first real call meets its own analysis-time twin. The direct call `[(f 1) (f 2)]` refuses to compile and so hides it; the callback form compiles. Pre-existing at #474's merge base (measured on `origin/main`); S1b's lazy detached stamp declines such bodies outright (bodyHasReplayHazard) so it adds no second mint | the S1b seam pins, 2026-09-19 |
-| [NUR168](#nur168) | A NON-CAPTURING fn value produced by a factory and def-bound loses the def's NAME on the compiled lane when it escapes as data: `def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end each f/v [1 2 3]` prints `[fn f(String) fn f(String) fn f(String)]` interpreted (installDef names the value it binds, and each's data fork pushes the named value) and `[fn (String) fn (String) fn (String)]` compiled — the value-def lowering (STORE_LOCAL + BIND_GLOBAL) keeps a const fn value anonymous, where a CAPTURING one is named at its PUSH_CLOSURE by the `/v` read's DefName (nameClosureValue). Render-only — the value applies the same — and the shape compiled for the first time in S1b-2 (it refused "unmatched dispatch recovered at each" before) | the S1b-2 seam rows, 2026-09-19 |
+| [NUR162](#nur162) | FIXED 2026-09-25 (the 0-arg apply at a paren's tail — the handoff log's entry of that date): the trailing apply's window trim declines a 0-ARG callee at the recorder's one failure site (the value is data at the tail on the interpreter — `(def dbl word ([] => [1]) end 5 dbl)` is `5 fn`; the trim used to record an apply over NO argument, lowered as a native call under a signature entry carrying no signature), the lowering keeps a belt against a signature-less apply, and the disassembler names such an entry instead of crashing; the two sweep variants decline loudly now (call-form crashes 2 → 0). The original text: The compiler PANICS disassembling a program whose `word` body is a fn value once the program is wrapped in a paren group or a module body: `(def dbl word ([] => [1]) end 5 dbl)` — `disasmUnit`'s `OpCallNative` arm dereferences a nil signature entry (`compiler/go/bytecode.go:1578`); the plain form compiles with parity (`5 fn`) | the generated sweep, the paren-group and module-body call forms of `word` × lambda; `vary.Classify` now recovers a panic (`vary.Panicked`) |
+| [NUR167](#nur167) | FIXED 2026-09-25 (the analysis is not a call — the handoff log's entry of that date): a fn-body analysis's type-part reservations come off with the body's bindings (`core.ForgetTypePartsSince` at `RunFnBodyOnce`'s unwind), so the run's first call is the first mint and the second conflicts as the interpreter's does; a fn unit re-installs a body-local type per call (`OpBindFnType`: the name checked against the run's reservations and reserved, the check-time node bound for the frame) instead of dropping the mint, so `f 1 f 2` raises on the second call on both lanes and the sweep's fn-wrapped type-def variants keep compiling; and a root type twin frees its reservation with the replay rollback and re-checks its name at its own position (`applyTwinPush`), so a run-time mint ahead of it conflicts where the interpreter's def does. The original text: A fn body that MINTS A TYPE, applied as a callback under compilation, conflicts one call early: `def f fn [[n:Integer][Integer][def T (class {}) n]] end each f/v [1 2]` raises `type: name part "T" conflicts with an existing type name` at element 1 interpreted (the second call re-mints) and at element 0 compiled — the check pass ran the body and its mint persists on the compiled path (RunAutoValues keeps the pass's runtime-visible installs for OpPushType), so the first real call meets its own analysis-time twin. The direct call `[(f 1) (f 2)]` refuses to compile and so hides it; the callback form compiles. Pre-existing at #474's merge base (measured on `origin/main`); S1b's lazy detached stamp declines such bodies outright (bodyHasReplayHazard) so it adds no second mint | the S1b seam pins, 2026-09-19 |
+| [NUR168](#nur168) | FIXED 2026-09-25 (the def's name on the value — the handoff log's entry of that date): the recorder seats the def name on a factory's baked const lambda as it did on a produced closure, the VM's rename covers a bare fn definition, the root write-back adopts its paired dyn-scope install instead of stacking a second entry (`do [f/v]` read `fn f(String) or (String)`, the two entries unioned), and a dyn-method callee read takes the data-position lookup (`do [f 'z']` was an internal error for the interpreter's `z`); `each f/v [1 2 3]` renders `fn f(String)` three times on both lanes. The original text: A NON-CAPTURING fn value produced by a factory and def-bound loses the def's NAME on the compiled lane when it escapes as data: `def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end each f/v [1 2 3]` prints `[fn f(String) fn f(String) fn f(String)]` interpreted (installDef names the value it binds, and each's data fork pushes the named value) and `[fn (String) fn (String) fn (String)]` compiled — the value-def lowering (STORE_LOCAL + BIND_GLOBAL) keeps a const fn value anonymous, where a CAPTURING one is named at its PUSH_CLOSURE by the `/v` read's DefName (nameClosureValue). Render-only — the value applies the same — and the shape compiled for the first time in S1b-2 (it refused "unmatched dispatch recovered at each" before) | the S1b-2 seam rows, 2026-09-19 |
 | [NUR175](#nur175) | The re-step landing applies over an EMPTY WINDOW, but `execFnDefLiteral` matches over the LIVE TAPE and the LIVE STACK, so any member with an ARG-TAKING overload can be matched differently there than at the landing. Three divergences, all present on `main` via the reach spelling and all caught by a Codex review of PR #479 before NUR174's widening could carry them to the `get` spelling: a stack operand selecting a unary overload (`5 m.f` = 6 interpreted, `5 42` landed), a `/q` slot CAPTURING the following word (`m.f z` = `z/q` interpreted, `42 z` landed — a word is not always a collection barrier), and a 0-RETURN member whose effect-only apply the landing's one-result claim cannot express (an internal_error). FIXED 2026-09-21 by screening on the RUNTIME value: only-0-arg signatures and exactly one declared return, standing aside onto the residual apply otherwise | a Codex review of PR #479, 2026-09-21 |
-| [NUR176](#nur176) | A 0-ARG runtime lead under the one-arg leading window `(k x)` is dispatched by the interpreter with nothing and its argument is then stepped on its own — a fn VALUE applies to the lead's result (`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h z/v` is `8` interpreted), a literal survives into the frame's return check (`(k 5)` is `type_error`) — where the compiled window no-matches the lead over its one argument (`signature_error`, NUR107's raise). Loud on both lanes, never a value of its own compiled; the literal-argument rows are pre-existing (the window compiled before S1b's apply shapes; `TestLeadApplyArityMismatchParity` pins the PARAM-argument spelling `(g x)`, which the interpreter's stranded-forward barrier raises as signature_error), the fn-valued row arrived with the admission of an inert fn value at the argument position | landing S1b's apply shapes, 2026-09-22 |
+| [NUR176](#nur176) | FIXED 2026-09-25 (the 0-arg lead's window — the handoff log's entry of that date): a NAME-read lead whose only overloads take no argument is handed to the island in the window's WRITTEN order (a `Leading` bit on the op's head says which side of the lead the arguments were written on), the lead marked applied so an anonymous 0-arg value dispatches as the word did; `h z/v` over `[(k inc/v)]` is 8 on both lanes, `[(k 5)]` the frame's count error on both, `[(1 2 k)]` under a three-return contract `[1 2 7]`. The original text: A 0-ARG runtime lead under the one-arg leading window `(k x)` is dispatched by the interpreter with nothing and its argument is then stepped on its own — a fn VALUE applies to the lead's result (`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h z/v` is `8` interpreted), a literal survives into the frame's return check (`(k 5)` is `type_error`) — where the compiled window no-matches the lead over its one argument (`signature_error`, NUR107's raise). Loud on both lanes, never a value of its own compiled; the literal-argument rows are pre-existing (the window compiled before S1b's apply shapes; `TestLeadApplyArityMismatchParity` pins the PARAM-argument spelling `(g x)`, which the interpreter's stranded-forward barrier raises as signature_error), the fn-valued row arrived with the admission of an inert fn value at the argument position | landing S1b's apply shapes, 2026-09-22 |
 | [NUR177](#nur177) | An UNDECLARED-return fn — a lambda-bodied `def w n:Integer => [...]`, whose result is its analysed body residual — called twice in one program with the same argument shape seats ONE result for both calls: `def g x:Integer => [x add 3] end def w n:Integer => [(g n)] end (w 5) (w 0)` is `[8 3]` interpreted and `[3 3]` compiled, `def w n:Integer => [if (n gt 0) [n add 3] [0]] end (w 5) (w 0)` `[8 0]` and `[0 0]` — silent, default lane, exit 0, present on `main`. AnalyseFnBody memoises the residual per arg shape and handed the SAME values to every call, and the recorder keys producers by value ID. FIXED 2026-09-22: `freshResidual` (check_fnbody.go) re-mints each call's result identities at the record; the declared-return path always minted its own, which is why the corpus's `fn [[…] [T] …]` spelling never saw it | S1b's apply shapes graduating a literal-read pin, 2026-09-22 |
 | [NUR178](#nur178) | A paren over a PRODUCED closure — a compiled factory call's result re-stepped by the paren's rewind, `((mk 1) 2)` — left its window on the tape for a LATER word to collect: `((mk 1) 2) mul 10` compiled 21 (mul over 2 and 10, the closure over the product) for the interpreter's 30, `((mk 1) 2.5) mul 2` 6.0 for 7.0 — silent, default lane, exit 0, present on `main`; `add` agreed by arithmetic. The NUR121 hazard mark WAS set, and `hazardLead` exempted the lead on the INNER paren's placed mark whatever the outer paren had done. FIXED 2026-09-22 (the curried chain): the collapse records the re-stepped produced lead's apply as an event (core `parenProducedLeadApplyIdx` over the `ProducedLeadApplies` seam), and a collection made AFTER the re-stepping paren closed is a leak the hazard declines (`hazardAfterReStep`); the leading form's no-match order (`((mk 1) "s")` compiled `[s fn]` for `[fn s]`) is closed in the same landing | the curried chain, callbacks.tsv L151, 2026-09-22 |
 | [NUR179](#nur179) | Every fn-value-call op that hands a compiled fn-VALUE closure its window bound a TWO-param closure's first param to the value farthest from it: `(2 3 (mk2 1))` compiled 24 for the interpreter's 33, `7 5 (mk2 1)/v apply` 76 for 58, `1 2 (kk 7) apply` 19 for 28, a Function param's `(2 3 g)` 24 for 33, a capturing closure MEMBER's `(m.g 2 3)` 33 for 24, and the residual arm's `((mk2 1) 2 3)` 33 for 24 — silent, default lane, present on `main`. The ops build their window POSITIONALLY (args[0] → the first param) and handed it to the token seam, whose fn-value arm (S1b-2, `invokeFnValueClosure`) takes STACK order and reverses it itself; every pin was a one-argument window or a commutative body. FIXED 2026-09-22: `invokeClosurePositional` (eng/go/vm.go) re-stacks a positional window for a fn-value closure | the curried chain's two-argument probes, 2026-09-22 |
@@ -113,40 +113,46 @@ keep the two in sync in the same commit.
 | [NUR188](#nur188) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: a native poly that collected a container MEMBER's fn value written BEFORE the word handed the word the fn where the interpreter re-steps the member first — `def m {f: M.inc} 7 m.f typeof` was `[7 Function]` for the interpreter's Integer, `m.f typeof` Function for its `uncalled_function` raise — silent, present on `main`. The poly declines a member read written before the word (`polyCallDeclineReason`); a read written after it (`typeof m.f`) stays its operand | probing NUR186's neighbours, 2026-09-23 |
 | [NUR189](#nur189) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: the residual's TRAILING arms applied a paren-PLACED member fn value — `def m {f: M.inc} 7 (m.f)` was 8 for the interpreter's `[7 fn inc]`, `1 7 (m.f)` `[1 8]` for `[1 7 fn]` — silent, present on `main`. The trailing, trailing-window and mixed arms ask the park (`placedNotReStepped`) as the lead arm always did | probing NUR186's neighbours, 2026-09-23 |
 | [NUR190](#nur190) | CONTAINED 2026-09-24 (NUR190's open halves deferred — the handoff log's entry of that date; the maintainer's call): the `/q` capture and the Function-typed reference DEFER loudly at the landing's walk (`vm:landing-quote-claim`, `vm:landing-claim`) and the corpus keeps them on the runtime-defers ledger (runtime_defers.tsv: fn-value.tsv L317/L318). PARTLY FIXED 2026-09-23 (the landing's overload walk): a DYNAMIC fn value under a FUNCTION word is re-stepped by the interpreter over that word, and the compiled landing stood aside for any arg-taking overload (NUR175) while the residual apply took the word's RESULT — `m.f z` (h with a nullary and a unary overload, z a 0-arg fn) was 1 for `[42 0]`, `m.f typeof` Function for Integer, `m.l z` (an anonymous unary) 1 for `[fn lam(Integer) 0]`, `m.a z` (an Any-typed slot) a false `uncalled_function` for the strict barrier's stranded `signature_error`. The landing walks the run-time fn's overloads over the word with the interpreter's own plan (the word rides in the bytecode, `LandingWords`), and those four are closed. The `/q` capture (`m.q z` was `[42 0]` for `[z]`, `m.f y` `[42 42]` for `[y]`, silent; fn-value.tsv's L317/L318 passed by coincidence) and the Function-typed reference (`m.g z`, 7 interpreted) need the word's compiled call skipped, which the lowering cannot do, and no static model tells a `/q` slot from a typed slot's barrier — so a compile-time decline would be over-wide, and the deferral at the walk is precise. |
-| [NUR191](#nur191) | A MODULE fn's body re-steps a parked closure over the token after it where a main-registry fn body parks it, and the compiled module fn parks: `import module [def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] def d1 (fn [[x:Integer][Integer][(mk x) 3]]) export "M" {d1: d1/v}] M.d1 10` is 13 interpreted (CallBoru's deferred residual sweep re-steps the parked closure over the 3) and `type_error: d1: expected 1 return value(s), got 2 — [fn (Integer) 3]` compiled — the answer the same body gives in the main registry on BOTH lanes (`def d1 (fn […]) d1 10`). A curried chain (`TestModuleFnStampedAtLoadAndRerouted`'s decliner) the same: 16 interpreted, the count error compiled. Recorded 2026-09-23, present on `main` (c268afb); an error-versus-value divergence, not silent. |
+| [NUR191](#nur191) | FIXED 2026-09-25 (the module fn's return contract — the handoff log's entry of that date): a named fn call through the CallBoru seam enforces the frame's return COUNT before the types (`CallBoruStrict` / `NamedFnReturnCount`, on execFnDefLiteral's cross-registry arm and buildFnBodyHandler's foreign-registry arm; the callback seams keep the count trimmed), and a user fn's single returned closure delivered as a handler result is PARKED where it lands as the frame's return is (execMatch, after the splice) — `M.d1 10` over `[(mk x) 3]` raises the frame's count error on both lanes and `3 M.d1 10` over a factory is `[3 fn (Integer)]` everywhere. NUR204 found on the way, recorded pending: a module fn returning a NAMED fn value, read through its reach group with a value beneath (`5 M.ff`), which the interpreter re-steps. The original text: A MODULE fn's body re-steps a parked closure over the token after it where a main-registry fn body parks it, and the compiled module fn parks: `import module [def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] def d1 (fn [[x:Integer][Integer][(mk x) 3]]) export "M" {d1: d1/v}] M.d1 10` is 13 interpreted (CallBoru's deferred residual sweep re-steps the parked closure over the 3) and `type_error: d1: expected 1 return value(s), got 2 — [fn (Integer) 3]` compiled — the answer the same body gives in the main registry on BOTH lanes (`def d1 (fn […]) d1 10`). A curried chain (`TestModuleFnStampedAtLoadAndRerouted`'s decliner) the same: 16 interpreted, the count error compiled. Recorded 2026-09-23, present on `main` (c268afb); an error-versus-value divergence, not silent. |
 | [NUR192](#nur192) | FIXED 2026-09-24 (the frame's closure bind — the handoff log's entry of that date), found the same day: a fn-body-LOCAL computed fn def read by a native's raw code body — `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def g fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3]` was `[[6 7 8]]` interpreted and `undefined_word: a5` compiled, `each [a5 add 1] xs` the same — because the frame's dynamic-scope bind installed nothing for a closure value (`installDef`'s carrier guard). The VM's bind pushes the closure as the top-level write-back does and the frame's trail pops it; the tail read compiles natively, the raw-body read islands to the pushed closure. Found on the way and DECLINED loudly: a fn body's computed fn def SHADOWING an enclosing frame's computed fn of the same name outlives the call in the interpreter (its install drops the overlapping outer closure at the same depth, so the def-cleanup pops nothing), which the compiled push-and-pop cannot model — `def a5 (mk 1) … g [1 2 3] each [a5] [1 2 3]` is `[[6 7 8] [6 7 8]]` interpreted, and was `[[2 3 4] [2 3 4]]` compiled on main. The `do [a5 7]` row moved to NUR193. |
 | [NUR193](#nur193) | FIXED 2026-09-24 (the do body's read — the handoff log's entry of that date), found the same day: a def-bound computed fn read inside a `do` body — `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def a5 (mk 5) end 7 do [a5]` was `[12]` compiled for the interpreter's `[7 error(cannot call `a5` …)]` (the check pass modelled the do's result as the fn carrier and the program residual applied it over the 7; the island stepped the def-bound compiled closure as anonymous DATA and parked it over the empty frame where the interpreter's fn definition raises), `do [a5 7]` a `CALL_DYNAMIC underflow`. A closure a compiled program binds by `def` is now bridged into the word dispatch under its name (core `lookupUncachedBridged`, `dispatchesAsWord`; the aggregate never cached) and `do`'s result model takes the computed-body hatch when the body leaves such a carrier. The written operand the contract does not take is NUR194. |
 | [NUR194](#nur194) | FIXED 2026-09-24 (the written argument's fit — the handoff log's entry of that date), found the same day: a def-bound computed fn read with a WRITTEN operand its contract does not take — `def a5 (mk 5) end each [a5 "s" add] [1 2]` is `['6s' '7s']` interpreted (the matcher falls back from the written token to the frame's element) and bailed compiled on the shaped read's claim (`result count 2 violates the host-registered shape claim 1`); `do [a5 "s"]` the caught `cannot call` interpreted, the same bail (`[fn a5(Integer) s]` on main before the do body's read, silent). The shape claim carries the wrapper's parameter types now (`FnShape.Params`, from the closure unit's declared params or a const lambda's signature) and the read window declines a written token that does not conform; the body islands and the island dispatches the word as the interpreter does, and the top-level `(a5 "s")` declines the program to the interpreter's own raise. |
 | [NUR195](#nur195) | FIXED 2026-09-24 (the escaped flow after a native call — the handoff log's entry of that date), found the same day: the flag a native's body run leaves set (a break/continue with no loop of its own, handed back by the seam's sub-engine) was read by the VM only after a fallback or a fn-value apply, never after a plain native call, so `each (mk) [1 2 3]` over a computed `[break]` answered `[[1 2 3]]` silently and `for 3 [each (mk) xs i] 99` ran all three iterations; the flag is read after every native call now — the enclosing loop ends or steps on (`[99]` on both lanes), and with no loop at all the compiled lane takes the loop-less flow's designed path, the internal error RunCompiled's callers defer to the interpreter's `break outside loop` on (a loud bail, never a value). The original text: A flow sentinel inside a COMPUTED code body under `each` — `def mk fn [[][List][quote [break]]] end each (mk) [1 2 3]` — is the interpreter's `flow_error: break outside loop`, and the compiled lane answers `[[1 2 3]]`, silently; `continue` the same. The LITERAL twin `each [break] [1 2 3]` fails to compile (the Stage-2 code-body gate) and falls back with parity. Present on `main` (d75dd75) before the run-time token-body stamp, which declines a sentinel body and leaves the seam as it was. Pinned as it stands in lang `TestComputedBodyFlowSentinelPending` | found while pinning S3's first slice (2026-09-24) |
 | [NUR196](#nur196) | FIXED 2026-09-24 (the escaped body ends the iteration — the handoff log's entry of that date), found the same day: an iterating native — each, fold, scan, filter, for-each, outer, inner, eachrank — read the residual of a body run that had ESCAPED (a break/continue left unresolved, the registry's flag set) as the element's result: the interpreter's sub-engine hands back the unstepped tape (a frame-cleanup marker, which `filter` reported as "must produce a Boolean, got __CP"), the VM's island nothing (which `each` reported as "body produced no result"). The natives end their iteration on an escaped body now (core.BodyEscaped) and return no result, so the run resolves the flag on both lanes — `for 3 [each [f] [1 2 3] i] 99` is `[99]` on both, and with no loop the interpreter raises where the compiled lane takes the loop-less deferral. The original text: A `break` raised by a fn CALLED from a LITERAL each body — `def f fn [[x:Integer] [Integer] [break]] end each [f] [1 2 3]` — is the interpreter's `flow_error: break outside loop`, and `for 3 [each [f] [1 2 3] i] 99` its `[99]`; the compiled lane raises each's own `each_error: body produced no result` on both — the body's unit (or the island the declined fn takes) returns nothing on the escape, and the handler complains before the flag can be read. Loud, but a different answer. Pinned as it stands in lang `TestLiteralBodyFlowThroughFnPending` | found while closing NUR195 (2026-09-24) |
-| [NUR197](#nur197) | A loop body's residual LITERAL bearing a paren group over the loop variable — `for 2 [[(i add 1)] i]`, `for 2 [{a:(flex [i])} i]` — is the interpreter's `undefined word: i` (the residual literal is evaluated at the end of the run, after the loop unbound `i`) and the compiled lane's value per iteration (`[[1] 0 [2] 1]`); inside a fn the interpreter raises the same where the compiled lane raises the fn's return-count error. Present on main at 6ccf827; found while closing the flex-member map literal. Fence: `TestLoopBodyResidualLiteralPending`. |
-| [NUR198](#nur198) | A dotted read through a MISSING member — `def f fn [[m:Map][Any][m.b.c]] end f {a:1}`, `((make C {}).x get 0).y` — is the interpreter's `undefined word: c` (its `dot` over a run-time None leaves the atom unconsumed, which steps as a word) and the compiled lane's None (the chain's second hop over the first's result); a STATIC None fails to compile at the same undefined_word, consistently. Present on main at 6ccf827; found while closing the flex-member map literal. Fence: `TestDotChainOnMissingMemberPending`. |
+| [NUR197](#nur197) | FIXED 2026-09-25 (the loop region's residual — the handoff log's entry of that date): the interpreter's loop region evaluates a pending residual container when it collects the iteration's output, with the iterator still bound (`Engine.collectLoopRegion`, for `for` and `while` alike), as a fn frame evaluates its body's residual in-frame; `for 2 [[(i add 1)] i]` is `[[1] 0 [2] 1]` on both lanes, `def i 9  for 2 [[(i add 1)] i]` reads the loop's own `i`. Two twins found and closed with it: NUR202 (the loop's iterator surviving a trapped raise) and NUR203 (the single-literal `do` body under a loop baked as a const on the compiled lane). The original text: A loop body's residual LITERAL bearing a paren group over the loop variable — `for 2 [[(i add 1)] i]`, `for 2 [{a:(flex [i])} i]` — is the interpreter's `undefined word: i` (the residual literal is evaluated at the end of the run, after the loop unbound `i`) and the compiled lane's value per iteration (`[[1] 0 [2] 1]`); inside a fn the interpreter raises the same where the compiled lane raises the fn's return-count error. Present on main at 6ccf827; found while closing the flex-member map literal. Fence: `TestLoopBodyResidualLiteralPending`. |
+| [NUR198](#nur198) | FIXED 2026-09-25 (the None receiver's bare-word key — the handoff log's entry of that date): the accessor's `[Key | None]` chained-read row carried no QuoteArgs, so a BARE-WORD key over a run-time None was never collected — the dispatch parked and the word stepped on its own as `undefined word: c`, where a string or materialised-atom key always propagated None; the atom row quotes the key now on `dot` and on `dotr` (whose bare-word read over None raises the family's not_found on both lanes), and `m.b.c` over `{a:1}` is None everywhere, a static None included. The original text: A dotted read through a MISSING member — `def f fn [[m:Map][Any][m.b.c]] end f {a:1}`, `((make C {}).x get 0).y` — is the interpreter's `undefined word: c` (its `dot` over a run-time None leaves the atom unconsumed, which steps as a word) and the compiled lane's None (the chain's second hop over the first's result); a STATIC None fails to compile at the same undefined_word, consistently. Present on main at 6ccf827; found while closing the flex-member map literal. Fence: `TestDotChainOnMissingMemberPending`. |
 | [NUR199](#nur199) | FIXED 2026-09-24 (the keep-defs body — the handoff log's entry of that date), found the same day: a `do` body's closure unit is a keep-defs unit — every value def installs through a kept OpBindDynScope the VM leaves standing past the unit's RET for the enclosing frame to pop (CompiledFn.KeepsDefs), the enclosing loop refreshes its carried slot from the registry after the call, a leaked name's later read seats live at its token, and the adopted twin is marked written back; `def t 0  for 3 [do [def t 5]]  t` is 5 on both lanes, `for 3 [do [def t (t add 1)]]` compiles (code-bodies.tsv 13 -> 11). The original text: A `do` body's def of a name the enclosing `for` loop CARRIES — `def t 0 end for 3 [do [def t 5]] end t`, `for 3 [do [def t (i add 1)]]` — is the interpreter's 5 / 3 (the body runs in the caller's frame and its def leaks) and the compiled lane's 0: the do$body unit kept the def frame-local and the loop's carried slot never saw it; the computed twin `for 3 [do [def t (t add 1)]]` declined instead ("dynamic-scope def `t` of unpromoted computed value"). Present on main at 3768c46. Fence: `TestDoBodyDefLeaksToTheEnclosingScope`. | found while surveying the corpus's compile failures (2026-09-24) |
 | [NUR200](#nur200) | FIXED 2026-09-24 (the multi-run keep-defs body — the handoff log's entry of that date), found the same day: a multi-run body's unpaired value defs install through the kept OpBindDynScope (a loop fragment, a fn body), the enclosing loop refreshes its carried slot after the call, and every read of a leaked name seats live — the last element's install, or the interpreter's undefined_word at zero iterations; the twin regime's read fence is retired for value names. `def t 0  for 3 [[1] each [def t 5] drop]  t` is 5 on both lanes; code-bodies.tsv L183/L190 and module-composition L92 compile (the mutated flex read back seats live too). The original text: An `each` body's def of a name the enclosing `for` loop CARRIES — `def t 0 end for 3 [[1] each [def t 5] drop] end t` — is the interpreter's 5 (the body leaks its def per element) and the compiled lane's 0: no arm-resident twin is adopted inside a loop fragment (the bridge's root fence), so nothing installs the binding at run time and the carried slot keeps the pre-loop value; NUR199's multi-run twin. Present on main at 3768c46; found while closing NUR199. Fence: `TestEachBodyDefInLoopResolves`. | found while closing NUR199 (2026-09-24) |
 | [NUR201](#nur201) | FIXED 2026-09-25 (the frame's error path — the handoff log's entry of that date): the interpreter's fault return tears down every fn frame the error leaves OPEN on the tape (`Engine.faultReturn` → `unwindLiveFrames`, core/go/engine.go) — the body-local defs truncated, the Args list and FnBaseline popped, the captures and params undef'd — exactly as a break/continue discarding the region unwinds them and as CallBoru's sub-run tears its frame down inline on the same error; `do [g]  t` is `[error(x) 0]` on both lanes, the callee's params and args list gone with its locals, and the frame that raised while evaluating its residual in-frame unwinds there once instead of at the marker as well. The original text: A callee's def before a raise the caller TRAPS — `def g fn [[][Integer][def t 9 raise 'x']] end do [g] end t` — is the interpreter's `[error(x) 9]` (a raise skips the frame's def-cleanup tail, so the callee's binding leaks) and the compiled lane's `[error(x) 0]` (the frame installs nothing a trap could keep; an installed one is unwound with the frame on the error path). The interpreter's is the questionable rule. Present on main at 3768c46; found while closing NUR199. Fence: `TestCalleeDefTornDownOnTrappedRaise` (lang keep_defs_leak_test.go), `TestRunErrorUnwindsLiveFrame` / `TestRunErrorUnwindsFrameOnceAfterResidualError` (core fn_frame_unwind_test.go), fn-locals-scope.tsv §12 |
+| [NUR202](#nur202) | FIXED 2026-09-25 (the loop region's residual — the handoff log's entry of that date), found the same day closing NUR197: a `for` loop abandoned by a raise the caller TRAPS left its ITERATOR installed on the interpreter — `def i 9  do [for 2 [raise 'x']]  i` read 0, `for 3 [if (i eq 1) [raise 'x'] []]` under the same trap read 1 — where the compiled lane's loop keeps `i` in a frame slot and the read answers the root's 9; silent, present on main. NUR201's loop twin: the fault return unwinds every live loop's iterator (`Engine.unwindLiveLoops`) before the frames, as a break's region discard does | probing NUR197's neighbours, 2026-09-25 |
+| [NUR203](#nur203) | FIXED 2026-09-25 (the loop region's residual — the handoff log's entry of that date), found the same day closing NUR197: a `do` body that is ONE container literal over the loop variable — `for 2 [do [[i]]]`, `for 2 [do [{a:i}]]`, `for 2 [do [[(i add 1)]] i]` — answered `error(undefined word: i)` per iteration on the compiled lane for the interpreter's `[0] [1]`, silent, exit 0, present on main: the token body was analysed as a DEFERRING lambda (bodyInFrame false), its residual recorded no assembly, the closure declined on the unknown provenance and the dyn-body backstop baked the literal as a const the handler re-ran through the interpreter, where the loop's `i` is a frame slot the registry never held; a multi-token body (`do [[i] 5]`) compiled. A token body compiles in-frame now (recordClosureDispatch's bodyInFrame true — the InvokeBody seam's sub-engine sweeps the residual at its end, with the bindings live), and the closure assembles the list from the captured slot | probing NUR197's neighbours, 2026-09-25 |
+| [NUR204](#nur204) | A module fn returning a NAMED fn value, read through its reach group with a value beneath — `import module [def ff fn [[][Function][inc/v]] def inc fn [[n:Integer][Integer][n add 1]] export "M" {ff: ff/v}] end 5 M.ff` — is 6 on the interpreter (the reach group `( M dot ff )` never parks, its collapse re-steps the lone survivor, a NAMED fn at the pointer, and a name always calls: ADR-011) and `[5 fn inc(Integer)]` on the compiled lane, which seats the returned value as data; `M.ff 5` the same. The main-registry twin `5 ff` parks on both lanes, and so does `5 (M.ff)`. Present on main; found closing NUR191. Fence: `TestModuleFnNamedValueThroughReachPending` | probing NUR191's neighbours, 2026-09-25 |
+| [NUR205](#nur205) | FIXED 2026-09-25 (the named value's no-match on the seam — the handoff log's entry of that date): the token seam's unmatched-lambda arm (`unmatchedLambdaBody`) raises the word's `uncalled_function` for a closure that carries a def's name (`ClosurePayload.RetName`) and keeps the anonymous value's data rule otherwise; `0 fold h/v [1 2]` raises at step 1 on both lanes. The original text: A NAMED fn value driving `fold` whose signature stops matching PAST THE FIRST STEP is parked as data on the compiled lane where the interpreter raises `uncalled_function`: `def h fn [[a:Integer b:Integer] [List] [[a b]]] end 0 fold h/v [1 2]` — step 0 answers `[0 1]`, so step 1 offers a List accumulator to `a:Integer` and no signature matches — is `fold: step 1: [boru/uncalled_function]: call to 'h' matched no signature` interpreted and `[fn (Integer, Integer)]` compiled (the value itself, as the closure-body data fork leaves an unmatched TYPED LAMBDA — NUR155's rule for an anonymous value, applied to a NAMED one). A no-match at step 0 raises on both lanes; `scan` over a no-match parks on both lanes. Pre-existing at the merge base (measured 2026-09-25 on `wt-head`); silent — a value where the interpreter raises | closing NUR166, 2026-09-25 |
+| [NUR206](#nur206) | FIXED 2026-09-25 (the marker is no argument — the handoff log's entry of that date): the forward claim probe (`ForwardClaimProbeOn`) answers no claim for a dispatch-modifier marker, which fell to its literal arm where an `Any` parameter matched it; `def g M.up1/v end g 1` is `UP` on both lanes. The original text: A `/v`-marked module member read whose export takes an `Any` FIRST parameter cannot be collected as `def`'s forward argument: `import module [ def up1 fn [[value:Any] [String] ['UP']] export "M" {up1: up1/v} ] end def g M.up1/v` raises `signature_error: cannot call def — no signature matches the arguments … none were supplied` on both lanes, where `def g M.up2/v` (an `Integer` first parameter), `def g (M.up1/v)`, `def g up1/v` (no module) and the bare `M.up1/v` (data) all bind. The parser emits the reach followed by a dispatch-modifier marker (`Word/__DM`, Val); inside `def`'s forward window the reach's fn value reaches the pointer ahead of the marker and, with an `Any` parameter, the window's plan collects nothing. Interpreter-side (both lanes agree), loud | closing NUR163, 2026-09-25 |
+| [NUR207](#nur207) | FIXED 2026-09-25 (the marker's intent on the value — the handoff log's entry of that date): the check pass quotes the dynamic member read a standalone marker qualifies (the drop of the marker at the pointer, where the concrete value's peek quotes it at run time), and the residual layout leaves a quoted lead or trailing value alone; `m.f/v 5` is `fn (Integer) 5` on both lanes, `5 m.f/v` declines at an existing residual limit and answers by fallback. The original text: A `/v`-marked MAP MEMBER read with arguments beside it is applied on the compiled lane and data on the interpreter: `def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f/v 5` is `fn (Integer) 5` interpreted (the marker says data; the 5 strands on top) and `6` compiled, `5 m.f/v` is `5 fn (Integer)` for `6` — the checker's shaped member apply (`RecordDynMethod` through the method-shape model) collects the window past the reach's dispatch-modifier marker as if it were not there; `m.f/v` alone agrees (`fn (Integer)`, the alone-in-a-live-reach-group rung). Silent, pre-existing at the merge base (measured on `wt-head`, 2026-09-25) | closing NUR206, 2026-09-25 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
-| [NUR166](#nur166) | A def-bound fn VALUE handed to a higher-order word loses its own frame's `args` on the compiled lane: `def g fn [[n:Integer][Any][do [args] size]] end each g/v [1 2]` is `[[1 1]]` interpreted and `[[0 0]]` compiled (`do [args]` alone: `error(args: not inside a function)` per element). The value's body is lowered as the each site's closure unit, whose `args` is the ENCLOSING frame's list — none at top level — where the interpreter opens a frame for the value and pushes its call args. Pre-existing at #474's merge base (measured on `origin/main`); S1b's native fn-value seam pushes the value's own args for the units it hosts (pushRootArgs), but this row does not reach that seam — the closure lowering does. Same family as NUR155 (the closure unit is not the value's frame) | the S1b seam pins, 2026-09-19 |
+| [NUR166](#nur166) | FIXED 2026-09-25 (the value's own frame — the handoff log's entry of that date): the token seam brackets a closure unit that carries a param contract — a fn value's body, named or lambda — with `pushRootArgs` over the value's own call args, as the fn-value seam brackets the units it hosts; `each g/v [1 2]` over `[do [args]]` is `[[1] [2]]` on both lanes, a quotation body still reads the caller's. The original text: A def-bound fn VALUE handed to a higher-order word loses its own frame's `args` on the compiled lane: `def g fn [[n:Integer][Any][do [args] size]] end each g/v [1 2]` is `[[1 1]]` interpreted and `[[0 0]]` compiled (`do [args]` alone: `error(args: not inside a function)` per element). The value's body is lowered as the each site's closure unit, whose `args` is the ENCLOSING frame's list — none at top level — where the interpreter opens a frame for the value and pushes its call args. Pre-existing at #474's merge base (measured on `origin/main`); S1b's native fn-value seam pushes the value's own args for the units it hosts (pushRootArgs), but this row does not reach that seam — the closure lowering does. Same family as NUR155 (the closure unit is not the value's frame) | the S1b seam pins, 2026-09-19 |
 | [NUR165](#nur165) | RESOLVED 2026-09-19 (the S1a review). A TOKEN body over a collection the check pass knows only as `Any` — a fn's declared `Any` result: `def get fn [[][Any][1]] end each [add 1] (get)` — compiled through the cross-collection shortcut (`CallableSpec.CrossCollectionTokenShape`): the recorder committed the (List, Map) arm's closure, trusting the handler to be robust to the sibling collection, and a runtime Integer raised `each_error: expected a concrete map` where the interpreter's dispatch raises `signature_error` (fold the same, `fold_error`). Pre-existing at #474's merge base (measured on `origin/main`); S1a added the Reach twin `each $.x (get)`, which baked the one reachable (Reach, List) arm and answered `[[]]` — a wrong VALUE, silent — found by a Codex review of #474. Fixed at both seats: an Any carrier operand at the dyn-body seat re-matches whatever the arm count, and the committed arm's map guard raises the dispatcher's own signature_error for a runtime value that is neither collection (routing the words to the dyn-body seat instead was measured and rejected — it arms DynEnv mode program-wide and refused fifty-three module-cli.tsv rows) | a Codex review of #474 (2026-09-19), and the sibling shapes probed from it |
 | [NUR164](#nur164) | RESOLVED 2026-09-19 (S1a). A callback that matches none of a fn value's signatures raised a PLAIN Go error, not a BoruError — `each`/`fold`/`scan` over a Map (`no matching lambda signature for N argument(s)`, native_map_iter.go), `filter` and `walk` (`no matching callback signature`) — and the compiled-by-default lane reads every non-Boru error off the VM as an INTERNAL bail (`runtimeShouldFallback`): it rolled the registry back and re-ran the whole program on the interpreter, reporting a correct compiled verdict as "not compiled" — `def f fn [[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f {a:1 b:2}` raised the identical error on both lanes and answered `ran=false`, invisible to every differential. Fixed by raising `signature_error` at the three sites | the S1a pin over a gradual Map collection, 2026-09-19 |
-| [NUR163](#nur163) | A module member read IN PLACE is not the fn its local rebind is: `mini M.dbl 'ab'` and `emit M.up {a:1}` (and their parenthesised forms) are rejected by the words' signature-prefix validation — `mini_bad_signature`, `emit_bad_signature` — while `def g M.dbl/v end mini g 'ab'` answers `abab` and `def g (M.up) end emit g {a:1}` answers `UP`; `inspect (M.up)` reports a Function literal with no signatures where `inspect up` reports the defined fn and its signatures | the generated sweep, the module-export seeds of `emit`, `mini` and `parse` |
+| [NUR163](#nur163) | FIXED 2026-09-25 (the value's own signatures — the handoff log's entry of that date): the mini / emit / parse signature contracts (`MiniLangFnSigWhy`, `EmitLangFnSigWhy`, `ParseLangFnSigWhy`, the filter-shape probe and its partial) read `FnDefInfo.OwnSigs()` — a value read through `/v`, a module member in place or a paren carries the dispatch aggregate, whose synthesized 0-arg fallback signature failed the prefix check; `mini M.dbl 'ab'`, `mini (dbl/v) 'ab'`, `emit M.up {a:1}` and `parse M.p 'xy'` answer as their def-bound spellings do, on both lanes. The side note — `def g M.up/v` for an Any-first-parameter export — is recorded as NUR206. The original text: A module member read IN PLACE is not the fn its local rebind is: `mini M.dbl 'ab'` and `emit M.up {a:1}` (and their parenthesised forms) are rejected by the words' signature-prefix validation — `mini_bad_signature`, `emit_bad_signature` — while `def g M.dbl/v end mini g 'ab'` answers `abab` and `def g (M.up) end emit g {a:1}` answers `UP`; `inspect (M.up)` reports a Function literal with no signatures where `inspect up` reports the defined fn and its signatures | the generated sweep, the module-export seeds of `emit`, `mini` and `parse` |
 | [NUR153](#nur153) | RESOLVED 2026-09-18 (the tape rule everywhere). One stored `=>` value, two evaluation regimes on the interpreter. A stored `=>` callback's single container residual is DEFERRED when the value is applied on the tape — `def a 99 def api (patrun Function) add {cmd:"x"} ([a:Map] => [[a]]) api def h (find {cmd:"x"} api) h {z:1}` is `[99]`, the lambda rule — and evaluated IN THE LIVE FRAME when a native seam invokes it through InvokeCallback / CallBoru — a `service` catch-all `([req:Map state:Any] => [ {message: (join "" ["unknown '" req.cmd "'"])} ])` answers `unknown 'BOGUS'` on `call`, reading its param. The compiled stamp is ONE unit and takes the CallBoru regime (the fn-body recordability gate admits a stored body by name, which is what lets mini-redis's catch-all stamp), so the tape apply of a stamped stored `=>` value diverges: `[{z:1}]` compiled for `[99]` interpreted, silent, exit 0. Pre-existing at #471's merge base (measured on `origin/main`). The compiler cannot close this alone — the interpreter needs ONE rule for the residual of a fn value, whichever seam applies it | a Codex review of #471 (2026-09-17), which attributed it to the island fix; measured pre-existing and two-sided |
 | [NUR152](#nur152) | RESOLVED (2026-09-17). A fn value's HOME — the registry its free words resolve in — was stamped only at module-export resolution, so a main-program fn carried none and every seam read nil as "wherever this is running": handed INTO a module (`M.run pub/v`, `run` applying its `f:Function` param), `pub`'s `secret` resolved in the MODULE — `cannot call add` interpreted where the compiled lane answered 6, and with a same-named `def secret 100` in the module, 105 on BOTH engines for the rule's 6, invisible to any differential. The mirror image of the 2026-08-15 fix, which only covered module→main. Fixed by stamping the home at construction (`fn`, `=>`, `macro`) and comparing homes by MODULE (`Registry.Home`), which is what a concurrent fork inherits — the second face found on the way: comparing pointers sent a same-module callback back to the shared registry from its per-connection fork (`fatal error: concurrent map iteration and map write` under serve-raw) — plus compiling a stored-fn / fn-value unit at the value's home rather than the emitter's mid-foreign-compile registry (the third face: compiled 105 for 6) | investigating the main-vs-module representation split at the maintainer's request, 2026-09-17 |
-| [NUR146](#nur146) | The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
+| [NUR146](#nur146) | FIXED 2026-09-25 (the frame's names — the handoff log's entry of that date): The compiled lane's `undefined_word` suggests over the REGISTRY, the interpreter's over a registry that also holds the frame's bindings as defs: `def k 5  for 2 [ if (k eq 5) [undef k] [] ] 9` raises the same `undefined word: k` at `1:25` on both lanes, with ``did you mean `i`?`` interpreted (the loop iterator is a def binding there) and no suggestion compiled (the iterator is a frame slot). The first line — code, detail, position — agrees; the help line below it does not | the sixty-eighth increment's placed undef, 2026-09-16 |
 | [NUR143](#nur143) | FIXED 2026-09-24 (the recorder's registry after a module body — the handoff log's entry of that date): the enclosing-binding snapshot a fn unit takes at its open read the recorder's binding — the registry of the last engine that ran, a nested import's after `import "boru:sift"` — where the module's flex is no binding, so the read fell to the check pass's const clone; it reads the unit's own registry now (compiler StartFnCompile's fnReg), both descriptors read the binding live, the oracle ledger entries are retired and the class is pinned in lang/go/module_fn_unit_registry_test.go (`R.put 'a' 1  R.count` over an inline module's flex was `[1 0]` for `[1 1]` on the unfixed tree, silent). The original text: A fn-body read of a MODULE-SCOPE flex binding is compiled as a FRESH CLONE of the check pass's snapshot (`PUSH_CONST_FRESH`), not as the binding the interpreter resolves: boru:sift's `Sift.kinds` (`keys sift-catalog`, sift.boru:1042) and `Sift.detect` (`keys sift-path-detect`, :1078) read a copy. The keys agree because the check pass PERFORMS the run's mutations (a dry-passed `set` on a concrete flex populates the snapshot before it is taken) and because a mutation in an EARLIER request makes the next compile refuse ("operand of unknown provenance or not statically materialisable at keys" — the memo's materialisation guard, whose refusal is a defect the interpreter currently absorbs); neither is the rule "a read of a binding is the binding". Two corpus descriptors, ledgered by name in `test/go/langspec/region_oracle_test.go` | the COLLECT oracle, under review of #458 (2026-09-15), the moment its agreement test became identity |
-| [NUR142](#nur142) | A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
+| [NUR142](#nur142) | FIXED 2026-09-25 (the family of a refinement — the handoff log's entry of that date): A REFINED container is `eq` to nothing, not even itself: `def S (refine FlexMap)  def w:S (flex {a:1})  w eq w` is false, as are `def M (refine Map)  def m:M {a:1}  m eq m` and `def L (refine FlexList)  def v:L (flex [1 2])  v eq v`, and `[w] deq [w]` with it — where the unrefined `def w (flex {a:1})  w eq w` is true. `ExactEqual` reaches its container-identity arms through `nodeFamily`, which folds only the kernel's own flex nodes, so a value whose tag is a refine of Map or List falls past every arm to the terminal `false` — the shape NUR031 closed for opaque handles ("not even eq to itself"), open again one family over. `core.SameContainer` is the identity test itself, exported for the COLLECT oracle, which needs the answer; the `eq` word does not yet read it | the COLLECT oracle, under review of #458 (2026-09-15): 22 corpus descriptors over refined flex bindings read as divergent under the `eq` rule and as the same object under the identity test |
 | [NUR141](#nur141) | The check pass ADMITS a value to a predicate-typed parameter that the runtime scan REJECTS: `def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 5` is a `signature_error` on both lanes, but the check pass's dispatch plan claims `5` for `n:Even` (the region descriptor records a claim of one forward slot) where the runtime's candidate scan claims nothing — the predicate is run by one matcher and not the other. The answer agrees because the row errors either way; the MODEL of which signature a value matches does not, and a checker verdict built on it (a reachable arm, a narrowed result) would be wrong. One corpus row, ledgered by name in `test/go/langspec/region_oracle_test.go` (`over-claimed`) | the COLLECT oracle's first corpus walk, 2026-09-15 (the sixty-second increment) |
 | [NUR139](#nur139) | RESOLVED (2026-09-11, the fifty-seventh increment). One rule — "an unreachable unit's lowering says nothing about the PROGRAM" — had TWO per-unit refusal sites in Finalize and covered only one. `lowerEvents` refusing took the stamp-only trap-stub recovery; `reconcileResults` refusing returned straight out and killed the program. Invisible while the only unreachable units were fn-value stamps, whose refusals happen to land in the first site; the moment a declined closure dispatch left one, `for 2 [def b true  do [1 2 (if b [] [9 9])]]` went from compiling to "fn do$body: body leaves extra values". Same shape as NUR136 — one invariant, two sites, one of them wrong — and the recovery is now one helper (`unreachableUnitStub`) called from both | the variation lane, on a row this increment added, 2026-09-11 |
 | [NUR138](#nur138) | RESOLVED (2026-09-11, the fifty-seventh increment). Third instance of NUR133's and NUR137's shape — a screen written for the producers that happened to exist, meeting one that did not — and the FIRST in the opposite direction: it cost refusals, not a wrong answer. `regionReadsTheStack` answered "reads the stack" for any `opClosure` operand, but a closure operand is a PUSH (`OpPushClosure` puts captures then closure ABOVE the mark and the call pops what it pushed) and its captures are always promoted to frame locals. Since a body word's own body operand IS an `opClosure`, the blanket answer declined the region plan for every CLOSURE-COMPILED body word — so `7 def b true  do [1 2 (if b [] [9 9])]` seated its prefix only while the body took the dyn-body strategy and refused the moment the body compiled. The screen now walks the captures instead of assuming, so an unpromoted capture still declines | widening the whole-residual dispatch's exactness screen, 2026-09-11 |
 | [NUR137](#nur137) | RESOLVED (2026-09-11). `regionReadsTheStack` read `ev.call.ops` for every event kind it did not explicitly name, and an `evBranch`'s operands live in `ev.br` — so a BRANCH region's condition was never screened. The forty-seventh increment widened `variadicRegionEvent` to admit branch regions without widening the screen, and `def zs [0] def zt (zs 0 getr)  1 (if (zt gt 0) [] [9 9])` compiled to `9 1 9` against the interpreter's `1 9 9`: silent, exit 0, on the DEFAULT lane. The fifty-fifth increment then carried the same unscreened shape into body units, where it surfaced as `bytecode: internal: SEAT_BELOW_MARK prefix reaches past the mark`. Second instance of NUR133's exact mistake — a new region producer meeting a screen written for the producers that happened to exist — so the predicate's default is now "reads the stack" rather than a silent empty-ops answer: an unnamed kind costs a refusal — a defect owed a fix — rather than a wrong answer | adversarially probing the fifty-fifth increment's own seat, 2026-09-11 |
 | [NUR136](#nur136) | RESOLVED (2026-09-11, the fifty-fourth increment). One invariant — "a unit's local count must cover every local its own code stores to" — had two orderings, and the fn unit's was wrong: `cf.NLocals` was grown from `flw.numLocals` BEFORE the residual reconciliation, while the program's `NumLocals` write-back runs after it and carries a comment saying why. Invisible while nothing allocated during a fn unit's seating; the moment the body-unit residual rebuild did, the VM read past the end of a frame it had sized without the temps (`internal bytecode VM error: runtime error: index out of range [2] with length 2`, on `[10 20] each [drop (1 add 2) (3 add 4) 1 pick]`). Fence: lang/go TestBodyResidualRebuildSizesTheFrame, which walks every unit's STORE_LOCAL/PUSH_LOCAL against its own NLocals rather than pinning the one witness | writing the body-unit residual rebuild, 2026-09-11 |
-| [NUR135](#nur135) | `TypeTable.Retire` deletes a node from `byID` with no count of how many LIVE def entries hold it, so pushing ONE minted node under a name twice makes the first `undef` unregister it out from under the second ("bytecode: internal: unresolvable type operand Big"). The interpreter never meets it — every `def Big …` mints afresh — so only something that REPLAYS one captured type entry N times does, which is what a bind twin is. Worked around in `core.ApplyResidentTypeBind`, which re-installs the captured BODY so each element mints its own node. Second face: `Retire` never unregisters the name PARTS `RegisterPart` added, so after a replay rollback `validateTypeName` rejects the re-install on the check pass's own leftovers — which is why `InstallTypeBody` exists | the fifty-third increment's cross-request parity oracle, 2026-09-11 |
+| [NUR135](#nur135) | FIXED 2026-09-25 (the last pop — the handoff log's entry of that date): `TypeTable.Retire` deletes a node from `byID` with no count of how many LIVE def entries hold it, so pushing ONE minted node under a name twice makes the first `undef` unregister it out from under the second ("bytecode: internal: unresolvable type operand Big"). The interpreter never meets it — every `def Big …` mints afresh — so only something that REPLAYS one captured type entry N times does, which is what a bind twin is. Worked around in `core.ApplyResidentTypeBind`, which re-installs the captured BODY so each element mints its own node. Second face: `Retire` never unregisters the name PARTS `RegisterPart` added, so after a replay rollback `validateTypeName` rejects the re-install on the check pass's own leftovers — which is why `InstallTypeBody` exists | the fifty-third increment's cross-request parity oracle, 2026-09-11 |
 | [NUR134](#nur134) | A MODULE-exported fn's failed dispatch inside a caught `do` body is reported as an UNCAUGHT program error where the identical LOCAL fn is downgraded: `do [(true 5 zd) "x"] error [dot code]` gives `no_signature` at INFO with CaughtAtRuntime and COMPILES, while `do [(true 5 M.dec) "no-raise"] error [dot code]` gives `uncalled_function` at ERROR, uncaught, and the program refuses — both interpret to the caught code as a value. The central re-attribution in AddDiagnostic claims to cover every error family uniformly; a second analysis of the same call, with the body depths reset and outside the CaughtBodyDepth bracket, escapes it (the AnalyseCodeEffectCarrier dry pass is the suspect, and identifying it is what is owed). Fixing it does NOT graduate the two frontier-do-catch rows — the pipeline refuses on a caught model-undermining finding too, a refusal owed its own fix — so this is a check-accuracy defect, not a compile-coverage one | probing the do-catch ledger rows after the forty-ninth increment, 2026-09-11 |
 | [NUR133](#nur133) | RESOLVED (2026-09-10). A region's consumers read only two of the four kinds of event that produce one: `regionReadsTheStack` walked `ev.call.ops` and a loop's operands, so a variadic USER CALL's and a FALLBACK's own operands went unexamined and the `STACK_MARK` opened above a value the region's op then popped — `def f fn [[n:Integer] [] [for n [i]]] 9 f (1 add 2)` answered `0 9 1 2` for the interpreter's `9 0 1 2`, and `def xs [1] [do [1 div (xs 0 getr)] error [drop]]` `1 []` for `[1]`. Separately `RecordFallback` marked the island a region without `regionMayBeFn`, and an island's run is arbitrary interpreted code, so a Function passed through a handler was seated as data where the interpreter re-steps it (`uncalled_function` for `[6]`). Measured on the merge base: the two `error` shapes REFUSED there, so the forty-eighth increment made those two; the user-call one diverged there too, from an older defect the review's own diagnosis missed — `lowerUserCall` force-promoted a variadic callee's result to ONE frame slot, popping one value from a runtime-variable run. All three now refuse — three wrong answers traded for three unimplemented cases, each owed a fix, absorbed meanwhile by the interpreter; the const-argument twin still compiles natively through `OpSeatBelowMark` | a Codex review of PR #448, 2026-09-10 |
 | [NUR132](#nur132) | RESOLVED (2026-09-10, the fiftieth increment). A `break` / `continue` whose loop was in the SAME unit lowered to a bare `OpJmp`, which reached the right pc and did neither of the two things the interpreter does: TRIM THE ROUND (its tape splices back to the round's mark) and, for a break, CLOSE THE LOOP. `for 3 [ (7 add 2) if (i eq 2) [continue] [5] end ]` answered `9 5 9 5 9` for the interpreter's `9 5 9 5`, its `break` twin `9 5 0 9 5 1 9` for `9 5 0 9 5 1`, and `while [true] [ (7 add 2) if true [break] [5] end ]` `9` for `[]` — silent, exit 0, on the DEFAULT lane. The leak was worse than the trim: an inner loop's break landed PAST the `FOR_NEXT` that pops it, so `for 2 [ (i add 0) end for 3 [ if (i eq 1) [break] [0] end ] ]` had the OUTER loop stepping the INNER loop's stale counter and never terminated (tape_exhausted) where the interpreter answers `0 0 1 0`. Both terminators emit the FLOW signal ops now — the same pair the cross-frame case already used, whose `vmLoop` carries the very destinations the jumps named | shrinking the last `while` frontier row to its minimal shape, 2026-09-10 |
 | [NUR131](#nur131) | RESOLVED (2026-09-10, the forty-fifth increment). A full-stack SHUFFLE over a produced closure compiled to the closure as DATA where the interpreter re-steps it and applies: `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end 5 (mk 3) 0 pick` answered `[5 fn (Integer) fn (Integer)]` compiled for the interpreter's `[45]`, its `1 roll` twin `[fn (Integer) 5]` for `[15]`, and two more witnesses (`9 (mk 3) 9 2 roll`, `7 (mk 3) 1 pick`) the same way — exit 0, silent, on the DEFAULT lane. Measured on the merge base `d65f25a`, so it PRE-DATED the residual rebuild it was found reviewing. `FoldFullStack` now declines pick/roll when a preserved entry is both event-produced and provably a Function, and the residual rebuild carries the wider possibly-callable screen | verifying a Codex P1 on PR #447, 2026-09-10 |
-| [NUR130](#nur130) | A terminal trap's caret is the RECORDED site, the interpreter's is wherever its tape pointer sat: `while [] [1] end 5` raises the identical `runtime_error: while: condition produced no value` on both lanes, at `1:7` (the condition operand) compiled and `1:14` (the trailing `5`) interpreted, and the bare `while [] [1]` is `1:7` compiled against `source position unknown` interpreted. Message, code and exit agree; only the anchor differs, and the compiled one is the better anchor — the interpreter's is a tape artefact of where the loop's move token happened to sit after splicing | the forty-second increment's empty-condition trap, 2026-09-10 |
+| [NUR130](#nur130) | FIXED 2026-09-25 (the condition's own token — the handoff log's entry of that date): A terminal trap's caret is the RECORDED site, the interpreter's is wherever its tape pointer sat: `while [] [1] end 5` raises the identical `runtime_error: while: condition produced no value` on both lanes, at `1:7` (the condition operand) compiled and `1:14` (the trailing `5`) interpreted, and the bare `while [] [1]` is `1:7` compiled against `source position unknown` interpreted. Message, code and exit agree; only the anchor differs, and the compiled one is the better anchor — the interpreter's is a tape artefact of where the loop's move token happened to sit after splicing | the forty-second increment's empty-condition trap, 2026-09-10 |
 | [NUR112](#nur112) | The checker's residual for a parked native word applied after its name was EXTENDED does not match what runs: `def Pos (refine Integer)  def m {a:size/v}  def size fn [[n:Pos] [Integer] [200]] end  def v:Pos 3  m.a v` is checked `[dynamic(Any) Pos]` — two values, one of them the argument left behind — and actually leaves `[Integer]`. Both ENGINES agree on the answer (3); it is the static model that differs, so no differential can see it — TestCheckTypeSoundness can, and did | writing a corpus row for the parked-native apply gate, 2026-08-29 |
 | [NUR009](#nur009) | Bytes excluded from the DepScalar refinement bases — VERDICT 2026-08-15: WAIT for the ADR-012 `types/go` consolidation to close this through the refinement-base capability; no narrow fix meanwhile | 2026-07-22 uniformity review |
 | [NUR026](#nur026) | Escape sets diverge between quoted strings and templates — NARROWED 2026-08-15: the escape VOCABULARY is resolved by fix (templates take the quoted-string set: \b \f \v \xNN \uNNNN, and an unknown escape drops its backslash); what remains is the malformed-input REPORTING difference, which needs an error channel the template lexer seam does not have | 2026-07-22 uniformity review |
@@ -161,7 +167,7 @@ keep the two in sync in the same commit.
 | [NUR077](#nur077) | `StackForm`'s op vocabulary can CALL a word by name but cannot APPLY a function value, so an inline lambda or a fn read out of a container has no faithful representation — `Call{Name, Arity}` re-invokes by name and does not consume a receiver. `Eval` now refuses those forms (`ErrUnnamedApply`) rather than replaying them to a different answer — VERDICT 2026-08-17: resolve by fix, a NEW dedicated Apply Op (arity-carrying, consumes the value, seamed at `execFnDefLiteral`; `DoEval` stays reserved), after the three prerequisite recorder/gate defects are fixed | the `OnCall` frame-skeleton over-count fix, 2026-08-16 |
 | [NUR078](#nur078) | A bare fn name before a `Function`-typed slot still resolves as a reference, against amended ADR-011 — the engine's TFunction intercept implements the exception the 2026-08-17 amendment struck (`h zero` ≡ `h zero/r` when the slot is `Function`-typed; a call/barrier before any other slot) — VERDICT 2026-08-17: resolve by fix, open-work item B (all four sites retire together, re-opening the NUR038 call-head question in the implementing PR) | the ADR-011 amendment, 2026-08-17 (flagged by the PR #381 review, Codex P1) |
 | [NUR079](#nur079) | Gated words inside an imported file-module body escape the policy that governs the same call at top level — the module sub-registry inherited every capability seam except policy, so gates resolving `HostPolicy(r)` read nil as allow — VERDICT: resolve by fix in two halves; half (i) landed 2026-08-18 (the body now carries the parent's policy), half (ii) open | the Roc comparison study, 2026-08-18 |
-| [NUR080](#nur080) | A typed def over an Integer literal loses its newtype brand under the compiler, and the bare literal gains one — VERDICT: resolve by fix | the Roc comparison study, 2026-08-18 |
+| [NUR080](#nur080) | FIXED — verified 2026-09-25 (the brand in both orders — the handoff log's entry of that date): A typed def over an Integer literal loses its newtype brand under the compiler, and the bare literal gains one — VERDICT: resolve by fix | the Roc comparison study, 2026-08-18 |
 | [NUR081](#nur081) | `Test.skip` is documented as a drop-in for `Test.check-prop`, but the two disagree on argument validity: `check-prop` now rejects `runs < 1` / `max-shrinks < 0` while `skip` accepts them silently | the Quint follow-up Wave 1, 2026-08-18 |
 | [NUR082](#nur082) | Three tree-walking subcommands, two rules for `.boru/`: `fmt` and (now) `check` skip the package directory, `boru test`'s `discover()` walks it — VERDICT 2026-08-18: resolve by fix, one shared walk helper carrying the skip | giving `boru check` directory targets, 2026-08-18 (W-CLI-CHECK) |
 | [NUR083](#nur083) | `check` and `build` anchor relative imports to the FILE's directory, `run` and `debug` to the process cwd, so `boru check sub/m.boru` now accepts a program `boru run sub/m.boru` refuses from the same cwd — VERDICT 2026-08-18: resolve by fix, `run`/`debug` adopt the file anchor (the multi-target `check` cannot use cwd at all) | multi-file `boru check`, 2026-08-18 (W-CLI-CHECK) |
@@ -172,13 +178,13 @@ keep the two in sync in the same commit.
 | [NUR096](#nur096) | The check pass did not move with NUR095: a fn stored through a fn-SHAPE-typed member is APPLIED by both engines but still modelled by the checker as the inert fn it was before that retirement, so `TestCheckTypeSoundness` fails on the two multi-return `class.tsv` rows that pin it | adding the NUR095 retirement rows to `lang/spec/class.tsv`, 2026-08-20 |
 | [NUR092](#nur092) | `varyCompileFailureLedger`'s stale arm is corpus-sensitive: adding an UNRELATED spec row can displace a seed from the hash-ordered 32-seed sample, empty a bucket, and instruct the author to delete a ledger entry whose refusal class is still live at larger breadth | adding NUR091's spec rows, 2026-08-19 |
 | [NUR110](#nur110) | A FRESH `def` inside a branch that DID NOT RUN binds the name anyway in the compiled lane: `if false [def op 1] [0] end op` answers `[0 1]` compiled and `undefined_word` interpreted. The family-L CondBodyDepth gate only fires when a redefinition DROPS an existing overload, so shadowing is refused and fresh definition is not | measuring NUR109's premise, 2026-08-28 |
-| [NUR122](#nur122) | A bare-name dispatch of a fn-typed frame binding whose runtime value does not match is a NAMED no-match on the interpreter and something else on the compiled lane: `def f fn [[g:Function x:Integer][Integer][g x]]  f (z:String => [z]) 5` raises `signature_error: cannot call `g`` interpreted and `type_error: f: expected 1 return value(s), got 2 — [fn (String) 5]` compiled (the frame replay parks the value); the paren spelling `(g x)` raises the no-match with an EMPTY name (`cannot call `` `) at the body's position; a 0-arg `g` fires interpreted (`[42 5]`) and parks compiled (`[fn 5]`); and inside a RETURNED closure the same paren spelling over a captured NAMED fn names that fn instead of the param — `def app fn [[g:Function][Function][( fn [[x:Integer][Integer][(g x)]] )]]  def h (app add/v)  (h 5)` raises `cannot call `g`` at 1:64 interpreted and `cannot call `add`` at 1:80 compiled, both exit 1 (measured 2026-09-05 on main, a COMPILING row). Same shape family as NUR119: the compiled value has no binding name and no named-dispatch semantics RE-MEASURED 2026-09-06: the NUR123 deopt increments moved two of the three without this record being touched — `f (z:String => [z]) 5` now AGREES in message and position (`cannot call `g`` at 1:43), and `f ([] => [42]) 5` agrees in message (`[42 5]`, was `[fn 5]`) with only its POSITION still differing (interp 1:50, compiled 1:43); the returned-lambda `(g x)` row is unchanged. What remains is one position-only divergence plus the lambda-VALUE body's empty dispatch name. FIXED 2026-09-06 (the nineteenth increment) for the DISPATCH NAME and its position: the trailing apply's head carries the binding name and read position it was recorded under (`CompiledFn.DynApplyName`), so `(g 5)` raises `cannot call `g`` at the read on both lanes — message, code, caret, candidate notes and forward-args help alike — for a plain fn body, a lambda VALUE's body and a capture (`app add/v` named `add` at 1:80 and now names `g` at 1:64). What remains is the position-only row (`f ([] => [42]) 5`, interp 2:1 vs compiled 1:43) and the WRITTEN-TUPLE half already recorded below: a WORD argument is substituted onto the value stack before the head dispatches, so the interpreter's tuple is empty (`takes 1 argument, but none were supplied`) where the compiled lane names the applied value. FIXED 2026-09-07 (the twenty-first increment): both ops hand NoMatchDiag the leading run (fnUnitRec.localReads → DynApplyHead.NWritten and DynFrameWord.Read), and all eight witnesses reach parity. The rule the nineteenth increment recorded was wrong three ways — the tuple is a PREFIX not a filter (`(g 5 y 6)` writes `[5]`, not `[5 6]`), the gap spans OpCallDynFrame as well as the trailing apply (multi-arg applies lower there), and the discriminator is SYNTACTIC not an operand kind (a body-local bound to a literal folds to PUSH_CONST and is still not written) — so closing it needs the SYNTACTIC fact rather than the lowered operand — which `NoteLocalRead` already records ungated for every bare read (`rec.localReads`), so no kernel change and no relaxation of noteWordRead's fn gate. RENAME half FIXED 2026-09-07 (the twenty-sixth increment): the interpreter's frame binding NAMES a fn value bound for a named param (`installDef`: `fnDef.Name = name`) and the VM bound it verbatim, so a COMPILING row rendered differently — `def f fn [[g:Function][Function][g/v]]  (f (z:Integer => [z])) 3` was `fn g(Integer) 3` interpreted and `fn (Integer) 3` compiled; `nameFrameFns` now names an `FnDefInfo` of this registry at every frame entry, and the row, its returned-closure twin `[g/v]` and the nameless-builder no-match (`(g/v 5)` → ``cannot call `g` `` on both lanes) agree. STILL OPEN: a MODULE WRAPPER bound for a named param keeps its own name and signatures on the compiled lane (`(f MathUtil.sqrt/v) 16.0` renders `fn sqrt(Number) 16.0` for the interpreter's `fn g(BigDecimal) or (BigInteger) or (Float) or (Integer) 16.0` — installDef's rebinding path installs the inner native's overloads under the param's name, a registry-visible install the VM does not mirror; the wrapper still dispatches), and the position-only row `f ([] => [42]) 5` (interp 1:50, compiled 1:43). | measuring the closure-capture family's blocker (a), 2026-09-05 |
+| [NUR122](#nur122) | FIXED 2026-09-25 (the read's own token — the handoff log's entry of that date): A bare-name dispatch of a fn-typed frame binding whose runtime value does not match is a NAMED no-match on the interpreter and something else on the compiled lane: `def f fn [[g:Function x:Integer][Integer][g x]]  f (z:String => [z]) 5` raises `signature_error: cannot call `g`` interpreted and `type_error: f: expected 1 return value(s), got 2 — [fn (String) 5]` compiled (the frame replay parks the value); the paren spelling `(g x)` raises the no-match with an EMPTY name (`cannot call `` `) at the body's position; a 0-arg `g` fires interpreted (`[42 5]`) and parks compiled (`[fn 5]`); and inside a RETURNED closure the same paren spelling over a captured NAMED fn names that fn instead of the param — `def app fn [[g:Function][Function][( fn [[x:Integer][Integer][(g x)]] )]]  def h (app add/v)  (h 5)` raises `cannot call `g`` at 1:64 interpreted and `cannot call `add`` at 1:80 compiled, both exit 1 (measured 2026-09-05 on main, a COMPILING row). Same shape family as NUR119: the compiled value has no binding name and no named-dispatch semantics RE-MEASURED 2026-09-06: the NUR123 deopt increments moved two of the three without this record being touched — `f (z:String => [z]) 5` now AGREES in message and position (`cannot call `g`` at 1:43), and `f ([] => [42]) 5` agrees in message (`[42 5]`, was `[fn 5]`) with only its POSITION still differing (interp 1:50, compiled 1:43); the returned-lambda `(g x)` row is unchanged. What remains is one position-only divergence plus the lambda-VALUE body's empty dispatch name. FIXED 2026-09-06 (the nineteenth increment) for the DISPATCH NAME and its position: the trailing apply's head carries the binding name and read position it was recorded under (`CompiledFn.DynApplyName`), so `(g 5)` raises `cannot call `g`` at the read on both lanes — message, code, caret, candidate notes and forward-args help alike — for a plain fn body, a lambda VALUE's body and a capture (`app add/v` named `add` at 1:80 and now names `g` at 1:64). What remains is the position-only row (`f ([] => [42]) 5`, interp 2:1 vs compiled 1:43) and the WRITTEN-TUPLE half already recorded below: a WORD argument is substituted onto the value stack before the head dispatches, so the interpreter's tuple is empty (`takes 1 argument, but none were supplied`) where the compiled lane names the applied value. FIXED 2026-09-07 (the twenty-first increment): both ops hand NoMatchDiag the leading run (fnUnitRec.localReads → DynApplyHead.NWritten and DynFrameWord.Read), and all eight witnesses reach parity. The rule the nineteenth increment recorded was wrong three ways — the tuple is a PREFIX not a filter (`(g 5 y 6)` writes `[5]`, not `[5 6]`), the gap spans OpCallDynFrame as well as the trailing apply (multi-arg applies lower there), and the discriminator is SYNTACTIC not an operand kind (a body-local bound to a literal folds to PUSH_CONST and is still not written) — so closing it needs the SYNTACTIC fact rather than the lowered operand — which `NoteLocalRead` already records ungated for every bare read (`rec.localReads`), so no kernel change and no relaxation of noteWordRead's fn gate. RENAME half FIXED 2026-09-07 (the twenty-sixth increment): the interpreter's frame binding NAMES a fn value bound for a named param (`installDef`: `fnDef.Name = name`) and the VM bound it verbatim, so a COMPILING row rendered differently — `def f fn [[g:Function][Function][g/v]]  (f (z:Integer => [z])) 3` was `fn g(Integer) 3` interpreted and `fn (Integer) 3` compiled; `nameFrameFns` now names an `FnDefInfo` of this registry at every frame entry, and the row, its returned-closure twin `[g/v]` and the nameless-builder no-match (`(g/v 5)` → ``cannot call `g` `` on both lanes) agree. STILL OPEN: a MODULE WRAPPER bound for a named param keeps its own name and signatures on the compiled lane (`(f MathUtil.sqrt/v) 16.0` renders `fn sqrt(Number) 16.0` for the interpreter's `fn g(BigDecimal) or (BigInteger) or (Float) or (Integer) 16.0` — installDef's rebinding path installs the inner native's overloads under the param's name, a registry-visible install the VM does not mirror; the wrapper still dispatches), and the position-only row `f ([] => [42]) 5` (interp 1:50, compiled 1:43). | measuring the closure-capture family's blocker (a), 2026-09-05 |
 | [NUR123](#nur123) | A BARE READ of a frame binding holding a fn is a WORD dispatch on the interpreter (stepWord routes a bound FnDefInfo through Registry.Lookup: a 0-arg fn fires, a no-match raises `cannot call `g``) and was a slot PUSH on the compiled lane: `def f fn [[g:Function][Any][g]]  f ([] => [42])` answered `fn` for 42, `def id fn [[x:Any][Any][x]]  id ([] => [42])` the same, `f (z:Integer => [z])` answered `fn (Integer)` for the interpreter's error — default lane, exit 0. Fixed for the fn-body residual (the replay re-steps the read as the word; fn-typed reads elsewhere refuse); FIXED for a gradual body-local's read (`def h fn [[m:Map][Any][def j (m get "f")  j]]  h {f: ([] => [42])}` is 42 on both lanes: its residual read seats the replay, and any other consumption — `j typeof`, `{a: j}`, `(j typeof)`, `(j) typeof`, `if true [j] [0]`, `for 1 [j typeof]`, `j (m get "g") add`, `j  def y 1`, `def k j`, `def k (j)` — deopts to the interpreter at its statement when the binding holds a fn; a point whose statement the compiled stack cannot match declines to the slot push: `5  j typeof` raises `[5 Function]` for the interpreter's `[5 Integer]`); FIXED inside a CODE BODY a native runs in the frame (`[1] each [j]` [42], `do [j]` 42 — the closure unit deopts on its capture slot and the enclosing unit binds the name); FIXED for a lambda VALUE's own body (2026-09-06, the fourteenth increment: `def h fn [[m:Map][Function][def j (m get "f")  ( fn [[x:Integer][Any][j]] )]]  def q (h {f: ([] => [42])})  (q 7)` is 42 on both lanes where it answered `fn`, and the `j typeof` twin `Integer` where it answered `Function` — the escaping unit seats its body tokens and plans from its OWN frame, whose captures ride in slots for the whole apply; a read inside a BRANCH ARM of such a body still keeps its slot push); OPEN for the declined points and NUR119's render (a gradual PARAM's read refuses instead: the pass re-runs it under the argument's runtime type; re-measured 2026-09-05) | measuring the closure-capture family's blocker (a), 2026-09-05 |
 | [NUR126](#nur126) | RESOLVED (2026-09-05, the twelfth and thirteenth increments). A RETURNED lambda's captured COMPUTED value was baked as an unrelated CONSTANT: `def h fn [[m:Map][Function][def j (m get "f")  ( fn [[x:Integer][Any][j]] )]]  def q (h {f: ([] => [42])})  (q 7)` answered `7` — the caller's own argument — for the interpreter's `42`, and the factory's bytecode DROPped the computed value and pushed `PUSH_CONST` over the producing event's SEQ read as a const index (the disassembler panics on it: index out of range). The promotion planner never counted a RESIDUAL closure's captures, so their producers got no frame slot. The thirteenth increment closed the nested-fragment half: a multi-value branch ARM's residual is now RECORDED whole (`captureArmResidual`), so the planner may walk into the arm and force-promote its residual events — which also fixed the arm's own count-only reconciliation (`if true [ def c (7777 add 1)  99 (each [ (r:Integer => [ r add c ]) apply ] [1 2]) ] [ 7 8 ]` answered `7778 [7778 7779]` for the interpreter's `99 [7779 7780]`). An arm whose residual LEADS with a parked Function still declines the capture (the auto-apply screen) — the corpus's two vault-tui sites | measuring the closure-capture family after the eleventh increment, 2026-09-05 |
 | [NUR124](#nur124) | TIMING axis FIXED 2026-09-07 (the twenty-fourth increment): a native word's fn-typed or fn-admitting result with a plain body token written after it is noted by the pass (`NoteFnResultReStep`), the unit plans a RE-STEP point right after the call, and the VM hands the results as TAPE TOKENS plus the rest of the body to the interpreter when one is a fn (`DEOPT_IF_FN` with `Results`, the unit's unpushed unnamed inputs seated beneath the region) — `[g/v] each [5 swap drop]`, `[5 swap drop 9 swap]`, `[5] each [m get "f" drop]`, `[5] each [{f: g/v} get "f" drop]` and the fn-body twin all agree; a fn-typed note no point serves REFUSES instead of miscompiling. PAYLOAD axis FIXED the same day (the twenty-fifth increment): the interpreter's value re-step bridges a compiled closure to a dispatchable fn (`CompiledRuntime.ClosureAsFnDef`, Anonymous as the source lambda so a 0-arg lambda VALUE still parks), the re-step deopt's test admits a closure, and — found by the bridge — the residual window islands (`OpCallDynamicMixed`) no longer re-step a PARKED user-fn result: `5 (mk 3) 7` and `1 2 (mk 3)` lay out as the parked data on both lanes, and their NAMED twins `5 (mkf 3) 7` / `1 2 (mkf 3)` (which answered `5 21` / `1 6` on main for the interpreter's parked pairs) with them. STILL OPEN: a static-index FOLD handing the fn-typed local itself to the re-step (`[5 h/v] get 1 drop 7` → 7, no event to test after), and a fn-typed value re-stepped at the MAIN program (`def m {f: g/v}  m get "f" drop 7` → 7; a gradual note with no unit body to resume into keeps the optimistic model). The earlier text of this row follows. TWO defects (re-measured 2026-09-07), not the one this row first described. TIMING, which is not about closures: the interpreter re-steps a shuffled fn AT the shuffle and the compiled body at BODY END if at all, so a plain FnDefInfo diverges as soon as anything follows the shuffle — `def g fn [[x:Integer][Integer][x mul 3]]  [g/v] each [5 swap drop]` raises each_error interpreted (g applies at the swap, leaving [15], which drop empties) and answers `[5]` compiled. PAYLOAD: a produced closure is not re-stepped even at body end. The original witness: `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  [(mk 3)] each [5 swap]` is `[15]` interpreted and `[fn (Integer)]` compiled; `[5 over]` is `[45]` / `[fn (Integer)]`; `[5 swap drop]` raises each_error interpreted and answers `[5]` compiled; and the OPPOSITE direction, measured 2026-09-06 and pre-existing on `6f583f6`, where the compiled lane APPLIES where the interpreter parks — `5 (mk 3)` is `5 fn (Integer)` interpreted and `15` compiled, with the `(mk 3) 5` twin agreeing, which places the fault on the value's ARRIVAL above an existing residual — default lane, exit 0. The top-level spellings refuse ("function value reaches swap (Stage 3)"); inside a code body over a produced closure the shuffle fold compiles. A FIFTH witness (2026-09-06, likewise pre-existing) runs the same way through the QUOTE rather than the park rule — `def appv fn [[g:Function][Integer][(g/v 5)]]  appv (z:String => [z])` parks `[fn g(String) 5]` interpreted and applies compiled, because callDynTrailTop strips the applied copy's quote to mirror a read-substituted arrival while a `/v` delivery hands the stored value over still quoted | measuring NUR123's closure bridge, 2026-09-05 |
 | [NUR119](#nur119) | A fn value read through a PARAM's `/v` renders under the PARAM's name on the interpreter and under its own name on the compiled lane: `def app fn [[g:Function][Function][g/v]]  (app (z:Integer => [mul 3 z]))` renders `fn g(Integer)` interpreted and `fn (Integer)` compiled, and `def sq (z:Integer => [mul z z])  … app sq/v` renders `fn g(Integer)` against `fn sq(Integer)`. Same value, one render — the interpreter's frame binding re-labels the fn under the name it is read through, and a compiled unit pushes the raw runtime value. Pre-existing for the paren-placed spelling; the bare and args-following spellings refuse (`unconsumed fn-value carrier in residual (closure render)`, callResultRenderKnown) rather than diverge | measured 2026-09-05 while fixing the returned-closure park |
-| [NUR118](#nur118) | A compiled fn's RETURN-CONTRACT error blames the body's first token where the interpreter blames the CALL SITE: `def f fn [[m:Map] [Integer] [m get "a"]]  f {a:"s"}` raises the same `type_error: f: return value 1: expected Integer, got ProperString` on both lanes, at `1:43` (the call) interpreted and `1:30` (the body) compiled. The compiled RET check is stamped with the unit's own position because one unit serves every call site (compiler StartFnCompile's fnPos) — a documented limitation that became reachable from a corpus-style row when the binding-sensitive unit memo let `def k 5  def f fn [[] [Integer] [k add 2]]  f  def k "x"  f` compile (Stage 4b); the row pins code and message and excludes the position | Stage 4b's cross-family rebind row, 2026-09-04 |
-| [NUR114](#nur114) | A compiled diagnostic's caret is always ONE character wide where the interpreter underlines the whole token: the compiler's debug table is `[]core.SrcPos` carrying only row and column, so `stampAt` has no token text to set `BoruError.Src` from and the renderer's `caretCount = len(sub)` falls to its minimum of 1. Found while closing NUR108 — the positions now match exactly and the underline still does not | closing NUR108, 2026-08-30 |
+| [NUR118](#nur118) | FIXED 2026-09-25 (the call's own token — the handoff log's entry of that date): A compiled fn's RETURN-CONTRACT error blames the body's first token where the interpreter blames the CALL SITE: `def f fn [[m:Map] [Integer] [m get "a"]]  f {a:"s"}` raises the same `type_error: f: return value 1: expected Integer, got ProperString` on both lanes, at `1:43` (the call) interpreted and `1:30` (the body) compiled. The compiled RET check is stamped with the unit's own position because one unit serves every call site (compiler StartFnCompile's fnPos) — a documented limitation that became reachable from a corpus-style row when the binding-sensitive unit memo let `def k 5  def f fn [[] [Integer] [k add 2]]  f  def k "x"  f` compile (Stage 4b); the row pins code and message and excludes the position | Stage 4b's cross-family rebind row, 2026-09-04 |
+| [NUR114](#nur114) | FIXED — verified 2026-09-25 (the token's own text — the handoff log's entry of that date): A compiled diagnostic's caret is always ONE character wide where the interpreter underlines the whole token: the compiler's debug table is `[]core.SrcPos` carrying only row and column, so `stampAt` has no token text to set `BoruError.Src` from and the renderer's `caretCount = len(sub)` falls to its minimum of 1. Found while closing NUR108 — the positions now match exactly and the underline still does not | closing NUR108, 2026-08-30 |
 | [NUR109](#nur109) | `parse` over an unbound def-scoped parser name raises `parse_error: the parser is not a usable function value` compiled and `parse_unknown_lang: no parser "op" is registered` interpreted. `TestParseFnDispatchMissParity`'s own header argues the compiled answer is the right one and asserted both lanes gave it — reading the interp side from `Run` | completing the NUR106 oracle sweep, 2026-08-27 |
 | [NUR101](#nur101) | BROAD's placement depended on ENCLOSING CONTEXT: `(mk 1) 2` places (`fn (Integer) 2`) while `((mk 1) 2)` dispatches (`3`). **RULED 2026-08-26 "place uniformly"; the ruling's PREMISE was then FALSIFIED 2026-08-27** — the survivor count IS the question, and the enclosing group is a SECOND decision, not a modifier of the first. The interpreter was right all along; the COMPILER carried five silent miscompiles in both directions, hidden by 75 parity assertions that use post-Stage-J `Run` (the compiled path) as their interpreter oracle. See [design/PAREN-RESTEP-RULE.0.md](design/PAREN-RESTEP-RULE.0.md) | re-measuring §5.4 after #402, 2026-08-25; ruled 2026-08-26; ruling's premise falsified by measurement 2026-08-27 |
 | [NUR099](#nur099) | `def <Capitalised> <fn>` is the ONLY door to an arbitrary predicate type, so it must stay ambiguous: the same fn body means a callable function under a lowercase name and a membership test under a capitalised one, and `def K fn [[a:Any b:Any][Any][a]] end K 1 2` therefore binds an uninhabitable type in silence — VERDICT 2026-08-25: resolve by fix, a `fnpred` word analogous to `fnsig` — **HALF LANDED 2026-08-25**: `fnpred` ships and the explicit route is live; what remains is migrating the 150 corpus sites off the capitalised-fn form and deleting the arity route behind it | reviewing the §5.1 diagnostic, 2026-08-25 |
@@ -369,7 +375,22 @@ the fix is the maintainer's to direct.
 
 ## NUR146 — the compiled undefined_word's did-you-mean pool has no frame bindings {#nur146}
 
-**Status:** Pending (recorded 2026-09-16, the sixty-eighth increment).
+**Status:** FIXED 2026-09-25 (the frame's names — the handoff log's entry
+of that date). Recorded 2026-09-16, the sixty-eighth increment.
+
+**The fix.** The pool's compiled half is the running unit's slot→name
+table: `localNameCandidates` (eng/go/vm.go) hands a fn unit's
+`CompiledFn.LocalNames` or the main unit's new `Program.LocalNames` to
+`UndefinedWordDiagWith` at every VM undefined_word site (the dyn-scope
+miss, the bound-local read, the two generic-dispatch misses). The tables
+name what the interpreter's registry holds as a def and a compiled frame
+keeps in a slot: params and captures (already there), a loop variable
+(`AnalyseLoopBody` names the local it registers through the new
+`EmitRecorder.NameLocal` seam), a carried or arm-bound def
+(`emitUnit.nameSlots` / `boundLocals`, merged at unit close by
+`unitSlotNames`); spill temps stay anonymous. `def k 5  for 2 [ if (k eq
+5) [undef k] [] ]  9` reads `did you mean \`i\`?` on both lanes. Pinned
+by lang `TestCompiledUndefinedWordSuggestsFrameNames`.
 **Found:** by the placed speculative undef's parity rows
 (`lang/go/spec_undef_placed_test.go`): the first row raising inside a loop
 agreed on its first line and disagreed on the help line.
@@ -481,7 +502,20 @@ should be narrowed before that is the ruling to seek.
 
 ## NUR142 — a refined container is eq to nothing, not even itself {#nur142}
 
-**Status:** Pending (recorded 2026-09-15, under review of #458).
+**Status:** FIXED 2026-09-25 (the family of a refinement — the handoff
+log's entry of that date). Recorded 2026-09-15, under review of #458.
+
+**The fix.** `containerFamily` (core/go/equal.go) walks a USER-minted tag
+(`Origin == OriginUserDef`) to its nearest kernel ancestor and then
+applies the exact flex fold; the six equality arms — `ExactEqual`,
+`DeepEqual`, the deq-key scans — ask it, so `def S (refine FlexMap)  def
+w:S (flex {a:1})  w eq w` is true, as are the refined list and map rows
+and `[w] deq [w]`, on both lanes. Ordering keeps the exact `nodeFamily`:
+a refinement may carry its own Comparer (`behave`), which the LCA walk
+must reach before any fold (the comparison suite said so when the first
+cut folded ordering too). `same_container_test.go`'s fence assertion is
+retired into its positive form. Pinned by lang
+`TestRefinedContainerIsEqToItself` and refine-flex.tsv §3.
 **Found:** by the COLLECT oracle, the moment its agreement test became the
 `eq` word's rule (`core.ExactEqual`) instead of structural equality: 22
 corpus descriptors over refined flex bindings (`refine-flex.tsv`,
@@ -581,6 +615,19 @@ the divergence must retire the entry.
 exactly as the runtime does (a carrier argument stays admitted, which is
 the check pass's proper optimism); whether that is a check-side fix or a
 narrower recording of the plan is the ruling to seek.
+
+**Traced (2026-09-25).** The admission is one arm: `Registry.RunPredicate`
+(core/go/registry.go) returns `candidate, true` under analysis mode —
+"accept the binding without running the body" — so every predicate
+unifier admits every candidate the check pass offers, concrete or not.
+The fix the candidate names would run the predicate body FOR REAL during
+analysis over a concrete candidate (the sandbox already brackets the
+run; analysis mode would have to be suspended inside it, since the body
+under analysis yields a carrier, not a verdict) — executing user code
+inside the check pass, which is the T4 ruling this record waits on. The
+two lanes' ANSWERS agree meanwhile: `f 5` raises the same
+`signature_error` at 1:78 on both (the runtime rematch), `f 4` is 4. Left
+Pending; unchanged.
 
 ## NUR139 — the unreachable-unit recovery covered one of the two per-unit refusal sites {#nur139}
 
@@ -802,8 +849,24 @@ this one.
 
 ## NUR135 — a minted type node is retired by the FIRST pop, however many live bindings hold it {#nur135}
 
-**Status:** Pending (measured 2026-09-11, worked around in the arm-resident
-type twin). **Found:** the fifty-third increment, by the cross-request
+**Status:** FIXED 2026-09-25 (the last pop — the handoff log's entry of
+that date). Measured 2026-09-11, worked around in the arm-resident type
+twin.
+
+**The fix.** The first face: `DefTable.HoldsType` (core/go/deftable.go)
+reports whether any live entry, under any name, still binds a node, and
+both retiring pops — `UninstallType` and `PopLiveBinding` — retire a
+minted node only when none does, so a node pushed twice under one name
+survives its first pop and `LookupByID` keeps resolving it; the last pop
+retires it. Pinned by core `TestMintedNodeRetiredByTheLastPop`. The second
+face — a popped name's PARTS stay reserved — is the reservation rule
+NUR167's close documented as the language's on both lanes (a body's `def
+T` reserves the part for the registry's lifetime, so a second call
+conflicts on it; `def Big (refine Integer)  undef Big  def Big (refine
+Integer)` conflicts identically interpreted and compiled), and the
+check-pass leftovers a rollback left behind are forgotten by
+`ForgetTypePartsSince` (NUR167); it is not changed here.
+**Found:** the fifty-third increment, by the cross-request
 parity oracle — no same-request lane can see it.
 
 **Rule:** one binding store, one retirement rule. Popping a def entry should
@@ -895,6 +958,20 @@ catching the error does not make the compiled region's value right), the
 refusal it produces is not. A correct caught attribution changes the rows'
 reason, not their verdict. What they need is the dispatch to resolve, which
 is family A's problem — the fix those refusals are owed.
+
+**Traced (2026-09-25).** The second analysis is not the suspect after
+all: execFnDefLiteral's `uncalled_function` arm (core/go/engine.go)
+records a TERMINAL trap for a definite no-match only at the program's
+top level (`RecordTrap`'s frames-and-units-at-depth-1 guard — a `do` body
+is a nested unit), and otherwise notes the diagnostic, which
+`AddDiagnostic` downgrades and stamps `CaughtAtRuntime`; the compile gate
+refuses on that stamp by design (lang/go/boru.go). The local spelling
+compiles because a WORD's no-match takes the dispatch recovery's poly
+seat, which has no top-level guard. Closing this needs a unit-scoped
+trap — a raise the `do` body's unit carries and its own catch handles —
+and the interpreter's two codes for one failure (`signature_error` at the
+word, `uncalled_function` at the value) are their own non-uniformity.
+Left Pending; unchanged.
 
 ---
 
@@ -1084,8 +1161,20 @@ cost, which is the only reason the two differ.
 
 ## NUR130 — a terminal trap's caret is the recorded site, the interpreter's is its tape pointer {#nur130}
 
-**Status:** Pending. **Found:** 2026-09-10, the forty-second increment (the
-statically-empty `while` condition compiled to a terminal `OpTrap`).
+**Status:** FIXED 2026-09-25 (the condition's own token — the handoff
+log's entry of that date). Found 2026-09-10, the forty-second increment
+(the statically-empty `while` condition compiled to a terminal `OpTrap`).
+
+**The fix.** The first of the two directions the record named — the
+interpreter moves to the better anchor. The `while` continuation carries
+the condition operand's position (`ForCont.CondPos`, seated by the `while`
+handler from its operand), and `stepMoveWhile` raises "condition produced
+no value" there instead of at the spliced pointer: `while [] [1] end 5`
+reads 1:7 on both lanes, and `while [] [1]` — positionless interpreted
+before — reads 1:7 too. Pinned by lang
+`TestWhileEmptyConditionAnchorsAtTheOperand`. (`if [] [1] [2]` declines
+the compile — "if: condition body produces no value" — so its anchor is
+the interpreter's alone.)
 
 **Rule:** a position is part of the error a user meets (NUR108), so two lanes
 raising the same error should anchor it at the same place.
@@ -1174,6 +1263,19 @@ recording all decline a region that may carry a callable, so
 `5 for 1 [g/v]`, `[(for 2 [g/v])]`, `await {mode:'first'} [[5 g/v]]` and
 `9 await {mode:'first'} [[g/v]]` refuse rather than diverge. Only the bare
 loop residual above is open.
+
+**Narrowed (2026-09-25).** The bare witness no longer diverges: the check
+pass's own loop-round analysis re-steps the NAMED value the first round
+left and notes `uncalled_function` at `g/v` (execFnDefLiteral's analysis
+arm), so `for 2 [g/v]` declines the compile and answers by fallback with
+the interpreter's raise — pinned by lang
+`TestLoopNamedFnValueResidualDeclinesSoundly`. A factory's ANONYMOUS
+closure per iteration (`for 2 [(mk 1)]`) is parked data on both lanes
+(`[fn (Integer) fn (Integer)]`, NUR155's rule) and keeps its compile — a
+static "provably callable" refusal at RecordLoop was tried and reverted
+the same day for refusing exactly that shape. What stays open is the
+DYNAMIC residual that turns out callable at run time, on the measured
+trade-off above; the region re-step (§6.6) remains the general answer.
 
 ---
 
@@ -1938,7 +2040,8 @@ increment, `isEngineMarker`, so the two lanes' notes agree byte for byte.)
 
 ## NUR122 — a compiled fn-value apply has no name and no named-dispatch semantics {#nur122}
 
-**Status:** Pending. **Found:** 2026-09-05, measuring the closure-capture
+**Status:** FIXED 2026-09-25 (the read's own token — the handoff log's
+entry of that date). **Found:** 2026-09-05, measuring the closure-capture
 family's blocker (a).
 
 **Rule:** the two lanes agree on errors (NUR108: the message, the code,
@@ -2161,6 +2264,23 @@ semantics, and its no-match still carries the empty name at the unit's
 position (the third witness). That lowering is credited as an accepted
 read of `g` (NUR123's accounting), so the record stays open for it.
 
+**Retired (2026-09-25).** Every witness agrees on both lanes now, message
+and position: `f (z:String => [z]) 5` and `f ([] => [42]) 5` (the
+position-only row: 1:50 on both), the returned-lambda `(g x)` (`cannot
+call \`g\`` at 1:64 on both — the paren-window spelling names its head
+and anchors at the read), and the module wrapper renders as NUR119's
+open shape, pinned there. The last piece was the paren-window spelling's
+ANCHOR: the recorded dyn-apply event and the residual trailing apply take
+the lead's READ position the unit noted (`wordReadPos`, from
+noteWordRead) when the lead value carries none — the check pass's carrier
+for a bare fn-typed binding read — so the raise stamps at the `g` the
+interpreter blames: `def ap fn [[g:Function][Any][(g 5)]]  ap
+([x:Integer] => [x 1])` reads 1:31 on both lanes (NUR118's fn-value seam,
+closed the same day). (Stamping the position onto the carrier itself was
+tried first and reverted: the residual layout's statement-boundary test
+read it and applied a no-return lambda's leaked body residual at the main
+level.) Pinned by lang `TestFnValueSeamAnchorsAtTheRead`.
+
 ## NUR119 — a fn value read through a param's `/v` renders under the param's name on one lane only {#nur119}
 
 **Status:** Pending. **Found:** 2026-09-05, measuring the returned-closure
@@ -2203,9 +2323,46 @@ the `Any`-typed one.
 
 ## NUR118 — a compiled return-contract error blames the definition where the interpreter blames the call {#nur118}
 
-**Status:** Pending · **Recorded:** 2026-09-04 · **Surfaced by:** the
+**Status:** FIXED 2026-09-25 (the call's own token — the handoff log's
+entry of that date) · **Recorded:** 2026-09-04 · **Surfaced by:** the
 binding-sensitive unit memo (Stage 4b) letting a cross-family rebind row
 compile
+
+**The fix.** The proposed verdict, in two halves. The check pass recorded a
+user call with the FIRST ARGUMENT's position, so the CALL_USER
+instruction's debug entry was the argument's — and empty for a 0-argument
+call; `callAnchor` (check/go/check_fnbody.go) seats the call WORD's
+position, the argument's only where the word carries none. And the VM's
+RET stamped a nested frame's contract error at the callee's own last
+instruction; it now stamps at the CALL — the frame's return address, in
+the caller's debug table — where the interpreter's ReturnCheck marker
+anchors. `def f fn [[m:Map] [Integer] [m get "a"]]  f {a:"s"}` reads 1:43
+on both lanes, `def h fn [[][Integer][1 2]] end h` 1:33, a return-type
+failure over an argument 1:45 (the word, not the argument), and a runtime
+no-match over a gradual argument stays at the word. Found again on
+NUR147's close (the `do`-wrapped service shape it made compile). One
+consequence had to be caught: a 0-argument call's event position used to
+be empty, and a no-return lambda's leaked body residual (`def zzvlam ([]
+=> [… def f m.f end f 5]) zzvlam` hands the caller its body's `f` and
+`5`, attributed to the call event) answered the residual layout's
+statement-boundary test with its own token positions, so the `end`
+between them settled the lead as data (NUR187's rule); with the call word
+on the event, both entries read as the call and the lead arm applied one
+over the other at the caller (`CALL_DYNAMIC underflow`, the sweep's `def`
+× container body variants). A call delivers its results resolved and the
+interpreter never re-steps a returned fn over the values returned beside
+it, so the lead arm now stands aside for a lead whose entries above it
+are outputs of the same call (`siblingCallOutputs`); a caller-written
+entry above a returned closure (`((w 5) 4)`, the paren rewind) still
+applies. Pinned by lang `TestReturnContractErrorAnchorsAtTheCall`. The
+second flavour (the
+fn-VALUE seams) closed the same day: a lambda read from a map member
+(`m.f 5`) anchors at the call through the closure's `RetPos`, and a
+Function param applied inside a user fn (`(g 5)`) anchors at the READ —
+the dyn-apply event and the trailing apply take the read's recorded
+position (`wordReadPos`) when the lead carries none — 1:36 and 1:31 on
+both lanes; pinned by lang `TestFnValueSeamAnchorsAtTheRead` (NUR122's
+witnesses).
 
 **Rule:** the two lanes agree on errors, and — NUR108 established — the
 position is part of the error a user meets.
@@ -2263,7 +2420,7 @@ divergence of this shape is this record's.
 
 ## NUR114 — a compiled caret underlines one character where the interpreter underlines the token {#nur114}
 
-**Status:** Pending · **Recorded:** 2026-08-30 · **Surfaced by:** closing
+**Status:** FIXED — verified 2026-09-25 (the token's own text — the handoff log's entry of that date) · **Recorded:** 2026-08-30 · **Surfaced by:** closing
 NUR108
 
 **Rule:** the two lanes agree on errors, and the RENDERED diagnostic is the
@@ -2301,6 +2458,15 @@ it widens before it is done.
 send a user to the wrong place; it under-marks the right one. It is recorded
 because "the diagnostics match" is a claim this project makes, and after
 NUR108 the caret is the last thing about these two renderings that does not.
+
+**Retired (2026-09-25).** Measured on the current tree, the witness
+renders identically on both lanes — `def x:(Integer gt 10) 5 x`
+underlines `def` (`^^^`) at 1:1 compiled and interpreted: the recorder's
+event positions carry the token text the parser stamps on them
+(`SrcPos.Src`), the debug table keeps it, and `stampAt` copies it onto
+the error as the interpreter's `stampErrPos` does — the upstream carry
+the record costed. Pinned by lang `TestTypedDefUnifyErrorCaretIsTheToken`
+(the rendered diagnostics compared whole).
 
 ---
 
@@ -5166,7 +5332,8 @@ permission flags they document. The record stays Pending until both land.
 
 ## NUR080 — A typed def over an Integer literal loses its newtype brand under the compiler, and the bare literal gains one {#nur080}
 
-**Status:** Pending · **Recorded:** 2026-08-18 · **Surfaced by:** the
+**Status:** FIXED — verified 2026-09-25 (the brand in both orders — the
+handoff log's entry of that date) · **Recorded:** 2026-08-18 · **Surfaced by:** the
 Roc comparison study (`design/legacy/roc-in-boru-report.0.ignore` §7.2), while
 measuring boru's nominal-newtype guarantee against Roc's opaque types
 
@@ -5209,6 +5376,15 @@ which is why `make verify-bytecode` is blind to it.
 const-pool entry. Acceptance requires both source orderings, plus new
 spec rows so the differential corpus covers the class. This record retires
 when the two engines agree on the table above.
+
+**Retired (2026-09-25).** Measured on the current tree, both orderings
+agree on both lanes: `typeof 9 typeof b b is UserId` is `Integer UserId
+true`, and `typeof b typeof 9` is `UserId Integer` — the typed def mints
+its own branded value and the literal keeps its own (the const-pool
+reparenting the record traced no longer happens; the fresh-value arm the
+verdict asked for is the typed-bind path's, `ReparentValue` over a copy).
+The acceptance rows are user-types.tsv's closing section (both orders)
+and lang `TestTypedDefLiteralKeepsItsBrandInBothOrders`.
 
 ## NUR081 — `Test.skip` accepts the counts `Test.check-prop` now rejects, though it is documented as a drop-in {#nur081}
 
@@ -6415,7 +6591,21 @@ decides the answer.
 
 ## NUR147 — the poly native seat commits an arity over a gradual residual, and the run refutes it {#nur147}
 
-**Status:** Pending (recorded 2026-09-16, the seventy-first increment).
+**Status:** FIXED 2026-09-25 (the seat's other arities — the handoff
+log's entry of that date). Recorded 2026-09-16.
+
+**The fix.** `callPoly` re-matches only at the recorded count; when that
+fails it now tries every other arity some non-fallback overload takes,
+from the recorded count down, over the same stack top (`polyHasArity`,
+`MatchSignature` at k), and dispatches the first that matches — the
+overload the interpreter's matcher takes over the live values. `def svc
+(service {})  add {} ([r:Map state:Any] => [1]) svc  call {} svc  call {}
+svc` is `1 1` compiled, no defer — and so are the `do`-wrapped shapes
+whose bail NUR149's propagation rule used to carry out (`do [call {} svc
+call {} svc]`, the same inside a fn body and a nested `do`), which now
+compile and answer as the interpreter does (`TestDoDeferFallsBackNotTrapped`;
+the fn-body one exposed NUR118). Pinned by lang
+`TestPolySeatRetriesOtherArities`.
 **Found:** by the stored-handler latch's F1 measurement
 (`lang/go/bytecode_stored_handler_freeze_test.go`,
 `TestStoredHandlerMidProgramRebindCompilesAndMatches`): the program
@@ -6508,8 +6698,9 @@ divergence surfaced in review is recorded, fixed or not.
 
 ## NUR150 — the fn-local placement's first cut: three divergences found in review {#nur150}
 
-**Status:** Pending (recorded 2026-09-16, the seventy-second increment;
-fixed in the same PR).
+**Status:** FIXED 2026-09-16 (closed with the fixes in #468, the
+seventy-second increment; the register marked it Pending until 2026-09-25
+by oversight — its verdict below says closed).
 **Found:** review of #468's first cut (286a6c9), all three reproduced on
 that tree.
 
@@ -6553,8 +6744,9 @@ divergence surfaced in review is recorded, fixed or not.
 
 ## NUR151 — the seventy-third increment's first cut: two divergences found in review {#nur151}
 
-**Status:** Pending (recorded 2026-09-16, the seventy-third increment;
-fixed in the same PR).
+**Status:** FIXED 2026-09-16 (closed with the fixes in #469, the
+seventy-third increment; the register marked it Pending until 2026-09-25
+by oversight — its verdict below says closed).
 **Found:** review of #469's first cut (ea3ac11), both reproduced on that
 tree.
 
@@ -6798,7 +6990,22 @@ computing-body migration working on both engines.
 
 ## NUR154 — a `case` over a factory-produced clause list miscompiles {#nur154}
 
-**Status:** Pending (recorded 2026-09-17).
+**Status:** FIXED 2026-09-25 as a sound decline (the computed clause list —
+the handoff log's entry of that date). Recorded 2026-09-17.
+
+**The fix.** The wrong error was the check pass's: `CaseReturnsFn` recorded
+a TERMINAL trap for any clause operand that is not a code body, and a
+fn's returned list is a List CARRIER under analysis — a list or not only
+at run time, where the interpreter reads the concrete value and answers
+`'one'`. The trap is recorded only for a KNOWN non-list now — a scalar
+or a bare type node (`case 1 5` and `case 1 Integer` still raise on both
+lanes, natively); a carrier or dynamic operand returns the
+dynamic result and the dispatch's own gate declines the computed clause
+list ("code-body word case (Stage 2)"), so the program falls back and
+answers as the interpreter does. The corpus ledger's `knownDivergences`
+pin for code-bodies.tsv:L142 and the sweep's NUR154 pin are retired
+(`sweepFailureCeiling` 26 → 27). Pinned by lang
+`TestCaseComputedClauseListDeclines`.
 **Found:** the corpus expansion in #471 (`lang/spec/code-bodies.tsv:L142`);
 flagged by the Codex review of that PR as a row that must not join the
 main corpus while it diverges.
@@ -6976,7 +7183,20 @@ does not.
 
 ## NUR157 — a predicate-typed container child refuses to unify with its own text under a registry {#nur157}
 
-**Status:** Pending (recorded 2026-09-18).
+**Status:** FIXED 2026-09-25 (two references to one predicate — the
+handoff log's entry of that date). Recorded 2026-09-18.
+
+**The fix.** The one arm the record named: before the armed pre-pass
+runs a predicate against the other side, `unifyInner` resolves BOTH
+sides through `resolvePredicateRef`, and two references to the same
+predicate type — atoms, bare nodes or the predicate's own fn value, as a
+`[:Pos]` pattern's child is — unify as the type. `[:Pos] unify [:Pos]`
+admits, the fn-shape row (`((fn [[xs:[:Pos]] [Boolean] [true]]) unify T`)
+admits, `[:Pos]` against `[:Neg]` fails, and the membership rows (`[1 2]
+unify [:Pos]` true, `[1 -2]` false, `5 unify Pos` true) are unchanged.
+The `unify` word itself is still uncompilable ("unannotated or opaque
+word"), so the compiled lane answers by fallback. Pinned by lang
+`TestSamePredicateReferencesUnify` and fnpred.tsv's closing section.
 **Found:** threading the registry through the kernel's unify calls in
 #471 (`core/go/unify.go` — the registry a `UnifyExplainR` is armed with
 once sat on a package-global stack that every goroutine's unify read;
@@ -7024,7 +7244,18 @@ where there were two.
 
 ## NUR158 — a capturing closure at a dispatch-modifier word's poly seat raises `illegal_ref` compiled where the interpreter wraps it {#nur158}
 
-**Status:** Pending (recorded 2026-09-18).
+**Status:** FIXED 2026-09-25 (the closure at the wrap — the handoff log's
+entry of that date). Recorded 2026-09-18.
+
+**The fix.** The natives' payload assertions (`rebarrierResult` for
+`stack-args` / `forward-args`, `forceArityHandler`, `usurpHandler`) bridge a
+`ClosurePayload` to the fn definition whose dispatch runs the closure
+(`ClosureAsFnDef`, the value-path bridge the seams already use) before
+asserting, so the wrapper stores that definition as it stores any fn and
+the later re-dispatch runs the closure. `m.a/u 10 3` is 93, `10 3 m.a/s`
+93, `m.a/f 10 3` and `m.a/2 10 3` 107, on both lanes; the word forms the
+same. Pinned by lang `TestWrapWordsBridgeACompiledClosure` and fn-value.tsv
+§16.
 **Found:** the handler-migration line's fn-operand pilot
 ([design/HANDLER-MIGRATION-LINE.0.md](design/HANDLER-MIGRATION-LINE.0.md)
 §Progress), probing the four dispatch-modifier words' VALUE forms with
@@ -7237,7 +7468,26 @@ seen from both sides.
 
 ## NUR162 — the compiler panics disassembling a `word` whose body is a fn value, inside a paren group or a module body {#nur162}
 
-**Status:** Pending (recorded 2026-09-18).
+**Status:** FIXED 2026-09-25 (the 0-arg apply at a paren's tail — the
+handoff log's entry of that date). Recorded 2026-09-18.
+
+**The fix.** The entry without a signature came from the trailing
+fn-value apply (`RecordDynApply`): its window trim keeps the callee's own
+arity of arguments, and a 0-ARG callee — the lambda `word` splices at the
+paren's tail — trimmed the window to NOTHING, so the record carried
+`dynApply: 0` and the lowering, which routes an apply by `dynApply > 0`,
+emitted it as a plain native call under a `SigRef` with no signature. The
+disassembler dereferenced it, and so did the VM (an internal_error at run
+time). The interpreter's own answer is that the value is DATA at the tail
+(`5 fn`, ADR-016's gate parks a 0-arg lambda value), and the trim now
+declines a 0-arg callee at the recorder's ONE failure site (the census is a
+downward ratchet) — the program falls back and answers `5 fn`; the lowering
+keeps a belt ("fn-value apply over no argument"), `RecordDynApplyName`
+declines the same window up front, and the disassembler names a
+signature-less entry instead of crashing. The sweep's two crashing
+variants (`word` × lambda under paren-group and module-body) decline
+loudly now: its crash ceiling 2 → 0, its decline ceiling 171 → 173.
+Pinned by lang `TestZeroArgTailApplyNeverCrashes`.
 **Found:** the generated sweep, the `paren-group` and `module-body` call
 forms of the `word` × lambda cell. The sweep's first run went down with
 it — a panic in one classification took the whole test binary — so
@@ -7446,6 +7696,320 @@ is the word's collected operand and stays. The dynamic landing's candidate raise
 collects the value. A faithful model — the member applied over the values
 beneath, then the word — is the follow-on.
 
+## NUR207 — a `/v`-marked map member read with arguments beside it is applied compiled, data interpreted {#nur207}
+
+**Status:** FIXED 2026-09-25 (the marker's intent on the value — the
+handoff log's entry of that date). Recorded the same day, closing NUR206.
+
+**The fix.** Not the shaped member apply after all: under the check pass
+the member read is a DYNAMIC Any carrier, `fnDefAtPointer` fails on it,
+so execFnDefLiteral's marker peek — which quotes a concrete value at run
+time — never ran, the marker reached the pointer standalone and was
+dropped, and the pass's residual held an unquoted dynamic lead beside the
+5, which Finalize's residual layout applied (`resolveDynamicApply`,
+`CALL_DYNAMIC /1`). The standalone-marker drop now quotes the dynamic or
+carrier value the marker follows (the peek's own rule, for the value the
+pass holds), and the residual layout honours the quote: a quoted lead is
+not applied by the dynamic-lead arms nor declined at the "dynamic value
+precedes residual args" boundary (it is data beside its neighbours), and
+a quoted trailing value is not a trailing apply. `m.f/v 5` is `fn
+(Integer) 5` on both lanes; `5 m.f/v` declines at an existing residual
+limit ("call result above a literal") and answers by fallback. The drop
+quotes a DYNAMIC or CARRIER value only — a concrete Function value is the
+peek's own at run time on both lanes — and a quoted fn-typed carrier
+passes the residual render gate as data (a fn that returns the value it
+was handed returns it quoted: `(f MathUtil.sqrt/v) 16.0`). Pinned by
+lang `TestReachValueMarkerIsNoArgument` (its NUR207 rows) and fn-value.tsv
+§15.
+
+**Rule:** `/v` marks a value as data wherever it is written, on both lanes.
+
+**Divergence.**
+
+```
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f/v 5
+  interp:    fn (Integer) 5
+  compiled:  6
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} 5 m.f/v
+  interp:    5 fn (Integer)
+  compiled:  6
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f/v
+  interp:    fn (Integer)
+  compiled:  fn (Integer)
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f 5
+  interp:    6
+  compiled:  6
+```
+
+The interpreter's re-step of the reach-collapsed member peeks the marker
+right after the group and leaves the value inert (execFnDefLiteral's
+dispatch-modifier peek). The checker's shaped member apply
+(method_shape.go → `RecordDynMethod`, the guarded shaped-instance-method
+model) declines only the ALONE case (`aloneInLiveReachGroup`: "`m.f/v`
+landed a call one token before the `/v` that says DATA") and otherwise
+collects the forward window — the marker between the group and the `5`
+is not read — and records the apply the interpreter never makes. Silent;
+pre-existing at the merge base.
+
+**Where it belongs:** the method-shape model's window over a reach group
+followed by a dispatch-modifier marker — the marker says data, so no
+shaped apply may record past it (the same rung the alone case has,
+widened to a marked value with a window).
+
+## NUR206 — a `/v`-marked module member with an Any first parameter is not collectable as a def's forward argument {#nur206}
+
+**Status:** FIXED 2026-09-25 (the marker is no argument — the handoff
+log's entry of that date). Recorded the same day, closing NUR163, whose
+record carried the shape as a side note.
+
+**The fix.** The plan's reach-as-call-head test (`ReachCallHeadBarrierOn`
+→ `ReachFnWouldClaimOn`) probes the token after the reach through
+`ForwardClaimProbeOn`, which had no arm for a dispatch-modifier marker:
+the marker fell to the literal arm ("a concrete literal") and was offered
+to the fn's first parameter — an `Any` matched it, an `Integer` or
+`String` did not — so the reach read as a call head about to claim its own
+`/v`, a barrier, and `def`'s window collected nothing. The probe answers
+`probeNone` for a marker now (it qualifies the value before it and is never
+an argument), so the reach is one datum and the value binds. Pinned by
+lang `TestReachValueMarkerIsNoArgument` and module-fnvalue-boundary.tsv §5.
+
+**Rule:** a fn value is the same fn however it is reached, and `/v` marks
+it as data wherever it is written.
+
+**Divergence.**
+
+```
+import module [ def up1 fn [[value:Any] [String] ['UP']] export "M" {up1: up1/v} ] end
+  def g M.up1/v          signature_error: cannot call `def` — no signature matches the arguments (none were supplied)
+  def g (M.up1/v)        binds; g 1 → 'UP'
+  def g M.up2/v          binds (up2's first parameter is Integer)
+  M.up1/v                fn up1(Any)   — data, on its own
+  def g up1/v            binds (no module: the word carries ForceVal itself)
+```
+
+Both lanes agree — the interpreter's verdict, which the check pass
+reproduces. The parser emits a dotted path's `/v` as the reach followed by a
+dispatch-modifier marker (`Word/__DM`, `groupModifier`); at the pointer
+`execFnDefLiteral` peeks the marker and leaves the value inert. Inside
+`def`'s FORWARD window the trace shows the plan collecting nothing at all
+(`candidate … takes 7 arguments, but none were supplied`): the reach's
+value is a Function whose `Any` parameter admits what follows, and the
+window's plan does not read the marker the way the pointer does.
+
+**Where it belongs:** the forward window's plan over a reach followed by a
+dispatch modifier (`ForwardClaimProbeOn` treats a reach as optimistic and a
+`/v` WORD as one datum; the reach-plus-marker pair has no such arm).
+
+## NUR205 — a named fn value driving `fold` that stops matching past step 0 parks compiled, raises interpreted {#nur205}
+
+**Status:** FIXED 2026-09-25 (the named value's no-match on the seam — the
+handoff log's entry of that date). Recorded the same day, closing NUR166.
+
+**The fix.** `unmatchedLambdaBody` (the token seam's arm for a callback
+body unit with the value's own param contract that no step matches) applied
+NUR155's rule — an unmatched anonymous lambda is data — to every closure.
+A closure compiled from a NAMED value carries the def's name
+(`ClosurePayload.RetName`, seated by the callback compile and the
+def-time rename), and a named value's no-match is the word's raise on the
+interpreter (execFnDefLiteral's `uncalled_function`, with its hint). The
+arm raises that error for a named closure now and keeps the data rule for
+an anonymous one; step 0 already raised through the fn-value arm, and
+`scan`'s park stands on both lanes. The raise anchors where the
+interpreter's does — at the reference's own token (`h/v`, 1:60), which
+the closure carries as `RetPos`. Pinned by lang
+`TestNamedValueNoMatchOnTheSeamRaises` and callbacks.tsv §11.
+
+**Rule:** a compiled program answers as the interpreter does.
+
+**Divergence.**
+
+```
+def h fn [[a:Integer b:Integer] [List] [[a b]]] end 0 fold h/v [1 2]
+  interp:    fold: step 1: [boru/uncalled_function]: call to 'h' matched no signature
+  compiled:  [fn (Integer, Integer)]
+def h fn [[a:Integer b:Integer] [Integer] [a add b]] end 0 fold h/v ['x']
+  interp:    fold: step 0: [boru/uncalled_function]: call to 'h' matched no signature
+  compiled:  the same raise
+```
+
+Step 0 matches (`0`, `1`) and answers `[0 1]`; step 1 offers that List as
+the accumulator to `a:Integer`, and no signature matches. The interpreter's
+seam steps the NAMED value and raises `uncalled_function` (the word's
+no-match under its name, NUR107's rule); the compiled fold's seam reaches
+`unmatchedLambdaBody`, whose rule is NUR155's — an unmatched TYPED LAMBDA
+at its call site leaves the value as DATA, the interpreter's own answer for
+an ANONYMOUS value — and applies it to a named value, whose no-match is a
+raise. A no-match at step 0 raises on both lanes (the first step takes a
+different arm), and `scan` parks on both lanes (its own handler's rule).
+Pre-existing at the merge base (measured on `wt-head`, 2026-09-25).
+
+**Where it belongs:** the token seam's unmatched-lambda arm — a value with
+a NAME (a def-bound fn, `h/v`) raises the word's no-match as the interpreter
+does; only an anonymous value parks. The same seam's fn-VALUE arm
+(`invokeFnValueClosure`) already distinguishes the two through
+`noMatchIfSigged`; the closure-body arm does not.
+
+## NUR204 — a module fn's named fn value, read through its reach group, re-steps on the interpreter only {#nur204}
+
+**Status:** Pending (recorded 2026-09-25, found probing NUR191's
+neighbours — the handoff log's "the module fn's return contract" entry).
+Present on main before that change (a worktree at ae92338), silent,
+default lane, exit 0.
+
+**Rule:** a compiled program answers as the interpreter does — a fn value
+a call leaves is applied, or seated as data, on both lanes alike.
+
+**Divergence.**
+
+```
+import module [def ff fn [[][Function][inc/v]] def inc fn [[n:Integer][Integer][n add 1]] export "M" {ff: ff/v}] end 5 M.ff
+  interpreted   [6]
+  compiled      [5 fn inc(Integer)]
+… end M.ff 5
+  interpreted   [6]
+  compiled      [fn inc(Integer) 5]
+… end 5 (M.ff)
+  interpreted   [5 fn inc(Integer)]
+  compiled      the same
+def inc … def ff fn [[][Function][inc/v]] end 5 ff
+  interpreted   [5 fn inc(Integer)]
+  compiled      the same
+```
+
+`M.ff` is the reach group `( M dot ff )`: the 0-arg wrapper fires inside
+it and leaves the named fn value `fn inc` as the group's lone survivor,
+and a reach-lowered group never parks — its collapse re-steps the
+survivor (fnReturnPark's one exclusion; a name always calls, ADR-011),
+which dispatches over the 5 beneath. A user paren around the same read
+(`5 (M.ff)`) parks, and so does the main registry's frame return (`5
+ff`); the compiled lane seats the returned value as data in every
+spelling. NUR173's guarded re-step landing covers a reach group's member
+fn value; the fn value a module fn RETURNS through the group is not
+landed.
+
+**Traced (2026-09-25, closing NUR206).** Under the check pass the 0-arg
+wrapper fires inside the reach group and the group collapses to a
+Function CARRIER (`5 Function` at the enclosing position — the module
+fn's declared `[Function]` return, not the concrete `inc` the interpreter
+holds), and no re-step landing is noted for it: the compiled stream is
+`CALL_USER ff/0; STORE_LOCAL; PUSH_CONST 5; PUSH_LOCAL` with no
+`OpReStepLanding`, so the value seats as data. The landing rung
+(method_shape.go) admits a fn-typed carrier and the tape's end, so the
+note is lost between `NoteReStepLanding` and the lowering — the
+carrier's identity across the module boundary (the event's out vs the
+re-minted return) is the likely seam. Still pending.
+
+**Fence.** `TestModuleFnNamedValueThroughReachPending` (lang
+module_fn_return_contract_test.go) pins both lanes as they stand, so
+closing it is loud.
+
+**Verdict:** none yet. Directed at the compiled lane's re-step landing
+over a module fn call's returned named value, or at the reach group's
+survivor rule for a value a CALL inside the group produced; either way
+one answer.
+
+## NUR203 — a single-literal `do` body under a loop baked as a const on the compiled lane {#nur203}
+
+**Status:** FIXED 2026-09-25 (the loop region's residual — the handoff
+log's entry of that date). RECORDED the same day, found probing NUR197's
+neighbours; present on main before that change (a worktree at ae92338),
+silent, default lane, exit 0.
+
+**Rule:** a compiled program answers as the interpreter does — a `do`
+body's residual literal reads the loop's binding on both lanes.
+
+**Divergence (as it stood).**
+
+```
+for 2 [do [[i]]]
+  interpreted   [[0] [1]]
+  compiled      [error(undefined word: i) error(undefined word: i)]
+for 2 [do [{a:i}]]
+  interpreted   [{a:0} {a:1}]
+  compiled      [error(undefined word: i) error(undefined word: i)]
+for 2 [do [[(i add 1)]] i]
+  interpreted   [[1] 0 [2] 1]
+  compiled      [error(undefined word: i) 0 error(undefined word: i) 1]
+for 2 [do [[i] 5]]
+  interpreted   [[0] 5 [1] 5]
+  compiled      the same
+```
+
+The token body's closure compile passed `bodyInFrame` false, so
+`AnalyseFnBody` analysed it as an ANONYMOUS lambda — whose single bare
+container literal DEFERS past the frame (ResidualEvalsInFrame's one
+exception) — and recorded no assembly for the residual; the closure
+declined on the unknown provenance, and the dyn-body backstop
+(`tryRecordDynBody`) baked the body `[[i]]` as a const (a word inside a
+nested compound is an inert const MEMBER) and lowered a plain
+`CALL_NATIVE do`, whose handler re-ran the literal through the
+interpreter's sub-engine — where the loop's `i` is a frame slot the
+registry never held. A multi-token body evaluates in-frame under either
+flag (BodyEvalsResidual), which is why `[[i] 5]` compiled to a closure
+assembling the list from the slot.
+
+**The fix.** A token body compiles in-frame (`recordClosureDispatch`'s
+`bodyInFrame` true at the token-body site): the InvokeBody seam's
+sub-engine sweeps a pending residual at its end with the body's inputs
+and bindings live — never deferred — so the interpreter's own predicate
+for a body that is not an anonymous lambda applies, the residual records
+its assembly, and the closure unit assembles the list from the captured
+slot (`PUSH_CLOSURE do$body … PUSH_LOCAL; MAKE_LIST`). The lambda-value
+sites keep `!fd.Anonymous`.
+
+**Fence.** `TestLoopBodyResidualLiteralResolves` (lang
+map_literal_flex_member_test.go): the shapes as parity rows and the
+lowering (a closure assembling the list, no `word(i)` const); control.tsv
+§3's `for 2 [do [[i]]]` row.
+
+## NUR202 — a loop's iterator survives a trapped raise on the interpreter, not on the VM {#nur202}
+
+**Status:** FIXED 2026-09-25 (the loop region's residual — the handoff
+log's entry of that date). RECORDED the same day, found probing NUR197's
+neighbours; present on main before that change (a worktree at ae92338),
+silent, default lane, exit 0. NUR201's loop twin.
+
+**Rule:** a compiled program answers as the interpreter does — the
+bindings a raise leaves behind are the same on both lanes.
+
+**Divergence (as it stood).**
+
+```
+def i 9 do [for 2 [raise 'x']] i
+  interpreted   [error(x) 0]
+  compiled      [error(x) 9]
+def i 9 do [for 3 [if (i eq 1) [raise 'x'] []]] i
+  interpreted   [error(x) 1]
+  compiled      [error(x) 9]
+do [for 2 [raise 'x']] i
+  interpreted   [error(x) 0]
+  compiled      does not compile (the check pass's undefined_word: i)
+```
+
+The interpreter's `for` installs its iterator as a registry def
+(`InstallDef`) and uninstalls it when the loop finishes or a break
+discards the region (handleLoopBreak); a raise abandoned the tape with
+the loop region still open and the iterator installed, shadowing the
+enclosing binding after the trap. The compiled loop keeps `i` in a frame
+slot (`FOR_SETUP`), so nothing outlives the abandoned run.
+
+**The fix.** `Engine.faultReturn` unwinds every live loop's iterator
+(`unwindLiveLoops`: a `for` continuation whose mark has stepped and whose
+move the pointer has not reached) before it unwinds the frames — a loop
+inside a live frame installed its iterator after the frame's entry
+snapshot, so the frame's truncation has nothing left to pop for the name,
+and a loop enclosing a live frame keeps its iterator beneath that
+snapshot, where only the loop walk reaches it. Both lanes read 9; with no
+outer binding both raise undefined_word (the compiled lane at the check
+pass); a while loop installs no iterator of its own, and its body's def
+leaks by design on both lanes.
+
+**Fence.** `TestLoopIteratorTornDownOnTrappedRaise` (lang
+map_literal_flex_member_test.go): the shapes above, nested loops, the
+loop inside and around a fn frame, a callback raising inside the loop, a
+range loop's own iterator name, the `error` handler, the while twin; and
+control.tsv §3's row.
+
 ## NUR201 — a callee's def survives a trapped raise on the interpreter, not on the VM {#nur201}
 
 **Status:** FIXED 2026-09-25 (the frame's error path — the handoff log's
@@ -7637,16 +8201,34 @@ loop inside the body, and the fn frame's teardown.
 
 ## NUR198 — a dotted read through a MISSING member: the interpreter's undefined_word, the compiled lane's None {#nur198}
 
-**Status:** Pending (recorded 2026-09-24, found while closing the flex-member
-map literal — the handoff log's "the flex-member map literal" entry).
-Present on main before that change (measured on a clean worktree at
-6ccf827).
+**Status:** FIXED 2026-09-25 (the None receiver's bare-word key — the
+handoff log's entry of that date). RECORDED 2026-09-24, found while
+closing the flex-member map literal — the handoff log's "the flex-member
+map literal" entry. Present on main before that change (measured on a
+clean worktree at 6ccf827).
+
+**The fix.** The accessor's `[Key | None]` row — "chained-read
+propagation", the row that makes `none get 'c'` and `None dot (quote x)`
+None — carried no QuoteArgs, so it never collected a BARE-WORD key: the
+matcher parked `dot` on a pending forward and the word `c` stepped on its
+own, `undefined word: c` (a no-match over any other receiver raises `cannot
+call dot`; only None parked). The check pass mirrored the park for a
+static None and stopped at the same undefined_word; a run-time None behind
+a typed receiver it modelled as a member read, and the compiled chain
+answered None — the compiled lane held the rule. The atom row quotes the
+key now, on `dot` (`{TAtom, TNone}` with QuoteArgs, beside the `{TAny,
+TNone}` row for an evaluated key; `get` strips the quote as it strips
+every other row's) and on its strict twin `dotr`, whose bare-word read
+over None raises the family's not_found (`getr: parent is None`) on both
+lanes instead of undefined_word. `m.b.c` over `{a:1}` is None on both
+lanes, so are `none.c`, a None behind an `Any` param, a list element and
+an Error value's missing field, and `5 m.b.c` keeps the 5 beneath.
 
 **Rule:** a compiled program answers as the interpreter does — the same
 raise, or the same value, for a dotted read whose receiver is None at run
 time.
 
-**Divergence.**
+**Divergence (as it stood).**
 
 ```
 def f fn [[m:Map][Any][m.b.c]] end f {a:1}
@@ -7670,26 +8252,47 @@ undefined_word and the compiled lane fails to compile — consistent; the
 divergence is the run-time None behind a typed receiver, which the check
 pass models as a member read.
 
-**Fence.** `TestDotChainOnMissingMemberPending` (lang
-map_literal_flex_member_test.go) pins both lanes as they stand, so closing
-it is loud.
+**Fence.** `TestDotChainOnMissingMemberResolves` (lang
+map_literal_flex_member_test.go): the three shapes and their neighbours —
+a static None, a chain of misses, a value beneath the read, the strict
+twin's not_found, `get`'s evaluated key — as parity rows, with the
+interpreter's own answers; accessor.tsv's None section carries the rows,
+and REFERENCE.md names the chained read.
 
-**Verdict:** none yet. Directed at the chained `dot` lowering — the second
-hop over a None receiver should raise as the interpreter raises, or the
-interpreter's `dot` should consume its atom and answer None; either way one
-answer.
+**Verdict:** resolve by fix, taken on the interpreter's accessor table:
+one answer, None, the row's own promise.
 
 ## NUR197 — a loop body's residual literal over the loop variable: the interpreter's undefined_word, the compiled lane's value {#nur197}
 
-**Status:** Pending (recorded 2026-09-24, found while closing the flex-member
-map literal — the handoff log's "the flex-member map literal" entry).
-Present on main before that change (measured on a clean worktree at
+**Status:** FIXED 2026-09-25 (the loop region's residual — the handoff log's
+entry of that date). RECORDED 2026-09-24, found while closing the
+flex-member map literal — the handoff log's "the flex-member map literal"
+entry. Present on main before that change (measured on a clean worktree at
 6ccf827), for list and map literals alike.
+
+**The fix.** The compiled lane held the rule: a literal a loop body leaves
+is the ITERATION's, evaluated with the loop's binding, as a fn body's
+residual is evaluated in its frame (ResidualEvalsInFrame) — the
+interpreter's deferral to the end of the run was the accident of a loop
+region living on the top tape, and it read an OUTER `i` where one was
+bound (`def i 9  for 2 [[(i add 1)] i]` was `[[10] 0 [10] 1]`). The
+interpreter's loop region now evaluates a pending residual container when
+it collects the iteration's output, with the iterator still bound
+(`Engine.collectLoopRegion`, shared by the `for` continuation and the
+`while` body region; every other value — a typed container's inert shape
+included — is collected as it stood and resolved by the end-of-run sweep
+as before). `for 2 [[(i add 1)] i]` is `[[1] 0 [2] 1]` on both lanes, the
+map twins likewise, the fn shape raises the fn's own count error on both,
+and the while body's literal reads its round's binding (`[[2] [3]]`).
+Two twins found probing the neighbours, both closed the same day: NUR202
+(the loop's iterator surviving a raise the caller traps, NUR201's loop
+twin) and NUR203 (the single-literal `do` body under a loop baked as a
+const on the compiled lane).
 
 **Rule:** a compiled program answers as the interpreter does — the same
 raise, or the same value, for a literal a loop body leaves as its residual.
 
-**Divergence.**
+**Divergence (as it stood).**
 
 ```
 for 2 [[(i add 1)] i]
@@ -7717,13 +8320,16 @@ documented behaviour the list gate's comment names ("a fn body returning a
 bare-word list raises undefined_word at run time"), and the compiled
 answer is the one a reader expects.
 
-**Fence.** `TestLoopBodyResidualLiteralPending` (lang
-map_literal_flex_member_test.go) pins both lanes as they stand, so closing
-it is loud.
+**Fence.** `TestLoopBodyResidualLiteralResolves` (lang
+map_literal_flex_member_test.go): the shapes above and their neighbours —
+the bare literal, the nested literal, the outer binding, the while body, a
+`do` and a fn around the loop, the do-body twin's shapes and its lowering
+— as parity rows, with the interpreter's own answers; control.tsv §3 and
+§7 carry the rows.
 
-**Verdict:** none yet. Directed at the recorder's top-engine arm for a
-residual literal inside a loop body — the deferral the interpreter
-performs is the frame's, not the top run's.
+**Verdict:** resolve by fix, taken on the interpreter: the compiled
+answer was the one a reader expects, and the loop region is the
+literal's frame.
 
 ## NUR196 — a fn called from a literal each body breaks: each's no-result error for the interpreter's flow_error {#nur196}
 
@@ -8006,11 +8612,47 @@ row natively and the raw-body rows read the name on the island.
 
 ## NUR191 — a module fn's body re-steps a parked closure the main registry parks {#nur191}
 
-**Status:** RECORDED 2026-09-23 (the placed value inside a code body —
-the handoff log's entry of that date), found when that increment's
-first draft let `TestModuleFnStampedAtLoadAndRerouted`'s decliner compile.
-Present on `main` (a worktree at c268afb) under the whole-program compile;
-an error-versus-value divergence, not silent.
+**Status:** FIXED 2026-09-25 (the module fn's return contract — the
+handoff log's entry of that date). RECORDED 2026-09-23 (the placed value
+inside a code body — the handoff log's entry of that date), found when
+that increment's first draft let `TestModuleFnStampedAtLoadAndRerouted`'s
+decliner compile. Present on `main` (a worktree at c268afb) under the
+whole-program compile; an error-versus-value divergence, not silent.
+
+**The fix.** The two interpreter paths disagreed twice over, and the
+frame path held the rule both times. (1) The COUNT: the spliced frame's
+ReturnCheck raises "expected N return value(s), got M" (stepCloseParen);
+the CallBoru seam only type-checked the aligned tail
+(enforceCallBoruReturns, NUR069) and handed the whole residual back, so
+`def d1 fn [[x:Integer][Integer][x 3]]` answered `[10 3]` as a module fn
+for the count error the same fn raises on the main registry and as a
+compiled module fn. A NAMED call through the seam — execFnDefLiteral's
+cross-registry arm (check mode through `CallBoruStrict`, run time through
+`InvokeCallbackStrict`, whose fallback is the strict seam) and
+buildFnBodyHandler's foreign-registry arm — enforces the frame's count
+now, BEFORE the types (`NamedFnReturnCount`: a residual both the wrong
+count and the wrong type raises the count error, as the frame does); the
+callback seams (InvokeCallbackFn, InvokeCallback) keep the CallBoru
+discipline, the count trimmed. (2) The PARK: the handler arm returns the
+body's residual as a handler result, which execMatch re-presents to the
+main loop from the first argument's index — a returned closure stepped
+there dispatched over the values beneath the call (`3 M.d1 10` was 13 for
+the main registry's `[3 fn (Integer)]`). A user fn's single returned
+closure delivered as a handler result (`sig.FnFrame() != nil`, one value
+that would dispatch at the pointer) is stepped past after the splice, as
+fnReturnPark steps past a frame's Function return. With both, `M.d1 10`
+over `[(mk x) 3]` raises the frame's count error on both lanes, the
+decliner's chain with it, and `3 M.d1 10` parks everywhere; the
+undeclared-return twin `[[x:Integer][][(mk x) 3]]` is 13 on both, as it
+always was. The one preamble that leaned on the leniency — boru:repl's
+`repl-eval-line`, whose `st set history …` left the store beneath its
+one declared return — drops it now.
+
+**Found on the way, recorded:** NUR204, a module fn returning a NAMED fn
+value read through its reach group with a value beneath (`5 M.ff` is 6
+interpreted, `[5 fn inc]` compiled): the reach group's collapse re-steps
+its named survivor (a name always calls), which the compiled lane seats
+as data.
 
 **Rule:** a compiled program answers as the interpreter does; a user fn's
 single returned closure is PARKED where it lands (NUR101, NUR124).
@@ -8021,20 +8663,23 @@ single returned closure is PARKED where it lands (NUR101, NUR124).
 | `import module [… def d1 (fn [[x:Integer][Integer][(mk x) 3]]) export "M" {d1: d1/v}] M.d1 10` | `[13]` | `type_error … got 2 — [fn 3]` |
 | the module decliner's chain `(((A) 1) 2) 3` | `[16]` | the count error |
 
-**The defect, in one sentence.** A boru fn defined inside a module runs
-its body through `CallBoru` in the captured sub-registry, and CallBoru
-sweeps the body's deferred residual after teardown (NUR153's
-`ResidualEvalsInFrame` / `CallBoruNamed`), re-stepping the parked closure
-over the token after it — where the main registry's inline splice parks
-it and both lanes raise the count error; the compiled module fn (the
-whole-program compile stamps it) parks as the main registry does. The two
-interpreter paths disagree with each other before the compiler is
-involved; `TestModuleFnStampedAtLoadAndRerouted` keeps the decliner
-unstamped at load, and the closure body's park rule (`parkedInBody`)
-admits only a user fn's returned closure and a placed fn literal, never a
-paren-apply's result, so the increment did not widen the divergence.
-**The fix** belongs to the interpreter's two paths agreeing (one park
-rule for the sweep and the splice), then the compiled module fn follows.
+**The defect, in one sentence (as recorded).** A boru fn defined inside a
+module runs its body through `CallBoru` in the captured sub-registry,
+whose seam let the residual's COUNT through and re-presented a returned
+closure to the caller's tape, where it re-stepped over the token after it
+— where the main registry's inline splice parks it and both lanes raise
+the count error; the compiled module fn (the whole-program compile stamps
+it) parks as the main registry does. The two interpreter paths disagreed
+with each other before the compiler was involved;
+`TestModuleFnStampedAtLoadAndRerouted` keeps the decliner unstamped at
+load (its probe now expects the count error on both interpreters), and
+the closure body's park rule (`parkedInBody`) admits only a user fn's
+returned closure and a placed fn literal, never a paren-apply's result.
+**Fence.** `TestModuleFnReturnContractIsTheFrames` (lang
+module_fn_return_contract_test.go): the witnesses and their neighbours
+with the same verdict on both lanes (an error by code and detail — the
+positions differ by lane, NUR118), the interpreter's own answers, and the
+main-registry twins; edge-modules-2.tsv §12 carries the rows.
 
 ## NUR190 — a dynamic fn value under a function word its `/q` or Any-typed overload claims {#nur190}
 
@@ -8670,11 +9315,31 @@ ledgers that moved are that increment's, and this fix moved none of its own.
 
 ## NUR176 — a 0-arg runtime lead under the one-arg window fires interpreted and no-matches compiled {#nur176}
 
-**Status:** Pending. Recorded 2026-09-22 while landing S1b's apply shapes.
+**Status:** FIXED 2026-09-25 (the 0-arg lead's window — the handoff log's
+entry of that date). Recorded 2026-09-22 while landing S1b's apply shapes.
+
+**The fix.** The window op (`callDynTrailTop`) asks the screen the re-step
+landing already asks (`FnValueOnlyZeroArgSigs`, NUR175) of a NAME-read
+lead: one whose only overloads take no argument is not a no-match — the
+interpreter dispatches the bare read as a WORD where it stands, the fn
+fires over nothing, and the window's other tokens are then stepped on
+their own. The op hands such a window to the island in its WRITTEN order
+— the op's head carries a `Leading` bit now (`DynApplyHead.Leading`, set
+by `RecordDynApplyLead`), so a leading window's arguments follow the lead
+(a fn value dispatching over the result, a literal landing beside it) and
+a trailing window's precede it (they stay beneath the result) — with the
+lead marked applied (`FnDefInfo.Applied`) so the island's re-step
+dispatches an anonymous 0-arg value exactly as the word dispatch did. The
+island IS the interpreter's residual semantics over that window, which is
+why the fix is one arm in the op and not a second dispatch path; an
+event-produced or `/v`-delivered lead has no name to dispatch under and
+keeps the no-match. Every row below agrees now: `(k inc/v)` is 8, `(k 5)`
+the frame's count error on both lanes, `(g 3)` over a 0-arg lambda the
+same, and `(1 2 k)` under a three-return contract `[1 2 7]`.
 
 **Rule:** a compiled program answers as the interpreter does.
 
-**The non-uniformity.** The leading one-arg window `(k x)` over a fn-typed
+**The non-uniformity (as it stood).** The leading one-arg window `(k x)` over a fn-typed
 carrier `k` lowers to `OpCallDynTrailTop` over `[x, k]`: the runtime lead is
 matched over its one argument, and a lead none of whose overloads takes an
 argument raises `signature_error` (NUR107's rule). The interpreter steps the
@@ -8700,15 +9365,20 @@ interpreter's answer is a VALUE. Compiled it is loud, never a value of its
 own — `TestApplyShapesZeroArgLeadIsLoud` pins all three rows on both lanes
 and re-opens this record if the oracle moves.
 
-**What a fix looks like, and why it is not here.** The window op would have to
-know, at run time, that the lead's only overloads are 0-arg — the screen
-`FnValueOnlyZeroArgSigs` already asks at the re-step landing (NUR175) — and
-then run the interpreter's residual semantics: fire the lead, re-step the
-argument over the result. That is a second dispatch path inside an op, the
-shape (a 0-arg fn handed to a slot whose body applies it to an argument) has
-no corpus row, and the same 0-arg class runs through the TRAILING carrier
-window `(1 2 c)` as well. It is owed as one change to the window op, not as
-an arity exception at the record (ADR-016).
+**What a fix looked like (as recorded), and what it was.** The window op
+would have to know, at run time, that the lead's only overloads are 0-arg
+— the screen `FnValueOnlyZeroArgSigs` already asks at the re-step landing
+(NUR175) — and then run the interpreter's residual semantics: fire the
+lead, re-step the argument over the result. That is what landed, as one
+change to the window op covering the trailing window `(1 2 c)` too, and
+not as an arity exception at the record (ADR-016): the island already runs
+those semantics over a token window, so the op orders the window as it was
+written and hands it over.
+
+**Fence.** `TestApplyShapesZeroArgLeadResolves` (lang apply_shapes_test.go):
+the three rows and their neighbours — a two-return contract, the trailing
+window, a fn value that takes the fired result — with the same verdict on
+both lanes, and the interpreter's own answers.
 
 
 ## NUR175 — the landing matches an empty window where the interpreter matches the tape and the stack {#nur175}
@@ -9121,9 +9791,28 @@ position the compiler has chosen.
 
 ## NUR168 — a non-capturing factory-built fn value, def-bound, escapes anonymous on the compiled lane {#nur168}
 
-**Status:** Pending (recorded 2026-09-19).
-**Found:** the S1b-2 seam rows, measuring the top-level computed fn
-values that compile for the first time.
+**Status:** FIXED 2026-09-25 (the def's name on the value — the handoff
+log's entry of that date). Recorded 2026-09-19 by the S1b-2 seam rows,
+measuring the top-level computed fn values that compile for the first
+time.
+
+**The fix.** One rule at the bind, as the record asked: RecordDynBind
+seats the def name on a factory's baked const lambda
+(`producedConstLambda`) exactly as it seated it on a produced closure,
+and the VM's store-time rename (`nameClosureValue`) renames a bare
+`FnDefInfo` as well as a `ClosurePayload`; the root write-back names the
+value it writes too. Two neighbours on the same value, found while
+closing it and closed with it: the root's dyn-scope bind and global
+write-back each installed the value — two entries under `f`, which
+`Registry.Lookup` unions, so `do [f/v]` read `fn f(String) or (String)`
+— and the write-back now ADOPTS its paired install
+(`GlobalBindSpec.AfterDynScope`: the entry comes off the dyn-bind trail
+and nothing is pushed); and a bare-word call of the bound value inside a
+code body (`do [f 'z']`) lowered its callee read to the dispatch lookup,
+which defers on a fn definition ("vm:dyn-scope-dispatching", an internal
+error for the interpreter's `z`) — `RecordDynMethod` takes the
+data-position lookup for it, as the closure-tail apply already did.
+Pinned by lang `TestDefBoundFnValueIsNamed` and fn-value.tsv §14.
 
 **Rule:** a compiled program answers as the interpreter does.
 
@@ -9156,9 +9845,46 @@ representation, which is S1b's "one convention" applied to the name.
 
 ## NUR167 — a type-minting fn body, applied as a callback, conflicts one call early under compilation {#nur167}
 
-**Status:** Pending (recorded 2026-09-19).
-**Found:** the S1b seam pins, probing which callback bodies the lazy
-detached stamp must never compile.
+**Status:** FIXED 2026-09-25 (the analysis is not a call — the handoff
+log's entry of that date). Recorded 2026-09-19 by the S1b seam pins,
+probing which callback bodies the lazy detached stamp must never compile.
+
+**The fix.** The conflict is a NAME-PART reservation (`IsKnownPart`), not
+the minted node: a fn-body `def T` reserves `T` for the registry's
+lifetime — the frame's teardown pops the binding and keeps the part, which
+is why the interpreter's second call conflicts and why `undef T` inside the
+body does not help. The check pass's analysis of the body reserved the
+part too, and the run's first call — the interpreter through the callback
+seam — collided with it; a single call (`each f/v [1]`) raised where the
+interpreter answered. Now `RunFnBodyOnce` snapshots the reservations and
+forgets, at its unwind, every part the body reserved for a binding it
+popped (`core.ForgetTypePartsSince`; the node stays in the ID index, the
+sandbox's partition). Two consequences closed with it: the pass no longer
+conflicts with its own second analysis, so a fn UNIT with such a body
+compiles — and it DROPPED the mint (`f 1 f 2` answered `[1 2]`), since
+`RecordTypeInstall` recorded nothing outside an arm-resident bracket and
+the ledger keeps fn-body transitions out (no twin). The recorder's
+fn-unit arm now records the install with the entry the check pass pushed,
+and the lowering emits `OpBindFnType`, a generic per-call lowering rather
+than a decline (the compile-failure census is a downward ratchet, and the
+generated sweep's fn-wrapped type-def variants must keep compiling): the
+name is checked against the run's reservations exactly as the front door
+checks it (`core.TypeNameFree`) and reserved (`core.ReserveTypeParts`),
+the check-time node is bound as an ADOPTED entry (the node the unit's
+`OpPushType` reads bake; an `undef` in the body must not retire it) on the
+dyn-bind trail, so the frame's RET pops it — the interpreter's observable
+exactly: the first call answers, the second conflicts, a stored body's
+CallBoru frame (`Test.check-prop`'s gen body) conflicts on its second
+trial, a `do` body nested in a fn leaks to the fn's frame and pops with
+it. A ROOT `do` body still records nothing (its install is a root
+transition the adopted twin replays). And a ROOT `def T` after the call kept its reservation
+from check time (the twin regime retains mints), so the callback's mint
+conflicted at element 0 where the interpreter's root def conflicts — the
+replay rollback frees the parts of the bindings it rolls back
+(`BindingSandbox.typeParts`) and the type twin re-checks and re-reserves
+its name at its own position (`applyTwinPush`, `ApplyBindTwin` returns the
+raise). Pinned by lang `TestFnBodyTypeMintIsTheCalls` and user-types.tsv's
+closing section.
 
 **Rule:** a compiled program answers as the interpreter does.
 
@@ -9186,8 +9912,23 @@ the detached compile pass adds no third mint.
 
 ## NUR166 — a def-bound fn value passed to a higher-order word loses its own frame's `args` {#nur166}
 
-**Status:** Pending (recorded 2026-09-19).
-**Found:** the S1b seam pins.
+**Status:** FIXED 2026-09-25 (the value's own frame — the handoff log's
+entry of that date). Recorded 2026-09-19 by the S1b seam pins.
+
+**The fix.** The value's body IS the `each` site's closure unit, entered
+through the token seam (`applyClosure`), and that entry pushed no args
+list — `pushRootArgs` bracketed only the units the fn-value seam hosts.
+A closure unit that carries a param contract (`CompiledFn.Params`: a
+named fn's body or a lambda's, compiled at the callback slot with the
+value's own params — a quotation body carries none and runs in the
+caller's frame, reading the caller's `args`) is the frame the
+interpreter's dispatch would have opened for the value, so `applyClosure`
+now brackets it with the value's own call args (`locals[0:NArgs]`, the
+DynEnv bracket's list; a no-op outside a DynEnv program, where nothing
+reads it). `args` read directly in the body already folded to the
+params' locals; the `do` body inside it reads the list at run time, which
+is where the two lanes parted. Pinned by lang
+`TestFnValueCallbackHasOwnArgs` and callbacks.tsv §10.
 
 **Rule:** a fn value applied anywhere opens the frame its definition
 declares — with the value's own call args as `args`.
@@ -9301,9 +10042,29 @@ the compiled lane for the Map case.
 
 ## NUR163 — a module member read in place is not the fn its local rebind is {#nur163}
 
-**Status:** Pending (recorded 2026-09-18).
-**Found:** the generated sweep, writing the module-export seeds for
-`emit`, `mini` and `parse`.
+**Status:** FIXED 2026-09-25 (the value's own signatures — the handoff
+log's entry of that date). Recorded 2026-09-18 by the generated sweep,
+writing the module-export seeds for `emit`, `mini` and `parse`.
+
+**The fix.** The member read hands the words the fn they wanted; what they
+could not see past was the dispatch AGGREGATE the value carries: a `/v`
+read, a module member in place and a paren all deliver `Registry.Lookup`'s
+aggregate, whose synthesized 0-arg fallback signature (`Signature.Fallback`,
+an empty parameter list) failed "every signature must start with the
+standard prefix" — while `def g M.dbl/v` stores the own signatures
+(installDef's rebind) and passed. The record's `mini (dbl/v) 'ab'` failed
+the same way with no module at all. The three contracts
+(`MiniLangFnSigWhy`, `EmitLangFnSigWhy`, `ParseLangFnSigWhy`), the
+filter-shape probe (`MiniLangFnFilterShaped`) and the partial's builder
+(`miniPartialFromSigs`'s callers) read `FnDefInfo.OwnSigs()` now — the
+fallback was never a declaration. The filter-shaped `/v` value used to
+crash the partial's build once past the probe (`index out of range [2]`
+over the fallback's parameters); it builds over the own signatures. The
+side note — `def g M.up/v end` raising `cannot call def` for an export
+whose first parameter is `Any` — is a forward-window quirk of its own,
+recorded as NUR206. Pinned by lang `TestMiniLanguageValueIsTheFn` and the
+`§fnv` / `§10` closing sections of module-minilang.tsv,
+module-emitlang.tsv and module-parselang.tsv.
 
 **Rule:** a fn value is the same fn however it is reached — through the
 module member in place, through a local `def` of that member, or through
@@ -9344,7 +10105,22 @@ recovers, or the wrapper that hides it.
 
 ## NUR170 — a container-read fn value at a word's operand slot arrives in the wrong position {#nur170}
 
-**Status:** Pending (recorded 2026-09-19).
+**Status:** FIXED 2026-09-25 as a sound decline (the dynamic emit lead —
+the handoff log's entry of that date). Recorded 2026-09-19.
+
+**The fix.** The transposition was the `emit` macro's ROUTE, not a slot:
+under analysis `m.up` is a dynamic Any carrier, which is not a Function to
+the macro's fn-operand test, so the macro committed the lead to the DATA
+route (`emitlang-auto <lead> <opts>`) and recorded that call, where the
+interpreter's expansion reads the concrete fn value at run time and takes
+the fn route. A dynamic lead is an emitter or data only at run time; the
+macro degrades it now exactly as it degrades a not-concrete Function lead
+(an advisory and a dynamic String carrier), so the program declines
+loudly ("residual value of unknown provenance") and the fallback runs the
+emitter. A bound data lead (`def d {a:1} emit d`) and a kind lead compile
+as before. The sweep's `emit` × container pin is retired and its seed
+counts under `sweepFailureCeiling` (25 → 26). Pinned by lang
+`TestEmitDynamicLeadIsNotRoutedAsData`.
 **Found:** the generated sweep's `emit/container` seed, on the change that
 removed the interpreter fallbacks. It is not a new defect — it was there
 before, and the whole-program fallback answered the program correctly so the
@@ -9425,6 +10201,18 @@ degradation in general and it fixes nothing here, because the whole region is
 unpositioned; a change that broad with no measured benefit is not worth the
 risk to every other VM error's position.
 
+**Tried (2026-09-25, closing NUR172 beside it).** Two anchors for the
+raise, neither reaching this site: the recorded spec now takes the first
+WRITTEN operand's position at record time when the word has none
+(`polyNoMatchProbe.Spec`) and the VM raise takes the first written
+value's position at run time — the lens's `dot` is applied inside the
+`apply` native's own run, where the window's values are pooled constants
+and the synthesized tokens carry none — and a walk back through the
+debug table (the rejected degradation, tried scoped to this one raise)
+found nothing either, as the record predicted. The interpreter's 1:1 is
+the receiver's position the lens expansion stamps on its `dot`; the check
+pass's expansion stamps none. Still pending.
+
 **Pinned:** `knownPositionLoss["reach.tsv:L52"]`, its own ledger rather than
 `knownDivergences`: position presence is asserted only by the
 compile-or-fallback gate, and a pin in `knownDivergences` must drift on every
@@ -9435,7 +10223,34 @@ different.
 
 ## NUR172 — the two lanes describe different argument windows at a poly no-match {#nur172}
 
-**Status:** Pending (recorded 2026-09-19).
+**Status:** FIXED 2026-09-25 (the attempted window — the handoff log's
+entry of that date). Recorded 2026-09-19.
+
+**The fix.** In the direction the record named — the interpreter. Its
+no-match report (`sigError`) took the forward candidates the collection
+had FILLED, else the stack prefix; `ReorderForwardCandidates` stops at a
+bare word, so the `name` a `/q` slot would capture was never a candidate
+and the report fell back to the prefix (`the argument was 5`) and an
+arity failure the source does not have. `core.attemptedWindow` builds the
+window the dispatch attempted: the forward candidates, a bare word right
+after the pointer counted as the Atom when some overload's first slot is
+`/q`, and — when those are fewer than the smallest overload's arity — the
+stack prefix beneath, in signature order. `5 $.name apply` and `5 dot
+name` read `the arguments were name (an Atom) and 5 (an Integer)` with the
+type-failure candidate notes on both lanes; a pure stack no-match (`'x'
+add`) reports as before. The compiled lane derives the same tuple: the
+check pass's record-time twin (`rematchWritten`, the carrier-aware forward
+walk, then `attemptedWindowOver`'s rule) feeds both the poly no-match
+spec and the runtime-rematch trap, whose render bound became an INDEX
+tuple (`DispatchSpec.Written`) because a mixed tuple — the forward operand
+and the stack value beneath it, `[1 2] each [dup mul]` under a variadic
+lead, `(x add 1)` over a gradual x — is not a contiguous slice of a window
+that lists the stack run first. The corpus ledger's `knownDiagDrift` pin
+for reach.tsv:L52 is retired. Pinned by lang
+`TestNoMatchWindowIsTheAttemptedOne`, the poly no-match and rematch
+byte-identity tests, and `TestPolyNoMatchDeeperStackShapeRaisesCanonical`
+(the former bounded edge: `9 1 x add` raises the canonical error on both
+lanes).
 **Found:** `reach.tsv:L52`, on the change that removed the interpreter
 fallbacks. Not a new defect: both diagnostics were always built this way, and
 the whole-program re-run replaced the compiled one before anything could

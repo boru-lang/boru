@@ -186,7 +186,7 @@ func TestSpecFnFailingToCompileSeatsAndFinalize(t *testing.T) {
 	}
 	es3 := NewEmitState()
 	es3.specFnNames = map[string]bool{"f": true}
-	if es3.RecordDispatchRematchValues("f", []core.Value{core.NewInteger(1)}, 0, 1, pos) || es3.Compilable {
+	if es3.RecordDispatchRematchValues("f", []core.Value{core.NewInteger(1)}, []int{0}, pos) || es3.Compilable {
 		t.Fatalf("the rematch seat declines: %q", es3.Reason)
 	}
 	es4 := NewEmitState()

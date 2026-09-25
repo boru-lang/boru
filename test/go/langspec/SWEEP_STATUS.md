@@ -9,7 +9,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 12/14 | ✓ 12/14 | n/a | ✓ 13/14 |
 | `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 4/14 | ✓ 14/14 | ✓ 13/14 | n/a |
 | `behave` | F | n/a | F | F | F | F | n/a |
-| `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | D! | ✓ 14/14 |
+| `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | F | ✓ 14/14 |
 | `codequote` | D! | D! | n/a | D! | F | F | ✓ 14/14 |
 | `def` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 10/14 | ✓ 7/14 | ✓ 12/14 | ✓ 13/14 |
 | `del` | ✓ 14/14 | — | — | — | — | — | — |
@@ -18,19 +18,19 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `dot` | ✓ 14/14 | — | — | — | — | — | — |
 | `dotr` | ✓ 14/14 | — | — | — | — | — | — |
 | `each` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
-| `emit` | ✓ 12/14 | n/a | ✓ 12/14 | F | D! | ✓ 12/14 | n/a |
-| `enum` | ✓ 10/14 | n/a | n/a | n/a | n/a | n/a | ✓ 10/14 |
+| `emit` | ✓ 12/14 | n/a | ✓ 12/14 | F | F | ✓ 12/14 | n/a |
+| `enum` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
 | `error` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
 | `filter` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
 | `fn` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | n/a |
-| `fnpred` | ✓ 7/14 | ✓ 7/14 | ✓ 8/14 | ✓ 5/14 | ✓ 8/14 | ✓ 8/14 | ✓ 8/14 |
-| `fnsig` | ✓ 11/14 | n/a | n/a | n/a | n/a | C | ✓ 11/14 |
+| `fnpred` | ✓ 9/14 | ✓ 9/14 | ✓ 10/14 | ✓ 7/14 | ✓ 10/14 | ✓ 10/14 | ✓ 10/14 |
+| `fnsig` | ✓ 13/14 | n/a | n/a | n/a | n/a | C | ✓ 13/14 |
 | `fold` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
 | `for` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
 | `for-each` | ✓ 14/14 | ✓ 14/14 | ✓ 12/14 | F | F | F | ✓ 14/14 |
 | `force-arity` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | ✓ 7/14 | ✓ 13/14 | n/a |
 | `forward-args` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | F | ✓ 7/14 | ✓ 13/14 | n/a |
-| `gen` | ✓ 11/14 | n/a | n/a | n/a | n/a | n/a | ✓ 11/14 |
+| `gen` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
 | `if` | ✓ 14/14 | F | ✓ 13/14 | ✓ 13/14 | F | ✓ 13/14 | ✓ 14/14 |
 | `import` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
 | `inner` | I | n/a | n/a | n/a | n/a | n/a | I |
@@ -62,9 +62,9 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 ## Cells
 
 - pass: 157
-- failed: 22
+- failed: 24
 - islanded: 2
-- DIVERGED: 6
+- DIVERGED: 4
 - PANIC: 0
 - HUNG: 0
 - check-reject: 3
@@ -80,14 +80,14 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `behave` factory — **failed**: `def Temp refine Integer end def mk fn [[][Function][(fn [[t:Temp][String]['T']])]] end behave canon/q (mk) end canon (ma…` — quoted-operand word behave
 - `behave` container — **failed**: `def Temp refine Integer end def m {c: (fn [[t:Temp][String]['T']])} end behave canon/q m.c end canon (make Temp 5)` — quoted-operand word behave
 - `behave` module-export — **failed**: `import module [def Temp refine Integer def c fn [[t:Temp][String]['T']] export "M" {c: c/v Temp: Temp}] end behave canon…` — quoted-operand word behave
-- `case` module-export — **DIVERGED**: `import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl` — error divergence: compiled [boru/case_error]: case: clause list must be a concrete list of match/block pairs (optional t…
+- `case` module-export — **failed**: `import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl` — code-body word case (Stage 2)
 - `codequote` literal — **DIVERGED**: `typeof (codequote (1 add 2))` — error divergence: compiled [boru/internal_error]: bytecode: internal: tape-coupled handler result at typeof (pc=1, src 1…
 - `codequote` lambda — **DIVERGED**: `typeof (codequote ([] => [1]))` — error divergence: compiled [boru/internal_error]: bytecode: internal: tape-coupled handler result at typeof (pc=1, src 1…
 - `codequote` factory — **DIVERGED**: `def mk fn [[][Function][([n:Integer] => [n add 1])]] end typeof (codequote (mk))` — error divergence: compiled [boru/internal_error]: bytecode: internal: tape-coupled handler result at typeof (pc=2, src 1…
 - `codequote` container — **failed**: `def m {f: ([n:Integer] => [n add 1])} end typeof (codequote m.f)` — operand of unknown provenance or not statically materialisable at typeof
 - `codequote` module-export — **failed**: `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end typeof (codequote M.inc)` — operand of unknown provenance or not statically materialisable at typeof
 - `emit` factory — **failed**: `import "boru:emitlang" end def mk fn [[][Function][(fn [[value:Any opts:Map] [String] ['UP']])]] end emit (mk) {a:1}` — residual value of unknown provenance
-- `emit` container — **DIVERGED**: `import "boru:emitlang" end def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}` — error divergence: compiled [boru/signature_error]: cannot call `emitlang-auto` — no signature matches the arguments   …
+- `emit` container — **failed**: `import "boru:emitlang" end def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}` — residual value of unknown provenance
 - `fnsig` module-export — **check-reject**: `import module [def sg fn [[][List][[Integer String]]] export "M" {sg: sg/v}] end def T fnsig M.sg end 1` — check error: [boru/fnsig_invalid_spec]: fnsig: argument must be a concrete list   --> 1:82   1 | import module [def sg f…
 - `for-each` factory — **failed**: `def acc (flex []) end def mk fn [[][Function][([e:Integer] => [acc push e])]] end for-each (mk) [1 2 3] end size acc` — function-valued operand at for-each (Stage 3)
 - `for-each` container — **failed**: `def acc (flex []) end def m {f: ([e:Integer] => [acc push e])} end for-each m.f [1 2 3] end size acc` — higher-order `for-each` with a gradual-Any operand — the callback or the collection: ambiguous overload, no static com…
@@ -157,12 +157,8 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `emit` named-fn · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `emit` module-export · for-body — **declined** — fn 'g' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `emit` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `enum` literal · fn-body — **declined** — check diagnostics
-- `enum` literal · lambda-body — **declined** — check diagnostics
 - `enum` literal · for-body — **declined** — check diagnostics
 - `enum` literal · suffix-def — **interp-reject** — [boru/signature_error]: deq is still waiting for 1 argument(s) when `def` begins its own dispatch — a function word is…
-- `enum` computed · fn-body — **declined** — check diagnostics
-- `enum` computed · lambda-body — **declined** — check diagnostics
 - `enum` computed · for-body — **declined** — check diagnostics
 - `enum` computed · suffix-def — **interp-reject** — [boru/signature_error]: deq is still waiting for 1 argument(s) when `def` begins its own dispatch — a function word is…
 - `filter` named-fn · for-body — **declined** — fn 'big' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -170,57 +166,39 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `filter` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `fn` literal · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `fnpred` literal · paren-group — **interp-reject** — [boru/syntax_error]: unexpected `]` — nothing valid can appear here   --> 1:43   1 | (def Even fnpred n:Integer [eq 0 …
-- `fnpred` literal · fn-body — **declined** — check diagnostics
-- `fnpred` literal · lambda-body — **declined** — check diagnostics
 - `fnpred` literal · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` literal · do-catch — **declined** — code-body word do (Stage 2)
 - `fnpred` literal · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:8   1 | for 2 [def Even fnpred n:Inte…
 - `fnpred` literal · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:20   1 | [10 20] eac…
 - `fnpred` lambda · paren-group — **interp-reject** — [boru/syntax_error]: unexpected `(` — nothing valid can appear here   --> 1:28   1 | (def Even fnpred n:Integer ([n:In…
-- `fnpred` lambda · fn-body — **declined** — check diagnostics
-- `fnpred` lambda · lambda-body — **declined** — check diagnostics
 - `fnpred` lambda · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` lambda · do-catch — **declined** — code-body word do (Stage 2)
 - `fnpred` lambda · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:8   1 | for 2 [def Even fnpred n:Inte…
 - `fnpred` lambda · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:20   1 | [10 20] eac…
-- `fnpred` named-fn · fn-body — **declined** — check diagnostics
-- `fnpred` named-fn · lambda-body — **declined** — check diagnostics
 - `fnpred` named-fn · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` named-fn · do-catch — **declined** — code-body word do (Stage 2)
 - `fnpred` named-fn · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:61   1 | for 2 [def ev fn [[n:Integer…
 - `fnpred` named-fn · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:73   1 | [10 20] eac…
 - `fnpred` factory · paren-group — **interp-reject** — [boru/syntax_error]: unexpected `(` — nothing valid can appear here   --> 1:92   1 | (def mk fn [[][Function][([n:Inte…
-- `fnpred` factory · fn-body — **declined** — check diagnostics
-- `fnpred` factory · lambda-body — **declined** — check diagnostics
 - `fnpred` factory · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` factory · do-catch — **declined** — code-body word do (Stage 2)
 - `fnpred` factory · if-then — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `fnpred` factory · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `fnpred` factory · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:72   1 | for 2 [def mk fn [[][Functio…
 - `fnpred` factory · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:84   1 | [10 20] eac…
-- `fnpred` container · fn-body — **declined** — check diagnostics
-- `fnpred` container · lambda-body — **declined** — check diagnostics
 - `fnpred` container · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` container · do-catch — **declined** — code-body word do (Stage 2)
 - `fnpred` container · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:57   1 | for 2 [def m {p: ([n:Integer…
 - `fnpred` container · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:69   1 | [10 20] eac…
-- `fnpred` module-export · fn-body — **declined** — check diagnostics
-- `fnpred` module-export · lambda-body — **declined** — check diagnostics
 - `fnpred` module-export · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` module-export · do-catch — **declined** — code-body word do (Stage 2)
 - `fnpred` module-export · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:99   1 | for 2 [import module [def ev…
 - `fnpred` module-export · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:111   1 | [10 20] ea…
-- `fnpred` computed · fn-body — **declined** — check diagnostics
-- `fnpred` computed · lambda-body — **declined** — check diagnostics
 - `fnpred` computed · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` computed · do-catch — **declined** — code-body word do (Stage 2)
 - `fnpred` computed · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:46   1 | for 2 [def body (quote [eq 0…
 - `fnpred` computed · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:58   1 | [10 20] eac…
-- `fnsig` literal · fn-body — **declined** — check diagnostics
-- `fnsig` literal · lambda-body — **declined** — check diagnostics
 - `fnsig` literal · for-body — **declined** — check diagnostics
-- `fnsig` computed · fn-body — **declined** — check diagnostics
-- `fnsig` computed · lambda-body — **declined** — check diagnostics
 - `fnsig` computed · for-body — **declined** — check diagnostics
 - `fold` named-fn · for-body — **declined** — fn 'sum2' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `fold` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -232,7 +210,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `for-each` named-fn · for-body — **declined** — fn 'stp' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `for-each` named-fn · each-body — **declined** — fn each$body: arm-resident def `stp` of unknown provenance
 - `force-arity` named-fn · for-body — **declined** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `force-arity` container · lambda-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: CALL_DYNAMIC underflow (pc=2, src 0:0)   --> sourc…
+- `force-arity` container · lambda-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: CALL_DYNAMIC underflow (pc=2, src 1:98)   --> 1:98…
 - `force-arity` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `force-arity` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `force-arity` container · if-then — **declined** — if: then-branch result of unknown provenance
@@ -241,7 +219,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `force-arity` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `force-arity` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` named-fn · for-body — **declined** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `forward-args` container · lambda-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: CALL_DYNAMIC underflow (pc=2, src 0:0)   --> sourc…
+- `forward-args` container · lambda-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: CALL_DYNAMIC underflow (pc=2, src 1:98)   --> 1:98…
 - `forward-args` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` container · if-then — **declined** — if: then-branch result of unknown provenance
@@ -249,11 +227,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `forward-args` container · for-body — **declined** — loop body apply: leading fn value not the sole residual
 - `forward-args` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `gen` literal · fn-body — **declined** — check diagnostics
-- `gen` literal · lambda-body — **declined** — check diagnostics
 - `gen` literal · for-body — **declined** — check diagnostics
-- `gen` computed · fn-body — **declined** — check diagnostics
-- `gen` computed · lambda-body — **declined** — check diagnostics
 - `gen` computed · for-body — **declined** — check diagnostics
 - `if` named-fn · for-body — **declined** — fn 'one' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `if` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -296,7 +270,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `stack-args` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `undef` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` named-fn · for-body — **declined** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `usurp` container · lambda-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: CALL_DYNAMIC underflow (pc=2, src 0:0)   --> sourc…
+- `usurp` container · lambda-body — **DIVERGED** — error divergence: compiled [boru/internal_error]: bytecode: internal: CALL_DYNAMIC underflow (pc=2, src 1:91)   --> 1:91…
 - `usurp` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` container · if-then — **declined** — if: then-branch result of unknown provenance
@@ -324,13 +298,13 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `while` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `while` computed · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` literal · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance
-- `word` lambda · paren-group — **PANIC** — PANIC in disassemble: runtime error: invalid memory address or nil pointer dereference
+- `word` lambda · paren-group — **declined** — trailing fn-value apply of a 0-arg callee (the value is data at the tail)
 - `word` lambda · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [5 fn]   --> 1:57   1 | def zzvlam ([] => [def dbl word…
 - `word` lambda · if-then — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `word` lambda · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `word` lambda · for-body — **declined** — for: body nets multiple values per iteration
 - `word` lambda · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance
-- `word` lambda · module-body — **PANIC** — PANIC in disassemble: runtime error: invalid memory address or nil pointer dereference
+- `word` lambda · module-body — **declined** — trailing fn-value apply of a 0-arg callee (the value is data at the tail)
 - `word` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `word` named-fn · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance
 - `word` factory · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)

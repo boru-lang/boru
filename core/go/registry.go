@@ -1558,6 +1558,52 @@ func (r *Registry) RegisterPart(part string) {
 	r.Types.parts[part] = true
 }
 
+// TypePartsSnapshot copies the registry's dynamic type-part reservations,
+// for ForgetTypePartsSince: the analysis of a fn body takes one before the
+// body runs and forgets what the body reserved once its bindings are
+// unwound. Nil for a registry with no type table.
+func (r *Registry) TypePartsSnapshot() map[string]bool {
+	if r == nil || r.Types == nil {
+		return nil
+	}
+	snap := make(map[string]bool, len(r.Types.parts))
+	for p := range r.Types.parts {
+		snap[p] = true
+	}
+	return snap
+}
+
+// ForgetTypePartsSince drops every type-part reservation made since snap
+// whose type binding is no longer live — the parts a fn body's own `def T`
+// reserved under ANALYSIS, whose binding the body's unwind has popped. The
+// analysis is not a call: the interpreter's first call of the body is what
+// reserves the part for the registry's lifetime (its frame teardown pops
+// the binding and keeps the part, so a second call conflicts on it — the
+// language's rule, both lanes), and a reservation left behind by the pass
+// made the compiled lane's FIRST call the conflicting one (NUR167: `def f
+// fn [[n:Integer] [Integer] [def T (class {}) n]]  each f/v [1 2]` raised
+// at element 0 for the interpreter's element 1, and `each f/v [1]` raised
+// where the interpreter answered). The minted node itself stays in the ID
+// index — the binding sandbox's partition (mints retained, a baked
+// OpPushType may name it); only the NAME comes free, so the run's own mint
+// takes it as the interpreter's does. A part whose binding is still live
+// (a type the body left bound, a reservation the enclosing scope made) is
+// kept. Returns how many were forgotten.
+func (r *Registry) ForgetTypePartsSince(snap map[string]bool) int {
+	if r == nil || r.Types == nil {
+		return 0
+	}
+	n := 0
+	for p := range r.Types.parts {
+		if snap[p] || r.Defs.IsType(p) {
+			continue
+		}
+		delete(r.Types.parts, p)
+		n++
+	}
+	return n
+}
+
 // ResolveTypeLiteralDef checks whether a bare type literal (Data==nil) has
 // a richer definition installed under the same name (e.g. an ClassTypeInfo
 // from RegisterResource or a `type Foo object {…}` binding). If so it
@@ -1695,6 +1741,21 @@ func (r *Registry) CallBoru(sig *FnSig, args []Value, captures []CapturedBinding
 // so a debug host's backtrace can name the call — a module fn's frame
 // is Defs-based and leaves no tape marks to reconstruct a name from.
 func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBinding, label string) ([]Value, error) {
+	return r.callBoruNamed(sig, args, captures, label, false, SrcPos{})
+}
+
+// CallBoruStrict is CallBoruNamed for a NAMED fn call — the module-fn
+// dispatch (execFnDefLiteral's cross-registry arm, buildFnBodyHandler's
+// foreign-registry arm) — which enforces the frame's return COUNT before the
+// types, as the spliced frame's ReturnCheck does (NamedFnReturnCount, NUR191);
+// pos is the call site the count error blames, as the frame's does. The
+// callback seams (InvokeCallbackFn, InvokeCallback) keep CallBoru's
+// discipline: the count trimmed, never raised.
+func (r *Registry) CallBoruStrict(sig *FnSig, args []Value, captures []CapturedBinding, label string, pos SrcPos) ([]Value, error) {
+	return r.callBoruNamed(sig, args, captures, label, true, pos)
+}
+
+func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBinding, label string, strict bool, pos SrcPos) ([]Value, error) {
 	// Per-export policy gate: a module fn invoked as a HOST callback
 	// (InvokeCallback → CallBoru on the importer's registry) is a
 	// module-export dispatch like any other and must not slip past the
@@ -1858,6 +1919,15 @@ func (r *Registry) CallBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 				extra = unnamedCount
 			}
 			result = result[extra:]
+		}
+	}
+	// A NAMED call enforces the frame's return COUNT first (NUR191), so a
+	// residual that is both the wrong count and the wrong type raises the
+	// count error the frame raises, not the type error the aligned tail
+	// would.
+	if strict {
+		if err := r.NamedFnReturnCount(sig, label, r.Source, result, pos); err != nil {
+			return nil, err
 		}
 	}
 	// …and then ENFORCE the declared contract, which this path did not do
@@ -2201,6 +2271,28 @@ func (r *Registry) enforceCallBoruReturns(sig *FnSig, name string, result []Valu
 		Decl:           sig.Decl,
 	}
 	return validateReturnTypesIn(r, rc, result[extra:extra+n], 0, r.Source)
+}
+
+// NamedFnReturnCount enforces the frame's return COUNT on a named fn's result
+// delivered through the CallBoru seam — the module-fn dispatch
+// (execFnDefLiteral's cross-registry arm, buildFnBodyHandler's foreign-
+// registry arm). The spliced frame's ReturnCheck raises "expected N return
+// value(s), got M" (stepCloseParen); CallBoru only type-checked the aligned
+// tail (enforceCallBoruReturns) and handed the whole residual back, so a
+// module fn `def d1 fn [[x:Integer][Integer][x 3]]` answered `[10 3]` for the
+// main registry's count error, and `[(mk x) 3]` handed its PARKED closure and
+// the 3 to the caller's tape, where the closure re-stepped over the 3 — 13
+// where the frame path and the compiled module fn raise (NUR191). One rule
+// for a named call on every path; the callback seams keep the CallBoru
+// discipline (the count trimmed — RetTrim), a predicate body's residual is
+// its own contract (InPredicateCall), and a check-mode dispatch models the
+// declared returns, so none of those is checked here. The values named are
+// the ones the count is about, as the frame's diagnostic names them.
+func (r *Registry) NamedFnReturnCount(sig *FnSig, name, source string, result []Value, pos SrcPos) error {
+	if len(sig.Returns) == 0 || r.predicateCalls > 0 || r.analysisMode() || len(result) == len(sig.Returns) {
+		return nil
+	}
+	return BuildReturnCountError(source, name, len(sig.Returns), len(result), result, pos, sig.Decl)
 }
 
 // TokenBodyStamp reads the run-time stamp cached for a token body under key

@@ -339,6 +339,17 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		lw.vm = lw.vm[:len(lw.vm)-1]
 		return ""
 	}
+	if d.typeInstall && d.fnType != nil && lw.isFnUnit {
+		// A FN unit's own type install (RecordTypeInstall's fn-unit arm):
+		// re-installed per call by OpBindFnType — the name checked and
+		// reserved, the check-time node bound, popped with the frame — the
+		// interpreter's per-call `def T` (NUR167).
+		idx := len(lw.p.FnTypeBinds)
+		lw.p.FnTypeBinds = append(lw.p.FnTypeBinds, FnTypeBindSpec{Name: d.name, Entry: *d.fnType})
+		lw.emit(OpBindFnType, idx, d.pos)
+		lw.note()
+		return ""
+	}
 	if !d.bindsValue() {
 		// An unstamped operand-less event — a teardown whose var pair the
 		// bridge declined, a type install outside an adopted unit, or either
@@ -498,7 +509,10 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		// is peeked in place for its downstream consumers.
 		pop := !fastGlobal || lw.dead[d.srcSeq]
 		gi := len(lw.p.GlobalBinds)
-		lw.p.GlobalBinds = append(lw.p.GlobalBinds, GlobalBindSpec{Name: d.name, Depth: d.depth, Pop: pop})
+		// The dyn-scope bind just emitted installed the binding: the
+		// write-back adopts it (GlobalBindSpec.AfterDynScope) rather than
+		// stacking a second entry.
+		lw.p.GlobalBinds = append(lw.p.GlobalBinds, GlobalBindSpec{Name: d.name, Depth: d.depth, Pop: pop, AfterDynScope: needDyn})
 		if !fastGlobal {
 			// Re-push a copy from its resolved home; the bind consumes it
 			// (Pop mode — one op, no separate DROP in the stream).
@@ -3081,6 +3095,11 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		ti := len(lw.p.TypedBinds)
 		lw.p.TypedBinds = append(lw.p.TypedBinds, *c.typedBind)
 		lw.emit(OpBindTyped, ti, c.pos)
+	} else if c.word == wordDynApply && c.dynApply == 0 {
+		// A dyn-apply record over NO argument has no signature to call
+		// under (its SigRef would carry none — NUR162's crash); the arms
+		// that record one decline it, and this is the belt.
+		return "fn-value apply over no argument (no signature to lower under)"
 	} else if c.dynApply > 0 {
 		// Apply the TOP operand (a runtime fn VALUE) to the `dynApply` trailing args
 		// laid out below it — a paren-bounded trailing fn-value apply (`(a b comp)`)
@@ -3538,8 +3557,9 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 		// swap. The window then reads [region-top, const] — exactly the
 		// [merge-carrier, const] the static match examined — for either arm
 		// depth (deeper region values sit below the window and the raise
-		// consumes nothing). The offset-form render bound keeps the raise
-		// byte-identical (the written tuple is the const, arm-independent).
+		// consumes nothing). The index-form render tuple keeps the raise
+		// byte-identical (the const, and the region top the attempted
+		// window lists beneath it — arm-independent either way).
 		if ops := ev.trap.rematchOps; len(ops) == 2 &&
 			ops[0].kind == opEvent && lw.variadic[ops[0].idx] &&
 			ops[1].kind != opEvent {
@@ -3550,11 +3570,10 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 			lw.emit(OpSwap, 0, ev.trap.pos)
 			idx := len(lw.p.Dispatches)
 			lw.p.Dispatches = append(lw.p.Dispatches, DispatchSpec{
-				Word:       ev.trap.rematchWord,
-				NArgs:      len(ops),
-				NWritten:   ev.trap.rematchNWritten,
-				WrittenOff: ev.trap.rematchWrittenOff,
-				Pos:        ev.trap.pos,
+				Word:    ev.trap.rematchWord,
+				NArgs:   len(ops),
+				Written: ev.trap.rematchWritten,
+				Pos:     ev.trap.pos,
 			})
 			lw.emit(OpDispatchRematch, idx, ev.trap.pos)
 			return ""
@@ -3577,11 +3596,10 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 		}
 		idx := len(lw.p.Dispatches)
 		lw.p.Dispatches = append(lw.p.Dispatches, DispatchSpec{
-			Word:       ev.trap.rematchWord,
-			NArgs:      len(ev.trap.rematchOps),
-			NWritten:   ev.trap.rematchNWritten,
-			WrittenOff: ev.trap.rematchWrittenOff,
-			Pos:        ev.trap.pos,
+			Word:    ev.trap.rematchWord,
+			NArgs:   len(ev.trap.rematchOps),
+			Written: ev.trap.rematchWritten,
+			Pos:     ev.trap.pos,
 		})
 		lw.emit(OpDispatchRematch, idx, ev.trap.pos)
 		return ""

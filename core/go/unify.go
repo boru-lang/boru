@@ -331,6 +331,18 @@ func unifyDisjunctR(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyErr
 // Registry.
 func unifyInner(a, b Value, r *Registry) (Value, *UnifyError) {
 	if r != nil {
+		// Two references to ONE predicate type are the same type: an atom
+		// against an atom naming the same predicate (`[:Pos]` in one fn
+		// shape against `[:Pos]` in another, `fnsig` against `fn`) is a
+		// type comparison, not a membership test of the atom `Pos` against
+		// the predicate `Pos` — which is what the pre-pass ran, and it
+		// failed (NUR157: `((fn [[xs:[:Pos]] [Boolean] [true]]) unify T`
+		// was ~unify-fail under a registry and admitted without one).
+		if da, oka := resolvePredicateRef(a, r); oka {
+			if db, okb := resolvePredicateRef(b, r); okb && da != nil && da == db {
+				return a, nil
+			}
+		}
 		if def, ok := resolvePredicateRef(a, r); ok && b.Data != nil {
 			return unifyResolvedPredicate(def, b, r)
 		}

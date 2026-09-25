@@ -131,7 +131,7 @@ module [
     def ok (do b error [ drop false ])
     if ok [ 1 ] [ 0 ]
   ]]
-  def srv fn [[opts:Map] [Any] [
+  def srv fn [[opts:Map] [Any Any Any] [
     def store (mk-store)
     risky [ call {op:"append" key: "k" chunk: "c"} store drop true ] store
     risky [ call {op:"append" key: "k" chunk: "c"} store drop true ] store
@@ -142,7 +142,10 @@ module [
 `, `DrfT.srv {}`)
 	// Two risky calls (1 each: handled-ok flags) then the size read: 2
 	// iff BOTH appends accumulated through the handler's computed `old`
-	// binding (the dyn-bound def the drift declined).
+	// binding (the dyn-bound def the drift declined). srv declares the
+	// three returns it leaves: a named call's count is the frame's contract
+	// on the stamped path too (NUR191), where a one-return declaration
+	// used to let all three through.
 	if len(out) != 3 {
 		t.Fatalf("srv result stack = %v, want three values", out)
 	}

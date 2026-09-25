@@ -94,7 +94,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.RecordTrapErr(nil, SrcPos{}) {
 		t.Fatal("inactive RecordTrapErr must decline")
 	}
-	if e.RecordDispatchRematchValues("w", nil, 0, 0, SrcPos{}) {
+	if e.RecordDispatchRematchValues("w", nil, nil, SrcPos{}) {
 		t.Fatal("inactive RecordDispatchRematchValues must decline")
 	}
 	out := NewInteger(7)
@@ -162,6 +162,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if got := e.RegisterLocal("id"); got != -1 {
 		t.Fatalf("inactive RegisterLocal must be -1, got %d", got)
 	}
+	e.NameLocal("id", "n")
 
 	// --- branches / loops.
 	e.ArmBranchCapture()

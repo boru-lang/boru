@@ -17,28 +17,24 @@ import (
 // re-raised an IO.exit request), so the fallback completes. A genuine boru
 // error stays trapped — the escape hatch is unchanged.
 func TestDoDeferFallsBackNotTrapped(t *testing.T) {
-	// A poly native seat commits an arity over the first call's gradual
-	// residual and the second call bails at run time (NUR147); wrapped in a
-	// `do`, the bail must still fall back, not surface as a trapped Error.
-	// Parity is the contract: the fallback answers exactly as the interpreter
-	// does, error or value — where the trap gave a stranded internal message.
+	// A poly native seat used to commit an arity over the first call's
+	// gradual residual and bail at run time on the second call; wrapped in a
+	// `do`, the bail had to PROPAGATE out rather than surface as a trapped
+	// Error — the shapes this pinned. The seat now retries the other
+	// arities the word declares (callPoly, NUR147), so the three compile and
+	// answer exactly as the interpreter does: the value, or h's own
+	// return-count error. Parity stays the contract.
 	const svc = `def svc (service {}) end  add {} ([r:Map state:Any] => [1]) svc  `
-	fellBack := []string{
-		// Top level: the internal message used to print as data; now [1 1].
+	for _, src := range []string{
 		svc + `do [call {} svc call {} svc]`,
-		// Inside a fn body: h's return contract used to reject the Error;
-		// now both lanes raise h's own return-count error (parity).
 		svc + `def h fn [[][List][do [call {} svc call {} svc]]] end h`,
-		// A nested do around the bail.
 		svc + `do [do [call {} svc call {} svc]]`,
-	}
-	// The bail must PROPAGATE out of the `do`, not be trapped as an Error
-	// value. It used to have to propagate so the re-run that followed could
-	// complete; it has to propagate now so the defect is reported at all — a
-	// trapped bail surfaces the internal message as data, which is worse.
-	for _, src := range fellBack {
-		gotC, _, errC, _, _ := runBothEngines(t, src)
-		requireCompileDefect(t, src, gotC, errC)
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		requireParity(t, src, gotC, errC, gotI, errI)
+		if !compiled {
+			t.Errorf("%q: the poly seat's retry compiles this shape (NUR147); it did not", src)
+		}
 	}
 	// The escape hatch is unchanged: a GENUINE boru error inside `do` is
 	// trapped as an Error value and the program stays compiled.

@@ -318,3 +318,33 @@ def z fn [[] [Atom] [(quote z)]] end def h fn [[] [Integer] [42]] end def h fn [
 def z fn [[] [Atom] [(quote z)]] end def h fn [[] [Integer] [42]] end def h fn [[x:Atom/q] [Atom] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f' z	z/q	…and the same through `get`
 def h fn [[] [] []] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m.f	5	a 0-RETURN member is applied for its effect and leaves the stack as it found it
 def h fn [[] [] []] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end 5 m get 'f'	5	…and the same through `get`
+#
+# §14  A DEF NAMES THE FN VALUE IT BINDS, whatever the value's representation
+#      (NUR168, closed 2026-09-25). installDef sets the bound FnDefInfo's Name
+#      — a factory's capture-free lambda, a closure, a `/v` copy alike — so
+#      the value escaping as data renders under the def's name; a root def
+#      installs ONE entry under the name (the compiled lane's dyn-scope bind
+#      and its write-back are one install, not two unioned by Lookup); and a
+#      bare-word call of the bound value inside a code body is the dispatch
+#      it is on both lanes. `join` renders the display form the pins read.
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end (each f/v [1 2 3]) join ','	'fn f(String),fn f(String),fn f(String)'	a factory's const lambda, def-bound, escapes under the def's name (each's data fork, no element matches)
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end do [[f/v] join ',']	'fn f(String)'	…and read back as a value inside a code body
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end [(do [f/v])] join ','	'fn f(String)'	…and read back inside a code body: ONE entry under the name, one signature
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end def f (mk 2) end [(do [f/v])] join ','	'fn f(String)'	a redefinition replaces the entry — still one signature
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end do [f 'z']	'z'	the bound value called by its bare word inside a code body dispatches
+def mk fn [[k:Integer][Function][([s:String] => [s])]] end def f (mk 1) end for 2 [f 'z']	'z' 'z'	…and inside a loop body
+def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def f (mk 1) end [(do [f/v])] join ','	'fn f(Integer)'	the capturing twin was always named — the rule is one for both representations
+#
+# §15  A `/v` ON A MAP MEMBER IS DATA BESIDE ITS ARGUMENTS (NUR207, closed
+#      2026-09-25): the marker qualifies the member read, so the value never
+#      applies over what follows it — the 5 strands on top, on both lanes.
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f/v 5	fn [[a:Integer][Integer][word(a) word(add) 1]] 5	the marked member is data; the argument strands
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f 5	6	…the unmarked member applies
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} (m.f/v) 5	fn [[a:Integer][Integer][word(a) word(add) 1]] 5	…and a paren around the marked read parks the same
+#
+# §16  THE WRAP WORDS TAKE A COMPILED CLOSURE (NUR158, closed 2026-09-25): a
+#      capturing lambda read out of a container wraps under `/u` `/s` `/f`
+#      `/N` as any fn does — the words bridge the closure to its definition.
+def mk fn [[k:Integer] [Function] [([a:Integer b:Integer] => [(a sub b) add k])]] end def mk2 fn [[] [Map] [{a:(mk 100)}]] end def m (mk2) end m.a/u 10 3	93	usurp over a capturing closure read out of a map
+def mk fn [[k:Integer] [Function] [([a:Integer b:Integer] => [(a sub b) add k])]] end def mk2 fn [[] [Map] [{a:(mk 100)}]] end def m (mk2) end 10 3 m.a/s	93	…stack-args
+def mk fn [[k:Integer] [Function] [([a:Integer b:Integer] => [(a sub b) add k])]] end def mk2 fn [[] [Map] [{a:(mk 100)}]] end def m (mk2) end m.a/2 10 3	107	…force-arity

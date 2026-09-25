@@ -223,7 +223,12 @@ var knownPositionLoss = &pinLedger{name: "knownPositionLoss", pins: map[string]s
 // different words — the notes, suggestions or secondary spans differ while
 // code and detail agree.
 var knownDiagDrift = &pinLedger{name: "knownDiagDrift", pins: map[string]string{
-	"reach.tsv:L52": "NUR172 — the two lanes describe different argument windows at a poly no-match: CALL_NATIVE_POLY holds both the key atom and the receiver, so the compiled notes report a type mismatch on argument 2, while the interpreter never bound the forward atom and reports an arity failure over one argument",
+	// reach.tsv:L52 (NUR172 — the two lanes described different argument
+	// windows at a poly no-match) was RETIRED 2026-09-25: the interpreter's
+	// no-match report describes the window the dispatch ATTEMPTED (the
+	// forward atom a /q slot captures and the stack prefix beneath, in
+	// signature order — core.attemptedWindow), the same window the compiled
+	// poly reports.
 }}
 
 func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []any, errC error, gotI []any, errI error) (declined, unledgered bool) {

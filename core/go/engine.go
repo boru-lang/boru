@@ -354,8 +354,36 @@ func (e *Engine) faultReturn(err error) error {
 	if e.trace != nil {
 		e.trace(-1, e.Pointer, e.Tape.Snapshot(), "fault: "+err.Error())
 	}
+	e.unwindLiveLoops()
 	e.unwindLiveFrames(0, e.Tape.Len())
 	return err
+}
+
+// unwindLiveLoops uninstalls the iterator of every `for` loop the error
+// leaves OPEN on the tape — its mark stepped, its move not yet reached —
+// as handleLoopBreak uninstalls it when a break discards the region: the
+// binding the loop installed for its body (`i`) is the loop's, and the
+// error abandons the loop with the frame. Left installed, it shadowed the
+// enclosing binding after a trapped raise — `def i 9  do [for 2 [raise
+// 'x']]  i` read 0 on the interpreter where the compiled lane, whose loop
+// keeps `i` in a frame slot, reads 9 (NUR201's loop twin, found closing
+// NUR197). Loops unwind BEFORE the frames (faultReturn): a loop inside a
+// live frame installed its iterator after the frame's entry snapshot, so
+// the frame's truncation would pop it too — popping it here first leaves
+// that truncation nothing to pop for the name, and a loop enclosing a
+// live frame keeps its iterator beneath the frame's snapshot, where only
+// this walk reaches it. A while loop installs no iterator of its own.
+func (e *Engine) unwindLiveLoops() {
+	for i := e.Pointer; i < e.Tape.Len(); i++ {
+		if !IsMove(e.Tape.At(i)) {
+			continue
+		}
+		info, _ := AsMove(e.Tape.At(i))
+		if info.Cont == nil || info.Cont.WhileCond != nil || info.Cont.IterName == "" || !e.marks[info.To] {
+			continue
+		}
+		UninstallDef(info.Cont.Registry, info.Cont.IterName)
+	}
 }
 
 // effectiveSource returns the source text for error reporting.
@@ -401,7 +429,7 @@ func isEngineMarker(v Value) bool {
 // the same shape and yields the concrete twins of these values. Used by
 // the runtime-rematch record to prove its operand window IS the tuple the
 // interpreter's error renders.
-func (e *Engine) rematchWritten() []Value {
+func (e *Engine) rematchWritten(fn *FnDefInfo) []Value {
 	var written []Value
 	for i := e.Pointer + 1; i < e.Tape.Len() && len(written) < 4; i++ {
 		v := e.Tape.At(i)
@@ -413,20 +441,15 @@ func (e *Engine) rematchWritten() []Value {
 		}
 		written = append(written, v)
 	}
-	if len(written) > 0 {
-		return written
-	}
-	stack := e.Tape.Prefix(e.Pointer)
-	for i := len(stack) - 1; i >= 0 && len(written) < 4; i-- {
-		v := stack[i]
-		if IsOpenParen(v) || IsForward(v) || IsWord(v) || IsEnd(v) ||
-			v.Parent.ConformsTo(TMark) || v.Parent.ConformsTo(TMove) ||
-			v.Parent.ConformsTo(TInternal) {
-			break
-		}
-		written = append(written, v)
-	}
-	return written
+	// The rest is the runtime report's own derivation (attemptedWindow) over
+	// the carrier-aware forward tuple: a bare word a `/q` slot would capture,
+	// then the stack prefix beneath up to the smallest overload's arity —
+	// the tuple sigError renders, so the spec's rebuild re-renders it
+	// (NUR172; `(x add 1)` over a gradual x reports both operands on both
+	// lanes). The Atom the bare-word rule mints carries no value ID, so a
+	// tuple that needs it declines the spec (mapTupleToWindow) and the
+	// runtime keeps its best-effort report.
+	return attemptedWindowOver(e.Tape, e.Pointer, fn, written)
 }
 
 // polyNoMatchProbe snapshots, at a FAILED dispatch's tape state, the pieces
@@ -461,7 +484,7 @@ func (e *Engine) PolyNoMatchProbe(name string, pos SrcPos) polyNoMatchProbe {
 		return p
 	}
 	p.ok = true
-	p.written = e.rematchWritten()
+	p.written = e.rematchWritten(e.Registry.Lookup(name))
 	p.stackVals = ReorderCandidates(e.Tape.Prefix(e.Pointer))
 	p.reach, p.reachOK = e.polyReachBound()
 	return p
@@ -576,7 +599,23 @@ func (p polyNoMatchProbe) Spec(fn *FnDefInfo, window []Value) *PolyNoMatchSpec {
 	if !ok {
 		return nil
 	}
-	return &PolyNoMatchSpec{Written: written, StackTuple: stackTuple, NSigs: len(fn.Signatures), Pos: p.pos}
+	// A word the source never wrote — the `dot` a lens expands to under
+	// `apply` (`5 $.name apply`) — has no position of its own, and the
+	// pooled runtime window has none either, so the raise rendered
+	// "source position unknown". The interpreter anchors such a raise at
+	// the first candidate that carries a position (its `5` at 1:1); the
+	// record-time window still has those positions, so the spec takes the
+	// same anchor (NUR171).
+	pos := p.pos
+	if pos.Row == 0 {
+		for _, i := range written {
+			if i >= 0 && i < len(window) && window[i].Pos().Row > 0 {
+				pos = window[i].Pos()
+				break
+			}
+		}
+	}
+	return &PolyNoMatchSpec{Written: written, StackTuple: stackTuple, NSigs: len(fn.Signatures), Pos: pos}
 }
 
 // mapTupleToWindow resolves each tape-tuple value to a distinct operand-window
@@ -727,10 +766,7 @@ func (e *Engine) sigError(name string, fn *FnDefInfo, pos SrcPos) *BoruError {
 	// The failing tuple in assignment order: unclaimed forward tokens
 	// (source order) when present, else the stack prefix (top-first) —
 	// the same two views the swap probe reads.
-	written := ReorderForwardCandidates(e.Tape, e.Pointer)
-	if len(written) == 0 {
-		written = ReorderCandidates(e.Tape.Prefix(e.Pointer))
-	}
+	written := attemptedWindow(e.Tape, e.Pointer, fn)
 	// Reorder probe: when the actual argument types match some declared
 	// signature under a PERMUTATION, the arguments are almost certainly
 	// swapped — say so, with the declared parameter order, and suppress
@@ -749,6 +785,63 @@ func (e *Engine) sigError(name string, fn *FnDefInfo, pos SrcPos) *BoruError {
 // (diag_msg.go) — the SAME builder the compiled VM's runtime guards
 // call, so an interpreter and a compiled no-signature error are
 // byte-identical over the same failing tuple.
+// attemptedWindow is the operand window a failed dispatch of fn at pointer
+// ATTEMPTED, for the no-match report: the forward candidates written after
+// the word — a bare word right after it counted as the Atom a `/q` slot of
+// some overload would capture — and, when those are fewer than the smallest
+// overload's arity, the stack prefix beneath, in signature order. The report
+// used to describe only what the collection managed to FILL (the forward
+// candidates, else the stack prefix), so `5 $.name apply` — a lens's `dot`
+// over the 5 with `name` written after it — reported "the argument was 5 …
+// takes 2 arguments, but 1 was supplied" where the compiled lane's poly
+// window reported the two values the source wrote and the type failure on
+// the second: NUR172. The same window, both lanes.
+func attemptedWindow(tape *Tape, pointer int, fn *FnDefInfo) []Value {
+	return attemptedWindowOver(tape, pointer, fn, ReorderForwardCandidates(tape, pointer))
+}
+
+// attemptedWindowOver is attemptedWindow over a forward tuple already
+// collected — the runtime's concrete candidates, or the check pass's
+// carrier-aware ones (rematchWritten), so the two derive one window.
+func attemptedWindowOver(tape *Tape, pointer int, fn *FnDefInfo, written []Value) []Value {
+	if len(written) == 0 && pointer+1 < tape.Len() && fn != nil {
+		if w, err := AsWord(tape.At(pointer + 1)); err == nil && !w.ForceVal {
+			for i := range fn.Signatures {
+				s := &fn.Signatures[i]
+				if !s.Fallback && s.QuoteArgs != nil && s.QuoteArgs[0] {
+					atom := NewAtom(w.Name)
+					atom.pos = tape.At(pointer + 1).pos
+					written = append(written, atom)
+					break
+				}
+			}
+		}
+	}
+	prefix := ReorderCandidates(tape.Prefix(pointer))
+	if len(written) == 0 {
+		return prefix
+	}
+	if fn != nil {
+		minArity := -1
+		for i := range fn.Signatures {
+			s := &fn.Signatures[i]
+			if s.Fallback {
+				continue
+			}
+			if n := s.TotalArgs(); minArity < 0 || n < minArity {
+				minArity = n
+			}
+		}
+		for _, v := range prefix {
+			if len(written) >= minArity {
+				break
+			}
+			written = append(written, v)
+		}
+	}
+	return written
+}
+
 func (e *Engine) noMatchError(name string, fn *FnDefInfo, written []Value, pos SrcPos, reorder string) *BoruError {
 	return NoMatchDiag(e.effectiveSource(), name, fn, written, pos, reorder)
 }
@@ -3494,6 +3587,20 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	if match.Sig.ParkResult() {
 		e.Pointer += len(results)
 	}
+	// A user fn's single returned closure delivered as a HANDLER RESULT —
+	// the foreign-registry arm of buildFnBodyHandler, a module fn dispatched
+	// from an outer engine, runs the body through the CallBoru seam and hands
+	// its residual back here, where the same-registry call splices a frame
+	// — is PARKED as the frame's return is (fnReturnPark: a fn frame's
+	// Function return is a delivery, not a fresh use). Re-stepped here it
+	// dispatched over the values beneath the call: `3 M.d1 10` over a
+	// factory-shaped module fn was 13 for the main registry's `[3 fn
+	// (Integer)]` (NUR191). A frame splice never arrives as one value (its
+	// results open with the frame's paren), so the test is the frame path's
+	// own, over the one survivor.
+	if match.Sig.FnFrame() != nil && len(results) == 1 && FnValueDispatchesAtPointer(results[0]) {
+		e.Pointer++
+	}
 	return nil
 }
 
@@ -3986,6 +4093,20 @@ func (e *Engine) stepLiteral() error {
 		// never consumed it) — e.g. `(1 add 2)/s`. The modifier is a no-op on
 		// a non-function result: drop the marker.
 		if IsDispatchMod(e.Tape.At(valIdx)) {
+			// Under analysis the preceding value may be a Function-typed
+			// CARRIER (a member read the pass models — `m.f/v 5`), which
+			// execFnDefLiteral's peek never reaches (fnDefAtPointer fails
+			// on a carrier) while at run time the concrete value takes that
+			// peek and stays data. Quote the carrier as the peek would, or
+			// the pass's residual carries an unquoted fn lead beside the 5
+			// and the residual layout applies it (resolveDynamicApply):
+			// `6` compiled for the interpreter's `fn (Integer) 5` (NUR207).
+			if valIdx > 0 {
+				if prev := e.Tape.At(valIdx - 1); !prev.Quoted && (prev.Dynamic || prev.Carrier) {
+					prev.Quoted = true
+					e.Tape.Set(valIdx-1, prev)
+				}
+			}
 			e.Tape.Remove(valIdx)
 			return nil
 		}
@@ -6227,7 +6348,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 			// Check mode ANALYSES the body — always the interpreter path
 			// (running a stamped unit here would execute real side effects
 			// during static analysis).
-			result, err = capturedReg.CallBoruNamed(sig, args, captures, fnLabel)
+			result, err = capturedReg.CallBoruStrict(sig, args, captures, fnLabel, e.currentPos())
 		} else {
 			// Runtime: a module fn stamped at load (StampFnValueInPlace,
 			// RunModuleBody) runs its unit on the VM — the module
@@ -6237,11 +6358,23 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 			// to the old direct call. This retires the per-call interpreter
 			// hop for module-export application (the mini-redis client loop:
 			// `MiniRedis.cmd` per iteration).
-			result, err = InvokeCallback(capturedReg, sig, args, captures)
+			result, err = InvokeCallbackStrict(capturedReg, sig, args, captures, fnLabel, e.currentPos())
 		}
 		restoreCheck()
 		if err != nil {
 			return err
+		}
+		// A user fn's single returned closure is PARKED where it lands (the
+		// frame path's fnReturnPark: a fn frame's Function return is a
+		// delivery, not a fresh use), on this path too — the splice below
+		// re-presents the results to the main loop from the first argument's
+		// index, and a returned fn value stepped there dispatched over the
+		// values beneath: `3 M.d1 10` over a factory-shaped module fn was 13
+		// for the main registry's `[3 fn (Integer)]` (NUR191). One survivor
+		// that would dispatch at the pointer is stepped past.
+		park := 0
+		if len(result) == 1 && FnValueDispatchesAtPointer(result[0]) {
+			park = 1
 		}
 		// Splice: remove consumed args + FnDef, insert results.
 		if len(indices) == nArgs && nArgs > 0 {
@@ -6259,16 +6392,17 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 				}
 			}
 			e.Tape.Splice(dst, valIdx+1-dst, result...)
-			e.Pointer = firstArgIdx
+			e.Pointer = firstArgIdx + park
 		} else if nArgs == 0 { //covergate:allow execFnDefSig cross-registry 0-arg splice arm; see 5015.20 entry (§kernel)
 			e.Tape.Splice(valIdx, 1, result...)
+			e.Pointer += park
 		} else { //covergate:allow execFnDefSig cross-registry forward-fallback splice arm; see 5015.20 entry (§kernel)
 			argStart := valIdx - nArgs
 			if argStart < 0 { //covergate:allow execFnDefSig cross-registry forward-fallback splice arm; see 5015.20 entry (§kernel)
 				argStart = 0
 			}
 			e.Tape.Splice(argStart, valIdx+1-argStart, result...) //covergate:allow execFnDefSig cross-registry forward-fallback splice arm; see 5015.20 entry (§kernel)
-			e.Pointer = argStart
+			e.Pointer = argStart + park
 		}
 		return nil
 	}
@@ -7044,6 +7178,14 @@ func ForwardClaimProbeOn(win CollectWindow, reg *Registry, idx int) (Value, int)
 		return Value{}, probeNone
 	case IsOpenParen(v) || IsParenExpr(v) || IsReach(v) || IsInterpString(v) || IsXmlInterp(v):
 		return Value{}, probeOptimistic
+	case IsDispatchMod(v):
+		// A dispatch-modifier marker (`/v` / `/q` after a paren or a dotted
+		// path — the parser's Word/__DM) qualifies the value BEFORE it and
+		// is never an argument: it fell to the literal arm below, where an
+		// `Any` parameter matched it, so a `/v`-marked module member with
+		// an Any first parameter read as a call head that would claim its
+		// own marker and `def g M.up1/v` collected nothing (NUR206).
+		return Value{}, probeNone
 	case IsWord(v):
 		wi, werr := AsWord(v)
 		if werr != nil { //covergate:allow AsWord cannot fail after an IsWord guard — the payload IS a WordInfo (§engine)
@@ -7592,8 +7734,8 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 	}
 
 	// Collect resolved values between mark and move (this iteration's output).
-	for j := markIdx + 1; j < moveIdx; j++ {
-		cont.Results = append(cont.Results, e.Tape.At(j))
+	if err := e.collectLoopRegion(cont, markIdx, moveIdx); err != nil {
+		return err
 	}
 
 	// Advance iterator.
@@ -7651,6 +7793,33 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 	return nil
 }
 
+// collectLoopRegion appends the values a loop's body region left between
+// its mark and its move — this iteration's output — to the continuation's
+// results. A pending residual container among them — a list or map literal
+// the body left unevaluated, `for 2 [[(i add 1)] i]` — evaluates HERE, with
+// the iterator still bound, as the fn frame's DefCleanup evaluates its
+// body's residual in-frame (ResidualEvalsInFrame): the loop region is the
+// literal's frame. Left pending, it evaluated at the end of the run, after
+// the loop had unbound `i` — the interpreter's `undefined word: i`, or an
+// OUTER `i`'s value, where the compiled lane assembled a value per
+// iteration with the loop's own (NUR197). Everything else — a typed
+// container's inert shape included — is collected as it stands and
+// resolved where every other value resolves, the end-of-run sweep.
+func (e *Engine) collectLoopRegion(cont *ForCont, markIdx, moveIdx int) error {
+	for j := markIdx + 1; j < moveIdx; j++ {
+		v := e.Tape.At(j)
+		if isPendingResidualContainer(v) {
+			ev, err := e.autoEvalResidual(v)
+			if err != nil {
+				return err
+			}
+			v = ev
+		}
+		cont.Results = append(cont.Results, v)
+	}
+	return nil
+}
+
 // stepMoveWhile drives a while loop's alternating regions. A CONDITION
 // region's last value decides — truthy splices the body region, falsy
 // splices the accumulated results and ends the loop; a BODY region's
@@ -7664,8 +7833,8 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 	cont := info.Cont
 
 	if cont.WhileInBody {
-		for j := markIdx + 1; j < moveIdx; j++ {
-			cont.Results = append(cont.Results, e.Tape.At(j))
+		if err := e.collectLoopRegion(cont, markIdx, moveIdx); err != nil {
+			return err
 		}
 		cont.WhileInBody = false
 		e.spliceWhileRegion(markIdx, moveIdx, info, cont.WhileCond, "while cond")
@@ -7680,6 +7849,14 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 		delete(e.marks, info.To)
 		e.Tape.Splice(markIdx, moveIdx-markIdx+1)
 		e.Pointer = markIdx
+		// Anchored at the CONDITION operand — the thing that is wrong, and
+		// where the compiled lane's terminal trap anchors (whileloop.go
+		// records it at args[0].Pos()) — not at the pointer, which after the
+		// splice sits wherever the tape happens to (`while [] [1] end 5`
+		// underlined the 5; `while [] [1]` had no position at all; NUR130).
+		if p := cont.CondPos; p.Row > 0 {
+			return makeBoruErrorAt("runtime_error", "while: condition produced no value", "while", e.effectiveSource(), "", p)
+		}
 		return e.runtimeError("runtime_error", "while: condition produced no value", "while", "")
 	}
 	if CoerceBoolean(condResult) {
@@ -9512,40 +9689,29 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// Not statically definite — but every position is a runtime-stable
 		// value or a provenance-carrying carrier: record the runtime
 		// rematch (OpDispatchRematch), under three byte-identity guards.
-		// (1) The written tuple sigError renders (the carrier-aware twin
-		// of its forward-else-stack derivation) must be a CONTIGUOUS
-		// SLICE of the window, proven by ID identity — its offset+length
-		// ride as the spec's render bound (WrittenOff/NWritten), so a
-		// wider match view than the raise view (the local-add shape's
-		// match probed 3 positions where the error renders the single
-		// stack value at offset 0; the each shape's body operand sits at
-		// offset 1 after the region carrier) re-runs the match over the
-		// full window while rendering over the bounded slice. An empty
-		// tuple, or one absent from the window, cannot be rebuilt
-		// faithfully and declines. (2)+(3) The
+		// (1) The written tuple sigError renders — the attempted window,
+		// its carrier-aware twin (rematchWritten) — must be exactly window
+		// values, proven by ID identity, each at a distinct index; the
+		// indices ride as the spec's render tuple (DispatchSpec.Written), so
+		// a wider match view than the raise view (the local-add shape's
+		// match probed 3 positions where the error renders the single stack
+		// value at offset 0; the each shape's body operand sits at offset 1
+		// after the region carrier) re-runs the match over the full window
+		// while rendering over the tuple. A MIXED tuple — the forward
+		// operand and the stack value beneath it (`[1 2] each [dup mul]`
+		// under a variadic lead, `(x add 1)` over a gradual x) — is not a
+		// contiguous slice of the window (the window lists the stack run
+		// first), which is why the bound is an index tuple and not an
+		// offset (NUR172). An empty tuple, or one absent from the window,
+		// cannot be rebuilt faithfully and declines. (2)+(3) The
 		// two TAPE-state diagnostic layers the runtime rebuild has no
 		// access to — the tape reorder probe and the fn-shape
 		// typed-binding hint — must not apply; runtimeNoMatch rebuilds
 		// the value-based reorderHintFor itself. Declines leave the
 		// caller's compile failure.
-		written := e.rematchWritten()
-		if len(written) == 0 || len(written) > len(vals) {
-			return false
-		}
-		off := -1
-		for o := 0; o+len(written) <= len(vals) && off < 0; o++ {
-			match := true
-			for i := range written {
-				if written[i].ID != vals[o+i].ID {
-					match = false
-					break
-				}
-			}
-			if match {
-				off = o
-			}
-		}
-		if off < 0 {
+		written := e.rematchWritten(fn)
+		idx, ok := rematchRenderTuple(written, vals)
+		if !ok {
 			return false
 		}
 		if e.voidArgErrorFor(w.Name, pos) != nil {
@@ -9554,7 +9720,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		if e.reorderHint(w.Name, fn) != "" || e.IsFnShapeTypedBindingContext() {
 			return false
 		}
-		return es.RecordDispatchRematchValues(w.Name, vals, off, len(written), pos)
+		return es.RecordDispatchRematchValues(w.Name, vals, idx, pos)
 	}
 	// Serialise the FULL interpreter error into the trap so the compiled
 	// OpTrap raises byte-identical to the interpreter (Detail + spans +
@@ -9565,6 +9731,35 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		return es.RecordTrapErr(verr, pos)
 	}
 	return es.RecordTrapErr(e.sigError(w.Name, fn, pos), pos)
+}
+
+// rematchRenderTuple resolves the attempted written tuple to distinct
+// window indices — the render tuple a runtime rematch rebuilds it from. A
+// value is located by ID identity (the RecordDispatchRematchValues gate);
+// two values without an ID pair as equal, which is what the offset scan
+// this replaces compared. An empty tuple, or a value the window does not
+// hold, declines.
+func rematchRenderTuple(written, window []Value) ([]int, bool) {
+	if len(written) == 0 {
+		return nil, false
+	}
+	idx := make([]int, len(written))
+	used := make([]bool, len(window))
+	for i, v := range written {
+		found := -1
+		for j := range window {
+			if !used[j] && window[j].ID == v.ID {
+				found = j
+				break
+			}
+		}
+		if found < 0 {
+			return nil, false
+		}
+		used[found] = true
+		idx[i] = found
+	}
+	return idx, true
 }
 
 // argTypeSummary renders the operand types of a failed dispatch for the

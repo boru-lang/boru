@@ -603,7 +603,7 @@ func miniFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 	tail := []Value{fn, args[1], opts, NewEnd()}
 	if MiniLangFnFilterShaped(fnDef) {
 		// No trailing End on the partial splice — see miniPartialFn.
-		partial := miniPartialFromSigs("fn", "", fnDef.Signatures, tail)
+		partial := miniPartialFromSigs("fn", "", fnDef.OwnSigs(), tail)
 		return []Value{NewSplice(NewList([]Value{partial}))}, nil
 	}
 	return []Value{NewSplice(NewList(tail))}, nil
@@ -637,7 +637,7 @@ func miniPartialFn(r *Registry, kind, target string, tail []Value) (Value, bool)
 	if !ok || !MiniLangFnFilterShaped(info) {
 		return Value{}, false
 	}
-	return miniPartialFromSigs(kind, kind, info.Signatures, tail), true
+	return miniPartialFromSigs(kind, kind, info.OwnSigs(), tail), true
 }
 
 // miniPartialFromSigs builds the partially-applied filter Function from the
@@ -871,6 +871,15 @@ func parseFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 	return []Value{NewSplice(NewList(toks))}, nil
 }
 
+// The three contracts below read a fn value's OWN signatures (OwnSigs): a
+// value read through `/v`, a module member in place (`M.dbl`, `(M.up)`) or
+// a paren carries the dispatch AGGREGATE, whose synthesized 0-arg fallback
+// signature (Signature.Fallback) is not a declaration — it took every
+// aggregate-bearing spelling to `mini_bad_signature` / `emit_bad_signature`
+// ("every signature must start with the standard prefix", the fallback's
+// empty param list) where the def-bound spelling of the same fn (`def g
+// M.dbl/v`, whose install stores the own signatures) passed: NUR163. The
+// fn is the same fn however it is reached.
 // ParseLangFnSigWhy reports why fnDef cannot serve as a parser (a ParseLang)
 // — every signature must open with the STANDARD parser prefix
 // [source:(String|Any) opts:Map …] and declare exactly ONE return (a parser
@@ -880,7 +889,7 @@ func parseFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 // `parse` macro's fn-operand form (parseFnExpand), the compiled
 // parselang-fn-dispatch, and the NewParseLangFn value constructor's callers.
 func ParseLangFnSigWhy(fnDef FnDefInfo) string {
-	for _, sig := range fnDef.Signatures {
+	for _, sig := range fnDef.OwnSigs() {
 		if len(sig.Params) < 2 {
 			return "every signature must start [source:String opts:Map …]"
 		}
@@ -903,7 +912,7 @@ func ParseLangFnSigWhy(fnDef FnDefInfo) string {
 // boru:minilang's MiniLang.register validation (modules/minilang.go), so
 // both surfaces enforce byte-identical requirements.
 func MiniLangFnSigWhy(fnDef FnDefInfo) string {
-	for _, sig := range fnDef.Signatures {
+	for _, sig := range fnDef.OwnSigs() {
 		if len(sig.Params) < 2 ||
 			sig.Params[0].Type == nil || !sig.Params[0].Type.ConformsTo(TString) ||
 			sig.Params[1].Type == nil || !sig.Params[1].Type.ConformsTo(TMap) {
@@ -919,10 +928,11 @@ func MiniLangFnSigWhy(fnDef FnDefInfo) string {
 // call. Shared by MiniLang.register's member-type mint decision and the
 // fn-operand form's partial construction.
 func MiniLangFnFilterShaped(fnDef FnDefInfo) bool {
-	if len(fnDef.Signatures) == 0 {
+	own := fnDef.OwnSigs()
+	if len(own) == 0 {
 		return false
 	}
-	for _, sig := range fnDef.Signatures {
+	for _, sig := range own {
 		if len(sig.Params) != 3 {
 			return false
 		}
@@ -937,7 +947,7 @@ func MiniLangFnFilterShaped(fnDef FnDefInfo) bool {
 // fn-operand form (emitFnExpand) and the NewEmitLangFn value constructor
 // (modules/langvalue.go builds conforming values by construction).
 func EmitLangFnSigWhy(fnDef FnDefInfo) string {
-	for _, sig := range fnDef.Signatures {
+	for _, sig := range fnDef.OwnSigs() {
 		if len(sig.Params) < 2 {
 			return "every signature must start [value:Any opts:Map …] and return a value"
 		}
@@ -1039,6 +1049,16 @@ func emitHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 	if len(args) >= 2 &&
 		args[0].Parent.ConformsTo(TFunction) {
 		return emitFnExpand(args[0], args, r)
+	}
+	// A DYNAMIC lead under analysis — a container member read (`emit m.up
+	// {a:1}`), any value the pass cannot type — is an emitter or data only
+	// at run time, where the interpreter's expansion reads the concrete
+	// value. Committing it to the data route recorded `emitlang-auto` over
+	// the fn and the map transposed, a no-match where the interpreter ran
+	// the emitter (NUR170); degrade as the not-concrete Function lead does.
+	if len(args) >= 2 && args[0].Dynamic && r.Check.IsActive() {
+		macroDegradedAdvisory(r, "emit", "the emit lead is a dynamic value under analysis (an emitter or data only at run time)", args[0].Pos())
+		return []Value{NewDynamicCarrier(TString)}, nil
 	}
 	// Try to read the leading operand as a kind name (a /q'd bare word).
 	kind, isWord := "", false

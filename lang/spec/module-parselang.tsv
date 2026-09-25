@@ -129,3 +129,8 @@ import "boru:parselang"  def myp 42  parse myp 'x'	ERROR:parse_unknown_lang	a no
 import "boru:parselang"  parse (Function) 'x'	ERROR:signature_error	the Function TYPE literal is not a parser value
 import "boru:parselang"  def mkb fn [[] [Function] [fn [[a:Integer] [Integer] [a]]]]  parse (mkb) 'x'	ERROR:parse_bad_signature	a computed non-parser fn is rejected — expansion-time and dispatch-time contracts agree
 def zzvfn fn [[] [] [import "boru:parselang"  import "boru:string-util"  def calc (fn [[source:Any opts:Map] [List] [StringUtil.split ' ' (ParseLang.source source)]])  end  (parse calc {trace:true} 'x + y') get 1]] zzvfn	'+'	GRADUATED from frontier-capture-namespace.tsv (2026-09-17): a fn body that imports a module in its own scope, with an inner fn capturing the bound namespace at a macro-expanded `parse` call site — compiles with parity once every fn value carries its home registry (NUR152)
+#
+# §10  THE VALUE IS THE SAME FN HOWEVER IT IS REACHED (NUR163, closed
+#      2026-09-25): the contract reads the value's own signatures.
+import "boru:parselang"  import module [ def p fn [[source:String opts:Map] [Any] [source]] export "M" {p: p/v} ] end parse M.p 'xy'	'xy'	a module member read in place is a parser
+import "boru:parselang"  def p fn [[source:String opts:Map] [Any] [source]] end parse (p/v) 'xy'	'xy'	a `/v` value (the aggregate, fallback and all) is a parser

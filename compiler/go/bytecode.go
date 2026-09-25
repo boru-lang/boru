@@ -638,6 +638,30 @@ const (
 	// at this pc in the code's StoreNames table. A stored slot pushes exactly
 	// as OpPushLocal does.
 	OpPushLocalBound
+	// OpBindFnType is a FN unit's own type install, per call (Arg indexes
+	// Program.FnTypeBinds): the interpreter's `def T (class {})` inside a fn
+	// body mints a node and reserves its name part for the registry's
+	// lifetime, binds it for the frame (the frame's teardown pops the
+	// binding and keeps the part, so a SECOND call conflicts on it), and
+	// the check pass's single run of the body cannot replay that per call —
+	// the fn-body transition is kept out of the bind ledger, and a unit that
+	// recorded nothing for it dropped the mint (NUR167). The op re-installs
+	// the entry the check pass pushed: the name checked against the run's
+	// reservations exactly as the front door checks it (core.TypeNameFree —
+	// a live same-named binding is a redefinition and passes) and reserved
+	// (core.ReserveTypeParts), the check-time node bound as an ADOPTED
+	// entry (the node is the one the unit's OpPushType reads bake; an undef
+	// in the body must not retire it — the interpreter's per-call node is
+	// unobservable past the raise its second call is), and recorded on the
+	// dyn-bind trail so the unit's RET pops it, as the unit's own value
+	// defs (OpBindDynScope) pop: every body this op reaches runs in a frame
+	// of its own on the interpreter — a fn's, a lambda's, a stored body's
+	// CallBoru frame (Test.check-prop's gen body conflicts on its second
+	// trial) — while a body the interpreter runs WITHOUT cleanup is either
+	// keep-defs (`do`, its twin adopted at the root) or arm-resident (each /
+	// fold / scan, whose resident type twin mints per element and leaks).
+	// Zero stack effect.
+	OpBindFnType
 )
 
 // opcodeNames is the single source of each opcode's disassembler mnemonic,
@@ -701,6 +725,7 @@ var opcodeNames = [...]string{
 	OpBindTwin:             "BIND_TWIN",
 	OpDeoptIfFn:            "DEOPT_IF_FN",
 	OpPushLocalBound:       "PUSH_LOCAL_BOUND",
+	OpBindFnType:           "BIND_FN_TYPE",
 	OpBindResident:         "BIND_RESIDENT",
 	OpUndefDynScope:        "UNDEF_DYN_SCOPE",
 	OpReStepLanding:        "RESTEP_LANDING",
@@ -1083,6 +1108,14 @@ type XmlInterpSpec struct {
 // sits live on the unit sim for its downstream readers (the def consumes
 // nothing the compiled model still needs) — and POPS when the lowering
 // pushed a copy for the install (a baked literal, a promoted local).
+// FnTypeBindSpec describes one OpBindFnType (see the opcode's doc): Name is
+// the type binding, Entry the check-time entry the op re-installs (its
+// TypeDef the node the unit's reads bake).
+type FnTypeBindSpec struct {
+	Name  string
+	Entry core.DefEntry
+}
+
 type ResidentBindSpec struct {
 	Name  string
 	Twin  int
@@ -1112,6 +1145,19 @@ type GlobalBindSpec struct {
 	// value, at the region's statically-known depth (COMPILE FAILURE-CLOSURE S5).
 	Splice        bool
 	SpliceFromTop int
+	// AfterDynScope marks a write-back whose def ALSO emitted an
+	// OpBindDynScope at this site, just before it (emitDynBind: a root
+	// computed def under DynEnv, or one a dyn-scope reader names). That op
+	// installed the runtime value through the interpreter's own installer
+	// (bindDynScope → core.InstallDef); the write-back then ADOPTS that
+	// install as the persisted binding — it takes the entry off the
+	// dyn-bind trail, so no unwind pops it, and pushes nothing — instead
+	// of stacking a second entry under the name. Two entries were what
+	// the pair used to leave, and Registry.Lookup unions the entries of a
+	// name: a factory's fn value bound at the root read back under `do`
+	// as `fn f(String) or (String)` for the interpreter's `fn f(String)`
+	// (NUR168's second finding, 2026-09-25).
+	AfterDynScope bool
 }
 
 // ConstLocalRef backs OpPushConstFreshLocal (see the opcode doc): ConstIdx names
@@ -1149,25 +1195,21 @@ type TrapSpec struct {
 // dispatch site's source position, stamped onto the runtime-built
 // diagnostic so it labels the same site the interpreter's would.
 //
-// NWritten is the RENDER BOUND: how many LEADING window operands form the
-// WRITTEN tuple the interpreter's sigError renders (its forward-else-stack
-// derivation). The match view can be wider than the raise view — the
-// local-add shape's match probed 3 positions where its error renders the
-// single stack value — so the rematch re-runs the match over the FULL
-// window but builds the diagnostic over window[:NWritten]. Always explicit,
-// 1..NArgs (never the Go zero): the record gate proves the bound by ID
-// identity (the written tuple IS the window's leading slots) before
-// recording, and the VM rejects a spec outside the range.
+// Written is the RENDER TUPLE: the window indices, in render order, of the
+// operands the diagnostic reports as the written tuple — the attempted
+// window (core.attemptedWindow: the forward operands, then the stack values
+// beneath up to the smallest overload's arity), proven at record time to be
+// exactly window values by ID. The runtime rematch matches over the FULL
+// window but builds the diagnostic over the tuple. Always explicit — at
+// least one index, each inside 0..NArgs-1 and distinct; a spec with an
+// empty tuple is malformed. An index tuple rather than an offset because a
+// mixed tuple (a forward operand and the stack value beneath it) is not a
+// contiguous slice of a window that lists the stack run first.
 type DispatchSpec struct {
-	Word     string
-	NArgs    int
-	NWritten int
-	// WrittenOff is the 0-based window index where the written slice starts
-	// (the each shape's written tuple is the body operand at offset 1, after
-	// the region carrier). Valid domain 0..NArgs-NWritten; NWritten >= 1 is
-	// what makes the pair explicit — a spec with NWritten 0 is malformed.
-	WrittenOff int
-	Pos        core.SrcPos
+	Word    string
+	NArgs   int
+	Written []int
+	Pos     core.SrcPos
 }
 
 // GenericSpec describes one OpDispatchGeneric (see the opcode doc): the
@@ -1271,6 +1313,9 @@ type Program struct {
 	// then-live entry). Proven against the pass-left registry, corpus-wide,
 	// by the sandbox harness (test/go/langspec/bind_replay_sandbox_test.go).
 	BindTwinEntries []core.DefEntry
+	// FnTypeBinds backs OpBindFnType (a fn unit's per-call type install —
+	// see the opcode's doc).
+	FnTypeBinds []FnTypeBindSpec
 	// ResidentBinds backs OpBindResident (the arm-resident twins —
 	// §6.5's each-body recovery): one entry per resident install/teardown
 	// site inside a compiled per-invocation unit. Twin indexes BindTwins
@@ -1344,6 +1389,12 @@ type Program struct {
 	Debug     []core.SrcPos // 1:1 with Code
 	MaxStack  int           // a floor when the program loops (results accumulate)
 	NumLocals int
+	// LocalNames maps a MAIN-unit frame local slot to its source name — a
+	// loop variable, a promoted body-local def — where one is known; "" for
+	// a spill temp. The did-you-mean pool of a compiled undefined_word reads
+	// it (with a fn unit's CompiledFn.LocalNames), since a compiled local is
+	// a binding the interpreter's registry holds as a def (NUR146).
+	LocalNames []string
 	// DynEnv marks a program containing a dynamic code-body dispatch
 	// (CompileDynBody — tryRecordDynBody): the VM brackets every CALL_USER
 	// frame with an args-stack push so a body's runtime sub-run reads `args`
@@ -1395,6 +1446,13 @@ type DynApplyHead struct {
 	Name     string
 	Pos      core.SrcPos
 	NWritten int
+	// Leading marks the classified LEADING window `(g x)` (RecordDynApplyLead):
+	// the lead was written BEFORE its arguments. The op binds either window
+	// the same way, and the bit matters only where the lead fires over
+	// NOTHING — a 0-arg fn under the window (NUR176) — since the interpreter
+	// then steps a leading window's arguments AFTER the result lands and
+	// keeps a trailing window's beneath it.
+	Leading bool
 }
 
 type CompiledFn struct {
@@ -1681,6 +1739,14 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent.Leaf())
 		case OpCallNative:
 			s := p.Sigs[in.Arg]
+			if s.Sig == nil {
+				// A signature entry with no signature is a recorder defect
+				// (NUR162 measured one under a paren-grouped `word` bound to
+				// a fn value); the disassembler names it rather than crash
+				// the classifier that reads it.
+				fmt.Fprintf(sb, " s%-3d ; %s (NO SIGNATURE — recorder defect)", in.Arg, s.Word)
+				break
+			}
 			names := make([]string, s.Sig.TotalArgs())
 			for j, t := range s.Sig.ArgTypes() {
 				names[j] = t.Leaf()
@@ -1752,6 +1818,8 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			} else {
 				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn", in.Arg)
 			}
+		case OpBindFnType:
+			fmt.Fprintf(sb, " t%-3d ; fn-unit type bind %s", in.Arg, p.FnTypeBinds[in.Arg].Name)
 		case OpBindResident:
 			rb := p.ResidentBinds[in.Arg]
 			arm := "install"

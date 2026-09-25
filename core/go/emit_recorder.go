@@ -160,7 +160,7 @@ type EmitRecorder interface {
 	// purely check-time product (the mint happens once and the compiled
 	// stream carries nothing for it), so outside that bracket this records
 	// nothing and no other lane's event stream changes. Inactive: no-op.
-	RecordTypeInstall(name string, pos SrcPos)
+	RecordTypeInstall(name string, entry DefEntry, pos SrcPos)
 	FnBodyGuard() func()
 
 	// --- compile failure + site accounting --------------------------------------
@@ -263,7 +263,7 @@ type EmitRecorder interface {
 	RecordFallback(span FallbackSpan, ins []Value, out Value, pos SrcPos) bool
 	RecordTrap(code, detail, word, hint string, pos SrcPos) bool
 	RecordTrapErr(ae *BoruError, pos SrcPos) bool
-	RecordDispatchRematchValues(word string, vals []Value, writtenOff, nWritten int, pos SrcPos) bool
+	RecordDispatchRematchValues(word string, vals []Value, written []int, pos SrcPos) bool
 	RecordTypedBind(spec TypedBindSpec, in, out Value, pos SrcPos) (Value, bool)
 	RecordMakeList(r *Registry, ins []Value, out Value, pos SrcPos) bool
 	RecordMakeListInner(r *Registry, ins []Value, out Value, pos SrcPos) bool
@@ -451,6 +451,10 @@ type EmitRecorder interface {
 	NoteLiveRead(v *Value, name string, pos SrcPos)
 	NotifyNameRebound(name string)
 	RegisterLocal(id string) int
+	// NameLocal names the frame local RegisterLocal reserved for id — a loop
+	// variable's name, for the did-you-mean pool of a compiled
+	// undefined_word (NUR146). A local with no name stays anonymous.
+	NameLocal(id, name string)
 	RememberOriginal(v Value)
 	RememberStrippedOriginals(pre, stripped []Value)
 
@@ -550,7 +554,7 @@ func (inactiveEmit) BodyAnalysisGuard() func()                              { re
 func (inactiveEmit) KeepDefsBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) MultiRunBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) RecordDynUndef(string, SrcPos)                          {}
-func (inactiveEmit) RecordTypeInstall(string, SrcPos)                       {}
+func (inactiveEmit) RecordTypeInstall(string, DefEntry, SrcPos)             {}
 func (inactiveEmit) FnBodyGuard() func()                                    { return func() {} }
 
 func (inactiveEmit) TakeFragment() EmitFragmentRef { return nil }
@@ -597,7 +601,7 @@ func (inactiveEmit) NoteReStepLanding(Value, SrcPos)                          {}
 func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }
-func (inactiveEmit) RecordDispatchRematchValues(string, []Value, int, int, SrcPos) bool {
+func (inactiveEmit) RecordDispatchRematchValues(string, []Value, []int, SrcPos) bool {
 	return false
 }
 func (inactiveEmit) RecordTypedBind(_ TypedBindSpec, _, out Value, _ SrcPos) (Value, bool) {
@@ -640,6 +644,7 @@ func (inactiveEmit) NoteLiveRead(*Value, string, SrcPos)        {}
 func (inactiveEmit) NotifyNameRebound(string)                   {}
 func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)   {}
 func (inactiveEmit) RegisterLocal(string) int                   { return -1 }
+func (inactiveEmit) NameLocal(string, string)                   {}
 func (inactiveEmit) RememberOriginal(Value)                     {}
 func (inactiveEmit) RememberStrippedOriginals([]Value, []Value) {}
 

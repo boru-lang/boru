@@ -101,8 +101,8 @@ func TestDispatchRematchMatchDefers(t *testing.T) {
 // which now MATCH add's within-type [Boolean Boolean] CoreDefault and no
 // longer produce an unmatched dispatch). The record gate proves the written
 // tuple is the window's leading slice by ID and stamps its length as
-// DispatchSpec.NWritten; the compiled rematch re-runs the match over the
-// FULL window and renders over window[:NWritten] — byte-identical to the
+// DispatchSpec.Written; the compiled rematch re-runs the match over the
+// FULL window and renders over the tuple — byte-identical to the
 // interpreter, running COMPILED (formerly a whole-program compile failure).
 func TestDispatchRematchWideWindowRendersBounded(t *testing.T) {
 	const src = `def Flag (refine Boolean)  def f fn [[x:Flag] [Boolean] [def add fn [[a:Flag b:Flag] [Boolean] [a or b]] add x x]]  def v:Flag true  (f v) add none none`

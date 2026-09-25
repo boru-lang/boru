@@ -547,6 +547,33 @@ func (es *EmitState) residualReadHazard(v core.Value, op EmitOperand, frag *Emit
 	return ""
 }
 
+// firstHazard is the first non-empty verdict of a caller's hazard tests
+// over a residual value.
+func firstHazard(v core.Value, hazards []func(core.Value) string) string {
+	for _, h := range hazards {
+		if r := h(v); r != "" {
+			return r
+		}
+	}
+	return ""
+}
+
+// loopNamedFnHazard is a value-producing loop's own residual hazard: the
+// region has no per-value seat, so a NAMED fn value the body leaves
+// (`for 2 [g/v]`) is appended as data where the interpreter re-steps it
+// over the values beneath at the next iteration — `[fn g fn g]` compiled
+// for the interpreter's uncalled_function (NUR129). Only a named fn value
+// declines: an anonymous lambda or a factory's closure is parked data on
+// both lanes (NUR155's rule, `for 2 [(mk 1)]` is `[fn (Integer) fn
+// (Integer)]`), and a dynamic residual keeps its compile (the common `for
+// 3 [(f i)]` family) as the record asks.
+func loopNamedFnHazard(v core.Value) string {
+	if fd, isFn := v.Data.(core.FnDefInfo); isFn && !v.Quoted && !v.Carrier && !fd.Anonymous && fd.Name != "" {
+		return "is a named fn value the interpreter re-steps per iteration (NUR129)"
+	}
+	return ""
+}
+
 // residualStands settles one residual value of fragment frag for its
 // caller — a fn unit's finish, a branch arm, a loop body — and reports
 // whether it stands. ok is the caller's own resolution verdict (resolveOperand
@@ -559,7 +586,7 @@ func (es *EmitState) residualReadHazard(v core.Value, op EmitOperand, frag *Emit
 // compile failure-site census (test/go/langspec) is a downward ratchet over call
 // sites, and each hazard is another reason at the same four sites, not a
 // fifth site.
-func (es *EmitState) residualStands(prefix string, v core.Value, op EmitOperand, ok bool, frag *EmitFragment, what string) bool {
+func (es *EmitState) residualStands(prefix string, v core.Value, op EmitOperand, ok bool, frag *EmitFragment, what string, hazards ...func(core.Value) string) bool {
 	if es == nil {
 		return false
 	}
@@ -569,6 +596,10 @@ func (es *EmitState) residualStands(prefix string, v core.Value, op EmitOperand,
 		reason = what + " of unknown provenance"
 	case es.hazardLeadIn(v, frag):
 		reason = what + " is a fn-value lead a later dispatch collected past (NUR121)"
+	case firstHazard(v, hazards) != "":
+		// A caller's own hazard over the value — a loop's named fn-value
+		// residual (loopNamedFnHazard) — a fourth reason at the same site.
+		reason = what + " " + firstHazard(v, hazards)
 	default:
 		reason = es.residualReadHazard(v, op, frag)
 	}

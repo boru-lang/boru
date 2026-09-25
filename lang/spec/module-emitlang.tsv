@@ -96,3 +96,9 @@ import "boru:emitlang"  def px fn [[value:Any opts:Map] [String] [(opts get 'p')
 import "boru:emitlang"  emit (fn [[value:Any opts:Map] [Integer] [1]]) {a:1}	ERROR:emit_bad_signature	an emitter must return a String
 import "boru:emitlang"  emit (fn [[a:Integer b:Map] [String] ['x']]) {a:1}	ERROR:emit_bad_signature	the first parameter must be value:Any
 import "boru:emitlang"  emit (Function) {a:1}	ERROR:uncalled_function	the Function TYPE literal is not an emitter value (auto path, unchanged)
+#
+# §fnv  THE VALUE IS THE SAME FN HOWEVER IT IS REACHED (NUR163, closed
+#       2026-09-25): the contract reads the value's own signatures.
+import "boru:emitlang"  import module [ def up fn [[value:Any opts:Map] [String] ['UP']] export "M" {up: up/v} ] end emit M.up {a:1}	'UP'	a module member read in place is an emitter
+import "boru:emitlang"  import module [ def up fn [[value:Any opts:Map] [String] ['UP']] export "M" {up: up/v} ] end emit (M.up) {a:1}	'UP'	…and through a paren
+import "boru:emitlang"  import module [ def up fn [[value:Any opts:Map] [String] ['UP']] export "M" {up: up/v} ] end def g (M.up) end emit g {a:1}	'UP'	…and through a local def — the spelling that always worked

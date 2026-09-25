@@ -470,7 +470,14 @@ func accessorGetSignatures() []Signature {
 		// read. Field type resolved from the Resource schema (getResourceReturns).
 		{Args: []*Type{TAtom, TResource}, QuoteArgs: map[int]bool{0: true}, BarrierPos: 1, Impl: Go(getObjectHandler), ReturnsFn: getResourceReturns},
 		{Args: []*Type{TString, TResource}, BarrierPos: 1, Impl: Go(getObjectHandler), ReturnsFn: getResourceReturns},
-		// [Key | None] — chained-read propagation
+		// [Key | None] — chained-read propagation: a read through a missing
+		// member stays None (`{a:1}.b.c`), so the atom row carries QuoteArgs
+		// like every other receiver's — without it a BARE-WORD key over a
+		// run-time None was never collected, and the word stepped on its
+		// own as `undefined word: c` (NUR198: the interpreter's raise for
+		// the compiled lane's None; the string and materialised-atom keys
+		// always propagated).
+		{Args: []*Type{TAtom, TNone}, QuoteArgs: map[int]bool{0: true}, BarrierPos: 1, Impl: Go(getNoneHandler), Returns: []*Type{TNone}},
 		{Args: []*Type{TAny, TNone}, BarrierPos: 1, Impl: Go(getNoneHandler), Returns: []*Type{TNone}},
 		// [Key | Store] — check-mode-aware ReturnsFn picks up a
 		// typed carrier from a previously-set key.

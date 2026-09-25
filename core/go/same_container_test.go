@@ -26,8 +26,8 @@ func TestSameContainerIsIdentityWithTag(t *testing.T) {
 	if !SameContainer(refined, refined) {
 		t.Error("a refined flex map is the same container as itself")
 	}
-	if ExactEqual(refined, refined) {
-		t.Error("NUR142 still stands: ExactEqual does not reach a refined container's identity — retire this assertion with the fix")
+	if !ExactEqual(refined, refined) {
+		t.Error("NUR142 closed: ExactEqual reaches a refined container's identity through the family fold")
 	}
 	if SameContainer(m, refined) {
 		t.Error("the same store under two tags is two values")

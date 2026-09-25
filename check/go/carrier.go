@@ -2323,8 +2323,11 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	es := r.Check.Recorder()
 	loopCapture := es.ConsumeLoopArm()
 	if loopCapture {
-		for _, v := range bindVals {
+		for i, v := range bindVals {
 			es.RegisterLocal(v.ID)
+			if i < len(bindNames) {
+				es.NameLocal(v.ID, bindNames[i])
+			}
 		}
 		// Loop-carried def rebinds: a pre-loop `def` the body REBINDS gets a
 		// unit frame slot (NoteLoopCarried per round below), a store at each
@@ -2645,6 +2648,11 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	snapshot := r.Defs.Snapshot()
 	r.PushFnBaseline(snapshot)
 	defer r.PopFnBaseline()
+	// The type-part reservations a body-local `def T` makes come off with
+	// the body's bindings below (core.ForgetTypePartsSince): the analysis
+	// is not a call, and a reservation it left behind made the run's first
+	// call the conflicting one (NUR167).
+	parts := r.TypePartsSnapshot()
 
 	// Expose the params as the per-call args list so a body that reads
 	// `args` / `args.N` resolves them in check mode. The params ARE the
@@ -2767,6 +2775,7 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 		result = nil
 	}
 	r.Defs.Restore(snapshot)
+	r.ForgetTypePartsSince(parts)
 	return result
 }
 

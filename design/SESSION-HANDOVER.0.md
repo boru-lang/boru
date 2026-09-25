@@ -91,7 +91,77 @@ branch-carried def"**; the re-estimate is
    the flex shape is not threaded on the compile pass, the flex family's
    own item), apply-twice's two pending applies (L125), a def-bound
    factory result read back and applied (`def p (mk 1) end 5 p/v apply`,
-   the read's statement window), and NUR176's 0-arg runtime lead. Two
+   the read's statement window); NUR176's 0-arg runtime lead is CLOSED
+   2026-09-25 (the handoff log's "the 0-arg lead's window" entry: the
+   window op hands a name-read lead whose only overloads take no
+   argument to the island in written order, `h z/v` over `[(k inc/v)]`
+   is 8 on both lanes), and so is NUR168 the same day (the handoff log's
+   "the def's name on the value" entry: a def names the fn value it
+   binds whatever its representation — a factory's const lambda renders
+   `fn f(String)` on both lanes — the root write-back adopts its paired
+   dyn-scope install instead of stacking a second entry, and a
+   code-body call of the bound value by its bare word dispatches, where
+   it was an internal error), and NUR167 (the handoff log's "the analysis
+   is not a call" entry: a fn-body analysis's type-part reservations come
+   off with the body's bindings, so a type-minting callback body conflicts
+   on its second call as the interpreter's does, a fn unit re-installs the
+   type per call — `OpBindFnType`, a generic lowering, not a decline —
+   and a root type twin re-checks its name at its own position), and NUR166 (the handoff
+   log's "the value's own frame" entry: a fn value applied by a
+   higher-order word reads its own call args as `args`, through a `do`
+   body inside it too — the token seam brackets a unit that carries a
+   param contract with the value's args), NUR163 (the handoff log's "the
+   value's own signatures" entry: the mini / emit / parse contracts read
+   a fn value's own signatures, so a module member in place, a paren or a
+   `/v` read — all carrying the dispatch aggregate's fallback — pass as
+   the def-bound spelling does) and NUR162 (the handoff log's "the 0-arg
+   apply at a paren's tail" entry: the trailing apply's window trim
+   declines a 0-arg callee instead of recording a signature-less native
+   call the disassembler crashed on; the sweep's crash ceiling is 0),
+   NUR206 (the handoff log's "the marker is no argument" entry: the
+   forward claim probe answers no claim for a reach's `/v` marker, so a
+   module member with an Any first parameter binds through `def`) and
+   NUR205 (the handoff log's "the named value's no-match on the seam"
+   entry: a named fn value's no-match on the callback seam raises
+   uncalled_function as the word does, past step 0 too), and NUR207 (the
+   handoff log's "the marker's intent on the value" entry: the check pass
+   quotes the dynamic member read a `/v` marker qualifies, and the
+   residual layout leaves a quoted lead alone — `m.f/v 5` is data on
+   both lanes), NUR172 (the handoff log's "the attempted window" entry:
+   the interpreter's no-match report describes the window the dispatch
+   attempted, the poly window's own layout) and NUR170 (the handoff
+   log's "the dynamic emit lead" entry: the emit macro degrades a dynamic
+   lead under analysis, a wrong answer turned into a loud decline),
+   NUR158 (the wrap words bridge a compiled closure to its fn
+   definition), NUR157 (two references to one predicate unify as the
+   type), NUR154 (the check pass no longer traps a computed `case` clause
+   list — a sound decline, the sweep and corpus pins retired) and NUR147
+   (the poly seat retries the word's other arities before it defers),
+   NUR142 (the handoff log's "the family of a refinement" entry: a
+   refined container is eq to itself — equality folds a user refinement
+   to its kernel ancestor), NUR146 ("the frame's names": the compiled
+   undefined_word's did-you-mean pool reads the unit's frame-local names
+   through the new `NameLocal` seam and `Program.LocalNames`), NUR135
+   ("the last pop": a minted node is retired when the last live binding
+   holding it pops), NUR118 ("the call's own token": a fn's
+   return-contract error anchors at the call word on both lanes — the
+   recorded call carries the word's position and the RET stamps at the
+   caller's return address; the `(g 5)` fn-value seam anchors at its
+   lead's read), NUR122 ("the read's own token": every fn-value apply
+   witness agrees on both lanes, message and position), NUR130 ("the condition's own token": `while`'s empty-condition
+   raise anchors at the operand interpreted too), NUR080 and NUR114
+   (verified retired on the current tree — the typed def keeps its brand
+   in both orders, the compiled caret is the token's width — with the
+   acceptance pins the records asked for); NUR129 is narrowed (the named
+   witness declines soundly through the check pass's own diagnostic),
+   and NUR141 and NUR134 carry traced notes (the predicate admission is
+   `RunPredicate`'s analysis-mode arm; the module fn value's caught
+   no-match needs a unit-scoped trap) with their rulings still owed. The
+   milestone batch of 2026-09-25 also re-derived the compiled twin of
+   NUR172's attempted window (`rematchWritten` feeds the poly no-match
+   spec and the runtime rematch, whose render bound is an index tuple
+   now) and scoped NUR207's quoting to dynamic and carrier values;
+   NUR150 and NUR151, closed in their own PRs, are marked FIXED. Two
    silent miscompiles the chain's probes found, both CLOSED now: NUR180
    (a trailing paren apply's Any result inside an UNNAMED-param frame,
    consumed by a typed word — `xs each [(2 (mk 1)) mul 10]` was 10 for 30;
@@ -226,7 +296,13 @@ branch-carried def"**; the re-estimate is
    leave the census; NUR197 and NUR198 recorded on the way — a loop
    body's residual literal over the loop variable, and a dotted read
    through a missing member, each the interpreter's undefined_word for
-   the compiled lane's value); the keep-defs body lands the same day
+   the compiled lane's value — both CLOSED 2026-09-25, the handoff log's
+   entries of that date: the loop region evaluates its residual with the
+   iterator bound, and the None receiver's atom row quotes a bare-word
+   key; NUR202 and NUR203 found and closed with the first, NUR191 closed
+   the same day — a named module fn call enforces the frame's return
+   count on every path and parks its single returned closure — with
+   NUR204 recorded pending); the keep-defs body lands the same day
    (the handoff log's "NUR199 closed — the keep-defs body" entry: a `do`
    body's defs install as kept dynamic-scope bindings the enclosing frame
    pops, the enclosing loop refreshes its carried slot after the call and

@@ -351,3 +351,24 @@ def C class {a:Integer}  typeof C	Class	…and the class kind joins the rule (ob
 [10 20] each [drop def Tbig (Integer gt 5) 7]	[7 7]	a type def inside an each body
 def tlim 5  [10 20] each [drop def Tlim (Integer gt tlim) 7]	[7 7]	…its bound may read a binding from OUTSIDE the body: one value for the whole loop
 [10 20] each [drop def Tlo (Integer gt 10) def Thi (Integer lt 20) def tx:(Tlo tand Thi) 15 tx]	[15 15]	…and two type defs feed a typed value def in the same body
+#
+# A TYPE DEF INSIDE A FN BODY reserves its name part for the registry's
+# lifetime (the frame's teardown pops the binding and keeps the part), so
+# the body's SECOND call conflicts — the language's rule, both lanes. The
+# check pass's analysis of the body is not a call: its reservation comes
+# off with the body's bindings, so the run's first call is the first mint
+# (NUR167, closed 2026-09-25: the compiled lane raised at each's element 0
+# for the interpreter's element 1, and a single call raised where the
+# interpreter answered). A root type def after such a call re-checks its
+# name at its own position, as the interpreter's def does.
+def f fn [[n:Integer] [Integer] [def T (class {}) n]] end each f/v [1]	[1]	one call of a type-minting body answers: the analysis reserved nothing
+def f fn [[n:Integer] [Integer] [def T (class {}) n]] end each f/v [1 2]	ERROR:conflicts with an existing type name	…the second call conflicts on the part the first reserved
+def g fn [[] [Integer] [def T (class {}) undef T 1]] end each g/v [1 2]	ERROR:conflicts with an existing type name	…an undef inside the body retires the node, not the reservation
+def f fn [[n:Integer] [Integer] [def T (class {}) n]] end each f/v [1] def T (class {}) 5	ERROR:conflicts with an existing type name	a root def of the name after the call conflicts at the root def
+def f fn [[n:Integer] [Integer] [def T (class {}) n]] end def T (class {}) each f/v [1 2]	[1 2]	…before the calls, the body's def is a redefinition of the live binding each time
+def f fn [[n:Integer] [Integer] [def T (class {}) n]] end f 1	1	…a direct call the same: the unit re-installs the type per call
+def f fn [[n:Integer] [Integer] [def T (class {}) n]] end f 1 f 2	ERROR:conflicts with an existing type name	…and its second call conflicts
+def rpt fn [[] [Any] [do [def Big Integer 15 is Big]]] (rpt) (rpt)	true error(type: name part "Big" in "Big" conflicts with an existing type name)	a `do` body inside the fn leaks its type to the fn's frame, which pops it: the second call conflicts (trapped by its `do`)
+# §NUR080  a typed def over a literal keeps its newtype brand, and the bare literal keeps its own, in both source orders
+def UserId (refine Integer)  def b:UserId 9  typeof 9  typeof b  b is UserId	Integer UserId true	the literal first: the bare 9 is an Integer, the binding a UserId
+def UserId (refine Integer)  def b:UserId 9  typeof b  typeof 9	UserId Integer	the binding first: the literal does not acquire the brand

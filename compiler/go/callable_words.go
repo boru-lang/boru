@@ -382,7 +382,19 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// STARTED from (unit_memo.go): claimed here, applied around every
 	// compile inside recordClosureDispatch.
 	env := es.takeBodyEnv(body, spec)
-	if !recordClosureDispatch(r, word, spec, sig, args, bodyToks, inputs, nil, captures, ClosureInValue, extraLamSlots, outs, nil, nil, false, pos, env) {
+	// A TOKEN body's residual evaluates in the body's own run — the
+	// InvokeBody seam's sub-engine sweeps a pending container at its end,
+	// with the body's inputs and bindings live — never deferred past it:
+	// bodyInFrame is true, the interpreter's rule for a body that is not an
+	// anonymous lambda (ResidualEvalsInFrame). Passed false, a single
+	// container literal body (`do [[i]]` under a `for`, `do [{a:i}]`)
+	// analysed as a deferring lambda: its residual recorded no assembly,
+	// the closure declined on the unknown provenance, and the dyn-body
+	// backstop baked the literal as a const the handler re-ran through the
+	// interpreter — where the loop's `i` is a frame slot the registry never
+	// held, `error(undefined word: i)` for the interpreter's `[0]` (NUR197's
+	// do-body twin on the compiled lane).
+	if !recordClosureDispatch(r, word, spec, sig, args, bodyToks, inputs, nil, captures, ClosureInValue, extraLamSlots, outs, nil, nil, true, pos, env) {
 		return false
 	}
 	// A once-run defs-keeping body (`do`) compiled to a closure unit makes

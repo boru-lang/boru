@@ -61,3 +61,12 @@ import module [def lim fn [[n:Integer] [Integer] [2]] def big fn [[e:Map] [Boole
 #
 # The negative: scope travels with the VALUE, it does not open the module.
 import module [def hidden fn [[n:Integer] [Integer] [n add 1]] def only fn [[n:Integer] [Integer] [hidden n]] export "A" {only: only/v}] end hidden 5	ERROR:undefined_word	a module-private word stays private — the importer cannot reach `hidden`, only the exported value can
+#
+# §5  A `/v` ON A MODULE MEMBER IS DATA WHEREVER IT IS WRITTEN (NUR206, closed
+#     2026-09-25): the reach's dispatch-modifier marker is never an argument,
+#     so a member whose first parameter is `Any` binds through `def` as a
+#     bare `/v` word always did.
+import module [def up1 fn [[value:Any] [String] ['UP']] export "M" {up1: up1/v}] end def g M.up1/v end g 1	'UP'	a `/v`-marked member with an Any first parameter binds as a def's forward argument
+import module [def up fn [[value:Any opts:Map] [String] ['UP']] export "M" {up: up/v}] end def g M.up/v end g 1 {}	'UP'	…two parameters, the same
+import module [def up1 fn [[value:Any] [String] ['UP']] export "M" {up1: up1/v}] end 7 M.up1/v	7 fn [[value:Any][String]['UP']]	…and on its own it is data over the stack
+import module [def up1 fn [[value:Any] [String] ['UP']] export "M" {up1: up1/v}] end M.up1 5	'UP'	the unmarked member still calls

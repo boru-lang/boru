@@ -15,6 +15,17 @@ type vmCompiledRuntime struct{}
 func init() { core.InstallCompiledRuntime(vmCompiledRuntime{}) }
 
 func (vmCompiledRuntime) InvokeCompiled(r *core.Registry, sig *core.Signature, args []core.Value) ([]core.Value, error, bool) {
+	return invokeCompiled(r, sig, args, false)
+}
+
+// InvokeCompiledStrict is InvokeCompiled for a NAMED fn call: the unit's
+// root RET takes the frame's return contract (NUR191, invokeCompiledUnit's
+// named entry).
+func (vmCompiledRuntime) InvokeCompiledStrict(r *core.Registry, sig *core.Signature, args []core.Value) ([]core.Value, error, bool) {
+	return invokeCompiled(r, sig, args, true)
+}
+
+func invokeCompiled(r *core.Registry, sig *core.Signature, args []core.Value, named bool) ([]core.Value, error, bool) {
 	ref := compiler.CompiledRef(sig)
 	if ref != nil && ref.Prog != nil && !ref.DepsFresh(r) {
 		ref = ref.JitRestamp(r)
@@ -22,7 +33,7 @@ func (vmCompiledRuntime) InvokeCompiled(r *core.Registry, sig *core.Signature, a
 	if ref == nil || ref.Prog == nil {
 		return nil, nil, false
 	}
-	res, err, ran := invokeCompiledUnit(r, ref, args)
+	res, err, ran := invokeCompiledUnit(r, ref, args, named)
 	if !ran {
 		return nil, nil, false
 	}

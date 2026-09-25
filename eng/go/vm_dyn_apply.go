@@ -205,7 +205,7 @@ func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout i
 	if ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) {
 		return nil, false, nil
 	}
-	res, _, err = vc.runForeignUnit(ref, args)
+	res, _, err = vc.runForeignUnit(ref, args, false)
 	return res, true, err
 }
 

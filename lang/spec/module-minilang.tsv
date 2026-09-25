@@ -332,3 +332,13 @@ import "boru:minilang"  ("x🎉y" mini re '🎉').fst.e	2	…so the match spans 
 import "boru:minilang"  ("日a" mini re '').n	3	zero-width matches land at every rune boundary: 0 1 2
 import "boru:minilang"  ("日a" mini re '').lst.i	2	…the last sits at rune 2 (byte 4), with i == e
 import "boru:minilang"  ("日a" mini re '').lst.e	2	…zero-width: e equals i at the converted boundary
+#
+# §fnv  THE VALUE IS THE SAME FN HOWEVER IT IS REACHED (NUR163, closed
+#       2026-09-25): the contract reads the value's OWN signatures, so a
+#       value carrying the dispatch aggregate — a `/v` read, a module member
+#       in place, a paren — passes exactly as the def-bound spelling does.
+import "boru:minilang"  def dbl fn [[src:String opts:Map] [String] [src add src]] end mini (dbl/v) 'ab'	'abab'	a `/v` value (the aggregate, fallback and all) is the fn
+import "boru:minilang"  import module [ def dbl fn [[src:String opts:Map] [String] [src add src]] export "M" {dbl: dbl/v} ] end mini M.dbl 'ab'	'abab'	a module member read in place
+import "boru:minilang"  import module [ def dbl fn [[src:String opts:Map] [String] [src add src]] export "M" {dbl: dbl/v} ] end mini (M.dbl) 'ab'	'abab'	…and through a paren
+import "boru:minilang"  import module [ def dbl fn [[src:String opts:Map] [String] [src add src]] export "M" {dbl: dbl/v} ] end def g M.dbl/v end mini g 'ab'	'abab'	…and through a local def of the member — the spelling that always worked
+import "boru:minilang"  def f3 fn [[src:String opts:Map subject:Any] [Any] [subject]] end 'zz' mini (f3/v) 'ab'	'zz'	a FILTER-shaped `/v` value builds the partial over its own signatures (the fallback used to crash the build)

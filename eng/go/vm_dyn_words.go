@@ -79,6 +79,21 @@ func (vc *vmContext) nameStoredClosure(v core.Value, name string) core.Value {
 // for a param exactly as installDef names a def, and a compiled closure
 // there rendered `fn (Any)` for the interpreter's `fn g(Any)`).
 func nameClosureValue(v core.Value, name string) core.Value {
+	// A fn VALUE with its own definition — a factory's non-capturing lambda
+	// baked as a const, a `/v` reference — is renamed as installDef renames
+	// it (`fnDef.Name = name`, unconditionally): a def-bound value that
+	// escapes as data renders under the def's name on both lanes (`def f
+	// (mk 1)  each f/v [1 2 3]` read `fn (String)` for the interpreter's
+	// `fn f(String)`, NUR168). The copy in this slot is renamed; the pooled
+	// const keeps its own payload, as the interpreter's binding copies do.
+	if fd, ok := v.Data.(core.FnDefInfo); ok {
+		if fd.Name == name {
+			return v
+		}
+		fd.Name = name
+		v.Data = fd
+		return v
+	}
 	cl, ok := v.Data.(core.ClosurePayload)
 	if !ok || cl.RetName == name {
 		return v

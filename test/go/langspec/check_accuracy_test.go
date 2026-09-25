@@ -61,6 +61,11 @@ const pinnedFalsePositives = 16 // RAISED 15 -> 16 (2026-09-17, NUR152's corpus 
 // Keep entries sorted by filename so new files slot in predictably. The
 // aggregate history is archived in design/CHECK-ACCURACY-RATCHET.10.md.
 var unflaggedPins = map[string]int{
+	// callbacks.tsv: 3 ERROR rows, added 2026-09-25 with NUR205 (a named fn
+	// value's no-match on the callback seam raises uncalled_function as the
+	// interpreter's step of `h/v` does) — runtime raises over the callback's
+	// per-element candidates, which the checker's static pass cannot see.
+	"callbacks.tsv": 3,
 	// fn-locals-scope.tsv: 4 ERROR rows, added 2026-09-22 with the
 	// branch-carried def (compiler/go/branch_carried.go), NUR110's closure —
 	// a name bound inside ONE arm of a branch the checker cannot decide,
@@ -299,7 +304,7 @@ var unflaggedPins = map[string]int{
 	"scalar-micron-ops.tsv": 1,
 	"storage.tsv":           1,
 	"usurp.tsv":             1,
-	"user-types.tsv":        1,
+	"user-types.tsv":        5,
 	// valof.tsv (was ref.tsv, pinned at 1): 1 → 2 with the /v totality
 	// rows, then 2 → 0 with NUR073's BROAD park (2026-08-24). §2's
 	// paren rows were rewritten from "the paren re-steps and fires" to

@@ -235,6 +235,13 @@ func forceArityHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 	n, _ := args[0].AsConcreteInteger()
 	wrapped, ok := core.ForceArityFunction(args[1], int(n))
 	if !ok {
+		// A compiled closure bridges to its fn definition first (NUR158;
+		// see rebarrierResult).
+		if fnv, bridged := ClosureAsFnDef(reg, args[1]); bridged {
+			wrapped, ok = core.ForceArityFunction(fnv, int(n))
+		}
+	}
+	if !ok {
 		if out, gradual := checkModeGradualFn(reg, args[1]); gradual {
 			recordGradualWrap(reg, "force-arity", args, out)
 			return out, nil
@@ -288,6 +295,17 @@ func forceArityAtomHandler(args []Value, _ map[string]Value, _ []Value, reg *Reg
 
 func rebarrierResult(wrap func(Value) (Value, bool), v Value, word string, reg *Registry) ([]Value, error) {
 	wrapped, ok := wrap(v)
+	if !ok {
+		// A compiled CLOSURE (a capturing lambda a factory returned, read
+		// out of a container — `m.a/s 10 3`) is a ClosurePayload, not the
+		// FnDefInfo the wrap asserts; the value-path bridge hands back the
+		// fn definition whose dispatch runs the closure, and the wrapper
+		// stores that as it stores any fn (NUR158: `illegal_ref` compiled
+		// where the interpreter wrapped the same value).
+		if fnv, bridged := ClosureAsFnDef(reg, v); bridged {
+			wrapped, ok = wrap(fnv)
+		}
+	}
 	if !ok {
 		if out, gradual := checkModeGradualFn(reg, v); gradual {
 			// Sound from the by-name (rebarrierAtom) entry too: the recorded
@@ -519,6 +537,13 @@ func rebindHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]
 // immediately when args follow, and stays inert when captured with quote.
 func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	wrapped, ok := core.UsurpFunction(args[0])
+	if !ok {
+		// A compiled closure bridges to its fn definition first (NUR158;
+		// see rebarrierResult).
+		if fnv, bridged := ClosureAsFnDef(reg, args[0]); bridged {
+			wrapped, ok = core.UsurpFunction(fnv)
+		}
+	}
 	if !ok {
 		if out, gradual := checkModeGradualFn(reg, args[0]); gradual {
 			recordGradualWrap(reg, "usurp", args, out)

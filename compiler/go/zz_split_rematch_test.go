@@ -9,10 +9,10 @@ import (
 func TestW8DispatchRematchDeclines(t *testing.T) {
 	// Inactive recorder + interface no-op.
 	var nilES *EmitState
-	if nilES.RecordDispatchRematchValues("w", []core.Value{core.NewInteger(1)}, 0, 1, core.SrcPos{}) {
+	if nilES.RecordDispatchRematchValues("w", []core.Value{core.NewInteger(1)}, []int{0}, core.SrcPos{}) {
 		t.Error("inactive EmitState must decline")
 	}
-	if core.TheInactiveEmit.RecordDispatchRematchValues("w", []core.Value{core.NewInteger(1)}, 0, 1, core.SrcPos{}) {
+	if core.TheInactiveEmit.RecordDispatchRematchValues("w", []core.Value{core.NewInteger(1)}, []int{0}, core.SrcPos{}) {
 		t.Error("the inactive recorder must decline")
 	}
 
@@ -21,38 +21,42 @@ func TestW8DispatchRematchDeclines(t *testing.T) {
 	defer done()
 	es, _ := r.Check.Recorder().(*EmitState)
 	es.BindRegistry(r)
-	if es.RecordDispatchRematchValues("w", nil, 0, 1, core.SrcPos{}) {
+	if es.RecordDispatchRematchValues("w", nil, []int{0}, core.SrcPos{}) {
 		t.Error("an empty window must decline")
 	}
 	// A dynamic value with no provenance fails resolveOperand.
 	dyn := core.NewCarrier(core.TAny)
 	dyn.Dynamic = true
 	dyn.ID = ""
-	if es.RecordDispatchRematchValues("w", []core.Value{dyn}, 0, 1, core.SrcPos{}) {
+	if es.RecordDispatchRematchValues("w", []core.Value{dyn}, []int{0}, core.SrcPos{}) {
 		t.Error("an unresolvable operand must decline")
 	}
-	if es.RecordDispatchRematch("", []EmitOperand{ConstOperand(0)}, 0, 1, core.SrcPos{}) {
+	if es.RecordDispatchRematch("", []EmitOperand{ConstOperand(0)}, []int{0}, core.SrcPos{}) {
 		t.Error("an empty word must decline")
 	}
-	if es.RecordDispatchRematch("w", nil, 0, 1, core.SrcPos{}) {
+	if es.RecordDispatchRematch("w", nil, []int{0}, core.SrcPos{}) {
 		t.Error("no operands must decline")
 	}
-	// The render bound must be a contiguous in-window slice: a zero length,
-	// a negative offset, and a slice past the window all decline.
-	if es.RecordDispatchRematch("w", []EmitOperand{ConstOperand(0)}, 0, 0, core.SrcPos{}) {
-		t.Error("a zero render bound must decline")
+	// The render tuple must be well-formed over the window: an empty tuple,
+	// a negative index, an index past the window and a repeated index all
+	// decline.
+	if es.RecordDispatchRematch("w", []EmitOperand{ConstOperand(0)}, nil, core.SrcPos{}) {
+		t.Error("an empty render tuple must decline")
 	}
-	if es.RecordDispatchRematch("w", []EmitOperand{ConstOperand(0)}, -1, 1, core.SrcPos{}) {
-		t.Error("a negative render offset must decline")
+	if es.RecordDispatchRematch("w", []EmitOperand{ConstOperand(0)}, []int{-1}, core.SrcPos{}) {
+		t.Error("a negative render index must decline")
 	}
-	if es.RecordDispatchRematch("w", []EmitOperand{ConstOperand(0)}, 1, 1, core.SrcPos{}) {
-		t.Error("a render slice past the window must decline")
+	if es.RecordDispatchRematch("w", []EmitOperand{ConstOperand(0)}, []int{1}, core.SrcPos{}) {
+		t.Error("a render index past the window must decline")
+	}
+	if es.RecordDispatchRematch("w", []EmitOperand{ConstOperand(0), ConstOperand(1)}, []int{0, 0}, core.SrcPos{}) {
+		t.Error("a repeated render index must decline")
 	}
 	// First trap wins: with a trap latched, a second record reports owned.
-	if !es.RecordDispatchRematch("w", []EmitOperand{ConstOperand(0)}, 0, 1, core.SrcPos{}) {
+	if !es.RecordDispatchRematch("w", []EmitOperand{ConstOperand(0)}, []int{0}, core.SrcPos{}) {
 		t.Fatal("the first rematch record must land")
 	}
-	if !es.RecordDispatchRematch("w2", []EmitOperand{ConstOperand(1)}, 0, 1, core.SrcPos{}) {
+	if !es.RecordDispatchRematch("w2", []EmitOperand{ConstOperand(1)}, []int{0}, core.SrcPos{}) {
 		t.Error("a second record after the latch must report owned (true), not re-record")
 	}
 

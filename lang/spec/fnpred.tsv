@@ -88,3 +88,10 @@ def Positive fnpred n:Integer [if (n gt 0) [n] [None]]  0 is Positive	false	…a
 #     question: a bare node passes the gate as the type it is.
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  "x" is Even	false	the input-type gate rejects without running the body
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  Even is Even	true	a type literal is the type itself, not an inhabitant
+#
+# TWO REFERENCES TO ONE PREDICATE ARE THE SAME TYPE (NUR157, closed 2026-09-25):
+# a `[:Pos]` pattern unifies with a `[:Pos]` pattern under a registry as it
+# does without one; a different predicate still fails, membership is unchanged.
+def Pos fnpred n:Integer [n gt 0] [:Pos] [:Pos] unify	[:fn [[n:Integer][Any][word(n) word(gt) 0]]] true	the same predicate's typed-list patterns unify as the type (NUR157)
+def Pos fnpred n:Integer [n gt 0] def Neg fnpred n:Integer [n lt 0] [:Neg] [:Pos] unify	'~unify-fail' false	…and two different predicates do not
+def Pos fnpred n:Integer [n gt 0] [1 -2] [:Pos] unify	'~unify-fail' false	membership is unchanged

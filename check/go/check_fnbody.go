@@ -767,7 +767,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// closure uses it: the snapshot at the top of
 				// BuildFnBodyReturnsFn is what the closure is entitled to read.
 				noteBakedCallTarget(es, r, nameCopy)
-				es.RecordUserCall(fnUnit, call.word, args, nil, pos, call.pos)
+				es.RecordUserCall(fnUnit, call.word, args, nil, callAnchor(call.pos, pos), call.pos)
 				return nil
 			}
 			// A ZERO-declared-return POLY set (COMPILE FAILURE-CLOSURE.0 §6a): every
@@ -937,6 +937,21 @@ func noteBakedCallTarget(es core.EmitRecorder, r *core.Registry, name string) {
 }
 
 // recordUserCallOrApply records a compiled-unit dispatch at a ReturnsFunc
+// callAnchor is the source position a recorded user call carries into the
+// CALL_USER instruction's debug entry: the call WORD's, where the
+// interpreter's ReturnCheck marker anchors a return-contract error (`h` in
+// `def h fn [[][Integer][1 2]] end h`, 1:33) — the first argument's only
+// for a call whose word carries none. Before this the entry was the first
+// argument's position, so a 0-argument call's contract error rendered
+// "source position unknown" and a 1-argument call's anchored at the
+// argument (NUR118).
+func callAnchor(word, arg core.SrcPos) core.SrcPos {
+	if word.Row > 0 {
+		return word
+	}
+	return arg
+}
+
 // record site: the §4.3 fn-value apply fallback where the call qualifies
 // (the outs slice is then COPIED with the freshened carrier in slot 0),
 // else the ordinary RecordUserCall. Returns the outs to hand downstream.
@@ -961,7 +976,7 @@ func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, 
 		return outs
 	}
 	noteBakedCallTarget(es, r, name)
-	es.RecordUserCall(fnUnit, call.word, args, outs, pos, call.pos)
+	es.RecordUserCall(fnUnit, call.word, args, outs, callAnchor(call.pos, pos), call.pos)
 	return outs
 }
 

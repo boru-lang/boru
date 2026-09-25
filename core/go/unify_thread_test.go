@@ -95,54 +95,73 @@ func TestUnifyThreadedBindingBodyKeepsRegistry(t *testing.T) {
 // The fn-shape structural rule (FnSigSatisfiesSpec's Pattern-compatibility
 // unify) runs from INSIDE the chain — through the ShapeFnUndef fold for an
 // anonymous constraint and through FnUndefUnifier for a named fn-shape
-// node — so its pattern pair is decided with the chain's registry: a
-// predicate-typed list child (`[:Pos]` against `[:Pos]`) resolves the
-// predicate when armed and is settled structurally when unarmed. The
+// node — so its pattern pair is decided with the chain's registry. The
 // verdict must be exactly what the same pair yields at the chain's own
-// level (unifyWithin), armed or not.
+// level (unifyWithin), armed or not: a predicate-typed list child against
+// the SAME predicate (`[:Pos]` against `[:Pos]`) admits — the two references
+// resolve to one predicate, and a predicate is a member of itself (NUR157;
+// before it, armed unification ran the predicate over the other side's fn
+// value and declined a pair the unarmed structural rule admitted) — and a
+// child against a DIFFERENT predicate declines at every level.
 func TestUnifyThreadedFnShapePatternKeepsRegistry(t *testing.T) {
 	r := x5reg(t)
 	_, _ = x5PredType(t, r, "X5ThrPosF")
-	specPat := NewTypedList(NewAtom("X5ThrPosF"))
-	fnPat := NewTypedList(NewAtom("X5ThrPosF"))
-	spec := FnSigSpec{Params: []FnParam{{Name: "xs", Type: TList, Pattern: &specPat}}, Returns: []*Type{TBoolean}}
-	fn := fnValueWith("chk", []FnParam{{Name: "xs", Type: TList, Pattern: &fnPat}}, []*Type{TBoolean})
+	_, _ = x5PredType(t, r, "X5ThrNegF")
+	for _, c := range []struct {
+		name  string
+		other string
+		admit bool
+	}{
+		{"same predicate", "X5ThrPosF", true},
+		{"different predicate", "X5ThrNegF", false},
+	} {
+		specPat := NewTypedList(NewAtom("X5ThrPosF"))
+		fnPat := NewTypedList(NewAtom(c.other))
+		spec := FnSigSpec{Params: []FnParam{{Name: "xs", Type: TList, Pattern: &specPat}}, Returns: []*Type{TBoolean}}
+		fn := fnValueWith("chk", []FnParam{{Name: "xs", Type: TList, Pattern: &fnPat}}, []*Type{TBoolean})
 
-	// The pair's own verdicts, armed and unarmed, are the reference.
-	_, armedPair := unifyWithin(specPat, fnPat, r)
-	_, unarmedPair := Unify(specPat, fnPat)
-	if armedPair == nil || !unarmedPair {
-		t.Fatalf("reference: the predicate-child pair must decline armed (%v) and admit unarmed (%v)", armedPair, unarmedPair)
-	}
+		// The pair's own verdicts, armed and unarmed, are the reference —
+		// and they agree.
+		_, armedErr := unifyWithin(specPat, fnPat, r)
+		_, unarmedOK := Unify(specPat, fnPat)
+		if (armedErr == nil) != c.admit || unarmedOK != c.admit {
+			t.Fatalf("%s: reference — the pair must %v at both levels: armed err=%v, unarmed ok=%v", c.name, verdict(c.admit), armedErr, unarmedOK)
+		}
 
-	// Anonymous constraint: the ShapeFnUndef fold.
-	undef := NewValueRaw(TFnUndef, FnUndefInfo{Sigs: []FnSigSpec{spec}})
-	if _, uerr := UnifyExplainR(undef, fn, r); uerr == nil {
-		t.Fatal("armed fold: the pattern pair declines under the registry, so the shape must decline")
-	}
-	if _, ok := Unify(undef, fn); !ok {
-		t.Fatal("unarmed fold: the pattern pair settles structurally, so the shape admits")
-	}
+		// Anonymous constraint: the ShapeFnUndef fold.
+		undef := NewValueRaw(TFnUndef, FnUndefInfo{Sigs: []FnSigSpec{spec}})
+		if _, uerr := UnifyExplainR(undef, fn, r); (uerr == nil) != c.admit {
+			t.Fatalf("%s: armed fold must %v as the pair does: %v", c.name, verdict(c.admit), uerr)
+		}
+		if _, ok := Unify(undef, fn); ok != c.admit {
+			t.Fatalf("%s: unarmed fold must %v as the pair does", c.name, verdict(c.admit))
+		}
 
-	// Named fn-shape node: FnUndefUnifier reached by dispatchUnifier.
-	def := MintTestType("FunctionSignature/X5ThrFnU")
-	installFnUndefUnifier(def, []FnSigSpec{spec}, "X5ThrFnU")
-	if _, uerr := UnifyExplainR(NewTypeLiteral(def), fn, r); uerr == nil {
-		t.Fatal("armed node: the pattern pair declines under the registry, so the node must decline")
+		// Named fn-shape node: FnUndefUnifier reached by dispatchUnifier.
+		def := MintTestType("FunctionSignature/X5ThrFnU" + c.other)
+		installFnUndefUnifier(def, []FnSigSpec{spec}, "X5ThrFnU"+c.other)
+		if _, uerr := UnifyExplainR(NewTypeLiteral(def), fn, r); (uerr == nil) != c.admit {
+			t.Fatalf("%s: armed node must %v as the pair does: %v", c.name, verdict(c.admit), uerr)
+		}
+		if _, ok := Unify(NewTypeLiteral(def), fn); ok != c.admit {
+			t.Fatalf("%s: unarmed node must %v as the pair does", c.name, verdict(c.admit))
+		}
+		// The Match side: unarmed by contract, matchR with the registry.
+		fu := def.Behavior().(*FnUndefUnifier)
+		if fu.Match(fn, def) != c.admit || fu.matchR(fn, def, r) != c.admit {
+			t.Fatalf("%s: Match (unarmed) and matchR (armed) must both %v", c.name, verdict(c.admit))
+		}
+		// The exported entries stay unarmed — and agree.
+		if FnUndefMatchesFnDef(undef, fn) != c.admit || FnDefHasSig(fn.Data.(FnDefInfo), spec) != c.admit {
+			t.Fatalf("%s: the exported fn-shape checks run unarmed and must %v", c.name, verdict(c.admit))
+		}
 	}
-	if _, ok := Unify(NewTypeLiteral(def), fn); !ok {
-		t.Fatal("unarmed node: the pattern pair settles structurally, so the node admits")
+}
+
+// verdict names a unify verdict for a failure message.
+func verdict(admit bool) string {
+	if admit {
+		return "admit"
 	}
-	// The Match side: unarmed by contract, matchR with the registry.
-	fu := def.Behavior().(*FnUndefUnifier)
-	if !fu.Match(fn, def) {
-		t.Fatal("Match is unarmed: the pattern pair settles structurally")
-	}
-	if fu.matchR(fn, def, r) {
-		t.Fatal("matchR with the registry resolves the predicate child and declines")
-	}
-	// The exported entries stay unarmed.
-	if !FnUndefMatchesFnDef(undef, fn) || !FnDefHasSig(fn.Data.(FnDefInfo), spec) {
-		t.Fatal("the exported fn-shape checks run unarmed and admit the pair")
-	}
+	return "decline"
 }

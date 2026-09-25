@@ -2010,6 +2010,9 @@ func (r *Registry) NoteTypeInstall(name string, pos SrcPos) {
 		return
 	}
 	// Recorder() is nil-receiver safe, so a registry with no CheckState
-	// reaches the inactive no-op rather than a guard of its own.
-	r.Check.Recorder().RecordTypeInstall(name, bindSitePos(r, pos))
+	// reaches the inactive no-op rather than a guard of its own. The entry
+	// just pushed rides along: a FN unit's per-call type bind re-installs
+	// it (OpBindFnType), where the root's twin replays it from the ledger.
+	entry, _ := r.Defs.TopEntry(name)
+	r.Check.Recorder().RecordTypeInstall(name, entry, bindSitePos(r, pos))
 }

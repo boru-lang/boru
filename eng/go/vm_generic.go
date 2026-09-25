@@ -90,7 +90,7 @@ import (
 // dispatch leaves and, when the live match is the committed unit's, the unit
 // to enter with its sig-order args (the run loop pushes the frame exactly as
 // OpCallUserPoly does); unit -1 means the dispatch completed on the stack.
-func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSpec, stack, locals []core.Value, frameBase int, reg *core.Registry, curDebug []core.SrcPos, pc int) ([]core.Value, int, []core.Value, error) {
+func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSpec, stack, locals []core.Value, frameBase int, reg *core.Registry, curDebug []core.SrcPos, pc, curUnit int) ([]core.Value, int, []core.Value, error) {
 	if gs.Region < 0 || gs.Region >= len(p.Regions) {
 		return nil, -1, nil, vmErrAt(curDebug, pc, "DISPATCH_GENERIC region index out of range")
 	}
@@ -112,7 +112,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 			// is unbound exactly when the arm did not run: the miss IS the
 			// interpreter's undefined_word at the word, raised — a defer
 			// would re-run past the arm's effects (the seventieth increment).
-			return nil, -1, nil, stampAt(core.UndefinedWordDiag(reg, reg.Source, d.Word, d.Pos), curDebug, pc, reg)
+			return nil, -1, nil, stampAt(core.UndefinedWordDiagWith(reg, reg.Source, d.Word, d.Pos, localNameCandidates(p, curUnit)), curDebug, pc, reg)
 		}
 		return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-unbound", "DISPATCH_GENERIC: no binding for "+d.Word+"; the compiled runtime cannot execute it")
 	}
@@ -196,7 +196,7 @@ func (vc *vmContext) dispatchGeneric(p *compiler.Program, gs *compiler.GenericSp
 					if d.Word == "def" {
 						return nil, -1, nil, vmDefer(reg, curDebug, pc, "vm:generic-unbound-slot", "DISPATCH_GENERIC at "+d.Word+": no binding for the slot `"+wi.Name+"`; the compiled runtime cannot execute it")
 					}
-					return nil, -1, nil, stampAt(core.UndefinedWordDiag(reg, reg.Source, wi.Name, tok.Pos()), curDebug, pc, reg)
+					return nil, -1, nil, stampAt(core.UndefinedWordDiagWith(reg, reg.Source, wi.Name, tok.Pos(), localNameCandidates(p, curUnit)), curDebug, pc, reg)
 				}
 				tok = v
 			}
