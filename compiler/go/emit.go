@@ -8337,10 +8337,16 @@ func (es *EmitState) recordCallCompileFailure(word string, sig *core.Signature, 
 		//     clause always bakes a plain CALL_NATIVE.)
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("code-body word " + word + " (Stage 2)")
-	case hasUncoveredQuoteArg(sig) && !core.IsGetWord(word) && !core.IsGetrWord(word) && !quotedKeySig(sig) && !quoteInertOK:
+	case hasUncoveredQuoteArg(sig) && (restepsSig(sig) || (!core.IsGetWord(word) && !core.IsGetrWord(word) && !quotedKeySig(sig) && !quoteInertOK)):
 		// Implicit-quote operands (usurp, force-arity, ref-family):
 		// dispatch-manipulating meta words whose results the engine
-		// re-steps. get/getr/set/del are exempt — plain accessors/mutators whose
+		// re-steps. Since S2a of design/FULL-COMPILATION-REPLAN.0.md those
+		// words DECLARE the refusal — CompileResteps (restepsSig), read
+		// FIRST and regardless of any admission the sig also carries, so a
+		// declared re-stepper never rides quotedKeySig or quoteInertOK; the
+		// reason names the declaration. An undeclared quoted operand still
+		// declines on the zero value's silence, as before.
+		// get/getr/set/del are exempt — plain accessors/mutators whose
 		// quoted key is an inert Atom const (its fn-valued module-resolution
 		// case is elided above; a dynamic or fn-valued result still declines via
 		// the later cases). For `set` the quoted key is the atom field name of
@@ -8365,8 +8371,12 @@ func (es *EmitState) recordCallCompileFailure(word string, sig *core.Signature, 
 		// DSL's table names (`Query.from people`, `Query.join visits`): the inner
 		// native is reached via the wrapper's trivial delegation, so the
 		// interpreter runs the SAME handler with the same baked atom.
+		reason := "quoted-operand word " + word
+		if restepsSig(sig) {
+			reason += " (declared CompileResteps: its result is re-stepped by the engine, not delivered as a value)"
+		}
 		es.SiteCounts[SiteMeta]++
-		es.MarkUncompilable("quoted-operand word " + word)
+		es.MarkUncompilable(reason)
 	case sig.CoreDefault && check.AnyNonConcreteOperand(args):
 		// A CoreDefault overload (the within-type scalar/Micron arithmetic
 		// defaults) is UNLOCKED: a runtime value whose tag is a strict
@@ -8483,6 +8493,17 @@ func quotedKeySig(sig *core.Signature) bool {
 	return sig != nil && sig.CompileEffect.Has(core.CompileQuoteKey)
 }
 
+// restepsSig reports whether a signature DECLARES that its handler's result is
+// RE-STEPPED by the engine (CompileResteps — the by-name modifier words, valof,
+// the mini/parse/emit splices, apply). It is the declared form of the refusal
+// the quoted-operand and fn-operand gates used to make on the zero value's
+// silence, and it is read BEFORE any admission (quotedKeySig, quoteInertOK, the
+// store-fn / reads-fn slots): a re-stepped result is never "the same handler
+// over the same baked value", so a sig carrying both declines by this one.
+func restepsSig(sig *core.Signature) bool {
+	return sig != nil && sig.CompileEffect.Has(core.CompileResteps)
+}
+
 func (es *EmitState) dynamicStackShuffleOK(word string, sig *core.Signature) bool {
 	if !core.DynStackShuffleWords[word] {
 		return false
@@ -8522,11 +8543,18 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 	inertFn := introspect || sig.CompileEffect.Has(core.CompileStoresFn)
 	for i, t := range sig.ArgTypes() {
 		if t != nil && t.ConformsTo(core.TFunction) {
-			if inertFn || sig.FnInertArgs[i] {
+			if (inertFn || sig.FnInertArgs[i]) && !restepsSig(sig) {
 				continue
 			}
+			reason := "function-valued operand at " + word + " (Stage 3)"
+			if restepsSig(sig) {
+				// The declared form of this refusal (CompileResteps): apply and
+				// the mini/parse/emit value forms re-step the fn on the tape,
+				// and say so; the declaration outranks any inert-slot admission.
+				reason = "function-valued operand at " + word + " (declared CompileResteps: the handler re-steps it on the tape)"
+			}
 			es.SiteCounts[SiteMeta]++
-			es.MarkUncompilable("function-valued operand at " + word + " (Stage 3)")
+			es.MarkUncompilable(reason)
 			return nil, false
 		}
 	}

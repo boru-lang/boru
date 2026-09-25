@@ -429,6 +429,12 @@ func quoteOperandInertOK(r *core.Registry, word string, sig *core.Signature, arg
 	if sig.FnFrame() != nil || sig.FullStack() || sig.RunInCheckMode() || len(sig.NoEvalArgs) > 0 {
 		return false
 	}
+	// A word that DECLARES CompileResteps (the by-name modifier words, valof,
+	// the mini/parse/emit splices) has said its result is re-stepped, not
+	// delivered: the declared refusal, read before any admission below.
+	if restepsSig(sig) {
+		return false
+	}
 	// A word that DECLARES CompileQuoteInert (quote / codequote / raise / timeout
 	// / interval / inspect): its quoted operand is inert data the handler consumes
 	// verbatim — a quoted symbol, or a quoted code body held as data — so it bakes
@@ -638,6 +644,13 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 	// raise operand is static, so the word never goes poly there. That latent
 	// hole is the poly event's to close, not this gate's; keeping the gate on
 	// the declaration keeps it out of reach.
+	//
+	// A CompileResteps declarer (the by-name modifier words, valof, the
+	// mini/parse/emit splices, apply) declines FIRST, whatever else it carries:
+	// its result is re-stepped, and a poly re-match cannot re-step.
+	if restepsSig(sig) {
+		return false
+	}
 	if len(sig.QuoteArgs) > 0 && !core.IsGetWord(word) && !core.IsGetrWord(word) &&
 		!quotedKeySig(sig) {
 		return false
