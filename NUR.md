@@ -179,7 +179,7 @@ keep the two in sync in the same commit.
 | [NUR063](#nur063) | Seven self-knowledge words are proposed to dispatch from two module surfaces (`boru:debug` and `boru:scry`) — VERDICT 2026-08-15: `boru:scry` canonical, the `boru:debug` copies frozen behind shared handlers and deprecated on a stated timeline | design/BORU-SCRY.0.md §6 (flagged for NUR by PR #344 Codex P1) |
 | [NUR064](#nur064) | Pattern clauses route-and-bind in `receive` but route-only in `add` — VERDICT 2026-08-15: defer to the processes/services design line, to be decided when those modules are built | `design/STATE-MACHINES.0.md` §8 (flagged for NUR by the PR #345 review, Codex P1) |
 | [NUR065](#nur065) | Two spellings of the classifier role get different static guarantees: `classes:` is alphabet-closed and diagnosed, `classify:` is neither — VERDICT 2026-08-15: defer to the state-machine design line (its open question #7) | `design/STATE-MACHINES.0.md` §3.6 (flagged for NUR by the PR #352 review, Codex P1) |
-| [NUR074](#nur074) | `canon` renders a function's PARAMETER names, so alpha-equivalent functions render — and digest — differently; NUR031's planned fix (render the anonymous fn literal) does not reach this | `design/legacy/unison-hash-identity-probe.0.ignore` P4 (flagged for NUR by the PR #376 review, Codex P1) |
+| [NUR074](#nur074) | RESOLVED 2026-09-26 (the parameter name is part of the value — the handoff log's entry of that date): not a divergence — the record's premise, that two functions differing only in a parameter name are behaviourally indistinguishable, is false in boru and was refuted by measurement: a parameter is a frame binding on the def stack, visible to every function the body reaches (FUNCTION-VALUE-SCOPE §7.4), so `def x 1  def g fn [[] [Any] [x]]` then `def f fn [[x:Any] [Any] [g]]  f 5` answers 5 and its `y`-named twin 1, on both lanes. canon rendering the name and `deq` comparing it is the uniform answer; the content-addressing note's de-naming step (§4.2 step 3) is withdrawn as unsound. The original text: `canon` renders a function's PARAMETER names, so alpha-equivalent functions render — and digest — differently; NUR031's planned fix (render the anonymous fn literal) does not reach this | `design/legacy/unison-hash-identity-probe.0.ignore` P4 (flagged for NUR by the PR #376 review, Codex P1) |
 | [NUR077](#nur077) | FIXED 2026-09-25 (the Apply op — the handoff log's entry of that date): `StackForm`'s op vocabulary can CALL a word by name but cannot APPLY a function value, so an inline lambda or a fn read out of a container has no faithful representation — `Call{Name, Arity}` re-invokes by name and does not consume a receiver. `Eval` now refuses those forms (`ErrUnnamedApply`) rather than replaying them to a different answer — VERDICT 2026-08-17: resolve by fix, a NEW dedicated Apply Op (arity-carrying, consumes the value, seamed at `execFnDefLiteral`; `DoEval` stays reserved), after the three prerequisite recorder/gate defects are fixed | the `OnCall` frame-skeleton over-count fix, 2026-08-16 |
 | [NUR078](#nur078) | FIXED 2026-09-26 (NUR078 closed — a bare fn name calls at every slot — the handoff log's entry of that date): A bare fn name before a `Function`-typed slot still resolves as a reference, against amended ADR-011 — the engine's TFunction intercept implements the exception the 2026-08-17 amendment struck (`h zero` ≡ `h zero/r` when the slot is `Function`-typed; a call/barrier before any other slot) — VERDICT 2026-08-17: resolve by fix, open-work item B (all four sites retire together, re-opening the NUR038 call-head question in the implementing PR) | the ADR-011 amendment, 2026-08-17 (flagged by the PR #381 review, Codex P1) |
 | [NUR079](#nur079) | FIXED 2026-09-26 (NUR079 closed — one policy for a program and its modules — the handoff log's entry of that date): Gated words inside an imported file-module body escape the policy that governs the same call at top level — the module sub-registry inherited every capability seam except policy, so gates resolving `HostPolicy(r)` read nil as allow — VERDICT: resolve by fix in two halves; half (i) landed 2026-08-18 (the body now carries the parent's policy), half (ii) open | the Roc comparison study, 2026-08-18 |
@@ -5382,9 +5382,46 @@ them revealed.
 
 ## NUR074 — `canon` renders a function's parameter names, so alpha-equivalent functions render differently {#nur074}
 
-**Status:** Pending · **Recorded:** 2026-08-16 · **Surfaced by:**
-`design/legacy/unison-hash-identity-probe.0.ignore` P4, a proof-of-concept pass over the
-canon contract; flagged for this register by the PR #376 review (Codex P1).
+**Status:** RESOLVED 2026-09-26 (the parameter name is part of the value —
+the handoff log's entry of that date) · **Recorded:** 2026-08-16 ·
+**Surfaced by:** `design/legacy/unison-hash-identity-probe.0.ignore` P4, a
+proof-of-concept pass over the canon contract; flagged for this register by
+the PR #376 review (Codex P1).
+
+**The resolution — the name is not incidental.** The record's rule holds
+and is kept: a canonical rendering depends on the value, not on names
+incidental to how it was written. What fails is its premise, "the two
+functions are behaviourally indistinguishable". In boru a parameter is a
+FRAME BINDING on the def stack, and a free name resolves at call time
+through that stack — the documented scoping model (a name bound inside fn
+F "is visible — via boru's dynamic scoping — to any fn F reaches on the
+call stack", design/FUNCTION-VALUE-SCOPE.0.md §7.4). So a parameter's name
+is visible to every function the body calls, and renaming it changes the
+function:
+
+```
+def x 1  def g fn [[] [Any] [x]]
+def f fn [[x:Any] [Any] [g]]  f 5     ->  5    (both lanes)
+def f fn [[y:Any] [Any] [g]]  f 5     ->  1    (both lanes)
+```
+
+Unison can de-name because its variables are lexical; boru's parameters
+are not. A canon that erased the name (candidate 1) or a `deq` that
+compared an alpha-normal form (candidate 3's identity half) would equate
+functions that behave differently — the NUR031 failure (`unique`
+discarding a function it should keep) in the other direction. That the
+record's own example body, `mul x x`, reaches no callee that reads `x`
+does not change the rule: whether a body's callees observe a name is not
+something equality can decide per pair without making `deq` depend on
+what the rest of the program binds. So canon renders parameter names and
+`deq` compares them, uniformly, and nothing in the code changes.
+
+The one document that prescribed the opposite is corrected:
+`design/CONTENT-ADDRESSING.0.md` §4.2's step 3 ("De-name parameters, to
+positional references") is withdrawn as unsound, with the measurement, and
+its summary table no longer lists alpha-normalisation. Pinned: lang
+`TestNUR074ParamNameIsPartOfTheValue` (the behaviour on both lanes,
+renamed parameters not `deq`, the same spelling and a rebinding `deq`).
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
 

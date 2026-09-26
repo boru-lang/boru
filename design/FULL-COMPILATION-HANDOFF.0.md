@@ -13322,6 +13322,26 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR074 resolved — a parameter's name is part of the function (2026-09-26)
+
+**The record.** `canon` renders parameter names, so `([x:Number] => [mul
+x x])` and `([y:Number] => [mul y y])` render — and, since canon is a
+function's `deq`, compare — differently; the record took them to be
+behaviourally indistinguishable.
+
+**The measurement.** They are not, in general: a parameter is a frame
+binding on the def stack, visible to every callee through boru's dynamic
+scoping (FUNCTION-VALUE-SCOPE §7.4). `def x 1  def g fn [[] [Any] [x]]`,
+then `def f fn [[x:Any] [Any] [g]]  f 5` is 5 and the `y`-named `f` is 1,
+on both lanes. Erasing the name from canon, or from `deq`, would equate
+functions that behave differently.
+
+**The resolution.** No code change: the name is part of the value, and
+canon and `deq` keep it uniformly. CONTENT-ADDRESSING.0.md §4.2 step 3
+(de-name parameters) is withdrawn as unsound.
+
+**Pins.** lang `TestNUR074ParamNameIsPartOfTheValue`.
+
 ## NUR075 closed — `eq` gets deq's capability (2026-09-26)
 
 **The divergence.** `deq` consults a per-type `DeepEqualer` at DeepEqual's
