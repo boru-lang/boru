@@ -2796,14 +2796,17 @@ func (es *EmitState) RecordDynUndef(name string, pos core.SrcPos) {
 // OpBindFnType: the name is checked and reserved per call and the node
 // bound for the frame, exactly the interpreter's observable — a generic
 // lowering, not a decline (the compile-failure census is a downward
-// ratchet). A ROOT `do` body (a keep-defs unit at the top level) records
-// nothing here: its install is a root transition the adopted twin replays.
-// A `do` body INSIDE a fn body (FnBodyDepth > 0) has no such twin — the
-// ledger keeps fn-body transitions out — so it takes the op like the fn's
-// own installs; the keep-defs unit leaves the binding on the trail for the
-// enclosing frame's RET to pop, the interpreter's leak-then-pop (`def rpt
-// fn [[] [Any] [do [def Big Integer 15 is Big]]]  (rpt) (rpt)` is `[true
-// error(…conflicts…)]` on both lanes).
+// ratchet). A `do` body's KEEP-DEFS unit takes the op the same way, at the
+// root as inside a fn body: every unit's body is recorded inside
+// check.AnalyseFnBody, which holds FnBodyDepth at one or more for the whole
+// run (a root `do` body records at depth 1), so no depth test here tells a
+// root `do` from a nested one. Inside a fn body the keep-defs unit leaves
+// the binding on the trail for the enclosing frame's RET to pop, the
+// interpreter's leak-then-pop (`def rpt fn [[] [Any] [do [def Big Integer
+// 15 is Big]]]  (rpt) (rpt)` is `[true error(…conflicts…)]` on both lanes);
+// at the root the call is followed by the body's adopted twin as well
+// (AdoptBodyTwins — `do [def Big Integer] 15 is Big` lowers BIND_FN_TYPE in
+// the unit and BIND_TWIN after the call, `[true]` on both lanes).
 func (es *EmitState) RecordTypeInstall(name string, entry core.DefEntry, pos core.SrcPos) {
 	if es == nil || !es.Active() || name == "" {
 		return
@@ -2811,9 +2814,6 @@ func (es *EmitState) RecordTypeInstall(name string, entry core.DefEntry, pos cor
 	if es.armResidentDepth == 0 {
 		rec := es.openUnitRec()
 		if rec == nil || entry.TypeDef == nil {
-			return
-		}
-		if rec.keepsDefs && (es.reg == nil || es.reg.Check.FnBodyDepth == 0) {
 			return
 		}
 		e := entry
@@ -13929,7 +13929,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 		// which the pass records on the value; NUR213).
 		return residual, false
 	}
-	if len(lw.vm) < 1 || lw.vm[len(lw.vm)-1].seq != pr.seq || lw.vm[len(lw.vm)-1].idx != 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+	if len(lw.vm) < 1 || lw.vm[len(lw.vm)-1].seq != pr.seq || lw.vm[len(lw.vm)-1].idx != 0 {
 		return residual, false
 	}
 	arg := residual[0]
@@ -15659,14 +15659,13 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 
 // bailPoint demotes a deopt point no island can serve to a GUARD
 // (deoptPoint.bail): the same value home and test position, no island
-// state. A point placed at the read's push keeps its push test; any other
-// tests before its statement's first root op, as a deopt would.
+// state. Its one caller (planDeopts) demotes only a point that HAS a test
+// position — placed at the read's push, which keeps its push test, or with a
+// statement start, where it tests before the statement's first root op, as
+// a deopt would.
 func bailPoint(d deoptPoint) deoptPoint {
 	d.bail = true
 	d.token = -1
-	if !d.atPush && d.start.Row == 0 {
-		d.start = d.pos
-	}
 	return d
 }
 
