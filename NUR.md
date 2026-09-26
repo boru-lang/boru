@@ -9055,8 +9055,13 @@ bound.
 
 **The fix.** The refusal is a type_error on both lanes (`makeFieldError`,
 core_make.go, at all five field-check sites). A refusal that is already
-structured keeps its own code beneath the prefix. Pinned by core's
-`TestMakeFieldErrorIsStructured` and lang's
+structured keeps its own code beneath the prefix. Five corpus rows the
+runtime-defer ledger carried as compiled bails now answer the
+interpreter's error (edge-dispatch-3.tsv L59, generics.tsv L56,
+module-struct.tsv L100, record.tsv L97/L98; `bailDefectCeiling` 44 → 39).
+`make`'s OTHER refusals — an unknown or missing field, a source of the
+wrong shape — are the same class and stay plain errors, still ledgered as
+bails there. Pinned by core's `TestMakeFieldErrorIsStructured` and lang's
 `TestNUR233MakeFieldRefusalIsATypeError`.
 
 ## NUR234 — a compiled direct call's contract no-match reports every argument; the interpreter reports its attempted window {#nur234}

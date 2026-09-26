@@ -59,7 +59,15 @@ import (
 // walk: the landing hands the capture to the interpreter's island (or its
 // skip) and the rows answer natively (runtime_defers.tsv's fn-value line
 // deleted).
-const bailDefectCeiling = 44
+// 44 -> 39 on 2026-09-26 (NUR233, found compiling NUR231's type half): a
+// make field's refusal is a type_error on both lanes, no longer a plain
+// error the compiled run books as a defect — edge-dispatch-3.tsv L59,
+// generics.tsv L56, module-struct.tsv L100 and record.tsv L97/L98 answer
+// the interpreter's error (runtime_defers.tsv's generics and record lines
+// deleted, edge-dispatch-3's and module-struct's lowered). make's OTHER
+// refusals — an unknown or missing field, a source of the wrong shape —
+// are the same class and still bail.
+const bailDefectCeiling = 39
 
 var bailDefects = struct {
 	mu      sync.Mutex

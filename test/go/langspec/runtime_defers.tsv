@@ -44,17 +44,15 @@
 bignum.tsv	10	L108, L109, L123–L129, L131: convert's own errors under the compiled runtime (a Float to a BigInteger/BigDecimal, the accuracy options), no defer site
 class.tsv	4	L98–L101: `undef Point` then a read of the instance — "unresolvable type operand Point", no defer site
 convert-ideal.tsv	1	L33: `convert Integer (make Foo {})` — vm:poly-no-match at convert (the canonical signature_error)
-edge-dispatch-3.tsv	3	L54, L55, L59: make's own field errors on a refined Record under the compiled runtime, no defer site
+edge-dispatch-3.tsv	2	L54, L55: make's own unknown- and missing-field errors on a refined Record under the compiled runtime, no defer site (L59, a field refusal, raises the interpreter's type_error since NUR233)
 edge-quote-1.tsv	1	L28: `quote [add 1 2] get 0` — "tape-coupled handler result at get", no defer site
 edge-quote-3.tsv	1	L56: `macroexpand (tw2 7) get 1` — "tape-coupled handler result at get", no defer site
 edge-scalars-3.tsv	2	L68: StringUtil.pad's own size guard, no defer site; L218: `convert Integer none` — vm:poly-no-match at convert
 flex.tsv	7	L69–L72: make's own source errors (a FlexMap from a list, …), no defer site; L228, L230, L236: `set` on a flex member — vm:poly-nout-drift (result count 1 for the recorded claim 0)
-generics.tsv	1	L56: `def b:(Box of [Integer]) {value:'no'}` — make's own field error, no defer site
 module-fmt.tsv	3	L65–L67: Fmt.format-with's own rule errors, no defer site
 module-matrix.tsv	1	L60: MatrixUtil.create's own ragged-row error, no defer site
 module-net.tsv	2	L30, L31: Net.prepare/direct's own missing-spec errors, no defer site
 module-query.tsv	1	L49: Query.from's own unknown-table error, no defer site
-module-struct.tsv	2	L99, L100: StructUtil.setpath's own make errors, no defer site
-record.tsv	2	L97, L98: make's own field errors on a refined Record — no defer site (L178, a predicate type's rejection, is a static check error since NUR141)
+module-struct.tsv	1	L99: StructUtil.setpath's own make error (an unknown field), no defer site (L100, a field refusal, raises the interpreter's type_error since NUR233)
 resource.tsv	1	L156: `def e:Entity {kind:'api'}` — make's own missing-field error, no defer site
 weak-flex.tsv	2	L36, L37: make's own source errors on a weak flex, no defer site
