@@ -133,6 +133,12 @@ var pinnedAritySites = map[string]int{
 	"core/go/check_state.go":  1,
 	"core/go/boru_error.go":   2,
 	"core/go/macro_expand.go": 1,
+	// sameSigShape compares two signatures' arity (`a.TotalArgs() ==
+	// b.TotalArgs()`) and walks their positions (`i < a.TotalArgs()`):
+	// whether one branch arm's fn can stand for the other's at a call's
+	// record (NUR245) — the shape the call's claim fixes, never behaviour
+	// keyed on a function's parameter count.
+	"core/go/spec_fn.go": 2,
 
 	// ── The checker's and VM's mirrors of that same matching.
 	"check/go/carrier.go": 13,
@@ -331,7 +337,15 @@ var pinnedAritySites = map[string]int{
 	// the arm as settled or unsettled for the residual arms — the same
 	// rule the interpreter's execFnDefLiteral applies to the value at run
 	// time — never what a fn of a given arity may do.
-	"compiler/go/emit.go": 8,
+	// 8 -> 10 (2026-09-26, NUR246): applyWindowFits compares a produced
+	// closure's claimed param count with the apply's window (`len(s.Params)
+	// != len(sigArgs)`) before matching each position — whether the window
+	// the op binds provably FITS, the argument rule; raisesTrailNoMatch asks
+	// whether a named value carries any own signature (`len(fd.OwnSigs()) >
+	// 0`), valueTrailNoMatch's own guard mirrored so the recorder knows
+	// which values raise their no-match. Neither decides behaviour by a
+	// function's arity.
+	"compiler/go/emit.go": 10,
 	// sameFnDecls compares two fn VALUES for declaration identity — the
 	// same signature list: the same count, then each position's declaration
 	// site (Signature.Decl). It decides whether a unit's recorded def event
