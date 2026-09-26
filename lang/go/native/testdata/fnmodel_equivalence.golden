@@ -11,7 +11,7 @@ WORD __varundef
   [Scalar/String] barrier=1 runcheck
   [Scalar/Atom] barrier=1 runcheck quote={0}
 WORD add
-  [Node/Map Any Ideal/Service] barrier=3
+  [Node/Map Any Ideal/Service] barrier=3 +returnsfn
   [Node/Map Any Ideal/Patrun] barrier=3 +returnsfn
   [Scalar/Bytes Scalar/Bytes] barrier=2 returns=[Scalar/Bytes]
   [Scalar/String Scalar] barrier=2 +returnsfn

@@ -290,6 +290,11 @@ func serviceAddHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 // such token for RescueForwardRefDiagnostics to excuse: that token, not the
 // name (NUR064).
 func serviceAddCheck(args []Value, r *Registry) []Value {
+	// The check pass's unmatched-dispatch recovery calls a candidate's
+	// check half over whatever operands the call had (`'x' add`).
+	if len(args) < 2 {
+		return []Value{}
+	}
 	slots := map[string]bool{}
 	if mp, err := AsMap(args[0]); err == nil && mp != nil && IsConcrete(args[0]) {
 		for _, k := range mp.Keys() {

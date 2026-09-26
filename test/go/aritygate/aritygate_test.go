@@ -100,7 +100,7 @@ var pinnedAritySites = map[string]int{
 	// now calls at every slot, so nothing asks which slot is open.
 	"core/go/engine.go":       27,
 	"core/go/region_diag.go":  1,
-	"core/go/collect_plan.go": 5,
+	"core/go/collect_plan.go": 8, // 5 -> 8 (NUR228): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
 	"core/go/signature.go":    12,
 	"core/go/match.go":        1,
 	"core/go/fnsig.go":        3,
