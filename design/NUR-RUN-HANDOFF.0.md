@@ -9,6 +9,83 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR242's `fold` program closed, NUR263–NUR265 recorded, NUR265 closed: the exact layout (2026-09-26)
+
+**The divergence.** `def Box class {data: Any} end def b (make Box {data:
+"s"}) end 0 fold [add] b.data` is the interpreter's signature_error.
+Compiled it bailed at the poly's no-match ("CALL_NATIVE_POLY no match for
+fold", internal_error, "please report it"). The same held for `b.data 0 fold
+[add]`, in a group, a list, a fn body, a branch and under `do … error`.
+
+**Why.** The check pass cannot match `fold` over a field declared Any. Its
+recovery records the widest overload's window as the dyn-body backstop's
+poly re-match. At a run-time no-match the VM had two ways to raise, and
+neither applied:
+- no record-time probe (`PolyNoMatchSpec`) was taken on this path;
+- the arity screen declines any word with an overload narrower than the
+  window, and fold has a 2-operand one.
+
+The screen is right to decline. The poly's operands are in signature
+order, so the VM could not tell a written operand from a stack one, and the
+split decides what the interpreter's plan claims.
+
+**The fix.**
+- **The layout (core, `dispatch_layout.go`).** The recovery publishes the
+  window's EXACT layout on `CheckState.CurLayout` while it records, and
+  restores it after. The one record it describes reads it through
+  `LayoutFor`, keyed on the operand slice itself. Exact means:
+  - the operands are the failed-dispatch tape's own values (by identity);
+  - they are contiguous on each side of the word;
+  - a statement or group boundary, or the tape's end, closes both sides.
+
+  The interpreter's tape at the same failure is then exactly [stack
+  operands, word, written operands].
+- **The record (compiler).** The dyn-body poly carries the written count
+  (`PolyRef.Split`).
+- **The raise (eng, `polySplitRaise`).** The no-match lays the operands out
+  as that tape. It then runs the interpreter's own plan (`CollectForward`,
+  `PlanMatch`) through `planSplit`, now shared with NUR211's split rematch.
+  - No plan raises the interpreter's report over the tape, byte for byte.
+  - A plan keeps the op's path, because the interpreter dispatches there.
+  - A walk the host cannot drive keeps it too.
+- **The report (`NoMatchOverWindow`).** It takes `sigError`'s attempted
+  window (NUR172) now. It named the forward tokens alone, so `b.data 0 fold
+  [add]` named one argument where the interpreter names two. The routed
+  dispatch (`DISPATCH_GENERIC`) raised through it with the same drift.
+  Core's `TestNoMatchOverWindow` had pinned the old tuple for `1 "x" w
+  true`; it pins the interpreter's `true`, `'x'` now.
+- **The negative.** A window with a value beside it that the dispatch did
+  not take (`0 fold [add] b.data 5`, whose report lists the 5) has no exact
+  layout, and keeps the sound defer.
+- **Not taken.** An execMatch-side publish (the successful optimistic
+  match) was built and dropped. No record reads it, and it cost every
+  compiling dispatch a layout walk.
+
+**Found on the way.**
+- **NUR263 (open, loud).** fold's closure bake over a declared-Any fn result
+  raises a bare signature_error, with none of the interpreter's notes.
+- **NUR264 (open, loud, the wrong error).** An error inside a matched
+  signature's data list, auto-evaluated under an OPTIMISTIC static match over
+  a declared-Any operand, is a top-level trap that raises before the outer
+  word's no-match. `each (mk) [dup]` and `filter (mk) [gt 1]` over 5 both hit
+  it. The fix needs a conditional trap, because suppressing it would decline
+  the List runs that agree today.
+- **NUR265 (closed).** The check pass PANICKED on `filter (mk) [gt 1]`. The
+  const fold ran `gt`'s handler over a recovery's one-operand window: index
+  out of range, caught by the top-level guard. `concreteHandlerEval` now
+  declines a window shorter than its signature's arity. The fold tests'
+  `statefulSig` declares the one operand its callers pass.
+
+**Pins.**
+- lang `TestNUR242FoldNoMatchIsTheInterpreters` (fifteen parity rows, the
+  two report notes, the negative) and `TestNUR265CheckPassCompletes`;
+- core `TestDispatchLayoutIsExactOrNothing` and `TestSigOrderPositions`;
+- eng `TestPolySplitRaiseIsTheInterpretersPlan`;
+- compiler `TestNUR265HandlerRunsOverItsArity`.
+
+**Ledgers.** Unchanged by this entry's programs: none of the new rows
+bails or declines.
+
 ## NUR210's silent half closed: the prefix island (2026-09-26)
 
 **The divergence (main's record).** A computed `do` body, one a fn

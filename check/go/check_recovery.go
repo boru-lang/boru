@@ -1157,7 +1157,14 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 				resume := es.Suspend()
 				dres := CarrierResults(e.Registry, w.Name, dsig, dargs, pos, nil, false)
 				resume()
-				if dispatchTryRecordDynBody(e.Registry, w.Name, dsig, core.SigOrderArgs(dargs, dn), dres, pos) {
+				sargs := core.SigOrderArgs(dargs, dn)
+				// The window's exact layout on this failed-dispatch tape — the
+				// interpreter's at the same failure — rides the record, so the
+				// run's no-match plans and reports over it (NUR242).
+				restoreLayout := e.PublishLayout(sargs, core.SigOrderPositions(dpos, dn), pos)
+				recorded := dispatchTryRecordDynBody(e.Registry, w.Name, dsig, sargs, dres, pos)
+				restoreLayout()
+				if recorded {
 					spliceCheckResults(e, dpos, dres)
 					return nil
 				}

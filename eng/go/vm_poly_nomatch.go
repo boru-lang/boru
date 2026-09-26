@@ -112,3 +112,30 @@ func bestEffortNoMatch(r *core.Registry, fn *core.FnDefInfo, word string, window
 	}
 	return ae //covergate:allow stampAt returns the same *BoruError it was given (§compiler)
 }
+
+// polySplitRaise is the no-match arm for a poly whose record carried its
+// exact operand layout (PolyRef.Split, NUR242). The interpreter's tape at
+// the failed dispatch is the operands laid out around the word — the stack
+// ones beneath it, the written ones after it — and nothing else it can
+// reach, so its own plan over that tape decides, whatever arities the
+// word's overloads take: a plan that finds a signature returns nil (the
+// interpreter dispatches it; the caller keeps its path), and one that finds
+// none raises the interpreter's signature_error over the same tape, byte
+// for byte (NoMatchOverWindow). window is the poly's operands in signature
+// order: the written ones first, then the stack ones, top first. A walk
+// this host cannot drive returns nil too.
+func polySplitRaise(r *core.Registry, pr *compiler.PolyRef, fn *core.FnDefInfo, window []core.Value, curDebug []core.SrcPos, pc int) error {
+	sp := pr.Split
+	if sp == nil || fn == nil || sp.NFwd < 0 || sp.NFwd > len(window) {
+		return nil
+	}
+	h, sig, _, ok := planSplit(r, pr.Word, fn, window[sp.NFwd:], window[:sp.NFwd])
+	if !ok || (sig != nil && !sig.Fallback) {
+		return nil
+	}
+	var pos core.SrcPos
+	if pc >= 0 && pc < len(curDebug) {
+		pos = curDebug[pc]
+	}
+	return stampAt(core.NoMatchOverWindow(r.Source, h.win, len(window)-sp.NFwd, pr.Word, fn, pos), curDebug, pc, r)
+}

@@ -164,7 +164,7 @@ keep the two in sync in the same commit.
 | [NUR239](#nur239) | FIXED 2026-09-26 (both halves — the anonymous `<fn>` earlier, the binding half by the island's word dispatch; the handoff log's entry of that date): an applied fn value's return-contract error names the fn's definition compiled and the binding it was called under interpreted: `(k 5)` over `h z/v` says `z:` compiled, `k:` interpreted; an anonymous class-field fn says `` compiled, `<fn>` interpreted (`each h.cb [1 2 3]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR240](#nur240) | FIXED 2026-09-26 (by NUR238's value-trail no-match — the handoff log's entry of that date): a trapped unmatched module-member call inside a branch arm raises `signature_error` compiled and `uncalled_function` interpreted — a value-level divergence where the code is caught (`do [if true [(true 5 M.dec)] [1] …] error [dot code]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR241](#nur241) | FIXED 2026-09-26 as a sound decline (the word-led arrival — the handoff log's entry of that date): a compiling pass's DEFERRED word-led window (preferWordSig — `ForwardInfo.WordLed`) that takes an arriving value its slot cannot prove, while a narrower window fits the stack beneath the word, flags the gradual split (NUR228's discipline), and the program declines loudly where it raised a wrong `cannot call append`; a window that is not word-led, or with nothing beneath the word for a narrower window, or with a proven arrival, compiles as before. The original text: a capturing callback run by `walk`: `acc (tag) append acc (m.path) append` in a factory's lambda raises `signature_error: cannot call append` compiled (the arguments `[]` and `''`) where the interpreter answers `['x' '' 'x' 'a' 'x' 'b']` | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
-| [NUR242](#nur242) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix — the `do` pair and the shaped method apply's count FIXED 2026-09-26, the handoff log's entries of that date): eight programs compiled and then failed inside the compiled runtime (internal_error) where the interpreter answers. Five remain: three `/q`-capturing member landings and an overloaded member's paren apply (RESTEP_LANDING and the shaped method apply — a walked landing in a nested body has no island), and `fold` over a gradual class field (CALL_NATIVE_POLY no match) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR242](#nur242) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix — the `do` pair, the shaped method apply's count and `fold` over a gradual class field FIXED 2026-09-26, the handoff log's entries of that date): eight programs compiled and then failed inside the compiled runtime (internal_error) where the interpreter answers. Four remain: three `/q`-capturing member landings and an overloaded member's paren apply (RESTEP_LANDING and the shaped method apply — a walked landing in a nested body has no island) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR243](#nur243) | FIXED 2026-09-26 (the three programs compile — the handoff log's entry of that date): a constant branch's taken arm with no value is a 0-value statement, a loop rebind of a branch-bound name is carried, and a parser dispatch declines over its parser operand only. The original text: three valid programs refused: a loop carrying a branch-bound name (`if c [def x 1] [] for 3 [def x 5] x`, "body result of unknown provenance"), a constant-true branch whose taken arm leaves no value (`def x 0 if [true] [def x 1] [2] end x`, "branch produces no value" — its guard carried a `//covergate:allow` whose proof was false, removed), and NUR109's bound-slot arm declining a parser dispatch over a branch-bound SOURCE operand | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR244](#nur244) | FIXED 2026-09-26 (an arm that may not run is speculative — the handoff log's entry of that date): a fn def in a branch arm the model knows is SKIPPED (a literal, def-bound or folded false condition — or true, for the else arm) or in an else-less if's arm was the join's own value, and a read past the merge ran it: `if false [def f fn [[a:Integer] [Any] [7]]] [] end 3 f` answered `[7]` compiled for undefined_word, and `import "boru:parselang" def c false if c [def p (fn [[source:String opts:Map] [Any] [7]])] [] end parse p 'x'` `[7]` for `parse_unknown_lang`. Silent wrong answers | closing NUR243, 2026-09-26 |
 | [NUR245](#nur245) | FIXED 2026-09-26 (arms that agree on the fn's shape, then arms that differ in a parameter or return type — the handoff log's entries of that date): both arms of a branch define the same fn and a call past the merge failed to compile: `if false [def f fn [[a:Integer] [Any] [7]]] [def f fn [[a:Integer] [Any] [8]]] end 3 f` is `[8]` interpreted and was `compile_failed: unconsumed fn-value carrier in residual (closure render)` compiled. A decided condition's model is the running arm's fn; an undecided one's is the arms' shared fn, or a WIDENED model (each type joined, no declaration site) where they differ only in types, the routed op's live plan deciding the match. Arms that differ in arity, patterns or return count keep a sound decline | closing NUR244, 2026-09-26 |
@@ -185,6 +185,9 @@ keep the two in sync in the same commit.
 | [NUR260](#nur260) | FIXED 2026-09-25 (numbered NUR210 until the merge of main's #512, where main's NUR210 kept the number; the reach group's survivor — the handoff log's entry of that date): A module fn returning a NAMED fn value, read through its reach group with a value beneath — `import module [def ff fn [[][Function][inc/v]] def inc fn [[n:Integer][Integer][n add 1]] export "M" {ff: ff/v}] end 5 M.ff` — is 6 on the interpreter (the reach group `( M dot ff )` never parks, its collapse re-steps the lone survivor, a NAMED fn at the pointer, and a name always calls: ADR-011) and `[5 fn inc(Integer)]` on the compiled lane, which seats the returned value as data; `M.ff 5` the same. The main-registry twin `5 ff` parks on both lanes, and so does `5 (M.ff)`. Present on main; found closing NUR191. Fence: `TestModuleFnNamedValueThroughReachPending` | probing NUR191's neighbours, 2026-09-25 |
 | [NUR261](#nur261) | FIXED 2026-09-25 (numbered NUR211 until the merge of main's #512, where main's NUR211 kept the number; the named value's no-match on the seam — the handoff log's entry of that date): the token seam's unmatched-lambda arm (`unmatchedLambdaBody`) raises the word's `uncalled_function` for a closure that carries a def's name (`ClosurePayload.RetName`) and keeps the anonymous value's data rule otherwise; `0 fold h/v [1 2]` raises at step 1 on both lanes. The original text: A NAMED fn value driving `fold` whose signature stops matching PAST THE FIRST STEP is parked as data on the compiled lane where the interpreter raises `uncalled_function`: `def h fn [[a:Integer b:Integer] [List] [[a b]]] end 0 fold h/v [1 2]` — step 0 answers `[0 1]`, so step 1 offers a List accumulator to `a:Integer` and no signature matches — is `fold: step 1: [boru/uncalled_function]: call to 'h' matched no signature` interpreted and `[fn (Integer, Integer)]` compiled (the value itself, as the closure-body data fork leaves an unmatched TYPED LAMBDA — NUR155's rule for an anonymous value, applied to a NAMED one). A no-match at step 0 raises on both lanes; `scan` over a no-match parks on both lanes. Pre-existing at the merge base (measured 2026-09-25 on `wt-head`); silent — a value where the interpreter raises | closing NUR166, 2026-09-25 |
 | [NUR262](#nur262) | FIXED 2026-09-25 (numbered NUR212 until the merge of main's #512, where main's NUR212 kept the number; the marker is no argument — the handoff log's entry of that date): the forward claim probe (`ForwardClaimProbeOn`) answers no claim for a dispatch-modifier marker, which fell to its literal arm where an `Any` parameter matched it; `def g M.up1/v end g 1` is `UP` on both lanes. The original text: A `/v`-marked module member read whose export takes an `Any` FIRST parameter cannot be collected as `def`'s forward argument: `import module [ def up1 fn [[value:Any] [String] ['UP']] export "M" {up1: up1/v} ] end def g M.up1/v` raises `signature_error: cannot call def — no signature matches the arguments … none were supplied` on both lanes, where `def g M.up2/v` (an `Integer` first parameter), `def g (M.up1/v)`, `def g up1/v` (no module) and the bare `M.up1/v` (data) all bind. The parser emits the reach followed by a dispatch-modifier marker (`Word/__DM`, Val); inside `def`'s forward window the reach's fn value reaches the pointer ahead of the marker and, with an `Any` parameter, the window's plan collects nothing. Interpreter-side (both lanes agree), loud | closing NUR163, 2026-09-25 |
+| [NUR263](#nur263) | OPEN (recorded 2026-09-26, probing NUR242's `fold`; proposed verdict: resolve by fix): a code-body word's closure bake over a declared-Any operand runs the overload the check pass picked, and a run-time value that overload refuses raises a signature_error without the interpreter's report. `def mk fn [[][Any]["s"]] end 0 fold [add] (mk)` is `fold`'s no-match on both lanes; compiled it carries none of the notes (the attempted window, the candidates) or the help. Loud; a List or Map result answers on both lanes | probing NUR242's `fold`, 2026-09-26 |
+| [NUR264](#nur264) | OPEN (recorded 2026-09-26, probing NUR242's `fold`; proposed verdict: resolve by fix): an error inside a matched signature's data list, which the check pass auto-evaluates under an OPTIMISTIC static match over a declared-Any operand, is recorded as a static trap that raises unconditionally — the run evaluates the list only when the outer dispatch matches. `def mk fn [[][Any][5]] end each (mk) [dup]` is `each`'s no-match interpreted and `dup`'s compiled; `filter (mk) [gt 1]` over 5 is `filter`'s and `gt`'s. Loud, the wrong error; over a List both lanes raise the inner one | probing NUR242's `fold`, 2026-09-26 |
+| [NUR265](#nur265) | FIXED 2026-09-26 (the handler runs over its arity — the handoff log's entry of that date): the check pass PANICKED — index out of range, recovered as an internal engine error — on `def mk fn [[][Any][5]] end filter (mk) [gt 1]`: the auto-evaluated `[gt 1]` recovered `gt` over one operand, and the const fold ran `gt`'s handler over that short window, which indexes its second argument. A compile-time handler run declines a window shorter than its signature (`concreteHandlerEval`) | probing NUR242's `fold`, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -9503,11 +9506,12 @@ blanket decline.
 
 ## NUR242 — programs that compile and then fail inside the compiled runtime {#nur242}
 
-**Status:** OPEN — the `do` half FIXED 2026-09-26, and the module
+**Status:** OPEN — the `do` half FIXED 2026-09-26, the module
 export's count under a shaped method apply (`do [m.f 5]`) FIXED the same
-day with NUR252 (the handoff log's entries of that date); the three
-re-step landings, the overloaded member's paren apply and `fold` stay open
-(proposed verdict: resolve by fix) · **Recorded:** 2026-09-26 ·
+day with NUR252, and `fold` over a gradual class field FIXED the same day
+(the handoff log's entries of that date); the three re-step landings and
+the overloaded member's paren apply stay open (proposed verdict: resolve by
+fix) · **Recorded:** 2026-09-26 ·
 **Surfaced by:** closing #505's merged-coverage gap (ADR-008) — the
 coverage agents' probes.
 
@@ -9539,32 +9543,40 @@ before the claim is read (NUR252's contract check), and the op's own
 `namedFnCountError` proved unreachable and was deleted at the merge of
 main's #511. Pinned with NUR252 by `TestNUR252ForeignValueKeepsItsCount`.
 
-The other four programs remain: the three
-re-step landings over a `/q` param, the two shaped method applies, and
-`fold` over a class member, whose runtime no-match has no record-time
-probe (the dispatch succeeded optimistically over a gradual operand, so
-no `PolyNoMatchSpec` exists). Threading the interpreter's probe from
-`execMatch` (the check-mode native dispatch, `analysisCarrierResults`) to
-the dyn-body record would not settle `fold`. It has a 2-arg overload
-beside the 3-arg one, and `polyNoMatchProbe.Spec` declines whenever a
-narrower-arity overload exists, because its runtime match could dispatch
-where the raise claims none can. A mixed-arity word needs the VM to
-rebuild the interpreter's full diagnostic, not the spec's arity-screened
-one.
+**`fold` over a gradual class field (FIXED 2026-09-26).** `0 fold [add]
+b.data` over a String field is the interpreter's signature_error; compiled
+it bailed ("CALL_NATIVE_POLY no match for fold", internal_error). The check
+pass cannot match a field declared Any, so its recovery records the widest
+overload's window as the dyn-body backstop's poly re-match, and the VM's
+no-match had no record-time probe (`PolyNoMatchSpec`) and could not screen
+fold's 2-operand overload out: it did not know which operands were written
+after the word. The recovery now publishes the window's EXACT layout
+(`core.DispatchLayout`, read through `CheckState.LayoutFor` by the one
+record it describes): the operands are the failed-dispatch tape's own values,
+contiguous on each side of the word, with a statement or group boundary (or
+the tape's end) beyond them on both sides — the interpreter's tape at the
+same failure is then exactly [stack operands, word, written operands]. The
+record carries the written count (`PolyRef.Split`), and the no-match arm
+lays the operands out as that tape and runs the interpreter's own plan
+(`CollectForward`, `PlanMatch`), the plan NUR211's split rematch already
+used (`planSplit`). No plan raises the interpreter's report over the same
+tape, byte for byte; a plan keeps the op's path (the interpreter dispatches
+there). The report is `NoMatchOverWindow`, which now takes `sigError`'s
+attempted window (NUR172): it named the forward tokens alone, so `b.data 0
+fold [add]` — one written operand, fold's smallest arity two — named one
+argument where the interpreter names two, and the routed dispatch
+(`DISPATCH_GENERIC`) carried the same drift. A window with a value beside
+it that the dispatch did not take (`0 fold [add] b.data 5`, whose report
+lists the 5) has no exact layout and keeps the sound defer. Pinned by lang
+`TestNUR242FoldNoMatchIsTheInterpreters` (fifteen parity rows, at the root,
+in a group, a list, a fn body, a branch and an error handler, and the
+negative), core `TestDispatchLayoutIsExactOrNothing` and eng
+`TestPolySplitRaiseIsTheInterpretersPlan`. The probing found NUR263, NUR264
+and NUR265.
 
-**What the `fold` fix needs (scoped 2026-09-26, the check-in after
-NUR210's silent half).** The VM can rebuild the interpreter's no-match
-byte for byte the way `DISPATCH_GENERIC` does (`core.NoMatchOverWindow`
-over a region host laid out as stack run, word, then written operands).
-NUR211's split rematch plans the same tape. What it lacks is the split.
-The poly record gets its operands in signature order, with no count of the
-operands written after the word. The check-mode match knows it (its
-positions past the pointer), but neither `DispatchBraid.TryRecordPoly` nor
-the successful dispatch's `RecordOutcome` carries it. The count has to be
-threaded through that seam (the slot type, its pinned inactive default and
-the compiler's installer), then into `PolyRef`, and read at
-`CALL_NATIVE_POLY`'s no-match when neither a `PolyNoMatchSpec` nor
-`bestEffortNoMatch` answers.
+The other programs remain: the three re-step landings over a `/q` param
+and the overloaded member's paren apply, each a walked landing inside a
+nested body with no island to take it.
 
 **Divergence** (measured at 5c0d6b1; each an internal_error compiled with
 the "please report it" note):
@@ -9588,6 +9600,106 @@ def g fn [[b:List] [Any] [do b 7]] end g [5 drop]            (and `b:Any`)
 def Box class {data: Any} end def b (make Box {data: "s"}) end 0 fold [add] b.data
   interp signature_error: cannot call `fold`    compiled CALL_NATIVE_POLY no match for fold
 ```
+
+## NUR263 — a code-body word's closure bake over a declared-Any operand raises without the interpreter's report {#nur263}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** probing NUR242's `fold` program.
+
+**Rule:** the compiled lane's diagnostics are the interpreter's (the
+diagnostic-parity gate); a raise carries the same notes and help.
+
+**Divergence** (measured on the NUR242 tree):
+
+```
+def mk fn [[][Any]["s"]] end 0 fold [add] (mk)
+  interp    signature_error: cannot call `fold` — no signature matches the arguments
+            = note: the arguments were [word(add)] (a List) and 's' (a ProperString)
+            = note: candidate `fold (List, Map, Any)` takes 3 arguments, but 2 were supplied  … (the candidates, the help)
+  compiled  signature_error: cannot call `fold` — no signature matches the arguments   (no notes, no help)
+def mk fn [[][Any][[1 2]]] end 0 fold [add] (mk)        3 on both lanes
+def mk fn [[][Any][{a:1 b:2}]] end 0 fold [add] (mk)    3 on both lanes
+```
+
+**Mechanism.** The check pass matches `fold` over the declared-Any result
+and the closure path (`tryRecordClosure`) bakes the overload it picked —
+`CALL_NATIVE fold (List, Map, Any)` over the compiled body closure — ahead
+of the dyn-body backstop, whose poly re-match would re-dispatch over the
+run-time value. The baked call answers the List and Map results as the
+interpreter does, and a value neither overload takes raises a bare
+signature_error. The class field (`b.data`, NUR242) takes the recovery and
+the backstop's poly, whose no-match now plans the layout; the declared-Any
+fn result does not. A fix records the backstop's poly for a closure bake
+over a declared-Any operand at a non-body slot, or raises the dispatch's
+report at the baked call's refusal.
+
+## NUR264 — a trap recorded under an assumed signature raises before the outer dispatch's no-match {#nur264}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** probing NUR242's `fold` program.
+
+**Rule:** the compiled lane raises the interpreter's error, at the same
+step.
+
+**Divergence** (measured on the NUR242 tree):
+
+```
+def mk fn [[][Any][5]] end each (mk) [dup]
+  interp    signature_error: cannot call `each` — the arguments were 5 (an Integer) and [word(dup)] (a List)
+  compiled  signature_error: cannot call `dup` — candidate `dup (Any)` takes 1 argument, but none were supplied
+def mk fn [[][Any][{a:1}]] end each (mk) [dup]          the same pair
+def mk fn [[][Any][5]] end filter (mk) [gt 1]
+  interp    signature_error: cannot call `filter`
+  compiled  signature_error: cannot call `gt`
+def mk fn [[][Any][[1 2]]] end each (mk) [dup]          dup's error on both lanes
+def mk fn [[][Any][[1 2]]] end filter (mk) [gt 1]       gt's error on both lanes
+```
+
+**Mechanism.** The check pass matches the outer word statically and
+OPTIMISTICALLY over the declared-Any operand (the carrier's type is wider
+than its slot), and `execMatch` then auto-evaluates the matched signature's
+data list — each's `[dup]`, filter's `[gt 1]` — in a pooled sub-run at the
+top frame. The inner dispatch's failure there is statically definite, so
+`TryRecordUnmatchedDispatchTrap` records it as a top-level `TRAP` with the
+interpreter's full error, and the compiled program raises it
+unconditionally. The run evaluates the list only after the outer dispatch
+MATCHES: over 5 or a Map the interpreter raises the outer word's no-match
+first. Loud on both lanes, the wrong error.
+
+**What a fix needs.** Suppressing the trap under an optimistic match is not
+enough: the List runs that agree today (dup's and gt's error on both lanes)
+would then decline, a compile-failure rise. The trap has to become
+CONDITIONAL on the outer run-time match — a guard before it that re-matches
+the outer word over its live operands and raises the outer no-match, or
+lets the inner trap fire (the shape of `DISPATCH_REMATCH`, with the match
+arm continuing instead of deferring). An optimistic match is one where some
+carrier operand's type does not conform to its slot's.
+
+## NUR265 — the check pass panicked in a compile-time handler run over a recovery's short window {#nur265}
+
+**Status:** FIXED 2026-09-26 (the handler runs over its arity — the
+handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** probing NUR242's `fold` program.
+
+**Rule:** panics must never occur (the panic-prevention rule, ADR-005).
+
+**Divergence.** `def mk fn [[][Any][5]] end filter (mk) [gt 1]` failed to
+compile: "the check pass errored: [internal_error] internal engine error:
+runtime error: index out of range [1] with length 1". The check pass's
+recovery of `filter` over the declared-Any result auto-evaluates the
+argument list `[gt 1]`, whose `gt` has one operand; the recovery of `gt`
+assumes its 2-operand signature over that one-value window, and the
+scalar const fold (`tryFoldScalarConst`) ran `gt`'s real handler over it
+(`concreteHandlerEval`), which indexes its second argument. The top-level
+engine's last-resort guard caught the panic.
+
+**The fix.** A compile-time handler run declines a window whose length is
+not its signature's arity: every dispatch hands a handler its full window,
+and a recovery's short one must never reach it. The pass completes; over a
+List the program raises `gt`'s error on both lanes, and over 5 it is
+NUR264's trap. Pinned by compiler `TestNUR265HandlerRunsOverItsArity` and
+lang `TestNUR265CheckPassCompletes`; the fold helper's test signature
+(`statefulSig`) declares the one operand its callers pass.
 
 ## NUR243 — three valid programs refused {#nur243}
 

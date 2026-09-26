@@ -789,6 +789,21 @@ type PolyRef struct {
 	// whole run to the interpreter. Nil (the record-time gates declined, or an
 	// older/foreign record site) keeps the sound defer.
 	NoMatch *core.PolyNoMatchSpec
+	// Split, when non-nil, is the dispatch's exact operand layout on the
+	// interpreter's tape (core.DispatchLayout, NUR242): how many of the
+	// operands were written after the word. With it the no-match arm lays
+	// the operands out as that tape — the stack ones beneath the word, the
+	// written ones after it — and asks the interpreter's own plan, so a
+	// word whose overloads differ in arity (fold's 2- and 3-operand forms,
+	// which NoMatch's arity screen declines) raises the interpreter's
+	// signature_error, or keeps the defer when the plan finds a match.
+	Split *PolySplit
+}
+
+// PolySplit is PolyRef.Split: the number of the poly's operands, in
+// signature order from position 0, that were written after the word.
+type PolySplit struct {
+	NFwd int
 }
 
 // UserPolyRef names one runtime-dispatched multi-overload USER-FN call: the

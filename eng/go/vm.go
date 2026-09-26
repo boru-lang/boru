@@ -991,6 +991,14 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	}
 	mr := core.MatchSignature(sigs, window, core.WordInfo{ArgCount: n})
 	if mr == nil || mr.Sig == nil {
+		// A record that carried its exact operand layout asks the
+		// interpreter's own plan first (PolyRef.Split, NUR242): no plan is
+		// the interpreter's signature_error, raised here — the arity retry
+		// below reads a narrower window as the stack top, which is not how
+		// the interpreter collects one.
+		if err := polySplitRaise(r, pr, fn, window, curDebug, pc); err != nil {
+			return nil, err
+		}
 		// The recorded count is the check pass's PICK over a gradual
 		// residual — `call {} svc  call {} svc`, whose second call matched
 		// the three-operand overload with the first call's undeclared

@@ -62,6 +62,12 @@ type CheckState struct {
 	// it reads 1:10 (`add`) where the def is at 1:18. Using it rendered a
 	// confidently wrong caret, which is worse than none.
 	CurWordPos SrcPos
+	// CurLayout is the exact operand layout of the native dispatch whose
+	// results a compiling pass is modelling (DispatchLayout, NUR242), set
+	// around the modelling and restored after it, so a nested dispatch's
+	// layout never outlives it. A record reads it through LayoutFor, which
+	// answers only for the dispatch's own operand slice.
+	CurLayout *DispatchLayout
 	// Mode toggles static type-checking execution. When true, the
 	// engine runs the same dispatch/matching machinery but carries
 	// type-only Carrier values instead of concrete payloads, and

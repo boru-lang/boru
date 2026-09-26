@@ -70,18 +70,10 @@ func (vc *vmContext) dispatchRematch(ds *compiler.DispatchSpec, stack []core.Val
 // on a match.
 func (vc *vmContext) rematchSplitMatches(ds *compiler.DispatchSpec, fn *core.FnDefInfo, window []core.Value) (matched, planned bool) {
 	nStack := ds.NArgs - ds.NFwd
-	toks := make([]core.Value, 0, ds.NArgs+1)
-	for i := nStack - 1; i >= 0; i-- {
-		toks = append(toks, window[i])
-	}
-	toks = append(toks, core.NewWord(ds.Word))
-	toks = append(toks, window[nStack:]...)
-	h := newRegionHostOver(vc.r, toks)
-	w := core.WordInfo{Name: ds.Word, ArgCount: -1}
-	if err := h.Collected(core.CollectForward(h, fn, w, nStack+1)); err != nil {
+	h, sig, positions, ok := planSplit(vc.r, ds.Word, fn, window[:nStack], window[nStack:])
+	if !ok {
 		return false, false
 	}
-	sig, positions, _ := core.PlanMatch(h, h.win, vc.r, fn, w, toks[:nStack], nStack, false, false, false)
 	if sig == nil || sig.Fallback {
 		return false, true
 	}
@@ -96,4 +88,28 @@ func (vc *vmContext) rematchSplitMatches(ds *compiler.DispatchSpec, fn *core.FnD
 	}
 	mr := core.MatchSignature([]core.Signature{*sig}, args, core.WordInfo{ArgCount: -1})
 	return mr != nil, true
+}
+
+// planSplit lays a dispatch's operands out as the interpreter's tape at the
+// word — the stack run bottom-up (stackTop lists it top first), the word,
+// the written operands in order — over the region host DISPATCH_GENERIC
+// plans with, and runs the interpreter's plan there: the word's forward
+// collection, then PlanMatch. ok is false when the walk needs an evaluation
+// this host cannot perform; the callers then keep their defer. The pointer
+// of the laid-out tape is len(stackTop).
+func planSplit(reg *core.Registry, word string, fn *core.FnDefInfo, stackTop, written []core.Value) (*regionHost, *core.Signature, []int, bool) {
+	nStack := len(stackTop)
+	toks := make([]core.Value, 0, nStack+1+len(written))
+	for i := nStack - 1; i >= 0; i-- {
+		toks = append(toks, stackTop[i])
+	}
+	toks = append(toks, core.NewWord(word))
+	toks = append(toks, written...)
+	h := newRegionHostOver(reg, toks)
+	w := core.WordInfo{Name: word, ArgCount: -1}
+	if err := h.Collected(core.CollectForward(h, fn, w, nStack+1)); err != nil {
+		return nil, nil, nil, false
+	}
+	sig, positions, _ := core.PlanMatch(h, h.win, reg, fn, w, toks[:nStack], nStack, false, false, false)
+	return h, sig, positions, true
 }

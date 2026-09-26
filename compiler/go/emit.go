@@ -289,6 +289,7 @@ type emitCall struct {
 	generic           bool                  // ROUTED through the region descriptor (OpDispatchGeneric, region_route.go): a fn-unit dispatch with a live word slot over a drivable span
 	polyReg           *core.Registry        // the sub-registry to re-match a module poly word in (nil = main registry)
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)
+	polySplit         *PolySplit            // the dispatch's exact operand layout, for the poly's runtime no-match arm (PolyRef.Split, NUR242)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
 	dynApply          int                   // >0: apply the TOP operand (a runtime fn value) to the `dynApply` trailing args below it (OpCallDynTrailTop) — a paren-bounded trailing fn-value apply recorded as an EVENT so it seats like any computed result
 	dynApplyUnquote   bool                  // the dynApply event came through the `apply` WORD (a consumed pendingApply): lower to OpCallDynApplyTop, which unquotes like applyHandler (Stage M2a)

@@ -389,6 +389,14 @@ func tryFoldModuleConst(r *core.Registry, word string, sig *core.Signature, args
 // concreteEvalOnce, but dispatches the one matched native instead of re-running
 // a token stream — the args are already in sig order.
 func concreteHandlerEval(r *core.Registry, sig *core.Signature, args []core.Value) (core.Value, bool) {
+	// A handler runs over its signature's full arity, as every dispatch
+	// hands it; a recovery's assumed signature over a shorter window
+	// (`filter (mk) [gt 1]`'s auto-evaluated `gt 1`, one operand for gt's
+	// two) reached a handler that indexes its second argument, and the
+	// check pass panicked (NUR265).
+	if len(args) != sig.TotalArgs() {
+		return core.Value{}, false
+	}
 	snap := r.Defs.Snapshot()
 	prev := r.Check.Mode
 	r.Check.Mode = false
@@ -909,6 +917,13 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	if dynBodyPoly(r, word, args, body) {
 		call.sig = nil
 		call.poly = true
+		// The dispatch's exact layout, when the pass published one: the
+		// run's no-match lays the operands out as the interpreter's tape
+		// and plans them there (PolyRef.Split, NUR242 — `0 fold [add]
+		// b.data` over a String field).
+		if l := r.Check.LayoutFor(args); l != nil {
+			call.polySplit = &PolySplit{NFwd: l.NFwd}
+		}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	if call.hostSplice {
