@@ -38,8 +38,8 @@ a => [1]	a => [1]	-
 <br/>	<br/>	-
 <a href='u'>t</a>	<a href="u">t</a>	-
 <t a='1' b='2'><u/>text</t>	<t a="1" b="2"><u/>text</t>	-
-`v ${1} w`	interp('v ' ${1} ' w')	-
-`${x}`	interp(${word(x)})	-
+`v ${1} w`	`v ${1} w`	-
+`${x}`	`${x}`	-
 {:String}	{:String}	-
 # comment\n1	1	-
 1 # trailing	1	-
@@ -75,7 +75,7 @@ Box<>	Box<>	-
 {x/2}	{x:x/2}	-
 {x/s}	{x:x/s}	-
 {x/q}	{x:x/q}	-
-{x/zz}	{x/zz:x/zz}	-
+{x/zz}	{'x/zz':x/zz}	-
 {a x/v}	{a:a x:x/v}	-
 <a>&amp;&lt;&gt;</a>	<a>&amp;&lt;&gt;</a>	-
 <a b='&amp;'/>	<a b="&amp;"/>	-
@@ -92,8 +92,8 @@ Box<>	Box<>	-
 <a>x</	ERR xml: malformed closing tag for <a>	-
 <a>x</a!	ERR xml: malformed closing tag for <a>	-
 <a><b y='1></b></a>	ERR xml: unterminated value for attribute "y" in <b>	-
-<a>${'s'}</a>	interp-xml(<a>${'s'}</a>)	-
-<a>${{k:1}}</a>	interp-xml(<a>${{k:1}}</a>)	-
+<a>${'s'}</a>	<a>${'s'}</a>	-
+<a>${{k:1}}</a>	<a>${{k:1}}</a>	-
 <a>${(}</a>	ERR xml: in ${...}: [boru/syntax_error]: unmatched opening parenthesis	-
 `a\\nb`	'a\\nb'	-
 `t\\ta\\r\\\\q\\`e\\$s\\zx`	't\\ta\\r\\\\q`e$szx'	NUR026: the template escape set is now the quoted-string set — the unknown `\\z` yields a bare `z` (was `\\z`)
@@ -157,14 +157,14 @@ a.b => [1]	a.(b => [1])	-
 {[k]:1}	{k:1}	-
 {[k]:1 aa:2}	{k:1 aa:2}	-
 {[k]:1 [j]:2}	{k:1 j:2}	-
-{1.5:2}	{1.5:2}	-
+{1.5:2}	{'1.5':2}	-
 {'sk':1}	{sk:1}	-
 {a?:1 b:2}	{a:(None tor Absent tor 1) b:(None tor Absent tor 2)}	-
 <a href=>x</a>	ERR xml: attribute "href" in <a> must have a quoted value	-
 <a 'x'/>	ERR xml: invalid attribute name in <a>	-
-<a>${1}</a>	interp-xml(<a>${1}</a>)	-
-<a b='${2}'/>	interp-xml(<a b="${2}"/>)	-
-<a><b>${3}</b></a>	interp-xml(<a><b>${3}</b></a>)	-
+<a>${1}</a>	<a>${1}</a>	-
+<a b='${2}'/>	<a b="${2}"/>	-
+<a><b>${3}</b></a>	<a><b>${3}</b></a>	-
 <a><!-- c --></a>	<a/>	-
 <a><!-- unclosed	ERR xml: unterminated comment in <a>	-
 <a  b = '1' />	<a b="1"/>	-
@@ -172,8 +172,8 @@ a.b => [1]	a.(b => [1])	-
 <a b='x&gt;y&amp;z'/>	<a b="x&gt;y&amp;z"/>	-
 <a>t1<b/>t2</a>	<a>t1<b/>t2</a>	-
 <a><b/><c/></a>	<a><b/><c/></a>	-
-<a>pre${1}mid${2}post</a>	interp-xml(<a>pre${1}mid${2}post</a>)	-
-<a b='p${1}q'/>	interp-xml(<a b="p${1}q"/>)	-
+<a>pre${1}mid${2}post</a>	<a>pre${1}mid${2}post</a>	-
+<a b='p${1}q'/>	<a b="p${1}q"/>	-
 <a-b c-d='1'/>	<a-b c-d="1"/>	-
 <a_b/>	<a_b/>	-
 <A/>	<A/>	-
@@ -194,8 +194,8 @@ a b => [1]	a b => [1]	-
 Box<Integer> of [1]	Box<Integer> of [1]	-
 {p: Pair<A B>}	{p:Pair<A B>}	-
 ` plain `	' plain '	-
-`${1}${2}`	interp(${1} ${2})	-
-`a${'s'}b`	interp('a' ${'s'} 'b')	-
+`${1}${2}`	`${1}${2}`	-
+`a${'s'}b`	`a${'s'}b`	-
 (1	ERR [boru/syntax_error]: unmatched opening parenthesis	-
 1 (2 3	ERR [boru/syntax_error]: unmatched opening parenthesis	-
 [1	[1]	-
@@ -205,7 +205,7 @@ Box<Integer> of [1]	Box<Integer> of [1]	-
 -9223372036854775809	ERR [boru/integer_overflow]: integer literal out of range: -9223372036854775809 exceeds the Integer range (-9223372036854775808..9223372036854775807)	-
 0.1_2	0.12	-
 'a' : 1	{a:1}	-
-{'q k':2}	{q k:2}	-
+{'q k':2}	{'q k':2}	-
 {5:1}	{5:1}	-
 true:1	{true:1}	-
 {none:1}	{none:1}	-
@@ -257,9 +257,9 @@ a/su	a/u	-
 1_0	10	-
 0b	ERR [boru/syntax_error]: invalid numeric literal: 0b	-
 0x	ERR [boru/syntax_error]: invalid numeric literal: 0x	-
-<a n=${1}/>	interp-xml(<a n="${1}"/>)	-
-<a n=${x}/>	interp-xml(<a n="${word(x)}"/>)	-
-<a>t${1}u</a>	interp-xml(<a>t${1}u</a>)	-
+<a n=${1}/>	<a n="${1}"/>	-
+<a n=${x}/>	<a n="${x}"/>	-
+<a>t${1}u</a>	<a>t${1}u</a>	-
 <a n='a\\'b'/>	ERR xml: invalid attribute name in <a>	-
 <a n="a\\"b"/>	ERR xml: invalid attribute name in <a>	-
 <a>	ERR xml: unterminated element <a>	-
@@ -586,7 +586,7 @@ a.	ERR [boru/syntax_error]: `.` member access has no receiver	-
 "a\\tb"	'a\\tb'	-
 "a\\rb"	'a\\rb'	-
 'a\\\\b'	'a\\\\b'	-
-`a${1}b`	interp('a' ${1} 'b')	-
+`a${1}b`	`a${1}b`	-
 `plain`	'plain'	-
 "unterminated	ERR [boru/syntax_error]: this string is never closed: "unterminated	-
 'unterminated	ERR [boru/syntax_error]: this string is never closed: 'unterminated	-
@@ -617,8 +617,8 @@ a..b	a.. b	-
 <a b=${}/>	<a b=""/>	-
 <a b=${  }/>	<a b=""/>	-
 <a b="x${}y"/>	<a b="xy"/>	-
-<a>${}</a>	interp-xml(<a>${}</a>)	-
-<a b=${1}/>	interp-xml(<a b="${1}"/>)	-
+<a>${}</a>	<a>${}</a>	-
+<a b=${1}/>	<a b="${1}"/>	-
 "x${}y"	'x${}y'	-
 "${}"	'${}'	-
 `x${}y`	ERR [boru/syntax_error]: unexpected `y` — nothing valid can appear here	-
@@ -649,7 +649,7 @@ a..b	a.. b	-
 # receiver kind, including a paren group — the arm that returns early
 # because the parent is already a ParenGroup.
 `a\nb`	'a\\nb'	-
-`a${1}b\nc`	interp('a' ${1} 'b\nc')	-
+`a${1}b\nc`	`a${1}b\\nc`	-
 `	ERR [boru/syntax_error]: unexpected `` — nothing valid can appear here	-
 (1).fst	(1).fst	-
 ({a:1}).a	({a:1}).a	-
@@ -703,13 +703,13 @@ a/	a/	-
 {a? }	{a:(a tor None tor Absent)}	-
 {a/v}	{a:a/v}	-
 {a/q}	{a:a/q}	-
-{a/}	{a/:a/}	-
+{a/}	{'a/':a/}	-
 {a/v: 1}	ERR [boru/illegal_key]: word modifier not allowed on map key "a/v" (modifiers qualify values, not keys; quote the key as 'a/v' for a literal slash)	-
 {a/s}	{a:a/s}	-
 {a/u}	{a:a/u}	-
 {a/t}	{a:a/t}	-
-{a/1x}	{a/1x:a/1x}	-
-{'a b': 1}	{a b:1}	-
+{a/1x}	{'a/1x':a/1x}	-
+{'a b': 1}	{'a b':1}	-
 {a: 1 a?: 2}	{a:(None tor Absent tor 2)}	-
 {a?: 1 a: 2}	{a:(None tor Absent tor 2)}	-
 
@@ -761,14 +761,14 @@ Map<Integer	ERR [boru/syntax_error]: unclosed angle bracket: Map<… has no matc
 # The hole's closing `}` is found by depth counting that skips quoted
 # spans, so an escaped quote inside one (`\'`, `\"`, `\``) must not end
 # the span and a `}` inside one must not close the hole early.
-<a b=${"x\"y"}/>	interp-xml(<a b="${'x"y'}"/>)	-
-<a b=${'x\'y'}/>	interp-xml(<a b="${'x'y'}"/>)	-
-<a b=${`x\`y`}/>	interp-xml(<a b="${'x`y'}"/>)	-
+<a b=${"x\"y"}/>	<a b="${'x"y'}"/>	-
+<a b=${'x\'y'}/>	<a b="${"x'y"}"/>	-
+<a b=${`x\`y`}/>	<a b="${'x`y'}"/>	-
 <a b=${x	ERR xml: unterminated ${...} interpolation	-
 <a b="${x"/>	ERR xml: unterminated ${...} interpolation	-
-<a b=${ { } }/>	interp-xml(<a b="${{}}"/>)	-
+<a b=${ { } }/>	<a b="${{}}"/>	-
 `${}`	ERR [boru/syntax_error]: unexpected ``` — nothing valid can appear here	-
-`${1}`	interp(${1})	-
+`${1}`	`${1}`	-
 
 # --- pair keys that are not plain unquoted words --------------------------
 # A quoted member key keeps its string-ness through the dotchain; an EMPTY
@@ -779,8 +779,8 @@ Map<Integer	ERR [boru/syntax_error]: unclosed angle bracket: Map<… has no matc
 a.'b c'	a.'b c'	-
 a."b c"	a.'b c'	-
 {1?: 2}	{1:(None tor Absent tor 2)}	-
-{'': 1}	{:1}	-
-{''?: 1}	{:1}	-
+{'': 1}	{'':1}	-
+{''?: 1}	{'':1}	-
 {[a]: 1}	{a:1}	-
 {[a]?: 1}	ERR [boru/syntax_error]: unexpected `?` — nothing valid can appear here	-
 {[1]: 2}	{1:2}	-
@@ -802,7 +802,7 @@ m.k => [1]	m.(k => [1])	-
 [a b => [b]]	[a b => [b]]	-
 [a: b => [b]]	[{a:b} => [b]]	-
 {a: b => [b]}	ERR [boru/syntax_error]: unexpected `=>` — nothing valid can appear here	-
-`${a => [1]}`	interp(${word(a) sugar(lambda) [1]})	-
+`${a => [1]}`	`${a => [1]}`	-
 
 # --- dot chains in MAP-VALUE position ------------------------------------
 # Only this position runs the `dotchain` rule: everywhere else a flat
@@ -826,7 +826,7 @@ m.k => [1]	m.(k => [1])	-
 [a: 1 b: 2]	[{a:1} {b:2}]	-
 [a: b => [b] c: 2]	[{a:b} => [b] {c:2}]	-
 `${}${1}`	ERR [boru/syntax_error]: unexpected `${` — nothing valid can appear here	-
-`x${1}${2}y`	interp('x' ${1} ${2} 'y')	-
+`x${1}${2}y`	`x${1}${2}y`	-
 (Map)<Integer>	ERR xml: unterminated element <Integer>	-
 [Map<Integer>]	[Map<Integer>]	-
 {a: Map<Integer>}	{a:Map<Integer>}	-
@@ -839,7 +839,7 @@ Map<Integer><String>	ERR xml: unterminated element <String>	-
 # tolerates a trailing comma where `[,1]` and `[1,,2]` do not.
 [1.5]	[1.5]	-
 [+re/x/]	[+re'x']	-
-[`x${1}`]	[interp('x' ${1})]	-
+[`x${1}`]	[`x${1}`]	-
 [{:Integer a:1}]	[{:Integer a:1}]	-
 [[:Integer 1]]	[[:Integer 1]]	-
 [a => b]	[a => b]	-
@@ -901,7 +901,7 @@ a/2f2	ERR [boru/syntax_error]: invalid word modifier /2f2 on "a"	-
 `${(1,,2)}`	ERR interpolation expression error: [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	-
 {a:1 a:2 a:3}	{a:3}	-
 {b:0 a:1 a:2}	{b:0 a:2}	-
-{a: `x${1}`}	{a:interp('x' ${1})}	-
+{a: `x${1}`}	{a:`x${1}`}	-
 
 # --- quote boundaries and postfix container constraints -----------------
 # A configured quote ends an unquoted token even without whitespace. This is
@@ -917,7 +917,7 @@ a"s"	a 's'	-
 [:a a]	[:a a]	-
 {:A a:1}	{:A a:1}	-
 (a):A	[:A (a)]	-
-<a/>:A	[:A <a/>]	-
+<a/>:A	[:A, <a/>]	-
 #
 # §probe-2026-08-09 — promoted from a 2,587-source parity-probe sweep
 #   (token soup over the surface alphabet + parse.tsv truncation mutants).
@@ -961,9 +961,9 @@ $ <y/>	$ <y/>	xml (probe-agreed)
 <x/> [	<x/> []	xml (probe-agreed)
 b=${x	ERR [boru/syntax_error]: unexpected `${` — nothing valid can appear here	interp (probe-agreed)
 <a b=${	ERR xml: unterminated ${...} interpolation	interp (probe-agreed)
-`${a =>	interp(${word(a) sugar(lambda)})	interp (probe-agreed)
-`v ${1}	interp('v ' ${1})	interp (probe-agreed)
-- `${x}`	- interp(${word(x)})	interp (probe-agreed)
+`${a =>	`${a =>}`	interp (probe-agreed)
+`v ${1}	`v ${1}`	interp (probe-agreed)
+- `${x}`	- `${x}`	interp (probe-agreed)
 /s	ERR empty word	mods (probe-agreed)
 ) /s	) /s	mods (probe-agreed)
 /s ,	ERR empty word	mods (probe-agreed)

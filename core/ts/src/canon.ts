@@ -23,7 +23,7 @@ import {
 } from "./type.ts";
 import { Decimal } from "./decimal.ts";
 import { urlonHref, type UrlonInfo } from "./value.ts";
-import type { DispatchModInfo, FnDefInfo, SugarInfo, WordInfo, XmlElement } from "./value.ts";
+import type { DispatchModInfo, FnDefInfo, InterpSegment, SugarInfo, WordInfo, XmlElement, XmlTmpl } from "./value.ts";
 import {
   ChildType,
   ErrorInfo,
@@ -201,7 +201,7 @@ export function canon(stack: Value[]): string {
   // The sequence rule (canonSeqParts): a group-modifier marker is spelled
   // after its group — core/go's CanonValues (NUR072). A result stack holds
   // no marker, so an evaluated stack renders exactly as before.
-  return canonSeqParts(stack, canonValue).join(" ");
+  return joinCanonParts(canonSeqParts(stack, canonValue));
 }
 
 /** canonValue renders one value as canonical boru source. */
@@ -277,12 +277,12 @@ export function canonValue(v: Value): string {
     const parts = [
       `:${canonTypeTag(ct.child)}`,
       ...ct.elements.map(canonValue),
-      ...ct.entries.map((e) => `${e.key}:${canonChild(e.value)}`),
+      ...ct.entries.map((e) => `${canonKey(e.key)}:${canonChild(e.value)}`),
     ];
-    return `${open}${parts.join(" ")}${close}`;
+    return `${open}${joinCanonParts(parts)}${close}`;
   }
   if (v.vType.matches(TList) && Array.isArray(v.data)) {
-    const body = `[${canonSeqParts(v.asList(), canonChild).join(" ")}]`;
+    const body = `[${joinCanonParts(canonSeqParts(v.asList(), canonChild))}]`;
     return v.quoted ? `(quote ${body})` : body;
   }
   if (v.data instanceof OptionsData) {
@@ -290,12 +290,12 @@ export function canonValue(v: Value): string {
     // D1: render in INSERTION order (design/FLEX-ATTRS.1.md §3), matching
     // Go's joinEntries which iterates Keys(). SortedKeys() stays for
     // order-insensitive equality only (coretype.ts valuesEqual).
-    const parts = m.keys().map((k) => `${k}:${canonValue(m.get(k)!)}`);
+    const parts = m.keys().map((k) => `${canonKey(k)}:${canonValue(m.get(k)!)}`);
     return `options{${parts.join(" ")}}`;
   }
   if (v.vType.equal(TMap) && v.data instanceof OrderedMap) {
     const m = v.data;
-    const parts = m.keys().map((k) => `${k}:${canonChild(m.get(k)!)}`);
+    const parts = m.keys().map((k) => `${canonKey(k)}:${canonChild(m.get(k)!)}`);
     return `{${parts.join(" ")}}`;
   }
   // An inspection map renders in insertion order with bare word values
@@ -305,7 +305,7 @@ export function canonValue(v: Value): string {
     const parts = m.keys().map((k) => {
       const val = m.get(k)!;
       const rendered = val.isWord() ? val.asWord().name : canonValue(val);
-      return `${k}:${rendered}`;
+      return `${canonKey(k)}:${rendered}`;
     });
     return `{${parts.join(" ")}}`;
   }
@@ -362,7 +362,97 @@ export function canonValue(v: Value): string {
       )
       .join(" tor ");
   }
+  // A template string and an XML literal with `${}` holes render as the
+  // source they came from (NUR225) — the Go twin's canonTemplate /
+  // canonXmlTmpl — where both fell to the debug `interp(…)` /
+  // `interp-xml(…)` forms no parser accepts.
+  if (v.isInterpString() && Array.isArray(v.data)) {
+    return canonTemplate(v.data as InterpSegment[]);
+  }
+  if (v.isXmlInterp()) {
+    return canonXmlTmpl(v.data as XmlTmpl);
+  }
   return v.toString();
+}
+
+// canonTemplate renders a template string as backtick source: literal text
+// with the template's escapes (writeTemplateLit), each hole `${…}` over its
+// tokens' canon. The Go twin exactly.
+function canonTemplate(segments: InterpSegment[]): string {
+  let b = "`";
+  for (const s of segments) {
+    if ("expr" in s) b += "${" + canon(s.expr) + "}";
+    else b += templateLit(s.lit);
+  }
+  return b + "`";
+}
+
+// templateLit escapes template literal text: `\\`, `\``, `\$` before `{`,
+// and the control characters canonString escapes.
+function templateLit(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!;
+    if (c === "\\") out += "\\\\";
+    else if (c === "`") out += "\\`";
+    else if (c === "$" && s[i + 1] === "{") out += "\\$";
+    else if (c === "\n") out += "\\n";
+    else if (c === "\t") out += "\\t";
+    else if (c === "\r") out += "\\r";
+    else out += c;
+  }
+  return out;
+}
+
+// canonXmlTmpl renders an XML literal with holes as its source, text and
+// attribute text escaped as a plain element's are. The Go twin exactly.
+function canonXmlTmpl(t: XmlTmpl): string {
+  let b = "<" + t.tag;
+  for (const a of t.attrs) {
+    b += " " + a.name + '="';
+    for (const p of a.segs) {
+      if ("expr" in p) b += "${" + canon(p.expr) + "}";
+      else b += escapeXmlAttr(p.lit);
+    }
+    b += '"';
+  }
+  if (t.children.length === 0) return b + "/>";
+  b += ">";
+  for (const c of t.children) {
+    if ("lit" in c) b += escapeXmlText(c.lit);
+    else if ("expr" in c) b += "${" + canon(c.expr) + "}";
+    else b += canonXmlTmpl(c.elem);
+  }
+  return b + "</" + t.tag + ">";
+}
+
+// canonKey spells a map key bare when it lexes back as the same key —
+// letters, decimal digits, `_`, `$`, `-`, `@` — and quoted otherwise (NUR226).
+// The Go twin's rule (unicode.IsLetter / unicode.IsDigit).
+function canonKey(k: string): string {
+  return /^[\p{L}\p{Nd}_$@-]+$/u.test(k) ? k : canonString(k);
+}
+
+// joinCanonParts joins a sequence's parts with a space, or with a comma
+// where a bare capitalised token precedes a `<` — the angle-sugar gate would
+// fuse them (NUR227). The Go twin exactly.
+function joinCanonParts(parts: string[]): string {
+  let out = "";
+  parts.forEach((p, i) => {
+    if (i > 0) {
+      if (p.startsWith("<") && endsWithCapitalisedToken(parts[i - 1]!)) out += ",";
+      out += " ";
+    }
+    out += p;
+  });
+  return out;
+}
+
+function endsWithCapitalisedToken(p: string): boolean {
+  let i = p.length - 1;
+  while (i >= 0 && !" \t\n[](){}:,;'\"`".includes(p[i]!)) i--;
+  const tok = p.slice(i + 1);
+  return tok !== "" && tok[0]! >= "A" && tok[0]! <= "Z";
 }
 
 // canonChild renders a value that sits INSIDE a composite canon (a map value,
@@ -438,7 +528,7 @@ function canonReachToken(v: Value): string {
 }
 
 function canonReachTokens(toks: Value[]): string {
-  return canonSeqParts(toks, canonReachToken).join(" ");
+  return joinCanonParts(canonSeqParts(toks, canonReachToken));
 }
 
 // canonParen renders a paren group's tokens as source — the Go twin's rule:

@@ -3,6 +3,7 @@ package core
 import (
 	"strconv"
 	"strings"
+	"unicode"
 )
 
 // canonString renders a String payload as parseable boru source — the
@@ -182,7 +183,7 @@ func CanonValue(v Value) string {
 		if err != nil || m == nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
 			return v.String()
 		}
-		return "(make WeakFlexMap {" + joinEntries(m, canonChild) + "})"
+		return "(make WeakFlexMap {" + joinCanonEntries(m, canonChild) + "})"
 	case IsWeakFlexList(v):
 		lst, _ := AsList(v)
 		parts := make([]string, lst.Len())
@@ -206,7 +207,7 @@ func CanonValue(v Value) string {
 		if err != nil || m == nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
 			return v.String()
 		}
-		return "(flex {" + joinEntries(m, canonChild) + "})"
+		return "(flex {" + joinCanonEntries(m, canonChild) + "})"
 	case v.Parent.ConformsTo(TList) && v.Data != nil:
 		lst, _ := AsList(v)
 		parts := make([]string, 0, lst.Len()+1)
@@ -220,7 +221,7 @@ func CanonValue(v Value) string {
 			parts = append(parts, ":"+canonTypeTag(ct.Child))
 		}
 		parts = append(parts, canonSeqParts(lst.Slice(), canonChild)...)
-		body := "[" + strings.Join(parts, " ") + "]"
+		body := "[" + joinCanonParts(parts) + "]"
 		if v.Quoted {
 			return "(quote " + body + ")"
 		}
@@ -236,7 +237,7 @@ func CanonValue(v Value) string {
 			parts := make([]string, 0, len(ct.Entries)+1)
 			parts = append(parts, ":"+canonTypeTag(ct.Child))
 			for _, e := range ct.Entries {
-				parts = append(parts, e.Key+":"+canonChild(e.Value))
+				parts = append(parts, canonKey(e.Key)+":"+canonChild(e.Value))
 			}
 			return "{" + strings.Join(parts, " ") + "}"
 		}
@@ -244,7 +245,7 @@ func CanonValue(v Value) string {
 		if err != nil || m == nil {
 			return v.String()
 		}
-		return "{" + joinEntries(m, canonChild) + "}"
+		return "{" + joinCanonEntries(m, canonChild) + "}"
 	case IsReach(v):
 		return canonReach(v)
 	case IsWord(v):
@@ -303,6 +304,12 @@ func CanonValue(v Value) string {
 			}
 		}
 		return strings.Join(parts, " tor ")
+	case IsInterpString(v):
+		parts, _ := AsInterpString(v)
+		return canonTemplate(parts)
+	case IsXmlInterp(v):
+		tmpl, _ := AsXmlInterp(v)
+		return canonXmlTmpl(tmpl)
 	case isFnDefValue(v):
 		// A function value participates in the total order (cmp/sort),
 		// so its canon form must DISCRIMINATE between distinct fns —
@@ -387,7 +394,7 @@ func canonReachToken(v Value) string {
 // canonReachTokens renders a token sequence (receiver / computed-key / paren
 // body) as source, each token via canonReachToken so words stay bare.
 func canonReachTokens(toks []Value) string {
-	return strings.Join(canonSeqParts(toks, canonReachToken), " ")
+	return joinCanonParts(canonSeqParts(toks, canonReachToken))
 }
 
 // canonParen renders a paren group's tokens as source. A group of exactly
@@ -460,7 +467,147 @@ func groupModifierText(v Value) (string, bool) {
 // as the source that re-parses to it: each value's canon, space-joined,
 // with a group-modifier marker spelled after its group (canonSeqParts).
 func CanonValues(vals []Value) string {
-	return strings.Join(canonSeqParts(vals, CanonValue), " ")
+	return joinCanonParts(canonSeqParts(vals, CanonValue))
+}
+
+// joinCanonParts joins a sequence's parts with a space — and with a COMMA
+// where a space would not separate them: the angle-sugar gate opens on a `<`
+// that follows ANY bare capitalised token, whitespace or not, so a tag or a
+// word `A` before an XML literal `<a/>` re-lexes as `A<a/>` (NUR227). The
+// comma is the list/paren separator every sequence accepts, and it parses
+// to nothing.
+func joinCanonParts(parts []string) string {
+	var b strings.Builder
+	for i, p := range parts {
+		if i > 0 {
+			if strings.HasPrefix(p, "<") && endsWithCapitalisedToken(parts[i-1]) {
+				b.WriteByte(',')
+			}
+			b.WriteByte(' ')
+		}
+		b.WriteString(p)
+	}
+	return b.String()
+}
+
+// endsWithCapitalisedToken reports whether a rendered part ends in a bare
+// token that starts with an uppercase letter — the angle-sugar gate's
+// receiver. The token is the run after the last space or structural mark.
+func endsWithCapitalisedToken(p string) bool {
+	i := strings.LastIndexAny(p, " \t\n[](){}:,;'\"`")
+	tok := p[i+1:]
+	return tok != "" && tok[0] >= 'A' && tok[0] <= 'Z'
+}
+
+// canonKey spells a map key: bare when it lexes back as the same key —
+// letters, digits, `_`, `$`, `-` and `@` — and as a quoted string otherwise, so
+// `{'q k':2}` keeps its one key instead of re-reading as two entries, and a
+// key that is a structural character (`?`, `.`, `:`) keeps its text
+// (NUR226).
+func canonKey(k string) string {
+	if k == "" {
+		return canonString(k)
+	}
+	for _, r := range k {
+		if !unicode.IsLetter(r) && !unicode.IsDigit(r) && r != '_' && r != '$' && r != '-' && r != '@' {
+			return canonString(k)
+		}
+	}
+	return k
+}
+
+// joinCanonEntries renders a map's entries as canon `key:value` pairs
+// (canonKey), space-joined.
+func joinCanonEntries(m ReadMap, render func(Value) string) string {
+	parts := make([]string, 0, m.Len())
+	for _, k := range m.Keys() {
+		val, _ := m.Get(k)
+		parts = append(parts, canonKey(k)+":"+render(val))
+	}
+	return strings.Join(parts, " ")
+}
+
+// canonTemplate renders a template string as the backtick source it came
+// from (NUR225) — it used to fall to the debug `interp('a ' ${word(x)})`,
+// which re-parses as a syntax error. Literal text takes the template's own
+// escapes (writeTemplateLit); each hole renders `${…}` over its tokens'
+// canon.
+func canonTemplate(parts []InterpPart) string {
+	var b strings.Builder
+	b.WriteByte('`')
+	for _, p := range parts {
+		if len(p.Expr) > 0 {
+			b.WriteString("${" + CanonValues(p.Expr) + "}")
+			continue
+		}
+		writeTemplateLit(&b, p.Lit)
+	}
+	b.WriteByte('`')
+	return b.String()
+}
+
+// writeTemplateLit spells template literal text: a backslash, a backtick and
+// a `$` before `{` are escaped (the template lexer reads `\X` as X), and the
+// control characters take the escapes canonString gives them.
+func writeTemplateLit(b *strings.Builder, s string) {
+	for i := 0; i < len(s); i++ {
+		switch c := s[i]; {
+		case c == '\\':
+			b.WriteString(`\\`)
+		case c == '`':
+			b.WriteString("\\`")
+		case c == '$' && i+1 < len(s) && s[i+1] == '{':
+			b.WriteString(`\$`)
+		case c == '\n':
+			b.WriteString(`\n`)
+		case c == '\t':
+			b.WriteString(`\t`)
+		case c == '\r':
+			b.WriteString(`\r`)
+		default:
+			b.WriteByte(c)
+		}
+	}
+}
+
+// canonXmlTmpl renders an XML literal with `${…}` holes as its source
+// (NUR225) — it used to fall to the debug `interp-xml(…)` wrapper, whose
+// holes spelled their tokens in the debug form. Literal text and attribute
+// text are escaped as a plain XML element's are (escapeXmlText /
+// escapeXmlAttr); a hole renders `${…}` over its tokens' canon.
+func canonXmlTmpl(t XmlTmpl) string {
+	var b strings.Builder
+	b.WriteString("<" + t.Tag)
+	for _, a := range t.Attr {
+		b.WriteString(" " + a.Name + "=\"")
+		for _, p := range a.Parts {
+			if len(p.Expr) > 0 {
+				b.WriteString("${" + CanonValues(p.Expr) + "}")
+			} else {
+				b.WriteString(escapeXmlAttr(p.Lit))
+			}
+		}
+		b.WriteString("\"")
+	}
+	if len(t.Cren) == 0 {
+		b.WriteString("/>")
+		return b.String()
+	}
+	b.WriteString(">")
+	for _, c := range t.Cren {
+		switch c.Kind {
+		case XmlCrenLit:
+			b.WriteString(escapeXmlText(c.Lit))
+		case XmlCrenExpr:
+			b.WriteString("${" + CanonValues(c.Expr) + "}")
+		case XmlCrenChild:
+			if c.Child != nil {
+				b.WriteString(canonXmlTmpl(*c.Child))
+			}
+		}
+	}
+	b.WriteString("</" + t.Tag + ">")
+	return b.String()
 }
 
 // canonReach renders a Reach back to its dotted surface — m.a.b, m!.x,
@@ -574,12 +721,6 @@ func canonFnDef(fd FnDefInfo) string {
 // `/q` is not here: a quoted word is an ATOM by the time it is a value
 // (parseWord returns one before the modifier switch is reached), and the
 // Atom arm already renders `name/q`.
-// hasWordModifiers reports whether v is a Word carrying any `/`-suffix.
-func hasWordModifiers(v Value) bool {
-	w, err := AsWord(v)
-	return err == nil && canonWordModifiers(w) != ""
-}
-
 func canonWordModifiers(w WordInfo) string {
 	var b strings.Builder
 	if w.ArgCount >= 0 {

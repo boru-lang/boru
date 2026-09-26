@@ -13322,6 +13322,35 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR225, NUR226, NUR227 closed — the fixpoint ledger is empty (2026-09-26)
+
+**The divergences.** The canon fixpoint gate that landed with NUR072
+ledgered 33 parse.tsv rows in three kinds: template strings and XML `${}`
+holes in the debug `interp(…)` / `interp-xml(…)` forms (NUR225, 30 rows), a
+map key needing quotes rendered bare (NUR226, 2), and a typed tag before an
+XML literal fusing into an angle sugar (NUR227, 1).
+
+**The fixes.** Both ports: `canonTemplate` / `canonXmlTmpl` render the
+source (template escapes, XML escapes, holes over their tokens' canon);
+`canonKey` quotes a key that would not lex back as itself; `joinCanonParts`
+puts a comma between a bare capitalised token and a `<`. The ledger is
+EMPTY (pinned at 0 in both runners): every parse.tsv row that parses reaches
+its canon fixpoint in Go and in TS. The divergent ledger's two template rows
+took the new spellings (Go folds `\`${}` to an empty literal, TS keeps an
+empty hole — still a divergence, now spelled `\`\`` and `\`${}\``).
+
+**Also.** `hasWordModifiers` is gone (a plain word renders bare, so nothing
+asks); `FirstOwnSig` has its own core test now that core's predicate path no
+longer reads one overload; cover-gate-core is back at 100%.
+
+**Pins.** core `TestNUR225TemplateCanonIsSource`,
+`TestNUR225XmlTmplCanonIsSource`, `TestNUR226MapKeysCanonAsTheirKey`,
+`TestNUR227CommaSeparatesAnAngleReceiver`,
+`TestNUR072SequenceRulesSpellMarkersAndFolds`,
+`TestNUR072DisjunctCanonSpellsItsMembers`, `TestCanonFallbackIsTheDebugForm`,
+`TestFirstOwnSig`; parser `TestParserCanonFixpoint` (Go and TS, empty
+ledger).
+
 ## NUR072 closed — canon spells the sugar and the word; a fixpoint gate in both ports (2026-09-26)
 
 **The divergence.** ADR-015 requires canon to render source that re-parses

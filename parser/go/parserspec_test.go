@@ -58,7 +58,7 @@ const (
 	shapeSpecRowCount     = 28
 	// canonFixpointRowCount pins canon-fixpoint.tsv, ADR-015's shrink-only
 	// ledger of parse.tsv rows that do not yet reach their canon fixpoint.
-	canonFixpointRowCount = 33
+	canonFixpointRowCount = 0
 )
 
 // specRow is one decoded corpus line: the source plus its columns.

@@ -220,7 +220,7 @@ both runners until it is removed; the row count is pinned in both, so the
 ledger only shrinks. It landed with NUR072 (2026-09-26), whose own kinds — a
 plain word, the lambda fold, the mini literal, the type bound, the group
 modifiers — all reach their fixpoint; the rows it lists are the kinds that
-gate found (NUR225–NUR227).
+gate found (NUR225–NUR227), all closed the same day — the ledger is empty.
 
 ## The current debt
 

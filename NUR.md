@@ -146,9 +146,9 @@ keep the two in sync in the same commit.
 | [NUR222](#nur222) | FIXED 2026-09-26 (the dyn body's settled lead — the handoff log's entry of that date): a dynamic lead whose argument is another result of the same DYN-BODY dispatch (`do` over a body the closure path declined) is the body's to settle — its handler runs the body with the interpreter's semantics — and the program's residual arm leaves it; a dyn-body result with nothing of its own above it stays the lead the interpreter re-steps over a later token. The original text: `def m {f: inc/v}` from a factory, `do [m.f 5]` is 6 interpreted and `CALL_DYNAMIC underflow` compiled (an internal error): the model left the member over its 5, the residual arm applied it again over a region the body had already settled; `7 do [m.f 5]` and the `/q` twin `do [m.f y]` the same. Loud, pre-existing (measured on the committed head, 2026-09-26) | closing NUR190, 2026-09-26 |
 | [NUR223](#nur223) | FIXED 2026-09-26 (the seam discards the unconsumed input — the handoff log's entry of that date): the callback seam (InvokeCompiled) hands its caller exactly what the interpreter's CallBoru hands — residuals beyond the SIGNATURE's declared return count that are unconsumed unnamed params are discarded, up to the unnamed-param count; a stored fn's unit is compiled count-agnostic, so its RET used to hand back the whole residual. The original text: `def Z fnpred [[Integer] [true]]  0 is Z` is true interpreted and false compiled — the unit returned [0 true], which the predicate protocol refuses ("predicate must return exactly one value, got 2", raised outright by `def v:Z 0` compiled only); `fnpred [[Integer] [dup 0 eq]]` the same. Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR100, 2026-09-26 |
 | [NUR224](#nur224) | FIXED 2026-09-26 (the predicate's refusal is a type_error — the handoff log's entry of that date): a typed def's predicate refusal raises `type_error` on both lanes, as the typed def's other refusals do (`def q:T "x"` — does not unify with declared type T). The original text: `def Big fnpred n:Integer [n gt 10]  def f fn [[x:Any] [Any] [def q:Big x q]]  f 5` raised the refusal as a PLAIN error interpreted and as an `internal_error` annotated "this is a compiler defect" compiled — the typed-bind op raised the same plain error, and the compiled run books any non-BoruError as its own defect. Loud on both, the class split, pre-existing (measured on the committed head, 2026-09-26) | closing NUR100, 2026-09-26 |
-| [NUR225](#nur225) | Template strings and XML literals with `${}` holes canon in DEBUG form — `interp('v ' ${1} ' w')`, `interp-xml(<a>${1}</a>)` — which no parser accepts (a template re-parses as a syntax error, an XML literal as the word `interp-xml` over a group): 30 of parse.tsv's rows fail the canon fixpoint on it, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
-| [NUR226](#nur226) | A map key that needs quoting canons bare: `{'q k':2}` renders `{q k:2}`, which re-parses as two entries (`{q:q k:2}`) — ADR-015's round-trip broken on the key, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
-| [NUR227](#nur227) | A typed tag before an XML literal re-lexes as the angle sugar: `<a/>:A` canons `[:A <a/>]`, which re-parses as `[:A<a/>]` — whitespace does not separate `A` from `<`, so the tag and the element fuse into `A<a/>` | the canon fixpoint gate, closing NUR072, 2026-09-26 |
+| [NUR225](#nur225) | FIXED 2026-09-26 (templates and XML holes spell their source — the handoff log's entry of that date): canon renders a template string as backtick source (`canonTemplate`: literal text with the template lexer's escapes, each hole `${…}` over its tokens' canon) and an XML literal with holes as its XML (`canonXmlTmpl`: text and attribute text escaped as a plain element's), in both ports — TS keeps a tagged empty hole as `${}`. The original text: Template strings and XML literals with `${}` holes canon in DEBUG form — `interp('v ' ${1} ' w')`, `interp-xml(<a>${1}</a>)` — which no parser accepts (a template re-parses as a syntax error, an XML literal as the word `interp-xml` over a group): 30 of parse.tsv's rows fail the canon fixpoint on it, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
+| [NUR226](#nur226) | FIXED 2026-09-26 (the key canons as its key — the handoff log's entry of that date): a map key renders bare only when it lexes back as the same key (letters, digits, `_ $ - @`) and quoted otherwise (`canonKey`), in every canon map arm, both ports. The original text: A map key that needs quoting canons bare: `{'q k':2}` renders `{q k:2}`, which re-parses as two entries (`{q:q k:2}`) — ADR-015's round-trip broken on the key, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
+| [NUR227](#nur227) | FIXED 2026-09-26 (a comma before the angle — the handoff log's entry of that date): a sequence joins a part whose last token is a bare capitalised name to a part opening `<` with a comma (`joinCanonParts`), so `[:A, <a/>]` re-parses as the typed list it is, both ports. The original text: A typed tag before an XML literal re-lexes as the angle sugar: `<a/>:A` canons `[:A <a/>]`, which re-parses as `[:A<a/>]` — whitespace does not separate `A` from `<`, so the tag and the element fuse into `A<a/>` | the canon fixpoint gate, closing NUR072, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -4810,9 +4810,9 @@ fixpoint diagnostic now runs over every parse.tsv row that parses, in the Go
 runner (`TestParserCanonFixpoint`) and the TS runner, against one
 shrink-only ledger (parser/spec/canon-fixpoint.tsv, pinned at 33 rows in
 both). Every row of NUR072's kinds reaches its fixpoint; the 33 ledgered rows
-are other kinds the gate found — template strings and XML `${}` holes
+were other kinds the gate found — template strings and XML `${}` holes
 (NUR225), a map key that needs quoting (NUR226), a typed tag before an XML
-literal (NUR227). Pinned also: core `TestNUR072SugarKindsSpellTheirSource`
+literal (NUR227) — all fixed the same day, and the ledger is empty. Pinned also: core `TestNUR072SugarKindsSpellTheirSource`
 and `TestNUR072UnspellableSugarKeepsTheFallback`.
 
 Two results changed along the way and are recorded where they belong: the
@@ -8640,9 +8640,22 @@ control.tsv §3's row.
 
 ## NUR225 — template strings and XML `${}` holes canon in debug form {#nur225}
 
-**Status:** Pending (fixing next, in the reverse-order run) · **Recorded:**
-2026-09-26 · **Surfaced by:** the canon fixpoint gate that landed with
-NUR072.
+**Status:** FIXED 2026-09-26 (templates and XML holes spell their source —
+the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** the canon fixpoint gate that landed with NUR072.
+
+**The fix.** Canon arms for both kinds, in core/go and core/ts. A template
+string renders as backtick source (`canonTemplate`): literal text takes the
+template lexer's own escapes — `\\`, `` \` ``, `\$` before `{`, and the control
+escapes canonString uses — and each hole renders `${…}` over its tokens'
+canon (`CanonValues`, so a hole's words are bare and its lambda folds). An
+XML literal with holes renders as its XML (`canonXmlTmpl`): literal text and
+attribute text escaped as a plain element's are, holes as `${…}`, nested
+templates recursing. The TS twin keeps a tagged EMPTY hole as `${}` (Go's
+untagged parts cannot hold one in a template, which divergent.tsv's `\`${}`
+row records). All 30 ledgered rows reach their fixpoint. Pinned: core
+`TestNUR225TemplateCanonIsSource`, `TestNUR225XmlTmplCanonIsSource`;
+parse.tsv's rows.
 
 **Rule:** ADR-015 — canon renders source that re-parses to the same value;
 a debug spelling is a defect.
@@ -8656,8 +8669,17 @@ contract defect, not a parity one.
 
 ## NUR226 — a map key that needs quoting canons bare {#nur226}
 
-**Status:** Pending (fixing next) · **Recorded:** 2026-09-26 · **Surfaced
-by:** the canon fixpoint gate.
+**Status:** FIXED 2026-09-26 (the key canons as its key — the handoff log's
+entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:** the canon
+fixpoint gate.
+
+**The fix.** `canonKey`: a key renders bare only when it lexes back as the
+same single key — letters, digits, `_`, `$`, `-`, `@` — and as a quoted
+string otherwise (an empty key, whitespace, a structural character such as
+`?`, `.`, `/`), in every canon map arm (map, flex, weak flex, typed map,
+options and inspect maps in TS), both ports. `{'q k':2}` and `{'':1}` keep
+their one key; `{1.5:2}` renders `{'1.5':2}`, the same map. Pinned: core
+`TestNUR226MapKeysCanonAsTheirKey`; parse.tsv's rows.
 
 **Rule:** ADR-015.
 
@@ -8666,8 +8688,16 @@ entries, `{q:q k:2}`; `{'a b': 1}` the same. Two ledger rows, both ports.
 
 ## NUR227 — a typed tag before an XML literal re-lexes as an angle sugar {#nur227}
 
-**Status:** Pending (fixing next) · **Recorded:** 2026-09-26 · **Surfaced
-by:** the canon fixpoint gate.
+**Status:** FIXED 2026-09-26 (a comma before the angle — the handoff log's
+entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:** the canon
+fixpoint gate.
+
+**The fix.** The angle gate opens on a `<` after ANY bare capitalised token,
+whitespace or not, so a sequence joins such a part to a part opening `<`
+with a comma — the list/paren separator every sequence accepts, which parses
+to nothing (`joinCanonParts`, both ports). `<a/>:A` canons `[:A, <a/>]`, and a
+word `A` before an XML literal `A, <a/>`. Pinned: core
+`TestNUR227CommaSeparatesAnAngleReceiver`; parse.tsv's row.
 
 **Rule:** ADR-015.
 
