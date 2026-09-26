@@ -3262,6 +3262,12 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		pi := len(lw.p.PolyRefs)
 		lw.p.PolyRefs = append(lw.p.PolyRefs, PolyRef{Word: c.word, Arity: n, NOut: c.nout, Reg: c.polyReg, NoMatch: c.polyNoMatch})
 		lw.emit(OpCallNativePoly, pi, c.pos)
+	} else if c.hostSplice {
+		// A hosted splice (a computed `for` body): its own SigRef, never
+		// shared with a plain call of the same signature — the flag is the
+		// call site's, and the VM runs the handler's tokens on its island.
+		lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: c.word, Sig: c.sig, HostSplice: true})
+		lw.emit(OpCallNative, len(lw.p.Sigs)-1, c.pos)
 	} else {
 		si, ok := lw.sigIdx[c.sig]
 		if !ok {

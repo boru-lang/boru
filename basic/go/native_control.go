@@ -93,11 +93,14 @@ var ControlNatives = []NativeFunc{
 				Impl:       Go(IfListHandler),
 				ReturnsFn:  IfListReturnsFn, BarrierPos: -1,
 				// The handler returns ifClause's tokens — the chosen body
-				// SPLICED for the tape to re-step — and the ReturnsFn records
-				// no branch (it only joins the arms' carriers), so this form
-				// has no structured lowering: CompileResteps, the S2a rule
-				// (S2b's declaration).
-				CompileEffect: CompileResteps,
+				// SPLICED for the tape to re-step — so the dispatch is never
+				// a CALL_NATIVE: under the recording pass the ReturnsFn
+				// lowers the chain as the if3 / if2 branch events it is
+				// equivalent to (ifClauseRecord, 2026-09-26; declared
+				// CompileResteps until then, when a clause list holding a
+				// code body compiled to that CALL_NATIVE and died at run
+				// time on the tape-coupled splice).
+				CompileEffect: CompileOwnLowering,
 			},
 		},
 	},
@@ -161,16 +164,24 @@ var ControlNatives = []NativeFunc{
 				Impl:       Go(ForCountHandler),
 				ReturnsFn:  forIntegerListReturnsFn, BarrierPos: -1,
 				// The loop is lowered by the ReturnsFn (RecordLoop), never as
-				// a dispatch over the body (S2b's declaration).
-				CompileEffect: CompileOwnLowering,
+				// a dispatch over the body (S2b's declaration). A COMPUTED
+				// body (`for 3 (mk 0)`, code-bodies.tsv L141) has no tokens
+				// for RecordLoop to capture: CompileDynBody hands that
+				// dispatch to the dyn-body backstop, which HOSTS the
+				// handler's splice on the VM's interpreter island — admitted
+				// only where the splice and the island cannot be told apart
+				// (the program's last statement over an empty stack; see
+				// compiler's hostsSplice, 2026-09-26).
+				CompileEffect: CompileOwnLowering | CompileDynBody,
 			},
 			{
 				Args:       []*Type{TList, TList},
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(ForRangeHandler),
 				ReturnsFn:  forListListReturnsFn, BarrierPos: -1,
-				// RecordLoop, as the count form (S2b).
-				CompileEffect: CompileOwnLowering,
+				// RecordLoop, as the count form (S2b); a computed body takes
+				// the hosted splice, as the count form's does.
+				CompileEffect: CompileOwnLowering | CompileDynBody,
 			},
 		},
 	},
@@ -695,41 +706,12 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		}
 	}
 	if lit, ok := LiteralCondValue(args[0]); ok {
-		branch := "else"
+		branch, arm := "else", args[1]
 		if !lit {
-			branch = "then"
+			branch, arm = "then", args[2]
 		}
 		EmitUnreachableBranch(r, lit, branch)
-		var stk []Value
-		var defs map[string]Value
-		var joins []BranchJoin
-		if lit {
-			restoreThen := ApplyGuardNarrowing(r, args[0])
-			es.Recorder().ArmBranchCapture()
-			stk, defs = RunCarrierBodyWithDefs(r, args[1])
-			stk = es.Recorder().ArmTailApply(stk)
-			restoreThen()
-			joins = InstallTakenArmDefs(r, defs, nil)
-		} else {
-			restoreElse := ApplyComplementNarrowing(r, args[0])
-			es.Recorder().ArmBranchCapture()
-			stk, defs = RunCarrierBodyWithDefs(r, args[2])
-			stk = es.Recorder().ArmTailApply(stk)
-			restoreElse()
-			joins = InstallTakenArmDefs(r, nil, defs)
-		}
-		frag := recorderState(es).TakeFragment()
-		if len(stk) == 0 { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
-			es.Recorder().MarkUncompilable("if: branch produces no value (Stage 2 lowers single-result branches)")
-			return nil
-		}
-		out := stk[len(stk)-1]
-		taken := lit
-		recorderState(es).RecordBranch(BranchRecord{
-			ConstCond: &taken, HasElse: true,
-			Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,
-		})
-		return []Value{out}
+		return ifTakenArmReturns(r, args[0], arm, lit, pos)
 	}
 	// List-form condition: when emitting, analyse the condition body
 	// as its own fragment so the lowering can run it inline before
@@ -862,6 +844,60 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
 		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: pos, Joins: joins,
+	})
+	return []Value{out}
+}
+
+// ifTakenArmReturns is the lowering of a branch whose condition is DECIDED
+// at compile time: only the taken arm runs, and it records as a ConstCond
+// branch over that arm's fragment. Two callers: if3's literal condition
+// (`if [true] … …`, lit the literal) and the clause-list `if`'s statically
+// decided clause (ifClauseRecord — a scalar condition, or the lone else,
+// always lit=true). The arm is a code body; the narrowing the condition
+// licenses is installed around it. An arm that nets no value declines: a
+// ConstCond branch lowers a single-result arm only.
+func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool, pos SrcPos) []Value {
+	es := r.Check
+	var stk []Value
+	var defs map[string]Value
+	var joins []BranchJoin
+	if lit {
+		restoreThen := ApplyGuardNarrowing(r, cond)
+		es.Recorder().ArmBranchCapture()
+		stk, defs = RunCarrierBodyWithDefs(r, arm)
+		stk = es.Recorder().ArmTailApply(stk)
+		restoreThen()
+		joins = InstallTakenArmDefs(r, defs, nil)
+	} else {
+		restoreElse := ApplyComplementNarrowing(r, cond)
+		es.Recorder().ArmBranchCapture()
+		stk, defs = RunCarrierBodyWithDefs(r, arm)
+		stk = es.Recorder().ArmTailApply(stk)
+		restoreElse()
+		joins = InstallTakenArmDefs(r, nil, defs)
+	}
+	frag := recorderState(es).TakeFragment()
+	// Two arms decline. One that nets no value: a ConstCond branch lowers a
+	// single-result arm only. One that leaves a FN VALUE (`if [true] [g/v]
+	// [1]`): the handler splices the arm as a paren, whose fn result stays
+	// a placed value on the interpreter (`fn g`), but handed back from here
+	// it is re-stepped by the check engine, which records the call — 5,
+	// and `10 if [true] [g/v] [1]` applied g to the 10 beneath. A live
+	// miscompile until 2026-09-26; the general path's join never hands back
+	// a bare fn value.
+	if len(stk) == 0 || IsFnValueResidual(stk[len(stk)-1]) {
+		reason := "if: branch produces no value (Stage 2 lowers single-result branches)"
+		if len(stk) > 0 {
+			reason = "if: the taken arm leaves a fn value (the interpreter places it; the compile model would re-step it)"
+		}
+		es.Recorder().MarkUncompilable(reason)
+		return nil
+	}
+	out := stk[len(stk)-1]
+	taken := lit
+	recorderState(es).RecordBranch(BranchRecord{
+		ConstCond: &taken, HasElse: true,
+		Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,
 	})
 	return []Value{out}
 }
@@ -1003,14 +1039,44 @@ func reduceStaticArm(r *Registry, cond, arm Value, isThen bool) []Value {
 // so it rides RunCarrierCondBody — the CondBodyDepth-exempt body run: an
 // in-place fn redefinition in a condition is not path-dependent and stays
 // compilable, exactly like its paren-`do` condition twin.
+// condBindsName reports whether a condition body's added bindings include a
+// name the program can observe — anything but a generic instantiation's
+// hidden memo (`case b [(Box of [Integer]) …]` interns one; re-instantiating
+// yields the same node, so the rolled-back memo changes no answer).
+func condBindsName(adds map[string]Value) bool {
+	for k := range adds {
+		if !IsGenMemoName(k) {
+			return true
+		}
+	}
+	return false
+}
+
 func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
 	es := r.Check.Recorder()
 	if !es.Armed() || !IsConcrete(cond) || !cond.Parent.ConformsTo(TList) {
 		return nil, nil
 	}
 	es.ArmBranchCapture()
-	stk, _ := RunCarrierCondBody(r, cond)
-	return es.TakeFragment(), stk
+	stk, adds := RunCarrierCondBody(r, cond)
+	frag := es.TakeFragment()
+	if condBindsName(adds) {
+		// A condition body that BINDS a name (`if [def x 5 true] …`): the
+		// interpreter runs the condition inline, once, so the binding stays
+		// visible to the taken arm and to everything after the `if`; the
+		// fragment records it as a rolled-back body and the compiled run
+		// reads the stale binding — `def x 1 end if [def x 5 true] [2] [3]
+		// end x` answered [2 1] for [2 5] (Codex P1 on PR #512, present on
+		// main at b4fad6c for if2 / if3; the clause-list if inherited it).
+		// Declined through the branch record's uncaptured-arm site, the
+		// clause-list if's own decline, so no new site is minted.
+		taken := true
+		recorderState(r.Check).RecordBranch(BranchRecord{
+			ConstCond: &taken, HasElse: true, Pos: cond.Pos(),
+			Uncaptured: "the condition binds a name the interpreter keeps past it",
+		})
+	}
+	return frag, stk
 }
 
 func If2ReturnsFn(args []Value, r *Registry) []Value {
@@ -1117,7 +1183,15 @@ func CaseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 // Condition bodies are still run for their diagnostics but don't
 // contribute to the return type. Unlike if3/if2 this does no per-clause
 // guard narrowing — multi-clause narrowing isn't modelled.
+//
+// Under the RECORDING pass the clause list is LOWERED instead
+// (ifClauseRecord): the handler's result is a splice the tape re-steps,
+// which no CALL_NATIVE can run, so the chain becomes the if3 / if2 branch
+// events it is equivalent to.
 func IfListReturnsFn(args []Value, r *Registry) []Value {
+	if r.Check.Recorder().Active() {
+		return ifClauseRecord(r, args[0])
+	}
 	if !IsConcrete(args[0]) || !args[0].Parent.Equal(TList) {
 		return []Value{NewCarrier(TAny)}
 	}
@@ -1150,6 +1224,142 @@ func IfListReturnsFn(args []Value, r *Registry) []Value {
 		return nil
 	}
 	return []Value{joined[len(joined)-1]}
+}
+
+// ifClauseRecord lowers the clause-list `if [c1 b1 c2 b2 … else]` under the
+// recording pass. IfListHandler's result is ifClause's token splice — a
+// mark/move-if over a code-body condition, a `( body )` paren per arm —
+// which the tape re-steps; recorded as a plain CALL_NATIVE it reached the VM
+// as a tape-coupled handler result and died with an internal_error on every
+// clause list holding a code body (2026-09-26). The chain is instead lowered
+// as the branch events it is equivalent to, clause by clause, exactly as
+// ifClause walks it:
+//
+//   - a NON-code-body condition is decided NOW, by the same CoerceBoolean
+//     the handler applies to the same raw token: a false clause is dropped,
+//     a true one makes its body the whole result (a lone else);
+//   - a lone else is its arm run unconditionally (ifTakenArmReturns);
+//   - `[c b]` is if2 (If2ReturnsFn: the else is nothing, as ifClause's);
+//   - `[c b e]` is if3 (if3ReturnsFn);
+//   - `[c b …rest]` is if3 whose else arm is the body `[if [rest]]`.
+//
+// The last is the one rewrite that is not token-for-token: ifClause runs
+// the rest of the chain inline where the rewrite runs it in the else arm's
+// paren. The two agree because nothing in the chain can reach beneath it:
+// the clause-list overload is only chosen with nothing beneath the `if`
+// (a value there takes if2 over the operand), each condition runs between
+// its own mark and move (a condition's surplus values are discarded, and a
+// later condition reading beneath fails on both lanes), and every body is
+// a paren already. The nested `if` resolves to this same builtin — a user
+// `def if …` is refused (reservedWordError), and a word extension must be
+// anchored by a program type, which a plain List never conforms to.
+//
+// An element the lowering cannot place exactly DECLINES the program
+// loudly (ifClauseDecline): a condition that is neither a code body nor a
+// scalar leaf, word or none (its truthiness is not decided here), and an
+// arm that is neither a code body nor a value the tape places as itself (a
+// bare word the tape would dispatch, forward-collecting past the `if`; a
+// paren group; a map). A COMPUTED clause list keeps the generic record's
+// code-body refusal.
+func ifClauseRecord(r *Registry, list Value) []Value {
+	if !isCodeBody(list) {
+		// A COMPUTED clause list: nothing to lower here, and the generic
+		// record's code-body refusal declines the dispatch, as it did.
+		return []Value{NewCarrier(TAny)}
+	}
+	pos := r.Check.CurCallPos
+	_lst, _ := AsList(list)
+	elems := _lst.Slice()
+	for len(elems) >= 2 && !isCodeBody(elems[0]) {
+		if !ifClauseStaticCond(elems[0]) {
+			ifClauseDecline(r, "a clause condition that is neither a code body nor a scalar (its truthiness is not decided at compile time)", pos)
+			return nil
+		}
+		if CoerceBoolean(elems[0]) {
+			elems = elems[1:2]
+			break
+		}
+		elems = elems[2:]
+	}
+	if len(elems) == 0 {
+		// Every clause's condition was a false scalar (or the list is
+		// empty): the handler splices nothing, which a CALL_NATIVE runs.
+		return nil
+	}
+	// The arm positions: the lone else (elems[0]), the clause's body
+	// (elems[1]) and, for `[c b e]`, the else (elems[2]); a longer chain's
+	// elems[2] is the next CONDITION, lowered by the nested `if`.
+	armAt := []int{1}
+	switch len(elems) {
+	case 1:
+		armAt = []int{0}
+	case 3:
+		armAt = []int{1, 2}
+	}
+	arms := make([]Value, len(armAt))
+	for k, i := range armAt {
+		arm, ok := ifClauseArm(elems[i])
+		if !ok {
+			ifClauseDecline(r, "a clause body that is neither a code body nor a placed value (the tape would re-step it)", pos)
+			return nil
+		}
+		arms[k] = arm
+	}
+	switch len(elems) {
+	case 1:
+		return ifTakenArmReturns(r, NewList([]Value{NewBoolean(true)}), arms[0], true, pos)
+	case 2:
+		return If2ReturnsFn([]Value{elems[0], arms[0]}, r)
+	case 3:
+		return if3ReturnsFn([]Value{elems[0], arms[0], arms[1]}, r)
+	}
+	nested := NewWord("if")
+	nested.SetPos(elems[2].Pos())
+	rest := NewList(append([]Value(nil), elems[2:]...))
+	return if3ReturnsFn([]Value{elems[0], arms[0], NewList([]Value{nested, rest})}, r)
+}
+
+// ifClauseDecline declines a clause list whose element the lowering cannot
+// place: it is recorded as what it is to the recorder — a taken arm that
+// was not captured — so the decline is RecordBranch's own uncaptured-arm
+// arm, carrying the element's reason (BranchRecord.Uncaptured). The plan
+// for it is that arm's: an arm the pass cannot capture is a runtime value.
+func ifClauseDecline(r *Registry, why string, pos SrcPos) {
+	taken := true
+	recorderState(r.Check).RecordBranch(BranchRecord{
+		ConstCond: &taken, HasElse: true, Pos: pos, Uncaptured: "clause-list if: " + why,
+	})
+}
+
+// ifClauseStaticCond reports whether a clause-list condition that is not a
+// code body has a truthiness the compile pass may decide: a scalar leaf
+// the tape places as itself, a bare word (the handler coerces the raw
+// token — `true` / `false` arrive as words — never the word's binding),
+// or none.
+func ifClauseStaticCond(c Value) bool {
+	return IsSteplessWindow([]Value{c}) || IsWord(c) || IsNone(c)
+}
+
+// ifClauseArm is the code body a clause-list arm runs: a code-body list as
+// it stands; a scalar leaf, or a `true` / `false` / `none` word the tape
+// re-steps to its literal, as the one-token body `[v]` (spliceArg places
+// the bare token, and `( v )` places the same value). Anything else — a
+// word the tape would dispatch, a paren group, a map — is not placed
+// exactly by either, and reports false.
+func ifClauseArm(a Value) (Value, bool) {
+	if isCodeBody(a) {
+		return a, true
+	}
+	if IsSteplessWindow([]Value{a}) || IsNone(a) {
+		return NewList([]Value{a}), true
+	}
+	if w, err := AsWord(a); err == nil && w == (WordInfo{Name: w.Name, ArgCount: -1}) {
+		switch w.Name {
+		case "true", "false", "none":
+			return NewList([]Value{a}), true
+		}
+	}
+	return Value{}, false
 }
 
 // ---- for / break / continue handlers ----
@@ -1286,6 +1496,14 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 			}
 		}
 	}
+	// A COMPUTED body under the recording pass (`for 3 (mk 0)`): there are no
+	// tokens to capture, so no loop is recorded here — the dispatch itself is
+	// the event, taken by the dyn-body backstop (CompileDynBody), which hosts
+	// the handler's splice or declines.
+	hosted := lowerable && es.Active() && !IsConcrete(body)
+	if hosted {
+		lowerable = false
+	}
 	if lowerable {
 		es.ArmLoopCapture()
 	}
@@ -1337,7 +1555,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 	// so return the empty residual in the recording pass too — otherwise the check
 	// and compile passes disagree (plain check nets 0, compile keeps `out` and
 	// reports a phantom "got 2"), violating the same-diagnostics contract.
-	if len(stk) == 0 && (!es.Active() || !lowerable) {
+	if len(stk) == 0 && !hosted && (!es.Active() || !lowerable) {
 		return []Value{}
 	}
 	// Plain check (no bytecode recording): a STATICALLY-COUNTED loop leaves the

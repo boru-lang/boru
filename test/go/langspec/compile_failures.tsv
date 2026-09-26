@@ -107,6 +107,16 @@
 # iterator installed, and the zero-out event seats a residual beneath the
 # loop AFTER the loop's values. A computed for body is the interpreter's
 # inline splice, which no body activation models; the row declines loud.
+# code-bodies leaves the ledger on 2026-09-26 (1 -> 0; the sum is 0): L141
+# compiles as a HOSTED SPLICE — `for` declares CompileDynBody again, but the
+# VM now runs the handler's own loop tokens (the interpreter's splice, whole)
+# on its interpreter island (SigRef.HostSplice), where the withdrawn host ran
+# the body per iteration. The recorder admits it only where the island and
+# the inline splice cannot be told apart — the program's top level, as its
+# LAST statement, its one result the WHOLE residual — so the four measured
+# shapes are declines, not divergences: nothing sits beneath the loop for the
+# body to read or to be seated around, and nothing compiled after it reads a
+# binding the body changed or runs after its error.
 # each-variants leaves the ledger on 2026-09-25 (its last row, L206: `import
 # module [export "M" {dbl: (fn …)}] end each [M.dbl] [1 2]` — a module fn
 # applied inside a re-matched each body runs through CallBoru at
@@ -125,4 +135,3 @@
 # satisfiable overload instead of declining "unmatched dispatch recovered";
 # the same rule runs the three class-field rows L246–L248 natively where
 # they bailed at the rematch trap).
-code-bodies.tsv	1	0 -> 1 on 2026-09-25 (the hosted for body withdrawn: row 141, `for 3 (mk 0)` over a computed body, declines again — the host over the InvokeBody seam diverged from the interpreter's inline splice on four measured shapes, see the header); before: 2 -> 1 on 2026-09-25 (row 173, `fn [[d:Map][Integer][unpack [a b] d end a add b]]` — an unpack over an UNPROVEN source no longer latches the check pass's suppressed-error flag (nor records the trap that had compiled the top-level spelling to an unpack_error the interpreter never raised, a live miscompile): the names are run-time binds — the handler's NoteRuntimeBind — whose dispatch is emitted as the plain CALL_NATIVE it is, whose stub installs record no def or twin, and whose reads seat live as gradual values); before: 4 -> 2 on 2026-09-25 (row 152, `do [raise oops 'x'] error b` over a List param — `error` declares CompileDynBody, so a computed handler body lowers to the plain CALL_NATIVE under DynEnv as `do`'s does; row 174, `fn [[a b][List][args]]` — the bare `args` projection in a fn unit is assembled per call from the param locals, RecordArgsProjection, and an `args.N` fold retracts the assembly); before: 5 -> 4 on 2026-09-25 (behave's quoted behaviour name declared CompileQuoteInert: row 228); before: 6 -> 5 on 2026-09-24 (the keep-defs token body, NUR202 closed: row 189); before: 7 -> 6 on 2026-09-24 (the var splice's token sites: row 197); before: 9 -> 7 on 2026-09-24 (the variadic loop body: rows 181 and 182); before: 11 -> 9 on 2026-09-24 (NUR200 closed: rows 183 and 190); before: 13 -> 11 on 2026-09-24 (NUR199 closed: rows 180 and 186); before: 27 at the corpus expansion of 2026-09-17; 27 -> 13 on 2026-09-19 (S1a)

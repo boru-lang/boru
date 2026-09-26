@@ -263,6 +263,7 @@ type emitCall struct {
 	nout              int // number of results the call pushes (0 for a side-effect word, N for multi-result)
 	pos               core.SrcPos
 	poly              bool                  // dispatch via OpCallNativePoly (runtime MatchSignature)
+	hostSplice        bool                  // the handler's result is a SPLICE the VM hosts on its interpreter island (SigRef.HostSplice — a computed `for` body, hostsSplice)
 	generic           bool                  // ROUTED through the region descriptor (OpDispatchGeneric, region_route.go): a fn-unit dispatch with a live word slot over a drivable span
 	polyReg           *core.Registry        // the sub-registry to re-match a module poly word in (nil = main registry)
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)
@@ -1243,6 +1244,11 @@ type EmitState struct {
 	// push (Program.DynEnv). Costs are paid only by programs that use
 	// dynamic code bodies.
 	dynEnv bool
+	// hostSplices holds the seqs of the hosted-splice dispatches recorded
+	// (recordDynBodyCall over a hostsSplice word — a computed `for` body).
+	// Finalize admits each only as the LAST event of the program's top level
+	// whose one result is the whole residual (hostedSpliceAdmitted).
+	hostSplices []int
 	// catchVariadicPending latches the next CompileFallbackBody dispatch's
 	// recorded result as VARIADIC (SetCatchVariadic / catchVariadicFor —
 	// the fallible multi-value `do` body, plan Phase 5 L-DO).
@@ -4575,7 +4581,11 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	}}
 	resolveArm := func(frag *EmitFragment, stk []core.Value, name string) (EmitOperand, bool, bool) {
 		if frag == nil {
-			es.MarkUncompilable("if: " + name + "-branch not captured")
+			reason := "if: " + name + "-branch not captured"
+			if b.Uncaptured != "" {
+				reason += " — " + b.Uncaptured
+			}
+			es.MarkUncompilable(reason)
 			return EmitOperand{}, false, false
 		}
 		if fragDiverges(frag) {
@@ -13759,11 +13769,46 @@ func (es *EmitState) programPendingApplyTop(residual []core.Value) bool {
 	return len(u.pendingApply) == 1 && len(residual) >= 1 && residual[len(residual)-1].ID == u.pendingApply[0].id
 }
 
+// hostedSpliceAdmitted is the whole-program half of a hosted splice's
+// admission (recordDynBodyCall records the dispatch only at the program's
+// top level on the program registry). The interpreter runs a computed `for`
+// body INLINE, on the caller's tape; the VM hosts the same splice on its
+// interpreter island, whose stack starts empty and whose bindings no later
+// compiled read observes. The two agree exactly when nothing compiled can
+// tell them apart, which is what this asks, per hosted dispatch:
+//
+//   - it is the LAST event of the program's top level: nothing recorded
+//     after it reads a binding the body may have defined or undefined (the
+//     interpreter's splice leaks the body's defs to the enclosing scope —
+//     `for 3 (mk)` over `[def x i]`, then `x`), consumes its values, or
+//     runs after an error the body raised (NUR206's leaked index);
+//   - its one result is the WHOLE residual: nothing sat beneath the loop
+//     for the spliced body to read (`9 for 1 (mk)` over `[i add]`), and no
+//     value is seated around its run out of order (`9 for 2 (mk)`).
+//
+// Any other position declines with the reason; the four shapes the review
+// of #508 measured against a per-iteration host are exactly these.
+func (es *EmitState) hostedSpliceAdmitted(residual []core.Value) (string, bool) {
+	for _, seq := range es.hostSplices {
+		top := es.frames[0]
+		if len(top) == 0 || top[len(top)-1].seq != seq {
+			return "for: a computed body is hosted only as the program's last statement (a later statement could read a binding the spliced body changed)", false
+		}
+		if len(residual) != 1 || es.producedBy[residual[0].ID].seq != seq {
+			return "for: a computed body is hosted only over an empty stack (the interpreter's splice reads and leaves values beneath the loop)", false
+		}
+	}
+	return "", true
+}
+
 func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if es == nil {
 		return nil, "no emit state", false
 	}
 	if reason, blocked := es.finalizeBlocked(); blocked {
+		return nil, reason, false
+	}
+	if reason, ok := es.hostedSpliceAdmitted(residual); !ok {
 		return nil, reason, false
 	}
 	twinExempt := es.truncateAtTrap()

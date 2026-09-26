@@ -15368,3 +15368,109 @@ no_signature and bakes the trap. `interpEntryRowCeiling`,
 `store_shape_list_test.go`; lang native `flex_write_shape_test.go`; lang
 `restep_flex_parity_test.go` (22 programs, compiled == interpreted, the
 class-in-flex negatives included).
+## The clause-list `if` lowers, the computed `for` body is a hosted splice — the corpus ledger reads 0 (2026-09-26)
+
+**The clause-list `if` died at run time.** `if [c1 b1 c2 b2 … else]`
+was declared CompileResteps and IfListReturnsFn recorded no branch, so a
+clause list holding ANY code body compiled to a plain CALL_NATIVE of
+IfListHandler — whose result is ifClause's splice (a mark/move-if over a
+code-body condition, a `( body )` paren per arm) — and the VM refused it:
+`internal_error: tape-coupled handler result at if`. Every shape probed
+but the all-scalar list: `if [[1 lt 2] [10] [20]]`, `if [true [1] false
+[2] [3]]`, `def f fn [[x:Integer][Any][if [[x lt 3] ['small'] [x lt 10]
+['mid'] ['big']]]] end f 5`, a recursive fn's base case (`fact`, `fib`),
+`for 3 [if [[i lt 1] ['a'] [i lt 2] ['b'] ['c']]]`. The arms' events were
+also recorded UNCONDITIONALLY into the enclosing unit (RunCarrierBody over
+every clause), so a side effect in an untaken arm would have run.
+
+**The lowering** (basic `ifClauseRecord`, recording pass only; the plain
+check keeps the join). The chain becomes the branch events it is
+equivalent to, clause by clause as ifClause walks it: a non-code-body
+condition is DECIDED at compile time by the handler's own CoerceBoolean
+over the same raw token (a false clause drops, a true one makes its body
+the lone else); a lone else is its arm run unconditionally (the if3
+literal-condition path, factored out as `ifTakenArmReturns`); `[c b]` is
+if2; `[c b e]` is if3; a longer chain is if3 whose else arm is the body
+`[if [rest]]`. That last rewrite runs the rest of the chain in the else
+arm's paren where ifClause runs it inline; the two agree because nothing
+in the chain can reach beneath it (the clause-list overload is chosen only
+with nothing beneath the `if`, each condition runs between its own mark
+and move — surplus values discarded, a later condition reading beneath
+fails on both lanes — and every body is a paren already). The declaration
+moved to CompileOwnLowering. An element the lowering cannot place — a
+condition that is not a code body or a scalar leaf / word / none (a paren
+group, a map), an arm the tape would re-step (a bare word, which could
+forward-collect past the `if`; a map) — declines through RecordBranch's
+uncaptured-arm decline with the element's reason (the new
+`BranchRecord.Uncaptured`), so the census gains no site; a computed clause
+list keeps the generic code-body refusal.
+
+**A live miscompile closed on the way.** The if3 literal-condition path
+handed the taken arm's top back to the check engine; a FN VALUE there was
+re-stepped and recorded as a call: `def g fn [[][Integer][5]] end if
+[true] [g/v] [1]` compiled 5 for the interpreter's `fn g`, and `10 if
+[true] [g/v] [1]` over a 1-arg g compiled 15 for `[10 fn g(Integer)]`
+(also a param's `f/v`). `ifTakenArmReturns` declines a taken arm leaving a
+fn value, at the existing no-value site (the disposition row re-keyed
+if3ReturnsFn#1 -> ifTakenArmReturns#1).
+
+**The hosted splice** (code-bodies.tsv L141, `for 3 (mk 0)`). `for`
+declares CompileDynBody again, but where the withdrawn host (2026-09-25)
+ran the body per iteration over the InvokeBody seam, the VM now runs the
+HANDLER'S OWN loop tokens — the interpreter's splice, whole — on its
+interpreter island (`SigRef.HostSplice`; compiler `hostsSplice`: a
+CompileOwnLowering + CompileDynBody signature with no CallableSpec).
+forCarrierAnalyse records no loop for a computed body under the recording
+pass; the dyn-body backstop records the dispatch, arming DynEnv so the
+body reads the program's bindings. The island IS the interpreter's tape
+exactly where nothing compiled can tell them apart, and the admission is
+that, in two halves: at record time the dispatch sits at the program
+unit's top level, no fragment open, on the program registry
+(`hostSpliceHere` — a fn or closure unit, a branch arm, a loop body, a
+runtime-stamped token body and a module body decline), never as a poly
+re-match; at Finalize it is the LAST event of the top level and its one
+result is the WHOLE residual (`hostedSpliceAdmitted`, a lowering-time
+reason, not a MarkUncompilable site). The four divergences the Codex
+review of #508 measured are therefore declines, not divergences: nothing
+sits beneath the loop for the body to read (`9 for 1 (mk)` over `[i
+add]`) or to be seated around (`9 for 2 (mk)`), nothing compiled after it
+reads a binding the body changed (`for 3 (mk)` over `[def x i]` then `x`,
+and `undef x`), and nothing runs after an error the body raised (NUR206's
+leaked index — the `do [for 3 (mk)] error […]` pin is unchanged, the
+interpreter's own leak). Parity pinned over bodies reading program
+bindings, the loop's own index, fn values, class instances, break /
+continue, errors raised in the body, `args` and `depth`.
+
+**Seen and left.** NUR210 (a computed `do` body: a value beneath is
+seated after the body's values, `9 do (mk)` over `[1 2]` is `[1 9 2]` for
+`[9 1 2]`, SILENT; a keep-defs rebinding read afterwards is an
+internal_error) and NUR211 (a stack-form count, `3 for (mk)`, is an
+internal DISPATCH_REMATCH error for the interpreter's signature_error),
+both present on main. A fn whose declared return count is violated by an
+`if` arm raises the same type_error on both lanes with a different caret
+(the compiled lane points at the `if`, the interpreter at the call) — for
+the if3 form too, pre-existing; the parity pins avoid it.
+
+**Measured.** compile failures 1 -> 0 (the per-file ledger is empty;
+code-bodies leaves it). lang `compileDefectCeiling` 302 -> 301 (L141's
+witness compiles; the four divergence witnesses stay booked declines with
+the hosted splice's reasons); `bailDefectCeiling` 39 unchanged. The
+compile-failure site census stays 91 (the clause-list declines ride
+RecordBranch's existing uncaptured-arm site; the admission's two declines
+are Finalize reasons). The interp-entry census moves the other way, by
+the row that graduated: `interpEntryRowCeiling` 24 -> 25 and
+`engineEntryCeiling` 165 -> 166 — L141 runs compiled and its loop enters
+the interpreter once, on the island (Engine.Run 1, vm:island 1, measured
+with BORU_LOG_CENSUS_ROWS=1), L228's trade of 2026-09-25. The full
+langspec corpus passes at those ceilings (no unledgered divergence: 8225
+compiled, 0 new mismatches); the test/go suites and the unit suites of
+core, basic, compiler, eng and lang pass; `make cover-gate-core` 100%.
+
+**Pins.** lang `if_clause_list_test.go`
+(`TestClauseListIfCompilesWithParity`: forty-eight shapes;
+`TestClauseListIfDeclinesLoudly`: the loud declines, the fn-value arm
+included); `s2_declared_bodies_test.go`
+(`TestComputedForBodyHostedAtProgramEnd`, `TestComputedForBodyDeclines`
+rewritten over the hosted splice's reasons); `s2b_declarations_test.go`
+(`if (List)` own, `for` own | dyn); compiler `host_splice_test.go`; eng
+`host_splice_test.go`; basic `if_clause_record_test.go`.

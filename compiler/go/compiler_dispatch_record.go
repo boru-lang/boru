@@ -775,6 +775,14 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 		if !ok || core.IsConcrete(args[bp]) || len(outs) == 0 {
 			return false
 		}
+		// A STRUCTURED-LOWERING word (`for`) has no body run of its own to
+		// host: its handler returns the interpreter's splice. It takes the
+		// backstop only where the VM can host that splice on its island
+		// indistinguishably (hostSpliceHere), and never as a poly re-match
+		// (CALL_NATIVE_POLY runs no host).
+		if hostsSplice(sig) && (!hostSpliceHere(r, es) || dynBodyPoly(r, word, args, args[bp])) {
+			return false
+		}
 		return recordDynBodyCall(r, es, word, sig, args, outs, pos, args[bp], true)
 	}
 	// A 0-result dispatch is admitted only for a word that DECLARES a 0-out
@@ -861,13 +869,15 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// `each $.x (get)` over a runtime Integer as the (Reach, List) arm —
 	// `[[]]` where the interpreter raises signature_error (a Codex review of
 	// #474). Fully-typed operands bake the sig.
-	call := emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos}
-	if body.Dynamic || check.AnyAnyCarrier(args) ||
-		(check.AnyDynamicCarrier(args) && check.DynamicReachableOverloadCount(r, word, args) >= 2) {
+	call := emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos, hostSplice: hostsSplice(sig)}
+	if dynBodyPoly(r, word, args, body) {
 		call.sig = nil
 		call.poly = true
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
+	if call.hostSplice {
+		es.hostSplices = append(es.hostSplices, seq)
+	}
 	f := es.eventInfo[seq]
 	f.dynBodyResult = true
 	// A VALUE-EVAL body (`do {map}`) — a CONCRETE, non-dynamic Map arg on the
@@ -976,6 +986,34 @@ func recordStoredFnDyn(es *EmitState, word string, sig *core.Signature, args, ou
 		es.dynEnv = true
 	}
 	return true
+}
+
+// dynBodyPoly reports whether a dyn-body dispatch re-matches at run time (a
+// POLY re-match over the word's own overloads) rather than baking the sig the
+// check committed — recordDynBodyCall's rule, stated there.
+func dynBodyPoly(r *core.Registry, word string, args []core.Value, body core.Value) bool {
+	return body.Dynamic || check.AnyAnyCarrier(args) ||
+		(check.AnyDynamicCarrier(args) && check.DynamicReachableOverloadCount(r, word, args) >= 2)
+}
+
+// hostsSplice reports whether a CompileDynBody signature's handler returns the
+// interpreter's SPLICE rather than a body run's values: a structured-lowering
+// code-body word (CompileOwnLowering — the ReturnsFn records the word as its
+// own event) with no CallableSpec, i.e. `for` ×2. Its dyn-body dispatch is a
+// hosted splice (SigRef.HostSplice): the VM runs the handler's tokens on its
+// interpreter island.
+func hostsSplice(sig *core.Signature) bool {
+	return sig.Callable == nil && sig.CompileEffect.Has(core.CompileOwnLowering) && sig.CompileEffect.Has(core.CompileDynBody)
+}
+
+// hostSpliceHere is the record-time half of a hosted splice's admission: the
+// dispatch sits at the TOP LEVEL of the program being compiled — the program
+// unit, no fragment open (a branch arm, a loop body), on the program registry
+// (not a module body's) — where the interpreter's splice runs on the
+// program's own tape. A fn or closure unit, a runtime-stamped token body and
+// a nested body all decline. Finalize's hostedSpliceAdmitted asks the rest.
+func hostSpliceHere(r *core.Registry, es *EmitState) bool {
+	return len(es.units) == 1 && len(es.frames) == 1 && es.isProgramRegistry(r)
 }
 
 // soleNoEvalSlot is the one NoEvalArgs position of a signature taking n

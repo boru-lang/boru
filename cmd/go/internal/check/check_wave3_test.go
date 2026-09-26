@@ -221,14 +221,16 @@ func TestEmitIslandReport(t *testing.T) {
 }
 
 func TestEmitUncompilableWithSiteCounts(t *testing.T) {
-	// A `for` over a COMPUTED body fails to compile ("for: body not
-	// captured" — the interpreter's inline splice, which no body activation
-	// models; code-bodies.tsv L141) but still tallies dispatch sites. The
-	// fixture used to be a computed-START range, which compiles natively
-	// since 2026-09-26 (the planner promotes the start's producer to a frame
-	// local and FOR_SETUP re-pushes it).
+	// A `for` over a COMPUTED body above a value beneath it fails to compile
+	// (the hosted splice is admitted only over an empty stack — the island's
+	// splice and the interpreter's inline one could seat the 9 differently)
+	// but still tallies dispatch sites. The fixture used to be `for 3 (mk)`
+	// alone, code-bodies.tsv L141, which compiles as that hosted splice since
+	// 2026-09-26; before that, a computed-START range, which compiles
+	// natively since the same day (the planner promotes the start's producer
+	// to a frame local and FOR_SETUP re-pushes it).
 	var stdout, stderr bytes.Buffer
-	if err := Emit(&stdout, &stderr, "def mk fn [[][List][quote [i]]] end for 3 (mk)"); err != nil {
+	if err := Emit(&stdout, &stderr, "def mk fn [[][List][quote [i]]] end 9 for 3 (mk)"); err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
 	out := stdout.String()

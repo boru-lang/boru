@@ -1034,6 +1034,14 @@ type SigRef struct {
 	// one sig and raises otherwise, so it diverges from the interpreter only if a
 	// sibling exists — which the single-overload gate forbids.
 	Guard bool
+	// HostSplice marks the CALL_NATIVE of a structured-lowering word over a
+	// COMPUTED body (`for 3 (mk 0)` — compiler's hostsSplice): the handler
+	// returns the interpreter's SPLICE (the loop's mark, body and move
+	// tokens), and the VM runs it on the program's interpreter island rather
+	// than rejecting it as a tape-coupled result. The recorder admits it only
+	// as the program's last statement over an empty residual, where the
+	// island's run and the interpreter's inline splice cannot be told apart.
+	HostSplice bool
 }
 
 // TypeRef names one type operand: the canonical type ID (resolved
@@ -1703,6 +1711,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			guard := ""
 			if s.Guard {
 				guard = " [guarded]"
+			}
+			if s.HostSplice {
+				guard = " [hosted splice]"
 			}
 			fmt.Fprintf(sb, " s%-3d ; %s (%s)%s", in.Arg, s.Word, strings.Join(names, ", "), guard)
 		case OpJmp, OpJmpIfFalse, OpForNext:
