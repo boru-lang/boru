@@ -334,10 +334,10 @@ func init() {
 	})
 	register(&Entry{
 		Word:    "behave",
-		Summary: "Install a capability on a type: compare, canon, nodify, unify, truthy, deq, size, make.",
+		Summary: "Install a capability on a type: compare, canon, nodify, unify, truthy, deq, eq, size, make.",
 		Description: "`behave NAME fn` attaches a body the kernel runs whenever it dispatches that capability for the type in the fn's first param — how a user or external type opts into kernel operations instead of inheriting a default. " +
 			"`compare` (fn [[T T] [Integer]]) drives cmp/sort/lt/gt; `canon` (fn [[T] [String]]) drives rendering; `nodify` (fn [[T] [Any]]) drives the Node projection behind jsonify; `unify` (fn [[T T] [T]]) drives type unification; " +
-			"`truthy` (fn [[T] [Boolean]]) decides what a value means in a boolean position — `if`, the connectives, loop conditions; `deq` (fn [[T T] [Boolean]]) decides deep equality; `size` (fn [[T] [Integer]]) answers `size`; " +
+			"`truthy` (fn [[T] [Boolean]]) decides what a value means in a boolean position — `if`, the connectives, loop conditions; `deq` (fn [[T T] [Boolean]]) decides deep equality and `eq` (the same shape) reference equality — both answer only where the kernel has no rule of its own for the pair; `size` (fn [[T] [Integer]]) answers `size`; " +
 			"`make` (fn [[Any] [T]]) is the type's CONSTRUCTOR, and takes its target from the RETURN type rather than a param — construction has no receiver, only a target and an arbitrary source. " +
 			"Installs accumulate: a second `behave` on the same type adds a slot without dropping the first. Builtin types are refused — refine one first.",
 		Examples: []string{

@@ -21,6 +21,7 @@ import (
 //	behave unify/q   (fn [[Foo Foo] [Foo]     [body]])
 //	behave truthy/q  (fn [[Foo]     [Boolean] [body]])
 //	behave deq/q     (fn [[Foo Foo] [Boolean] [body]])
+//	behave eq/q      (fn [[Foo Foo] [Boolean] [body]])
 //	behave size/q    (fn [[Foo]     [Integer] [body]])
 //	behave make/q    (fn [[Any]     [Foo]     [body]])
 //
@@ -30,7 +31,7 @@ import (
 // the body runs whenever the kernel dispatches the corresponding
 // capability (CompareValues for compare, Value.String for canon,
 // NodifyValue for nodify, Unify for unify, CoerceBoolean for truthy,
-// DeepEqual for deq, SizeOf for size, TryMake for make).
+// DeepEqual for deq, ExactEqual for eq, SizeOf for size, TryMake for make).
 //
 // `make` is the one slot whose target comes from the fn's RETURN type
 // rather than its params, because construction has no receiver — only a
@@ -146,6 +147,13 @@ var behaviors = map[string]behaviorEntry{
 	"deq": {
 		validate: validateDeqSig,
 		install:  func(u *userBehavior, body []core.Value) { u.deqBody = body },
+	},
+	// eq is deq's reference half: a type answers what "the same thing" means
+	// for its own values, consulted where deq's slot is — at the kernel's
+	// terminal verdict (core.ExactEqualer, NUR075).
+	"eq": {
+		validate: validateEqSig,
+		install:  func(u *userBehavior, body []core.Value) { u.eqBody = body },
 	},
 	"size": {
 		validate: validateSizeSig,
@@ -402,19 +410,31 @@ func validateTruthySig(sig core.FnSig) (*core.Type, error) {
 // T — the same two-same-type shape `compare` requires, since deep
 // equality is likewise a closed operation on T.
 func validateDeqSig(sig core.FnSig) (*core.Type, error) {
+	return validateEqualitySig("deq", sig)
+}
+
+// validateEqSig enforces deq's shape for the reference half, `[[T T]
+// [Boolean] [body]]`, and returns T (NUR075).
+func validateEqSig(sig core.FnSig) (*core.Type, error) {
+	return validateEqualitySig("eq", sig)
+}
+
+// validateEqualitySig is the one shape both equality slots take: two params
+// of one declared type, a Boolean verdict.
+func validateEqualitySig(slot string, sig core.FnSig) (*core.Type, error) {
 	if len(sig.Params) != 2 {
-		return nil, fmt.Errorf("deq: fn must take 2 args (got %d)", len(sig.Params))
+		return nil, fmt.Errorf("%s: fn must take 2 args (got %d)", slot, len(sig.Params))
 	}
 	if len(sig.Returns) != 1 || !sig.Returns[0].Equal(core.TBoolean) {
-		return nil, fmt.Errorf("deq: fn must return Boolean")
+		return nil, fmt.Errorf("%s: fn must return Boolean", slot)
 	}
 	t0 := sig.Params[0].Type
 	t1 := sig.Params[1].Type
 	if t0 == nil || t1 == nil {
-		return nil, fmt.Errorf("deq: both params must declare a type")
+		return nil, fmt.Errorf("%s: both params must declare a type", slot)
 	}
 	if !t0.Equal(t1) {
-		return nil, fmt.Errorf("deq: both params must be the same type (got %s and %s)", t0, t1)
+		return nil, fmt.Errorf("%s: both params must be the same type (got %s and %s)", slot, t0, t1)
 	}
 	return t0, nil
 }
@@ -501,6 +521,7 @@ type userBehavior struct {
 	target     *core.Type
 	truthyBody []Value
 	deqBody    []Value
+	eqBody     []Value
 	sizeBody   []Value
 	makeBody   []Value
 	inRender   bool
@@ -508,6 +529,7 @@ type userBehavior struct {
 	inUnify    bool
 	inTruthy   bool
 	inDeq      bool
+	inEq       bool
 	inSize     bool
 	inMake     bool
 }
@@ -796,31 +818,51 @@ func (u *userBehavior) DeepEqualValues(a, b Value) (bool, error) {
 	}
 	u.inDeq = true
 	defer func() { u.inDeq = false }()
-	return u.runDeqBody(a, b)
+	return u.runEqualityBody(u.deqBody, "deq", a, b)
 }
 
-func (u *userBehavior) runDeqBody(a, b Value) (bool, error) {
+// ExactEqualValues runs the installed eq body if any, else delegates to
+// prev's ExactEqualer, else declines — DeepEqualValues' shape for the
+// reference half of the two equalities (NUR075).
+func (u *userBehavior) ExactEqualValues(a, b Value) (bool, error) {
+	if len(u.eqBody) == 0 {
+		if ee, ok := u.prev.(core.ExactEqualer); ok {
+			return ee.ExactEqualValues(a, b)
+		}
+		return false, core.ErrNoExactEqualer
+	}
+	if u.inEq {
+		return false, core.ErrNoExactEqualer
+	}
+	u.inEq = true
+	defer func() { u.inEq = false }()
+	return u.runEqualityBody(u.eqBody, "eq", a, b)
+}
+
+// runEqualityBody runs an equality slot's body with the pair bound to `a`
+// and `b` and reads its Boolean verdict — shared by deq and eq.
+func (u *userBehavior) runEqualityBody(body []Value, slot string, a, b Value) (bool, error) {
 	r := u.registry
 	if r == nil {
-		return false, fmt.Errorf("behave deq %s: no registry attached", u.typeName)
+		return false, fmt.Errorf("behave %s %s: no registry attached", slot, u.typeName)
 	}
 	r.Defs.Push("a", a)
 	r.Defs.Push("b", b)
 	defer r.Defs.Pop("a")
 	defer r.Defs.Pop("b")
 
-	tokens := append([]Value{}, u.deqBody...)
+	tokens := append([]Value{}, body...)
 	result, err := core.RunPooledTop(r, tokens)
 	if err != nil {
-		return false, fmt.Errorf("behave deq %s: %w", u.typeName, err)
+		return false, fmt.Errorf("behave %s %s: %w", slot, u.typeName, err)
 	}
 	if len(result) == 0 {
-		return false, fmt.Errorf("behave deq %s: body produced no result", u.typeName)
+		return false, fmt.Errorf("behave %s %s: body produced no result", slot, u.typeName)
 	}
 	top := result[len(result)-1]
 	if !top.Parent.ConformsTo(core.TBoolean) {
-		return false, fmt.Errorf("behave deq %s: body must return Boolean, got %s",
-			u.typeName, top.Parent.String())
+		return false, fmt.Errorf("behave %s %s: body must return Boolean, got %s",
+			slot, u.typeName, top.Parent.String())
 	}
 	return core.AsBoolean(top)
 }

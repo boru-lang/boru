@@ -173,7 +173,7 @@ keep the two in sync in the same commit.
 | [NUR009](#nur009) | Bytes excluded from the DepScalar refinement bases — VERDICT 2026-08-15: WAIT for the ADR-012 `types/go` consolidation to close this through the refinement-base capability; no narrow fix meanwhile | 2026-07-22 uniformity review |
 | [NUR026](#nur026) | Escape sets diverge between quoted strings and templates — NARROWED 2026-08-15: the escape VOCABULARY is resolved by fix (templates take the quoted-string set: \b \f \v \xNN \uNNNN, and an unknown escape drops its backslash); what remains is the malformed-input REPORTING difference, which needs an error channel the template lexer seam does not have | 2026-07-22 uniformity review |
 | [NUR072](#nur072) | Three sugar kinds (mini, type-bound, lambda) still canon in DEBUG form after NUR059 — withdrawn there because the renders do not round-trip: SugarInfo does not retain the mini delimiter, and type-bound renders its Items rather than the bound's text; also carries the undecided bare-word question (`word(foo)` vs `foo`, 175 corpus rows) | NUR059's fix, 2026-08-15 |
-| [NUR075](#nur075) | `deq` is extensible per type (`DeepEqualer`), `eq` is not — the one part of the retired NUR031's verdict its fix did not take: the divergences closed by adding kernel arms rather than by routing through `Behavior`, so a type can define its own deep equality but not its own identity | NUR031's fix, 2026-08-16 |
+| [NUR075](#nur075) | FIXED 2026-09-26 (eq's capability — the handoff log's entry of that date): `eq` is extensible per type on `deq`'s terms — `core.ExactEqualer`, consulted at ExactEqual's terminal `false` exactly where DeepEqualer sits in DeepEqual (so the two reach the same values: the pairs no kernel arm names), and a `behave eq/q` slot with deq's shape (`[[T T] [Boolean]]`) and deq's seam (delegate, decline, re-entry guard). Kernel identity arms are untouched — the capability is additive, as deq's is. The original text: `deq` is extensible per type (`DeepEqualer`), `eq` is not — the one part of the retired NUR031's verdict its fix did not take: the divergences closed by adding kernel arms rather than by routing through `Behavior`, so a type can define its own deep equality but not its own identity | NUR031's fix, 2026-08-16 |
 | [NUR076](#nur076) | FIXED 2026-09-26 (the check pass notes a behave make — the handoff log's entry of that date): `behave`'s check-mode half (its ReturnsFn) validates the call as the handler does and, for the `make` slot, notes the target in the pass's own state (`CheckState.BehaveMakers`), which `HasMaker` reads — so a construction after the call skips the schema validation the type's own constructor replaces, exactly as a Go-side Maker's does; one before it validates, as the run has it. Nothing is installed on the type, so no user body runs during analysis; the other seven slots change only what a program computes, which analysis does not evaluate. `def P class {a: Integer}  behave make/q (fn Any P [make P {a: 42}])  make P {bogus: 1}` checks clean and compiles (Class/P{a:42} on both lanes). The original text: A `behave`-installed capability is invisible to check mode, because `behave` does not run there — for `make` that turns a working program into a check FAILURE: a type whose Maker ignores the schema still has the schema's unknown/missing-field rules applied statically | NUR056's fix, 2026-08-17 (flagged by the PR #379 review, Codex P1) |
 | [NUR060](#nur060) | The parser twins disagree on open-input sources beyond the corpus | PR #337 parity-probe sweep (flagged for NUR by Codex P1) |
 | [NUR063](#nur063) | Seven self-knowledge words are proposed to dispatch from two module surfaces (`boru:debug` and `boru:scry`) — VERDICT 2026-08-15: `boru:scry` canonical, the `boru:debug` copies frozen behind shared handlers and deprecated on a stated timeline | design/BORU-SCRY.0.md §6 (flagged for NUR by PR #344 Codex P1) |
@@ -4811,8 +4811,38 @@ record decides that first.
 
 ## NUR075 — `deq` is extensible per type, `eq` is not {#nur075}
 
-**Status:** Pending · **Recorded:** 2026-08-16 · **Surfaced by:** the
-retired NUR031's fix — the one part of its verdict the fix did not take
+**Status:** FIXED 2026-09-26 (eq's capability — the handoff log's entry of
+that date) · **Recorded:** 2026-08-16 · **Surfaced by:** the retired
+NUR031's fix — the one part of its verdict the fix did not take
+
+**The fix.** The first candidate: an `ExactEqualer` capability mirroring
+`DeepEqualer` in every respect, so the two halves of the word family are
+extensible on the same terms.
+
+- `core.ExactEqualer` (`ExactEqualValues(a, b) (bool, error)`,
+  `ErrNoExactEqualer`) is consulted by `exactEqualCapability` — the LCA
+  walk `deepEqualCapability` takes — at ExactEqual's terminal `false`,
+  after every kernel arm. It is additive exactly as deq's is: it can only
+  turn that `false` into an answer, never override a scalar leaf, a
+  container's, a function's or a handle's identity. Measured, the two
+  terminals are reached by the same pairs — values of a type whose payload
+  no kernel arm names (a host payload with no pointer to carry an identity)
+  — so the capabilities have the same reach.
+- `behave eq/q (fn [[T T] [Boolean] [body]])` installs it: deq's validator
+  (now `validateEqualitySig`, shared), deq's seam on the wrapper
+  (`ExactEqualValues`: delegate to the previous Behavior, decline, guard
+  re-entry, read the Boolean verdict through the shared
+  `runEqualityBody`). `describe behave` lists the slot.
+
+The third reading the record weighed — reference identity as a kernel
+property no type may answer for — is what the ADDITIVE placement keeps: no
+arm the kernel has an identity rule for can be reached. What changed is
+that the pairs the kernel has no rule for are the type's to answer for on
+both halves, not on one. Pinned: core `TestExactEqualCapability*` (answers
+at the terminal, declines and failures fall through, cannot reach past the
+scalar or container arms), lang/native `TestBehaveEqSlotInstalls`,
+`TestBehaveEqSeam`, and the eq rows of the wrong-shape and untyped-param
+negatives.
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
 

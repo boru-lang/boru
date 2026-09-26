@@ -13322,6 +13322,23 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR075 closed — `eq` gets deq's capability (2026-09-26)
+
+**The divergence.** `deq` consults a per-type `DeepEqualer` at DeepEqual's
+terminal verdict and `behave deq/q` installs one; `eq` had no counterpart,
+so the two halves of one word family were extensible on different terms.
+
+**The fix.** `core.ExactEqualer`, consulted by `exactEqualCapability` at
+ExactEqual's terminal `false` — DeepEqualer's placement, so it is additive
+and reaches the same pairs (measured with the DeepEqualer fixtures: a
+non-pointer host payload reaches both terminals) — and `behave eq/q` with
+deq's shape, validator (`validateEqualitySig`) and body runner
+(`runEqualityBody`), both now shared. No kernel identity arm moved.
+
+**Pins.** core `TestExactEqualCapabilityAnswersAtTheTerminalPoint`,
+`…DeclineAndFailure`, `…IsAdditive`; lang/native `TestBehaveEqSlotInstalls`,
+`TestBehaveEqSeam`, the eq wrong-shape and untyped-param rows.
+
 ## NUR076 closed — the check pass notes a `behave make` (2026-09-26)
 
 **The divergence.** `behave` does not run in check mode, so a type whose

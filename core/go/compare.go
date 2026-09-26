@@ -391,6 +391,14 @@ func ExactEqual(a, b Value) bool {
 		return eq
 	}
 
+	// Last chance before the terminal verdict: a type that installed the
+	// ExactEqualer capability answers for its own values — DeepEqual's
+	// placement exactly, so it can only turn this `false` into a real
+	// answer (NUR075). See exactequal_capability.go.
+	if eq, handled := exactEqualCapability(a, b); handled {
+		return eq
+	}
+
 	return false
 }
 
