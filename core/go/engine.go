@@ -6467,6 +6467,16 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 		}
 	}
 
+	// An anonymous value whose refusal is UNDECIDED — a pattern over a
+	// carrier the run may bind to the pattern's literal — is not parked on
+	// a compiling pass: the run applies it where the value meets the
+	// pattern (NUR254).
+	if checkMode && !fnDef.Macro && e.Registry.analysisCompiling() && e.Registry.analysisRecorder().Active() {
+		if n := undecidedPatternWindow(ownSigs, resolved); n > 0 && e.recordUndecidedApply(valIdx, n, resolvedIdx) {
+			return nil
+		}
+	}
+
 	// A NAMED function reached as a call — args on the stack
 	// (swap/prefix form) or upcoming forward tokens (`Pkg.fn a b`) — that
 	// matched no signature is an ERROR HERE, at the dispatch site
@@ -6567,6 +6577,81 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 
 	e.Pointer++
 	return nil
+}
+
+// undecidedPatternWindow is the arity of the first own signature whose
+// refusal of the stack's top values is UNDECIDED (NUR254): every slot admits
+// its value by type, every pattern over a concrete value admits it, and some
+// pattern holds a non-concrete value — a carrier the run may bind to the
+// pattern's literal (`(n ([0] => [1]))` over an Integer param). The window is
+// read as ExecFnDefSigStackMatch reads it: top-first for named params, in
+// stack order for unnamed ones. 0 when every refusal is definite.
+func undecidedPatternWindow(ownSigs []Signature, resolved []Value) int {
+	for i := range ownSigs {
+		sig := &ownSigs[i]
+		n := len(sig.Params)
+		if n == 0 || len(resolved) < n {
+			continue
+		}
+		named := false
+		for _, p := range sig.Params {
+			named = named || p.Name != ""
+		}
+		undecided, ok := false, true
+		for j, p := range sig.Params {
+			v := resolved[len(resolved)-n+j]
+			if named {
+				v = resolved[len(resolved)-1-j]
+			}
+			switch {
+			case !stackSlotAdmits(sig, j, v):
+				ok = false
+			case p.Pattern == nil:
+			case !IsConcrete(v):
+				undecided = true
+			default:
+				_, ok = Unify(v, *p.Pattern)
+			}
+			if !ok {
+				break
+			}
+		}
+		if ok && undecided {
+			return n
+		}
+	}
+	return 0
+}
+
+// recordUndecidedApply records an anonymous fn value's UNDECIDED apply over
+// the top n stack values (undecidedPatternWindow) as the trailing dynamic
+// apply the run decides — recordParenTrailingFnApply's event: applied where
+// the run's value meets the pattern, parked beside its window where it does
+// not, a variadic region under NUR246's rules — and collapses the window and
+// the value to its result. A window the recorder cannot seat flags the
+// gradual split instead, so the program declines (NUR228's discipline)
+// rather than bake the park the check pass would otherwise leave.
+func (e *Engine) recordUndecidedApply(valIdx, n int, resolvedIdx []int) bool {
+	fnv := e.Tape.At(valIdx)
+	argIdxs := resolvedIdx[len(resolvedIdx)-n:]
+	argVals := make([]Value, 0, n)
+	for _, i := range argIdxs {
+		argVals = append(argVals, e.Tape.At(i))
+	}
+	out := NewCarrier(TAny)
+	out.ID = GenerateID(IDPrefixForType(TAny))
+	out.pos = fnv.pos
+	consumed, ok := e.Registry.analysisRecorder().RecordDynApply(argVals, fnv, out, fnv.Pos())
+	if !ok {
+		e.Registry.noteAmbiguousGradualSplit()
+		return false
+	}
+	e.Tape.Set(valIdx, out)
+	for j := len(argIdxs) - 1; j >= len(argIdxs)-consumed; j-- {
+		e.Tape.Remove(argIdxs[j])
+	}
+	e.Pointer = valIdx - consumed + 1
+	return true
 }
 
 // uncalledRaisePos is where a named fn value's no-match raises

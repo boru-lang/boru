@@ -792,6 +792,10 @@ type lowerer struct {
 	landingBody   []core.Value
 	landingRoot   bool
 	landingDeopts map[int]deoptPoint
+	// collectedApplies are the fn-value applies a planned collect takes as
+	// regions (planRegionCollectOver, NUR247/NUR249): lowered count-agnostic,
+	// never in a one-result form.
+	collectedApplies map[int]bool
 	// landingSkips are the walked landings with no island, keyed by the
 	// landed event, holding the landing op's pc: the paren apply that
 	// consumes the value right after the word's call seats their skip
@@ -3492,7 +3496,10 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		if c.dynApplyUnquote {
 			op = OpCallDynApplyTop
 		}
-		if c.dynApplyOne || (c.dynApplyUnquote && lw.es != nil && lw.es.eventInfo[ev.seq].dynOneResult) {
+		// A collected region (planRegionCollectOver, NUR247/NUR249) takes the
+		// run's count through its mark: never a one-result form.
+		collected := lw.collectedApplies[ev.seq]
+		if !collected && (c.dynApplyOne || (c.dynApplyUnquote && lw.es != nil && lw.es.eventInfo[ev.seq].dynOneResult)) {
 			// A GRADUAL lead under the apply word: exactly one result or defer.
 			// So is any `apply`-word event a later event consumes (NUR247): the
 			// word's re-step leaves the window beside a value it parks, and the
@@ -3698,12 +3705,19 @@ func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 // gone by the time the store runs.
 func (lw *lowerer) collectRegionTop(ev *EmitEvent) bool {
 	c := &ev.call
-	if lw.collectAtSeq != ev.seq || len(c.ops) != 1 || len(lw.vm) == 0 ||
-		lw.vm[len(lw.vm)-1].seq != c.ops[0].idx || lw.dead[ev.seq] {
+	k := len(c.ops)
+	if lw.collectAtSeq != ev.seq || k == 0 || len(lw.vm) < k || lw.dead[ev.seq] {
 		return false
 	}
+	// The regions' sim slots are the top k; the list's operands name them
+	// top-first.
+	for n, op := range c.ops {
+		if lw.vm[len(lw.vm)-1-n].seq != op.idx {
+			return false
+		}
+	}
 	lw.emit(OpMakeListToMark, 0, c.pos)
-	lw.vm[len(lw.vm)-1] = vmSlot{seq: ev.seq, idx: 0}
+	lw.vm = append(lw.vm[:len(lw.vm)-k], vmSlot{seq: ev.seq, idx: 0})
 	if slot, prom := lw.promoted[ev.seq]; prom {
 		lw.seatStoreName(ev.seq, 0)
 		lw.emit(OpStoreLocal, slot, c.pos)

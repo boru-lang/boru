@@ -9,6 +9,57 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR247 and NUR249 closed, NUR254 recorded and closed, NUR255 recorded: the run-time count (2026-09-26)
+
+**The collect in a fn frame.** NUR247 and NUR249 both wanted the count
+decided at run time: a mark before the apply, the assembly counting from
+it. The machinery existed for the program root, a list literal over a
+region alone (`OpStackMark` / `OpMakeListToMark`, NUR067's consuming half),
+and a fn unit had only the prefix plan. Three changes:
+
+- A fn unit plans its own collect (`planRegionCollectUnit`, beside
+  `planRegionPrefixUnit`; one mark client per unit).
+- The collect takes a list over a RUN of adjacent regions, with the mark
+  before the first. The list's operands are recorded top-first, so the
+  shape matches them in reverse event order. `[(for 2 [i]) (for 2 [i])]`
+  compiles now, as do `[(k 5) (k 6)]` and a mix of both.
+- An `apply`-word event, or an apply under a named head, becomes a region
+  only when the plan arms (`applyWordRegion`, `planRegionCollectOver`).
+  Its op is then count-agnostic (`collectedApplies`), never a one-result
+  form.
+
+So `[(5 f/v apply)]` and `[(k 5)]` in a fn frame answer as the interpreter
+does. Every other consuming layout keeps the one-result raise, a bail on
+the ledger by the maintainer's rule. Four of NUR246's fn-frame declines
+compile now too. Its pins moved to the parity rows, with a `[7 (5 f/v)]`
+negative kept.
+
+**NUR254, found on the way (silent).** A NUR246 negative row I wrote,
+`[(n ([0] => [1])) 7]` over n = 0, compiled `[[0 fn 7]]` for the
+interpreter's `[[1 7]]`, on the committed tree too. The lambda's value
+pattern met a carrier at its re-step, and the check pass parked it
+statically. In place and in a list alone the outer paren's close
+re-recorded the apply; with the 7 after it, the close's
+collects-past-the-close arm recorded nothing. The re-step now records the
+trailing dynamic apply itself when every refusal is a pattern over a
+non-concrete value (`undecidedPatternWindow`, `recordUndecidedApply`),
+with an active recorder only: the first cut flagged a pass whose recorder
+was suspended and declined the in-place rows. The witness declines now,
+as a region beside a const does.
+
+**NUR255, recorded (loud).** The root's concrete variants, `[(0 ([0] =>
+[1])) 7]`, bail at `STORE_LOCAL`. The call site stores two results where
+the lambda's call unit returns one, and the lambda's stored-body unit pushes
+its unnamed param beside the result. Left open.
+
+**Ledgers.** lang `compileDefectCeiling` 340 -> 339 and
+`bailDefectCeiling` 38 -> 36, each composition named at the constant.
+
+**Pins.** lang `TestNUR247ApplyWordParkCount`,
+`TestNUR249ZeroArgCarrierUnderAWindow` and `TestNUR246ParkedApplyCount`
+(rewritten), `TestNUR254UndecidedPatternPark`; core
+`TestNUR254UndecidedPatternWindow`, `TestNUR254RecordUndecidedApply`.
+
 ## NUR245 closed, NUR253 recorded and closed: differing arm shapes, a void branch's phantom (2026-09-26)
 
 **NUR245's open half: arms that disagree on the fn's shape.** The routed op

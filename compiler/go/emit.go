@@ -13851,32 +13851,86 @@ func operandReadsTheStack(op EmitOperand) bool {
 // {mode:'any'} [[7 8]])]`). Declines when another mark plan already owns the
 // frame: one mark client per program.
 func (es *EmitState) planRegionCollect(lw *lowerer) {
-	region, list, ok := es.regionCollectShape(es.frames[0])
+	es.planRegionCollectOver(lw, es.frames[0])
+}
+
+// planRegionCollectUnit is planRegionCollect for a FN UNIT, over the unit's
+// OWN events, armed before its lowerEvents walk as planRegionPrefixUnit is
+// (and after it: one mark client per unit). The mark stack is the run's, so
+// a unit's mark nests inside its caller's as a recursive one does.
+func (es *EmitState) planRegionCollectUnit(lw *lowerer, rec *fnUnitRec) {
+	if rec.frag == nil { //covergate:allow every fn unit reaching the lowering has its fragment; asked anyway so the unit planners state the same preconditions (§compiler)
+		return
+	}
+	es.planRegionCollectOver(lw, rec.frag.events)
+}
+
+// planRegionCollectOver arms the collect over one scope's events. A region
+// that is a fn-value apply (applyWordRegion) becomes one only here, when the
+// plan arms: the list assembles the run's count through the mark (NUR247,
+// NUR249) where the apply's one-result form raised. Unplanned, it keeps that
+// form.
+func (es *EmitState) planRegionCollectOver(lw *lowerer, events []EmitEvent) {
+	region, list, ok := es.regionCollectShape(events)
 	if !ok || len(lw.markBefore) > 0 {
 		return
 	}
 	lw.markBefore = map[int]bool{region: true}
 	lw.collectAtSeq = list
+	for _, op := range eventBySeq(events, list).call.ops {
+		if es.applyWordRegion(eventBySeq(events, op.idx)) {
+			f := es.eventInfo[op.idx]
+			f.variadicResult, f.variadicRegion, f.dynOneResult = true, true, false
+			es.eventInfo[op.idx] = f
+			if lw.collectedApplies == nil {
+				lw.collectedApplies = map[int]bool{}
+			}
+			lw.collectedApplies[op.idx] = true
+		}
+	}
 }
 
-// regionCollectShape finds a top-level [REGION, list-literal-over-it] ADJACENT
-// pair and returns the two seqs. Adjacency is the whole safety argument: the
-// mark opens before the region's event, so everything above it at run time
-// must be the region and nothing else, and no event runs between the two to
-// leave a value there or consume one from beneath. A list literal with any
-// other operand beside the region (`[9 (for 3 [i])]`, `[(for 3 [i]) 9]`)
-// keeps declining — its elements would need seating either side of a run whose
-// length is a runtime value, which is the prefix problem OpSeatBelowMark
-// solves only for the program residual.
+// applyWordRegion reports whether ev is a fn-value apply over a window
+// whose count is the runtime's, which the collect can take: an `apply`-word
+// event (the word's unquote-then-apply, OpCallDynApplyTop), whose re-step
+// parks a lead the window does not fit beside the window (NUR247), or an
+// apply under a NAMED head, whose 0-arg lead fires over nothing and leaves
+// the window beside its result (NUR249).
+func (es *EmitState) applyWordRegion(ev *EmitEvent) bool {
+	return ev != nil && ev.kind == evCall && ev.call.dynApply > 0 &&
+		(ev.call.dynApplyUnquote || ev.call.dynApplyName.Name != "") &&
+		!ev.call.dynApplyKeepQuote && !es.eventInfo[ev.seq].zeroOut
+}
+
+// regionCollectShape finds a scope's [REGION…, list-literal-over-them]
+// ADJACENT run — one or more region events, then a list literal whose
+// operands are exactly those events (recorded top-first: the last region is
+// ops[0]) — and returns the first region's seq and the list's. Adjacency is the whole safety argument: the
+// mark opens before the first region's event, so everything above it at
+// run time must be the regions' runs, laid down in order, and no event runs
+// between them to leave a value there or consume one from beneath (each
+// region's own operands are screened: regionReadsTheStack). A list literal
+// with any other operand beside the regions (`[9 (for 3 [i])]`, `[(for 3
+// [i]) 9]`) keeps declining — a const operand is pushed at the list, above
+// the runs, where the interpreter's order puts it beside them.
 func (es *EmitState) regionCollectShape(events []EmitEvent) (int, int, bool) {
-	for i := 0; i+1 < len(events); i++ {
-		ev, next := &events[i], &events[i+1]
-		if !es.singleSlotRegion(ev) || regionReadsTheStack(ev) ||
-			next.kind != evCall || !next.call.makeList || len(next.call.ops) != 1 ||
-			next.call.ops[0].kind != opEvent || next.call.ops[0].idx != ev.seq {
+	for j := range events {
+		list := &events[j]
+		k := len(list.call.ops)
+		if list.kind != evCall || !list.call.makeList || k == 0 || k > j {
 			continue
 		}
-		return ev.seq, next.seq, true
+		ok := true
+		for n, op := range list.call.ops {
+			ev := &events[j-1-n]
+			if op.kind != opEvent || op.idx != ev.seq || !(es.singleSlotRegion(ev) || es.applyWordRegion(ev)) || regionReadsTheStack(ev) {
+				ok = false
+				break
+			}
+		}
+		if ok {
+			return events[j-k].seq, list.seq, true
+		}
 	}
 	return 0, 0, false
 }
@@ -15079,6 +15133,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).
 		es.planRegionPrefixUnit(flw, rec)
+		es.planRegionCollectUnit(flw, rec)
 		seatUnitDeopts(flw, rec, &cf, diverged)
 		es.emitDynParamBinds(flw, rec)
 		// The apply-loop replay's unnamed-param re-pushes seat at UNIT START —

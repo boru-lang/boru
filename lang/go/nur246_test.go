@@ -15,9 +15,10 @@ import (
 // (`[(5 lam/v)]` compiled `[5 [fn]]`) and a return-count raise in a fn
 // frame. Unless the window provably fits, the result is a variadic region
 // now: it seats in place — the program residual, a RET tail, whose count
-// check raises as the interpreter's frame does — a top-level list literal
-// over it alone collects it through the region mark, a prefix beneath it
-// seats below the mark, and every other fixed layout declines.
+// check raises as the interpreter's frame does — a list literal over regions
+// alone collects them through the region mark, at top level and in a fn
+// frame (the unit's collect plan, NUR247's close), a prefix beneath it seats
+// below the mark, and every other fixed layout declines.
 func TestNUR246ParkedApplyCount(t *testing.T) {
 	const (
 		lam = `def lam ([s:String] => [s]) end `
@@ -49,6 +50,13 @@ func TestNUR246ParkedApplyCount(t *testing.T) {
 		{mkI + `[7 (5 (mk 1))]`, "[[7 6]]"},
 		// A named value raises rather than parks: its count is fixed.
 		{`def g fn [[s:String] [Any] [s]] end [7 (5 g/v)]`, "ERROR:matched no signature"},
+		// In a fn frame the unit plans its own collect (NUR247's close): a
+		// list over the park alone, a fitting closure, a value pattern.
+		{mkS + `def h fn [[f:Function] [List] [[(5 f/v)]]] end h (mk 1)`, "[[5 fn f(String)]]"},
+		{mkS + `def h fn [[f:Function] [Any] [[(5 f/v)] size]] end h (mk 1)`, "[2]"},
+		{`def h fn [[f:Function] [List] [[(5 f/v)]]] end h ([s:Integer] => [s add 1])`, "[[6]]"},
+		{`def h fn [[n:Integer] [List] [[(n ([0] => [1]))]]] end h 0`, "[[1]]"},
+		{`def h fn [[n:Integer] [List] [[(n ([0] => [1]))]]] end h 5`, "[[5 fn (Integer)]]"},
 	} {
 		agreeOnBothLanes(t, r.src, r.want)
 	}
@@ -63,14 +71,12 @@ func TestNUR246ParkedApplyCount(t *testing.T) {
 		{lam + `1 (5 lam/v) 3`, "variadic region promoted", "[1 5 fn lam(String) 3]"},
 		// A produced lead reads the stack, so the region mark cannot own it.
 		{mkS + `[(5 (mk 1))]`, "consumes loop results", "[[5 fn (String)]]"},
-		// In a fn frame: the mark plans are the program's, not a unit's.
-		{mkS + `def h fn [[f:Function] [List] [[(5 f/v)]]] end h (mk 1)`, "consumes loop results", "[[5 fn f(String)]]"},
-		{mkS + `def h fn [[f:Function] [Any] [[(5 f/v)] size]] end h (mk 1)`, "consumes loop results", "[2]"},
+		// In a fn frame, an operand consumer (not a list) declines as at top
+		// level.
 		{mkS + `def h fn [[f:Function] [Any] [(5 f/v) size]] end h (mk 1)`, "consumes loop results", ""},
-		// A fn-typed carrier proves nothing, even over a fitting closure, nor
-		// does a carrier under a value pattern.
-		{`def h fn [[f:Function] [List] [[(5 f/v)]]] end h ([s:Integer] => [s add 1])`, "consumes loop results", "[[6]]"},
-		{`def h fn [[n:Integer] [List] [[(n ([0] => [1]))]]] end h 0`, "consumes loop results", "[[1]]"},
+		// A fn-typed carrier proves nothing, even over a fitting closure:
+		// beside another element, the list declines.
+		{`def h fn [[f:Function] [List] [[7 (5 f/v)]]] end h ([s:Integer] => [s add 1])`, "consumes loop results", "[[7 6]]"},
 	} {
 		gotC, compiled, errC := mustNew(t).RunCompiled(r.src)
 		if !noteCompileDefect(t, r.src, gotC, errC) || compiled || !strings.Contains(fmt.Sprint(errC), r.reason) {
