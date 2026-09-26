@@ -26,6 +26,12 @@ type BranchRecord struct {
 	ElsValue        *Value // non-nil: the else arm is this already-evaluated VALUE
 	Out             Value
 	Pos             SrcPos
+	// Uncaptured says WHY an arm the record leaves nil was not captured —
+	// the clause-list `if` records an element its lowering cannot place
+	// (a condition it cannot decide, an arm the tape would re-step) as an
+	// uncaptured taken arm, so the decline carries the element's own
+	// reason. Empty for every other record.
+	Uncaptured string
 	// Joins are the names the branch left bound PAST its merge — what
 	// InstallJoinedDefs handed back for this `if` — so the recorder can seat
 	// each in a frame slot (the compiler's branch-carried def). Nil when no

@@ -458,6 +458,7 @@ var (
 	IsCapitalisedName        = core.IsCapitalisedName
 	IsConcrete               = core.IsConcrete
 	IsSteplessWindow         = core.IsSteplessWindow
+	IsFnValueResidual        = core.IsFnValueResidual
 	IsRecordShape            = core.IsRecordShape
 	IsTypeBody               = core.IsTypeBody
 	IsTypeLiteral            = core.IsTypeLiteral
