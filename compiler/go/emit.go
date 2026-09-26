@@ -7409,12 +7409,15 @@ func (es *EmitState) RecordLoop(start, end, step core.Value, bodyRef core.EmitFr
 		es.MarkUncompilable("for: range of unknown provenance")
 		return
 	}
-	rangeOpOK := func(op EmitOperand) bool { return op.kind == opConst || op.kind == opLocal }
+	rangeOpOK := func(op EmitOperand) bool { return op.kind == opConst || op.kind == opLocal || op.kind == opEvent }
 	if !rangeOpOK(startOp) || !rangeOpOK(stepOp) {
 		// A const or a re-pushable frame LOCAL (a param read — `for [n 5]
 		// [...]`) lowers via the same pushOperand path the computed-END case
-		// proved out; an EVENT-produced start/step keeps the failure (its
-		// value lives on the sim at its producer, not re-pushable here).
+		// proved out. An EVENT-produced start/step (`def a ((rg get 0) sub 1)
+		// … for [a b]`, utils/cut.boru's cut-pick-rng) is recorded and
+		// PROMOTED to a frame local at planning (collectLoopRangeSources
+		// joins forceOrder: store once at the producer, re-push here); one
+		// the planner cannot promote keeps the failure at lowerLoop.
 		es.MarkUncompilable("for: computed range start/step (Stage 2 follow-on)")
 		return
 	}
@@ -8486,13 +8489,16 @@ func (es *EmitState) recordCallCompileFailure(word string, sig *core.Signature, 
 		// program does not compile.
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("context-dependent word " + word)
-	case len(sig.NoEvalArgs) > 0 && ((sig.Callable != nil && execBodyRefsNames(sig, args)) || (!sig.CompileEffect.Has(core.CompileRunsBodyIsolated) && !es.noEvalBodiesInertScoped(sig, args))):
+	case len(sig.NoEvalArgs) > 0 && ((sig.Callable != nil && execBodyRefsNames(sig, args)) || !es.noEvalBodyBakes(sig, args)):
 		// A code-body word is declined when:
 		//   - its body is not inert data (UNLESS the word runs the body in an
 		//     ISOLATED CallBoru frame — CompileRunsBodyIsolated — where name
 		//     resolution is identical under interpreter and VM: Test.check-prop's
 		//     dynamic gen/property bodies bake as CALL_NATIVE operands and run
-		//     through the same captured-parent handler in both modes); OR
+		//     through the same captured-parent handler in both modes — or, at
+		//     MODULE SCOPE only, tree-walks it over the enclosing registry in
+		//     both modes, CompileRunsBodyOnRegistry: Test.cover's suite body,
+		//     runsBodyOnRegistryAtModuleScope); OR
 		//   - it SPLICES the body onto the tape (a block-with-locals word like
 		//     `var`): the handler returns tape-coupled tokens the VM cannot run, so
 		//     baking a CALL_NATIVE (which an inert word-list body would otherwise
@@ -11772,6 +11778,65 @@ func bindNameToken(v core.Value) string {
 		return d.Name
 	}
 	return ""
+}
+
+// noEvalBodyBakes reports whether a NoEvalArgs dispatch may bake its body as
+// a CALL_NATIVE operand — the inert-scoped disjunct of the code-body compile
+// failure and its two declared exemptions. A word that EXECUTES its body over
+// the enclosing registry (CompileRunsBodyOnRegistry — Test.cover) takes ONLY
+// its own module-scope rule: the inert-scope test would admit a word-list
+// body (`Test.cover [n]` inside a fn, `[… i …]` inside a top-level loop) that
+// the handler's sub-engine then resolves against the registry, where the
+// VM's frame local is invisible — a false undefined_word, present on main
+// (NUR207). An isolated-frame word (CompileRunsBodyIsolated) bakes
+// unconditionally; every other word bakes an inert-scoped body.
+func (es *EmitState) noEvalBodyBakes(sig *core.Signature, args []core.Value) bool {
+	switch {
+	case sig.CompileEffect.Has(core.CompileRunsBodyIsolated):
+		return true
+	case sig.CompileEffect.Has(core.CompileRunsBodyOnRegistry):
+		return es.runsBodyOnRegistryAtModuleScope(sig, args)
+	default:
+		return es.noEvalBodiesInertScoped(sig, args)
+	}
+}
+
+// runsBodyOnRegistryAtModuleScope reports whether a NoEvalArgs dispatch may
+// bake its body as a CALL_NATIVE operand because the word tree-walks the body
+// over the enclosing registry in both modes (CompileRunsBodyOnRegistry —
+// Test.cover) AND no compiled fn frame is open, so every name the body reads
+// or binds resolves through the registry exactly as the interpreter's run of
+// the same handler does. The sentinel screen applies (a break/continue/return
+// inside targets nothing the handler's sub-engine can reach). The REPLAY
+// hazard does not: the check pass never runs such a handler (its body's defs
+// and imports are invisible after the dispatch — `Test.cover [def spec …]
+// spec` is a check-time undefined_word), so the VM's run of the body is the
+// FIRST run, an `import` inside it a first load, exactly as under the
+// interpreter.
+func (es *EmitState) runsBodyOnRegistryAtModuleScope(sig *core.Signature, args []core.Value) bool {
+	if !sig.CompileEffect.Has(core.CompileRunsBodyOnRegistry) {
+		return false
+	}
+	if len(es.units) != 1 || es.reg == nil || es.reg.Check.FnBodyDepth != 0 || es.reg.Check.NestedBodyDepth != 0 {
+		// The TOP-LEVEL STATEMENT position only: no unit open, no fn body
+		// and no nested (branch / loop) body under analysis. There every
+		// name the body reads is a module-level registry binding (the
+		// compiled program writes its top-level defs back) or one the body
+		// binds itself. Inside a fn a body token naming a param (`Test.cover
+		// [n]`), and inside a top-level loop one naming the iterator
+		// (`for 2 [Test.cover [… i …]]`), resolved against the registry
+		// under the VM and raised a false undefined_word (measured).
+		return false
+	}
+	for i := range args {
+		if !sig.NoEvalArgs[i] {
+			continue
+		}
+		if !core.IsConcrete(args[i]) || check.BodyHasSentinel(args[i]) {
+			return false
+		}
+	}
+	return true
 }
 
 // noEvalBodiesInertScoped is noEvalBodiesInert plus a MODULE-SCOPE allowance for

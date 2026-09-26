@@ -3,6 +3,7 @@ package langspec
 import (
 	"os"
 	"path/filepath"
+	"regexp"
 	"sort"
 	"strings"
 	"testing"
@@ -33,38 +34,36 @@ import (
 // program starts compiling (drop the entry) just as loudly as when an
 // unledgered one starts declining.
 var realProgramLedger = map[string]string{
-	// The check-diagnostics sentinel: the checker produced findings, so the
-	// emitter declines the whole program. This is the single largest blocker
-	// for real code — 13 of the 27, more than the next three causes combined.
-	"bench/networking/apps/echo_redis.boru": "check diagnostics",
-	"bench/networking/apps/echo_s3.boru":    "check diagnostics",
-	"bench/networking/apps/echo_todo.boru":  "check diagnostics",
-	"design/examples/apps/mini-redis.boru":  "check diagnostics",
-	"kg/tests/codegraph_test.boru":          "check diagnostics",
-	"kg/tests/digest_test.boru":             "check diagnostics",
-	"kg/tests/gomod_test.boru":              "check diagnostics",
-	"kg/tests/identifiers_test.boru":        "check diagnostics",
-	"kg/tests/queries_test.boru":            "check diagnostics",
-	"kg/tests/resolution_test.boru":         "check diagnostics",
-	"kg/tests/roundtrip_test.boru":          "check diagnostics",
-	"kg/tests/schema_test.boru":             "check diagnostics",
-	"kg/tests/validation_test.boru":         "check diagnostics",
+	// RE-MEASURED 2026-09-26 with each program's imports resolved from the
+	// directory it is written to run from (importBaseDir): 27 -> 4. Twenty-
+	// two of the old entries were this gate's own artifact — the suites'
+	// `import "./cat.boru"` never resolved from utils/tests, so the imported
+	// words were undefined and the describe bodies naming them declined —
+	// and one (kg/tests/resolution_test.boru) had a different blocker under
+	// the check-diagnostics label. The same day: Test.cover declares
+	// CompileRunsBodyOnRegistry (cli_test, sift_test compile), an event-
+	// sourced loop range start promotes to a frame local (cut_test compiles).
 
-	// Stage-2 code bodies. `test-describe`/`test-cover` are the boru:test
-	// harness words, so EVERY suite written in boru is uncompilable until
-	// they lower — one defect, twelve programs.
-	"lang/go/modules/cli_test.boru":   "code-body word test-cover (Stage 2)",
-	"lang/go/modules/sift_test.boru":  "code-body word test-cover (Stage 2)",
-	"utils/tests/cat_test.boru":       "code-body word test-describe (Stage 2)",
-	"utils/tests/cut_test.boru":       "code-body word test-describe (Stage 2)",
-	"utils/tests/grep_test.boru":      "code-body word test-describe (Stage 2)",
-	"utils/tests/head_test.boru":      "code-body word test-describe (Stage 2)",
-	"utils/tests/printenv_test.boru":  "code-body word test-describe (Stage 2)",
-	"utils/tests/seq_test.boru":       "code-body word test-describe (Stage 2)",
-	"utils/tests/sort_test.boru":      "code-body word test-describe (Stage 2)",
-	"utils/tests/tee_test.boru":       "code-body word test-describe (Stage 2)",
-	"utils/tests/truefalse_test.boru": "code-body word test-describe (Stage 2)",
-	"utils/tests/uniq_test.boru":      "code-body word test-describe (Stage 2)",
+	// A checker false positive: inside the HDEL handler lambda, after
+	// `def had (if ((cur get f) eq None) [0] [1])` over a def-bound Any
+	// (`def cur (hashes get k)`), the next `def h2 (cur set (f) None)` is
+	// invisible to the read `(hashes set (k) h2)` in the same arm —
+	// undefined_word h2 at 230:57. Needs the def-bound prelude to
+	// reproduce (a param-typed `cur` compiles); echo_redis imports the app.
+	"design/examples/apps/mini-redis.boru":  "check diagnostics",
+	"bench/networking/apps/echo_redis.boru": "check diagnostics",
+
+	// kg/ingest.boru's ingest-entity: the `aliases:` member —
+	// `KgEnt.distinct-sorted (each [var […]] (get-or raw "aliases" []))`, a
+	// bare-form fn over a poly re-match result, whose own body is a
+	// sort over a fold with a var-block callback — leaves the fn call's
+	// operand without a compiled home. The gate's other kg suites compile.
+	"kg/tests/resolution_test.boru": "fn call operand of unknown provenance",
+
+	// design/examples/apps/mini-s3.boru's `for [0 total 65536]` chunk loop
+	// nets more than one value per iteration — the loop lowering's
+	// one-value-or-nothing body contract (S5); echo_s3 imports the app.
+	"bench/networking/apps/echo_s3.boru": "for: body nets multiple values per iteration",
 
 	// `kg/main.boru` GRADUATED 2026-09-19 (S1a of
 	// design/FULL-COMPILATION-REPLAN.0.md): the knowledge-graph pipeline's
@@ -127,7 +126,7 @@ func TestRealProgramsCompile(t *testing.T) {
 			if nerr != nil {
 				t.Fatalf("lang.New: %v", nerr)
 			}
-			a.NativeRegistry().BaseDir = filepath.Dir(p)
+			a.NativeRegistry().BaseDir = importBaseDir(repo, p, string(src))
 
 			prog, reason, _, cerr := a.CompileCheck(string(src))
 			switch {
@@ -207,6 +206,52 @@ func TestRealProgramsCompile(t *testing.T) {
 				"    This is the good direction — delete its realProgramLedger entry so the gate\n"+
 				"    holds the gain. A ledger that keeps stale entries stops measuring anything.",
 				path)
+		}
+	}
+}
+
+// relativeImportRE matches a source line importing a file by a relative path
+// (`import "./cat.boru"`); a `boru:` module import is not a file.
+var relativeImportRE = regexp.MustCompile(`(?m)^\s*import\s+"(\.\.?/[^"]+)"`)
+
+// importBaseDir is the directory the program's relative imports resolve
+// against: a file import is resolved against the registry's BaseDir — the
+// process's working directory under `boru run` / `boru test`
+// (resolveImportPath) — NOT the importing file's directory, and the repo's
+// programs are written for the directory their header names (`utils/tests/
+// cat_test.boru` imports "./cat.boru" and runs from `utils/`; `kg/tests/
+// *_test.boru` import "./schema.boru" and run from `kg/`; the bench apps
+// import "./design/examples/apps/…" and run from the repo root). Until
+// 2026-09-26 this gate used the file's own directory for every program, so
+// 24 of its 25 ledgered "failures" were the imports not resolving there: the
+// imported words undefined, and the describe bodies that named them declined
+// on the way. The base is the nearest ancestor of the file's directory (up to
+// the repo root) where EVERY relative import resolves; a program with no
+// relative import, or none that resolves anywhere, keeps its own directory.
+func importBaseDir(repo, path, src string) string {
+	dir := filepath.Dir(path)
+	rels := relativeImportRE.FindAllStringSubmatch(src, -1)
+	if len(rels) == 0 {
+		return dir
+	}
+	absRepo, err := filepath.Abs(repo)
+	if err != nil {
+		return dir
+	}
+	for cand := dir; ; cand = filepath.Dir(cand) {
+		all := true
+		for _, m := range rels {
+			if _, err := os.Stat(filepath.Join(cand, m[1])); err != nil {
+				all = false
+				break
+			}
+		}
+		if all {
+			return cand
+		}
+		absCand, err := filepath.Abs(cand)
+		if err != nil || absCand == absRepo || filepath.Dir(cand) == cand {
+			return dir
 		}
 	}
 }

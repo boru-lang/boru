@@ -439,7 +439,7 @@ type FnSig struct {
 // It is a BITFIELD: the flags are orthogonal and a word may carry several (e.g.
 // `typeof` reads a fn value AND is a pure module reader AND re-dispatches as an
 // island-pure word). The zero value, CompileDefault, is an ordinary word.
-type CompileEffect uint16
+type CompileEffect uint32
 
 const (
 	// CompileReadsFn marks an INTROSPECTION word that READS a fn value's
@@ -535,6 +535,23 @@ const (
 	// disjunct of the code-body compile failure; a word that declares a body-executing
 	// CallableSpec still declines.
 	CompileRunsBodyIsolated
+	// CompileRunsBodyOnRegistry marks a word whose NoEvalArgs body the handler
+	// TREE-WALKS in a sub-engine over the ENCLOSING registry (`native.New(r)
+	// .Run(body)`) in both modes — the boru:test coverage harness `Test.cover`,
+	// whose body arms the coverage hook and runs a whole suite (imports, defs,
+	// cases) that the closure path cannot compile (an `import` inside a body).
+	// Sound at MODULE SCOPE only: there every name the body reads or binds
+	// resolves through the registry under the interpreter and the VM alike
+	// (the compiled program's top-level defs are written back), and a name the
+	// body binds and the program reads after it is a check-time undefined_word
+	// (the check pass does not run a NoEvalArgs body), so the program declines
+	// loud rather than reading a stale slot. Inside a compiled fn frame a body
+	// token naming a frame local would resolve against the registry instead
+	// of the VM slot, so the recorder honours the flag only when no unit is
+	// open (len(es.units)==1) and keeps the inert-scope decline otherwise. The
+	// flag exempts ONLY the inert-scoped disjunct of the code-body compile
+	// failure, as CompileRunsBodyIsolated does.
+	CompileRunsBodyOnRegistry
 
 	// CompileScalarFold marks a PURE value-level word (the comparison family:
 	// eq/neq/deq/cmp/tcmp/lt/lte/gt/gte) whose dispatch over ALL-inert-const

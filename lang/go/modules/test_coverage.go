@@ -206,6 +206,15 @@ func coverNatives(parent *native.Registry) []native.NativeFunc {
 				Args:       []*native.Type{native.TList},
 				NoEvalArgs: map[int]bool{0: true},
 				Returns:    []*native.Type{}, BarrierPos: -1,
+				// CompileRunsBodyOnRegistry (S2b, 2026-09-26): the suite body is
+				// tree-walked over the enclosing registry in BOTH modes (the
+				// sub-engine below), so at module scope the dispatch bakes as a
+				// plain CALL_NATIVE over the body list and the VM runs this same
+				// handler — the `import` inside the body, which no closure
+				// compiles, runs where the interpreter runs it. Inside a fn frame
+				// the recorder keeps the decline (a body token naming a frame
+				// local would resolve against the registry).
+				CompileEffect: native.CompileRunsBodyOnRegistry,
 				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 					body, err := native.RequireConcreteList(args[0], "Test.cover")
 					if err != nil {

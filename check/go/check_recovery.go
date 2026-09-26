@@ -1214,6 +1214,20 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 			if recovered {
 				return nil
 			}
+			// The single-overload USER-fn recovery IS faithful when the sole
+			// sig's every param type is NOMINAL — a plain type node with no
+			// value-sensitive constraint (core.HasConstraintUnify: a predicate
+			// or refinement type, a disjunct, a negation, a binding body): the
+			// guarded CALL_USER's entry check then asks exactly the question
+			// the interpreter's matcher asks, and a runtime value that misses
+			// raises the same no_signature. `ds (each [nd] xs)` over a poly
+			// re-match's imprecise result (kg/ingest.boru's ingest-entity, the
+			// kg resolution suite) compiles this way instead of declining;
+			// a constrained param keeps the decline above (2026-09-26).
+			if es.Active() && anyImpreciseCarrier(args) && soleSigParamsNominal(sig, fn) &&
+				e.TryRecordRecoveredUserFn(sig, fn, args, nStack, positions) {
+				return nil
+			}
 			e.Registry.Check.Recorder().MarkUncompilable("unmatched dispatch recovered at " + w.Name)
 		}
 	}
@@ -1596,4 +1610,23 @@ func widestSatisfiableOverload(e *core.Engine, fn *core.FnDefInfo, w core.WordIn
 		}
 	}
 	return best, bestPos, bestN
+}
+
+// soleSigParamsNominal reports whether fn is a single-overload user fn
+// (core.SingleOverloadRecoverable) whose sole signature's param types are all
+// NOMINAL — no type carrying a value-sensitive constraint the guarded
+// CALL_USER's nominal entry check could not enforce.
+func soleSigParamsNominal(sig *core.Signature, fn *core.FnDefInfo) bool {
+	if !core.SingleOverloadRecoverable(sig, fn) {
+		return false
+	}
+	for _, t := range sig.ArgTypes() {
+		if t == nil {
+			continue
+		}
+		if core.HasConstraintUnify(t) {
+			return false
+		}
+	}
+	return true
 }
