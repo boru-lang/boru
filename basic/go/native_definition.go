@@ -963,6 +963,44 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 	return InstallAndRecordDef(r, name, out, pos)
 }
 
+// evalParenAnnotation evaluates a parenthesised typed-def annotation — `def
+// b:(Box of [Integer]) {…}` — inline (def's NoEvalMapArgs keeps the
+// typed-name map raw, so the ParenExpr arrives unevaluated). Generic
+// instantiations are the main client; any expression producing a single
+// type value works. Any other annotation passes through.
+func evalParenAnnotation(r *Registry, name string, constraint Value) (Value, error) {
+	if !IsParenExpr(constraint) {
+		return constraint, nil
+	}
+	toks, _ := AsParenExpr(constraint)
+	body := make([]Value, len(toks))
+	copy(body, toks)
+	out, err := New(r).Run(body)
+	if err != nil {
+		return Value{}, fmt.Errorf("def %s: type annotation: %w", name, err)
+	}
+	if len(out) != 1 {
+		return Value{}, fmt.Errorf("def %s: type annotation must produce one type, got %d values", name, len(out))
+	}
+	return out[0], nil
+}
+
+// defRunMembershipArm is the typed def's arm for a constraint holding a
+// refinement whose bound the analysis pass does not know (NUR231): in a
+// pass, the run decides membership (defRunMembershipBind), described as the
+// interpreter's typed def describes it — a named node by its name, an inline
+// constraint as the run renders it.
+func defRunMembershipArm(r *Registry, name, typeName string, constraint, body Value, describeType func() string, pos SrcPos) (Value, bool) {
+	if !r.Check.IsActive() || !core.HasUnknownRefinement(constraint) {
+		return Value{}, false
+	}
+	describe := typeName
+	if IsBareTypeNode(constraint) {
+		describe = describeType()
+	}
+	return defRunMembershipBind(r, name, constraint, body, describe, pos)
+}
+
 // defRunMembershipBind binds a typed def whose constraint holds a refinement
 // over a bound the analysis pass does not know — a computed one, `def
 // x:(Integer gt (size s)) 2` or `def v:T 3` over such a T, whose bound is
@@ -1182,24 +1220,9 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			constraint = exp[0]
 		}
 	}
-	// A parenthesised annotation — `def b:(Box of [Integer]) {…}` —
-	// evaluates inline (def's NoEvalMapArgs keeps the typed-name map
-	// raw, so the ParenExpr arrives unevaluated). Generic
-	// instantiations are the main client; any expression producing a
-	// single type value works.
-	if IsParenExpr(constraint) {
-		toks, _ := AsParenExpr(constraint)
-		body := make([]Value, len(toks))
-		copy(body, toks)
-		sub := New(r)
-		out, err := sub.Run(body)
-		if err != nil {
-			return nil, fmt.Errorf("def %s: type annotation: %w", name, err)
-		}
-		if len(out) != 1 {
-			return nil, fmt.Errorf("def %s: type annotation must produce one type, got %d values", name, len(out))
-		}
-		constraint = out[0]
+	constraint, perr := evalParenAnnotation(r, name, constraint)
+	if perr != nil {
+		return nil, perr
 	}
 	// A typed-list/map annotation whose CHILD is a paren expression —
 	// `def xs:[:(Pair of [String Integer])] […]` — needs the child
@@ -1343,14 +1366,8 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			}
 		}
 	}
-	if r.Check.IsActive() && core.HasUnknownRefinement(constraint) {
-		describe := typeName
-		if IsBareTypeNode(constraint) {
-			describe = describeType()
-		}
-		if bound, ok := defRunMembershipBind(r, name, constraint, body, describe, defPos); ok {
-			return InstallAndRecordDef(r, name, bound, defPos)
-		}
+	if bound, ok := defRunMembershipArm(r, name, typeName, constraint, body, describeType, defPos); ok {
+		return InstallAndRecordDef(r, name, bound, defPos)
 	}
 	if r.Check.IsActive() && depScalarCons.IsDepScalar() && !IsConcrete(body) {
 		if body.Parent.ConformsTo(depScalarCons.Parent) {

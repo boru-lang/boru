@@ -149,13 +149,13 @@ var compileFailureDispositions = map[string]compileFailureDisposition{
 	"compiler/go/user_poly_plan.go:planUserPolyDispatch#2":            {dispGeneric, 4, "a fn-predicate-typed overload: predicate units inside matching, then a runtime re-match"},
 
 	// core/go — the interpreter's own recorder calls.
-	"core/go/core_helpers.go:installDef#1":            {dispGeneric, 4, "a capturing closure's conditional redefinition, and a fn-body redefinition by a capturing fn value (family L's closure arms): the binder half, NUR110's third binding state; a capture-free conditional-body redefinition is PLACED since the seventieth increment (NoteSpecFnDef — the recorder declines what it cannot place)"},
-	"core/go/emit_recorder.go:<decl>#1":               {dispDelete, 9, "the EmitRecorder method itself retires with the compile failure mechanism"},
-	"core/go/engine.go:stepLiteral#1":                 {dispGeneric, 5, "a splice over a computed payload: the generalized mark region"},
-	"core/go/engine.go:evalInterpString#1":            {dispGeneric, 7, "an interpolated string's runtime-computed part: compile the part when it is computed"},
-	"core/go/engine.go:EvalXmlInterp#1":               {dispGeneric, 7, "as evalInterpString, for XML"},
-	"core/go/engine.go:recordParenLeadingApply#1":     {dispGeneric, 3, "a paren-bounded application with the fn value first: the Apply kernel"},
-	"core/go/engine.go:recordParenLeadingApply#2":     {dispGeneric, 3, "as #1"},
+	"core/go/core_helpers.go:installDef#1":        {dispGeneric, 4, "a capturing closure's conditional redefinition, and a fn-body redefinition by a capturing fn value (family L's closure arms): the binder half, NUR110's third binding state; a capture-free conditional-body redefinition is PLACED since the seventieth increment (NoteSpecFnDef — the recorder declines what it cannot place)"},
+	"core/go/emit_recorder.go:<decl>#1":           {dispDelete, 9, "the EmitRecorder method itself retires with the compile failure mechanism"},
+	"core/go/engine.go:stepLiteral#1":             {dispGeneric, 5, "a splice over a computed payload: the generalized mark region"},
+	"core/go/engine.go:evalInterpString#1":        {dispGeneric, 7, "an interpolated string's runtime-computed part: compile the part when it is computed"},
+	"core/go/engine.go:EvalXmlInterp#1":           {dispGeneric, 7, "as evalInterpString, for XML"},
+	"core/go/engine.go:recordParenLeadingApply#1": {dispGeneric, 3, "a paren-bounded application with the fn value first: the Apply kernel"},
+	"core/go/engine.go:recordParenLeadingApply#2": {dispGeneric, 3, "as #1"},
 
 	// lang/go — the module layer.
 	"lang/go/native/native_macro.go:miniHandler#1": {dispGeneric, 7, "a mini hook's expansion: compiled when it is produced"},

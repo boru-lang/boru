@@ -191,6 +191,27 @@ func TestNUR231ComputedBoundTypesCompile(t *testing.T) {
 	agreeOnBothLanes(t, `def g fn [[n:(Integer gt 3)] [Any] [n]] g 2`, "ERROR:no signature matches")
 }
 
+// TestNUR231OutsideTheBaseRefusesAtCheck: a value the refinement's BASE
+// refuses is refused whatever the run computes for the bound, so that verdict
+// is the pass's to give — the check pass flags it (a runtime mirror) and the
+// interpreter raises the same text.
+func TestNUR231OutsideTheBaseRefusesAtCheck(t *testing.T) {
+	const src = `def x:(Integer gt (size "abc")) "s" x`
+	const want = `def x: value 's' does not unify with declared type (Integer gt 3)`
+	_, _, _, gotI, errI := runBothEngines(t, src)
+	if errI == nil || !strings.Contains(errI.Error(), want) {
+		t.Errorf("interpreter %v / %v, want %q", gotI, errI, want)
+	}
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	res, err := a.Check(src)
+	if err != nil || res.Summary.Errors != 1 || !strings.Contains(res.Diagnostics[0].Detail, "does not unify with declared type") {
+		t.Errorf("the pass flags a value outside the base: %v %+v", err, res.Diagnostics)
+	}
+}
+
 // TestNUR231TypeRunDisassembles pins the run-time install's shape in the
 // bytecode: the body the run computes, the def's twin (written back, so it
 // replays nothing) and BIND_TYPE_RUN at the def's position.
