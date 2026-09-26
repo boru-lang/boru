@@ -189,6 +189,17 @@ type Engine struct {
 	// neighbour. The collection-hazard scan (noteCollectionHazards, NUR121)
 	// stops at it.
 	inertPrefix int
+	// stmtEnds are the positions of the statement ends this engine stepped
+	// on an ANALYSIS pass (stepEnd): the collection-hazard scan skips a
+	// candidate a statement end separates from the collected value, whose
+	// re-step could never have taken it (NUR276). Nil at run time.
+	stmtEnds []SrcPos
+	// defReads are the positions each def-bound value (by ID) was read at on
+	// an ANALYSIS pass: a binding's reads share one value, which carries no
+	// read's position of its own, so the hazard scan asks whether EVERY
+	// read of the collected value lies past the boundary (NUR276). Nil at
+	// run time.
+	defReads map[string][]SrcPos
 	// voidGroups records the candidate consumers of paren groups that
 	// resolved to ZERO values in the current statement: the pending
 	// word names sitting below such a group when it closed. A
@@ -3002,6 +3013,7 @@ func (e *Engine) stepWord(val Value) error {
 				tagged := top
 				CheckBraid.TagCheckModeDefRead(e, &tagged, w.Name, val.Pos())
 				top = tagged
+				e.noteDefReadPos(top.ID, val.Pos())
 			}
 			e.Tape.Set(e.Pointer, top)
 			return e.stepLiteral()
@@ -3917,15 +3929,74 @@ func (e *Engine) noteCollectionHazardsBelow(floor, top int) {
 	if floor > lo {
 		lo = floor
 	}
+	collected := e.Tape.At(top)
 	for j := lo; j < top; j++ {
 		v := e.Tape.At(j)
 		if v.Quoted || IsForward(v) || IsMark(v) || IsMove(v) || IsOpenParen(v) {
+			continue
+		}
+		if e.collectedPastStmtEnd(v.Pos(), collected) {
+			// A statement end lies between the candidate and the collected
+			// value: the candidate's re-step collects nothing past its own
+			// statement's end (NUR187), so it could never have taken the
+			// value (NUR276: `do (mk) end s size`).
 			continue
 		}
 		if IsFnValueResidual(v) || IsFnTypedCarrier(v) || (v.Dynamic && SigTypeMatches(v, TFunction)) {
 			es.NoteCollectionHazard(v.ID)
 		}
 	}
+}
+
+// noteDefReadPos records one analysis-pass read of the def-bound value id at
+// pos (defReads).
+func (e *Engine) noteDefReadPos(id string, pos SrcPos) {
+	if id == "" || pos.Row == 0 {
+		return
+	}
+	if e.defReads == nil {
+		e.defReads = map[string][]SrcPos{}
+	}
+	e.defReads[id] = append(e.defReads[id], pos)
+}
+
+// collectedPastStmtEnd reports whether a statement end separates a hazard
+// candidate at from from the collected value: the value's own position, or
+// — a def-bound value, whose reads share one value and none of their
+// positions — every position it was read at.
+func (e *Engine) collectedPastStmtEnd(from SrcPos, collected Value) bool {
+	if p := collected.Pos(); p.Row != 0 {
+		return e.stmtEndBetween(from, p)
+	}
+	reads := e.defReads[collected.ID]
+	if collected.ID == "" || len(reads) == 0 {
+		return false
+	}
+	for _, p := range reads {
+		if !e.stmtEndBetween(from, p) {
+			return false
+		}
+	}
+	return true
+}
+
+// stmtEndBetween reports whether a statement end this engine stepped lies
+// strictly between the source positions from and to — both known.
+func (e *Engine) stmtEndBetween(from, to SrcPos) bool {
+	if from.Row == 0 || to.Row == 0 {
+		return false
+	}
+	for _, p := range e.stmtEnds {
+		if srcPosBefore(from, p) && srcPosBefore(p, to) {
+			return true
+		}
+	}
+	return false
+}
+
+// srcPosBefore reports whether a lies strictly before b in the source.
+func srcPosBefore(a, b SrcPos) bool {
+	return a.Row < b.Row || (a.Row == b.Row && a.Col < b.Col)
 }
 
 // spliceMatchResults replaces the word and its matched args on the
@@ -8084,6 +8155,9 @@ func (e *Engine) stepEnd() error {
 	// apply arms never carry a fn value's collection across it.
 	if e.Registry != nil && e.Registry.Check != nil && e.Registry.analysisActive() {
 		e.Registry.Check.Recorder().NoteStatementEnd(e.Tape.At(endIdx).Pos())
+		if p := e.Tape.At(endIdx).Pos(); p.Row > 0 {
+			e.stmtEnds = append(e.stmtEnds, p)
+		}
 	}
 
 	// Find nearest pending forward, stopping at open-paren barriers.

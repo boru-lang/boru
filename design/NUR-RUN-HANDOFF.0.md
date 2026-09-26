@@ -9,6 +9,66 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR210 closed by the root's generalisation, NUR276 found and fixed, NUR223 declined loudly (2026-09-26)
+
+**NUR210's last silent reads.** After a computed `do` body at the root, a
+read the bare-read rule did not reach folded the value the pass held
+before the body. Over `[def x 5 7]` after `def x 99`:
+- `do (mk) end [x]` answered `[7 [99]]` for `[7 [5]]`;
+- `{a: x}`, `def y x end y` and a fn unit's `[x]` did the same.
+
+`do`'s check half now generalises every root value binding in place when it
+meets a computed body at the root (`generaliseRootValues`, basic). It uses
+the speculative undef's own transition, `core.GeneraliseSpecUndef`, so every
+later read is live and the bindings stay. Its scope:
+- **At the root only.** Inside a fn body the frame's leak already reads
+  live (NUR203).
+- **Not fn values, types or frame bindings.** Those are the transition's
+  own exclusions.
+
+Measured against the tree before it: every probe that changed moved from a
+silent wrong answer to the interpreter's, and no new decline appeared. It
+is pinned by lang `TestNUR210ComputedBodyGeneralisesTheRoot`.
+
+**NUR276 (found, pre-existing on main, fixed).** Probing the
+generalisation's neighbours: `do (mk) end s size` declined, and so did
+`… end for n [1]`, with NUR121's "fn-value lead's argument was collected
+by a later dispatch". The engine's collection-hazard walk marked the run
+because a later statement collected a value above it. The run's re-step
+could never have taken that value: its forward collection stops at the
+`end`.
+- **The fix.** The engine keeps the statement ends an analysis pass steps
+  (`stmtEnds`). The walk skips a candidate that a statement end separates
+  from the collected value.
+- **A def-bound value.** Its reads share one value and none of their
+  positions, so it answers by EVERY read's position (`defReads`). That is
+  `defReadCrossed`'s rule from NUR266: one read before the end proves
+  nothing.
+- **What stays.** With no end between them, a lambda run does take the
+  value at its re-step, and `do (mk) s size` still declines, soundly.
+
+Pinned by lang `TestNUR276RunIsNoHazardAcrossAStatementEnd` and core
+`TestCollectionHazardStopsAtAStatementEnd`.
+
+**NUR223 (main's; silent → loud).** `while` analyses its body before its
+condition. That order lets the condition read the body's carried rebinds,
+but it makes a name the CONDITION rebinds read stale in the body:
+`def t 0 end while [def t (t add 1) (t lt 3)] [t] end t` answered `[0 0
+3]` for `[1 2 3]`.
+- **The decline.** A condition whose analysis moved the binding shape
+  (NUR212's `bindingShape` probe) now marks the loop uncompilable. It is
+  conservative: a fresh name the body never reads declines too.
+- **The compile cut, recorded.** The two analyses want one carried scope
+  at a joint fixed point.
+- **Ledger.** The unit-suite compile ledger moves 338 -> 340, with both
+  rows named. Read-only conditions keep compiling with parity.
+
+**NUR275's trace, recorded.** A root def-bound member value applied by
+name raises under the value's name and token compiled. `installFnDef`
+renames the value on the interpreter, and the fn units' word-read
+accounting (`wordReadNames`, `wordReadPos`) has no root counterpart. The
+cut is to give the root lead arm that accounting.
+
 ## The merge of main's #513: NUR190's two closes composed, NUR274 found and fixed (2026-09-26)
 
 **What main brought.** Main's #513 closed NUR190's `/q` claim its own way,

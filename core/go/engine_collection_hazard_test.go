@@ -167,3 +167,83 @@ func TestParenLeadFnApplyIdxDeclinesAHazardLead(t *testing.T) {
 		t.Errorf("a hazard-marked lead must decline the window, got %d", got)
 	}
 }
+
+// TestCollectionHazardStopsAtAStatementEnd pins NUR276: a statement end
+// between a candidate and the collected value keeps the candidate unmarked
+// — its re-step collects nothing past its own statement's end. The
+// collected value answers by its own position, or, def-bound and
+// positionless, by EVERY position it was read at; an unknown position
+// proves nothing.
+func TestCollectionHazardStopsAtAStatementEnd(t *testing.T) {
+	at := func(r, c int) SrcPos { return SrcPos{Row: r, Col: c} }
+	dyn := WithPosAt(NewDynamicCarrier(TAny), at(1, 1))
+	t.Run("a positioned value past the end", func(t *testing.T) {
+		es := newHazardEmit()
+		e := hazardEngine(t, es)
+		e.stmtEnds = []SrcPos{at(1, 5)}
+		e.Tape = NewTape([]Value{dyn, WithPosAt(NewInteger(5), at(1, 9)), NewWord("size")}, StackHeadroom)
+		e.Pointer = 2
+		e.noteCollectionHazards(nil, []int{1})
+		if es.marked[dyn.ID] {
+			t.Error("a value past the statement end is no argument of the earlier lead")
+		}
+	})
+	t.Run("a positioned value in the lead's statement", func(t *testing.T) {
+		es := newHazardEmit()
+		e := hazardEngine(t, es)
+		e.stmtEnds = []SrcPos{at(1, 5)}
+		e.Tape = NewTape([]Value{dyn, WithPosAt(NewInteger(5), at(1, 3)), NewWord("size")}, StackHeadroom)
+		e.Pointer = 2
+		e.noteCollectionHazards(nil, []int{1})
+		if !es.marked[dyn.ID] {
+			t.Error("a value before the end is the lead's own argument: marked")
+		}
+	})
+	t.Run("a def-bound value by its reads", func(t *testing.T) {
+		es := newHazardEmit()
+		e := hazardEngine(t, es)
+		e.stmtEnds = []SrcPos{at(1, 5)}
+		s := NewString("s")
+		s.ID = "bound-s"
+		e.Tape = NewTape([]Value{dyn, s, NewWord("size")}, StackHeadroom)
+		e.Pointer = 2
+		e.noteCollectionHazards(nil, []int{1})
+		if !es.marked[dyn.ID] {
+			t.Error("no read recorded: nothing is proven, the lead is marked")
+		}
+		es.marked = map[string]bool{}
+		e.noteDefReadPos("bound-s", at(1, 9))
+		e.noteDefReadPos("", at(1, 9))
+		e.noteDefReadPos("bound-s", SrcPos{})
+		e.noteCollectionHazards(nil, []int{1})
+		if es.marked[dyn.ID] {
+			t.Error("every read past the end: unmarked")
+		}
+		e.noteDefReadPos("bound-s", at(1, 3))
+		e.noteCollectionHazards(nil, []int{1})
+		if !es.marked[dyn.ID] {
+			t.Error("one read before the end proves nothing: marked")
+		}
+	})
+	t.Run("unknown positions prove nothing", func(t *testing.T) {
+		e := hazardEngine(t, newHazardEmit())
+		e.stmtEnds = []SrcPos{at(1, 5)}
+		if e.stmtEndBetween(SrcPos{}, at(1, 9)) || e.stmtEndBetween(at(1, 1), SrcPos{}) || e.collectedPastStmtEnd(at(1, 1), NewInteger(3)) {
+			t.Error("a zero position or a value with no identity proves no crossing")
+		}
+		if !srcPosBefore(at(1, 9), at(2, 1)) || srcPosBefore(at(2, 1), at(1, 9)) || srcPosBefore(at(1, 1), at(1, 1)) {
+			t.Error("srcPosBefore orders by row, then column, strictly")
+		}
+	})
+	t.Run("an analysis pass notes each positioned end", func(t *testing.T) {
+		r := covRegistry(t, nil)
+		r.Check.Mode = true
+		e := NewTop(r)
+		if _, err := e.Run([]Value{NewInteger(1), WithPosAt(NewEnd(), at(1, 3)), NewInteger(2), NewEnd()}); err != nil {
+			t.Fatal(err)
+		}
+		if len(e.stmtEnds) != 1 || e.stmtEnds[0] != at(1, 3) {
+			t.Errorf("the positioned end is noted, the positionless one is not: %v", e.stmtEnds)
+		}
+	})
+}

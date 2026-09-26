@@ -124,6 +124,10 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 		bodyFrag = es.TakeFragment()
 		es.ArmLoopCapture()
 	}
+	var before map[string]int64
+	if recording {
+		before = bindingShape(r)
+	}
 	condStk := AnalyseLoopBody(r, args[0], nil, nil, false)
 	out := NewCarrier(TList)
 	var top Value
@@ -148,6 +152,17 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 		// arity compile failure below keeps the interpreter's fallback.
 		if emptyWhileCond(args[0]) && es.RecordTrap("runtime_error",
 			"while: condition produced no value", "while", "", args[0].Pos()) {
+			return []Value{out}
+		}
+		// A condition that BINDS a name (NUR223): the body was analysed
+		// first, so its read of that name resolved the pre-loop binding —
+		// `def t 0 end while [def t (t add 1) (t lt 3)] [t]` compiled to
+		// `[0 0 3]` for the interpreter's `[1 2 3]`. Neither order serves a
+		// loop whose condition and body each rebind what the other reads;
+		// that wants the two analyses in one carried scope, run to a joint
+		// fixed point. Until then the loop declines, loudly.
+		if bindingShapeChanged(r, before) {
+			es.MarkUncompilable("while: the condition binds a name the body was analysed without (NUR223)")
 			return []Value{out}
 		}
 		iter := NewCarrier(TInteger)

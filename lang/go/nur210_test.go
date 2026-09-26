@@ -94,3 +94,35 @@ func TestNUR210ComputedBodyRebindsTheRoot(t *testing.T) {
 		}
 	}
 }
+
+// TestNUR210ComputedBodyGeneralisesTheRoot pins NUR210's last silent reads:
+// after a computed `do` body at the root, a read the bare-read rule does not
+// reach — a list or map literal's element, a def's operand, a fn unit's
+// read — folded the value the pass held BEFORE the body (`[7 [99]]` for
+// `[7 [5]]` over `[def x 5 7]`). The pass now stops knowing root values
+// there: each root value binding is generalised in place (the speculative
+// undef's transition), so every later read is live.
+func TestNUR210ComputedBodyGeneralisesTheRoot(t *testing.T) {
+	mk := func(body string) string { return `def x 99 end def mk fn [[][List][quote [` + body + `]]] end ` }
+	for _, c := range []struct{ src, want string }{
+		{mk(`def x 5 7`) + `do (mk) end [x]`, "[7 [5]]"},
+		{mk(`def x 5 7`) + `do (mk) end {a: x}`, "[7 {a:5}]"},
+		{mk(`def x 5 7`) + `do (mk) end def y x end y`, "[7 5]"},
+		{mk(`def x 5 7`) + `do (mk) end [x x]`, "[7 [5 5]]"},
+		{mk(`def x 5 7`) + `def f fn [[][Any][[x]]] end do (mk) end f`, "[7 [5]]"},
+		// Negative: a body that leaves x alone reads the pre-body value live,
+		// and one that unbinds it raises where the interpreter does.
+		{mk(`7`) + `do (mk) end [x]`, "[7 [99]]"},
+		{mk(`7`) + `do (mk) end def y x end y`, "[7 99]"},
+	} {
+		requireEngineParity(t, c.src, true)
+		if got, err := mustNew(t).RunInterp(c.src); err != nil || fmt.Sprint(got) != c.want {
+			t.Errorf("%s: the interpreter answers %s, got %v %v", c.src, c.want, got, err)
+		}
+	}
+	src := mk(`undef x 7`) + `do (mk) end [x]`
+	_, _, errC, _, errI := runBothEngines(t, src)
+	if codeOf(errI) != "undefined_word" || codeOf(errC) != codeOf(errI) {
+		t.Errorf("%s: undefined_word on both lanes, got compiled %v, interp %v", src, errC, errI)
+	}
+}

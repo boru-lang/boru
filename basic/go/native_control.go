@@ -370,6 +370,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 	// (design/legacy/dynamic-modality-report.10.ignore, do/eval hatch.) A concrete
 	// body is analyzed normally; one that runs to nothing stays strict.
 	if !(IsConcrete(body) && body.Parent.ConformsTo(TList)) {
+		generaliseRootValues(r)
 		return []Value{NewDynamicCarrier(TAny)}
 	}
 	// `do` TRAPS every body error at runtime (DoListHandler surfaces it as
@@ -500,6 +501,29 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 		}
 	}
 	return stk
+}
+
+// generaliseRootValues is the model's answer to a COMPUTED `do` body run at
+// the program root (NUR210): the body keeps its defs in the root's scope,
+// and the pass never sees its tokens, so any root value binding may be
+// rebound or unbound by it. Each one is generalised IN PLACE — a fresh
+// carrier of its type, the speculative undef's own transition
+// (GeneraliseSpecUndef) — so no later read can bake the value the pass held
+// before the body: a list or map literal, a def's operand and a forward slot
+// all read live, where they folded the pre-body value (`do (mk) end [x]`
+// answered `[7 [99]]` for `[7 [5]]` over `[def x 5 7]`). The bindings stay,
+// so nothing is reported. Only at the root: inside a fn body the body's
+// defs land in the frame, whose reads the unit's own leak seats live
+// (NUR203), and a body analysed for a call is no statement of the root's.
+// Fn values, types and frame bindings keep their models (the transition's
+// own exclusions).
+func generaliseRootValues(r *Registry) {
+	if r.Check.FnBodyDepth > 0 {
+		return
+	}
+	for _, name := range r.Defs.Names() {
+		GeneraliseSpecUndef(r, name)
+	}
 }
 
 // doBodyMayRaise reports whether a `do` body can RAISE at run time — the
