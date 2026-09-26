@@ -61,6 +61,9 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"CurCallPos": "transient cursor overwritten per dispatch",
 		"CurCallWord": "transient cursor overwritten per dispatch, CurCallPos's twin: written " +
 			"beside it by declaredReturnCarriers and read only at a user-fn ReturnsFn's entry",
+		"CurLayout": "scoped: published around one recovered dispatch's record and " +
+			"restored when it returns (PublishLayout), so it is nil outside a record and " +
+			"no pass can begin with one set; a reader asks for its own operand slice (LayoutFor)",
 		"CurWordPos": "transient cursor overwritten per dispatch, and the write is " +
 			"unconditional and immediately adjacent: execMatch sets it from " +
 			"e.currentPos() on the line above the handler call, and a handler is the " +

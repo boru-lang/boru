@@ -120,13 +120,18 @@ var pinnedAritySites = map[string]int{
 	// narrower one that fits the stack beneath the word. Both ask which
 	// window the matcher's own rule collects, never what a fn does by its
 	// count.
-	"core/go/engine.go":       32,
-	"core/go/region_diag.go":  1,
-	"core/go/collect_plan.go": 8, // 5 -> 8 (NUR228): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
-	"core/go/signature.go":    12,
-	"core/go/match.go":        1,
-	"core/go/fnsig.go":        3,
-	"core/go/word_extend.go":  6,
+	"core/go/engine.go":      32,
+	"core/go/region_diag.go": 1,
+	// NUR242 (2026-09-26): the exact layout is published only for a PLAIN
+	// dispatching word (`w.ArgCount != -1` rules out an `/N` modifier), since
+	// a modifier overrides the forward limit the plan reads — the token's
+	// syntax, not a function's parameter count.
+	"core/go/dispatch_layout.go": 1,
+	"core/go/collect_plan.go":    8, // 5 -> 8 (NUR228): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
+	"core/go/signature.go":       12,
+	"core/go/match.go":           1,
+	"core/go/fnsig.go":           3,
+	"core/go/word_extend.go":     6,
 	// 4 -> 2 (2026-09-25, NUR099 closed): PredicateInputType lost the
 	// parameter-COUNT route (`!info.Predicate && len(sig.Params) != 1`) —
 	// ADR-016's arity-keyed exception, a fn body read as a membership test
@@ -336,7 +341,12 @@ var pinnedAritySites = map[string]int{
 	//    tape, which a poly re-match cannot reproduce at any arity
 	//    (restepOverloadReachable). What remains is the barrier clamp reading
 	//    a signature's forward positions, the argument rule itself.
-	"compiler/go/compiler_dispatch_record.go": 1,
+	// 1 -> 2 (NUR265, 2026-09-26): concreteHandlerEval runs a handler only
+	//    over its signature's full arity (`len(args) != sig.TotalArgs()`) —
+	//    the argument rule, which every dispatch honours when it hands a
+	//    handler its window; a recovery's short window reached `gt`'s
+	//    handler and the check pass panicked.
+	"compiler/go/compiler_dispatch_record.go": 2,
 
 	// ── Compiler: recording and lowering against declared signatures.
 	// 3 -> 4: the `apply` word's two overloads differ in arity — [Function]

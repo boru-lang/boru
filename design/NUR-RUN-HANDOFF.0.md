@@ -83,8 +83,19 @@ split decides what the interpreter's plan claims.
 - eng `TestPolySplitRaiseIsTheInterpretersPlan`;
 - compiler `TestNUR265HandlerRunsOverItsArity`.
 
-**Ledgers.** Unchanged by this entry's programs: none of the new rows
-bails or declines.
+**Ledgers (gate25, measured row for row against 44f7eb2).**
+- Engine entries 186 → 191 and interpreter entry rows 39 → 41: code-bodies.tsv:L213
+  and each-variants.tsv:L207 (`each [if [gt 1] …]`) panicked the check pass
+  like NUR265's filter and did not compile; they compile now, with the body on
+  the interpreter per element.
+- Diagnostic parity 354 → 355: L213's plain-check no_signature/gt, which the
+  panic masked.
+- Arity pins: compiler_dispatch_record.go 1 → 2 (the handler's full arity),
+  and dispatch_layout.go pinned at 1 (a plain word, no `/N` modifier).
+- `CheckState.CurLayout` is classified as a scoped transient in the
+  lifecycle test.
+- The unit-suite ledgers are unchanged: none of the new rows bails or
+  declines.
 
 ## NUR210's silent half closed: the prefix island (2026-09-26)
 

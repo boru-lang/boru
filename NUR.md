@@ -9701,6 +9701,18 @@ NUR264's trap. Pinned by compiler `TestNUR265HandlerRunsOverItsArity` and
 lang `TestNUR265CheckPassCompletes`; the fold helper's test signature
 (`statefulSig`) declares the one operand its callers pass.
 
+**What the gate measured.** Two corpus rows panicked the same way and did
+not compile at all: code-bodies.tsv:L213 and each-variants.tsv:L207, `each
+[if [gt 1] ['big'] ['small']]` over a List param and over `[1 2 3]` (the
+condition's `gt 1` recovered over one operand). They compile now, and the
+body runs on the interpreter per element because the recovered `gt`
+declines the closure: the engine-entry census 186 → 191 and the
+interpreter-entry rows 39 → 41, those two rows alone. The plain check's
+report of the condition's no-match over that window, which the panic
+masked, is back on L213 (diagnostic parity 354 → 355, the documented
+no_signature suppression). Its root, the condition analysed without the
+element the run supplies, is the rows' next cut.
+
 ## NUR243 — three valid programs refused {#nur243}
 
 **Status:** FIXED 2026-09-26 (the three programs compile — the handoff
