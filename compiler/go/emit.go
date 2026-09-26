@@ -254,6 +254,21 @@ type eventFlags struct {
 	// carry the mark (callVariadicRegion) — no latch to leak onto a later
 	// dispatch.
 	variadicRegion bool
+	// dynBodyOne marks a COMPUTED `do` body's run (a dyn-body region that
+	// may leave a callable — dynRegionMayBeFn) DEMOTED to one fixed value
+	// under a RUNTIME COUNT CHECK because a single-value seat consumes it:
+	// a call operand (`(do b) add 1`, `do b error […]`, `[9 do (mk)]`), a
+	// promoted value-def (`def ok (do b)`), a dead result. The region rules
+	// decline every such seat, and the mini-s3 handler shape — `def ok (do
+	// b error [drop false])` in a fn body — is one (TestStampDynEnvLateArmDrift).
+	// The call carries SigRef/PolyRef.DynBodyOne: the VM seats the run only
+	// when it left EXACTLY ONE value the interpreter would not re-step (no
+	// fn value, class, word, splice, reach, mark or move), which is the one
+	// case the fixed seat and the interpreter's tape agree on; any other run
+	// is a designed defer (vm:dyn-body-one), loud and the compiled lane's
+	// own. Set by demoteDynRegion (dyn_body_one.go); variadicRegion and
+	// regionMayBeFn are cleared with it, so every region rule stands down.
+	dynBodyOne bool
 	// splitBound marks a variadic loop region whose FIRST value an S5 split
 	// bind consumed (SplitLoopRegionBind → RecordDynBind): the remaining
 	// regionN-1 values are the statically-counted rest. Inside a LOOP BODY
@@ -991,6 +1006,32 @@ type EmitState struct {
 	// has not yet dispatched (RecordDynMethod clears it; flushGradualRead
 	// declines it).
 	pendingFoldedFire string
+	// keptDefsWord / keptDefsLevel are the KEPT-DEFS LATCH (kept_defs.go,
+	// NUR210): armed when a keep-defs word (`do`, `each`: a CallableSpec
+	// BodyOnceKeepsDefs / BodyMultiRunKeepsDefs) runs a COMPUTED code body —
+	// tokens that exist only at run time, whose defs and undefs the
+	// interpreter keeps in the enclosing scope while the check model, which
+	// never saw them, keeps the bindings from before. While armed, every
+	// observer of a binding recorded after it (a def read, a user fn call, a
+	// fn-value apply) poisons armReadCompileFailure. keptDefsLevel is the
+	// unit depth (len(units)) it was armed at, 0 when disarmed; a unit's
+	// finish hands a latch armed inside it to the unit (runsKeptDefs) and
+	// disarms it, so the latch re-arms where that unit RUNS — after a call of
+	// it — never at its analysis.
+	keptDefsWord  string
+	keptDefsLevel int
+	// keptDefsUnitWord is the word of the first unit that runs a kept-defs
+	// body (fnUnitRec.runsKeptDefs); non-empty, any event that may invoke
+	// such a unit indirectly re-arms the latch (keptDefsInvoker).
+	keptDefsUnitWord string
+	// keptDefsFresh maps a name a def bound AFTER the kept-defs latch armed,
+	// at the latch's own unit depth, to the ID of the value it bound
+	// (kept_defs.go, noteKeptDefsFreshBind): a read of exactly that binding
+	// is no stale observer — the def ran after the computed body, so the
+	// interpreter's binding is the one the model holds. Cleared whenever
+	// the latch arms, re-arms or disarms, and at every event that may run
+	// code the model did not see.
+	keptDefsFresh map[string]string
 	// storedGradualDepth marks a DETACHED stamp compile (StampDetachedFn
 	// sets it on the fork's private EmitState). While non-zero,
 	// buildFnBodyReturnsFn generalises an Any arg into an Any param as a
@@ -1783,6 +1824,17 @@ type fnUnitRec struct {
 	numLoc    int
 	pos       core.SrcPos
 	finished  bool
+	// runsKeptDefs names the keep-defs word whose COMPUTED body this unit
+	// runs, directly or through a unit it calls (kept_defs.go, NUR210): a
+	// run of the unit may define or undefine any name, so the kept-defs
+	// latch re-arms wherever the unit runs. "" for every other unit.
+	runsKeptDefs string
+	// calledOpen marks a unit a CALL_USER reached while it was still being
+	// recorded (recursion), and openCallObserver the first binding observer
+	// recorded after such a call: whether the call ran a kept-defs body is
+	// known only at the unit's finish, which then poisons for it.
+	calledOpen       bool
+	openCallObserver string
 	// inShape is the closure input convention recorded for a closure body unit
 	// (ClosureInValue by default; ClosureInKeyVal for a map-iteration lambda).
 	// Copied into CompiledFn.InShape at lowering. Zero (value) for user fns.
@@ -2851,6 +2903,7 @@ func (es *EmitState) appendEvent(ev EmitEvent) int {
 	}
 	es.seq++
 	ev.seq = es.seq
+	es.keptDefsEvent(&ev)
 	es.frames[n] = append(es.frames[n], ev)
 	return ev.seq
 }
@@ -6573,6 +6626,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 		return -1, nil, false
 	}
 	if u, hit := es.fnUnits[key]; hit && !es.unitStale(u) {
+		es.keptDefsHandedOn(es.fnRecs[u], len(es.units))
 		return u, nil, true
 	}
 	// A miss, or a STALE hit: the memoised unit baked a binding this call
@@ -6957,6 +7011,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 		}
 		rec.numLoc = u.numLocals
 		rec.finished = true
+		es.finishKeptDefs(rec)
 		es.units = es.units[:len(es.units)-1]
 		es.unitNames = es.unitNames[:len(es.unitNames)-1]
 		es.openUnitRecs = es.openUnitRecs[:len(es.openUnitRecs)-1]
@@ -9901,6 +9956,9 @@ func (es *EmitState) NoteDefRead(id, name string) {
 		es.flushGradualRead()
 		es.pendingGradualRead = id
 	}
+	if !es.keptDefsFreshRead(id, name) {
+		es.noteKeptDefsObserver("the read of `" + name + "`")
+	}
 	if es.defReads == nil {
 		es.defReads = map[string]string{}
 	}
@@ -10141,6 +10199,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		es.foldedEscape("a container literal")
 	}
 
+	es.noteKeptDefsFreshBind(name, v.ID)
 	// A def of a name a PLACED speculative undef generalised, inside a
 	// rolled-back region of this unit, cannot be placed after the undef
 	// (defAfterSpecUndef) — decline before recording anything for it.
@@ -14316,6 +14375,9 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if reason, ok := es.hostedSpliceAdmitted(residual); !ok {
 		return nil, reason, false
 	}
+	// A computed `do` body's run consumed by a single-value seat takes one
+	// runtime-checked value before any scope is planned (dyn_body_one.go).
+	es.demoteConsumedDynRegions()
 	twinExempt := es.truncateAtTrap()
 	if es.trapAt != 0 {
 		residual = nil

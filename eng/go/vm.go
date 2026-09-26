@@ -939,7 +939,14 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	// silently shift every downstream operand, so defer to the interpreter
 	// instead (runtimeShouldFallback). The defer keeps a wrong answer out;
 	// it does not make the miss acceptable — the program did not compile,
-	// which is a defect owed a fix.
+	// which is a defect owed a fix. A computed `do` body's run a
+	// single-value seat consumes takes its own check first, which subsumes
+	// the count claim (vm_dyn_body_one.go).
+	if pr.DynBodyOne {
+		if err := checkDynBodyOne(r, pr.Word, results, curDebug, pc); err != nil {
+			return nil, err
+		}
+	}
 	if len(results) != pr.NOut {
 		return nil, vmDefer(r, curDebug, pc, "vm:poly-nout-drift", fmt.Sprintf(
 			"poly dispatch %s: result count %d differs from the recorded claim %d; the compiled runtime cannot execute it",
@@ -3316,6 +3323,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// data.
 			if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil {
 				return nil, err
+			}
+			if s.DynBodyOne {
+				// A computed `do` body's run a single-value seat consumes
+				// (vm_dyn_body_one.go): exactly one plain value, or defer.
+				if err := checkDynBodyOne(curReg, s.Word, results, curDebug, pc); err != nil {
+					return nil, err
+				}
 			}
 			stack = append(stack, results...)
 			// A native that ran a code body through the InvokeBody seam can

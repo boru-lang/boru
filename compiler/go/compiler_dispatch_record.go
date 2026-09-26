@@ -890,7 +890,13 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 			return false
 		}
 	}
-	return recordDynBodyCall(r, es, word, sig, args, outs, pos, body, sig.NoEvalArgs[bp])
+	if !recordDynBodyCall(r, es, word, sig, args, outs, pos, body, sig.NoEvalArgs[bp]) {
+		return false
+	}
+	if keepsComputedDefs(sig.Callable, body) && !es.bodyProvenFn(body) && !es.bodyBindsNothing(r, body) {
+		es.runKeptDefs(word)
+	}
+	return true
 }
 
 // recordDynBodyCall records the dyn-body backstop's CALL_NATIVE (or poly
@@ -955,6 +961,24 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	fixedValueEval := core.IsConcrete(body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
 	if !fixedValueEval {
 		f.variadicResult = true
+	}
+	// A COMPUTED whole-residual body (`do (mk)`, `do b`) leaves 0-or-MORE
+	// values where the check pass models one dynamic(Any) out: record the
+	// run as a variadic REGION (NUR067's growing direction), so every rule a
+	// region obeys applies — a consumer of a fixed count declines, a value
+	// beneath it seats through the mark or declines, never after the run
+	// (NUR210: `9 do (mk)` over `[1 2]` seated the 9 above the 1). The run
+	// may leave a callable the interpreter re-steps unless its tokens are
+	// proven plain data (dynRegionMayBeFn's seat rule). A run proven to be
+	// ONE plain value is no region: it seats exactly as the one value the
+	// check pass models. A region that may leave a callable is demoted to a
+	// runtime-checked single value where a fixed seat consumes it
+	// (dyn_body_one.go), rather than declined.
+	if !fixedValueEval && sig.Callable != nil && sig.Callable.BodyOut == core.BodyOutResidual && !core.IsConcrete(body) && len(outs) == 1 {
+		if n, plain := es.bodyPlainCount(body); !plain || n != 1 {
+			f.variadicRegion = true
+			f.regionMayBeFn = regionValsMayBeCallable(outs) && !plain
+		}
 	}
 	// The dyn-body backstop already marks every code-body result variadic
 	// above; consume the ReturnsFn's catch-variadic latch so it cannot leak
