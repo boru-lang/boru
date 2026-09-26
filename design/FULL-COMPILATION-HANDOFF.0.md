@@ -13322,6 +13322,41 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR079 closed — one policy for a program and its modules (2026-09-26)
+
+**The divergence.** Half (i) (2026-08-18) put the importer's policy on a
+module body's registry. Half (ii) was open: a FILE module import applied
+none of the checks a native import applies, `boru check` took no
+permission flags, and the run's pre-flight executed module bodies before
+the run's policy was even resolved.
+
+**The fix.** `checkFileModuleImport` in `loadFileModule` — `modules.import`
+with `{module: <ref>, kind: "file"}` and the ref's subscope
+`install:false`, keyed like the NUR045 per-export gates. `modules.Resolve`
+now passes `kind: "native"`: policy where-predicates pass VACUOUSLY on an
+absent arg, and the first cut's `kind: ["file"]` admission in the built-in
+profiles let `boru:net` through `sandbox` until the native check carried
+its kind. Profiles: `sandbox` (so `read-only`, `client`), `compute`, `gen`
+admit `kind: file` — the body runs under the importer's profile. Refusals
+are coded through `PolicyRefusal` on both paths (a coded native refusal is
+returned unwrapped by `resolveNativeMod`). CLI: `boru check` registers
+`permsflags` (Opts.Policy, the `--emit` path too), `run`/`build` resolve the
+policy before the pre-flight and call `PreflightPolicyAt`, `describe` builds
+its registry with `permsflags.EnvPolicy()`, the language server's check and
+completion instance likewise (an unresolvable policy is the init
+diagnostic). The check pass mirrors a refused TOP-LEVEL import
+(`mirrorImportRefusal`): `RecordTrapErr` at the `import` word
+(`CheckState.CurWordPos`) plus a RuntimeMirror diagnostic; the two codes got
+error severity in the table. Found on the way, not fixed here: code after
+ANY top-level trap that names an undefined word declines to compile
+(`raise "x" foo`), so a refused import whose names are then used declines
+rather than trapping — loud, and the pre-flight reports the refusal first.
+
+**Pins.** lang `TestNUR079FileModuleImportPolicy`,
+`TestNUR079CheckReportsRefusedImport`; cmd `TestCheckHonoursPermissionFlags`,
+`TestPreflightRunsUnderPolicy`, `TestDescribeHonoursEnvironmentPolicy`,
+`TestComputeDiagnosticsEnvPolicyFailure`.
+
 ## NUR089 closed — a lambda param binds as the run binds it (2026-09-26)
 
 **The divergence.** The same curried combinator, passed the same two

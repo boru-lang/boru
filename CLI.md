@@ -1522,6 +1522,26 @@ BORU_POLICY=sandbox boru do 'add 1 2'
 BORU_POLICY_FILE=./prod.jsonic boru script.boru
 ```
 
+`boru check` takes the same flags, and `boru describe` and the language
+server honour the environment fallbacks: analysis RUNS an imported file
+module's body to learn its exports, so the profile that governs the run
+governs that execution too — and the pre-flight check `boru run` performs
+runs under the run's profile. A top-level import the profile refuses is
+reported by the check as the coded error the run raises
+(`permission_denied` / `capability_not_installed`).
+
+Imports are gated per module. `modules.import` is checked with
+`{module, kind}`: a native module is `module: "boru:<name>", kind:
+"native"`; a file module is keyed by the ref the import names (`module:
+"./lib.boru"`, `kind: "file"`), so `modules.scopes."./lib.boru"` names one
+module for the import gate and its per-export gates alike. The
+restrictive built-ins (`sandbox` and the profiles that extend it,
+`compute`, `gen`) admit file modules with `{ allow: ["import"], where: {
+kind: ["file"] } }` — a module body runs under the importer's profile, so
+the import widens nothing its body could do, and reading the file is still
+the `fileops` scope's call. Refuse them with the mirror rule, or one module
+with `modules.scopes."./lib.boru": { install: false }`.
+
 Examples:
 
 ```bash

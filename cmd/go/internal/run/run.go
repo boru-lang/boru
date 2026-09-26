@@ -193,16 +193,19 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// Sequenced after the guard-narrowing legalization per the plan's
 		// FP-honesty rule; `boru check --soft` remains the advisory surface.
 		color := lang.ResolveColor(nil, stderr, *colorMode)
-		if !*noCheck && os.Getenv("BORU_NO_CHECK") == "" {
-			if err := check.PreflightColorAt(stderr, source, reg, *seed, *checkFirst, color, baseDir); err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return 1
-			}
-		}
+		// The policy resolves BEFORE the pre-flight: the check executes an
+		// imported module's body, and it must run under the profile the run
+		// does (NUR079).
 		pol, err := pf.Resolve()
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %s\n", err)
 			return 1
+		}
+		if !*noCheck && os.Getenv("BORU_NO_CHECK") == "" {
+			if err := check.PreflightPolicyAt(stderr, source, reg, *seed, *checkFirst, color, baseDir, pol); err != nil {
+				fmt.Fprintf(stderr, "%s\n", err)
+				return 1
+			}
 		}
 		o := lang.Options{Registry: reg, Seed: *seed, Policy: pol, ScriptArgs: scriptArgs, BaseDir: baseDir,
 			// The CLI is a host that hands the program the real environment

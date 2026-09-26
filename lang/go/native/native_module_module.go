@@ -2,11 +2,14 @@ package native
 
 import (
 	"encoding/json"
+	"errors"
 	"fmt"
 	"io"
 	"path/filepath"
 	"sort"
 	"strings"
+
+	"github.com/boru-lang/boru/lang/go/policy"
 )
 
 // The "module", "import", and "export" words. The "module" and
@@ -527,6 +530,9 @@ func loadFileModule(parent *Registry, path string) (ModuleDesc, error) {
 	if parent.ParseFunc == nil {
 		return ModuleDesc{}, fmt.Errorf("import: parser not configured for file import")
 	}
+	if err := checkFileModuleImport(parent, path); err != nil {
+		return ModuleDesc{}, err
+	}
 
 	resolved := resolveImportPath(parent, path)
 
@@ -574,6 +580,43 @@ func loadFileModule(parent *Registry, path string) (ModuleDesc, error) {
 	}
 
 	return desc, nil
+}
+
+// checkFileModuleImport applies to a FILE module the three policy checks
+// modules.Resolve applies to a native one (NUR079): the modules scope must be
+// installed, the `import` op allowed for this module, and the module's own
+// subscope not `install: false`. The key is the ref the module is loaded
+// under — the same one its per-export gates carry (StampModuleCallGates), so
+// `modules.scopes."./lib.boru"` names one module for both. The check also
+// carries `kind: "file"`, so a profile can admit source modules as a class
+// (a module body runs under the importer's policy — runModuleBodyCover — so
+// admitting the import widens nothing the body could do). No policy is no
+// gate, as everywhere.
+//
+// A refusal carries its policy code (PolicyRefusal): nothing has run, so the
+// coded error is the whole story, and `do [import …] error [dot code]` can
+// tell a refused import from a broken one. The scope-level install:false is
+// Check's own first step.
+func checkFileModuleImport(r *Registry, ref string) error {
+	pol := HostPolicy(r)
+	if pol == nil {
+		return nil
+	}
+	args := policy.Args{"module": ref, "kind": "file"}
+	if err := pol.Check("modules", "import", args); err != nil {
+		return PolicyRefusal(r, "import", err)
+	}
+	if !pol.Scope("modules").Scopes[ref].Installed() {
+		return PolicyRefusal(r, "import", &policy.Denied{
+			Code:    policy.CodeCapabilityNotInstalled,
+			Scope:   "modules",
+			Op:      "import",
+			Profile: pol.Name(),
+			Blame:   "modules.scopes." + ref + ".install=false",
+			Args:    args,
+		})
+	}
+	return nil
 }
 
 // loadModuleResources checks the module's .boru/boru.json for a "resource"
@@ -926,6 +969,13 @@ func resolveNativeMod(r *Registry, path string) error {
 	}
 	desc, err := r.Modules.Resolver(name, r)
 	if err != nil {
+		// A policy refusal arrives CODED (modules.Resolve, PolicyRefusal) and
+		// is surfaced as it is, so its code reaches the program; any other
+		// failure keeps the import prefix.
+		var be *BoruError
+		if errors.As(err, &be) {
+			return err
+		}
 		return fmt.Errorf("import: %w", err)
 	}
 	// NUR045: stamp the per-export policy identity before the exports

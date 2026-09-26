@@ -12,12 +12,13 @@ import (
 	"testing"
 
 	"github.com/boru-lang/boru/lang/go/native"
+	"github.com/boru-lang/boru/lang/go/policy"
 )
 
 func swapDefaultRegistryFail(t *testing.T) {
 	t.Helper()
 	orig := defaultRegistry
-	defaultRegistry = func(...func(*native.Registry)) (*native.Registry, error) {
+	defaultRegistry = func(policy.Policy, ...func(*native.Registry)) (*native.Registry, error) {
 		return nil, errors.New("registry boom")
 	}
 	t.Cleanup(func() { defaultRegistry = orig })

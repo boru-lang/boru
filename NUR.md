@@ -173,7 +173,7 @@ keep the two in sync in the same commit.
 | [NUR074](#nur074) | `canon` renders a function's PARAMETER names, so alpha-equivalent functions render — and digest — differently; NUR031's planned fix (render the anonymous fn literal) does not reach this | `design/legacy/unison-hash-identity-probe.0.ignore` P4 (flagged for NUR by the PR #376 review, Codex P1) |
 | [NUR077](#nur077) | FIXED 2026-09-25 (the Apply op — the handoff log's entry of that date): `StackForm`'s op vocabulary can CALL a word by name but cannot APPLY a function value, so an inline lambda or a fn read out of a container has no faithful representation — `Call{Name, Arity}` re-invokes by name and does not consume a receiver. `Eval` now refuses those forms (`ErrUnnamedApply`) rather than replaying them to a different answer — VERDICT 2026-08-17: resolve by fix, a NEW dedicated Apply Op (arity-carrying, consumes the value, seamed at `execFnDefLiteral`; `DoEval` stays reserved), after the three prerequisite recorder/gate defects are fixed | the `OnCall` frame-skeleton over-count fix, 2026-08-16 |
 | [NUR078](#nur078) | A bare fn name before a `Function`-typed slot still resolves as a reference, against amended ADR-011 — the engine's TFunction intercept implements the exception the 2026-08-17 amendment struck (`h zero` ≡ `h zero/r` when the slot is `Function`-typed; a call/barrier before any other slot) — VERDICT 2026-08-17: resolve by fix, open-work item B (all four sites retire together, re-opening the NUR038 call-head question in the implementing PR) | the ADR-011 amendment, 2026-08-17 (flagged by the PR #381 review, Codex P1) |
-| [NUR079](#nur079) | Gated words inside an imported file-module body escape the policy that governs the same call at top level — the module sub-registry inherited every capability seam except policy, so gates resolving `HostPolicy(r)` read nil as allow — VERDICT: resolve by fix in two halves; half (i) landed 2026-08-18 (the body now carries the parent's policy), half (ii) open | the Roc comparison study, 2026-08-18 |
+| [NUR079](#nur079) | FIXED 2026-09-26 (NUR079 closed — one policy for a program and its modules — the handoff log's entry of that date): Gated words inside an imported file-module body escape the policy that governs the same call at top level — the module sub-registry inherited every capability seam except policy, so gates resolving `HostPolicy(r)` read nil as allow — VERDICT: resolve by fix in two halves; half (i) landed 2026-08-18 (the body now carries the parent's policy), half (ii) open | the Roc comparison study, 2026-08-18 |
 | [NUR080](#nur080) | FIXED — verified 2026-09-25 (the brand in both orders — the handoff log's entry of that date): A typed def over an Integer literal loses its newtype brand under the compiler, and the bare literal gains one — VERDICT: resolve by fix | the Roc comparison study, 2026-08-18 |
 | [NUR081](#nur081) | FIXED 2026-09-25 (one contract for the family — the handoff log's entry of that date): `Test.skip` is documented as a drop-in for `Test.check-prop`, but the two disagree on argument validity: `check-prop` now rejects `runs < 1` / `max-shrinks < 0` while `skip` accepts them silently | the Quint follow-up Wave 1, 2026-08-18 |
 | [NUR082](#nur082) | FIXED 2026-09-25 (one walk for the tree commands — the handoff log's entry of that date): Three tree-walking subcommands, two rules for `.boru/`: `fmt` and (now) `check` skip the package directory, `boru test`'s `discover()` walks it — VERDICT 2026-08-18: resolve by fix, one shared walk helper carrying the skip | giving `boru check` directory targets, 2026-08-18 (W-CLI-CHECK) |
@@ -5513,10 +5513,42 @@ when that fix lands.
 
 ## NUR079 — Gated words inside an imported file-module body escape the policy that governs the same call at top level {#nur079}
 
-**Status:** Pending · **Recorded:** 2026-08-18 · **Surfaced by:** the
-Roc comparison study (`design/legacy/roc-in-boru-report.0.ignore` §7.1), while
-checking Roc's claim that `roc check`/`roc build` perform no dependency
-I/O
+**Status:** FIXED 2026-09-26 · **Recorded:** 2026-08-18 · **Surfaced by:**
+the Roc comparison study (`design/legacy/roc-in-boru-report.0.ignore` §7.1),
+while checking Roc's claim that `roc check`/`roc build` perform no
+dependency I/O
+
+**The fix (half (ii), 2026-09-26).** `loadFileModule` applies the natives
+path's checks (`checkFileModuleImport`): `modules.import` with `{module:
+<ref>, kind: "file"}` — Check's own first step refuses an uninstalled
+modules scope — and the module's own subscope `install:false`, keyed on
+the ref it is loaded under, the key its NUR045 per-export gates already
+carry. The native path now supplies `kind: "native"` — a where-predicate on
+an ABSENT arg passes vacuously, so without it a `kind: ["file"]` admission
+would have admitted every native module (caught in the first measurement:
+`boru:net` imported under `sandbox`). The restrictive built-ins (`sandbox`
+and what extends it, `compute`, `gen`) admit file modules with `{ allow:
+["import"], where: { kind: ["file"] } }`: a body runs under the importer's
+profile (half (i)), so the import widens nothing, and reading the file
+stays the `fileops` scope's call — so multi-file programs run under
+`read-only` and `client` exactly as before. Both paths' refusals are CODED
+(`PolicyRefusal`: `permission_denied` / `capability_not_installed`), so `do
+[import …] error [dot code]` tells a refused import from a broken one.
+`boru check` takes the permission flags (and BORU_POLICY), the run's
+pre-flight resolves the policy FIRST and checks under it (the double
+execution of (b) is now gated), `boru build`'s pre-flight likewise, and
+`boru describe` and the language server honour the environment policy.
+The check pass no longer degrades a refused top-level import to an opaque
+module: it records the refusal as the top-level trap the run raises and
+reports it as an error-severity mirror, so the compiled program raises the
+same coded error at the same caret. (A refused import whose module the
+program goes on to use still declines to compile — the check reads the
+names after the trap as undefined, the limit `raise "x" foo` shares — but
+loudly.) Pinned: lang `TestNUR079FileModuleImportPolicy`,
+`TestNUR079CheckReportsRefusedImport`; cmd `TestCheckHonoursPermissionFlags`,
+`TestPreflightRunsUnderPolicy`, `TestDescribeHonoursEnvironmentPolicy`,
+`TestComputeDiagnosticsEnvPolicyFailure`. Documented in CLI.md
+§Per-command policy flags and design/PERMISSIONS.10.md.
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
 

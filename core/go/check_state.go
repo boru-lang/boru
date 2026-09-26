@@ -835,11 +835,17 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	// not error: the program runs and exits 0, so this is a suspicion about
 	// what the author meant, not a guaranteed runtime failure (the same line
 	// index_out_of_range was promoted across, in the other direction).
-	"stranded_type_call":    SeverityWarning,
-	"unreachable_branch":    SeverityWarning,
-	"record_shape_mismatch": SeverityError,
-	"fold_error":            SeverityError,
-	"foldaxis_error":        SeverityError, // the empty-lane mirror (staticEmptyLaneDetail), fold_error's one-rank-down twin
+	"stranded_type_call": SeverityWarning,
+	// A top-level import the host's policy refuses (NUR079): the run raises
+	// the coded refusal right at the import, so the check reports the
+	// guaranteed error it mirrors — never an opaque module whose names then
+	// read as undefined.
+	"permission_denied":        SeverityError,
+	"capability_not_installed": SeverityError,
+	"unreachable_branch":       SeverityWarning,
+	"record_shape_mismatch":    SeverityError,
+	"fold_error":               SeverityError,
+	"foldaxis_error":           SeverityError, // the empty-lane mirror (staticEmptyLaneDetail), fold_error's one-rank-down twin
 	// A typed Patrun (`patrun T`) whose `add` stores a CONCRETE value the
 	// checker can prove is not a T (native_patrun.go — the static mirror of
 	// the runtime add guard).

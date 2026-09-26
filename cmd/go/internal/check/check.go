@@ -28,7 +28,9 @@ import (
 	"github.com/boru-lang/boru/cmd/go/internal/command"
 	"github.com/boru-lang/boru/cmd/go/internal/flagutil"
 	"github.com/boru-lang/boru/cmd/go/internal/pathutil"
+	"github.com/boru-lang/boru/cmd/go/internal/permsflags"
 	lang "github.com/boru-lang/boru/lang/go"
+	"github.com/boru-lang/boru/lang/go/policy"
 )
 
 // langNew is a test seam (design/TEST-SEAMS.10.md); tests swap it to
@@ -83,6 +85,11 @@ type Opts struct {
 	// the same cwd (run anchors on the process cwd; check anchors on the
 	// file, which `boru build` needs). Empty keeps the file's directory.
 	Base string
+	// Policy is the permission profile the check runs under (`--perms` and
+	// its siblings, or BORU_POLICY) — nil for none. Analysis EXECUTES an
+	// imported file module's body to learn its exports, so the profile that
+	// governs the run must govern that execution too (NUR079).
+	Policy policy.Policy
 }
 
 // Target is one unit of work: Source is the boru text and Path is the
@@ -110,6 +117,8 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 	registry := fs.String("r", "", "registry path")
 	var seed int64
 	fs.Int64Var(&seed, "s", 0, "random seed")
+	var pf permsflags.Flags
+	permsflags.Register(fs, &pf)
 
 	// -h is answered before parsing: flag.ContinueOnError would print its
 	// own flag dump and return ErrHelp, which this command then reports as
@@ -170,8 +179,13 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 		work = files
 	}
 
+	pol, err := pf.Resolve()
+	if err != nil {
+		fmt.Fprintf(stderr, "error: %s\n", err)
+		return 1
+	}
 	if *emit {
-		return runEmit(stdout, stderr, work, *registry, seed)
+		return runEmit(stdout, stderr, work, *registry, seed, pol)
 	}
 	opts := Opts{
 		Registry: *registry,
@@ -182,6 +196,7 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 		Pedantic: *pedantic,
 		Color:    lang.ResolveColor(nil, stderr, *colorMode),
 		Base:     *base,
+		Policy:   pol,
 	}
 	if err := RunTargets(stdout, stderr, work, opts); err != nil {
 		fmt.Fprintf(stderr, "%s\n", err)
@@ -272,12 +287,12 @@ func resolveTargets(args []string) ([]Target, error) {
 // than one target each block is introduced by a `; file:` comment line,
 // which the disassembly's own comment syntax makes harmless to a reader
 // or a downstream tool.
-func runEmit(stdout, stderr io.Writer, targets []Target, registry string, seed int64) int {
+func runEmit(stdout, stderr io.Writer, targets []Target, registry string, seed int64, pol policy.Policy) int {
 	for _, t := range targets {
 		if len(targets) > 1 {
 			fmt.Fprintf(stdout, "; file: %s\n", t.Path)
 		}
-		if err := EmitAt(stdout, stderr, t.Source, registry, seed, anchorOf(t.Path)); err != nil {
+		if err := emitAtPolicy(stdout, stderr, t.Source, registry, seed, anchorOf(t.Path), pol); err != nil {
 			fmt.Fprintf(stderr, "%s\n", err)
 			return 1
 		}
@@ -340,6 +355,12 @@ Options:
                  own directory (check a file the way boru runs it)
   -r PATH        registry path
   -s SEED        random seed
+  --perms P      check under a permission profile (name, file, or inline
+                 jsonic); --perms-file, --perms-inline, --allow, --deny,
+                 --allow-global, --deny-global, --install and --no-install
+                 work as they do for boru run, and BORU_POLICY /
+                 BORU_POLICY_FILE are honoured. An imported module's body
+                 runs during the check, under this profile.
   -h, --help     print this message
 `)
 }
@@ -357,7 +378,14 @@ func Emit(stdout, stderr io.Writer, source string) error {
 // `boru check --emit src/prog.boru` records the program its own
 // directory describes. An empty baseDir keeps the process cwd.
 func EmitAt(stdout, stderr io.Writer, source, registry string, seed int64, baseDir string) error {
-	a, err := langNew(lang.Options{Registry: registry, Seed: seed})
+	return emitAtPolicy(stdout, stderr, source, registry, seed, baseDir, nil)
+}
+
+// emitAtPolicy is EmitAt under a permission profile (nil for none): the
+// recording pass executes an imported module's body exactly as the check
+// does, so `boru check --emit --perms …` governs it the same way (NUR079).
+func emitAtPolicy(stdout, stderr io.Writer, source, registry string, seed int64, baseDir string, pol policy.Policy) error {
+	a, err := langNew(lang.Options{Registry: registry, Seed: seed, Policy: pol})
 	if err != nil {
 		return fmt.Errorf("init error: %s", err)
 	}
@@ -469,7 +497,7 @@ func RunTargets(stdout, stderr io.Writer, targets []Target, o Opts) error {
 	var firstFail error
 
 	for _, t := range targets {
-		a, err := langNew(lang.Options{Registry: o.Registry, Seed: o.Seed})
+		a, err := langNew(lang.Options{Registry: o.Registry, Seed: o.Seed, Policy: o.Policy})
 		if err != nil {
 			return fmt.Errorf("init error: %s", err)
 		}
@@ -662,7 +690,17 @@ func PreflightColor(stderr io.Writer, source, registry string, seed int64, verbo
 // would be declined. An empty baseDir keeps the cwd behaviour run/debug
 // want — for them, cwd IS how the subsequent execution resolves imports.
 func PreflightColorAt(stderr io.Writer, source, registry string, seed int64, verbose, color bool, baseDir string) error {
-	a, err := langNew(lang.Options{Registry: registry, Seed: seed})
+	return PreflightPolicyAt(stderr, source, registry, seed, verbose, color, baseDir, nil)
+}
+
+// PreflightPolicyAt is PreflightColorAt under the permission profile the
+// run that follows will use (nil for none). The pre-flight EXECUTES an
+// imported file module's body to learn its exports, so without the profile
+// a gated call in that body ran ungated before the run's own gate could
+// refuse it — `boru run --perms read-only` on a program whose module
+// fetched sent the request during the check (NUR079).
+func PreflightPolicyAt(stderr io.Writer, source, registry string, seed int64, verbose, color bool, baseDir string, pol policy.Policy) error {
+	a, err := langNew(lang.Options{Registry: registry, Seed: seed, Policy: pol})
 	if err != nil {
 		return fmt.Errorf("init error: %s", err)
 	}
