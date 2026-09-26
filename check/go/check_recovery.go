@@ -787,7 +787,7 @@ func checkModeFallbackPositionsFor(e *core.Engine, s *core.Signature, w core.Wor
 		// the last taken forward token, the same walk).
 		rest := checkModeFallbackPositions(e, n)
 		for _, p := range rest[nStack:] {
-			if len(positions) >= n {
+			if len(positions) >= n { //covergate:allow window-size bound: a short window means nStack is the WHOLE stack run, so rest[nStack:] is exactly the plain walk's at most n-nStack tokens, prefixed by the forward run (the two walks share their skip rules) — the appends reach n only on the last entry; guards the spliced window against the walks drifting apart (§engine)
 				break
 			}
 			taken := false
