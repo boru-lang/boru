@@ -845,6 +845,10 @@ type lowerer struct {
 	// consuming half — planRegionPrefix armed it and put an OpStackMark in
 	// markBefore). 0 = not armed. Read once, by seatRegionPrefix.
 	regionPrefixSeq int
+	// island is the prefix-island plan (prefix_island.go, NUR210): a
+	// dyn-body run re-stepped over the inert values beneath it. Nil when
+	// the plan is not armed.
+	island *prefixIsland
 	// dynOpPos is the source position Finalize stamps on the program
 	// residual's OpCallDynApplyTop — the `apply` word's own, seated by
 	// resolveDynamicApply's program-pending arm so a runtime no-match raises
@@ -1450,6 +1454,13 @@ func (lw *lowerer) verifyMarkWindow(ops []EmitOperand) string {
 	if len(lw.vm) != len(ops) {
 		return "mark-window residual does not match the lowered stack"
 	}
+	// The prefix island's constants were pushed at its mark (NUR210).
+	if is := lw.island; is != nil {
+		if len(ops) < len(is.prefix) || !lw.islandTopIs(ops[len(is.prefix):]) {
+			return "mark-window residual does not match the lowered stack"
+		}
+		return ""
+	}
 	for i, op := range ops {
 		if op.kind != opEvent || lw.vm[i].seq != op.idx || lw.vm[i].idx != op.resIdx {
 			return "mark-window residual does not match the lowered stack"
@@ -1475,6 +1486,7 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 		if lw.markBefore[ev.seq] {
 			lw.emit(OpStackMark, 0, eventPos(*ev))
 		}
+		lw.openIsland(ev)
 		if scopeFloor > 0 {
 			var crossed bool
 			forEachOperand(ev, func(op EmitOperand) {
@@ -3402,6 +3414,9 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	if lw.collectRegionTop(ev) {
 		return ""
 	}
+	if reason, closed := lw.closeListIsland(ev); closed {
+		return reason
+	}
 	// A parser NAME (parselang-fn-dispatch's data slot) the checker resolved
 	// through the registry to a BRANCH-CARRIED def some path leaves unbound:
 	// the quoted atom bypassed the join's guarded carrier, so the promoted
@@ -3548,7 +3563,9 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// runtime-variable (`[do [3 drop] 7]` nets one value clean and two
 		// caught — NUR242) is not n values at run time, so the list declines
 		// rather than pop a count the run did not leave.
-		if lw.opsHaveCatchVariadic(c.ops) {
+		// A dyn-body run is not one value either (NUR210): the island
+		// (prefix_island.go) collects the ones it can seat.
+		if lw.opsHaveCatchVariadic(c.ops) || lw.opsHaveDynBodyRun(c.ops) {
 			return "list literal over a result of runtime-variable count"
 		}
 		lw.emit(OpMakeList, n, c.pos)

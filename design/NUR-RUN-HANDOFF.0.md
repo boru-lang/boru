@@ -9,6 +9,66 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR210's silent half closed: the prefix island (2026-09-26)
+
+**The divergence (main's record).** A computed `do` body, one a fn
+returned, seated its run wrong under anything beneath it or around it:
+`def mk fn [[][List][quote [1 2]]] end 9 do (mk)` answered `[1 9 2]` for the
+interpreter's `[9 1 2]`. Probing found the same class wider. `[9 do (mk)]`
+gave `[1 [9 2]]`, `[do (mk)]` gave `[1 [2]]` and `size [do (mk)]` gave
+`[1 1]`. A body placing a lambda last (`[5 ([x:Integer] => [x add 1])]`) gave
+`[5 fn]` for `[9 6]` beneath a 9, and `[5 [fn]]` for `[[6]]` in a list. All
+of these were silent.
+
+**Why.** The interpreter's `do` splices a computed body's results back and
+RE-STEPS them. Each value lands above what lies beneath, and a trailing fn
+value applies over it. The run the body left is `[5 fn]`, and the re-step
+applies the fn over the 5. The recorder models the dyn-body CALL_NATIVE's run
+as its one recorded seat. So every layout that put something beneath it or
+around it read the run as one value. The trailing apply rotated the run's
+top under the 9, and `MAKE_LIST` counted one element.
+
+**The fix (`compiler/go/prefix_island.go`).**
+- **The plan.** It is armed only when no other mark plan owns the frame.
+- **The mark.** A mark opens before the run's CHAIN: the dyn-body event and
+  the calls producing its operands, one contiguous block ending at the run.
+  The scalar constants beneath the run are pushed at the mark.
+- **The close.** `CALL_DYN_MIXED_FROM_MARK` re-steps `[prefix…, run…]`
+  through the interpreter's own machinery.
+- **A list literal.** It opens an outer mark first and collects the island's
+  results into one List (`MAKE_LIST_TO_MARK`), so it holds the run's count.
+- **Force-promotion.** The residual's run is excused from it
+  (`excuseIslandRegion`), because a promoted run stores one value.
+- **What declines.** A list over a run the island cannot seat declines. That
+  covers a list in a fn body, and a run reached through a branch arm
+  (`[9 if c [do (mk)] [3]]` answered `[1 [9 2]]`). The trailing apply no
+  longer rotates a run, so an unplanned one declines as a result above a
+  literal.
+- **What is a run.** It is a new record-time flag, `eventFlags.dynBodyRun`:
+  a dyn-body event whose results ARE its body's residual (`do`'s list form,
+  whose `CallableSpec` returns the whole residual and leaks its defs). The
+  backstop's variadic mark is wider. `each` and `fold` over a dyn body
+  answer one value, and keying on that mark declined
+  `[(each hold.f [1 2]) (each hold.f [3 4])]`, which compiled correctly
+  before. The ledger caught it (339 against 338).
+- **Beside NUR067's region prefix.** The older prefix seating
+  (`planRegionPrefix`) stands aside for a run. It seats without a re-step,
+  so `7 do [if true inc/v [2]]` left `[7 fn inc]` for `[8]` once the
+  trailing apply stopped rotating runs (lang `TestBranchFnValueAgrees`).
+
+**Still open: the rebinding half (loud).** `def x 99 end def mk fn
+[[][List][quote [def x 5]]] end do (mk) end x` bakes the read of `x` as the
+check pass's 99. At the root, `noteDynKeepDefsLeak` stands aside, and the
+run then leads a dynamic apply that underflows (`internal_error`). A read
+after a keep-defs dyn body must read live. The run's own place as a leading
+apply's lead is a separate question: a fn the splice leaves can
+forward-collect what follows it.
+
+**Pins.** lang `TestNUR210ComputedDoRunBeneathAndCollected` has twelve
+same-answer rows on both lanes and checks the lowering (the marks, the
+island, the collect). The loud declines are asserted through CompileCheck
+and not booked.
+
 ## NUR211 closed: the rematch plans the written split (2026-09-26)
 
 **The divergence (main's record, loud).** `def mk fn [[][List][quote [i]]]

@@ -186,6 +186,13 @@ type eventFlags struct {
 	// whose 0-value runtime shape the interpreter tolerates and fixed
 	// consumers must keep declining.
 	dynBodyResult bool
+	// dynBodyRun marks a dyn-body event whose results ARE its body's
+	// residual, spliced back and re-stepped by the interpreter (`do`'s
+	// list form: CallableSpec.BodyOut is the whole residual and the body's
+	// defs leak). Its count is the run's; a word that answers one value
+	// over a dyn body (each, fold …) is not one. The prefix island
+	// (prefix_island.go, NUR210) re-steps it.
+	dynBodyRun bool
 	// callVariadic marks a CALL event whose variadicResult stands for a
 	// runtime-variable count of REAL stack values — a fallible multi-value
 	// catch body's shrinking count (catchVariadicFor), a count-agnostic
@@ -13765,7 +13772,10 @@ func (es *EmitState) regionPrefixShapeOps(ops []EmitOperand, events []EmitEvent)
 
 func (es *EmitState) planRegionPrefix(lw *lowerer, residual []core.Value) {
 	seq, ok := es.regionPrefixShape(residual, es.frames[0])
-	if !ok || len(lw.markBefore) > 0 {
+	// A dyn-body run is the prefix ISLAND's (NUR210): the interpreter
+	// re-steps a `do`'s spliced results, and OpSeatBelowMark only seats —
+	// `7 do [if true inc/v [2]]` left [7 fn inc] for [8].
+	if !ok || len(lw.markBefore) > 0 || es.eventInfo[seq].dynBodyRun {
 		return
 	}
 	lw.markBefore = map[int]bool{seq: true}
@@ -14126,6 +14136,10 @@ func eventBySeq(events []EmitEvent, seq int) *EmitEvent {
 // order if the value is not callable. Every other dynamic / fn-value-precedes-
 // args shape, and any unconsumed fn-value carrier, declines.
 func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]core.Value, Opcode, string) {
+	// The prefix island re-steps the whole residual itself (NUR210).
+	if lw.island != nil && lw.island.list == 0 {
+		return residual, OpCallDynMixedFromMark, ""
+	}
 	// A REPLAYED call's seated values (eventFlags.replayedCall) are the
 	// check pass's un-applied residual, not what the callee's RET pushes —
 	// its frame replay applied the lead already. Alone they are the variadic
@@ -14537,9 +14551,11 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 	}
 	fnv := residual[1]
 	pr, isEvent := es.producedBy[fnv.ID]
-	if !isEvent || pr.idx != 0 || fnv.Quoted || !es.fnLikeResidual(fnv) {
+	if !isEvent || pr.idx != 0 || fnv.Quoted || !es.fnLikeResidual(fnv) || es.eventInfo[pr.seq].dynBodyRun {
 		// A QUOTED trailing value is data (`5 m.f/v` — the marker's intent,
-		// which the pass records on the value; NUR213).
+		// which the pass records on the value; NUR213). A dyn-body RUN is
+		// not one value: the rotation split `9 do (mk)` over [1 2] into
+		// [1 9 2] (NUR210); the prefix island seats the ones it can.
 		return residual, false
 	}
 	if len(lw.vm) < 1 || lw.vm[len(lw.vm)-1].seq != pr.seq || lw.vm[len(lw.vm)-1].idx != 0 {
@@ -15121,6 +15137,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		}
 	}
 	es.excusePrefixRegion(residual, forceOrder)
+	es.excuseIslandRegion(residual, forceOrder)
 	lw.promoted, lw.dead = es.planValueDefLocals(es.units[0], es.frames[0], residualSeqs, forceOrder)
 	lw.bindConsumes = mergeBindConsumes(collectRootBindConsumes(es.frames[0], lw.dead), collectArmBindConsumes(es.frames[0], lw.dead))
 	lw.markBefore, lw.variadicElse = planVariadicClaims(es.frames[0])
@@ -15130,6 +15147,8 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	es.planRegionPrefix(lw, residual)
 	// Region-collect plan (NUR067's consuming half): see planRegionCollect.
 	es.planRegionCollect(lw)
+	// Prefix-island plan (NUR210): see planPrefixIsland.
+	es.planPrefixIsland(lw, residual)
 	// The root's gradual def reads (NUR207): a consumed read's guard is
 	// seated for the walk below, a residual read's test for after the
 	// residual is laid out (seatRootResidualReads).
