@@ -180,7 +180,7 @@ keep the two in sync in the same commit.
 | [NUR083](#nur083) | FIXED 2026-09-25 (the script's own directory — the handoff log's entry of that date): `check` and `build` anchor relative imports to the FILE's directory, `run` and `debug` to the process cwd, so `boru check sub/m.boru` now accepts a program `boru run sub/m.boru` refuses from the same cwd — VERDICT 2026-08-18: resolve by fix, `run`/`debug` adopt the file anchor (the multi-target `check` cannot use cwd at all) | multi-file `boru check`, 2026-08-18 (W-CLI-CHECK) |
 | [NUR084](#nur084) | FIXED 2026-09-25 (fmt answers -h — the handoff log's entry of that date): `-h` is not a uniform surface: FlagSet commands print their flags to stderr, `fmt` reads `-h` as a filename, and none exits 0 — though `boru help <cmd>` tells users to run it — VERDICT 2026-08-18: resolve by fix, `fmt` gains a FlagSet and `flag.ErrHelp` exits 0 | `boru check -h` failing as a missing file, 2026-08-18 (W-CLI-CHECK) |
 | [NUR088](#nur088) | FIXED 2026-09-25 (six spellings, one form — the handoff log's entry of that date): One signature has six valid spellings; `boru fmt` collapses only ONE of them to the short form, so four survive the formatter untouched and a `fmt`-clean file still carries several spellings of one signature | writing `STYLE-GUIDE.md` §S1, 2026-08-19 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §4.2) |
-| [NUR089](#nur089) | An inline `=>` lambda argument and a named `/v` reference to the SAME function are not equally checkable: the reference passes the check, the lambda draws `no_signature: cannot call g … got (Integer)`, and both run to the identical answer | the function-type prototype, 2026-08-19 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §1.1) |
+| [NUR089](#nur089) | FIXED 2026-09-26 (NUR089 closed — a lambda param binds as the run binds it — the handoff log's entry of that date): An inline `=>` lambda argument and a named `/v` reference to the SAME function are not equally checkable: the reference passes the check, the lambda draws `no_signature: cannot call g … got (Integer)`, and both run to the identical answer | the function-type prototype, 2026-08-19 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore` §1.1) |
 | [NUR091](#nur091) | FIXED 2026-09-25 (the fn that took nothing — the handoff log's entry of that date): A malformed `fn` declaration fails LOUDLY or SILENTLY depending on its output slot: `fn List [Integer] [size]` raises signature_error, `fn List Any [1]` strands its operands and binds nothing, exit 0 | the function-type prototype, 2026-08-19 |
 | [NUR096](#nur096) | FIXED 2026-09-25 (NUR096 closed — the check applies a fn-shape member — the handoff log's entry of that date): The check pass did not move with NUR095: a fn stored through a fn-SHAPE-typed member is APPLIED by both engines but still modelled by the checker as the inert fn it was before that retirement, so `TestCheckTypeSoundness` fails on the two multi-return `class.tsv` rows that pin it | adding the NUR095 retirement rows to `lang/spec/class.tsv`, 2026-08-20 |
 | [NUR092](#nur092) | FIXED 2026-09-25 (the stale arm consults the corpus — the handoff log's entry of that date): `varyCompileFailureLedger`'s stale arm is corpus-sensitive: adding an UNRELATED spec row can displace a seed from the hash-ordered 32-seed sample, empty a bucket, and instruct the author to delete a ledger entry whose refusal class is still live at larger breadth | adding NUR091's spec rows, 2026-08-19 |
@@ -5956,9 +5956,29 @@ record retires when each of the five rewrites to
 
 ## NUR089 — an inline lambda and a named reference to the same function are not equally checkable {#nur089}
 
-**Status:** Pending · **Recorded:** 2026-08-19 · **Surfaced by:** the
-function-type prototype (`design/legacy/FUNCTION-TYPES.0.ignore`), while
+**Status:** FIXED 2026-09-26 · **Recorded:** 2026-08-19 · **Surfaced by:**
+the function-type prototype (`design/legacy/FUNCTION-TYPES.0.ignore`), while
 establishing which of the audit's combinator blocks check clean and why
+
+**The fix.** Not a misbinding after all: `g` WAS bound to the second
+lambda. The check pass bound an analysed body's params and captures with a
+raw `Defs.Push`, where the run's frame binds them through
+`core.InstallFrameBinding`, which compiles a fn value's authored signatures
+into dispatch-ready ones. A named fn's signatures were compiled at its
+`def`, so `e/v` dispatched; an inline lambda's authored signature (afn
+builds it to dispatch as a VALUE, straight from the authored form) carries
+no argument types, so `g x` inside the body matched nothing whatever `x`
+held — which is why the reported type followed the final argument.
+`RunFnBodyOnce` now binds a concrete fn value the run's way
+(`bindFrameValue`), and every other value is the plain push it was. The
+minimal pair and the S-combinator pair check clean in both spellings and
+run to the same answer; a String the run rejects is still reported in both
+spellings, naming its real type. Pinned: lang
+`TestInlineLambdaChecksLikeReference`, check
+`TestRunFnBodyOnceCallsFnValueParam` / `…Capture` (both fail without the
+fix). The combinators themselves still decline to compile ("fn bb: body
+result of unknown provenance") on both spellings — a compile defect of its
+own, not this record's.
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** Re-measured on the
 record's witness: `boru check lam.boru` still reports `no_signature: cannot

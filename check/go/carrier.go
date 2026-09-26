@@ -2753,6 +2753,23 @@ func refineRecursiveSummary(r *core.Registry, key string, diagBase int, result [
 // baseline so any inner fn/afn construction inside the body sees this scope
 // as its enclosing-fn baseline — without it, ComputeCaptures would treat
 // outer params as if they lived at module/global scope and miss the capture.
+// bindFrameValue binds a param or capture of an analysed fn body the way
+// the run's frame binds it (core.InstallFrameBinding) when the value is a
+// concrete fn: the frame install compiles the value's authored signatures
+// into dispatch-ready ones, so a body that CALLS the name matches exactly as
+// the run's does. An inline lambda's authored signature carries no argument
+// types of its own — it dispatches as a value straight from the authored form
+// — and the raw push left `g x` matching nothing, a no_signature the named
+// `/v` spelling of the same fn never drew (NUR089). Every other value — a
+// carrier, a scalar, a container — is the plain push it always was.
+func bindFrameValue(r *core.Registry, name string, v core.Value) {
+	if _, isFn := v.Data.(core.FnDefInfo); isFn && v.Parent != nil && v.Parent.Equal(core.TFunction) {
+		core.InstallFrameBinding(r, name, v)
+		return
+	}
+	r.Defs.Push(name, v)
+}
+
 func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, args []core.Value, captures []core.CapturedBinding, anonymous bool) []core.Value {
 	snapshot := r.Defs.Snapshot()
 	r.PushFnBaseline(snapshot)
@@ -2776,7 +2793,7 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	// shadow same-named captures — innermost binding wins,
 	// matching runtime dispatch.
 	for _, cb := range captures {
-		r.Defs.Push(cb.Name, cb.Value)
+		bindFrameValue(r, cb.Name, cb.Value)
 	}
 
 	// Bind named parameters as simple defs (carrier-typed).
@@ -2786,7 +2803,7 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	hasUnnamed := false
 	for i, arg := range args {
 		if i < len(paramNames) && paramNames[i] != "" {
-			r.Defs.Push(paramNames[i], arg)
+			bindFrameValue(r, paramNames[i], arg)
 		} else {
 			// An unnamed FN-VALUE param is inert frame DATA under the
 			// arguments-are-inert unification (the interpreter no longer

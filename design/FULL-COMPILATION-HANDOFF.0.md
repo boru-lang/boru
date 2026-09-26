@@ -13322,6 +13322,28 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR089 closed — a lambda param binds as the run binds it (2026-09-26)
+
+**The divergence.** The same curried combinator, passed the same two
+functions, checked clean with `/v` references and drew `no_signature:
+cannot call g … got (Integer)` with inline `=>` lambdas; both ran to 14.
+
+**The fix.** The record's "misbinding" was not one: `g` held the second
+lambda. `RunFnBodyOnce` bound params and captures with a raw `Defs.Push`,
+and the run binds them through `core.InstallFrameBinding`, which compiles a
+fn value's authored signatures into dispatch-ready ones (`installFnDef`). A
+named fn's were compiled at its `def`; an inline lambda's authored
+signature — afn leaves it authored, because a VALUE dispatches from that
+form — carries no argument types, so the body's `g x` matched nothing,
+whatever `x` held. `bindFrameValue` binds a concrete fn value the run's
+way; other values keep the plain push. The construction-time body check
+installFnDef triggers is memoised per body, so a re-bound lambda is not
+re-analysed.
+
+**Pins.** lang `TestInlineLambdaChecksLikeReference` (the minimal pair and
+the S pair, both spellings, and the String negative); check
+`TestRunFnBodyOnceCallsFnValueParam` / `…Capture`.
+
 ## NUR216 closed — the quoted lead is data on every arm (2026-09-25)
 
 **The divergence** (recorded and closed the same day, found closing
