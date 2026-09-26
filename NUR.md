@@ -181,7 +181,7 @@ keep the two in sync in the same commit.
 | [NUR060](#nur060) | The parser twins disagree on open-input sources beyond the corpus | PR #337 parity-probe sweep (flagged for NUR by Codex P1) |
 | [NUR063](#nur063) | Seven self-knowledge words are proposed to dispatch from two module surfaces (`boru:debug` and `boru:scry`) — VERDICT 2026-08-15: `boru:scry` canonical, the `boru:debug` copies frozen behind shared handlers and deprecated on a stated timeline | design/BORU-SCRY.0.md §6 (flagged for NUR by PR #344 Codex P1) |
 | [NUR064](#nur064) | Pattern clauses route-and-bind in `receive` but route-only in `add` — VERDICT 2026-08-15: defer to the processes/services design line, to be decided when those modules are built | `design/STATE-MACHINES.0.md` §8 (flagged for NUR by the PR #345 review, Codex P1) |
-| [NUR065](#nur065) | Two spellings of the classifier role get different static guarantees: `classes:` is alphabet-closed and diagnosed, `classify:` is neither — VERDICT 2026-08-15: defer to the state-machine design line (its open question #7) | `design/STATE-MACHINES.0.md` §3.6 (flagged for NUR by the PR #352 review, Codex P1) |
+| [NUR065](#nur065) | RESOLVED 2026-09-26 (one set of guarantees for both classifier spellings — the handoff log's entry of that date): open question #7 of design/STATE-MACHINES.0.md is decided in the design, `boru:state` being unbuilt — the fn form declares its output alphabet (`classify: {fn: … yields: […]}`) and returns a class ATOM the machine wraps in the table form's frozen `{event raw}` payload, so alphabet closure (define-time `state_unknown_name` on `yields:`), payload shape and the `state_bad_class` / `state_class_gap` / `state_bad_event` diagnostics are one rule for both; only the mapping inside the fn stays opaque. The original text: Two spellings of the classifier role get different static guarantees: `classes:` is alphabet-closed and diagnosed, `classify:` is neither — VERDICT 2026-08-15: defer to the state-machine design line (its open question #7) | `design/STATE-MACHINES.0.md` §3.6 (flagged for NUR by the PR #352 review, Codex P1) |
 | [NUR074](#nur074) | RESOLVED 2026-09-26 (the parameter name is part of the value — the handoff log's entry of that date): not a divergence — the record's premise, that two functions differing only in a parameter name are behaviourally indistinguishable, is false in boru and was refuted by measurement: a parameter is a frame binding on the def stack, visible to every function the body reaches (FUNCTION-VALUE-SCOPE §7.4), so `def x 1  def g fn [[] [Any] [x]]` then `def f fn [[x:Any] [Any] [g]]  f 5` answers 5 and its `y`-named twin 1, on both lanes. canon rendering the name and `deq` comparing it is the uniform answer; the content-addressing note's de-naming step (§4.2 step 3) is withdrawn as unsound. The original text: `canon` renders a function's PARAMETER names, so alpha-equivalent functions render — and digest — differently; NUR031's planned fix (render the anonymous fn literal) does not reach this | `design/legacy/unison-hash-identity-probe.0.ignore` P4 (flagged for NUR by the PR #376 review, Codex P1) |
 | [NUR077](#nur077) | FIXED 2026-09-25 (the Apply op — the handoff log's entry of that date): `StackForm`'s op vocabulary can CALL a word by name but cannot APPLY a function value, so an inline lambda or a fn read out of a container has no faithful representation — `Call{Name, Arity}` re-invokes by name and does not consume a receiver. `Eval` now refuses those forms (`ErrUnnamedApply`) rather than replaying them to a different answer — VERDICT 2026-08-17: resolve by fix, a NEW dedicated Apply Op (arity-carrying, consumes the value, seamed at `execFnDefLiteral`; `DoEval` stays reserved), after the three prerequisite recorder/gate defects are fixed | the `OnCall` frame-skeleton over-count fix, 2026-08-16 |
 | [NUR078](#nur078) | FIXED 2026-09-26 (NUR078 closed — a bare fn name calls at every slot — the handoff log's entry of that date): A bare fn name before a `Function`-typed slot still resolves as a reference, against amended ADR-011 — the engine's TFunction intercept implements the exception the 2026-08-17 amendment struck (`h zero` ≡ `h zero/r` when the slot is `Function`-typed; a call/barrier before any other slot) — VERDICT 2026-08-17: resolve by fix, open-work item B (all four sites retire together, re-opening the NUR038 call-head question in the implementing PR) | the ADR-011 amendment, 2026-08-17 (flagged by the PR #381 review, Codex P1) |
@@ -5271,7 +5271,9 @@ choice rather than an accident. Stays **Pending** by design.
 
 ## NUR065 — Two spellings of the classifier role get different static guarantees {#nur065}
 
-**Status:** Pending · **Recorded:** 2026-08-14 · **Surfaced by:**
+**Status:** RESOLVED 2026-09-26 (one set of guarantees for both classifier
+spellings — the handoff log's entry of that date) · **Recorded:**
+2026-08-14 · **Surfaced by:**
 `design/STATE-MACHINES.0.md` §3.6 (which introduces both spellings and states
 the asymmetry as a preference rather than resolving it); flagged for this
 register by the PR #352 review (Codex P1).
@@ -5332,6 +5334,34 @@ module actually gets used, and the document is still in flux.
 
 Stays **Pending** by design, so the asymmetry cannot be silently
 baselined while that question is open.
+
+**The resolution (2026-09-26, the reverse-order run's goal to resolve every
+record, which supersedes the deferral above).** Open question #7 is decided
+in the design, on the register's own rule — one role, one set of
+guarantees — by the third candidate, strengthened until every divergence the
+record lists is gone:
+
+- **Alphabet closure.** A `classify:` declaration names its output alphabet,
+  `classify: {fn: by-fields  yields: [header row trailer any/q]}`, and every
+  `yields:` atom must be a declared `events:` member — `state_unknown_name`
+  at define time, exactly as a `classes:` key. A fn returning an atom outside
+  its `yields:` has classified the input to no declared class: the table
+  form's unmatched input, `state_bad_event`, the same code.
+- **Payload shape.** The fn returns the class ATOM, not an event map, and the
+  machine builds the frozen `{event: <class>  raw: v}` of §3.6.2 — a reducer
+  reads `ev.raw` whichever form classified the input.
+- **Diagnostics.** `state_bad_class` covers a malformed `classify:` (no
+  `yields:`, an empty or duplicated one) as it covers a malformed table, and
+  `state_class_gap` (Info) flags either form without an `any/q` class.
+  Disjointness needs no check for a function.
+
+What stays different is only what must: the mapping inside the fn is opaque,
+so `classes:` remains the form `State.graph` can draw per input, and the
+preferred one where a partition describes the inputs. The design's §3.6.1,
+§3.6.2's payload paragraph, §6.3's `state_unknown_name` / `state_bad_class` /
+`state_class_gap` rows and open question #7 carry the decision; there is no
+code to change, the module being unbuilt, and whoever builds it builds these
+guarantees.
 
 ---
 

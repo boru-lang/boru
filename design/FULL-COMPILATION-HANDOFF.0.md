@@ -13322,6 +13322,20 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR065 resolved — one set of guarantees for both classifier spellings (2026-09-26)
+
+**The record.** `boru:state`'s classification role has two spellings in the
+design (the module is unbuilt): the `classes:` table got define-time
+alphabet closure, a frozen `{event raw}` payload and the `state_bad_class` /
+`state_class_gap` diagnostics; the `classify:` fn form got none of them.
+The maintainer deferred it to the state-machine line's open question #7.
+
+**The resolution.** The run's goal is every record resolved, so open
+question #7 is decided in design/STATE-MACHINES.0.md: the fn form declares
+`yields:` (checked against `events:` at define time), returns a class atom
+the machine wraps in the same frozen payload, and takes the same
+diagnostics. Only the mapping inside the fn stays opaque.
+
 ## NUR225, NUR226, NUR227 closed — the fixpoint ledger is empty (2026-09-26)
 
 **The divergences.** The canon fixpoint gate that landed with NUR072

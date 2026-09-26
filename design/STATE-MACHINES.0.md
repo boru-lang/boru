@@ -612,7 +612,9 @@ arrives here in two forms.
 #### 3.6.1 `classify:` — the function form
 
 A machine-level name in the spec, bound like any other (§3.1), whose role is
-`(raw:Any) -> Map`: **pure**, returning an event map. `State.step` then
+`(raw:Any) -> Atom`: **pure**, returning the CLASS the input belongs to — one
+of the atoms its declaration lists in `yields:` (below; decided 2026-09-26,
+NUR065). `State.step` then
 accepts `{raw: <value>}` where it otherwise takes `{event: <atom>}`. Purity is
 the same documented-not-enforced contract as guards and reducers (§3.2), for
 the same reason — the step must stay replayable — and it is the reason
@@ -633,17 +635,38 @@ visible in the table: a **guard**, which sees `(event ctx)` and can refuse a
 transition the classification alone would have allowed.
 
 The function form is the escape hatch: it handles inputs no partition
-describes — classifying a parsed record by three of its fields, say. Its cost
-is that a fn's output domain is not statically knowable, so none of §3.6.2's
-checks apply and the alphabet-closure guarantee (§3.3.11) stops at the
-machine's edge: an event atom the classifier invents but `events:` never
-declared is a step-time `state_bad_event`, where the table form would have
-caught it at define time. That asymmetry is the whole reason `classes:` is
-the preferred form, and open question #7 asks whether the fn form should
-ship in v1 at all. Because it is one role with two spellings held to
-different standards, it is recorded in the register as **NUR065** (Pending) —
-alphabet closure, payload shape, and diagnostics all diverge — so it cannot
-be silently baselined while that question is open.
+describes — classifying a parsed record by three of its fields, say. It is
+one role with two spellings, so it is held to the table form's standard
+(NUR065, resolved 2026-09-26 by deciding open question #7). A fn's output
+domain is not statically knowable, so the declaration SAYS it:
+
+```boru
+classify: {fn: by-fields  yields: [header row trailer any/q]}
+```
+
+and every guarantee follows from that, the same way for both forms:
+
+- **Alphabet closure at define time.** Every `yields:` atom must be a
+  declared `events:` member (`state_unknown_name`), exactly as every
+  `classes:` key must — so the closure guarantee (§3.3.11) holds through the
+  machine's edge for both spellings. At step time a fn that returns an atom
+  outside its `yields:` has classified the input to no declared class, which
+  is the table form's unmatched input: `state_bad_event`, the same code.
+- **One payload shape.** The fn returns the class ATOM, never an event map,
+  and the machine builds the frozen event of §3.6.2 — `{event: <class>  raw:
+  v}` — so a reducer reaches the input as `ev.raw` whichever form classified
+  it.
+- **The same diagnostics.** `state_bad_class` covers a malformed `classify:`
+  declaration (no `yields:`, an empty or duplicated one, both forms declared)
+  as it covers a malformed table, and `state_class_gap` (Info) flags a
+  classifier with no `any/q` class, in either form: a fn with `any/q` in
+  `yields:` is total by construction, like a table with the catch-all.
+  Disjointness needs no check for a function — each input has one class by
+  construction.
+
+What stays different is only what MUST: the mapping inside the fn is opaque,
+so a `classes:` table is still the form `State.graph` can draw per input and
+the preferred one where a partition describes the inputs.
 
 #### 3.6.2 `classes:` — the table form (preferred)
 
@@ -700,9 +723,9 @@ about: classifying `v` yields `{event: <class-atom>  raw: v}` — the class
 becomes the event and the input survives verbatim under `raw:`, the same key
 `State.step` accepts it under. So a state's reducers reach the original value
 as `ev.raw`, and a classified event's `events:` entry declares `{raw: <type>}`
-like any other payload (§11.2). The fn form has no such rule: it returns the
-whole event map and therefore owns its own payload shape, which is the other
-half of why it cannot be checked.
+like any other payload (§11.2). The fn form produces the same event: its fn
+returns the class atom and the machine builds `{event: <class> raw: v}`
+(§3.6.1), so the payload shape is one rule for both spellings.
 
 #### 3.6.3 Classification and the state-explosion tradeoff
 
@@ -861,11 +884,11 @@ from `State.lint` (phase 2):
 |---|---|---|
 | `state_bad_spec` | Error | malformed shape: no `initial:`, unknown keys, nested `states:` (reserved for phase 2), `final` state with `on:` |
 | `state_unknown_target` | Error | a `to:` names an undeclared state |
-| `state_unknown_name` | Error | an unbound `act:`/`when:`/`entry:`/`exit:`/`classify:` name; or, with a declared alphabet, an event in `on:`/`defer:`/`after:`/`raise`/`catch:`/`classes:` outside `events:` |
+| `state_unknown_name` | Error | an unbound `act:`/`when:`/`entry:`/`exit:`/`classify:` name; or, with a declared alphabet, an event in `on:`/`defer:`/`after:`/`raise`/`catch:`/`classes:`/`yields:` outside `events:` |
 | `state_bad_binding` | Error | a bound value is not a function or does not fit its role — guard: `(Map Map) -> Boolean`; reducer: `(Map Map) ->` a map or the `{ctx raise fx}` record (§3.2); classifier: `(Any) -> Map` (§3.6.1) |
 | `state_conflict` | Error | an unguarded variant that is not last in its state×event variant list, shadowing every variant after it (§3.3.12) |
-| `state_bad_class` | Error | a malformed `classes:` entry: a range that is not `[lo hi]` with `lo` ordered before `hi`, a class overlapping another non-catch-all class, more than one `any/q`, or both `classes:` and `classify:` declared (§3.6.2) |
-| `state_class_gap` | Info | a `classes:` table with no `any/q` catch-all — the input domain has holes that surface only at step time as `state_bad_event` (Noble's `other?` column, §3.6.2) |
+| `state_bad_class` | Error | a malformed classifier: a `classes:` range that is not `[lo hi]` with `lo` ordered before `hi`, a class overlapping another non-catch-all class, more than one `any/q`; a `classify:` with no `yields:` or an empty or duplicated one; or both `classes:` and `classify:` declared (§3.6.1, §3.6.2) |
+| `state_class_gap` | Info | a classifier with no `any/q` class — a `classes:` table with no catch-all, or a `classify:` whose `yields:` lacks it — so the input domain has holes that surface only at step time as `state_bad_event` (Noble's `other?` column, §3.6.2) |
 | `state_unreachable` | Info | a state with no path from `initial:` (advisory per the "gate on wrongness, advise on smell" precedent, `case_unreachable_clause`) |
 | `state_unhandled` | Info | the state×alphabet totality matrix's holes, computed against the machine's declared policy; **Error** iff the spec opts in with `total: true` (open question #2) |
 | `state_no_final_path` | Info | machine declares a final state some state cannot reach — the honest pseudo-liveness check; real liveness is out of scope |
@@ -1371,14 +1394,14 @@ precise about, because it is the whole content of row 21:
 6. **Shallow history in phase 2** — adopt iff it falls out of the SCXML
    algorithm without new semantics; deep history is declined outright.
    (Leaning yes-if-free.)
-7. **Should `classify:` (the fn form, §3.6.1) ship at all in v1?** The
-   `classes:` table earns every check in §6.3; the fn form earns none — its
-   output domain is unknowable, so a machine using it silently loses the
-   alphabet closure that is half the point of §3.6. Shipping both risks the
-   fn form becoming the default because it is the familiar one. (Leaning
-   ship both but document `classes:` as the form with the diagnostics, and
-   have `State.lint` (phase 2) note a machine that classifies by fn — the
-   same posture as `state_class_gap`: visible, not fatal.)
+7. **Should `classify:` (the fn form, §3.6.1) ship at all in v1?**
+   **Decided 2026-09-26 (NUR065): ship both, on ONE set of guarantees.** The
+   fn form declares its output alphabet (`yields:`) and returns a class atom
+   the machine wraps in the frozen `{event raw}` payload, so alphabet
+   closure, payload shape and the `state_*` diagnostics are the table
+   form's for both spellings; only the mapping inside the fn stays opaque.
+   (The question was framed as whether the fn form earns any of §6.3's
+   checks; declaring `yields:` is what makes it earn them.)
 8. **How far does `classes:` range over?** §3.6.2 defines selectors over
    boru's total value order, which makes `[1 9]` over integers and
    `[a-atom z-atom]` over atoms as legal as `["0" "9"]` over single-character
