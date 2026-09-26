@@ -59,6 +59,11 @@ var unpackNatives = []NativeFunc{
 				Impl:       Go(unpackHandler, RunInCheck()),
 				Returns:    []*Type{},
 				BarrierPos: -1,
+				// S2b's declaration: the list is the NAMES of the bindings —
+				// keys the handler reads, as def's quoted name is
+				// (CompileQuoteKey); the binds are lowered by the run-time
+				// bind / binder hooks, never as a body.
+				CompileEffect: CompileQuoteKey,
 			},
 			// `unpack {renames} map`: the first map's entries drive the
 			// bindings (srcKey → localName). NoEvalMapArgs[0] keeps the

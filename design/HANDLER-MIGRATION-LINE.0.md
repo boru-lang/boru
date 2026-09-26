@@ -277,3 +277,20 @@ the three corpus files, as, def-node-binding, macro, open-words, …) are
 unchanged before and after, and every per-file compile-failure and
 runtime-defer ledger line held exactly. The `apply` / `mini` / `parse` /
 `emit` paragraph of `COMPILABLE-SUBSET.md` §5 now records the declaration.
+
+**2026-09-26 — S2b: the code-body class declared, 58 of 59.** Ceiling
+`undeclaredHandlerCeiling` 59 → 1. A NEW flag, **`CompileOwnLowering`**,
+names the words the recorder lowers from their compile-time half — the
+structured ReturnsFn (`if` ×2 forms, `for` ×2, `while`) or a check-mode
+constructor/binder whose effect is lowered (`fn` ×2, `afn`, `fnsig` ×2,
+`fnpred` ×2, `gen`, `macro`, `module`, `import`'s inline-module forms,
+`def`'s 32 code-body keyword forms beside S2a's quoted-name flag).
+`CompileResteps` for the splices (`var`, `word`, the clause-list `if`),
+`CompileQuoteKey` for NoEvalArgs name/key lists (`unpack`, `import`'s two
+rename lists, `reach`), `CompileQuoteInert` for `enum`'s member list. All
+declaration-only: no recorded program changed. `receive` is left: its fact
+is `CompileRunsBodyOnRegistry`, a lowering change, and it carries a live
+miscompile that flag's module-scope rule would close (a clause body reading
+a fn param inside a fn) — the details and the reproducer are in the S2b
+entry of FULL-COMPILATION-HANDOFF.0.md. Pins:
+`lang/go/s2b_declarations_test.go`.

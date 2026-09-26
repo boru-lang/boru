@@ -479,6 +479,12 @@ const (
 	// dispatch-manipulating meta word (usurp / force-arity / valof) whose quoted
 	// operand drives a RE-STEPPING result the VM cannot reproduce by re-running
 	// the handler: those declare CompileResteps, the named refusal.
+	//
+	// S2b (2026-09-26): `enum [red green blue]` declares it for a NoEvalArgs
+	// operand — the member list is literal data the handler consumes verbatim
+	// (a bare word becomes its atom). quoteOperandInertOK requires QuoteArgs,
+	// so the flag lowers nothing there; the list bakes by the code-body arm's
+	// own inertness test, as before.
 	CompileQuoteInert
 	// CompileQuoteKey marks a word whose implicit-quote (QuoteArgs) operand is a
 	// KEY the handler READS at dispatch — the atom field name of a container write
@@ -504,6 +510,14 @@ const (
 	// reaches none of them through the quoted-operand gates (they run in check
 	// mode and are lowered by the binder hooks), so the flag is the census's
 	// answer for them, not a lowering.
+	//
+	// S2b (2026-09-26) extends the same answer to a NoEvalArgs operand that is
+	// a list of NAMES or KEYS rather than code: `unpack [a b] m` (the names it
+	// binds), `import [Orig Renamed] mod` / `import [...] 'file'` (the export
+	// names it renames) and `reach recv [k1 k2]` (the get segments of the lens
+	// it builds). The recorder reads the flag only behind a QuoteArgs
+	// requirement and a NoEvalArgs screen, so on these it lowers nothing: the
+	// operand still bakes (or refuses) exactly as the code-body arm decides.
 	CompileQuoteKey
 	// CompileDiverges marks a word whose handler ALWAYS raises (it never returns
 	// normally) — `raise`, the user-error constructor. A call to it is recorded as
@@ -652,7 +666,54 @@ const (
 	// elided by name and its re-step records the real dispatch), so the flag
 	// changes no recorded program: it names what the RunInCheckMode screen and
 	// the by-name apply arms were carrying.
+	//
+	// S2b (2026-09-26) added three CODE-BODY declarers whose handler's result
+	// is a splice the tape re-steps: `var` (def/body/undef tokens; check
+	// mode), `word` (the __SP splice marker; not check mode) and `if`'s
+	// clause-list form `if [c1 b1 … else]` (ifClause's tokens; not check
+	// mode — the recorder has no structured lowering for this form, unlike
+	// the two- and three-operand `if`). None has a quoted or fn-typed
+	// operand, and every gate that reads the flag sits behind a
+	// `len(sig.NoEvalArgs) > 0` screen or requires one of those, so on them
+	// too the flag is the census's answer and changes no recorded program.
 	CompileResteps
+	// CompileOwnLowering marks a CODE-BODY word (a NoEvalArgs operand) that
+	// the recorder never lowers as a dispatch over its body: what compiles is
+	// what the word's COMPILE-TIME HALF produced. Two shapes carry it, and a
+	// declarer is one of them:
+	//
+	//   - a STRUCTURED ReturnsFn that records the word as its own event — `if`'s
+	//     three- and two-operand forms (RecordBranch, the branch fragments the
+	//     arms recorded), `for` ×2 and `while` (RecordLoop). The generic record
+	//     of the same dispatch is then elided because its outputs are already
+	//     produced by a structured hook (recordCallElided), not by the word's
+	//     name. Where the structured half does not claim the site (a computed
+	//     arm or loop body), the generic arm's code-body refusal is what
+	//     answers, exactly as before the declaration;
+	//   - a RunInCheck handler that runs FOR REAL on the check engine during
+	//     the recording pass, so its effect exists before the recorder looks
+	//     and the recorder lowers the effect, never the body: a BINDING
+	//     through the binder hooks (`def`'s keyword forms whose constructor
+	//     takes a raw body or a gen params list — `def f fn […]`, `def G gen
+	//     [T] class …`; `import`'s inline-module forms), or a CONSTRUCTED
+	//     value whose body the recorder compiles on its own path (`fn` ×2 and
+	//     `afn` — a fn value whose body compiles as a unit at the call;
+	//     `fnsig` ×2, `fnpred` ×2, `gen`, `macro`, `module` — a type, a gen
+	//     spec, a macro or a module instance built at compile time).
+	//
+	// It is a FACT the recorder reads nowhere that changes behaviour: every
+	// quoted-operand, fn-operand and poly gate screens NoEvalArgs or
+	// RunInCheckMode first, and noEvalBodyBakes reads only the two
+	// RunsBody flags. It exists so the handler-contract census
+	// (declaration_census_test.go) counts these words as declared by the
+	// contract they actually have instead of by the zero value's silence —
+	// the by-name knowledge ("structured-lowering words (if / for …)" in
+	// check's BodyRefsFnLocalFns, the RunInCheckMode screen) written down on
+	// the signature. It is NOT an admission: a word that re-runs its body at
+	// run time (receive's clause body on a sub-engine, `do`'s InvokeBody)
+	// owes CompileDynBody / CompileRunsBody* / a CallableSpec, never this,
+	// and a word whose result the tape re-steps owes CompileResteps.
+	CompileOwnLowering
 )
 
 // CompileDefault is an ordinary word: no compile-relevant capability. A

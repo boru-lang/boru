@@ -69,8 +69,28 @@ import (
 // the code-body class, S2b's: `def`'s keyword forms whose constructor
 // takes a raw body or a gen params list (NoEvalArgs) are among them and
 // were deliberately NOT declared by S2a, although they share a
-// synthesizer with the quoted forms) -> 0 (Stage 6).
-const undeclaredHandlerCeiling = 59
+// synthesizer with the quoted forms) -> 1 (2026-09-26, S2b's
+// declarations: 58 of the 59 code-body signatures, each by the fact true
+// of its handler, none changing a recorded program. CompileOwnLowering,
+// a NEW flag, for the words the recorder lowers from their compile-time
+// half — `if`'s three- and two-operand forms, `for` ×2 and `while`
+// (the structured ReturnsFn: RecordBranch / RecordLoop), and the
+// check-mode constructors and binders `fn` ×2, `afn`, `fnsig` ×2,
+// `fnpred` ×2, `gen`, `macro`, `module`, `import`'s three inline-module
+// forms and `def`'s 32 keyword forms (those beside S2a's quoted-name
+// flag); CompileResteps for the splices the tape re-steps — `var`,
+// `word` and the clause-list `if [c1 b1 … else]`; CompileQuoteKey for a
+// NoEvalArgs list of names or keys — `unpack [names] m`, `import`'s two
+// rename lists, `reach recv [segments]`; CompileQuoteInert for `enum`'s
+// member list. The one left, `receive (List)`, runs a clause body on a
+// sub-engine over the enclosing registry: its true fact is
+// CompileRunsBodyOnRegistry, a flag that CHANGES lowering and was
+// deliberately not added by a declaration-only line — and the word
+// carries a live miscompile the flag's module-scope rule would close
+// (a clause body reading a fn param inside a fn compiles to
+// undefined_word; see the S2b entry of FULL-COMPILATION-HANDOFF.0.md))
+// -> 0 (Stage 6).
+const undeclaredHandlerCeiling = 1
 
 // relevant reports whether the recorder needs a handler declaration for
 // this signature, and why.

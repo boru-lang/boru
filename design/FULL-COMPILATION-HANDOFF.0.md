@@ -14749,3 +14749,89 @@ default registry (`def`'s 34 keyword forms, `import` ×5, `if` ×3, `fn`,
 `fnsig`, `fnpred`, `for` ×2 each, `while`, `var`, `unpack`, `receive`,
 `reach`, `module`, `macro`, `gen`, `enum`, `word`, `afn`) still carry no
 declaration; the census ceiling stays 59.
+
+## S2b's declarations — the code-body class declared, the census 59 -> 1 (2026-09-26)
+
+**The rule.** For each of the 59 code-body signatures the census left, the
+declaration is the compile fact TRUE of the handler, read from the handler
+and from how the recorder already treats the word — never a flag with a
+semantic effect (`CompileDynBody`, `CompileFallbackBody`, the two
+`CompileRunsBody*` flags are all read by lowering and none was added). Every
+recorder gate that reads a declaration-only flag screens `NoEvalArgs` or
+`RunInCheckMode` first (`quoteOperandInertOK`, `recordPolyCall`'s quoted
+line, `recordCallCompileFailure`'s quoted arm behind its code-body arm), or
+requires a Function-typed slot none of these words has
+(`RecordCallOperands`), so no recorded program changed.
+
+**The new flag, `CompileOwnLowering`** (core `value.go`, the eighteenth;
+aliased in basic and lang/native). A code-body word the recorder never
+lowers as a dispatch over its body — what compiles is what its COMPILE-TIME
+HALF produced, in one of two shapes: a structured ReturnsFn that records
+the word as its own event (`if`'s three- and two-operand forms through
+RecordBranch, `for` ×2 and `while` through RecordLoop — the generic record
+is then elided because its outputs are already produced, not by name), or a
+RunInCheck handler that runs for real on the check engine so the recorder
+lowers its EFFECT (a binding through the binder hooks — `def`'s 32 keyword
+forms whose constructor takes a raw body or the gen chain's params list,
+`import`'s three inline-module forms; a value built at compile time — `fn`
+×2, `afn`, `fnsig` ×2, `fnpred` ×2, `gen`, `macro`, `module`). It is read by
+nothing that changes behaviour: it is the by-name knowledge ("structured-
+lowering words (if / for …)" in check's BodyRefsFnLocalFns, the
+RunInCheckMode screen) written on the signature. The `def` keyword forms
+carry it BESIDE S2a's quoted-operand flag (CompileQuoteKey on the Atom-named
+forms, CompileQuoteInert on the String-named ones), set by the same
+synthesizer rule.
+
+**The existing flags, where they are the fact:**
+
+- `CompileResteps` (S2a's rule, the result re-stepped on the tape): `var`
+  (the def/body/undef splice), `word` (the `__SP` splice marker) and the
+  clause-list `if [c1 b1 … else]` — ifClause's tokens, and IfListReturnsFn
+  records no branch, so unlike the other two `if` forms it has no
+  structured lowering. `word` and the clause-list `if` are the flag's first
+  declarers that do not run in check mode; the flag's comment now says why
+  it is still read nowhere for them.
+- `CompileQuoteKey` for a NoEvalArgs list of NAMES or KEYS: `unpack [a b]
+  m` (the names it binds, as def's quoted name), `import [Orig Renamed] mod`
+  and `import [...] 'file'` (export names), `reach recv [k1 k2]` (the lens's
+  get segments).
+- `CompileQuoteInert` for `enum [red green blue]` — the member list is
+  literal data the handler consumes verbatim.
+
+**Left undeclared: `receive (List)`, and why.** Its handler runs the chosen
+clause body on a sub-engine over the ENCLOSING registry
+(`runClauseBody` → `New(r).Run`). The flag that states that is
+`CompileRunsBodyOnRegistry`, which CHANGES lowering (it replaces the
+inert-scope bake with the module-scope rule), so a declaration-only line
+does not add it. It should be added, with its pins, because **the word
+carries a live miscompile on main** (measured at ae17688, not introduced
+here): the inert-scope test admits a word-list clause body, so a body
+reading a fn param inside a fn bakes a CALL_NATIVE whose sub-engine
+resolves the param against the registry — `def f fn [[n:Integer][Integer]
+[receive [ {never: 1} [ 0 ] after 5 [ n ] ]]] end f 7` answers `undefined
+word: n` compiled for the interpreter's `7`. The flag's module-scope rule
+declines that position, exactly as it closed `Test.cover [n]` inside a fn.
+Also measured and pre-existing, not moved: the clause-list `if [false [1]
+true [2]]` compiles and fails in the VM's tape-coupled-result screen
+(`internal_error`, `[2]` interpreted) — a counted compile defect whose
+declaration (CompileResteps) now names it; a recorder that refused a
+CompileResteps code-body word at the code-body arm would turn it into a
+compile failure, a ledger move this line did not make.
+
+**Measured.** Census `undeclaredHandlerCeiling` 59 -> 1. lang
+`compileDefectCeiling` / `bailDefectCeiling` unchanged (298 / 46); the
+unit suites of basic, compiler, lang (root and native) and aritygate
+green; the filtered langspec gates over control, code-bodies, def-node-
+binding, fn-value, every module-*.tsv, generics*, reach, recursion, macro,
+fnpred, fnsig, fn-triple, unpack and word-splice pass with every per-file
+compile-failure ledger line held. A probe of 27 programs over the declared
+words answered identically before and after the change on both lanes.
+
+**Pins.** lang `s2b_declarations_test.go`:
+`TestS2BDeclarationsByWordAndShape` (every code-body sig per word and
+shape, exact flags; def's 32 by rule; 58 in all),
+`TestS2BReceiveStaysUndeclared` (the negative — moves with the migration),
+`TestS2BOwnLoweringShapes` (over the whole registry: the flag only on a
+code-body sig with a check-mode handler or a ReturnsFn, never beside
+CompileResteps), `TestS2BDeclaredWordsKeepParity` (16 programs, both lanes,
+compiled).

@@ -52,6 +52,9 @@ var macroNatives = []NativeFunc{
 			// bytecode recording pass) see the expanded stream, never
 			// the raw-form operand span (plan R6 #29).
 			Returns: []*Type{TFunction}, BarrierPos: -1,
+			// S2b's declaration: built on the check engine, so the recorder
+			// sees the expanded uses, never the body (CompileOwnLowering).
+			CompileEffect: CompileOwnLowering,
 		}},
 	},
 	{
