@@ -285,6 +285,17 @@ type EmitRecorder interface {
 	// native call so the run performs the bind. A no-op when the latch is
 	// clear — the ordinary elision of a compile-time word stands.
 	RecordRuntimeBindDispatch(word string, sig *Signature, args []Value, pos SrcPos)
+	// NoteRuntimeDefDispatch records that the check-mode-run binder word now
+	// dispatching could not CONSTRUCT the value it binds under NAME on the
+	// check engine — a def keyword form whose constructor needs an operand's
+	// run-time value (`def T fnsig M.sg`: the spec list a module fn returns)
+	// — and so bound nothing. It arms RecordRuntimeBindDispatch's latch, so
+	// the dispatch is emitted as the call it is and the run constructs and
+	// binds exactly as the interpreter does. Unlike NoteRuntimeBind there is
+	// no stub: the name stays unbound on the check engine, so a later read of
+	// it is the pass's own undefined-word finding and the program declines
+	// rather than bake a guess of the value.
+	NoteRuntimeDefDispatch(name string)
 	RecordMakeMap(r *Registry, keys []string, vals []Value, implicit bool, out Value, pos SrcPos) bool
 	RecordInterp(parts []InterpPart, holeVals []Value, out Value, pos SrcPos) bool
 	RegisterTrailingApply(fnID string, arity int)
@@ -633,6 +644,7 @@ func (inactiveEmit) RecordMakeListInner(*Registry, []Value, Value, SrcPos) bool 
 func (inactiveEmit) RecordArgsProjection(*Registry, []Value, Value, SrcPos) bool   { return false }
 func (inactiveEmit) NoteRuntimeBind(string)                                        {}
 func (inactiveEmit) RecordRuntimeBindDispatch(string, *Signature, []Value, SrcPos) {}
+func (inactiveEmit) NoteRuntimeDefDispatch(string)                                 {}
 func (inactiveEmit) RecordMakeMap(*Registry, []string, []Value, bool, Value, SrcPos) bool {
 	return false
 }

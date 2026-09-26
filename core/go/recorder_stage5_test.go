@@ -114,6 +114,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	}
 	e.NoteRuntimeBind("x")
 	e.RecordRuntimeBindDispatch("w", nil, nil, SrcPos{})
+	e.NoteRuntimeDefDispatch("T")
 	if e.ContainerReadResult("id") {
 		t.Fatal("inactive ContainerReadResult must decline")
 	}

@@ -56,6 +56,7 @@ var eventKindSites = map[string]string{
 	"fragmentResultSeqs":      "lower.go — the seqs a fragment's results come from",
 	"markTailCalls":           "lower.go — marks a body's tail call",
 	"computeLeaverPrefix":     "lower.go — the prefix a diverging arm leaves",
+	"seqFnDef":                "stored_fn_proof.go — does the event's single result arrive as an interpreter fn value at a strict store-fn slot? (default: unproven, so the slot declines — sound, never a closure handed to a validating handler)",
 	"fragCanCarry":            "branch_carried.go — does the arm carry a name's binding out on every path? (default: an unnamed kind neither binds nor carries, so the name is NOT seated and its read declines as before — sound, never a stale slot)",
 }
 
@@ -74,6 +75,8 @@ var operandKindSites = map[string]bool{
 	"pushOperand":           true,
 	"regionSourceOf":        true,
 	"residualReadHazard":    true,
+	"provenFnDef":           true,
+	"strictFnOperandProven": true,
 }
 
 // evKinds is every event kind, with the name a failure should print.

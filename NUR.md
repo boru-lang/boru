@@ -128,6 +128,7 @@ keep the two in sync in the same commit.
 | [NUR203](#nur203) | A keep-defs word over a DYNAMIC body inside a fn — `def f fn [[b:List xs:List][Integer][def t 0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]` — is the interpreter's 3 (the body leaks its def per element into the fn's frame) and the compiled lane's 0: the run-time stamp installs the leak (NUR202's close), but the compile pass never sees the body's tokens, so the fn's later read of `t` keeps its compile-time home instead of seating live. The root twin agrees. Present on main at 3768c46. Fence: `TestDynamicKeepDefsBodyLeakInFnPending`. |
 | [NUR204](#nur204) | A body def of the for loop's OWN index — `def i 0 end for 3 [def i 9] end i` — is the interpreter's 2 (the loop leaves its index level bound past the loop: the last index; 0 inside a nested loop, whose outer cleanup pops it) and was the compiled lane's 9 on main (the loop carried the def and wrote the body's value back), for a native or a user-call value alike, inside a fn and through an arm too; neither is the pre-loop 0 a lexical loop scope would give. The compiled lane DECLINES the shape loudly now (the for's index name rides RecordLoop into the loop event). Present on main at 3768c46; found while landing the user-call write-back. Fence: `TestForIndexDefInBodyPending`. |
 | [NUR208](#nur208) | A paren-placed BRANCH whose arms are both fn values is applied by the compiled lane where the interpreter places it, and not applied where the interpreter's `apply` word dispatches it: `def c true end (if c ([x:Integer] => [x]) ([x:Integer] => [0])) 5` is the interpreter's `[fn (Integer) 5]` and the compiled lane's `[5]`; `def c true end (if c ([] => [42]) ([] => [2])) apply` is `42` interpreted and `[fn]` compiled. Silent, default lane, present on main at ae17688 (measured on a clean tree) — the residual's lead arm reads the branch event's `mayBeFn` flag and applies over the entry after it with no placement test, and the `apply` word's record over a branch result is elided | probing the neighbours of the sweep's `if` × lambda cell (2026-09-26) |
+| [NUR209](#nur209) | FIXED 2026-09-26 (the `behave` × container and `fnsig` × module-export cells — the handoff log's entry of that date), found the same day: a CompileFnHandlerStrict store slot (behave, the fn-util combinators, service `add`) validates an interpreter FnDefInfo, and a factory's CAPTURING closure reached it as a compiled ClosurePayload — `behave canon/q (mk 'K')` raised `behave canon: fn arg has invalid payload` and `FnUtil.compose (mk 1) (mk 2)` a type_error where the interpreter answered; and behave's stored body, run later against the registry, resolved its names without the dynamic-scope mirror (`def g fn [[][String] [def k 'K' canon (make Temp 5)]] def k 'Z'  behave canon/q (fn [[t:Temp][String][k]])  g` answered 'Z' for 'K'). The strict slot admits only an operand proven to arrive as a fn value, and behave arms DynEnv when its stored body names something | the `behave` × container cell (2026-09-26) |
 | [NUR207](#nur207) | A name DEF-BOUND to a fn value that arrives through a dynamic or `Any`-typed carrier is a WORD dispatch on the interpreter and data on the compiled lane: `def mk fn [[][Any][([] => [42])]] end def j (mk) end j` is `42` interpreted and `[fn]` compiled; `def m {s: ([a:Integer b:Integer] => [a sub b])} end def r (m.s) end r 'x' 3` raises the interpreter's `cannot call r` and answers `[fn (Integer, Integer) x 3]` compiled (the value parks where the name would raise). Silent, default lane, present on main at ae17688. The def-read model claims a window only for a carrier with a claimed shape (NUR194); a gradual carrier's read is plain data | the generated sweep's last cells (2026-09-26), measuring why the `if` × container read could not stand aside |
 | [NUR206](#nur206) | A `for` loop's INDEX SURVIVES an error the enclosing `do` catches on the interpreter, for the rest of the program, where the compiled lane reads the outer binding: `def i 99 end do [for 3 [raise oops 'x']] error [drop] end i` is the interpreter's `0` (the raise unwinds the spliced body before its move cleanup, so the loop's index level stays installed over the outer `i`) and the compiled lane's `99`; the same with the handler reading `i`, and with a computed body (`for 3 (mk)` over `[raise oops 'x']`). Silent, default lane, present on main at 9e02915 — the compiled `do` body traps or islands the loop and the handler reads `i` from its compiled slot. The direction is the interpreter: an error unwind out of a spliced loop body should run the frame's cleanup as break/continue's `unwindLiveFrames` does, not leave the index bound. Pinned `TestLoopIndexSurvivesCaughtErrorPending` (lang) | the Codex review of #508 (2026-09-25), measuring the withdrawn hosted for body; the literal-body twin found on the follow-up |
 | [NUR205](#nur205) | An inline `import module […]` inside a LOOP body runs its module body ONCE on the compiled lane where the interpreter re-imports it per iteration, so module STATE carries across iterations: `for 2 [import module [def acc (flex []) export "M" {acc: acc}] end M.acc push 1 end size M.acc]` is the interpreter's `[[1] 1 [1] 1]` (a fresh `acc` each time) and the compiled lane's `[[1 1] 1 [1 1] 2]` — silent, default lane, present on main at 00ec530 with no callback involved (the import is a compile-time word whose body the check pass ran once and whose bindings the loop body replays). Found by the generated sweep when the `for-each` and `walk` × module-export seeds graduated (their module carries `acc`): their for-body variants diverge the same way (`[3 6]` for `[3 3]`; `… 5 … 10` for `… 5 … 5`) and are pinned in `sweepKnownMiscompiles`. The `each` twin (`each M.stp [1 2 3]` in the same loop) diverges identically and always has; its sweep seed carries no state, so the matrix never saw it. | the generated sweep, closing the fn-value callback cells (2026-09-25) |
@@ -9769,3 +9770,67 @@ that would re-step the marked value is not emitted.
 **The direction.** Placement is a layout fact the branch arm must ask like
 its siblings; the `apply` word over a branch value needs its own landing.
 
+## NUR209 — a compiled closure at a strict store slot; behave's deferred body without the dynamic scope {#nur209}
+
+**Status:** FIXED 2026-09-26 (the `behave` × container and `fnsig` ×
+module-export cells — the handoff log's entry of that date). Found the
+same day, probing the `behave` × container cell's neighbours; present on
+`main` at 89dd499 (every witness measured before the fix).
+
+**The witnesses.**
+
+```
+def Temp refine Integer end
+def mk fn [[k:String][Function][(fn [[t:Temp][String][k]])]] end def k 'Z' end
+behave canon/q (mk 'K') end canon (make Temp 5)
+  interpreted   'Z'   (behave installs the source fn's body; `k` is read at canon time)
+  compiled      behave canon: fn arg has invalid payload (core.ClosurePayload)
+
+import "boru:fn-util"  def mk fn [[k:Integer][Function][(x:Integer => [add k x])]] end
+def h (FnUtil.compose (mk 1) (mk 2)) end (h 5)
+  interpreted   8
+  compiled      FnUtil.compose: argument must be a function value, got fn (Integer)
+
+def Temp refine Integer end def g fn [[][String] [def k 'K' canon (make Temp 5)]] end
+def k 'Z' end behave canon/q (fn [[t:Temp][String][k]]) end g
+  interpreted   'K'   (the behaviour runs inside g, where g's `k` shadows)
+  compiled      'Z'
+```
+
+**Where it sat.** A CompileFnHandlerStrict slot's handler validates an
+interpreter FnDefInfo — behave reads the fn's raw body tokens and declared
+signature; fn-util reshapes it. A capturing `fn` / `=>` a factory returns is
+an OpPushClosure on the compiled lane, and its bridged shape carries no
+body and no return. RecordCallOperands declined only a CONCRETE capturing
+fn at the slot; a CARRIER operand (the factory's declared `[Function]`
+result) rode straight into the call. Separately, behave stores its body and
+runs it LATER against the registry (userBehavior's RunPooledTop), resolving
+names in the interpreter's dynamic scope, which the compiled lane mirrors
+only under DynEnv — and behave's record never armed it.
+
+**The fix.** The strict slot admits an operand only when the recorder
+PROVES it arrives as an FnDefInfo (compiler `strictFnOperandProven`,
+stored_fn_proof.go): a baked const fn, a monomorphic user call whose unit
+returns one (a capture-free factory), or a member read over a const
+container whose member is a concrete fn. Everything else declines, named.
+behave declares CompileDynBody, and its record arms DynEnv when a proven
+stored body names anything (an unproven one always).
+
+**Review follow-ups (Codex on PR #511, 2026-09-26).** Two gaps in the fix
+itself, both closed before merge.
+
+- *A name inside an interpolation.* The DynEnv test read the stored body
+  through `valueRefsName`, which returned false for an interpolated string
+  and an XML template, so a body naming `k` only inside `` `${k}` `` kept
+  DynEnv off and answered the root's 'Z' for the interpreter's 'K'. Both
+  payloads now count as naming, as that function's own doc already said an
+  unknown payload must; the same test guards `execBodyRefsNames`, so a
+  re-run code body carrying a `${…}` hole is treated as naming there too.
+  Pinned by lang `TestStrictStoreSlotRefusesACompiledClosure` and compiler
+  `TestValueRefsNameInterpolation`.
+- *A native producer.* The proof declined a strict native's own result
+  (`FnUtil.flip (FnUtil.compose inc/v dbl/v)`), a Go-built FnDefInfo the
+  native mints over operands the same gate already proved. It is proven now
+  (compiler `strictNativeFnResult`), with its body still unknown, so a
+  store-fn word reading it keeps DynEnv armed. Pinned by compiler
+  `TestStrictNativeFnResultProven`.
