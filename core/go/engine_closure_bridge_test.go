@@ -190,3 +190,53 @@ func TestDefBoundClosureDispatchesAsWord(t *testing.T) {
 		t.Error("a bridged closure's name is a fn-word collection barrier, as the interpreter's definition is")
 	}
 }
+
+// TestModifierClosureShapes — the dispatch-modifier wrappers over a COMPILED
+// CLOSURE (UsurpClosure, ForceStackClosure, ForceForwardClosure,
+// ForceArityClosure; NUR158): each reads the closure's SHAPE through the
+// compiled runtime's bridge, keeps the closure VALUE as what it wraps, and
+// declines (ok=false) for anything the bridge cannot describe — a non-closure,
+// a QUOTED closure, a negative arity, or no bridge at all (outside a run).
+func TestModifierClosureShapes(t *testing.T) {
+	r := covRegistry(t, nil)
+	cl := Value{Parent: TFunction, Data: ClosurePayload{}}
+	quoted := cl
+	quoted.Quoted = true
+
+	// No bridge: every wrapper declines.
+	prev := InstallCompiledRuntime(noCompiledRuntime{})
+	if _, ok := UsurpClosure(r, cl); ok {
+		t.Error("without a bridge the closure has no shape")
+	}
+	InstallCompiledRuntime(prev)
+
+	b := &bridgeRuntime{bridge: true, params: 2}
+	prev = InstallCompiledRuntime(b)
+	t.Cleanup(func() { InstallCompiledRuntime(prev) })
+
+	for name, wrap := range map[string]func(Value) (Value, bool){
+		"usurp":         func(v Value) (Value, bool) { return UsurpClosure(r, v) },
+		"force-stack":   func(v Value) (Value, bool) { return ForceStackClosure(r, v) },
+		"force-forward": func(v Value) (Value, bool) { return ForceForwardClosure(r, v) },
+		"force-arity":   func(v Value) (Value, bool) { return ForceArityClosure(r, v, 1) },
+	} {
+		w, ok := wrap(cl)
+		if !ok || !w.Parent.Equal(TFunction) {
+			t.Errorf("%s over a bridged closure must wrap it: ok=%v %v", name, ok, w)
+		}
+		if _, ok := wrap(NewInteger(1)); ok {
+			t.Errorf("%s over a non-closure must decline", name)
+		}
+		if _, ok := wrap(quoted); ok {
+			t.Errorf("%s over a quoted closure must decline", name)
+		}
+	}
+	if _, ok := ForceArityClosure(r, cl, -1); ok {
+		t.Error("a negative arity must decline")
+	}
+	// A bridge that declines leaves the closure shapeless.
+	b.bridge = false
+	if _, ok := ForceStackClosure(r, cl); ok {
+		t.Error("a declining bridge leaves no shape")
+	}
+}

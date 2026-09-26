@@ -66,6 +66,7 @@ var operandKindSites = map[string]bool{
 	"appendResidualSeqs":    true,
 	"callResultRenderKnown": true,
 	"unitRenderKnown":       true,
+	"fnOpRenderKnown":       true,
 	"closureOpShape":        true,
 	"fnOpContract":          true,
 	"computedArmCondOK":     true,

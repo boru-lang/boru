@@ -15000,3 +15000,141 @@ lang (root, native, the process tests) and the census green; lint clean.
 premise) and `TestS2BReceiveBodyOnRegistryLowering` (six programs compile
 with parity — three top-level, three nested with a nothing-known clause
 list; five decline loudly; one unknown name raises on both lanes).
+
+## The sweep's last cells — fifteen seeds graduate, NUR158 and NUR170 close (2026-09-26)
+
+**The rows.** The generated sweep's thirteen failing seed cells (ten F, three
+C) and six DIVERGED ones. Fifteen of the nineteen compile with parity now;
+the sweep's compile failures go **13 -> 3** and its divergences **6 -> 1**
+(`case` × module-export, NUR154, pinned as before).
+
+**The mechanisms, one per family.**
+
+- **A modifier word over a factory's closure** (`force-arity` /
+  `forward-args` / `usurp` / `stack-args` × factory — NUR158 FIXED). The
+  gradual poly record (`recordGradualWrap`) declined every TYPED Function
+  carrier at these CompileFnHandlerStrict slots, because the VM handed a
+  capturing closure to the native as a `ClosurePayload` its FnDefInfo
+  assertion refused. The runtime answers it now: the four natives wrap a
+  compiled closure too (`wrapCompiledClosure` -> core `UsurpClosure` /
+  `ForceStackClosure` / `ForceForwardClosure` / `ForceArityClosure`, over
+  `usurpOver` / `rebarrierOver` / `forceArityOver` split out of the
+  FnDefInfo constructors). The wrapper reads the closure's signatures
+  through `ClosureAsFnDef` and replaces every Impl with its own re-dispatch,
+  so nothing of the bridge's run-bound invoker survives into it; it stores
+  and re-dispatches the closure VALUE, which eng's `callDynamic` /
+  `callDynMethod` now unwrap to and apply natively (only once the WRAPPER's
+  own signature takes the window — a def-bound `r` over the wrong types is
+  the interpreter's no-match on the wrapper). A def of a usurp /
+  forward-args wrapper carries the closure's shape (compiler
+  `modifierWrappedFnShape`: usurp's params reversed; stack-args and
+  force-arity claim nothing), so the def-bound read declines a written
+  argument the wrapper does not take (NUR194's unfit window) where the
+  flattened dynamic apply parked it.
+- **The replayed lambda call.** The container and factory `· lambda-body`
+  variants BAILED ("CALL_DYNAMIC underflow"): the lambda's frame REPLAYED
+  the wrapper's apply (`dynFrameW`) and RET its declared count, while the
+  check pass's call returned the un-applied residual and the caller applied
+  the lead a second time. A call to such a unit whose seat differs from the
+  unit's returns is a variadic seat now (`eventFlags.replayedCall`), and
+  `resolveDynamicApply` never applies over it: alone it is the program
+  residual as it stands, beside other values the program declines.
+- **A branch of lambdas** (`if` × lambda). `branchResultRenderKnown`: a
+  branch whose every value-producing arm is a capture-free anonymous lambda
+  const or a compiled closure carrying its render is placed data at the
+  residual — the landing (NUR159's `emitBranchLanding`) already parks a
+  0-arg lambda and stands an arg-taking one aside, and the render is the
+  payload's. A named fn arm, and a def-bound branch value (a NAME read
+  dispatches), keep the closure-render decline.
+- **A macro word's gradual leading operand** (`emit` / `mini` × factory,
+  `mini` / `parse` × container, `emit` × container — NUR170 FIXED). A
+  factory's returned emitter / transducer, and a container member the pass
+  knows only as dynamic(Any), either declined on an unrecorded carrier or
+  raised a false "the kind must be a literal name" check error; `emit
+  m.up {a:1}` took the member as the auto form's OPTIONS map (NUR170's
+  "transposed" operands). The compile pass now records a module-side
+  runtime dispatch over the macro's own operands (lang native
+  `recordMacroFnDispatch` / `gradualMacroOperand`; modules
+  `macro_fn_dispatch.go`: `emitlang-fn-dispatch`, `minilang-fn-dispatch`,
+  and `parselang-lead-dispatch` beside the existing fn dispatch), and the
+  native does what the macro does with the value it finds: a fn is the
+  value form (the same contract and error, the fn applied to [subject
+  opts], a mini FILTER fn's partial; a compiled closure bridged for the one
+  dispatch), anything else re-runs the word itself (a kind atom, an options
+  map). The result is the applied fn's own count, so the emit / mini
+  dispatch records as a runtime-variadic REGION (a fixed consumer
+  declines); errors stamp at the macro word (`CurWordPos`), as the
+  interpreter's do. A PRE-EXISTING divergence closed on the way:
+  `parselang-fn-dispatch` raised "not a usable function value" for a
+  capturing factory parser (`parse (mk '!') 'x'`, `x!` interpreted) —
+  `closureFnView` bridges it, completing an empty return contract with the
+  closure value's own.
+- **typeof of a quoted paren** (`codequote` × literal / lambda / factory —
+  bails). `typeof (codequote (1 add 2))` is the __PE lattice node, a bare
+  Word-typed type node the VM's result screen (`tapeCoupled`) took for a
+  live word token; a Word-typed bare node is data now (the payload-less
+  markers keep their screen — pinned by eng's seam7 test).
+- **A `word` splice over a member fn** (`word` × container — bail). The
+  recorder models the spliced fn's re-step at its token (the trailing /
+  leading / mixed apply after the splice), but `SPLICE_DYN` deferred every
+  fn payload. The apply now CLAIMS the spread as one fn operand
+  (`claimSpliceApplies` sets the op's Arg; the lowerer records each
+  splice's pc): under the claim a one-fn payload passes and any other
+  count defers. That also turns a PRE-EXISTING silent miscompile into a
+  loud bail: `def mk fn [[][Any][[1 2]]] end def dbl word (mk) end 5 dbl`
+  compiled `[1 5 2]` (the trailing apply rotated a two-value spread as one)
+  for the interpreter's `[5 1 2]`.
+- **A computed clause list** (`receive` × module-export). `receive` declares
+  CompileDynBody with no CallableSpec; `tryRecordDynBody` admits a
+  Callable-less word's sole NoEvalArgs slot for a NON-concrete list only
+  (the literal list keeps its bake), so the handler parses and runs the
+  runtime clause list under DynEnv, result variadic
+  (`recordDynBodyCall` is the shared tail, split out).
+
+**What is left, each with its cause.** `behave` × container (F): "dynamic
+input at behave" — a gradual member fn a closure could replace at run time,
+and behave installs a fn's BODY TOKENS, which a compiled closure does not
+have. `if` × container (F): the anonymous 0-arg member's landing. Standing
+the arrival model aside was built and measured: the landing parks on both
+lanes, but the dynamic carrier it leaves hides the fn from a later NAME
+read, `apply` or param read that the interpreter dispatches (`def j (m get
+"f")  j` compiled `[fn]` for 42) — reverted, the decline stays, and the
+family is recorded as NUR207 (present on main without any member read:
+`def mk fn [[][Any][([] => [42])]] end def j (mk) end j`). `fnsig` ×
+module-export (C): `def T fnsig <computed list>` mints a type from a
+runtime list; degrading the check handler to a FnUndef carrier was built
+and measured to MISCOMPILE `f/v is T` (false for true) — the type install
+baked the carrier — so it stays a check-reject. `inner` × literal /
+computed stay islanded. **Found and recorded, not fixed:** NUR207 (above)
+and NUR208 — a paren-placed branch of fn values is applied where the
+interpreter places it (`(if c (λ) (λ)) 5`: `[5]` for `[fn (Integer) 5]`)
+and a trailing `apply` over one is lost (`[fn]` for 42) — both silent on
+main at ae17688.
+
+**Measured.** Sweep compile failures 13 -> 3, divergences 6 -> 1, cells
+passing 169 -> 184; call-form failures 245 -> 295 — fifteen seeds graduate
+and bring 210 call forms, 51 decline in existing families (the ceiling's
+comment counts them by reason and by cell), one that declined passes
+(`stack-args` × container · lambda-body), the four container · lambda-body
+bails pass, and no variant that passed before fails now (the status list
+diffed against main's). lang `compileDefectCeiling` 298 -> 296 (the
+reasons diffed against a clean tree: the inverted modifier pins -10, the
+new fences +8); aritygate pins native_macro.go 5 -> 6 and parselang.go
+2 -> 3 (both matching machinery). compiler, check, core, eng (all), lang
+root / native / modules pass; the filtered langspec gates over the
+modifier, control, codequote, word-splice, emit / mini / parse module,
+callback, fn-value, code-body, apply, higher-order, dispatch, quote,
+recursion and case families pass.
+
+**Pins.** lang `sweep_cells_s2b_test.go`
+(`TestModifierOverFactoryClosureCompiles`, `TestBranchOfLambdasCompiles`,
+`TestMacroGradualLeadDispatchesAtRunTime`,
+`TestCodequoteTypeofAndMemberSpliceRun`,
+`TestComputedReceiveClauseListCompiles`, each with its fences);
+`handler_migration_fn_operand_test.go`'s modifier pin INVERTED
+(`TestModifierOverReturnedClosureCompilesWithParity`); native
+`native_valof_strict_test.go` (the declined arm is gone; the closure wrap's
+refusals off the compiled lane); compiler `event_kind_census_test.go`
+(`fnOpRenderKnown`). Docs: NUR.md (NUR158 and NUR170 FIXED; NUR207 and
+NUR208 recorded), the sweep ceilings, `sweepKnownMiscompiles` (NUR170's pin
+retired), SWEEP_STATUS.md refreshed.

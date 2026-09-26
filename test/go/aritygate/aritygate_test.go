@@ -325,8 +325,12 @@ var pinnedAritySites = map[string]int{
 	//    present it (help text, macro expansion, behaviour install, codecs).
 	"lang/go/native/native_behave.go": 8,
 	"lang/go/native/help/help.go":     8,
-	"lang/go/native/native_macro.go":  5,
-	"lang/go/native/native_help.go":   3,
+	// 5 -> 6 (2026-09-26, the sweep's last cells): recordMacroFnDispatch
+	// picks the emit / mini fn-dispatch native's signature whose arg count
+	// is the macro call's SURFACE operand count — overload selection by the
+	// declared signature, the argument rule, never behaviour by arity.
+	"lang/go/native/native_macro.go": 6,
+	"lang/go/native/native_help.go":  3,
 	// 1 -> 2: the runtime `parse <fn>` dispatch reads whether a registry
 	// binding carries any overloads AT ALL before matching against them
 	// (parseFnNativeApply, mirroring eng/go/vm.go::tryNativeFnApply). It is an
@@ -334,7 +338,13 @@ var pinnedAritySites = map[string]int{
 	// signature TABLE to match — the value's own, or the one its name resolves
 	// to in the registry — never whether the parser may act. That is matching
 	// machinery, the argument rule's own, not a behaviour-by-arity exception.
-	"lang/go/modules/parselang.go": 2,
+	// 2 -> 3 (2026-09-26, the sweep's last cells): the module build installs
+	// parselang-lead-dispatch only when the looked-up native carries exactly
+	// its one registered signature (`len(fn.Signatures) == 1`) — the same
+	// installation guard the fn dispatch beside it has: an OVERLOAD-LIST
+	// presence test on a native the module itself registers, never a
+	// decision about a user fn's shape.
+	"lang/go/modules/parselang.go": 3,
 	"lang/go/modules/net_codec.go": 1,
 	"lang/go/modules/test.go":      1,
 	// StampBodySig binds a handler's run-time inputs to its throwaway

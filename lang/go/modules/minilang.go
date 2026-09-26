@@ -477,6 +477,12 @@ func BuildMiniLangModule(parent *native.Registry) (native.ModuleDesc, error) {
 	exports.Set("register-compiled", wrapMiniFnDef("minilang-register-compiled", [][]native.FnParam{{}},
 		[]*native.Type{}, nil, subReg))
 
+	// ---- out-of-band: fn dispatch (compile-pass seam, NOT exported) ------
+	// The runtime twin of `mini <fn> <src> <opts?>` for a leading operand the
+	// compile pass could not see concretely (macro_fn_dispatch.go).
+	registerMacroFnDispatch(subReg, parent, "minilang-fn-dispatch", miniFnDispatchHandler,
+		native.InstallMiniLangFnDispatch, 2, 3)
+
 	return native.ModuleDesc{
 		Src:     subReg,
 		ID:      parent.Modules.NextID(),

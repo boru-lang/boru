@@ -127,6 +127,25 @@ func BuildParseLangModule(parent *native.Registry) (native.ModuleDesc, error) {
 	if fn := subReg.Lookup("parselang-fn-dispatch"); fn != nil && len(fn.Signatures) == 1 {
 		native.InstallParseLangFnDispatch(parent, &fn.Signatures[0])
 	}
+	// parselang-lead-dispatch is the same seam for a GRADUAL leading operand
+	// (`parse m.p 'x'` over a container member the pass knows only as
+	// dynamic(Any)): the value may be a parser fn or a kind name, so a
+	// non-fn re-runs the `parse` word itself, whose classification decides
+	// (the kind, or the literal-name error); a fn takes the fn dispatch.
+	subReg.RegisterNativeFunc(native.NativeFunc{
+		Name: "parselang-lead-dispatch",
+		Signatures: []native.Signature{{
+			Args:        []*native.Type{native.TAny, native.TAny, native.TMap},
+			Returns:     []*native.Type{native.TAny},
+			BarrierPos:  -1,
+			FnDataArgs:  map[int]bool{0: true},
+			FnInertArgs: map[int]bool{0: true},
+			Impl:        native.Go(parseLeadDispatchHandler),
+		}},
+	})
+	if fn := subReg.Lookup("parselang-lead-dispatch"); fn != nil && len(fn.Signatures) == 1 {
+		native.InstallParseLangLeadDispatch(parent, &fn.Signatures[0])
+	}
 
 	// ---- out-of-band: source ------------------------------------------
 	// ParseLang.source <source> resolves a String or {src:…} Source map to
@@ -430,7 +449,19 @@ func parseRegisterFrozenHandler(_ []native.Value, _ map[string]native.Value, _ [
 // errors, then replays the value-form expansion tail: the fn value followed
 // by `source opts end`, stepped in a sub-engine over the calling registry.
 func parseFnDispatchHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-	fnDef, ok := args[0].Data.(native.FnDefInfo)
+	// fnVal is the parser as the interpreter would see it: a COMPILED CLOSURE
+	// (a factory's capturing lambda — `parse (mk '!') 'x'`) is read through
+	// the compiled runtime's bridge, the FnDefInfo the interpreter minted for
+	// the same source, for this one dispatch. Before, the closure reached the
+	// FnDefInfo assertion below and raised "not a usable function value"
+	// where the interpreter parsed (2026-09-26).
+	fnVal := args[0]
+	if native.IsCompiledClosure(fnVal) {
+		if bv, bridged := closureFnView(r, fnVal); bridged {
+			fnVal = bv
+		}
+	}
+	fnDef, ok := fnVal.Data.(native.FnDefInfo)
 	if !ok {
 		return nil, r.BoruErrorHint("parse_error",
 			"parse: the parser is not a usable function value", "parse",
@@ -486,7 +517,7 @@ func parseFnDispatchHandler(args []native.Value, _ map[string]native.Value, _ []
 	}
 	// A real boru parser body: the callback seam offers it to its compiled unit
 	// before falling back to CallBoru.
-	if sig := native.MatchFnSig(args[0], callArgs); sig != nil {
+	if sig := native.MatchFnSig(fnVal, callArgs); sig != nil {
 		res, err := native.InvokeCallbackFn(r, &fnDef, sig, callArgs)
 		return parseFnResult(r, res, err)
 	}
@@ -498,6 +529,51 @@ func parseFnDispatchHandler(args []native.Value, _ map[string]native.Value, _ []
 	sub := native.NewTop(r)
 	res, err := sub.Run([]native.Value{args[0], args[1], args[2], native.NewEnd()})
 	return parseFnResult(r, res, err)
+}
+
+// parseLeadDispatchHandler is parselang-lead-dispatch: a leading operand that
+// is not a fn at run time re-runs the `parse` word over the same operands
+// (source and opts in its surface order), where the interpreter's own
+// classification decides; a fn is parseFnDispatchHandler's.
+func parseLeadDispatchHandler(args []native.Value, named map[string]native.Value, stack []native.Value, r *native.Registry) ([]native.Value, error) {
+	if !args[0].Parent.ConformsTo(native.TFunction) {
+		res, err := rerunMacroWord(r, "parse", []native.Value{args[0], args[2], args[1]})
+		return parseFnResult(r, res, err)
+	}
+	return parseFnDispatchHandler(args, named, stack, r)
+}
+
+// closureFnView bridges a compiled closure parser to the FnDefInfo the
+// interpreter's `parse` validates and dispatches (core.ClosureAsFnDef — valid
+// for this one dispatch, under the running VM's invoker). The bridge carries
+// the unit's param contract; its RETURN contract is the closure value's own
+// (ClosurePayload.RetTypes), and an empty one is an anonymous lambda's
+// conservative single `Any` — exactly the Returns the interpreter's lambda
+// carries — so ParseLangFnSigWhy asks the bridge what it asks the source fn.
+func closureFnView(r *native.Registry, v native.Value) (native.Value, bool) {
+	bv, ok := native.ClosureAsFnDef(r, v)
+	if !ok {
+		return v, false
+	}
+	fd, isFn := bv.Data.(native.FnDefInfo)
+	cl, isCl := v.Data.(core.ClosurePayload)
+	if !isFn || !isCl {
+		return v, false
+	}
+	rets := cl.RetTypes
+	if len(rets) == 0 {
+		rets = []*native.Type{native.TAny}
+	}
+	sigs := make([]native.Signature, len(fd.Signatures))
+	copy(sigs, fd.Signatures)
+	for i := range sigs {
+		if len(sigs[i].Returns) == 0 {
+			sigs[i].Returns = rets
+		}
+	}
+	fd.Signatures = sigs
+	bv.Data = fd
+	return bv, true
 }
 
 // parseFnNativeApply dispatches a parser whose matched overload carries a GO

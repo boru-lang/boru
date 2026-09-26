@@ -86,7 +86,72 @@ func UsurpFunction(v Value) (Value, bool) {
 	if !ok {
 		return Value{}, false
 	}
-	orig := NewFunction(fnDef)
+	return usurpOver(NewFunction(fnDef), fnDef), true
+}
+
+// closureShape is the compiled lane's view of a COMPILED CLOSURE at a
+// dispatch-modifier word (usurp / stack-args / forward-args / force-arity):
+// the FnDefInfo the interpreter would have minted for the same source, read
+// through the compiled runtime's bridge for its SHAPE alone. The wrapper the
+// word builds copies the shape's signatures and replaces every Impl with its
+// own re-dispatch, so nothing of the bridge's run-bound invoker survives into
+// it; what the wrapper stores and re-dispatches (Wraps, the re-dispatch
+// token) is the closure VALUE itself, which the VM applies natively and an
+// island's interpreter bridges at the dispatch it meets it in — the same
+// one-dispatch contract every other closure keeps. ok=false outside a run or
+// for a closure the bridge cannot describe: the word then raises exactly as
+// it does for any non-function operand (NUR158).
+func closureShape(r *Registry, v Value) (FnDefInfo, bool) {
+	if _, isCl := v.Data.(ClosurePayload); !isCl || v.Quoted {
+		return FnDefInfo{}, false
+	}
+	bridged, ok := compiledRuntime.ClosureAsFnDef(r, v)
+	if !ok {
+		return FnDefInfo{}, false
+	}
+	fd, ok := bridged.Data.(FnDefInfo)
+	return fd, ok
+}
+
+// UsurpClosure is UsurpFunction over a compiled closure value (closureShape).
+func UsurpClosure(r *Registry, v Value) (Value, bool) {
+	fd, ok := closureShape(r, v)
+	if !ok {
+		return Value{}, false
+	}
+	return usurpOver(v, fd), true
+}
+
+// ForceStackClosure / ForceForwardClosure / ForceArityClosure are the
+// rebarrier and arity wrappers over a compiled closure value (closureShape).
+func ForceStackClosure(r *Registry, v Value) (Value, bool) {
+	fd, ok := closureShape(r, v)
+	if !ok {
+		return Value{}, false
+	}
+	return rebarrierOver(v, fd, true), true
+}
+func ForceForwardClosure(r *Registry, v Value) (Value, bool) {
+	fd, ok := closureShape(r, v)
+	if !ok {
+		return Value{}, false
+	}
+	return rebarrierOver(v, fd, false), true
+}
+func ForceArityClosure(r *Registry, v Value, n int) (Value, bool) {
+	if n < 0 {
+		return Value{}, false
+	}
+	fd, ok := closureShape(r, v)
+	if !ok {
+		return Value{}, false
+	}
+	return forceArityOver(v, fd, n), true
+}
+
+// usurpOver builds the usurp wrapper: orig is the value the wrapper stores
+// and re-dispatches, fnDef the signatures it reads.
+func usurpOver(orig Value, fnDef FnDefInfo) Value {
 	own := fnDef.OwnSigs()
 	wrapped := make([]Signature, 0, len(own))
 	for i := range own {
@@ -140,7 +205,7 @@ func UsurpFunction(v Value) (Value, bool) {
 		// re-dispatch itself rather than stepping the handler's tokens.
 		Wrap:  WrapReverse,
 		Wraps: &orig,
-	}), true
+	})
 }
 
 // ForceStackFunction / ForceForwardFunction are the function-form
@@ -163,7 +228,11 @@ func rebarrierFunction(v Value, stack bool) (Value, bool) {
 	if !ok {
 		return Value{}, false
 	}
-	orig := NewFunction(fnDef)
+	return rebarrierOver(NewFunction(fnDef), fnDef, stack), true
+}
+
+// rebarrierOver builds the rebarrier wrapper (see usurpOver for orig/fnDef).
+func rebarrierOver(orig Value, fnDef FnDefInfo, stack bool) Value {
 	own := fnDef.OwnSigs()
 	wrapped := make([]Signature, 0, len(own))
 	for i := range own {
@@ -216,7 +285,7 @@ func rebarrierFunction(v Value, stack bool) (Value, bool) {
 		// dispatch Wraps with the args UNCHANGED.
 		Wrap:  WrapRebarrier,
 		Wraps: &orig,
-	}), true
+	})
 }
 
 // ForceArityFunction is the function-form companion of the `/N` modifier
@@ -233,7 +302,11 @@ func ForceArityFunction(v Value, n int) (Value, bool) {
 	if !ok {
 		return Value{}, false
 	}
-	orig := NewFunction(fnDef)
+	return forceArityOver(NewFunction(fnDef), fnDef, n), true
+}
+
+// forceArityOver builds the arity wrapper (see usurpOver for orig/fnDef).
+func forceArityOver(orig Value, fnDef FnDefInfo, n int) Value {
 	params := make([]FnParam, n)
 	for i := range params {
 		params[i] = FnParam{Type: TAny}
@@ -246,7 +319,7 @@ func ForceArityFunction(v Value, n int) (Value, bool) {
 		// stack-args). Re-dispatch in check mode so the carrier compiler compiles
 		// the original call directly (`force-arity 2 f a b` lowers like `f a b`),
 		// mirroring usurp / rebarrier. Soundness rides the differential.
-		Impl: Go(rebarrierDispatchHandler(orig, funcSigBarrier(orig, n)), RunInCheck()),
+		Impl: Go(rebarrierDispatchHandler(orig, funcSigBarrier(NewFunction(fnDef), n)), RunInCheck()),
 	}
 	NormalizeSig(&sig)
 	return NewFunction(FnDefInfo{
@@ -265,7 +338,7 @@ func ForceArityFunction(v Value, n int) (Value, bool) {
 		// dispatch Wraps with the args UNCHANGED.
 		Wrap:  WrapRebarrier,
 		Wraps: &orig,
-	}), true
+	})
 }
 
 // funcSigBarrier returns the resolved BarrierPos of orig's n-arg signature
