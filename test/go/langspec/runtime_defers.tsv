@@ -54,6 +54,16 @@
 # L218: the poly no-match plan's reach bound counts a builtin type-name word
 # as the one value it steps to, so `convert Integer <x>` raises the
 # interpreter's signature_error byte-identically (vm:poly-no-match×2 gone).
-edge-quote-1.tsv	1	L28: `quote [add 1 2] get 0` — "tape-coupled handler result at get", no defer site
-edge-quote-3.tsv	1	L56: `macroexpand (tw2 7) get 1` — "tape-coupled handler result at get", no defer site
-flex.tsv	3	L228, L230, L236: `set` on a flex member — vm:poly-nout-drift (result count 1 for the recorded claim 0): the compile pass types the member read Any and commits set's first overload (Class, 0 results), the runtime lands on FlexMap (1)
+# The last five non-NUR rows left on 2026-09-26, 7 -> 2. edge-quote-1.tsv L28
+# and edge-quote-3.tsv L56 (`quote [add 1 2] get 0`, a macroexpand
+# expansion's `get 1`): the interpreter RE-STEPS a word node read out of a
+# list; the check pass now does too (getIntKeyReturns hands the token back)
+# and the read emits nothing (compiler tryFoldReStepWord), so add's own
+# no-match compiles to its trap at the word's position. flex.tsv L228, L230,
+# L236 (`set` on a flex member, vm:poly-nout-drift): the compile pass records
+# a flex write into the receiver's shape (FlexMap keys, and a new FlexList
+# element join), so the member read carries the adopted FlexMap bound and
+# `set` commits the overload — and the one result — the runtime lands on.
+# The merge of main's #511 with the reverse-order NUR run (2026-09-26) left
+# no row: main's five above were the run's five, and the one main kept
+# (fn-value.tsv L317/L318, NUR190) the run had closed.

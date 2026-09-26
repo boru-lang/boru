@@ -8,7 +8,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `__varundef` | ✓ 13/14 | — | — | — | — | — | — |
 | `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 11/14 | ✓ 12/14 | n/a | ✓ 13/14 |
 | `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 4/14 | ✓ 14/14 | ✓ 12/14 | n/a |
-| `behave` | ✓ 13/14 | n/a | ✓ 13/14 | ✓ 12/14 | F | ✓ 12/14 | n/a |
+| `behave` | ✓ 13/14 | n/a | ✓ 13/14 | ✓ 12/14 | ✓ 13/14 | ✓ 12/14 | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | F | ✓ 14/14 |
 | `codequote` | ✓ 14/14 | ✓ 14/14 | n/a | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
 | `def` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 10/14 | ✓ 6/14 | ✓ 12/14 | ✓ 13/14 |
@@ -24,7 +24,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `filter` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
 | `fn` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | n/a |
 | `fnpred` | ✓ 9/14 | ✓ 9/14 | ✓ 10/14 | ✓ 7/14 | ✓ 10/14 | ✓ 10/14 | ✓ 10/14 |
-| `fnsig` | ✓ 13/14 | n/a | n/a | n/a | n/a | C | ✓ 13/14 |
+| `fnsig` | ✓ 13/14 | n/a | n/a | n/a | n/a | ✓ 7/14 | ✓ 13/14 |
 | `fold` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
 | `for` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
 | `for-each` | ✓ 14/14 | ✓ 14/14 | ✓ 12/14 | ✓ 7/14 | ✓ 8/14 | ✓ 7/14 | ✓ 14/14 |
@@ -61,13 +61,13 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells
 
-- pass: 184
-- failed: 3
+- pass: 186
+- failed: 2
 - islanded: 2
 - DIVERGED: 0
 - PANIC: 0
 - HUNG: 0
-- check-reject: 1
+- check-reject: 0
 - invalid: 0
 - n/a: 115
 - n/a-STALE: 0
@@ -75,9 +75,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells that are not green
 
-- `behave` container — **failed**: `def Temp refine Integer end def m {c: (fn [[t:Temp][String]['T']])} end behave canon/q m.c end canon (make Temp 5)` — dynamic input at behave
 - `case` module-export — **failed**: `import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl` — code-body word case (Stage 2)
-- `fnsig` module-export — **check-reject**: `import module [def sg fn [[][List][[Integer String]]] export "M" {sg: sg/v}] end def T fnsig M.sg end 1` — check error: [boru/fnsig_invalid_spec]: fnsig: argument must be a concrete list   --> 1:82   1 | import module [def sg f…
 - `if` container — **failed**: `def m {f: ([] => [1])} end if true m.f [2]` — fn value read from a container auto-dispatches (Stage 3): 0-arg landing not modelable at fn value
 - `inner` literal — **islanded**: `inner [add] [mul] [1 2] [3 4]` — program embeds an OpFallback island
 - `inner` computed — **islanded**: `def c (quote [add]) end inner c [mul] [1 2] [3 4]` — program embeds an OpFallback island
@@ -110,6 +108,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `behave` named-fn · for-body — **declined** — check diagnostics
 - `behave` factory · for-body — **declined** — check diagnostics
 - `behave` factory · each-body — **declined** — fn each$body: arm-resident def `mk` of unknown provenance
+- `behave` container · for-body — **declined** — check diagnostics
 - `behave` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `behave` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `codequote` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -189,6 +188,13 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `fnpred` computed · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:46   1 | for 2 [def body (quote [eq 0…
 - `fnpred` computed · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:58   1 | [10 20] eac…
 - `fnsig` literal · for-body — **declined** — check diagnostics
+- `fnsig` module-export · fn-body — **declined** — compile-time word def
+- `fnsig` module-export · lambda-body — **declined** — compile-time word def
+- `fnsig` module-export · do-body — **declined** — code-body word do (Stage 2)
+- `fnsig` module-export · do-catch — **declined** — code-body word do (Stage 2)
+- `fnsig` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `fnsig` module-export · each-body — **declined** — code-body word each (Stage 2)
+- `fnsig` module-export · module-body — **declined** — compile-time word def
 - `fnsig` computed · for-body — **declined** — check diagnostics
 - `fold` named-fn · for-body — **declined** — fn 'sum2' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `fold` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload

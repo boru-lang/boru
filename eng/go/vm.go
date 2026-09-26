@@ -2130,26 +2130,6 @@ func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value,
 	return commit(vc.applyReStep(reg, fnVal, args, curDebug, pc))
 }
 
-// namedFnCountError is the interpreter's return-count raise for a
-// single-signature boru fn VALUE (one with a fn frame) whose results miss
-// its declared count — Registry.NamedFnReturnCount's text, stamped at the
-// op; nil when the value is no such fn or the count holds.
-func namedFnCountError(reg *core.Registry, fnVal core.Value, results []core.Value, curDebug []core.SrcPos, pc int) error {
-	fd, isFn := fnVal.Data.(core.FnDefInfo)
-	if !isFn {
-		return nil
-	}
-	own := fd.OwnSigs()
-	if len(own) != 1 || own[0].FnFrame() == nil || len(own[0].Returns) == 0 || len(own[0].Returns) == len(results) {
-		return nil
-	}
-	var at core.SrcPos
-	if pc < len(curDebug) {
-		at = curDebug[pc]
-	}
-	return core.BuildReturnCountError(reg.Source, fd.Name, len(own[0].Returns), len(results), results, at, core.DeclSite{})
-}
-
 // applyReStep is the interpreter's applyHandler re-step, islanded: the args
 // are the resolved stack (deepest first) and the fn value is stepped over
 // them at the pointer, so the fn collects from the stack exactly as the
@@ -2223,16 +2203,11 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 	}
 	guard := func(results []core.Value) ([]core.Value, *dynEnter, error) {
 		if len(results) != spec.NOut {
-			// A boru fn's own return COUNT, which the path that ran it did
-			// not enforce (a module export's value hosted or islanded): the
-			// interpreter's named dispatch raises it (NamedFnReturnCount,
-			// NUR191), so this op does — `do [m.f 5]` over an export whose
-			// body leaves two catches `inc: expected 1 return value(s), got
-			// 2` on both lanes (NUR242).
-			if err := namedFnCountError(reg, fnVal, results, curDebug, pc); err != nil {
-				return nil, nil, err
-			}
-			// A count differing from the shape claim indicts a HOST-CONTRACT
+			// A boru fn's own return COUNT never reaches here: every path
+			// that runs one enforces it first — the island (the
+			// interpreter's named dispatch, NUR191), the foreign arm (the
+			// applied value's contract, NUR252) and the entered frame (its
+			// RET). A count differing from the shape claim indicts a HOST-CONTRACT
 			// violation, not compiler model debt: a boru-source method's
 			// count is the checker's own body model (return contracts are
 			// engine-enforced), so the only way here is a host registration

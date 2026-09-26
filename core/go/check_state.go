@@ -1014,10 +1014,15 @@ type PendingMethodApply struct {
 }
 
 // PendingFnBody is one queued construction-time body check: the fn value and
-// the REGISTRY whose scope its body was written in.
+// the REGISTRY whose scope its body was written in. Folded marks a fn value
+// found inside a folded constant (noteFoldedFnBodies — a map literal's member,
+// built by a concrete sub-run the pass never saw construct it), whose drained
+// run answers the dynamic-scope question optimistically
+// (dropAnonymousBinderReads).
 type PendingFnBody struct {
-	Reg *Registry
-	Fn  FnDefInfo
+	Reg    *Registry
+	Fn     FnDefInfo
+	Folded bool
 }
 
 // Clone returns a deep copy of the analysis state: scalar fields are
@@ -1705,6 +1710,23 @@ func (c *CheckState) RecordFnBinder(name string) {
 		c.FnBinders[name] = m
 	}
 	m[fn] = true
+}
+
+// dropAnonymousBinderReads drops, from the findings a folded anonymous fn
+// value's drained run added past before, each undefined-word finding whose
+// name some fn binds (FnBinders) — the optimistic answer to a reachability
+// question the run cannot ask, where the alternative is a false positive on
+// the dynamic-scope idiom (NUR257). A name no fn binds keeps its finding (a
+// genuine typo, NUR105's map-member row), and so does every other finding.
+func (c *CheckState) dropAnonymousBinderReads(before int) {
+	kept := c.Diagnostics[:before]
+	for _, d := range c.Diagnostics[before:] {
+		if d.Code == "undefined_word" && len(c.FnBinders[d.Word]) > 0 {
+			continue
+		}
+		kept = append(kept, d)
+	}
+	c.Diagnostics = kept
 }
 
 // dynamicScopeReachable reports whether some fn that binds `name` can reach

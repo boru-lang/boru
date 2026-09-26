@@ -264,10 +264,16 @@ func NoteFnBodyPending(r *Registry, fnDef FnDefInfo) {
 // only when someone called it (NUR128). The drain shares owner's check
 // state into reg for the analysis (CheckBraid.ShareCheckStateFrom).
 func NoteFnBodyPendingIn(owner, reg *Registry, fnDef FnDefInfo) {
+	noteFnBodyPending(owner, reg, fnDef, false)
+}
+
+// noteFnBodyPending is the one queueing step; folded marks a folded
+// constant's fn value (noteFoldedFnBodies, PendingFnBody.Folded).
+func noteFnBodyPending(owner, reg *Registry, fnDef FnDefInfo, folded bool) {
 	if owner == nil || reg == nil || !owner.Check.IsActive() {
 		return
 	}
-	owner.Check.PendingFnBodies = append(owner.Check.PendingFnBodies, PendingFnBody{Reg: reg, Fn: fnDef})
+	owner.Check.PendingFnBodies = append(owner.Check.PendingFnBodies, PendingFnBody{Reg: reg, Fn: fnDef, Folded: folded})
 }
 
 // RunPendingFnBodyChecks drains the queue, at end of pass and before the
@@ -277,6 +283,17 @@ func NoteFnBodyPendingIn(owner, reg *Registry, fnDef FnDefInfo) {
 // under its NAME — which the dynamic-scope rescue and the return-conformance
 // messages both key on — and FnBodyChecked keeps this from repeating it. What
 // is left is exactly the set of fn values nothing ever named.
+//
+// An ANONYMOUS fn value's drained run has no call-graph identity, so the
+// rescue's sound question — can a binder of the name reach the reader? —
+// cannot be asked of it (NUR105's first discovery), and the drain runs outside
+// every frame that could reach it. For a FOLDED map member (PendingFnBody.
+// Folded — a position no analysis reached before NUR105's last fix) a name
+// some fn binds is therefore not a finding of that run
+// (dropAnonymousBinderReads): a fn-local `def k` reached by a behaviour stored
+// from the member (`behave canon/q m.c`, run from inside that fn) is the
+// dynamic-scope idiom, not a typo. Every other anonymous body keeps its
+// findings; NUR257 records the question the drain still cannot ask.
 func RunPendingFnBodyChecks(r *Registry) {
 	if r == nil || !r.Check.IsActive() {
 		return
@@ -320,6 +337,8 @@ func RunPendingFnBodyChecks(r *Registry) {
 					}
 				}
 				r.Check.Diagnostics = kept
+			} else if pb.Folded && pb.Fn.Name == "" {
+				r.Check.dropAnonymousBinderReads(before)
 			}
 		}
 	}

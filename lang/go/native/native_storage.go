@@ -586,9 +586,26 @@ func setFlexListReturns(args []Value, r *Registry) []Value {
 	res := NewCarrier(TFlexList)
 	if len(args) == 3 {
 		d2CheckWrite(r, args[2], args[1], "set", args[0].Pos())
+		flexListShapeWrite(args[2], args[1])
 		res = d2RetainElem(res, args[2])
 	}
 	return []Value{res}
+}
+
+// flexListShapeWrite joins a value written into a SHAPED FlexList receiver
+// (check.MintFlexListShapeCarrier — `flex [...]` of a concrete list) into its
+// element shape, adopted the way the runtime AdoptIntoFlex adopts it (a plain
+// map element becomes a FlexMap). The FlexMap twin (setFlexMapReturns) keys
+// its writes; a list's positions shift, so every write joins the one element
+// bound. Both check passes record: a read surfaces the join GRADUAL
+// (check.ShapeFieldRead), so on the compile pass it only picks the overload a
+// runtime re-match then confirms — `set x 9 (f get 0)` over a pushed map
+// commits the FlexMap `set` and its one result (flex.tsv L230), where the
+// dynamic(Any) element committed the Class overload's none.
+func flexListShapeWrite(recv, v Value) {
+	if ss, ok := check.FlexListShapeOf(recv); ok {
+		ss.RecordVal(check.AdoptShapeValue(v, 1))
+	}
 }
 
 // flexGrowReturns builds the check-mode mirror for a flex GROW word
@@ -600,6 +617,7 @@ func flexGrowReturns(word string) func([]Value, *Registry) []Value {
 		res := NewCarrier(TFlexList)
 		if len(args) == 2 {
 			d2CheckWrite(r, args[1], args[0], word, args[0].Pos())
+			flexListShapeWrite(args[1], args[0])
 			res = d2RetainElem(res, args[1])
 		}
 		return []Value{res}
@@ -1639,6 +1657,19 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 			return []Value{b}
 		}
 	}
+	// A SHAPED FlexList (check.MintFlexListShapeCarrier, joined by its
+	// writers — flexListShapeWrite) reads back its element join, GRADUAL: an
+	// index the shape cannot place (out of range reads None, a hidden writer)
+	// is a bound the runtime re-match discharges, never a committed claim. An
+	// empty or poisoned join keeps dynamic(Any).
+	if len(args) == 2 {
+		if ss, ok := check.FlexListShapeOf(args[1]); ok {
+			if v, hit := ss.LookupVals(); hit {
+				return []Value{check.ShapeFieldRead(v)}
+			}
+			return dyn
+		}
+	}
 	if len(args) != 2 || !IsConcrete(args[0]) || !IsConcrete(args[1]) ||
 		!args[1].Parent.ConformsTo(TList) {
 		return dyn
@@ -1656,6 +1687,19 @@ func getIntKeyReturns(args []Value, r *Registry) []Value {
 		return []Value{NewCarrier(TNone)} // out-of-range index reads as None
 	}
 	el := list.Get(i)
+	// A LIVE WORD element — a quoted list's word node (`quote [add 1 2] get
+	// 0`, a macroexpand expansion) — is not data: getNodeHandler hands the
+	// token back and the interpreter RE-STEPS it at the pointer, firing the
+	// word against the live stack and the forward tokens after the read
+	// (`… get 0 5 6` adds 5 and 6; a bare `… get 0` raises add's
+	// signature_error at the word's own position). The token is returned
+	// verbatim (toCarrier keeps a word as-is) so the check pass re-steps it
+	// the same way and models the call it makes; the compile pass emits
+	// nothing for the read (compiler.tryFoldReStepWord). A bare type node is
+	// a type literal, data like any other, and keeps the carrier below.
+	if IsWord(el) && !IsBareTypeNode(el) {
+		return []Value{el}
+	}
 	if el.Parent.ConformsTo(TFunction) ||
 		IsReach(el) || IsSplice(el) {
 		return dyn
@@ -1954,19 +1998,25 @@ func contextReturns(_ []Value, r *Registry) []Value {
 // runtime AdoptIntoFlex would — a concrete map becomes a nested FlexMap
 // shape) and returns the RECEIVER carrier itself, mirroring the in-place
 // runtime contract (`set … f` leaves f, so the same shape flows on for
-// chaining). An unshaped receiver — and every COMPILE pass — keeps the
-// legacy fresh FlexMap carrier, so nothing changes where the shape
-// machinery is not in play.
+// chaining). An unshaped receiver keeps the legacy fresh FlexMap carrier,
+// and so does every COMPILE pass — which still RECORDS the write (2026-09-26):
+// a later member read then carries the adopted bound, so `set b 9 f.a`
+// commits the FlexMap overload and its one result (flex.tsv L228/L236)
+// where the dynamic(Any) member committed the Class overload's none and the
+// VM deferred at vm:poly-nout-drift. The fresh result carrier keeps the
+// recording's operand identities where they were.
 func setFlexMapReturns(args []Value, r *Registry) []Value {
 	if len(args) == 3 {
 		d2CheckWrite(r, args[2], args[1], "set", args[0].Pos()) // flex {:T} write mirror
 	}
 	// len guard: the no-signature recovery can assume this sig with a
 	// short arg window (defensive — panic prevention).
-	if r != nil && !r.Check.Compiling && len(args) >= 3 {
+	if r != nil && len(args) >= 3 {
 		if ss, ok := check.StoreShapeOf(args[2]); ok {
 			ss.RecordKey(StoreKey(args[0]), check.AdoptShapeValue(args[1], 1))
-			return []Value{args[2]}
+			if !r.Check.Compiling {
+				return []Value{args[2]}
+			}
 		}
 	}
 	res := NewCarrier(TFlexMap)

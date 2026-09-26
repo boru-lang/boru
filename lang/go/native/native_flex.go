@@ -157,6 +157,14 @@ func flexReturns(args []Value, r *Registry) []Value {
 		}
 		return []Value{d2RetainElem(NewCarrier(TFlexMap), args[0])}
 	case p.ConformsTo(TList):
+		// A concrete plain list mints an element-join shape
+		// (check.MintFlexListShapeCarrier), the list twin of the map shape
+		// above; a typed / computed source keeps the bare carrier.
+		if shapes {
+			if v, ok := check.MintFlexListShapeCarrier(args[0], 0); ok {
+				return []Value{d2RetainElem(v, args[0])}
+			}
+		}
 		return []Value{d2RetainElem(NewCarrier(TFlexList), args[0])}
 	case p.ConformsTo(TXml):
 		return []Value{NewCarrier(TFlexXml)}
@@ -336,7 +344,12 @@ func appendListReturns(args []Value, r *Registry) []Value {
 		if src, err := RequireConcreteList(args[0], "append"); err == nil {
 			for i := 0; i < src.Len(); i++ {
 				d2CheckWrite(r, args[1], src.Get(i), "append", args[0].Pos())
+				flexListShapeWrite(args[1], src.Get(i))
 			}
+		} else {
+			// A computed source splices elements the shape cannot see: widen
+			// the element join to dynamic(Any), the unshaped read's own answer.
+			flexListShapeWrite(args[1], NewDynamicCarrier(TAny))
 		}
 		res = d2RetainElem(res, args[1])
 	}

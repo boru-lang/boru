@@ -65,7 +65,23 @@ var behaveNative = NativeFunc{
 			// (S2-line, 2026-09-25): the VM runs the same handler over the
 			// same baked atom and fn, installing the behaviour on the
 			// run-time registry's type exactly as the interpreter does.
-			CompileEffect: CompileStoresFn | CompileQuoteInert,
+			//
+			// 2026-09-26 (the sweep's `behave` × container cell) adds two
+			// declarations, both for the fn operand. CompileFnHandlerStrict:
+			// the handler reads the fn's raw body TOKENS and its declared
+			// signature (extractFnDefInfo), which a compiled closure does not
+			// carry, so the recorder admits only an operand proven to arrive
+			// as an interpreter fn value (compiler strictFnOperandProven) —
+			// before it, a factory's capturing closure reached the handler as
+			// a ClosurePayload and raised where the interpreter installed the
+			// fn. CompileDynBody: the stored body runs LATER against the
+			// registry (userBehavior's RunPooledTop), resolving its names in
+			// the interpreter's dynamic scope, which compiled code reproduces
+			// only under the DynEnv mirror the declaration arms; and a
+			// GRADUAL fn operand (`m.c`, a member read widened to
+			// dynamic(Any)) records a poly re-match on the dyn-body backstop
+			// when its payload is proven (compiler recordStoredFnDyn).
+			CompileEffect: CompileStoresFn | CompileQuoteInert | CompileDynBody | CompileFnHandlerStrict,
 		},
 
 		{
@@ -73,7 +89,9 @@ var behaveNative = NativeFunc{
 			Impl:      Go(behaveHandler),
 			ReturnsFn: behaveReturns,
 			Returns:   []*Type{}, BarrierPos: -1,
-			CompileEffect: CompileStoresFn,
+			// As the atom form: a strict fn slot and a deferred body run
+			// against the registry's dynamic scope.
+			CompileEffect: CompileStoresFn | CompileDynBody | CompileFnHandlerStrict,
 		},
 	},
 }

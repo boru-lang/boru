@@ -84,7 +84,19 @@ import (
 // L317/L318 off main's seven. Left: flex.tsv L228/L230/L236
 // (vm:poly-nout-drift) and edge-quote-1 L28 / edge-quote-3 L56 (a
 // tape-coupled Word from get).
-const bailDefectCeiling = 5
+
+// 7 -> 2 on 2026-09-26 (the re-stepped word node, the flex write shapes):
+// edge-quote-1 L28 / edge-quote-3 L56 compile the interpreter's re-step of a
+// word node read out of a list (the read emits nothing, the word's own
+// dispatch records — here add's no-match trap), and flex.tsv L228/L230/L236
+// commit the FlexMap `set` through the member's recorded write shape. Left:
+// fn-value.tsv L317/L318 (NUR190, booked by choice).
+// 5 -> 0 on 2026-09-26 (the merge of main's #511 with the reverse-order
+// NUR run, measured on the merged tree): main's 7 -> 2 above closes exactly
+// the run's five (edge-quote-1 L28 / edge-quote-3 L56, flex.tsv
+// L228/L230/L236), and the two main left (fn-value.tsv L317/L318) the run
+// had already closed with NUR190. Left: none.
+const bailDefectCeiling = 0
 
 var bailDefects = struct {
 	mu      sync.Mutex

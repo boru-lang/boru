@@ -5595,10 +5595,10 @@ func (e *Engine) constFoldContainerVal(items []Value) (Value, bool) {
 
 // noteFoldedFnBodies queues every fn value inside a folded constant for the
 // end-of-pass body check (NoteFnBodyPending), walking lists and maps the way
-// containsCapturingFn does.
+// containsCapturingFn does. Each entry is marked Folded (PendingFnBody).
 func noteFoldedFnBodies(r *Registry, v Value) {
 	if fd, ok := v.Data.(FnDefInfo); ok {
-		NoteFnBodyPending(r, fd)
+		noteFnBodyPending(r, r, fd, true)
 		return
 	}
 	if !IsConcrete(v) {

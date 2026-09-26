@@ -24,6 +24,7 @@ func TestNUR207RootGradualDefRead(t *testing.T) {
 		mk2 = `def mk fn [[][Any][([a:Integer b:Integer] => [a sub b])]] end def r (mk) end `
 		ms  = `def m {s: ([a:Integer b:Integer] => [a sub b])} end def r (m.s) end `
 		mk7 = `def mk fn [[][Any][7]] end def j (mk) end `
+		mc  = `def m {f: ([n:Integer] => [n add 1])} end def f m.f end `
 	)
 	for _, r := range []struct{ src, want string }{
 		// A read the program residual holds: the island from the read's
@@ -49,8 +50,19 @@ func TestNUR207RootGradualDefRead(t *testing.T) {
 		{mk7 + `j typeof`, "[Integer]"},
 		{mk7 + `7 j typeof`, "[7 Integer]"},
 		{mk7 + `[j]`, "[[7]]"},
+		// A read that LEADS the residual's dynamic apply over a window the
+		// value matches is that apply's own answer, so a root event after
+		// the read, which leaves no island, costs nothing: the guard bails
+		// on a no-match alone (the sweep's `def` × container · suffix-def
+		// and · splice bailed where both lanes answer 6).
+		{mc + `f 5`, "[6]"},
+		{mc + `f 5 def zzvpost 8`, "[6]"},
+		{"def zzvsp word [" + mc + "f 5] zzvsp", "[6]"},
 	} {
 		agreeOnBothLanes(t, r.src, r.want)
+	}
+	if dis := compileDisasm(t, mc+`f 5 def zzvpost 8`); !strings.Contains(dis, "bail if the read holds a fn its window does not match (guard)") {
+		t.Errorf("the leading read's guard must bail on a no-match alone:\n%s", dis)
 	}
 	// The error an island raises is the interpreter's own, notes included.
 	for _, src := range []string{mk2 + `r 'x' 3`, ms + `r 'x' 3`} {
@@ -71,6 +83,9 @@ func TestNUR207RootGradualDefRead(t *testing.T) {
 		{mk0 + `5 [j]`, "[5 [42]]"},
 		{mk0 + `(j)`, "[42]"},
 		{mk0 + `def k j end k`, "ERROR:def is still waiting"},
+		// The leading read's guard over a window the value does not match:
+		// the word raises, and no island can take the statement over.
+		{mc + `f 'x' def q 1 end q`, "ERROR:cannot call `f`"},
 	} {
 		gotC, _, errC := mustNew(t).RunCompiled(r.src)
 		if !noteCompileDefect(t, r.src, gotC, errC) || !strings.Contains(fmt.Sprint(errC), "gradual read") {

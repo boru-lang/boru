@@ -14,7 +14,8 @@ import "testing"
 //     Apply kernel's frame does (applyRetContract).
 //   - The shaped method apply (OpCallDynMethod) read a count that missed its
 //     claim as a host-registration violation and bailed; `do [m.f 5]` catches
-//     the interpreter's count error now (namedFnCountError).
+//     the interpreter's count error now, which the foreign arm raises before
+//     the shape claim is read.
 func TestNUR252ForeignValueKeepsItsCount(t *testing.T) {
 	const (
 		inc = `import module [def inc fn [[n:Integer] [Integer] [n 1]] export "M" {inc: inc/v}] end `

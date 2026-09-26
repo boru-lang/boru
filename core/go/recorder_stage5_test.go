@@ -127,6 +127,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if got, ok := e.RecordTypedBindRun(TypedBindSpec{}, Value{}, Value{}, out, SrcPos{}); ok || !ValuesEqual(got, out) {
 		t.Fatal("inactive RecordTypedBindRun must pass out through and decline")
 	}
+	e.NoteRuntimeDefDispatch("T")
 	if e.ContainerReadResult("id") {
 		t.Fatal("inactive ContainerReadResult must decline")
 	}

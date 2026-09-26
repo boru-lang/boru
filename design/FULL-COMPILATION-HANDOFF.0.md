@@ -15250,3 +15250,129 @@ storage, reach) pass at their ceilings.
 `TestModuleNativeFnValueOverAnyRecovers`); `s2b_registry_bodies_test.go`
 and `uncalled_dispatch_trap_test.go` (the two inverted rows);
 `real_program_compile_test.go` (the empty ledger).
+
+## The sweep's `behave` × container and `fnsig` × module-export cells (2026-09-26)
+
+**Measured.** Sweep compile failures **3 -> 1** (`sweepFailureCeiling`);
+the one left is `if` × container (NUR207, recorded). Call-form failures
+**295 -> 304** (`sweepVariantFailureCeiling`): the two graduated seeds
+bring twenty-eight call forms, nine decline — `behave` × container's
+fn-, lambda- and for-body ("check diagnostics", every behave seed's
+family), `fnsig` × module-export's do-, do-catch- and each-body (the
+code-body family) and its fn-, lambda- and module-body as "compile-time
+word def" (the run-time def's unit fence hands the dispatch to RecordCall,
+so the census of decline sites stays at 91). No variant that passed before fails (SWEEP_STATUS.md
+diffed). lang `compileDefectCeiling` 302 and `bailDefectCeiling` 39
+unchanged (measured at the ceilings).
+
+- **`behave` × container** (compiler `recordStoredFnDyn`,
+  `stored_fn_proof.go`). `m.c` is a dynamic(Any) carrier, so the generic
+  record declined "dynamic input at behave". behave declares
+  CompileDynBody and CompileFnHandlerStrict now; the dyn-body backstop
+  records the dispatch as a poly re-match when the operand is PROVEN to
+  arrive as an interpreter fn value — for `m.c`, a read over a const
+  container whose member is a concrete fn. A flex, closure-valued or param
+  member keeps the decline: behave installs a fn's body TOKENS, which a
+  compiled closure does not carry.
+- **The strict slot, generally** (NUR209, found and FIXED). The same proof
+  now gates every CompileFnHandlerStrict slot in RecordCallOperands (on the
+  unknown-provenance decline's own site — the site census stays 91): a
+  factory's capturing closure reached behave and `FnUtil.compose` as a
+  ClosurePayload and raised where the interpreter answered. And behave's
+  record arms DynEnv when the stored body names something — its deferred
+  run resolves names in the interpreter's dynamic scope. A first cut armed
+  DynEnv for every behave record and declined three `behave` × factory
+  variants; the proof's known fn lets pure-data bodies skip it.
+- **`fnsig` × module-export** (basic `defFormRun`, core
+  `EmitRecorder.NoteRuntimeDefDispatch`, compiler
+  `NoteRuntimeDefDispatch` / `runtimeDefPartsBlocked`). `def T fnsig M.sg`
+  mints its type from a list that exists only at run time. The check pass
+  mints nothing: the def form binds nothing on the check engine and arms
+  unpack's run-time-bind latch, so its dispatch is emitted as the plain
+  CALL_NATIVE it is and the run constructs and installs T exactly as the
+  interpreter does. A later static read of T is the pass's undefined-word
+  finding (declines; `is T` never reads a guessed node). Fences, each
+  measured as a divergence before it: only a name the check engine has
+  never bound and whose part no type registered; root stream only (inside
+  a unit the install outlives the frame the interpreter unwinds it with, so
+  the dispatch declines as the compile-time word it is);
+  and Finalize declines when a type of the same name part was registered
+  later in the pass (the replay rolls name parts back never, so the run's
+  front-door install would meet a conflict the interpreter does not).
+
+**Pins.** lang `sweep_cells_behave_fnsig_test.go`
+(`TestBehaveOverContainerMemberCompiles`,
+`TestStrictStoreSlotRefusesACompiledClosure`,
+`TestFnsigRuntimeSpecListCompiles`, each with its fences, read from the
+compile pass alone); compiler `stored_fn_proof_test.go`; core
+`recorder_stage5_test.go` (the inactive seam). Docs: NUR.md (NUR209), the
+sweep ceilings, SWEEP_STATUS.md refreshed.
+## The last five non-NUR runtime defers — the re-stepped word node, the flex write shapes (2026-09-26)
+
+**The rows.** `runtime_defers.tsv` held seven rows; five were not NUR190's
+booked-by-choice pair. All five now compile and run byte-identically to
+the interpreter (values, error code, detail, position). None was converted
+to a decline. The ledger is down to fn-value.tsv L317/L318.
+
+- **edge-quote-1.tsv L28, edge-quote-3.tsv L56** (`quote [add 1 2] get 0`,
+  `… macroexpand (tw2 7) get 1`; "tape-coupled handler result at get").
+  The interpreter RE-STEPS a word node that `get` reads out of a list. It
+  fires the word against the live stack and the forward tokens that follow
+  (`… get 0 5 6` is 11; a bare `… get 0` raises add's signature_error at the
+  word's own position, 1:8). The check pass read the node as data (a Word
+  carrier) and recorded a CALL_NATIVE whose token the VM's screen refused.
+  Two changes fix it. lang `getIntKeyReturns` hands a live word element
+  (not a bare type node) back VERBATIM; `toCarrier` keeps a word as it is,
+  so the check pass re-steps it the same way and records the call it makes.
+  compiler `tryFoldReStepWord` (first in `recordDispatchOutcome`'s chain)
+  emits nothing for a get-family read over a concrete list and a concrete
+  Integer key whose result is that token. The word's own dispatch is what
+  compiles: add's no-match becomes its TRAP, and `add 5 6` becomes a
+  CALL_NATIVE. A computed receiver still leaves a token at run time. That
+  case stays the VM's loud screen and was never on the ledger.
+- **flex.tsv L228, L230, L236** (`set` on a flex member,
+  vm:poly-nout-drift). The member read (`f.a`, `f get 0`) was
+  dynamic(Any), so `set` committed its FIRST overload (Class, no result).
+  The runtime landed on FlexMap, which returns one result. The FlexMap
+  store shape already answered a key it saw written. But its WRITE twin
+  (`setFlexMapReturns`) was gated to the plain pass, so on the compile
+  pass `set a {b:1} f` never reached the shape. It records on both passes
+  now. The compile pass still returns the legacy fresh carrier, so the
+  recording's operand identities do not move. FlexList had no shape at all.
+  check `MintFlexListShapeCarrier` / `FlexListShapeOf` give it an
+  ELEMENT-JOIN shape: `Vals`, because a list's positions shift. `flex`
+  mints it, `push` / `unshift` / `append` / indexed `set` join into it
+  (lang `flexListShapeWrite`; a computed `append` source widens the join to
+  dynamic(Any)), and an index read (`getIntKeyReturns`) surfaces it
+  GRADUAL. `AdoptShapeValue` adopts a nested concrete list to the shaped
+  form. Every claim is still gradual. A hidden writer that invalidates the
+  shape makes the poly re-match's NOut check defer loudly. It never runs
+  the wrong overload. A class instance stored in the flex records its own
+  carrier, so `set` keeps its no-result overload, pinned both ways.
+
+**Tried and withdrawn (flex).** I first modelled every statement-position
+mixed-arity `set` over a dynamic receiver as a VARIADIC REGION
+(`core.NewVariadicCarrier` from `applyGradualContagion`, a region-marked
+poly, a count-free `PolyRef`). It was sound, but it regressed. The region
+is a phantom VALUE on the check stack, and a greedy next word collects it:
+`… set mem true end IO.write p 'e'` matched write's three-operand
+`(Pathon, Any, Map)` overload. corpus-modules L53/L54 and
+`TestIOSurfaceCompilesNoCompileFailure` then declined, and so did every
+Class/Store-receiver statement idiom whose claim of 0 was right. Receiver
+precision fixes the rows without touching those idioms.
+
+**Moved (measured on full unfiltered walks).** `bailDefectCeiling` 7 -> 2
+and `deferCeiling` 5 -> 2 (left: vm:landing-quote-claim×2, NUR190).
+`diagnosticParityCeiling` 348 -> 349. It measured 347 at 89dd499, and the
+row lists are identical except for the two edge-quote rows. They join the
+documented `plain=no_signature armed=` suppression shape, which already
+has 171 rows. The plain check used to be BLIND to their guaranteed error.
+It now reports add's genuine no-match; the armed pass suppresses
+no_signature and bakes the trap. `interpEntryRowCeiling`,
+`engineEntryCeiling`, and lang `compileDefectCeiling` (302) and
+`bailDefectCeiling` (39) did not move.
+
+**Pins.** compiler `restep_word_fold_test.go`; check
+`store_shape_list_test.go`; lang native `flex_write_shape_test.go`; lang
+`restep_flex_parity_test.go` (22 programs, compiled == interpreted, the
+class-in-flex negatives included).

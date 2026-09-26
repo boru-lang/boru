@@ -9,6 +9,55 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## Main's #511 merged; NUR257 recorded (2026-09-26)
+
+**The conflicts.** Main's #511 conflicted with the branch in twelve files.
+Main's `RecordRuntimeBindDispatch` is folded into this branch's
+`RecordRuntimeDispatch`, which its callers now reach with no results.
+`NoteRuntimeDefDispatch` arms the same latch, and its unit decline and
+end-of-pass part check are kept as main wrote them. `behave`'s String form
+carries both the branch's `ReturnsFn` and main's compile effects. Main's
+NUR209 kept its number, and this branch's became NUR256.
+
+**The one test that failed, and why.** Main's
+`TestBehaveOverContainerMemberCompiles` stores a map member's fn as a
+behaviour whose body reads a fn-local `k`. On the merged tree it was a check
+error, `undefined word: k`. Main's recorder raised the same finding while
+stamping the member, and truncated it there. The survivor came from this
+branch's NUR105 close (2026-09-25): a folded map member's fn is queued for
+the end-of-pass body check, and an anonymous value's drained run has no call
+graph identity, so the dynamic-scope rescue could not clear it. Main never
+analysed that position, and it flags the same body in a list literal or in
+place.
+
+**The rule taken.** For the folded position only, a name some fn binds is
+not a finding of the drained run (`PendingFnBody.Folded`,
+`dropAnonymousBinderReads`). A name nothing binds still is (NUR105's typo
+row), and every other anonymous position keeps main's verdict. A blanket
+rule over every anonymous body was measured first and dropped: it cleared
+`[1] each ([e:Any] => [x])` at the root when an unrelated fn binds `x`, a
+finding main keeps. NUR257 records the question the drain still cannot
+ask, and the call-graph edge that would let it.
+
+**Two more found measuring the ledgers.** Regenerating the sweep showed two
+call-form variants bailing, `def` × container · suffix-def and · splice. The
+merge did not cause them: this branch's NUR207 close did, after the last
+regeneration, and they only fail in the direction lane. A guard over a root
+read that leads its own dynamic apply bailed on any fn value. It now bails
+on a no-match alone, as the island's `NoMatchOnly` rule does, and both
+variants answer 6 on both lanes. Separately, the ADR-008 run on 7cae708 found
+`namedFnCountError` (NUR252) unreachable: every path into the shaped method
+apply's guard enforces a boru fn's count first (the island, the foreign
+arm's contract, the entered frame's RET). It is deleted rather than covered.
+
+**Ledgers, measured on the merged tree, each named row for row.** Corpus
+bail 5 → 0 and runtime defers 3 → 0: main's five closes are the run's five,
+and the two main kept (NUR190) the run had closed. Diagnostic parity 352 →
+354: main's two edge-quote rows, nothing else. Sweep seed failures 4 → 2 and
+call-form failures 284 → 292: the two seeds main graduated count their call
+forms now, eight of which decline here. Unit-suite compile 339 holds, and
+bail 36 → 37 for the new no-match guard pin.
+
 ## NUR247 and NUR249 closed, NUR254 recorded and closed, NUR255 recorded: the run-time count (2026-09-26)
 
 **The collect in a fn frame.** NUR247 and NUR249 both wanted the count
@@ -2080,7 +2129,7 @@ under the render gate rather than answering under another name
 
 **The fix.** The loop region is the literal's frame: `Engine.collectLoopRegion` — shared by the `for` continuation and the `while` body region (stepMoveCont, stepMoveWhile) — evaluates a pending residual container when it collects the iteration's output, with the iterator still bound; every other value, a typed container's inert shape included, is collected as it stood and resolved by the end-of-run sweep as before. `for 2 [[(i add 1)] i]` is `[[1] 0 [2] 1]` on both lanes, the outer binding never read, the while body's literal its round's (`[[2] [3]]`), and the fn shape the fn's own count error on both.
 
-**Two twins found probing the neighbours, both closed.** NUR209: a `do` body that is ONE container literal over the loop variable — `for 2 [do [[i]]]`, `for 2 [do [{a:i}]]` — answered `error(undefined word: i)` per iteration on the COMPILED lane for the interpreter's `[0] [1]`: the token body's closure compile passed `bodyInFrame` false, so AnalyseFnBody analysed it as an anonymous lambda whose single bare literal DEFERS, recorded no assembly, the closure declined on the unknown provenance, and the dyn-body backstop baked `[[i]]` as a const (a word inside a nested compound is an inert const member) the handler re-ran through the interpreter — where the loop's `i` is a frame slot the registry never held; a multi-token body (`do [[i] 5]`) compiled to a closure assembling the list. A token body compiles in-frame now (recordClosureDispatch's token site passes true — the InvokeBody seam's sub-engine sweeps the residual at its end with the bindings live, never deferred; the lambda-value sites keep `!fd.Anonymous`), and `for 2 [do [[i]]]` lowers to `PUSH_CLOSURE do$body … PUSH_LOCAL; MAKE_LIST`. NUR202, NUR201's loop twin: a `for` loop abandoned by a raise the caller traps left its ITERATOR installed on the interpreter — `def i 9  do [for 2 [raise 'x']]  i` read 0, `for 3 [if (i eq 1) [raise 'x'] []]` under the same trap read 1 — where the compiled loop keeps `i` in a frame slot and reads 9. `Engine.faultReturn` unwinds every live loop's iterator (`unwindLiveLoops`: a `for` continuation whose mark has stepped and whose move the pointer has not reached, as handleLoopBreak uninstalls it) BEFORE the frames: a loop inside a live frame installed its iterator after the frame's entry snapshot, so the frame's truncation has nothing left to pop for the name, and a loop enclosing a live frame keeps its iterator beneath that snapshot, where only the loop walk reaches it. Both lanes read 9; with no outer binding both raise undefined_word (the compiled lane at the check pass); a while loop installs no iterator and its body's def leaks by design on both lanes.
+**Two twins found probing the neighbours, both closed.** NUR209 (NUR256 since the merge of main's #511): a `do` body that is ONE container literal over the loop variable — `for 2 [do [[i]]]`, `for 2 [do [{a:i}]]` — answered `error(undefined word: i)` per iteration on the COMPILED lane for the interpreter's `[0] [1]`: the token body's closure compile passed `bodyInFrame` false, so AnalyseFnBody analysed it as an anonymous lambda whose single bare literal DEFERS, recorded no assembly, the closure declined on the unknown provenance, and the dyn-body backstop baked `[[i]]` as a const (a word inside a nested compound is an inert const member) the handler re-ran through the interpreter — where the loop's `i` is a frame slot the registry never held; a multi-token body (`do [[i] 5]`) compiled to a closure assembling the list. A token body compiles in-frame now (recordClosureDispatch's token site passes true — the InvokeBody seam's sub-engine sweeps the residual at its end with the bindings live, never deferred; the lambda-value sites keep `!fd.Anonymous`), and `for 2 [do [[i]]]` lowers to `PUSH_CLOSURE do$body … PUSH_LOCAL; MAKE_LIST`. NUR202, NUR201's loop twin: a `for` loop abandoned by a raise the caller traps left its ITERATOR installed on the interpreter — `def i 9  do [for 2 [raise 'x']]  i` read 0, `for 3 [if (i eq 1) [raise 'x'] []]` under the same trap read 1 — where the compiled loop keeps `i` in a frame slot and reads 9. `Engine.faultReturn` unwinds every live loop's iterator (`unwindLiveLoops`: a `for` continuation whose mark has stepped and whose move the pointer has not reached, as handleLoopBreak uninstalls it) BEFORE the frames: a loop inside a live frame installed its iterator after the frame's entry snapshot, so the frame's truncation has nothing left to pop for the name, and a loop enclosing a live frame keeps its iterator beneath that snapshot, where only the loop walk reaches it. Both lanes read 9; with no outer binding both raise undefined_word (the compiled lane at the check pass); a while loop installs no iterator and its body's def leaks by design on both lanes.
 
 **Measured:** control.tsv, accessor.tsv, fn-locals-scope.tsv and the module families under every langspec gate at their ceilings; the lang unit ledger 285 / 44 unchanged; core, eng, compiler, check, basic, the lang root package, lang/go/test and the modules package green.
 

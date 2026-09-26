@@ -407,6 +407,67 @@ func TestNurRunPendingDrainForeignRegistryKeepsStructuralOnly(t *testing.T) {
 	}
 }
 
+// --- analysis_hooks.go: the folded anonymous drain arm (NUR257) ----------------
+
+// Pins RunPendingFnBodyChecks over a FOLDED anonymous fn value (a map
+// literal's member, queued by noteFoldedFnBodies): its drained run drops an
+// undefined-word finding whose name some fn binds, and keeps a name no fn
+// binds and every other finding. A folded NAMED value and an unfolded
+// anonymous one keep all their findings, and findings made before the drain
+// are untouched.
+func TestNurRunPendingDrainFoldedAnonymousBinderRead(t *testing.T) {
+	r := newTestRegistry(t)
+	done := r.Check.Begin()
+	t.Cleanup(done)
+
+	savedPass := AnalysisImpl.FnConstructionPass
+	savedShare := CheckBraid.ShareCheckStateFrom
+	t.Cleanup(func() {
+		AnalysisImpl.FnConstructionPass = savedPass
+		CheckBraid.ShareCheckStateFrom = savedShare
+	})
+	CheckBraid.ShareCheckStateFrom = func(*Registry, *Registry) func() { return func() {} }
+	AnalysisImpl.FnConstructionPass = func(reg *Registry, name string, fn FnDefInfo) {
+		tag := fn.Doc
+		reg.Check.AddDiagnostic(CheckDiagnostic{Code: "undefined_word", Word: "k", Detail: tag + " k"})
+		reg.Check.AddDiagnostic(CheckDiagnostic{Code: "undefined_word", Word: "typo", Detail: tag + " typo"})
+		reg.Check.AddDiagnostic(CheckDiagnostic{Code: "type_error", Word: "k", Detail: tag + " type"})
+	}
+	// g binds k (a body-local def); nothing binds typo.
+	r.Check.FnNameStack = []string{"g"}
+	r.Check.RecordFnBinder("k")
+	r.Check.FnNameStack = nil
+
+	r.Check.AddDiagnostic(CheckDiagnostic{Code: "undefined_word", Word: "k", Detail: "before the drain"})
+	noteFoldedFnBodies(r, NewFunction(FnDefInfo{Doc: "folded"}))
+	noteFoldedFnBodies(r, NewFunction(FnDefInfo{Name: "named", Doc: "foldednamed"}))
+	NoteFnBodyPending(r, FnDefInfo{Doc: "plain"})
+	if q := r.Check.PendingFnBodies; len(q) != 3 || !q[0].Folded || !q[1].Folded || q[2].Folded {
+		t.Fatalf("the fold marks its entries Folded, construction does not: %+v", q)
+	}
+
+	RunPendingFnBodyChecks(r)
+
+	var got []string
+	for _, d := range r.Check.Diagnostics {
+		got = append(got, d.Code+":"+d.Detail)
+	}
+	want := []string{
+		"undefined_word:before the drain",
+		"undefined_word:folded typo",
+		"type_error:folded type",
+		"undefined_word:foldednamed k",
+		"undefined_word:foldednamed typo",
+		"type_error:foldednamed type",
+		"undefined_word:plain k",
+		"undefined_word:plain typo",
+		"type_error:plain type",
+	}
+	if strings.Join(got, "|") != strings.Join(want, "|") {
+		t.Fatalf("diagnostics after the drain:\n got %v\nwant %v", got, want)
+	}
+}
+
 // Pins the named inactive default of CheckBraid.ShareCheckStateFrom: a
 // check-less core shares nothing, and its restore is a callable no-op.
 func TestNurRunInactiveShareCheckStateFrom(t *testing.T) {

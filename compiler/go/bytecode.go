@@ -1860,10 +1860,11 @@ type DeoptSpec struct {
 	// the statement's own, which the island produces again from their
 	// tokens.
 	Beneath bool
-	// NoMatchOnly marks a Beneath point whose read LEADS the residual's
+	// NoMatchOnly marks a root point whose read LEADS the residual's
 	// leading-form dynamic apply (OpCallDynamic): over a window the value
 	// matches, that apply is the word dispatch's own answer, so only a
-	// no-match — which the value apply parks and the word raises — deopts.
+	// no-match — which the value apply parks and the word raises — deopts
+	// (a Beneath island) or bails (a guard, Bail).
 	NoMatchOnly bool
 }
 
@@ -2014,7 +2015,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			tw := p.BindTwins[in.Arg]
 			fmt.Fprintf(sb, " w%-3d ; bind twin %s %s @depth %d (replay)", in.Arg, tw.Kind, tw.Name, tw.Depth)
 		case OpDeoptIfFn:
-			if int(in.Arg) < len(deopts) && deopts[in.Arg].Bail {
+			if int(in.Arg) < len(deopts) && deopts[in.Arg].Bail && deopts[in.Arg].NoMatchOnly {
+				fmt.Fprintf(sb, " d%-3d ; bail if the read holds a fn its window does not match (guard)", in.Arg)
+			} else if int(in.Arg) < len(deopts) && deopts[in.Arg].Bail {
 				fmt.Fprintf(sb, " d%-3d ; bail if the read holds a fn (guard)", in.Arg)
 			} else if int(in.Arg) < len(deopts) && deopts[in.Arg].Results > 0 {
 				fmt.Fprintf(sb, " d%-3d ; re-step %d result(s) on the interpreter if one is a fn", in.Arg, deopts[in.Arg].Results)
