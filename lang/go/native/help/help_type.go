@@ -349,7 +349,7 @@ func init() {
 			"The body sees the operands as `a` (and `b` for the two-argument slots).",
 			"A slot is scoped to the type that installed it — a plain Integer keeps the kernel rule.",
 			"Descendants inherit their branch's capability; the kernel walks the parent chain nearest-first.",
-			"`make` runs ahead of every kernel construction path at RUNTIME, so it also overrides the Ideal-kind default for object/record/table types — but a `behave`-installed slot is invisible to `boru check`, which still validates a construction against the target's declared schema (NUR076).",
+			"`make` runs ahead of every kernel construction path, so it also overrides the Ideal-kind default for object/record/table types — and `boru check` sees the slot from the `behave make` call on, so a construction after it is not validated against the declared schema the constructor replaces (NUR076). A construction before the call is, as the run's order has it.",
 			"A `make` body that returns the wrong type is refused; one that returns the target's base type is reparented, as the kernel's own newtype construction does.",
 		},
 	})

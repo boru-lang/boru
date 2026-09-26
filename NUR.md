@@ -174,7 +174,7 @@ keep the two in sync in the same commit.
 | [NUR026](#nur026) | Escape sets diverge between quoted strings and templates — NARROWED 2026-08-15: the escape VOCABULARY is resolved by fix (templates take the quoted-string set: \b \f \v \xNN \uNNNN, and an unknown escape drops its backslash); what remains is the malformed-input REPORTING difference, which needs an error channel the template lexer seam does not have | 2026-07-22 uniformity review |
 | [NUR072](#nur072) | Three sugar kinds (mini, type-bound, lambda) still canon in DEBUG form after NUR059 — withdrawn there because the renders do not round-trip: SugarInfo does not retain the mini delimiter, and type-bound renders its Items rather than the bound's text; also carries the undecided bare-word question (`word(foo)` vs `foo`, 175 corpus rows) | NUR059's fix, 2026-08-15 |
 | [NUR075](#nur075) | `deq` is extensible per type (`DeepEqualer`), `eq` is not — the one part of the retired NUR031's verdict its fix did not take: the divergences closed by adding kernel arms rather than by routing through `Behavior`, so a type can define its own deep equality but not its own identity | NUR031's fix, 2026-08-16 |
-| [NUR076](#nur076) | A `behave`-installed capability is invisible to check mode, because `behave` does not run there — for `make` that turns a working program into a check FAILURE: a type whose Maker ignores the schema still has the schema's unknown/missing-field rules applied statically | NUR056's fix, 2026-08-17 (flagged by the PR #379 review, Codex P1) |
+| [NUR076](#nur076) | FIXED 2026-09-26 (the check pass notes a behave make — the handoff log's entry of that date): `behave`'s check-mode half (its ReturnsFn) validates the call as the handler does and, for the `make` slot, notes the target in the pass's own state (`CheckState.BehaveMakers`), which `HasMaker` reads — so a construction after the call skips the schema validation the type's own constructor replaces, exactly as a Go-side Maker's does; one before it validates, as the run has it. Nothing is installed on the type, so no user body runs during analysis; the other seven slots change only what a program computes, which analysis does not evaluate. `def P class {a: Integer}  behave make/q (fn Any P [make P {a: 42}])  make P {bogus: 1}` checks clean and compiles (Class/P{a:42} on both lanes). The original text: A `behave`-installed capability is invisible to check mode, because `behave` does not run there — for `make` that turns a working program into a check FAILURE: a type whose Maker ignores the schema still has the schema's unknown/missing-field rules applied statically | NUR056's fix, 2026-08-17 (flagged by the PR #379 review, Codex P1) |
 | [NUR060](#nur060) | The parser twins disagree on open-input sources beyond the corpus | PR #337 parity-probe sweep (flagged for NUR by Codex P1) |
 | [NUR063](#nur063) | Seven self-knowledge words are proposed to dispatch from two module surfaces (`boru:debug` and `boru:scry`) — VERDICT 2026-08-15: `boru:scry` canonical, the `boru:debug` copies frozen behind shared handlers and deprecated on a stated timeline | design/BORU-SCRY.0.md §6 (flagged for NUR by PR #344 Codex P1) |
 | [NUR064](#nur064) | Pattern clauses route-and-bind in `receive` but route-only in `add` — VERDICT 2026-08-15: defer to the processes/services design line, to be decided when those modules are built | `design/STATE-MACHINES.0.md` §8 (flagged for NUR by the PR #345 review, Codex P1) |
@@ -4867,9 +4867,38 @@ capability can reach, against `DeepEqual`'s terminal
 
 ## NUR076 — A `behave`-installed capability is invisible to check mode {#nur076}
 
-**Status:** Pending · **Recorded:** 2026-08-17 · **Surfaced by:** NUR056's
-fix (the `Maker` capability); flagged for this register by the PR #379
-review (Codex P1)
+**Status:** FIXED 2026-09-26 (the check pass notes a behave make — the
+handoff log's entry of that date) · **Recorded:** 2026-08-17 · **Surfaced
+by:** NUR056's fix (the `Maker` capability); flagged for this register by
+the PR #379 review (Codex P1)
+
+**The fix.** Candidate (1) in its narrowest sound form, which is neither
+running user code in analysis nor a second mechanism beside the word:
+`behave` gained a CHECK-MODE HALF (`behaveReturns`, its ReturnsFn, the
+seam every word uses to model its effect on the analysis). It validates the
+call exactly as the handler does (`behaveTarget`, shared) and, for the
+`make` slot, notes the target in the pass's own state
+(`CheckState.NoteBehaveMaker`, reset per pass); `core.HasMaker` reads the
+note beside the installed Behaviors. So `make` skips the schema validation
+of a type whose own constructor builds it from the `behave make` call on —
+as it already did for a Go-side Maker — and a construction BEFORE the call
+still validates, which is the run's order too (it raises there).
+
+It installs NOTHING on the type. Installing the real wrapper during
+analysis would put user bodies within reach of analysis-time rendering,
+comparison and construction — the objection the record raised against
+candidate (1) — and the other seven slots need no model: they change what a
+program computes, which analysis does not evaluate. The note is the one
+fact analysis consults. A call the pass cannot see through (a fn carrier, a
+computed name) or that the handler would refuse notes nothing, and the run
+raises the refusal where it happens.
+
+`boru describe behave` now says the slot is visible to check from the call
+on. Pinned: lang `TestNUR076BehaveMakeIsVisibleToCheck` (the transcript's
+program checks clean and answers Class/P{a:42} compiled; five negatives —
+construction before the call, a compare-only behave, no behave, a carrier
+fn, a refused target — still validate), core
+`TestNUR076BehaveMakerIsVisibleToCheck`.
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
 

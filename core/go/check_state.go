@@ -173,6 +173,16 @@ type CheckState struct {
 	// undefined.
 	PendingFnBodies []PendingFnBody
 
+	// BehaveMakers are the types a `behave make` call this pass reached
+	// gives a constructor of their own (NUR076). The pass does not run
+	// `behave` — installing the capability's wrapper would put user bodies
+	// within reach of analysis-time rendering, comparison and construction —
+	// so the word's check-mode half notes the one slot analysis consults,
+	// and HasMaker reads it: `make` then skips the schema validation of a
+	// type whose own constructor builds it, from the `behave` call on, as it
+	// does for a Go-side Maker. Reset per pass.
+	BehaveMakers map[*Type]bool
+
 	// FnNameInflight counts, per fn NAME, how many of its body analyses
 	// are on the stack. A recursive self-call with a DIFFERENT arg shape
 	// has a different FnInflight key, so it does not bail — it re-analyses
@@ -1133,6 +1143,7 @@ func (c *CheckState) Begin() func() {
 	c.FnAnalysisCounts = nil
 	c.FnBodyChecked = nil
 	c.PendingFnBodies = nil
+	c.BehaveMakers = nil
 	c.Emit = TheInactiveEmit
 	c.CodeEffectDepth = 0
 	c.FnBodyDepth = 0
@@ -1199,6 +1210,19 @@ func (c *CheckState) AddPassEndCleanup(fn func()) {
 		return
 	}
 	c.PassEndCleanups = append(c.PassEndCleanups, fn)
+}
+
+// NoteBehaveMaker records that a `behave make` call this pass reached gives
+// t a constructor of its own (BehaveMakers). A no-op outside check mode — at
+// run time the call installs the real capability.
+func (c *CheckState) NoteBehaveMaker(t *Type) {
+	if c == nil || !c.Mode || t == nil {
+		return
+	}
+	if c.BehaveMakers == nil {
+		c.BehaveMakers = map[*Type]bool{}
+	}
+	c.BehaveMakers[t] = true
 }
 
 // SuppressBindLedger marks a snapshot/restore-truncated evaluation region:

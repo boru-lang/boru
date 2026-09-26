@@ -53,6 +53,7 @@ var behaveNative = NativeFunc{
 			Args:      []*Type{TAtom, TFunction},
 			QuoteArgs: map[int]bool{0: true},
 			Impl:      Go(behaveHandler),
+			ReturnsFn: behaveReturns,
 			Returns:   []*Type{}, BarrierPos:
 
 			// String form for the behavior name (`behave "compare" fn […]`).
@@ -67,9 +68,10 @@ var behaveNative = NativeFunc{
 		},
 
 		{
-			Args:    []*Type{TString, TFunction},
-			Impl:    Go(behaveHandler),
-			Returns: []*Type{}, BarrierPos: -1,
+			Args:      []*Type{TString, TFunction},
+			Impl:      Go(behaveHandler),
+			ReturnsFn: behaveReturns,
+			Returns:   []*Type{}, BarrierPos: -1,
 			CompileEffect: CompileStoresFn,
 		},
 	},
@@ -175,33 +177,9 @@ func knownBehaviorNames() string {
 
 func behaveHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	name := defName(args[0])
-	be, ok := behaviors[name]
-	if !ok {
-		return nil, r.BoruError("behave_error",
-			fmt.Sprintf("behave %s: unknown behavior name; known: %s", name, knownBehaviorNames()),
-			"behave")
-	}
-
-	fnVal := args[1]
-	info, err := extractFnDefInfo(fnVal)
+	be, target, sig, err := behaveTarget(name, args[1], r)
 	if err != nil {
-		return nil, fmt.Errorf("behave %s: %w", name, err)
-	}
-	firstSig, ok := info.FirstOwnSig()
-	if !ok {
-		return nil, r.BoruError("behave_error", fmt.Sprintf("behave %s: fn has no signatures", name), "behave")
-	}
-	sig := *firstSig
-
-	target, err := be.validate(sig)
-	if err != nil {
-		return nil, fmt.Errorf("behave %s: %w", name, err)
-	}
-	if target == nil {
-		return nil, r.BoruError("behave_error", fmt.Sprintf("behave %s: could not infer target type from fn sig", name), "behave")
-	}
-	if target.Origin == core.OriginBuiltin {
-		return nil, fmt.Errorf("behave %s: cannot install on builtin type %s", name, target.Leaf())
+		return nil, err
 	}
 
 	body := append([]Value{}, sig.Body()...)
@@ -230,6 +208,70 @@ func behaveHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 		ub.unifyTarget = target
 	}
 	return nil, nil
+}
+
+// behaveTarget validates a behave call — the behavior name, the fn's first
+// signature against the slot's declared shape — and returns the slot's entry,
+// the TARGET type the capability attaches to, and the signature whose body
+// it runs. Shared by the handler and its check-mode half (behaveReturns), so
+// the analysis notes exactly the capability the run installs.
+func behaveTarget(name string, fnVal Value, r *Registry) (behaviorEntry, *core.Type, core.FnSig, error) {
+	be, ok := behaviors[name]
+	if !ok {
+		return be, nil, core.FnSig{}, r.BoruError("behave_error",
+			fmt.Sprintf("behave %s: unknown behavior name; known: %s", name, knownBehaviorNames()),
+			"behave")
+	}
+	info, err := extractFnDefInfo(fnVal)
+	if err != nil {
+		return be, nil, core.FnSig{}, fmt.Errorf("behave %s: %w", name, err)
+	}
+	firstSig, ok := info.FirstOwnSig()
+	if !ok {
+		return be, nil, core.FnSig{}, r.BoruError("behave_error", fmt.Sprintf("behave %s: fn has no signatures", name), "behave")
+	}
+	sig := *firstSig
+	target, err := be.validate(sig)
+	if err != nil {
+		return be, nil, sig, fmt.Errorf("behave %s: %w", name, err)
+	}
+	if target == nil {
+		return be, nil, sig, r.BoruError("behave_error", fmt.Sprintf("behave %s: could not infer target type from fn sig", name), "behave")
+	}
+	if target.Origin == core.OriginBuiltin {
+		return be, nil, sig, fmt.Errorf("behave %s: cannot install on builtin type %s", name, target.Leaf())
+	}
+	return be, target, sig, nil
+}
+
+// behaveReturns is behave's CHECK-MODE half (NUR076). The pass does not run
+// the handler, so a behave-installed capability was invisible to analysis,
+// and one slot is not invisible in its consequences: `make` VALIDATES a
+// construction against the target's declared schema, so a type whose own
+// constructor ignores its source (`behave make/q (fn Any P [make P {a:
+// 42}])`) was judged against rules that constructor never runs — `make P
+// {bogus: 1}` built Class/P{a:42} and failed `boru check` with two schema
+// errors, and the default pre-flight refused a program that runs. The half
+// validates the call as the handler does and, for `make`, notes the target
+// in the pass's own state (CheckState.NoteBehaveMaker), which HasMaker reads.
+// It installs NOTHING: a wrapper on the type would put user bodies within
+// reach of analysis-time rendering, comparison and construction, and the
+// other seven slots change only what a program computes, which analysis does
+// not evaluate. A call the pass cannot see through — a fn carrier, a
+// computed name — and a call the handler would refuse note nothing; the run
+// raises the refusal where it happens.
+func behaveReturns(args []Value, r *Registry) []Value {
+	if r == nil || !r.Check.IsActive() || !IsConcrete(args[0]) || !IsConcrete(args[1]) {
+		return nil
+	}
+	name := defName(args[0])
+	if name != "make" {
+		return nil
+	}
+	if _, target, _, err := behaveTarget(name, args[1], r); err == nil {
+		r.Check.NoteBehaveMaker(core.CanonicalType(r, target))
+	}
+	return nil
 }
 
 // extractFnDefInfo unwraps a TFunction value into its

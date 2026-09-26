@@ -13322,6 +13322,24 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR076 closed — the check pass notes a `behave make` (2026-09-26)
+
+**The divergence.** `behave` does not run in check mode, so a type whose
+own constructor (`behave make/q (fn Any P [make P {a: 42}])`) ignores its
+source was still schema-validated at `make P {bogus: 1}`: two check errors
+for a program that runs (Class/P{a:42}), a pre-flight refusal, and a
+compiled-lane decline at the same check.
+
+**The fix.** `behave`'s ReturnsFn is its check-mode half: it validates the
+call with the handler's own `behaveTarget` and, for `make`, notes the target
+in `CheckState.BehaveMakers`; `core.HasMaker` reads the note. Nothing is
+installed during analysis — a wrapper would put user bodies within reach of
+analysis-time rendering and comparison, and the other seven slots change
+only computed values. The program now checks clean and compiles.
+
+**Pins.** lang `TestNUR076BehaveMakeIsVisibleToCheck`, core
+`TestNUR076BehaveMakerIsVisibleToCheck`; `describe behave`'s note updated.
+
 ## NUR100 closed — the predicate is a one-value application; the poly decline keys on a re-step (2026-09-26)
 
 **The divergence.** ADR-016 forbids deciding behaviour by a function's
