@@ -518,7 +518,8 @@ func TestEdgeFindingSentinelInInterpolatedParts(t *testing.T) {
 // scrutinees, which run unconditionally exactly once BEFORE the branch
 // decision: a same-sig redefinition there is not path-dependent, and the
 // equivalent paren-`do` condition already compiled with parity. The fix routes
-// analyseCondFragment through RunCarrierCondBody (CondBodyDepth-exempt);
+// analyseCondFragment through a CondBodyDepth-exempt condition run (since
+// NUR212's follow-up the KEPT RunCarrierCondBodyKeepDefs);
 // branch arms and loop bodies keep the raise (TestEdgeFindingConditionalFnShadowFailsToCompile).
 func TestEdgeFindingCondFragmentRedefCompiles(t *testing.T) {
 	fnA := `fn [[x:Any] [Integer] [x add 100]]`

@@ -199,6 +199,16 @@ type CheckState struct {
 	// consulted by CheckAddUniqueDiagnostic and emitIndexOOB.
 	CaughtBodyDepth int
 
+	// ValuelessDoBodies counts the `do` bodies the pass modelled as a
+	// RAISE for want of a residual (doListReturnsFn: a non-empty body with
+	// an empty residual stands as an Error carrier). A body that simply nets
+	// nothing — `do [def x 5]` — runs to no value at all, and inside a
+	// branch fragment the lowering then works over a value that is not there
+	// (NUR222). Monotone: a caller compares it around a body run. The kept
+	// `if` condition does (basic's analyseCondFragment), declining a binding
+	// condition that holds one rather than compile it over that model.
+	ValuelessDoBodies int
+
 	// NestedBodyDepth, when > 0, marks analysis running inside ANY nested
 	// body region (RunCarrierBodyWithDefs — if/case branches, loop bodies,
 	// quotation/closure bodies). A diagnostic that is only sound for
@@ -284,9 +294,12 @@ type CheckState struct {
 	// RolledBackBodyDepth, when > 0, marks analysis running inside a body
 	// whose def growth is TRUNCATED on the way out — every `keep=false` run
 	// of runCarrierBodyDefsAdds, which is the branch arms and loop bodies
-	// CondBodyDepth covers PLUS the condition/scrutinee fragments it exempts.
-	// The bind ledger consults it, and needs the wider set: what makes an
-	// install unrecordable is the truncation, not the conditionality.
+	// CondBodyDepth covers PLUS the rolled-back scrutinee run it exempts
+	// (RunCarrierCondBody — a `case` scrutinee's count run). A KEPT `if`
+	// condition (RunCarrierCondBodyKeepDefs, NUR212) is not truncated, so
+	// it does not raise this and its installs ledger like any straight-line
+	// one. The bind ledger consults it, and needs the wider set: what makes
+	// an install unrecordable is the truncation, not the conditionality.
 	//
 	// An install inside such a body is SPECULATIVE. Either the construct
 	// re-installs it afterwards through InstallJoinedDefs — in which case
@@ -1077,6 +1090,7 @@ func (c *CheckState) Begin() func() {
 	c.FnBodyDepth = 0
 	c.CallShapeDepth = 0
 	c.CaughtBodyDepth = 0
+	c.ValuelessDoBodies = 0
 	c.NestedBodyDepth = 0
 	c.CondBodyDepth = 0
 	c.RolledBackBodyDepth = 0

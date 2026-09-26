@@ -1408,6 +1408,15 @@ type DynFrameWord struct {
 type LandingWord struct {
 	Name string
 	Pos  core.SrcPos
+	// Skip is the pc the landing resumes at when the interpreter's re-step
+	// CLAIMS the word itself — a `/q` slot capturing it as an atom, a
+	// Function-typed slot taking its reference (NUR190): past the word's
+	// compiled call and the residual apply the lowering laid over that
+	// call's result, which the claim means never run. Set only where the
+	// lowering proves that layout (sealLandingSkip): the landing op, then the
+	// word's argument-free one-result call, then OpCallDynamic applying the
+	// landed value over it. 0 elsewhere, and the landing's claim defers.
+	Skip int
 }
 
 // DynApplyHead is one entry of CompiledFn.DynApplyName: the binding NAME the

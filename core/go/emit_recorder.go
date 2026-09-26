@@ -115,6 +115,14 @@ type EmitRecorder interface {
 	TopFrameOnly() bool
 	SuspendedNow() bool
 	BodyAnalysisGuard() func()
+	// CondBodyGuard is BodyAnalysisGuard for a KEPT CONDITION body run
+	// (RunCarrierCondBodyKeepDefs — an `if` condition or a `case`
+	// scrutinee, which runs unconditionally, exactly once, before the
+	// branch decision, its bindings kept — NUR212): the same capture of the
+	// armed fragment, marked UNCONDITIONAL, so a once-run defs-keeping body
+	// word inside it (`if [do [def x 5] true] …`) may adopt its body's bind
+	// twins there exactly as it would at the root. Inactive: plain no-op.
+	CondBodyGuard() func()
 	// KeepDefsBodyGuard is BodyAnalysisGuard for a KEEP-DEFS body run
 	// (runCarrierBodyDefsAdds keep=true — `do`'s check-mode scoping,
 	// where body defs leak): same suspension, but the recorder may
@@ -589,6 +597,7 @@ func (inactiveEmit) BindRegistry(*Registry) func()                          { re
 func (inactiveEmit) TopFrameOnly() bool                                     { return true }
 func (inactiveEmit) SuspendedNow() bool                                     { return false }
 func (inactiveEmit) BodyAnalysisGuard() func()                              { return func() {} }
+func (inactiveEmit) CondBodyGuard() func()                                  { return func() {} }
 func (inactiveEmit) KeepDefsBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) MultiRunBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) RecordDynUndef(string, SrcPos)                          {}

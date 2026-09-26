@@ -261,8 +261,17 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		// Plain check (no emit) keeps the prior dynAny.
 		if es := r.Check.Recorder(); es.Active() {
 			nDiag := len(r.Check.Diagnostics)
-			_, stk := analyseCondFragment(r, v)
+			stk, binds := condResidual(r, v)
 			r.Check.TruncateDiagnostics(nDiag)
+			// A scrutinee that BINDS a name (`case [def x 5 1] […]`) keeps
+			// the binding on the interpreter; only the desugared `if` below
+			// runs the body as a kept condition fragment (NUR212), so every
+			// other shape — the trap, the islanded multi-clause chain —
+			// declines rather than read a stale binding after the `case`.
+			if binds && len(stk) == 0 {
+				declineCondBinding(r, v.Pos())
+				return dynAny
+			}
 			if len(stk) == 0 {
 				es.RecordTrap("case_error",
 					"case: value expression produced no value to dispatch on",
@@ -288,6 +297,9 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 						return out
 					}
 				}
+			}
+			if binds {
+				declineCondBinding(r, v.Pos())
 			}
 		}
 		return dynAny

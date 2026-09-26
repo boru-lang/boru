@@ -56,4 +56,10 @@
 # a flex write into the receiver's shape (FlexMap keys, and a new FlexList
 # element join), so the member read carries the adopted FlexMap bound and
 # `set` commits the overload — and the one result — the runtime lands on.
-fn-value.tsv	2	L317, L318: `m.f z`, `m get 'f' z` — vm:landing-quote-claim, a `/q` slot CAPTURES the following word (NUR190; booked by choice 2026-09-24, the deferral over an over-wide decline)
+# fn-value.tsv left the ledger on 2026-09-26, 2 -> 0 (NUR190's `/q` claim):
+# L317/L318 (`m.f z`, `m get 'f' z`, booked by choice 2026-09-24 at
+# vm:landing-quote-claim) RUN — the lowering seals the landing's claim target
+# (LandingWord.Skip) where the word's argument-free call and the residual
+# OpCallDynamic /1 follow the landing, and the landing enters the fn's `/q`
+# overload over the word as an atom and resumes past both. The ledger is
+# empty; a line comes back only with the rows that moved it, named.

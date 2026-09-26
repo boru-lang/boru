@@ -129,6 +129,13 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 	if sig == nil {
 		return nil
 	}
+	return vc.dynApplyEnterSig(fd, sig, args)
+}
+
+// dynApplyEnterSig is dynApplyEnter past the match: enter fd's overload sig —
+// one the caller already selected by the interpreter's rule — over args, or
+// nil when that overload has no in-program unit of the matching shape.
+func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, args []core.Value) *dynEnter {
 	ref := compiler.CompiledRef(sig)
 	if ref == nil || ref.Prog != vc.p || ref.Unit < 0 || ref.Unit >= len(vc.p.Fns) {
 		return nil

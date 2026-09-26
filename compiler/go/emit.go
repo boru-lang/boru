@@ -343,8 +343,9 @@ type emitBranch struct {
 	pos                   core.SrcPos
 	// carried seeds the branch-carried def slots (a name an arm rebinds,
 	// read after the merge — branch_carried.go) with the PRE-branch binding,
-	// lowered at the top of lowerBranch so an arm that does not bind leaves
-	// the incoming binding in the cell. carriedNames is every name this
+	// lowered once per execution before the arms (after a list-form
+	// condition, whose kept binding may be that pre — seedCarried) so an arm
+	// that does not bind leaves the incoming binding in the cell. carriedNames is every name this
 	// branch carries into its slot, on every path through it.
 	carried      []carriedInit
 	carriedNames map[string]bool
@@ -1271,6 +1272,14 @@ type EmitState struct {
 	// the CURRENT unit (a branch arm or loop body being recorded here) from
 	// one an enclosing unit's call site sits in. See inRolledBackRegion.
 	fragUnits []int
+	// fragUncond parallels the open fragment frames (frames[1:]) with
+	// whether each is a KEPT CONDITION fragment (CondBodyGuard — an `if`
+	// condition or `case` scrutinee, run unconditionally once before its
+	// branch decision, NUR212) rather than an arm or loop body. A stream
+	// position under condition fragments alone is reached exactly as the
+	// root stream is, so the do-body adoption's root fence admits it
+	// (rootLikeStream).
+	fragUncond []bool
 	// fragReads / bindHazard / storeHazard drive the residual-order hazard
 	// (unit_memo.go residualReadHazard), keyed by fragment id: the names a
 	// fragment has read, and the names (by name) or loop-carried slots (by
@@ -2450,6 +2459,7 @@ func (es *EmitState) beginFragment() func() {
 	es.fragSeq++
 	es.fragIDs = append(es.fragIDs, es.fragSeq)
 	es.fragUnits = append(es.fragUnits, len(es.units))
+	es.fragUncond = append(es.fragUncond, false)
 	return func() {
 		n := len(es.frames) - 1
 		es.captured = &EmitFragment{
@@ -2461,7 +2471,26 @@ func (es *EmitState) beginFragment() func() {
 		es.fragFloors = es.fragFloors[:len(es.fragFloors)-1]
 		es.fragIDs = es.fragIDs[:len(es.fragIDs)-1]
 		es.fragUnits = es.fragUnits[:len(es.fragUnits)-1]
+		es.fragUncond = es.fragUncond[:len(es.fragUncond)-1]
 	}
+}
+
+// rootLikeStream reports whether the recorder sits at the ROOT stream or
+// inside kept condition fragments alone (fragUncond) — a position every run
+// of the program reaches exactly once, in order, as the root stream is: a
+// condition runs unconditionally, once, before its branch decides. An arm or
+// loop body anywhere in the open stack is conditional or multi-run, and a
+// unit is a per-invocation body; neither is root-like.
+func (es *EmitState) rootLikeStream() bool {
+	if len(es.openUnitRecs) != 0 || len(es.fragUncond) != len(es.frames)-1 {
+		return false
+	}
+	for _, c := range es.fragUncond {
+		if !c {
+			return false
+		}
+	}
+	return true
 }
 
 // inRolledBackRegion reports whether the recorder is inside a fragment the
@@ -2496,6 +2525,21 @@ func (es *EmitState) BodyAnalysisGuard() func() {
 		}
 		resume()
 	}
+}
+
+// CondBodyGuard is BodyAnalysisGuard for a KEPT CONDITION body run
+// (core RunCarrierCondBodyKeepDefs, NUR212): the condition fragment the
+// branch hook armed is opened and marked unconditional (fragUncond), so a
+// `do` inside it adopts its body's twins where it stands (AdoptBodyTwins'
+// root fence, rootLikeStream). With no capture armed it is the plain guard.
+// Nil-safe.
+func (es *EmitState) CondBodyGuard() func() {
+	if !es.PeekCaptureArm() {
+		return es.BodyAnalysisGuard()
+	}
+	end := es.BodyAnalysisGuard()
+	es.fragUncond[len(es.fragUncond)-1] = true
+	return end
 }
 
 // KeepDefsBodyGuard is BodyAnalysisGuard's keep-defs flavor (`do`'s
@@ -4770,7 +4814,11 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 		ev.br.els.residualN = len(b.ElsStk)
 		es.captureArmResidual(ev.br.els, b.ElsStk)
 	}
+	joinTwins := es.takeJoinTwinsAfterCond(bCondFrag)
 	seq := es.appendEvent(ev)
+	for _, tw := range joinTwins {
+		es.appendEvent(tw)
+	}
 	es.SiteCounts[SiteMono]++
 	es.setProduced(b.Out, seq)
 	es.carryBranchJoins(&ev, b)
@@ -5180,7 +5228,11 @@ func (es *EmitState) RecordBindTwin(tr core.BindTransition, entry core.DefEntry)
 //     unplaced and the failure stands. (That shape's DEFAULT compile
 //     diverges today — each_error vs the interpreter's [1 2] — a
 //     pre-existing closure-lowering bug this fence keeps the regime
-//     strictly sounder than.)
+//     strictly sounder than.) A KEPT CONDITION fragment is the one open
+//     fragment the fence admits (rootLikeStream, NUR212): an `if`
+//     condition runs unconditionally, once, before its branch decides,
+//     so `if [do [def x 5] true] …` places its twin inside the condition
+//     exactly as the root stream would, and the lowering runs it there.
 //   - THE SITE TEST: exact membership of tr.Pos in the body tree's
 //     token sites (a transition's noted position is a token of its own
 //     def expression — the bound value's token, or the transition word
@@ -5202,7 +5254,7 @@ func (es *EmitState) AdoptBodyTwins(body core.Value) {
 	if es == nil || !es.Active() {
 		return
 	}
-	if len(es.openUnitRecs) != 0 || len(es.frames) != 1 {
+	if !es.rootLikeStream() {
 		return
 	}
 	sites := make(map[core.SrcPos]bool)
@@ -13995,6 +14047,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			arg = 0 // the mark is the boundary; the op takes no count
 		}
 		lw.emit(dynOp, arg, dynOpPos)
+		lw.sealLandingSkip(dynOp, ops)
 	}
 
 	// Lower the compiled fn units. Tail positions are marked first so

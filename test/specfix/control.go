@@ -73,14 +73,15 @@ func fixIf3Handler(args []core.Value, _ map[string]core.Value, _ []core.Value, _
 }
 
 // fixCondFragment captures the condition body as its own fragment when
-// emitting, so the lowering runs it inline before JMP_IF_FALSE.
+// emitting, so the lowering runs it inline before JMP_IF_FALSE. The run
+// KEEPS its bindings, as basic's analyseCondFragment does (NUR212).
 func fixCondFragment(r *core.Registry, cond core.Value) (core.EmitFragmentRef, []core.Value) {
 	es, _ := r.Check.Recorder().(*compiler.EmitState)
 	if !es.Armed() || !core.IsConcrete(cond) || !cond.Parent.ConformsTo(core.TList) {
 		return nil, nil
 	}
 	es.ArmBranchCapture()
-	stk, _ := core.RunCarrierCondBody(r, cond)
+	stk := core.RunCarrierCondBodyKeepDefs(r, cond)
 	return es.TakeFragment(), stk
 }
 

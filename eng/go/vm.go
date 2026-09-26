@@ -124,6 +124,12 @@ type vmContext struct {
 	// and runVMEntry's exit restore truncates to it on EVERY path (error
 	// unwind included), so a failed run never leaks args entries.
 	argsFloor int
+	// landingSkip is a landing's CLAIM jump (NUR190): set by landingQuoteClaim when
+	// the re-step claimed the word after the landed value, and read — then
+	// cleared — by the run loop right after the op, which resumes at that pc
+	// (past the word's call and the residual apply) instead of the next one.
+	// 0 means no jump.
+	landingSkip int
 	// gateReg/gateWC/gateMC cache the engine policy's checkers per
 	// registry — the VM twins of the interpreter's policyGateWord /
 	// policyGateModuleCall consult them at every named / module-export
@@ -1444,15 +1450,17 @@ func (vc *vmContext) landingFire(reg *core.Registry, v core.Value, fnDef core.Fn
 //     aside for the mixed overload, NUR175, and the residual apply answered
 //     1) and PARKS an anonymous or macro value, as the wordless landing
 //     does (ADR-016's anonymous-0-arg park);
-//   - a `/q` slot CAPTURES the word: the value stands aside as before and
-//     the residual apply keeps its answer — the word's call is already
-//     compiled after the landing and cannot be skipped, so the capture is
-//     the open half of NUR190 (fn-value.tsv's `m.f z` passes because z's
-//     result is its own atom);
-//   - a Function-typed slot takes the word's REFERENCE: the same skip is
-//     missing, and the run bails loudly rather than raising a false
-//     `uncalled_function` as the wordless landing did (`m.g z` is 7
-//     interpreted).
+//   - a `/q` slot CAPTURES the word, which never runs: where the lowering
+//     sealed the claim's target (LandingWord.Skip — the word's call and the
+//     residual apply right after the landing) the fn is ENTERED over the
+//     atom and the run resumes past both (`m.f z` is `[z]`, fn-value.tsv's
+//     L317/L318, NUR190's closed `/q` half); elsewhere the run defers
+//     loudly;
+//   - a Function-typed slot takes the word's REFERENCE: the run bails
+//     loudly rather than raising a false `uncalled_function` as the
+//     wordless landing did (`m.g z` is 7 interpreted) — the claim would
+//     enter a stored-fn unit that diverges on a bare Function param read
+//     (NUR220).
 func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.FnDefInfo, lword compiler.LandingWord, stack []core.Value, top int, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
 	own := fnDef
 	own.Signatures = fnDef.OwnSigs()
@@ -1492,15 +1500,39 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 		return vc.landingFire(reg, v, fnDef, stack, top, curDebug, pc)
 	case sig.QuoteArgs != nil && sig.QuoteArgs[0]:
 		// A `/q` slot CAPTURES the word as an atom (`m.q z` is `[z]`
-		// interpreted): the compiled code calls the word after the landing
-		// and the residual arm applies the value over its result, so the
-		// walk cannot honour the claim — it defers, loudly, the same
-		// containment as the Function-typed reference below, and the
-		// corpus keeps both on the runtime-defers ledger (NUR190's open
-		// halves; the maintainer's call, 2026-09-24).
+		// interpreted): the word never runs. Where the lowering laid the
+		// word's call and the residual apply out right after the landing
+		// (LandingWord.Skip) the claim enters the fn over the atom and
+		// resumes past both; elsewhere it defers, loudly.
+		if ent := vc.landingQuoteClaim(fnDef, sig, lword); ent != nil {
+			return stack[:top], ent, nil
+		}
 		return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-quote-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step CAPTURES the word `"+lword.Name+"` (a `/q` slot) where the compiled code calls the word; the compiled runtime cannot execute it")
 	}
+	// A Function-typed slot takes the word's REFERENCE. The same claim would
+	// serve it, but the stamped stored-fn unit it would enter reads a
+	// Function param bare as data where the interpreter dispatches it
+	// (NUR220: `m.g z` with g's body `[f]` would answer `[fn f]` for `[0]`),
+	// so it keeps the loud defer.
 	return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step takes the word `"+lword.Name+"` as its argument (a Function-typed slot) where the compiled code calls the word; the compiled runtime cannot execute it")
+}
+
+// landingQuoteClaim enters the landed fn over the word its re-step CAPTURED
+// — the plan's own `/q` overload, sig, over the word as an atom at the word's
+// position (the interpreter's arrival converts it so, CollectArrival) — and
+// arms the run loop's jump past the word's call and the residual apply
+// (LandingWord.Skip, sealed by the lowering only where the three ops are
+// contiguous). nil — the caller defers — when no target was sealed or the
+// overload has no unit of this program to enter (dynApplyEnterSig's rule).
+func (vc *vmContext) landingQuoteClaim(fnDef core.FnDefInfo, sig *core.Signature, lword compiler.LandingWord) *dynEnter {
+	if lword.Skip <= 0 {
+		return nil
+	}
+	ent := vc.dynApplyEnterSig(fnDef, sig, []core.Value{core.WithPosAt(core.NewAtom(lword.Name), lword.Pos)})
+	if ent != nil {
+		vc.landingSkip = lword.Skip
+	}
+	return ent
 }
 
 // uncalledFunctionError is the interpreter's own no-match raise for a named
@@ -3369,6 +3401,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, err
 			}
 			stack = ns
+			if vc.landingSkip > 0 {
+				// A landing that claimed the word after it (landingQuoteClaim)
+				// resumes past the word's call and the residual apply — and
+				// an entered frame returns there too (retPC is pc+1 below).
+				pc = vc.landingSkip - 1
+				vc.landingSkip = 0
+			}
 			if ent != nil {
 				// The Apply kernel's frame push, modelled on OpCallUserPoly
 				// (the other site that learns its unit at RUN time): re-check
