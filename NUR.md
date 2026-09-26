@@ -160,14 +160,17 @@ keep the two in sync in the same commit.
 | [NUR236](#nur236) | FIXED 2026-09-26 (a spliced consumer is ordered by the stream — the handoff log's entry of that date): a gradual def read consumed by a spliced word's expansion carries its deopt, so a read that holds a fn at run time dispatches it on both lanes. The original text: a word splice over a def-bound gradual read of a fn: `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}` answers `[Function]` compiled (typeof over the fn value) and `[Integer]` interpreted (`j` calls the fn). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR237](#nur237) | FIXED 2026-09-26 (an S5 name's later root defs are registry-visible — the handoff log's entry of that date): a taken branch arm's rebind of a name an S5 loop bind bound is seen after the merge on both lanes. The original text: a def rebound in a taken branch after a loop-result def reads the pre-branch value compiled: `def x (for 2 [5]) def c true if c [def x 1] [] end x` answers `[5 5]` compiled, `[5 1]` interpreted (both arms binding x too; a read of x before the branch makes the lanes agree). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR238](#nur238) | FIXED 2026-09-26 (a trailing value is re-stepped as the interpreter re-steps it — the handoff log's entry of that date): a value applied as a trailing window it does not fit parks when anonymous and raises uncalled_function when named, at the top level and in a fn. The original text: a paren-bounded trailing apply that matches nothing: the interpreter parks an anonymous value as data and raises `uncalled_function` for a named fn; the compiled apply raises `signature_error` at the top level (`(5 ([s:String] => [s]))` is `[5 fn (String)]` interpreted) and leaves a named fn's window as residue inside a fn (`(5 f/v)` over a `g/v` argument: a count error compiled) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
-| [NUR239](#nur239) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): an applied fn value's return-contract error names the fn's definition compiled and the binding it was called under interpreted: `(k 5)` over `h z/v` says `z:` compiled, `k:` interpreted; an anonymous class-field fn says `` compiled, `<fn>` interpreted (`each h.cb [1 2 3]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR239](#nur239) | FIXED 2026-09-26 (both halves — the anonymous `<fn>` earlier, the binding half by the island's word dispatch; the handoff log's entry of that date): an applied fn value's return-contract error names the fn's definition compiled and the binding it was called under interpreted: `(k 5)` over `h z/v` says `z:` compiled, `k:` interpreted; an anonymous class-field fn says `` compiled, `<fn>` interpreted (`each h.cb [1 2 3]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR240](#nur240) | FIXED 2026-09-26 (by NUR238's value-trail no-match — the handoff log's entry of that date): a trapped unmatched module-member call inside a branch arm raises `signature_error` compiled and `uncalled_function` interpreted — a value-level divergence where the code is caught (`do [if true [(true 5 M.dec)] [1] …] error [dot code]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR241](#nur241) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a capturing callback run by `walk`: `acc (tag) append acc (m.path) append` in a factory's lambda raises `signature_error: cannot call append` compiled (the arguments `[]` and `''`) where the interpreter answers `['x' '' 'x' 'a' 'x' 'b']` | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR242](#nur242) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): eight programs compile and then fail inside the compiled runtime (internal_error) where the interpreter answers: three `/q`-capturing member landings (RESTEP_LANDING), two shaped method applies, `do [args drop] 7` in a fn (STORE_LOCAL underflow), `do b 7` over a list param (CALL_DYN_FRAME underflow) and `fold` over a gradual class field (CALL_NATIVE_POLY no match) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR243](#nur243) | FIXED 2026-09-26 (the three programs compile — the handoff log's entry of that date): a constant branch's taken arm with no value is a 0-value statement, a loop rebind of a branch-bound name is carried, and a parser dispatch declines over its parser operand only. The original text: three valid programs refused: a loop carrying a branch-bound name (`if c [def x 1] [] for 3 [def x 5] x`, "body result of unknown provenance"), a constant-true branch whose taken arm leaves no value (`def x 0 if [true] [def x 1] [2] end x`, "branch produces no value" — its guard carried a `//covergate:allow` whose proof was false, removed), and NUR109's bound-slot arm declining a parser dispatch over a branch-bound SOURCE operand | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR244](#nur244) | FIXED 2026-09-26 (an arm that may not run is speculative — the handoff log's entry of that date): a fn def in a branch arm the model knows is SKIPPED (a literal, def-bound or folded false condition — or true, for the else arm) or in an else-less if's arm was the join's own value, and a read past the merge ran it: `if false [def f fn [[a:Integer] [Any] [7]]] [] end 3 f` answered `[7]` compiled for undefined_word, and `import "boru:parselang" def c false if c [def p (fn [[source:String opts:Map] [Any] [7]])] [] end parse p 'x'` `[7]` for `parse_unknown_lang`. Silent wrong answers | closing NUR243, 2026-09-26 |
-| [NUR245](#nur245) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): both arms of a branch define the same fn and a call past the merge fails to compile: `if false [def f fn [[a:Integer] [Any] [7]]] [def f fn [[a:Integer] [Any] [8]]] end 3 f` is `[8]` interpreted and `compile_failed: unconsumed fn-value carrier in residual (closure render)` compiled, for a decided and an undecided condition alike. A compile defect | closing NUR244, 2026-09-26 |
-| [NUR246](#nur246) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a trailing window whose `/v`-delivered closure matches nothing parks (the window stays as written, n+1 values) where the compiled call event claims its one result, so a consumer seats the wrong count: `def mk fn [[k:Integer][Function][([s:String] => [s k])]] end def h fn [[f:Function] [List] [[(5 f/v)]]] end h (mk 1)` answers `[[5 fn f(String)]]` interpreted and raises `h: expected 1 return value(s), got 2` compiled (the list took the fn alone). Compiled fails where the interpreter answers | closing the merged ADR-008 gate on d493ef4, 2026-09-26 |
+| [NUR245](#nur245) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix — arms that agree on the fn's shape FIXED 2026-09-26, the handoff log's entry of that date): both arms of a branch define the same fn and a call past the merge failed to compile: `if false [def f fn [[a:Integer] [Any] [7]]] [def f fn [[a:Integer] [Any] [8]]] end 3 f` is `[8]` interpreted and was `compile_failed: unconsumed fn-value carrier in residual (closure render)` compiled, for a decided and an undecided condition alike. Arms that agree on the fn's shape compile now; arms that disagree (a `[a:Integer]` fn against a `[a:String]` one) keep the payload-less join and its decline. A compile defect | closing NUR244, 2026-09-26 |
+| [NUR246](#nur246) | FIXED 2026-09-26 (a window that may park is a variadic region — the handoff log's entry of that date): a paren-bounded fn-value apply whose lead the window does not fit PARKS on both lanes (an anonymous or `/v`-delivered value that matches nothing is data — the window and the value, n+1), where the compiled event claimed its one result, so a fixed layout seated the wrong count. Wider than recorded: at top level a SILENT wrong answer — `def lam ([s:String] => [s]) end [(5 lam/v)]` compiled `[5 [fn lam(String)]]` for `[[5 fn lam(String)]]`, and a map value, an interpolation and a reordered residual (`1 (5 lam/v) 3` compiled `[5 1 fn lam(String) 3]`) the same; in a fn frame a return-count raise | closing the merged ADR-008 gate on d493ef4, 2026-09-26 |
+| [NUR247](#nur247) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): the `apply` WORD's event parks as NUR246's trailing window does — `def h fn [[f:Any] [List] [[(5 f/v apply)]]] end h ([s:String] => [s])` is `[[5 fn f(String)]]` interpreted and raises `h: expected 1 return value(s), got 2` compiled — but its lead is gradual by construction, so NUR246's mark (a window that does not provably fit) would decline every Church-encoding and CPS program of `bytecode-migrated.tsv` (14 rows). Compiled fails where the interpreter answers | closing NUR246, 2026-09-26 |
+| [NUR248](#nur248) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a TYPE LITERAL applied under a lambda's VALUE PATTERN matches on the interpreter and parks on the VM: `(Integer ([0] => [1]))` is `[1]` interpreted and `[Integer fn (Integer)]` compiled — the VM's `core.MatchFnSig` unifies the literal against the pattern and fails where the interpreter's dispatch admits it. Silent (pre-existing) | covering NUR246's fit proof, 2026-09-26 |
+| [NUR249](#nur249) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a fn-typed CARRIER read by name and applied over a paren window (`(k 5)` over a `k:Function` param) that turns out 0-arg at run time fires over nothing and leaves the window beside its result (NUR176's arm) — n+1 values where the compiled event claims one — so a fixed layout takes the wrong count: `def c fn [[] [Integer] [7]] end def h fn [[k:Function] [] [[(k 5)]]] end h c/v` is `[[7 5]]` interpreted and `[7 [5]]` compiled. Silent under a no-contract fn (pre-existing); a declared return raises the count error instead | closing NUR239's binding half, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -9320,9 +9323,9 @@ too. Pinned: lang `TestNUR238TrailingValueNoMatch` (eight rows); eng
 
 ## NUR239 — an applied fn value's return-contract error names the fn, not the binding {#nur239}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
-— the eng and main-side coverage agents.
+**Status:** FIXED 2026-09-26 (both halves — the handoff log's entry of that
+date) · **Recorded:** 2026-09-26 · **Surfaced by:** closing #505's
+merged-coverage gap (ADR-008) — the eng and main-side coverage agents.
 
 **Rule:** one failure, one diagnostic, on both lanes.
 
@@ -9357,6 +9360,18 @@ unit, whose own RET check labels the error with the unit's
 `CompiledFn.Name`. Renaming the value's copy does not reach it. The fix
 threads a frame label through the VM's unit entry (the name the value was
 read under, when there is one) for the RET check to prefer.
+
+**The binding half, fixed (2026-09-26).** The trace put the label in the
+island's INTERPRETER return check, not in a VM RET. The island stepped the
+fn VALUE, which dispatches through the handler its `def` baked, under the
+def's name. The interpreter's `(k 5)` dispatches the WORD `k`, bound by the
+param's frame install. So the VM's 0-arg island arm now does the same: it
+installs a frame binding of the head's name over the value
+(`core.InstallFrameBinding`, a param's own shadowing install), islands the
+WORD, and uninstalls the binding. `k: return value 1: …` and the count
+error read the same on both lanes (`TestNUR239BindingNameLabelsTheFrame`).
+
+Its count on the way out is NUR249.
 
 ## NUR240 — a trapped unmatched member call inside a branch arm: a different code {#nur240}
 
@@ -9530,11 +9545,100 @@ a parser is a fn value the join never carries. Pinned: lang
 undefined_word among them), `TestFnDispatchBranchBoundSourceAgrees`. The constant
 branch's decline site retired: both compile-failure censuses 91 → 90.
 
-## NUR246 — a parked trailing window leaves more values than its call claims {#nur246}
+## NUR249 — a 0-arg fn value read by name under a window leaves its window beside it {#nur249}
 
 **Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** covering `parkedWindow`'s trailing arm for the
-merged ADR-008 gate on d493ef4.
+2026-09-26 · **Surfaced by:** closing NUR239's binding half.
+
+**Rule:** one call, one result count, on both lanes — or a count the
+consumer is told is variable (NUR246's rule).
+
+**Divergence** (pre-existing; silent under a no-contract fn):
+
+```
+def c fn [[] [Integer] [7]] end def h fn [[k:Function] [] [[(k 5)]]] end h c/v
+  interp:   [[7 5]]
+  compiled: [7 [5]]
+def c fn [[] [Integer] [7]] end def h fn [[k:Function] [Any] [[(k 5) (k 6)]]] end h c/v
+  interp:   [[7 5 7 6]]
+  compiled: type_error: h: expected 1 return value(s), got 3 — [7 5 [7 6]]
+```
+
+A lead read by NAME whose only overloads take no argument fires over
+nothing where it stands and leaves the window beside its result (NUR176).
+The compiled lane does the same at run time, which leaves n+1 values. The
+recorder claimed one: its lead is a fn-typed CARRIER (a `Function` param),
+whose arity it cannot see. NUR246's mark exempts a bare named read,
+because a named lead that does not fit RAISES; the 0-arg lead is the
+exception to that premise.
+
+Marking every named carrier lead a variadic region would decline the
+comparator convention wholesale: `(a b comp)`, whose lead is exactly as
+unknown and fits on every real run. The fix wants the count decided at run
+time instead, like NUR247's.
+
+## NUR248 — a type literal under a lambda's value pattern matches on one lane only {#nur248}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** covering NUR246's fit proof
+(`applyWindowFits`).
+
+**Rule:** one matcher — a window the interpreter's dispatch admits, the
+VM's dynamic apply admits, and the reverse.
+
+**Divergence** (pre-existing, silent):
+
+```
+(Integer ([0] => [1]))
+  interp:   [1]
+  compiled: [Integer fn (Integer)]
+[(Integer ([0] => [1]))]
+  interp:   [[1]]
+  compiled: [Integer [fn (Integer)]]
+```
+
+The interpreter's dispatch admits the type literal `Integer` for the
+lambda's value-pattern param `0` and applies it. The VM's trailing apply
+asks `core.MatchFnSig`, which unifies the literal against the pattern
+(`Unify(Integer, 0)`), fails, and parks the anonymous value as data
+(`valueTrailNoMatch`). Which reading is right is part of the question — a
+type literal is not the value 0, so the interpreter's admission may be
+the defect — but the two lanes must agree either way.
+
+## NUR247 — the `apply` word's park leaves more values than its event claims {#nur247}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** closing NUR246.
+
+**Rule:** one call, one result count, on both lanes — or a count the
+consumer is told is variable (NUR246's rule).
+
+**Divergence:**
+
+```
+def h fn [[f:Any] [List] [[(5 f/v apply)]]] end  h ([s:String] => [s])
+  interp:   [[5 fn f(String)]]
+  compiled: type_error: h: expected 1 return value(s), got 2 — [5 [fn f(String)]]
+```
+
+The `apply` word re-steps its lead over the stack; an anonymous value that
+matches nothing is data there too, so the word nets the window AND the
+value. The recorded event (`OpCallDynApplyTop`, or `OpCallDynApplyOne` for
+a gradual lead, whose one-result discipline raises an internal error on
+the park instead) claims one result. NUR246's mark — a window that does not
+provably fit is a variadic region — does not carry over: the word's lead is
+gradual by construction (a Church encoding's `(t/v p/v apply)`, a CPS
+`k/v apply`), so no window of it is ever provable, and marking it declined
+14 programs of `bytecode-migrated.tsv` that compile and agree today. The
+fix wants a run-time count at the fixed layouts (a mark taken before the
+apply, the assembly counting from it) rather than a static decline.
+
+## NUR246 — a parked trailing window leaves more values than its call claims {#nur246}
+
+**Status:** FIXED 2026-09-26 (a window that may park is a variadic region —
+the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** covering `parkedWindow`'s trailing arm for the merged
+ADR-008 gate on d493ef4.
 
 **Rule:** one call, one result count, on both lanes — or a count the
 consumer is told is variable.
@@ -9560,10 +9664,53 @@ fix is the do-catch latch's for this op: a trailing apply whose value may
 park has a runtime-variable count (1 applied, n+1 parked), so the event is
 marked variadic and a fixed-count consumer declines.
 
+**Wider than recorded.** The fn frame was the loud end. At top level the
+count was a silent wrong answer in every fixed layout over the park:
+
+```
+def lam ([s:String] => [s]) end
+[(5 lam/v)]          interp [[5 fn lam(String)]]       compiled [5 [fn lam(String)]]
+{a: (5 lam/v)}       interp [{a:[5 fn lam(String)]}]   compiled [5 {a:fn lam(String)}]
+`x${(5 lam/v)}y`     interp [x5fn lam(String)y]        compiled [5 xfn lam(String)y]
+1 (5 lam/v) 3        interp [1 5 fn lam(String) 3]     compiled [5 1 fn lam(String) 3]
+```
+
+— and the same for a lambda literal, a factory's closure (`[(5 (mk 1))]`)
+and a def-bound closure.
+
+**The fix.** `recordDynApply` marks the apply a variadic REGION — the loop
+region's representation, `variadicResult` + `variadicRegion` — unless its
+count is fixed. It is fixed when the lead is a bare read of a named binding
+(the VM raises its no-match, as the interpreter's word dispatch does), when
+a NAMED fn value baked as a constant heads a trailing window
+(`raisesTrailNoMatch`: valueTrailNoMatch's uncalled_function), or when the
+window PROVABLY fits (`applyWindowFits`): a concrete lead whose own
+signature admits every argument by static type, or a produced closure whose
+claimed shape does. A gradual argument, a fn-typed carrier lead and a
+carrier under a value pattern prove nothing. The region's rules do the
+rest. It seats in place: the program residual, or a RET tail, where the
+VM's count check raises exactly as the interpreter's frame does. A
+top-level list literal over it alone collects it through the region mark
+(`[(5 lam/v)]` compiles to `[[5 fn lam(String)]]`), and a prefix beneath
+it seats below the mark (`1 (5 lam/v)`). Every other fixed layout
+declines: a map value, an interpolation, a reordered residual, a list with
+another element, a produced lead the mark cannot own, and every fixed
+layout in a fn frame (the mark plans are the program's). The park is not
+marked `regionMayBeFn`: the paren has already stepped its fn and parked
+it, and a later re-step sees the same top value. Pinned on both lanes,
+positive and negative, by `lang/go/nur246_test.go`. NUR238's in-frame
+`(5 f/v) size` row, which agreed only because the word took the top, is
+one of the declines now.
+
+**Not in scope: the `apply` word** (NUR247). Its lead is gradual by
+construction, so no window of it is provable, and marking it declined 14
+`bytecode-migrated.tsv` programs.
+
 ## NUR245 — both arms define the same fn and the call past the merge does not compile {#nur245}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** closing NUR244.
+**Status:** OPEN (proposed verdict: resolve by fix — arms that agree on the
+fn's shape FIXED 2026-09-26, the handoff log's entry of that date) ·
+**Recorded:** 2026-09-26 · **Surfaced by:** closing NUR244.
 
 **Rule:** valid code compiles.
 
@@ -9581,6 +9728,44 @@ fails the same way. The join of two fn values is a payload-less carrier
 arms' own defs are what the runtime binds, so the fix is a dispatch that
 resolves the name live — the speculative family's routing — for every arm
 that binds it, rather than the join's carrier.
+
+**The fix, for arms that agree on the fn's shape (2026-09-26).** Where the
+record pointed. An arm that may not run already made the family
+SPECULATIVE (NUR244), so every call past the merge routes with a live lead:
+the op resolves the name in the running registry and enters the unit
+compiled for that binding's own signature (`specFnUnit`, by declaration
+site). Three pieces were missing.
+
+- The join pushed the payload-less carrier. It pushes a MODEL now
+  (`specFamilyJoinModel`): the fn value the pass types the call against,
+  and whose unit the call site compiles. Under a decided condition that
+  is the running arm's fn (`InstallDecidedJoinedDefs`, which basic's
+  `installArmJoins` calls when the condition is decided); otherwise it is
+  the then arm's fn. The model can stand for either arm only when the two
+  agree on every shape the call's record fixes: arity, barrier, parameter
+  types, patterns and quoting, and declared returns (`sameSigShapes`).
+- A decided condition's running arm is an ordinary def, not a placed
+  install. Its transition is noted as a taken arm's is, so its bind twin
+  keeps the live registry current. Skipping the note, as the one-arm
+  family does, left the routed op an unbound name: `undefined_word` where
+  the interpreter answers.
+- An undecided condition places both arms' installs, but only the model's
+  unit was compiled by a call site. A family placed a SECOND time now has
+  each own signature's unit compiled where it is placed, under the
+  family's name, so a contract error on the other arm reads `f:` as the
+  interpreter's does.
+
+Pinned on both lanes by `lang/go/nur245_test.go` and in core by
+`TestSpecFamilyBothArmsJoin`: decided both ways, a def-bound and a folded
+condition, undecided both ways, a fn frame, typed returns, and the
+contract errors' labels.
+
+**Left open: arms that disagree on the fn's shape.**
+`def m {e: false} if (m 'e' get) [def f fn [[a:Integer] [Any] [7]]] [def f
+fn [[a:String] [Any] [8]]] end 3 f` is `signature_error` interpreted and
+still declines compiled: no one model can type a call both arms would
+answer differently (a claim of a different arity, a result of a different
+type), so the payload-less join and its decline stand.
 
 ## NUR244 — a branch-bound inline fn parser is used where the interpreter finds no binding {#nur244}
 

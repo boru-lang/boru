@@ -9,6 +9,66 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR246 and NUR239 closed; NUR245's same-shape half; NUR247–NUR249 recorded (2026-09-26)
+
+**NUR246 was a silent wrong answer, not only a loud one.** A paren-bounded
+fn-value apply whose lead the window does not fit PARKS on both lanes:
+- An anonymous or `/v`-delivered value that matches nothing is data.
+- The paren nets the window AND the value.
+- The recorder claimed one result.
+
+In a fn frame that surfaced as a return-count raise. At top level every
+fixed layout over the park was silently wrong: `[(5 lam/v)]` compiled
+`[5 [fn]]`, and a map value, an interpolation and a reordered residual
+(`1 (5 lam/v) 3` compiled `[5 1 fn 3]`) the same.
+
+`recordDynApply` now marks such an apply a variadic REGION unless its count
+is fixed. The count is fixed in three cases:
+- a bare read of a named binding, which raises its no-match;
+- a named fn value baked as a constant under a trailing window
+  (`raisesTrailNoMatch`);
+- a window that provably fits (`applyWindowFits`).
+
+The loop region's rules do the rest. It seats in place, or collects through
+the region mark when a top-level list literal takes it alone (`[(5 lam/v)]`
+compiles to the right answer now). Every other fixed layout declines,
+including all fixed layouts in a fn frame.
+
+The `apply` word stays unmarked. Its lead is gradual by construction, and
+marking it declined 14 Church-encoding and CPS programs of
+`bytecode-migrated.tsv`. It is recorded as **NUR247**.
+
+Covering the fit proof turned up **NUR248**: a type literal under a
+lambda's value pattern matches on the interpreter and parks on the VM
+(`(Integer ([0] => [1]))`, silent, pre-existing).
+
+**NUR245, arms that agree on the fn's shape.** The family was already
+speculative (NUR244), so its calls route live. Three pieces were added:
+- **The join's model.** The join pushes a model instead of the
+  payload-less carrier: the running arm's fn under a decided condition,
+  the then arm's otherwise, when the shapes agree.
+- **The decided running arm's twin.** That arm's def is noted as a taken
+  arm's, so its bind twin keeps the live registry current. Without the
+  note the routed op met an unbound name.
+- **The undecided other arm's unit.** It is compiled where it is placed,
+  under the family's name.
+
+Arms that disagree on the shape keep the standing decline.
+
+**NUR239's binding half.** The label came from the island's INTERPRETER
+return check, not a VM RET. The island stepped the fn value, which
+dispatches through its `def`'s baked handler under the def's name. The
+interpreter's `(k 5)` dispatches the word `k`. The VM's 0-arg island arm
+now does the same, over a frame binding of the head's name
+(`InstallFrameBinding` / `UninstallFrameBinding`). Its count on the way out
+is **NUR249**, recorded OPEN: a named fn-typed carrier that turns out 0-arg
+under a window leaves n+1 values, silently wrong in a no-contract fn. The
+static mark cannot separate it from the comparator convention.
+
+**The compile-defect ledger** rises 319 → 330 with the new witnesses, named
+beside the ceiling: NUR246's eleven fixed layouts and NUR245's
+differing-shape pair, less the one both-arms program that compiles now.
+
 ## The merged ADR-008 gate on d493ef4; NUR246 recorded (2026-09-26)
 
 The merged gate measured 80248/80250, down from 148 uncovered statements

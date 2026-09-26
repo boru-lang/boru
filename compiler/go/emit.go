@@ -6392,6 +6392,20 @@ func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, out
 	if es.specFnNames == nil {
 		es.specFnNames = map[string]bool{}
 	}
+	// A family placed AGAIN — the other arm of a branch both of whose arms
+	// define it (NUR245) — may be the binding at run time while the pass
+	// types its calls against the first arm's fn, so no call site compiles
+	// its unit: compile each own signature's now, where the routed op
+	// locates it by its declaration site (specFnUnit). The first placement
+	// keeps its call sites' units.
+	if again := es.specFnNames[name]; again && !replace {
+		if fd, ok := fn.Data.(core.FnDefInfo); ok {
+			fd.Name = name // the unit's RET labels a contract error with the binding's name
+			for i := range fd.Signatures {
+				es.compileSpecOuterUnit(fd, i)
+			}
+		}
+	}
 	es.specFnNames[name] = true
 	es.pendingSpecFn = &pendingSpecFnDef{name: name, replace: replace}
 	if replace {
@@ -7652,6 +7666,58 @@ func applyWindowArity(es *EmitState, fn core.Value) (int, bool) {
 	return own[0].TotalArgs(), true
 }
 
+// applyWindowFits reports whether a recorded fn-value apply's window
+// PROVABLY fits its lead — the one statement that fixes the apply's count at
+// one result (NUR246). args are the event's window in stack order (the top
+// argument last), which the op binds top-down: the top argument to the
+// first param. The proof is a concrete lead whose own signature admits
+// every argument, or a produced closure whose claimed shape (its unit's
+// declared param types) does, argument by static type. A gradual argument,
+// a fn-typed carrier lead, a value pattern over a carrier and an unknown
+// param type prove nothing: the match is then a runtime question.
+func (es *EmitState) applyWindowFits(fn core.Value, args []core.Value) bool {
+	sigArgs := make([]core.Value, len(args))
+	for i := range args {
+		a := args[len(args)-1-i]
+		if a.Dynamic {
+			return false
+		}
+		sigArgs[i] = a
+	}
+	if sig := core.MatchFnSig(fn, sigArgs); sig != nil {
+		for i, p := range sig.Params {
+			if p.Pattern != nil && !p.Pattern.Carrier && !core.IsConcrete(sigArgs[i]) {
+				return false
+			}
+		}
+		return true
+	}
+	if _, isFn := fn.Data.(core.FnDefInfo); isFn {
+		return false // own signatures, none of which admits the window
+	}
+	s, ok := es.producerReturnedClosureShape(fn.ID)
+	if !ok || len(s.Params) != len(sigArgs) {
+		return false
+	}
+	for i, t := range s.Params {
+		if t == nil || !sigArgs[i].Parent.ConformsTo(t) {
+			return false
+		}
+	}
+	return true
+}
+
+// raisesTrailNoMatch reports whether a lead the window does not fit RAISES
+// rather than parks: a named, non-macro fn value with own signatures, baked
+// as a constant (so the VM holds the very FnDefInfo, not a closure) and
+// applied as a trailing window — the interpreter raises uncalled_function
+// over it, and the VM's valueTrailNoMatch does too.
+func raisesTrailNoMatch(fn core.Value, fnOp EmitOperand, head DynApplyHead) bool {
+	fd, ok := fn.Data.(core.FnDefInfo)
+	return ok && fnOp.kind == opConst && !head.Leading && !head.WrittenFirst &&
+		!fd.Anonymous && !fd.Macro && len(fd.OwnSigs()) > 0 && !core.IsDelegationFnDef(fd)
+}
+
 func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos core.SrcPos) (int, bool) {
 	return es.recordDynApply(args, fn, out, pos, false)
 }
@@ -7849,6 +7915,28 @@ func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos c
 	es.SiteCounts[SiteMono]++
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordDynApply, ops: ops, nout: 1, pos: pos, dynApply: len(args), dynApplyUnquote: unquote, dynApplyKeepQuote: keepQuote, dynApplyName: headName, dynApplyOne: !core.IsFnValueResidual(fn)}})
 	es.setProduced(out, seq)
+	// A lead the window may not fit PARKS at run time (NUR246): an
+	// anonymous or value-delivered fn that matches nothing is data on the
+	// interpreter (ADR-016's gate), so the apply nets the window AND the
+	// value — n+1 where this event claims one — and a list, a map, an
+	// interpolation or a reordered residual seated the one. A bare read of
+	// a named binding (headName.Name) raises instead, as does a NAMED fn
+	// value baked as a constant under a trailing window (valueTrailNoMatch's
+	// uncalled_function), so their count is fixed. Unless the window
+	// provably fits, the result takes the variadic REGION's representation,
+	// whose rules decline every fixed layout and seat it only in place (the
+	// program residual, a RET tail — where the count check raises exactly
+	// as the interpreter's frame does). The `apply` WORD's event is not
+	// marked: its lead is gradual by construction (a Church encoding's
+	// `(t/v p/v apply)`, a CPS `k/v apply`), so no window of it is ever
+	// provable, and marking it would decline the whole family — NUR247
+	// records its park.
+	if headName.Name == "" && !unquote && !es.applyWindowFits(fn, args) && !raisesTrailNoMatch(fn, fnOp, headName) {
+		f := es.eventInfo[seq]
+		f.variadicResult = true
+		f.variadicRegion = true
+		es.eventInfo[seq] = f
+	}
 	return len(args), true
 }
 

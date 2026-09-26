@@ -1772,26 +1772,30 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 	// window's beneath it. That is the island's own semantics over the
 	// window in its WRITTEN order, so hand it the window that way (the args
 	// ride top-down, the last-written first; head.Leading says which side of
-	// the lead they were written on), the lead marked applied so the
-	// island's re-step dispatches an anonymous 0-arg value as the word
-	// dispatch did. An event-produced or `/v`-delivered lead has no name to
-	// dispatch under, and keeps the no-match below.
+	// the lead they were written on), with the lead as the WORD it was read
+	// under, over a frame binding of it — a param's own install. The word
+	// dispatch fires an anonymous 0-arg value as the interpreter's did, and
+	// names the fn's frame as that dispatch names it: `(k 5)` over a param
+	// k holding z raises `k: return value 1: …`, where the value itself
+	// dispatches under the name its def baked (NUR239). An event-produced or
+	// `/v`-delivered lead has no name to dispatch under, and keeps the
+	// no-match below.
 	if fd, ok := fnVal.Data.(core.FnDefInfo); ok && n > 0 && head.Name != "" && core.FnValueOnlyZeroArgSigs(fd) {
-		fd.Applied = true
-		fnVal.Data = fd
+		core.InstallFrameBinding(reg, head.Name, fnVal)
 		island := make([]core.Value, 0, n+1)
 		if !head.Leading {
 			for i := n - 1; i >= 0; i-- {
 				island = append(island, args[i])
 			}
 		}
-		island = append(island, fnVal)
+		island = append(island, core.NewWord(head.Name))
 		if head.Leading {
 			for i := n - 1; i >= 0; i-- {
 				island = append(island, args[i])
 			}
 		}
 		results, err := vc.islandRun(reg, island)
+		core.UninstallFrameBinding(reg, head.Name)
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, reg)
 		}

@@ -54,3 +54,60 @@ func specFamilyAtFnBaseline(r *Registry, name string) bool {
 	base := r.TopFnBaseline()
 	return base != nil && r.Defs.Depth(name) <= base[name]
 }
+
+// specFamilyJoinModel is the binding a join pushes for a speculative fn
+// family BOTH arms define (NUR245). The family's dispatches route with a
+// live lead — the running registry's binding picks the body, and the op
+// enters the unit compiled for that binding's own signature — so the
+// model is only what the pass types the call against and compiles the
+// call site's unit from: the running arm's fn when the condition is
+// decided (elseRuns names it), the then arm's otherwise. It stands for
+// either arm only when the two agree on every shape the call's record
+// fixes — arity, barrier, parameter types, patterns and quoting, declared
+// returns — so a pair that differs keeps the payload-less join, and its
+// call's standing failure.
+func specFamilyJoinModel(then, else_ Value, elseRuns bool) (Value, bool) {
+	a, aFn := then.Data.(FnDefInfo)
+	b, bFn := else_.Data.(FnDefInfo)
+	if !aFn || !bFn || !sameSigShapes(a.OwnSigs(), b.OwnSigs()) {
+		return Value{}, false
+	}
+	if elseRuns {
+		return else_, true
+	}
+	return then, true
+}
+
+// sameSigShapes reports whether two own-signature lists agree, position by
+// position, on every shape sameSigShape compares.
+func sameSigShapes(a, b []Signature) bool {
+	same := len(a) == len(b)
+	for i := 0; same && i < len(a); i++ {
+		same = sameSigShape(&a[i], &b[i])
+	}
+	return same
+}
+
+// sameSigShape reports whether two signatures claim the same call: the
+// same arity and barrier, per position the same declared type, pattern and
+// quoting, and the same declared returns with no return pattern on either.
+func sameSigShape(a, b *Signature) bool {
+	same := a.TotalArgs() == b.TotalArgs() && a.BarrierPos == b.BarrierPos &&
+		sameTypes(a.Returns, b.Returns) && len(a.ReturnPatterns) == 0 && len(b.ReturnPatterns) == 0
+	for i := 0; same && i < a.TotalArgs(); i++ {
+		pa, hasA := SigPattern(a, i)
+		pb, hasB := SigPattern(b, i)
+		same = SigArgType(a, i).Equal(SigArgType(b, i)) && hasA == hasB && (!hasA || ExactEqual(pa, pb)) &&
+			a.QuoteArgs[i] == b.QuoteArgs[i]
+	}
+	return same
+}
+
+// sameTypes reports whether two type lists are equal position by position.
+func sameTypes(a, b []*Type) bool {
+	same := len(a) == len(b)
+	for i := 0; same && i < len(a); i++ {
+		same = a[i].Equal(b[i])
+	}
+	return same
+}

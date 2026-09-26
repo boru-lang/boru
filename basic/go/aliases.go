@@ -485,6 +485,7 @@ var (
 	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
 	InstallTakenArmDefs      = core.InstallTakenArmDefs
+	InstallDecidedJoinedDefs = core.InstallDecidedJoinedDefs
 	New                      = core.New
 	RunPooled                = core.RunPooled
 	RunPooledTop             = core.RunPooledTop

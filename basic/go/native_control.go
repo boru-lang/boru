@@ -1079,6 +1079,9 @@ func installArmJoins(r *Registry, cond Value, thenDefs, elseDefs map[string]Valu
 	if withhold {
 		defer r.Check.Recorder().Suspend()()
 	}
+	if decided {
+		return InstallDecidedJoinedDefs(r, thenDefs, elseDefs, !taken)
+	}
 	return InstallJoinedDefs(r, thenDefs, elseDefs)
 }
 
