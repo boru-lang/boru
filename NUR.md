@@ -167,6 +167,7 @@ keep the two in sync in the same commit.
 | [NUR243](#nur243) | FIXED 2026-09-26 (the three programs compile — the handoff log's entry of that date): a constant branch's taken arm with no value is a 0-value statement, a loop rebind of a branch-bound name is carried, and a parser dispatch declines over its parser operand only. The original text: three valid programs refused: a loop carrying a branch-bound name (`if c [def x 1] [] for 3 [def x 5] x`, "body result of unknown provenance"), a constant-true branch whose taken arm leaves no value (`def x 0 if [true] [def x 1] [2] end x`, "branch produces no value" — its guard carried a `//covergate:allow` whose proof was false, removed), and NUR109's bound-slot arm declining a parser dispatch over a branch-bound SOURCE operand | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR244](#nur244) | FIXED 2026-09-26 (an arm that may not run is speculative — the handoff log's entry of that date): a fn def in a branch arm the model knows is SKIPPED (a literal, def-bound or folded false condition — or true, for the else arm) or in an else-less if's arm was the join's own value, and a read past the merge ran it: `if false [def f fn [[a:Integer] [Any] [7]]] [] end 3 f` answered `[7]` compiled for undefined_word, and `import "boru:parselang" def c false if c [def p (fn [[source:String opts:Map] [Any] [7]])] [] end parse p 'x'` `[7]` for `parse_unknown_lang`. Silent wrong answers | closing NUR243, 2026-09-26 |
 | [NUR245](#nur245) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): both arms of a branch define the same fn and a call past the merge fails to compile: `if false [def f fn [[a:Integer] [Any] [7]]] [def f fn [[a:Integer] [Any] [8]]] end 3 f` is `[8]` interpreted and `compile_failed: unconsumed fn-value carrier in residual (closure render)` compiled, for a decided and an undecided condition alike. A compile defect | closing NUR244, 2026-09-26 |
+| [NUR246](#nur246) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a trailing window whose `/v`-delivered closure matches nothing parks (the window stays as written, n+1 values) where the compiled call event claims its one result, so a consumer seats the wrong count: `def mk fn [[k:Integer][Function][([s:String] => [s k])]] end def h fn [[f:Function] [List] [[(5 f/v)]]] end h (mk 1)` answers `[[5 fn f(String)]]` interpreted and raises `h: expected 1 return value(s), got 2` compiled (the list took the fn alone). Compiled fails where the interpreter answers | closing the merged ADR-008 gate on d493ef4, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -9528,6 +9529,36 @@ a parser is a fn value the join never carries. Pinned: lang
 `TestNUR243ValidProgramsCompile` (nine rows, a zero-iteration loop's
 undefined_word among them), `TestFnDispatchBranchBoundSourceAgrees`. The constant
 branch's decline site retired: both compile-failure censuses 91 → 90.
+
+## NUR246 — a parked trailing window leaves more values than its call claims {#nur246}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** covering `parkedWindow`'s trailing arm for the
+merged ADR-008 gate on d493ef4.
+
+**Rule:** one call, one result count, on both lanes — or a count the
+consumer is told is variable.
+
+**Divergence** (pre-existing; the closure park predates the run):
+
+```
+def mk fn [[k:Integer][Function][([s:String] => [s k])]] end
+def h fn [[f:Function] [List] [[(5 f/v)]]] end  h (mk 1)
+  interp:   [[5 fn f(String)]]
+  compiled: type_error: h: expected 1 return value(s), got 2 — [5 [fn f(String)]]
+def h fn [[f:Function] [Any] [[(5 f/v)] size]] end  h (mk 1)
+  interp:   [2]
+  compiled: type_error: h: expected 1 return value(s), got 2 — [5 1]
+```
+
+`CALL_DYN_TRAIL_TOP` parks a `/v`-delivered closure the window does not
+fit: it returns the stack with the window as written (`parkedWindow`), the
+arguments AND the value. The recorder modelled the apply's single result,
+so the list literal assembles one value and leaves the argument behind.
+`(5 f/v) size` agrees only because the next word takes the top alone. The
+fix is the do-catch latch's for this op: a trailing apply whose value may
+park has a runtime-variable count (1 applied, n+1 parked), so the event is
+marked variadic and a fixed-count consumer declines.
 
 ## NUR245 — both arms define the same fn and the call past the merge does not compile {#nur245}
 

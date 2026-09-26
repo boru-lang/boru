@@ -13,6 +13,11 @@ func TestNUR238TrailingValueNoMatch(t *testing.T) {
 	for _, r := range []struct{ src, want string }{
 		{`(5 ([s:String] => [s]))`, "[5 fn (String)]"},
 		{`def lam ([s:String] => [s]) end (5 lam/v)`, "[5 fn lam(String)]"},
+		// A CAPTURING lambda is a compiled closure: the same park — at the top
+		// level through the quote-keeping trail, in a fn through the closure
+		// arm, where the window stays as written for the next word.
+		{`def mk fn [[k:Integer][Function][([s:String] => [s k])]] end def lam (mk 1) end (5 lam/v)`, "[5 fn lam(String)]"},
+		{`def mk fn [[k:Integer][Function][([s:String] => [s k])]] end def h fn [[f:Function] [Any] [(5 f/v) size]] end h (mk 1)`, "ERROR:expected 1 return value(s), got 2"},
 		{g + `(5 g/v)`, "ERROR:uncalled_function"},
 		{g + `def h fn [[f:Function] [Any] [(5 f/v)]] end h g/v`, "ERROR:uncalled_function"},
 		{g + `(g/v 5)`, "ERROR:uncalled_function"},

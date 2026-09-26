@@ -9,6 +9,23 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## The merged ADR-008 gate on d493ef4; NUR246 recorded (2026-09-26)
+
+The merged gate measured 80248/80250, down from 148 uncovered statements
+at the start of the coverage work. Three items remained, all closed now:
+- **`deoptStatementStart`'s final decline.** NUR236's case now takes the
+  direct spliced consumer that used to reach it. A deopt unit test reaches
+  it with a top-level read whose consumer stands inside an earlier paren.
+- **`parkedWindow`'s trailing arm.** NUR238 restricted the FnDefInfo
+  caller to leading heads, so only the closure arm reaches it: `(5 f/v)
+  size` over a param-held capturing lambda, pinned in NUR238's test.
+- **A stale pragma.** `If2ReturnsFn`'s literal-false arm is reached by
+  NUR244's `if [false] …` row, so its false proof is gone.
+
+**NUR246**, found while covering that arm (pre-existing): a parked trailing
+window leaves n+1 values where the call event claims one, so a list literal
+over it assembles the wrong count.
+
 ## NUR244 closed; NUR245 recorded; CI on 3306b85 (2026-09-26)
 
 **NUR244.** The parser case was one instance of a wider bug. A fn def in

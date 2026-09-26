@@ -1094,7 +1094,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 			return out
 		}
 	}
-	if lit, ok := LiteralCondValue(args[0]); ok && !lit { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
+	if lit, ok := LiteralCondValue(args[0]); ok && !lit {
 		EmitUnreachableBranch(r, false, "then")
 	}
 	condFrag, condStk := analyseCondFragment(r, args[0])
