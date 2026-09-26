@@ -925,7 +925,7 @@ func recoverySpec(p noMatchProber, fn *core.FnDefInfo, sw []core.Value) ([]core.
 // the home, but its signatures are copies, so the guard still refuses it and
 // it keeps "unmatched dispatch recovered".
 func recoveryPolyOwner(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo) *core.Registry {
-	if fn != nil && fn.Registry != nil && fn.Registry != e.Registry && fn.Registry.IsBuiltinWord(w.Name) {
+	if core.FnHomeForeign(e.Registry, fn) && fn.Registry.IsBuiltinWord(w.Name) {
 		return fn.Registry
 	}
 	return e.Registry
