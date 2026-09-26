@@ -4120,20 +4120,18 @@ func (es *EmitState) markTailCalls(frag *EmitFragment, out *EmitOperand, hasOut 
 
 func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 	br := ev.br
-	// Seed the branch-carried def slots with their PRE-branch bindings —
-	// once, before the condition, so an arm that does not bind leaves the
-	// incoming binding in the cell (branch_carried.go). Every init is a
-	// re-pushable operand: an event-sourced one was force-promoted to a
-	// frame local by planValueDefLocals (collectBranchCarriedSources); one
-	// that still reads as an event declines here.
+	// Every carried-slot seed init is a re-pushable operand: an event-sourced
+	// one was force-promoted to a frame local by planValueDefLocals
+	// (collectBranchCarriedSources); one that still reads as an event
+	// declines here. A branch with no condition fragment seeds its slots now;
+	// one with a fragment seeds right after lowering it (seedCarried's doc).
 	for _, c := range br.carried {
 		if c.init.kind == opEvent {
 			return "if: carried def seed is not a re-pushable value (Stage 2)"
 		}
-		lw.pushOperand(c.init, br.pos)
-		lw.note()
-		lw.emit(OpStoreLocal, c.slot, br.pos)
-		lw.vm = lw.vm[:len(lw.vm)-1]
+	}
+	if br.condFrag == nil {
+		lw.seedCarried(br)
 	}
 	if br.constCond != nil {
 		// Statically-taken branch: inline the taken fragment (always a body in
@@ -4250,6 +4248,7 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 		if reason := lw.lowerFragment(br.condFrag, &br.condOut, false, br.pos); reason != "" {
 			return reason
 		}
+		lw.seedCarried(br)
 		// The Boolean is on the runtime stack but not in the parent
 		// scope's sim — JMP_IF_FALSE consumes it net-zero.
 		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
@@ -4269,6 +4268,31 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
 		lw.vm = lw.vm[:len(lw.vm)-1]
 		return lw.lowerArms(ev, jf)
+	}
+}
+
+// seedCarried seeds the branch-carried def slots with their PRE-branch
+// bindings — once per branch execution, so an arm that does not bind leaves
+// the incoming binding in the cell (branch_carried.go). lowerBranch has
+// already declined a seed that is not re-pushable, and each seed nets zero on
+// the stack (push, store), so it may run above a condition's Boolean or an
+// eager arm value.
+//
+// The seed runs AFTER a list-form condition fragment, never before it: the
+// condition runs unconditionally ahead of the decision, and a binding it
+// makes is kept (NUR212) — so the pre binding the seed copies may be one the
+// condition itself installed, whose home (a frame local the condition
+// stores) holds nothing until the condition has run. Seeded first, `def a 3
+// end if [def y (a add 4) (y gt 9)] [def y 0] [] end y` carried the zero
+// slot past the untaken arm. The condition cannot observe the slot the seed
+// writes: a read resolving to the slot is one whose binding already lives
+// there, which is exactly the case no seed is emitted for.
+func (lw *lowerer) seedCarried(br *emitBranch) {
+	for _, c := range br.carried {
+		lw.pushOperand(c.init, br.pos)
+		lw.note()
+		lw.emit(OpStoreLocal, c.slot, br.pos)
+		lw.vm = lw.vm[:len(lw.vm)-1]
 	}
 }
 
@@ -4445,6 +4469,7 @@ func (lw *lowerer) lowerBothComputedMatCond(ev *EmitEvent) string {
 		if reason := lw.lowerFragment(br.condFrag, &br.condOut, false, br.pos); reason != "" { //covergate:allow the condFrag re-lowers after passing the recording pass's probe (RecordBranch), so a failure needs a bytecode-level fault; the single-computed twin (lowerComputedCond) carries the identical arm (§compiler)
 			return reason
 		}
+		lw.seedCarried(br)
 		jf = lw.emit(OpJmpIfFalse, 0, br.pos)
 	} else {
 		lw.pushOperand(br.cond, br.pos)
@@ -4483,6 +4508,7 @@ func (lw *lowerer) lowerComputedCond(br *emitBranch, condOnTop bool) (int, strin
 		if reason := lw.lowerFragment(br.condFrag, &br.condOut, false, br.pos); reason != "" {
 			return 0, reason
 		}
+		lw.seedCarried(br)
 		return lw.emit(OpJmpIfFalse, 0, br.pos), ""
 	case br.cond.kind == opEvent:
 		if !condOnTop {

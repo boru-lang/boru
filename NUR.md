@@ -131,7 +131,10 @@ keep the two in sync in the same commit.
 | [NUR219](#nur219) | A `/q`-capturing fn value landed before a token the compiled lane reads as a VALUE — `def h fn [[x:Atom/q] [Any] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f true` — is the interpreter's `[true]` (the `/q` slot captures the word `true` as an atom) and the compiled lane's `uncalled_function: call to 'h' matched no signature` (the check pass folds `true` to a Boolean const, so the landing sees a candidate and no function word, and raises). A sibling: when the landing's walk does raise `uncalled_function` for a named fn value (`[[x:Atom/q y:Integer]]` under `z`), it points at the landing where the interpreter points at the fn value's own `h/v` token. Present on `main` at 45c3bdb, found 2026-09-26 probing NUR190's neighbours; not fixed. |
 | [NUR220](#nur220) | A STORED fn value's stamped unit reads a Function-typed param BARE as data where the interpreter dispatches it: `def g fn [[f:Function] [Any] [f]] end def mk fn [[] [Map] [{g: g/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end def gg m.g gg z/v` is `[0]` interpreted and `[fn f]` compiled, SILENT (the direct `g z` is `[0]` on both lanes). It is why NUR190's Function-typed claim keeps its defer: `m.g z` would enter the same unit. Present on `main` at 45c3bdb, found 2026-09-26; not fixed. |
 | [NUR221](#nur221) | A name DEF-BOUND to a `/q`-capturing member fn value, then read as a word with nothing after it — `def h fn [[x:Atom/q] [Any] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end def r m.f z r` — is the interpreter's `signature_error: cannot call `r`` and the compiled lane's `[0 fn h(Atom)]`, SILENT: the read of `r` leaves the fn as data where the interpreter dispatches it and raises. Present on `main` at 45c3bdb, found 2026-09-26 probing NUR190's neighbours; not fixed. |
-| [NUR212](#nur212) | FIXED 2026-09-26 (declined, PR #512's review follow-up), found by Codex on PR #512 and present on `main` at b4fad6c: a code-body `if` CONDITION that binds a name — `def x 1 end if [def x 5 true] [2] [3] end x` — answered [2 1] compiled for the interpreter's [2 5]; the condition fragment rolled its binding back, where the interpreter runs the condition inline and keeps it. if2, if3, the clause-list if and a `case` code-body scrutinee all declined now | PR #512's review (2026-09-26) |
+| [NUR224](#nur224) | A fn's RETURN-COUNT error carries a different caret on the two lanes: `def f fn [[][Integer][1 2]] end f` raises `type_error: f: expected 1 return value(s), got 2 — [1 2]` on both, at the CALL (1:33) interpreted and at the body's first token (1:23) compiled. Position-only; the message, code and secondary note agree. Recorded 2026-09-26 (NUR212's follow-up, measuring its fn-body rows), present on `main` at 45c3bdb | NUR212's follow-up (2026-09-26) |
+| [NUR223](#nur223) | A `while` CONDITION that binds a name the BODY reads is read stale on the compiled lane: `def t 0 end while [def t (t add 1) (t lt 3)] [t] end t` is `[1 2 3]` interpreted and `[0 0 3]` compiled, SILENT — the loop's condition and body are analysed as two separate loop bodies, body first, so the body's read resolves the pre-loop binding. Recorded 2026-09-26 (NUR212's follow-up), present on `main` at 45c3bdb; the `if` condition's keep does not touch `while` | NUR212's follow-up (2026-09-26) |
+| [NUR222](#nur222) | A VALUE-LESS `do` inside a branch fragment — `if [do [1 drop] true] [2] [3]`, `if [true] [do [1 drop] 2] [3]`, the same in a fn body or a loop — compiles and dies at run time (`internal_error: DROP stack underflow` / `STORE_LOCAL stack underflow`) where the interpreter answers `[2]`: the check pass models a non-empty `do` body with an empty residual as the Error a raise would leave, and inside a fragment the lowering drops or stores that value, which the compiled `do` never pushes. Top level and a fn body's straight line are unaffected. Recorded 2026-09-26 (NUR212's follow-up), present on `main` at 45c3bdb; a binding condition holding one declines (core `CheckState.ValuelessDoBodies`) | NUR212's follow-up (2026-09-26) |
+| [NUR212](#nur212) | FIXED 2026-09-26 — first by a loud decline (PR #512's review follow-up), then COMPILED (the follow-up of the same date): found by Codex on PR #512 and present on `main` at b4fad6c: a code-body `if` CONDITION that binds a name — `def x 1 end if [def x 5 true] [2] [3] end x` — answered [2 1] compiled for the interpreter's [2 5]; the condition fragment rolled its binding back, where the interpreter runs the condition inline and keeps it. The condition now runs as a KEPT body (core `RunCarrierCondBodyKeepDefs`): its binding stands for the arms and after the `if`, its bind twin sits inside the condition fragment, the join's twins move after the branch, carried slots seed after the condition, and an arm's nested condition def stores into the arm's carried cell. if2, if3, the clause-list if and `case`'s desugared code-body scrutinee compile with parity (lang `TestConditionBindingCompilesWithParity`); a binding condition over a residual the lowering does not share (NUR222's value-less `do`, extra values) and a binding scrutinee on a non-desugared `case` still decline | PR #512's review (2026-09-26) |
 | [NUR211](#nur211) | A STACK-FORM count over a computed `for` body — `def mk fn [[][List][quote [i]]] end 3 for (mk)`, `(1 add 2) for (mk)` — is the interpreter's `signature_error` (`cannot call `for``: the forward body fills the count slot) and the compiled lane's `internal_error: DISPATCH_REMATCH at for matched at run time where the static model failed`. The check pass recovers the unmatched dispatch to a rematch the runtime cannot execute; the error CODE diverges though both lanes fail. Present on main at b4fad6c with `for`'s declaration as it stood (measured with the 2026-09-26 CompileDynBody reverted) | the clause-list `if` / hosted splice work (2026-09-26), probing the hosted splice's positions |
 | [NUR210](#nur210) | A COMPUTED `do` body (the dyn-body backstop) diverges on two shapes: a value BENEATH the `do` is seated after the body's values — `def mk fn [[][List][quote [1 2]]] end 9 do (mk)` is `[9 1 2]` interpreted and `[1 9 2]` compiled, SILENT — and a body that rebinds a program binding read after it — `def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x` — is `5` interpreted and `internal_error: CALL_DYNAMIC underflow` compiled (its `undef x` twin: `undefined_word` against the same internal error). Present on main at b4fad6c; the four shapes the review of #508 measured against the withdrawn per-iteration `for` host, in `do`'s form | the clause-list `if` / hosted splice work (2026-09-26), measuring the `do` analogues of the hosted splice's declines |
 | [NUR209](#nur209) | FIXED 2026-09-26 (the `behave` × container and `fnsig` × module-export cells — the handoff log's entry of that date), found the same day: a CompileFnHandlerStrict store slot (behave, the fn-util combinators, service `add`) validates an interpreter FnDefInfo, and a factory's CAPTURING closure reached it as a compiled ClosurePayload — `behave canon/q (mk 'K')` raised `behave canon: fn arg has invalid payload` and `FnUtil.compose (mk 1) (mk 2)` a type_error where the interpreter answered; and behave's stored body, run later against the registry, resolved its names without the dynamic-scope mirror (`def g fn [[][String] [def k 'K' canon (make Temp 5)]] def k 'Z'  behave canon/q (fn [[t:Temp][String][k]])  g` answered 'Z' for 'K'). The strict slot admits only an operand proven to arrive as a fn value, and behave arms DynEnv when its stored body names something | the `behave` × container cell (2026-09-26) |
@@ -9941,8 +9944,9 @@ signature_error.
 
 ## NUR212 — a binding made by an `if` condition, rolled back on the compiled lane {#nur212}
 
-**Status:** FIXED 2026-09-26 by a loud decline (PR #512's review
-follow-up). Found by Codex reviewing the clause-list `if`; present on
+**Status:** FIXED 2026-09-26 — first by a loud decline (PR #512's review
+follow-up), then by compiling the binding (the follow-up of the same
+date, below). Found by Codex reviewing the clause-list `if`; present on
 `main` at b4fad6c for the two- and three-operand forms, which the
 clause-list form inherited.
 
@@ -9972,7 +9976,7 @@ site is minted. The same helper serves if2, if3, the clause-list `if` and
 `case`'s code-body scrutinee, and all four decline. An `undef` in a
 condition was already modelled, because a condition fragment's undefs are
 real on both engines. Pinned by lang `TestClauseListIfDeclinesLoudly`.
-Lowering the binding as a real transition, so these programs compile, is
+Lowering the binding as a real transition, so these programs compile, was
 the open follow-up.
 
 ## NUR219 — a `/q`-capturing fn value landed before a token the compiled lane folds to a value {#nur219}
@@ -10036,3 +10040,106 @@ Observed, not yet traced: the interpreter's read of `r` with nothing after
 it dispatches the fn and raises, where the compiled lane leaves the fn as
 data under z's result (the `/q` claim of 2026-09-26 is not involved — the
 program has no landing claim, and 45c3bdb answers the same). Not fixed.
+**The follow-up (2026-09-26): the binding compiles.** The condition runs
+unconditionally, exactly once, before the branch decision, so its
+bindings are real on both engines, and it is now modelled as the kept
+binding it is:
+
+- **Check pass.** `analyseCondFragment` runs the condition through core
+  `RunCarrierCondBodyKeepDefs` — `do`'s keep-defs scoping without the
+  keep-defs guard: its defs stand for the arms and after the `if`, and,
+  no longer truncated, the run raises neither `RolledBackBodyDepth` nor
+  `CondBodyDepth`, so each install is ledgered like a straight-line one.
+  Its guard is the new `EmitRecorder.CondBodyGuard`, which captures the
+  condition fragment and marks it UNCONDITIONAL.
+- **Twins.** A def's bind twin is placed INSIDE the condition fragment,
+  at its own site. The branch join's twins, noted after the arms and so
+  appended ahead of the branch event, are moved after it when the
+  condition places twins (compiler `takeJoinTwinsAfterCond`) — otherwise
+  the stream replays the join before the condition, out of the pass's
+  order. A `do` inside the condition adopts its body's twins there: the
+  adoption's root fence admits a kept condition fragment
+  (`rootLikeStream`).
+- **Carried slots.** A branch-carried slot's seed now runs AFTER a
+  list-form condition (lowering `seedCarried`): its pre binding may be
+  one the condition installed, whose home holds nothing until the
+  condition ran — `def a 3 end if [def y (a add 4) (y gt 9)] [def y 0] []
+  end y` answered `[]` for `[7]` with the seed first. And an arm's
+  NESTED condition def is the arm's own def of the name: `fragCanCarry`
+  and `markArmBinds` descend into a nested branch's condition fragment,
+  so `if c [def x 1 if [def x 2 true] [5] [6]] [7] end x` stores 2 into
+  the cell (it read 1 before the descent).
+- **What still declines.** A binding condition whose residual is not its
+  one decision value, or that holds a value-less `do` (NUR222 — the check
+  model's Error for an empty `do` residual is not a value the compiled
+  fragment has; counted by core `CheckState.ValuelessDoBodies`); and a
+  `case` whose binding scrutinee is not on the desugared single-clause
+  shape (its runtime is CaseHandler's own sub-engine, whose binding the
+  compiled reads would miss) — both through the branch record's
+  uncaptured-arm site, so no compile-failure site is minted.
+
+if2, if3, the clause-list `if` and `case`'s desugared code-body
+scrutinee compile with parity — a def read after the `if`, in the taken
+arm and in the else arm, a redefinition and a new name, a fn def and a
+type in the condition, inside a fn body, inside a loop body, nested ifs
+— pinned by lang `TestConditionBindingCompilesWithParity` (which also
+asserts each program's twins replay in the pass's order); the declines
+by `TestClauseListIfDeclinesLoudly`. Three pre-existing divergences met
+on the way are NUR222–NUR224.
+
+## NUR222 — a value-less `do` inside a branch fragment dies at run time {#nur222}
+
+**Status:** Pending (recorded 2026-09-26, NUR212's follow-up); present on
+`main` at 45c3bdb.
+
+```
+if [do [1 drop] true] [2] [3]
+  interpreted   [2]
+  compiled      internal_error: DROP stack underflow (pc=2)
+
+if [true] [do [1 drop] 2] [3]
+  interpreted   [2]
+  compiled      internal_error: STORE_LOCAL stack underflow (pc=2)
+```
+
+The same in a fn body's condition and in a loop body. `do`'s check-pass
+half (`doListReturnsFn`) models a NON-EMPTY body with an EMPTY residual
+as the Error a raise would leave — the only way the pass sees a raise —
+and a body that simply nets nothing (`[1 drop]`, `[def x 5]`) takes the
+same path. The closure unit nets nothing at run time; at the top level
+and on a fn body's straight line the phantom is never lowered, but inside
+a branch fragment the lowering drops or stores it. A binding `if`
+condition holding one declines (NUR212's follow-up) rather than widen
+this to `if [do [def x 5] true] …`.
+
+## NUR223 — a `while` condition's binding read stale by the body {#nur223}
+
+**Status:** Pending (recorded 2026-09-26, NUR212's follow-up); present on
+`main` at 45c3bdb.
+
+```
+def t 0 end while [def t (t add 1) (t lt 3)] [t] end t
+  interpreted   [1 2 3]
+  compiled      [0 0 3]      (silent)
+```
+
+`while`'s check half analyses the body and the condition as two separate
+loop bodies, BODY FIRST (`whileloop.go`), so the body's read of a name
+the condition rebinds resolves the pre-loop binding. The `if`
+condition's keep (NUR212) does not reach `while`. A body that does not
+read the name (`[5]`) agrees.
+
+## NUR224 — a fn's return-count error points at a different token compiled {#nur224}
+
+**Status:** Pending (recorded 2026-09-26, NUR212's follow-up); present on
+`main` at 45c3bdb.
+
+```
+def f fn [[][Integer][1 2]] end f
+  interpreted   type_error: f: expected 1 return value(s), got 2 — [1 2]   at 1:33 (the call)
+  compiled      type_error: f: expected 1 return value(s), got 2 — [1 2]   at 1:23 (the body's first token)
+```
+
+Position only: the code, the message and the secondary note (the
+declaration at 1:13) agree. Any fn body that nets the wrong count shows
+it.

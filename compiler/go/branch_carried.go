@@ -49,6 +49,62 @@ import "github.com/boru-lang/boru/core/go"
 // None of those is a new failure site: the read declines exactly where an
 // unplaceable residual declines today.
 
+// takeJoinTwinsAfterCond lifts the branch JOIN's bind twins out of the
+// enclosing stream when the branch's condition fragment places twins of its
+// own, so RecordBranch can re-append them AFTER the branch event (NUR212).
+//
+// The join's transitions are noted by InstallJoinedDefs, after the arms and
+// before RecordBranch, so their twin events land in the enclosing frame
+// ahead of the branch event. That was always harmless: an arm's installs
+// are rolled back and never ledgered, so nothing inside the branch placed a
+// twin. A condition that BINDS a name is a kept, straight-line install
+// (basic's analyseCondFragment) whose twin sits INSIDE the condition
+// fragment the lowering runs at the branch — so the join's twins, noted
+// later, would lower EARLIER, and the stream would replay the transitions
+// out of the pass's order (the ordered-subset invariant,
+// TestBindTwinOpsArePlacedOrderedSubset). Every enclosing-frame event with a
+// seq past the condition fragment's opening was appended after it closed —
+// while it was open the events went to its own frame — so the trailing twin
+// run past that seq is exactly the join's. Nothing moves for a condition
+// that places no twin, which keeps every other branch's stream unchanged.
+func (es *EmitState) takeJoinTwinsAfterCond(cond *EmitFragment) []EmitEvent {
+	if cond == nil || !fragPlacesTwin(cond) {
+		return nil
+	}
+	n := len(es.frames) - 1
+	frame := es.frames[n]
+	i := len(frame)
+	for i > 0 && frame[i-1].kind == evBindTwin && frame[i-1].seq > cond.startSeq {
+		i--
+	}
+	if i == len(frame) {
+		return nil
+	}
+	twins := append([]EmitEvent(nil), frame[i:]...)
+	es.frames[n] = frame[:i]
+	return twins
+}
+
+// fragPlacesTwin reports whether a fragment, or any body fragment a branch
+// or loop inside it owns, holds a placed bind twin.
+func fragPlacesTwin(frag *EmitFragment) bool {
+	if frag == nil {
+		return false
+	}
+	for i := range frag.events {
+		ev := &frag.events[i]
+		if ev.kind == evBindTwin {
+			return true
+		}
+		for _, c := range childFragments(ev) {
+			if fragPlacesTwin(c) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // carryBranchJoins seats every name the branch left bound past its merge
 // (core.BranchRecord.Joins — InstallJoinedDefs' record). ev is the branch
 // event just appended; its arms are closed fragments.
@@ -250,7 +306,23 @@ func fragCanCarry(es *EmitState, frag *EmitFragment, name string) bool {
 			}
 			carried = true
 		case evBranch:
-			if ev.br != nil && ev.br.carriedNames[name] {
+			if ev.br == nil {
+				continue
+			}
+			if ev.br.carriedNames[name] {
+				carried = true
+			}
+			// A nested branch's CONDITION runs whenever the arm reaches it,
+			// and a binding it makes is kept (NUR212), so its defs of the name
+			// are this arm's own: each must store into the cell like a direct
+			// def (markArmBinds marks them), or the name is not carried at
+			// all — left unmarked, the cell would hold the arm's earlier
+			// binding past the condition's (`if c [def x 1 if [def x 2 true]
+			// [5] [6]] [7] end x` read 1 for the interpreter's 2).
+			if fragBindsName(ev.br.condFrag, name) {
+				if !fragCanCarry(es, ev.br.condFrag, name) {
+					return false
+				}
 				carried = true
 			}
 		case evLoop:
@@ -260,6 +332,25 @@ func fragCanCarry(es *EmitState, frag *EmitFragment, name string) bool {
 		}
 	}
 	return carried
+}
+
+// fragBindsName reports whether a fragment value-defs name at its top level
+// or inside a nested branch's condition fragment — the defs markArmBinds
+// reaches. Nil-safe.
+func fragBindsName(frag *EmitFragment, name string) bool {
+	if frag == nil {
+		return false
+	}
+	for i := range frag.events {
+		ev := &frag.events[i]
+		if ev.kind == evBranch && ev.br != nil && fragBindsName(ev.br.condFrag, name) {
+			return true
+		}
+		if ev.kind == evDynBind && ev.dyn != nil && ev.dyn.name == name && ev.dyn.bindsValue() && !ev.dyn.specFn {
+			return true
+		}
+	}
+	return false
 }
 
 // dynBindStorable reports whether a def's bound value can be re-pushed for
@@ -288,6 +379,12 @@ func (es *EmitState) dynBindStorable(d *emitDynBind) bool {
 func markArmBinds(frag *EmitFragment, name string, slot int) {
 	for i := range frag.events {
 		ev := &frag.events[i]
+		// A nested branch's condition runs whenever the arm reaches it; its
+		// kept defs of the name store into the cell too (fragCanCarry).
+		if ev.kind == evBranch && ev.br != nil && ev.br.condFrag != nil {
+			markArmBinds(ev.br.condFrag, name, slot)
+			continue
+		}
 		if ev.kind != evDynBind || ev.dyn == nil || ev.dyn.name != name || !ev.dyn.bindsValue() || ev.dyn.specFn {
 			continue
 		}

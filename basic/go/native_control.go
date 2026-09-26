@@ -413,6 +413,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 		// the runtime leaves `convert` no argument. Distinguish the two by the
 		// body's token count.
 		if bl, err := AsList(body); err == nil && !bl.IsNil() && bl.Len() > 0 {
+			r.Check.ValuelessDoBodies++
 			return []Value{NewCarrier(TError)}
 		}
 		return nil
@@ -1032,13 +1033,103 @@ func reduceStaticArm(r *Registry, cond, arm Value, isThen bool) []Value {
 	return stk
 }
 
-// analyseCondFragment captures a list-form `if` condition body (or a
-// `case` code-body scrutinee) as an emit fragment (nil when the condition
-// is a pre-evaluated value, or when no bytecode recording is active). The
-// fragment runs unconditionally exactly once before the branch decision,
-// so it rides RunCarrierCondBody — the CondBodyDepth-exempt body run: an
-// in-place fn redefinition in a condition is not path-dependent and stays
-// compilable, exactly like its paren-`do` condition twin.
+// analyseCondFragment captures a list-form `if` condition body (or the
+// condition a `case` code-body scrutinee desugars to) as an emit fragment
+// (nil when the condition is a pre-evaluated value, or when no bytecode
+// recording is active). The fragment runs unconditionally exactly once
+// before the branch decision, so it rides RunCarrierCondBodyKeepDefs — the
+// CondBodyDepth-exempt body run: an in-place fn redefinition in a condition
+// is not path-dependent and stays compilable, exactly like its paren-`do`
+// condition twin.
+//
+// And a binding the condition makes is KEPT (NUR212): the interpreter runs
+// the condition inline, once, so `def x 1 end if [def x 5 true] [2] [3] end
+// x` is [2 5] — the binding stands for the arm and for everything after the
+// `if`. The run used to roll the binding back like an arm's, and the
+// compiled lane read the stale one ([2 1]); it then declined. Kept, the
+// install is a straight-line one: ledgered, its bind twin recorded INSIDE
+// the condition fragment at the def's own site (the lowering runs the
+// fragment inline before the branch), the arms analysed over it, and a
+// later read resolving to it — exactly the model a top-level def gets. A
+// condition inside an arm or a loop body sits in that body's rolled-back
+// run, whose own join carries the binding out, as for any def there.
+func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
+	es := r.Check.Recorder()
+	if !es.Armed() || !IsConcrete(cond) || !cond.Parent.ConformsTo(TList) {
+		return nil, nil
+	}
+	before, valueless := bindingShape(r), r.Check.ValuelessDoBodies
+	es.ArmBranchCapture()
+	stk := RunCarrierCondBodyKeepDefs(r, cond)
+	frag := es.TakeFragment()
+	if (len(stk) != 1 || r.Check.ValuelessDoBodies != valueless) && bindingShapeChanged(r, before) {
+		// A binding condition must net exactly its one decision value, over
+		// a model the lowering shares. Two places the check model and the
+		// compiled fragment part ways today: a residual beneath the decision
+		// value, and a value-less `do` body, modelled as the Error a raise
+		// would leave where the compiled fragment nets nothing (NUR222: `if
+		// [do [1 drop] true] [2] [3]` underflows compiled, and a `drop` of
+		// that phantom pops a real value). A binding condition was never
+		// compiled before the keep landed, so these take the decline rather
+		// than widen that divergence to `if [do [def x 5] true] …`. Declined
+		// through the branch record's uncaptured-arm site, so no new site is
+		// minted.
+		taken := true
+		recorderState(r.Check).RecordBranch(BranchRecord{
+			ConstCond: &taken, HasElse: true, Pos: cond.Pos(),
+			Uncaptured: "the condition binds a name over a residual the lowering does not share (NUR222)",
+		})
+	}
+	return frag, stk
+}
+
+// bindingShape is the binding table's shape — each bound name's binding
+// generation (DefTable.Gen, bumped by every push, pop and replace of the
+// name) — for bindingShapeChanged.
+func bindingShape(r *Registry) map[string]int64 {
+	shape := map[string]int64{}
+	for _, n := range r.Defs.Names() {
+		shape[n] = r.Defs.Gen(n)
+	}
+	return shape
+}
+
+// bindingShapeChanged reports whether a run since before bound, rebound or
+// unbound a name the program can observe (condBindsName's exclusion: a
+// generic instantiation's hidden memo is not one).
+func bindingShapeChanged(r *Registry, before map[string]int64) bool {
+	now := bindingShape(r)
+	for n, k := range now {
+		if before[n] != k && !IsGenMemoName(n) {
+			return true
+		}
+	}
+	for n := range before {
+		if _, ok := now[n]; !ok && !IsGenMemoName(n) {
+			return true
+		}
+	}
+	return false
+}
+
+// condResidual runs a `case` code-body scrutinee once on the recording
+// pass for its residual COUNT alone — the branch lowering that follows (the
+// desugared `if`) re-runs the body as its own condition, so this run must
+// leave nothing behind: its fragment is discarded and its defs roll back
+// (RunCarrierCondBody), so no install is ledgered for a fragment no
+// lowering places. It reports whether the body binds a name the program
+// can observe, for the shapes that cannot keep it (condBindsName).
+func condResidual(r *Registry, cond Value) ([]Value, bool) {
+	es := r.Check.Recorder()
+	if !es.Armed() || !IsConcrete(cond) || !cond.Parent.ConformsTo(TList) {
+		return nil, false
+	}
+	es.ArmBranchCapture()
+	stk, adds := RunCarrierCondBody(r, cond)
+	es.TakeFragment()
+	return stk, condBindsName(adds)
+}
+
 // condBindsName reports whether a condition body's added bindings include a
 // name the program can observe — anything but a generic instantiation's
 // hidden memo (`case b [(Box of [Integer]) …]` interns one; re-instantiating
@@ -1052,31 +1143,18 @@ func condBindsName(adds map[string]Value) bool {
 	return false
 }
 
-func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
-	es := r.Check.Recorder()
-	if !es.Armed() || !IsConcrete(cond) || !cond.Parent.ConformsTo(TList) {
-		return nil, nil
-	}
-	es.ArmBranchCapture()
-	stk, adds := RunCarrierCondBody(r, cond)
-	frag := es.TakeFragment()
-	if condBindsName(adds) {
-		// A condition body that BINDS a name (`if [def x 5 true] …`): the
-		// interpreter runs the condition inline, once, so the binding stays
-		// visible to the taken arm and to everything after the `if`; the
-		// fragment records it as a rolled-back body and the compiled run
-		// reads the stale binding — `def x 1 end if [def x 5 true] [2] [3]
-		// end x` answered [2 1] for [2 5] (Codex P1 on PR #512, present on
-		// main at b4fad6c for if2 / if3; the clause-list if inherited it).
-		// Declined through the branch record's uncaptured-arm site, the
-		// clause-list if's own decline, so no new site is minted.
-		taken := true
-		recorderState(r.Check).RecordBranch(BranchRecord{
-			ConstCond: &taken, HasElse: true, Pos: cond.Pos(),
-			Uncaptured: "the condition binds a name the interpreter keeps past it",
-		})
-	}
-	return frag, stk
+// declineCondBinding declines a `case` whose code-body scrutinee binds a
+// name on a shape the lowering does not run as a kept condition fragment:
+// the interpreter keeps the binding (CaseHandler's sub-engine shares the
+// registry), and a compiled read after the `case` would take the stale one.
+// Declined through the branch record's uncaptured-arm site, so no new site
+// is minted.
+func declineCondBinding(r *Registry, pos SrcPos) {
+	taken := true
+	recorderState(r.Check).RecordBranch(BranchRecord{
+		ConstCond: &taken, HasElse: true, Pos: pos,
+		Uncaptured: "the scrutinee binds a name the interpreter keeps past it",
+	})
 }
 
 func If2ReturnsFn(args []Value, r *Registry) []Value {

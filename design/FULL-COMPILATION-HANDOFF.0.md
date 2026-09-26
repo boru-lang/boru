@@ -15539,3 +15539,57 @@ sealed claim end to end on a hand-built program, and its two defers),
 `TestReStepLandingWalk` (the unsealed `/q` defer); compiler
 `TestSealLandingSkip` (every shape that seals and every one that does
 not).
+## A binding `if` condition compiles — NUR212's follow-up (2026-09-26)
+
+**The shape.** A code-body `if` / `case` condition that binds a name —
+`def x 1 end if [def x 5 true] [2] [3] end x`, interpreter `[2 5]` — was
+declined (NUR212's first fix): the condition fragment rolled the binding
+back like an arm's, and the compiled lane read the stale one. The
+condition runs unconditionally, exactly once, before the branch decision,
+so its bindings are real on both engines; it is now modelled as the kept
+binding it is.
+
+**The fix.** The check pass runs the condition through core
+`RunCarrierCondBodyKeepDefs` (keep-defs, CondBodyDepth-exempt, not
+rolled back — so its installs ledger), under the new
+`EmitRecorder.CondBodyGuard`, which captures the condition fragment and
+marks it unconditional. A def's twin is placed inside the condition
+fragment; the branch join's twins move after the branch event when the
+condition places twins (`takeJoinTwinsAfterCond`), keeping the stream in
+the pass's order; the `do` adoption's root fence admits a kept condition
+fragment (`rootLikeStream`); branch-carried slot seeds run after a
+list-form condition (`seedCarried`), since the seed's pre binding may be
+the condition's own; and an arm's nested condition def stores into the
+arm's carried cell (`fragCanCarry` / `markArmBinds` descend into a nested
+branch's condition fragment — without that descent `if c [def x 1 if
+[def x 2 true] [5] [6]] [7] end x` read 1 for 2). `case`'s scrutinee
+count runs rolled back (`condResidual`); its desugared single-clause
+shape compiles through the kept `if` condition, every other binding
+shape declines. A binding condition over a residual the lowering does not
+share — more than its one decision value, or a value-less `do` (NUR222,
+counted by `CheckState.ValuelessDoBodies`) — declines through the branch
+record's uncaptured-arm site.
+
+**Found on the way** (pre-existing on main at 45c3bdb, recorded): NUR222
+(a value-less `do` in a branch fragment underflows compiled), NUR223 (a
+`while` condition's binding read stale by the body), NUR224 (a fn's
+return-count error caret: the call interpreted, the body's first token
+compiled). The plain check does not run an `if` condition at all, so
+`boru check` of `if [def y 5 true] [y] [3]` still reports `y` undefined —
+a check-side false positive, not a compiled divergence.
+
+**Measured.** No ceiling moves: lang `compileDefectCeiling` 301 and
+`bailDefectCeiling` 39 stand (the new parity rows compile, the new
+decline pins are asserted through CompileCheck and not booked); the
+compile-failure site census stays 91 (every decline rides RecordBranch's
+existing uncaptured-arm site); the langspec corpus passes all nine shards
+at its ceilings (the corpus holds no binding condition). Unit suites of
+core (`make cover-gate-core` 100%), basic, check, compiler, eng and lang,
+cmd/go and the test/go suites pass.
+
+**Pins.** lang `if_clause_list_test.go`
+(`TestConditionBindingCompilesWithParity`: sixty-one shapes, each also
+asserting its twins replay in the pass's order;
+`TestClauseListIfDeclinesLoudly`: the remaining declines); compiler
+`cond_keep_test.go`; core `carrier_body_test.go`
+(`TestRunCarrierCondBodyKeepDefsKeeps`); basic `cond_binding_test.go`.
