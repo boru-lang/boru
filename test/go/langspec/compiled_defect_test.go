@@ -54,7 +54,12 @@ import (
 // raised, now that the check pass runs a PURE predicate over a concrete
 // candidate; the programs never run compiled (runtime_defers.tsv's fnpred
 // line deleted, record.tsv's lowered to 2).
-const bailDefectCeiling = 46
+// 46 -> 44 on 2026-09-26 (NUR190 closed): fn-value.tsv:L317/L318 — the `/q`
+// slot that CAPTURES the following word — no longer bail at the landing's
+// walk: the landing hands the capture to the interpreter's island (or its
+// skip) and the rows answer natively (runtime_defers.tsv's fn-value line
+// deleted).
+const bailDefectCeiling = 44
 
 var bailDefects = struct {
 	mu      sync.Mutex

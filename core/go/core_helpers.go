@@ -1145,12 +1145,16 @@ func IsTypeBody(v Value) bool {
 	return v.Data != nil && v.Data.IsTypeContent(&v)
 }
 
-// PredicateInputType returns the concrete input type of a
-// predicate-shaped fn body (a Function whose first sig
-// takes exactly one argument with a declared type other than Any).
-// Returns nil if v isn't a predicate type or the input type is Any
-// or unset — those bodies stay parented at TFunction, the
-// pre-existing behavior.
+// PredicateInputType returns the concrete input type of a declared
+// predicate (`fnpred`): the type EVERY overload declares for the value it
+// tests. Returns nil if v isn't a declared predicate, or the input type is
+// Any or unset, or the overloads declare different inputs — those bodies
+// stay parented at TFunction, the pre-existing behavior.
+//
+// Membership consults the whole overload set (RunPredicate's one-value
+// application, NUR100), so an input type read off ONE overload would be a
+// pre-filter refusing a value another overload takes: the type is the
+// overloads' common input or nothing.
 //
 // Used by InstallType to mint user-defined predicate types with the
 // declared input type as their parent so values rewrapped by the
@@ -1175,14 +1179,17 @@ func PredicateInputType(v Value) *Type {
 	if !info.Predicate {
 		return nil
 	}
-	sig, ok := info.FirstOwnSig()
-	params := sig.Params
-	if !ok || len(params) == 0 {
-		return nil
-	}
-	t := params[0].Type
-	if t == nil || t.Equal(TAny) {
-		return nil
+	var t *Type
+	for _, sig := range info.OwnSigs() {
+		params := sig.Params
+		if len(params) == 0 {
+			return nil
+		}
+		in := params[0].Type
+		if in == nil || in.Equal(TAny) || (t != nil && !t.Equal(in)) {
+			return nil
+		}
+		t = in
 	}
 	return t
 }

@@ -13322,6 +13322,55 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR100 closed — the predicate is a one-value application; the poly decline keys on a re-step (2026-09-26)
+
+**The divergence.** ADR-016 forbids deciding behaviour by a function's
+arity, and two sites did. `RunPredicate` admitted a function as a predicate
+only if its first signature took exactly one parameter ("predicate must take
+exactly one argument", raised at the use), and `tryRecordPoly` declined a
+poly window whenever the word registered an overload taking FEWER operands
+(`smallerArityOverload`).
+
+**The fix, §1.** Membership is a one-value APPLICATION: `MatchFnSig` over
+`[candidate]` — the matcher every call takes — picks the signature, and a
+candidate no signature takes is not a member. The whole overload set is
+consulted (it used to be the first alone), a value pattern selects, and a
+predicate that cannot take one value answers "does not satisfy" on every
+use; the declaration is not refused, because that refusal would be a count
+again. `PredicateInputType` became the overloads' common input so the typed
+slot's pre-filter consults what `is` consults.
+
+**The fix, §2.** The count stood in for a declaration. The VM's poly
+re-match already retries narrower windows (NUR147); what it cannot do is
+re-step a result, which `apply`'s `[Function]` overload does. The decline
+now fires when an overload declaring `CompileResteps` is reachable over the
+dynamic operands (`restepOverloadReachable`). Every decline the corpus
+measured was such an `apply` window, so coverage is unchanged.
+
+**Found on the way — NUR223.** A predicate body that leaves its unnamed
+input beneath its verdict (`fnpred [[Integer] [true]]`) answered one value
+through CallBoru and two through the compiled seam, whose stored unit is
+compiled count-agnostic; `0 is Z` split true/false. `InvokeCompiled` now
+applies CallBoru's discard with the signature it holds
+(`trimUnconsumedUnnamed`).
+
+**Found on the way — NUR224.** The predicate branch of a typed def raised
+its refusal as a plain Go error on both lanes, and the compiled run's error
+boundary books any non-BoruError as a compiler defect (`internal_error` plus
+the defect note). It is a `type_error` now, as the typed def's other
+refusals are.
+
+**Ledgers.** aritygate: registry.go 3 -> 2, compiler_dispatch_record.go
+2 -> 1, the NAMED DIVERGENCE blocks retired; the gate also flagged the
+NUR190 landing skip's `NArgs` read in lower.go, removed (the operand count
+it duplicated remains). langspec `bailDefectCeiling` 46 -> 44, the NUR190
+rows' ledger move that the previous commit left un-ratcheted.
+
+**Pins.** lang `TestNUR100PredicateIsAOneValueApplication`,
+`TestNUR223CallbackSeamDiscardsUnconsumedUnnamed`,
+`TestNUR224PredicateRefusalIsATypeError`; compiler
+`TestRestepOverloadReachable`; `lang/spec/fnpred.tsv` §8.
+
 ## NUR190 closed — the landing's island and skip take the `/q` capture (2026-09-26)
 
 **The divergence (the contained half).** A dynamic fn value under a

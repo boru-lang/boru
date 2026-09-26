@@ -1199,7 +1199,7 @@ func (lw *lowerer) seatLandingWord(seq int, w LandingWord) {
 // the apply, whose result count it must then match. Any other layout keeps
 // the landing's loud defer.
 func (lw *lowerer) seatLandingSkip(c *emitCall) {
-	if len(lw.landingSkips) == 0 || c.dynMethod == nil || c.dynMethod.NArgs != 1 || len(c.ops) != 2 || c.ops[0].kind != opEvent {
+	if len(lw.landingSkips) == 0 || c.dynMethod == nil || len(c.ops) != 2 || c.ops[0].kind != opEvent {
 		return
 	}
 	at, pending := lw.landingSkips[c.ops[0].idx]

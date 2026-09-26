@@ -144,6 +144,8 @@ keep the two in sync in the same commit.
 | [NUR220](#nur220) | FIXED 2026-09-26 (the anonymous park at the dynamic apply — the handoff log's entry of that date): the whole-frame replay reads the interpreter's ANONYMOUS-0-ARG PARK over its lead (replayLeadParks — a lambda or macro value whose only signatures take nothing is data unless `apply` marked it), as the landing already did; a lead the body read bare BY NAME is the binding's word dispatch and still fires. An `apply` over a LONE gradual lead declines where the registered-output arm elided its identity result silently, dropping the Applied mark. The original text: A map-each lambda's member read of a 0-arg lambda: `def m {x: ([] => [5])}  each ([kv:Any] => [kv.v]) m` is `{x:fn}` interpreted and `{x:5}` compiled — the whole-frame replay entered the lambda's stamped unit over an empty window; `kv get "v"` the same. Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR219, 2026-09-26 |
 | [NUR221](#nur221) | FIXED 2026-09-26 (a landed lead is no apply-event lead — the handoff log's entry of that date): the gradual apply event (OpCallDynApplyOne) applies its lead to the one value beneath, which is the interpreter's answer only for an INERT lead; a lead whose producer carries a re-step landing (a bare member read, not `/v`, not a user paren's placed result) takes the dynamic-lead decline instead. The original text: `def m {x: inc/v}  each ([kv:Any] => [3 kv.v apply]) m` raises apply's no-match interpreted (the member claims the 3 at its own step, and apply meets the 4) and answered `{x:4}` compiled. Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR220, 2026-09-26 |
 | [NUR222](#nur222) | FIXED 2026-09-26 (the dyn body's settled lead — the handoff log's entry of that date): a dynamic lead whose argument is another result of the same DYN-BODY dispatch (`do` over a body the closure path declined) is the body's to settle — its handler runs the body with the interpreter's semantics — and the program's residual arm leaves it; a dyn-body result with nothing of its own above it stays the lead the interpreter re-steps over a later token. The original text: `def m {f: inc/v}` from a factory, `do [m.f 5]` is 6 interpreted and `CALL_DYNAMIC underflow` compiled (an internal error): the model left the member over its 5, the residual arm applied it again over a region the body had already settled; `7 do [m.f 5]` and the `/q` twin `do [m.f y]` the same. Loud, pre-existing (measured on the committed head, 2026-09-26) | closing NUR190, 2026-09-26 |
+| [NUR223](#nur223) | FIXED 2026-09-26 (the seam discards the unconsumed input — the handoff log's entry of that date): the callback seam (InvokeCompiled) hands its caller exactly what the interpreter's CallBoru hands — residuals beyond the SIGNATURE's declared return count that are unconsumed unnamed params are discarded, up to the unnamed-param count; a stored fn's unit is compiled count-agnostic, so its RET used to hand back the whole residual. The original text: `def Z fnpred [[Integer] [true]]  0 is Z` is true interpreted and false compiled — the unit returned [0 true], which the predicate protocol refuses ("predicate must return exactly one value, got 2", raised outright by `def v:Z 0` compiled only); `fnpred [[Integer] [dup 0 eq]]` the same. Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR100, 2026-09-26 |
+| [NUR224](#nur224) | FIXED 2026-09-26 (the predicate's refusal is a type_error — the handoff log's entry of that date): a typed def's predicate refusal raises `type_error` on both lanes, as the typed def's other refusals do (`def q:T "x"` — does not unify with declared type T). The original text: `def Big fnpred n:Integer [n gt 10]  def f fn [[x:Any] [Any] [def q:Big x q]]  f 5` raised the refusal as a PLAIN error interpreted and as an `internal_error` annotated "this is a compiler defect" compiled — the typed-bind op raised the same plain error, and the compiled run books any non-BoruError as its own defect. Loud on both, the class split, pre-existing (measured on the committed head, 2026-09-26) | closing NUR100, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -202,7 +204,7 @@ keep the two in sync in the same commit.
 | [NUR109](#nur109) | FIXED 2026-09-25 (the parser name bound on a branch — the handoff log's entry of that date): `parse` over an unbound def-scoped parser name raises `parse_error: the parser is not a usable function value` compiled and `parse_unknown_lang: no parser "op" is registered` interpreted. `TestParseFnDispatchMissParity`'s own header argues the compiled answer is the right one and asserted both lanes gave it — reading the interp side from `Run` | completing the NUR106 oracle sweep, 2026-08-27 |
 | [NUR101](#nur101) | FIXED 2026-09-25 (the verdict of 2026-08-27 landed and its last shape graduated — the handoff log's entry of that date): BROAD's placement depended on ENCLOSING CONTEXT: `(mk 1) 2` places (`fn (Integer) 2`) while `((mk 1) 2)` dispatches (`3`). **RULED 2026-08-26 "place uniformly"; the ruling's PREMISE was then FALSIFIED 2026-08-27** — the survivor count IS the question, and the enclosing group is a SECOND decision, not a modifier of the first. The interpreter was right all along; the COMPILER carried five silent miscompiles in both directions, hidden by 75 parity assertions that use post-Stage-J `Run` (the compiled path) as their interpreter oracle. See [design/PAREN-RESTEP-RULE.0.md](design/PAREN-RESTEP-RULE.0.md) | re-measuring §5.4 after #402, 2026-08-25; ruled 2026-08-26; ruling's premise falsified by measurement 2026-08-27 |
 | [NUR099](#nur099) | FIXED 2026-09-25 (NUR099 closed — a capitalised fn body is refused — the handoff log's entry of that date): `def <Capitalised> <fn>` is the ONLY door to an arbitrary predicate type, so it must stay ambiguous: the same fn body means a callable function under a lowercase name and a membership test under a capitalised one, and `def K fn [[a:Any b:Any][Any][a]] end K 1 2` therefore binds an uninhabitable type in silence — VERDICT 2026-08-25: resolve by fix, a `fnpred` word analogous to `fnsig` — **HALF LANDED 2026-08-25**: `fnpred` ships and the explicit route is live; what remains is migrating the 150 corpus sites off the capitalised-fn form and deleting the arity route behind it | reviewing the §5.1 diagnostic, 2026-08-25 |
-| [NUR100](#nur100) | ADR-016 ("arity and origin never change function behaviour") is contradicted by live code: `RunPredicate` admits or refuses a function as a predicate purely on its parameter count, and `smallerArityOverload` gates a compile refusal the same way | the maintainer's ruling that the ADR-016 rule is absolute, 2026-08-25 |
+| [NUR100](#nur100) | FIXED 2026-09-26 (the predicate as a one-value application — the handoff log's entry of that date): neither site counts a function's parameters any more. §1: membership is a ONE-VALUE APPLICATION — `RunPredicate` matches the candidate against the predicate's signatures with MatchFnSig, the one matcher every call takes, and runs the signature that takes it; a candidate no signature takes is not a member (so the WHOLE overload set is consulted where only the first was, a value pattern selects as for any call, and a two-parameter predicate is a type no value inhabits — `def v:K 5` answers `does not satisfy`, never `predicate must take exactly one argument`); `PredicateInputType` is the overloads' COMMON input. §2: tryRecordPoly's decline keys on a reachable overload that DECLARES CompileResteps (`restepOverloadReachable`) — what the smaller-arity count stood in for; `smallerArityOverload` is gone. The aritygate pins tightened (registry.go 3→2, compiler_dispatch_record.go 2→1). Found on the way and fixed: NUR223 (the callback seam returned an unconsumed unnamed param beneath a predicate's verdict) and NUR224 (a predicate's typed-def refusal was a plain error interpreted and a compiler-defect internal_error compiled). The original text: ADR-016 ("arity and origin never change function behaviour") is contradicted by live code: `RunPredicate` admits or refuses a function as a predicate purely on its parameter count, and `smallerArityOverload` gates a compile refusal the same way | the maintainer's ruling that the ADR-016 rule is absolute, 2026-08-25 |
 | [NUR097](#nur097) | FIXED 2026-09-25 (the late-binding hint — the handoff log's entry of that date): One syntax, two binding regimes: a closure CAPTURES parameters and fn-locals but resolves module-scope names LATE through the def stack, so a later `def` silently changes an existing closure's answer — verdict proposed: Allowed (top-level liveness) plus an in-file check hint | the higher-order capability audit's §5.6, re-assessed 2026-08-21 (`design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore`) |
 | [NUR102](#nur102) | FIXED 2026-09-25 (one run per dispatch — the handoff log's entry of that date): A predicate body runs a different number of times in each lane — overload pruning evaluates it 4× interpreted and 2× compiled, an effect-count divergence no differential gate can see because both lanes return the same value | the Stage-2 collection-kernel feasibility probe, 2026-08-25 |
 | [NUR103](#nur103) | RESOLVED 2026-09-25 by the diagnostic-surface gate (the record's resolution line; the mini-redis instance survives only in the full module context and is ledgered): The checker's answer depends on who is asking: the same program yields a clean `boru check` and a refusing compile, so the tool a user would reach for reports the program fine — **one instance fixed 2026-08-26** (a nameless `undefined_word` from a Word-typed carrier); the mini-redis instance is diagnosed and OPEN, and its first fault is a coverage hole — `boru check` does not analyse a service-handler body at all, so a bare undefined word inside one ships clean | the server-concurrency corpus, 2026-08-26 |
@@ -335,9 +337,60 @@ reachable only at the USE site until this lands, which is what
 
 ## NUR100 — ADR-016 forbids arity-keyed exceptions; two live sites use them {#nur100}
 
-**Status:** Pending (no verdict) · **Recorded:** 2026-08-25 · **Surfaced
-by:** the maintainer's ruling, 2026-08-25, that ADR-016's rule is absolute —
-"everything everywhere every time and always"
+**Status:** FIXED 2026-09-26 (the predicate as a one-value application —
+the handoff log's entry of that date) · **Recorded:** 2026-08-25 ·
+**Surfaced by:** the maintainer's ruling, 2026-08-25, that ADR-016's rule is
+absolute — "everything everywhere every time and always"
+
+**The fix.** Each site now keys on the thing its count stood in for, and
+neither reads an arity.
+
+*§1 — the predicate role is a ONE-VALUE APPLICATION.* The replacement
+contract the record asked for is the one every call already has: the
+candidate is matched against the predicate's signatures by `MatchFnSig`
+(types in signature order, then value patterns), and the signature that
+takes it runs. A candidate no signature takes is not a member — without
+running a body, which is what the old input-type gate did for the first
+signature alone. Three consequences, each the uniform answer:
+
+- the WHOLE overload set is consulted, first match first, where only the
+  first overload used to be read — `fnpred [[n:Integer] […] [s:String] […]]`
+  admits `"ab"` through its second overload on `is`, a typed def and a typed
+  parameter alike (`PredicateInputType`, the typed slot's pre-filter and the
+  node's parent, is now the overloads' COMMON input, nil when they differ);
+- a value pattern selects as for any call — `fnpred [[0] [true]]` admits 0
+  and refuses 1, where the type-only gate ran the body over 1 and admitted it;
+- a predicate none of whose signatures can take one value is a type no value
+  inhabits: `def K fnpred [[a:Any b:Any] [a]]  def v:K 5` answers `does not
+  satisfy predicate type K` (statically, too — the check pass's run of a
+  concrete candidate reaches the same no-match), and `4 is K` false, where
+  the use raised `RunPredicate: predicate must take exactly one argument`.
+
+The declaration is NOT refused: a refusal would be a count again, and a
+predicate no value satisfies is already expressible (`fnpred n:Integer
+[false]`) and accepted.
+
+*§2 — the poly decline keys on a declared re-step.* `smallerArityOverload`
+is gone. The hazard it guarded was never the count: the VM's poly re-match
+already retries narrower windows over the same stack top (NUR147), and what
+it cannot reproduce is a dispatch whose result RE-STEPS on the tape — the
+poly op pushes the handler's results, where `apply`'s `[Function]` overload
+marks the fn and steps it over the values beneath. tryRecordPoly now
+declines when an overload DECLARING `CompileResteps` is reachable over the
+dynamic operands (`restepOverloadReachable`: each operand the overload reads
+is an Any carrier or gradually matches its slot); the corpus's declines are
+the same `apply` windows (measured: every one had a dynamic Any lead), and
+a window whose lead cannot be a Function no longer declines on arity alone.
+
+The aritygate tightened with both: `core/go/registry.go` 3→2 and
+`compiler/go/compiler_dispatch_record.go` 2→1, their "NAMED DIVERGENCE"
+blocks retired. (It also caught an arity read of my own in the same run —
+`lower.go`'s landing skip compared an apply's `NArgs` it already had as its
+operand count — removed.) Found on the way and fixed: NUR223 and NUR224.
+Pinned: lang
+`TestNUR100PredicateIsAOneValueApplication` (seven exact rows on both lanes
+and four refusals, none an arity error), compiler
+`TestRestepOverloadReachable`, `lang/spec/fnpred.tsv` §8.
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
 
@@ -408,7 +461,7 @@ Verified against a deliberate violation before landing: adding
 `len(s.Params) == 1` to a pinned file fails the gate, and removing it restores
 green.
 
-**No verdict on sites 1 and 2.** The predicate role does need to test ONE
+**No verdict on sites 1 and 2** (at recording; the fix above is the verdict the run took). The predicate role does need to test ONE
 value, so removing site 1's gate needs a replacement contract, not a deletion
 — and naming that contract is a design call the register should not pre-empt.
 Recorded so the divergence between an accepted ADR and the code is not lost;
@@ -8431,6 +8484,77 @@ map_literal_flex_member_test.go): the shapes above, nested loops, the
 loop inside and around a fn frame, a callback raising inside the loop, a
 range loop's own iterator name, the `error` handler, the while twin; and
 control.tsv §3's row.
+
+## NUR224 — a predicate's typed-def refusal is a plain error on one lane and a compiler defect on the other {#nur224}
+
+**Status:** FIXED 2026-09-26 (the predicate's refusal is a type_error — the
+handoff log's entry of that date) · **Recorded:** 2026-09-26 · **Surfaced
+by:** closing NUR100, probing a type literal bound through a predicate type.
+
+**Rule:** one refusal, one error, on both lanes — and a program's own
+refusal is never booked as a compiler defect.
+
+**Divergence** (measured on the committed head):
+
+```
+def Big fnpred n:Integer [n gt 10] end def f fn [[x:Any] [Any] [def q:Big x q]] end f 5
+  interp:   def q: value 5 does not satisfy predicate type Big                  (a plain error)
+  compiled: [boru/internal_error]: def q: value 5 does not satisfy predicate type Big
+            + "this is a compiler defect: the program compiled and then failed inside the compiled runtime"
+```
+
+The typed def's other refusals are `type_error`s built with `r.BoruError`
+(`def q:T "x"` — does not unify with declared type T — on both lanes). The
+predicate branch alone raised `fmt.Errorf`, in the interpreter's
+`defFnPredicateBind` and in the compiled typed-bind op's `RunTypedBind`
+alike, and the compiled run's error boundary (`compiledRunError`) wraps any
+error that is not a BoruError as an `internal_error` with the compiler-defect
+note. So the same refusal was a bare error on one lane and a reported
+compiler defect on the other. Loud on both; pre-existing.
+
+**The fix.** Both sites raise `type_error` with the same detail, so the
+refusal is one error everywhere and the compiled boundary passes it through
+as the program's own. The boundary's comment, which cited this refusal as an
+example of a handler's internal_error, is corrected. Pinned: lang
+`TestNUR224PredicateRefusalIsATypeError` (a runtime candidate and a type
+literal, both lanes, with a member's bind as the negative).
+
+## NUR223 — the callback seam returns an unconsumed unnamed param beneath the answer {#nur223}
+
+**Status:** FIXED 2026-09-26 (the seam discards the unconsumed input — the
+handoff log's entry of that date) · **Recorded:** 2026-09-26 · **Surfaced
+by:** closing NUR100, probing a value-pattern predicate.
+
+**Rule:** a call's unnamed arguments are call-scoped data: what the body
+leaves of them beneath its declared returns is discarded at the call's end,
+on every path that runs the body (the frame collapse's `__RC`, CallBoru's
+trim, the compiled RET's `NUnnamed` allowance).
+
+**Divergence** (measured on the committed head):
+
+```
+def Z fnpred [[Integer] [true]] end 0 is Z           interp: true   compiled: false
+def Z fnpred [[Integer] [dup 0 eq]] end 0 is Z       interp: true   compiled: false
+def Z fnpred [[0] [true]] end def v:Z 0 v            interp: 0      compiled: RunPredicate: predicate must return exactly one value, got 2
+```
+
+A predicate's body runs through the callback seam (InvokeCallbackFn). On the
+interpreter, CallBoru trims the residual to the signature's declared return
+count (fnpred's implicit `[Any]`), discarding the unconsumed unnamed input;
+the compiled seam ran the fn's STORED unit, which is compiled
+count-agnostic (it declares no returns of its own, so its RET hands back the
+whole residual), and returned `[0 true]` — which the predicate protocol
+refuses, and `is` turns a refusal into `false`. Silent on `is`, loud on a
+typed def; pre-existing.
+
+**The fix.** `InvokeCompiled`, which holds the signature, applies CallBoru's
+own discard to a callback's result (`trimUnconsumedUnnamed`): residuals
+beyond the signature's declared return count are dropped from the bottom,
+up to its unnamed-param count. A named call's root RET already discards
+through the frame's contract. Pinned: lang
+`TestNUR223CallbackSeamDiscardsUnconsumedUnnamed` (five rows on both lanes,
+with the consuming and named-param negatives, and a short residual's parity),
+`lang/spec/fnpred.tsv` §8's last two rows.
 
 ## NUR222 — a dyn body's settled lead is applied again by the program's residual arm {#nur222}
 

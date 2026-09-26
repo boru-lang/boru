@@ -1244,8 +1244,8 @@ func compileFailureReason(reason string) string {
 // The VM's own errors are identified by BoruError.VMDefer (core.IsVMDefer),
 // the marker vmErrAt and both VM panic guards set. The CODE alone will not
 // do: a native handler may raise internal_error for a failure that is
-// entirely the program's — `convert: cannot convert Float to BigInteger`,
-// `def q: value 0 does not satisfy predicate type Positive` — and so may user
+// entirely the program's — `convert: cannot convert Float to BigInteger` —
+// and so may user
 // code, with a plain `raise internal_error "boom"`. The interpreter raises
 // the identical error in every one of those cases. Marking them as compiler
 // defects would book the compiler for a handler's choice of error code and

@@ -33,8 +33,12 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 			return Value{}, fmt.Errorf("def %s: predicate type %s: %w", spec.Name, spec.Describe, err)
 		}
 		if !matched {
-			return Value{}, fmt.Errorf("def %s: value %s does not satisfy predicate type %s",
-				spec.Name, v.String(), spec.Describe)
+			// A type_error, as the typed bind's other refusals are, on both
+			// lanes (NUR224): a plain error here is what the compiled run
+			// books as a compiler defect.
+			return Value{}, r.BoruError("type_error",
+				fmt.Sprintf("def %s: value %s does not satisfy predicate type %s",
+					spec.Name, v.String(), spec.Describe), spec.Name)
 		}
 		if spec.Def != nil {
 			out = ReparentValue(out, CanonicalType(r, spec.Def))

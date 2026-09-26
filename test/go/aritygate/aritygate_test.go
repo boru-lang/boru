@@ -5,8 +5,11 @@
 // origin." Accepted 2026-08-15, and ruled ABSOLUTE by the maintainer on
 // 2026-08-25 — "everything everywhere every time and always".
 //
-// An absolute rule with no gate is a rule nobody can enforce. NUR100 records
-// two live sites that contradict the ADR; a THIRD was found on 2026-08-28 —
+// An absolute rule with no gate is a rule nobody can enforce. NUR100 recorded
+// two live sites that contradicted the ADR (both closed 2026-09-26: the
+// predicate role keys on a one-value APPLICATION through the matcher, the
+// poly decline on an overload's declared re-step); a THIRD was found on
+// 2026-08-28 —
 // the compiler's ARITY-1 BOUNDARY, which decided that a one-input callback
 // could compile and a two-input one could not — and it was found while fixing
 // something else, not by looking. It had survived unrecorded because it read
@@ -26,8 +29,9 @@
 // machinery — engine.go, signature.go, match.go, carrier.go — reading arities
 // in order to MATCH a signature. That IS the one argument rule; implementing
 // it is not an exception to it. The pins exist so that a CHANGE in the count
-// forces someone to look and say which kind it is. Two entries are known
-// divergences and are marked as such.
+// forces someone to look and say which kind it is. The two entries that
+// were known divergences (NUR100) are closed; their files' remaining pins are
+// the argument rule's own reads.
 //
 // If this test failed because a count ROSE: say which kind the new site is. If
 // it implements the argument rule (matching, dispatch, canon), raise the pin
@@ -269,21 +273,24 @@ var pinnedAritySites = map[string]int{
 	// by arity: a modified lead of any arity routes the same way.
 	"compiler/go/region_record.go": 1,
 
-	// ── NUR100 §1, a NAMED DIVERGENCE: RunPredicate decides whether a
-	//    function may act as a predicate at all by counting its parameters.
-	//    "predicate type K: RunPredicate: predicate must take exactly one
-	//    argument" — two functions that both express a membership test are
-	//    admitted or declined on arity alone. No verdict yet: the predicate
-	//    role does need to test ONE value, so removing the gate needs a
-	//    replacement contract, not a deletion.
-	"core/go/registry.go": 3,
+	// ── NUR100 §1, CLOSED 2026-09-26. 3 -> 2: RunPredicate no longer decides
+	//    whether a function may act as a predicate by counting its
+	//    parameters ("predicate must take exactly one argument"). Membership
+	//    is a one-value APPLICATION — the candidate is matched against the
+	//    predicate's signatures by MatchFnSig, the one matcher every call
+	//    takes, and a candidate no signature takes is not a member. What
+	//    remains is the argument rule's own: Register's MaxArgs bound and the
+	//    0-arg courtesy dispatch of a call that collected nothing.
+	"core/go/registry.go": 2,
 
-	// ── NUR100 §2, a NAMED DIVERGENCE: smallerArityOverload declines a poly
-	//    window when the word registers an overload consuming FEWER operands.
-	//    Lower stakes than §1 (compile-coverage conservatism, not an answer
-	//    change — the lane falls back and the results agree), but the same
-	//    shape.
-	"compiler/go/compiler_dispatch_record.go": 2,
+	// ── NUR100 §2, CLOSED 2026-09-26. 2 -> 1: tryRecordPoly's decline no
+	//    longer counts a SMALLER-arity overload (smallerArityOverload, gone);
+	//    it keys on what the count stood in for — a reachable overload that
+	//    DECLARES CompileResteps, a dispatch whose result re-steps on the
+	//    tape, which a poly re-match cannot reproduce at any arity
+	//    (restepOverloadReachable). What remains is the barrier clamp reading
+	//    a signature's forward positions, the argument rule itself.
+	"compiler/go/compiler_dispatch_record.go": 1,
 
 	// ── Compiler: recording and lowering against declared signatures.
 	// 3 -> 4: the `apply` word's two overloads differ in arity — [Function]

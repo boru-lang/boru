@@ -2195,10 +2195,6 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 	if !ok {
 		return Value{}, false, fmt.Errorf("RunPredicate: constraint has invalid payload (got %T)", constraint.Data)
 	}
-	predSig, ok := fnDef.FirstOwnSig()
-	if !ok || len(predSig.Params) != 1 {
-		return Value{}, false, fmt.Errorf("RunPredicate: predicate must take exactly one argument")
-	}
 	// CheckMode: a CARRIER candidate is accepted without running the body —
 	// the analyser's proper optimism, so it keeps flowing past the typed
 	// slot. A CONCRETE candidate over an effect-free body runs the
@@ -2208,23 +2204,32 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 	// statically as it is at run time, where the pass's plan used to claim
 	// the slot (NUR141). A run that errors admits, as before.
 	analysis := r != nil && r.analysisMode()
-	if analysis && (!IsConcrete(candidate) || IsBareTypeNode(candidate) || !predicateBodyPure(r, predSig) || New(r).exprHasEffect(predSig.Body())) {
+	if analysis && (!IsConcrete(candidate) || IsBareTypeNode(candidate)) {
 		return candidate, true, nil
 	}
-	// Input-type gate: a predicate's declared input type acts as a
-	// pre-filter. `"x" is Pos` for `Pos fn [[n:Integer] …]` rejects
-	// at this gate without running the body, because the predicate
-	// body's behavior on a non-Integer input is undefined (and
-	// cross-type comparators like `gt` produce confusing answers).
-	// Skip the gate for the empty case (input declared as Any or
-	// unset) — those predicates explicitly accept any input.
-	if inputT := predSig.Params[0].Type; inputT != nil && !inputT.Equal(TAny) {
-		if IsBareTypeNode(candidate) {
-			// Bare type literal: skip the gate (the literal IS a type,
-			// not an inhabitant — predicate has no value to test).
-		} else if !candidate.Parent.ConformsTo(inputT) {
-			return candidate, false, nil
-		}
+	// Membership is a ONE-VALUE APPLICATION of the predicate: the candidate
+	// is matched against the predicate's signatures by the one matcher every
+	// call takes (MatchFnSig — types in sig order, then value patterns), and
+	// the signature that takes it runs. A candidate no signature takes is not
+	// a member, without running a body: `"x" is Pos` over `n:Integer` answers
+	// false as a call of that fn over "x" would find no overload, because the
+	// body's behaviour on a non-Integer input is undefined (and cross-type
+	// comparators like `gt` give confusing answers). The whole overload set
+	// is consulted, first match first, as for any call.
+	//
+	// This replaced a PARAMETER-COUNT gate — "predicate must take exactly one
+	// argument", raised at the use — which admitted or refused a function as
+	// a predicate on its arity alone (NUR100 §1; ADR-016 forbids exceptions
+	// keyed on arity). A signature that cannot take one value is simply not
+	// the one a one-value application selects, exactly as it would not be
+	// for any call; a predicate none of whose signatures can is a type no
+	// single value inhabits, and every membership question answers so.
+	predSig := MatchFnSig(constraint, []Value{candidate})
+	if predSig == nil {
+		return candidate, false, nil
+	}
+	if analysis && (!predicateBodyPure(r, predSig) || New(r).exprHasEffect(predSig.Body())) {
+		return candidate, true, nil
 	}
 	if analysis {
 		prevMode := r.Check.Mode
@@ -2250,8 +2255,9 @@ func (r *Registry) RunPredicate(constraint, candidate Value) (out Value, matched
 // rebound between the analysis and the call, so the pass keeps its
 // optimism for it (NUR141).
 func predicateBodyPure(r *Registry, predSig *FnSig) bool {
-	// RunPredicate has already refused a predicate that does not take
-	// exactly one parameter (NUR100 §1's site), so there is one to read.
+	// predSig is the signature RunPredicate's one-value application
+	// selected (MatchFnSig over the candidate), so it has the one parameter
+	// the candidate bound.
 	param := predSig.Params[0].Name
 	var pure func(items []Value) bool
 	pure = func(items []Value) bool {

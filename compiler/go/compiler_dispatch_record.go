@@ -603,27 +603,32 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 	if !matchReg.IsBuiltinWord(word) {
 		return false
 	}
-	// A poly window re-matches over a FIXED pop count, so it is unsound
-	// when a SMALLER-arity overload exists and the operands are dynamic:
-	// the interpreter can dispatch the narrow overload over the live
-	// values, leaving the rest on the stack, where the VM's N-window
-	// forces all N into one match (`apply`: the gradual check match seats
-	// [Reach Any] over a fetched-fn carrier, but runtime wants the 1-arg
-	// [Function] — reachable since the BROAD park, NUR073 clause 3).
-	// Wider overloads are harmless: with only N live values they cannot
-	// match on either engine. Decline; the dispatch falls to the ordinary
-	// record and its compile failure nets.
+	// A poly window re-matches by PUSHING the matched handler's results, so
+	// it cannot stand for a dispatch whose result RE-STEPS on the tape — an
+	// overload that declares CompileResteps. When the operands are dynamic
+	// and such an overload is reachable over them, the interpreter may take
+	// it at run time where the poly op would push its marked value as data
+	// (`apply`: the gradual check match seats [Reach Any] over a fetched-fn
+	// carrier, but runtime dispatches [Function], which marks the fn and
+	// steps it over the values beneath — reachable since the BROAD park,
+	// NUR073 clause 3). Decline; the dispatch falls to the ordinary record,
+	// where the recorder owns `apply` by name (the gradual apply event, the
+	// pending-apply window) or its compile failure nets.
+	// This used to be keyed on a SMALLER-ARITY overload's existence — ADR-016
+	// forbids deciding what compiles by a count (NUR100 §2) — and the count
+	// was only ever the symptom: an overload of any arity whose result the
+	// poly op pushes is one the VM's re-match reproduces (a narrower window
+	// by NUR147's arity retry), and a re-stepping one is not, whatever it
+	// takes.
 	// The no-match RECOVERY flavours (dynamicRecovery / noMatch) are
 	// exempt: they deliberately record a wider probe window and the VM's
-	// rematch owns under-match by deferring, so the smaller-arity hazard
-	// is theirs to handle.
+	// rematch owns under-match by deferring.
 	// Confined to STACK-ONLY matches (BarrierPos 0): a forward-eligible
 	// word's window is disambiguated by its written tokens on both
-	// engines (`join`'s 1-arity overload never shadows its 2-arity call),
-	// so only the stack-sourced mixed-arity words — `apply`, per the
-	// ADR-004 closed list — carry the hazard.
+	// engines, so only the stack-sourced words — `apply`, per the ADR-004
+	// closed list — carry the hazard.
 	if !dynamicRecovery && noMatch == nil && sig.BarrierPos == 0 &&
-		check.AnyDynamicCarrier(args) && smallerArityOverload(matchReg, word, len(args)) {
+		check.AnyDynamicCarrier(args) && restepOverloadReachable(matchReg, word, args) {
 		return false
 	}
 	// Only a genuinely dynamic dispatch (the case the checker could not
@@ -1100,22 +1105,47 @@ func tryRecordDeferredList(r *core.Registry, sig *core.Signature, outs []core.Va
 	return check.IsDeferredWordList(outs[0])
 }
 
-// smallerArityOverload reports whether the builtin word registers an
-// overload consuming FEWER than n operands — the condition under which a
-// poly window of n dynamic values can diverge from the interpreter's
-// dispatch (tryRecordPoly's mixed-arity decline; see the `apply` note
-// there).
-func smallerArityOverload(r *core.Registry, word string, n int) bool {
+// restepOverloadReachable reports whether the builtin word registers an
+// overload that DECLARES CompileResteps — a dispatch whose result the
+// interpreter re-steps on the tape, which a poly re-match (it pushes the
+// handler's results) cannot reproduce — that the window's operands can
+// reach: every operand the overload reads (sig position j is the j-th
+// operand from the top, the one argument rule) is an Any carrier or
+// gradually matches its slot. tryRecordPoly's re-step decline; see the
+// `apply` note there. Keyed on the overload's declaration, never on its
+// arity (NUR100 §2).
+func restepOverloadReachable(r *core.Registry, word string, args []core.Value) bool {
 	nf := r.Lookup(word)
 	if nf == nil {
 		return false
 	}
 	for i := range nf.Signatures {
-		if len(nf.Signatures[i].Args) < n {
+		s := &nf.Signatures[i]
+		if s.CompileEffect.Has(core.CompileResteps) && operandsReach(s, args) {
 			return true
 		}
 	}
 	return false
+}
+
+// operandsReach reports whether the window's operands could all be admitted
+// by s at run time: each operand s reads is an Any carrier (it may hold a
+// value of any type) or gradually matches its slot type. A slot past the
+// window reads a value the record never saw, which nothing rules out.
+func operandsReach(s *core.Signature, args []core.Value) bool {
+	for j, t := range s.ArgTypes() {
+		if j >= len(args) {
+			break
+		}
+		v := args[j]
+		if v.Carrier && v.Parent != nil && v.Parent.Equal(core.TAny) {
+			continue
+		}
+		if !core.SigTypeMatches(v, t) {
+			return false
+		}
+	}
+	return true
 }
 
 // produceRunOuts registers a RUN dispatch's results — an event whose N outs

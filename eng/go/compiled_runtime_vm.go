@@ -44,7 +44,41 @@ func invokeCompiled(r *core.Registry, sig *core.Signature, args []core.Value, na
 	// guarded by the effect fence so a callback that had written to the peer
 	// and THEN bailed did not write twice. Nothing retries now: the bail is a
 	// compiler defect and it surfaces, effect or no effect.
+	if err == nil && !named {
+		res = trimUnconsumedUnnamed(sig, res)
+	}
 	return res, err, true
+}
+
+// trimUnconsumedUnnamed is the callback seam's mirror of CallBoru's
+// unnamed-arg DISCARD (core callBoruNamed): residuals beyond the SIGNATURE's
+// declared return count are unconsumed unnamed params sitting at the bottom
+// of the body's region — call-scoped data, trimmed up to the unnamed-param
+// count. A stored fn's unit is compiled count-agnostic (it declares no
+// returns of its own, so its RET hands back the whole residual), which is
+// why the seam, holding the signature, trims here: `fnpred [[Integer]
+// [true]]` answered ONE verdict interpreted and [candidate true] compiled,
+// which the predicate protocol refuses — `0 is Z` was true on one lane and
+// false on the other (NUR223). A NAMED call's root RET already discards
+// through the frame's own contract (checkReturnContract, NUnnamed).
+func trimUnconsumedUnnamed(sig *core.Signature, res []core.Value) []core.Value {
+	unnamed := 0
+	for _, p := range sig.Params {
+		if p.Name == "" {
+			unnamed++
+		}
+	}
+	if len(sig.Returns) == 0 || unnamed == 0 {
+		return res
+	}
+	extra := len(res) - len(sig.Returns)
+	if extra <= 0 {
+		return res
+	}
+	if extra > unnamed {
+		extra = unnamed
+	}
+	return res[extra:]
 }
 
 // ClosureAsFnDef is the VALUE-path twin of closureAsWord (NUR124's payload
