@@ -2311,7 +2311,7 @@ func (vc *vmContext) callDynFrame(reg *core.Registry, w, frameBase int, stack []
 	// and the unit's result lands on top of it, which is the residual the island
 	// returns. Hence stack[:base], not stack[:frameBase]: the two coincide only
 	// when the prefix is empty.
-	if len(tokens) > 0 && dynFrameSimpleWindow(tokens) {
+	if len(tokens) > 0 && dynFrameSimpleWindow(tokens) && !replayLeadParks(tokens[0], words) {
 		if ent := vc.dynApplyEnter(tokens[0], tokens[1:]); ent != nil && (len(prefix) == 0 || ent.allForward) {
 			return stack[:base], ent, nil
 		}
@@ -2362,6 +2362,24 @@ func (vc *vmContext) callDynFrame(reg *core.Registry, w, frameBase int, stack []
 		return nil, nil, err
 	}
 	return append(stack[:frameBase], results...), nil, nil
+}
+
+// replayLeadParks is the interpreter's ANONYMOUS-0-ARG PARK (execFnDefLiteral)
+// over the replay's lead: the pointer re-steps a lambda or macro VALUE whose
+// only signatures take nothing, and it stays DATA unless an application was
+// asked for (`f/v apply` marks it Applied) — whatever unit its 0-arg
+// signature carries. The Apply kernel below entered that unit: the replay of
+// `each ([kv:Any] => [kv.v]) {x: ([] => [5])}` answered {x:5} for the
+// interpreter's {x:fn} (NUR220); the island it falls to parks the value. A
+// lead the body read BARE BY NAME (words[0]) is the binding's WORD
+// dispatch, which fires a 0-arg fn whatever its origin (`def r (mk)  r` is
+// 42), so it is not parked.
+func replayLeadParks(lead core.Value, words []compiler.DynFrameWord) bool {
+	fd, ok := lead.Data.(core.FnDefInfo)
+	if !ok || (len(words) > 0 && words[0].Name != "") || !core.FnValueOnlyZeroArgSigs(fd) {
+		return false
+	}
+	return (fd.Anonymous && !fd.Applied) || fd.Macro
 }
 
 // loneTokenArity is the parameter count a stack-collecting re-step of a

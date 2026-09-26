@@ -94,18 +94,6 @@ func applyRetContract(unit *compiler.CompiledFn, name string, sig *core.Signatur
 	return &ov
 }
 
-// dynApplyParks is the interpreter's ANONYMOUS-0-ARG PARK (execFnDefLiteral)
-// read at a dynamic apply: a lambda or macro VALUE with an empty window — no
-// forward args, no stack args — is DATA unless an application was asked for
-// (`f/v apply` marks it Applied), whatever unit its 0-arg signature carries.
-// The landing reads the same gate (landingWalk); the apply entries did not,
-// so the whole-frame replay of `each ([kv:Any] => [kv.v]) {x: ([] => [5])}`
-// entered the lambda's stamped unit and answered {x:5} for the
-// interpreter's {x:fn} (NUR220). The island the caller falls to parks it.
-func dynApplyParks(fd core.FnDefInfo, args []core.Value) bool {
-	return len(args) == 0 && ((fd.Anonymous && !fd.Applied) || fd.Macro)
-}
-
 // dynApplyEnter reports how to enter a dynamically-applied fn VALUE on the VM,
 // or nil when the VM cannot take it and the caller's island path stands.
 //
@@ -134,7 +122,7 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 	//
 	// IsAppliableFn alone does not exclude a quoted value (callDynApplyTop
 	// tests `|| fnVal.Quoted` separately for the same reason).
-	if fnVal.Quoted || dynApplyParks(fd, args) {
+	if fnVal.Quoted {
 		return nil
 	}
 	sig := core.MatchFnSig(fnVal, args)
@@ -200,7 +188,7 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 // can be counted.
 func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout int) (res []core.Value, ran bool, err error) {
 	fd, isFn := fnVal.Data.(core.FnDefInfo)
-	if !isFn || fnVal.Quoted || dynApplyParks(fd, args) {
+	if !isFn || fnVal.Quoted {
 		return nil, false, nil
 	}
 	sig := core.MatchFnSig(fnVal, args)

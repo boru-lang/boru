@@ -8778,22 +8778,6 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 			return true
 		}
 	}
-	// `apply` over a LONE gradual lead — a Dynamic carrier no fn type or
-	// concrete value pins, and nothing beneath it in the apply's window —
-	// has no modelled overload (at run time the [Function] one marks the
-	// value applied and re-steps it) and no tail window to seat; the decline
-	// is the dynamic-lead one below. It is taken HERE because apply's
-	// identity result carries the lead's own id, which the registered-output
-	// arm below elides as the lead's producer's: `each ([kv:Any] => [kv.v
-	// apply]) {x: ([] => [5])}` compiled to the bare member read, the Applied
-	// mark the interpreter's apply stamps lost, and it answered whatever the
-	// read answered — the lambda once the dynamic apply honoured the
-	// anonymous park (NUR220).
-	if word == "apply" && len(args) == 1 && args[0].Dynamic && !core.IsConcrete(args[0]) && !core.IsFnTypedCarrier(args[0]) {
-		es.SiteCounts[SiteMeta]++
-		es.MarkUncompilable("apply over a dynamic lead (overload unprovable)")
-		return true
-	}
 	// A dispatch whose output is already registered was recorded by a
 	// structured hook (RecordBranch owns the `if` dispatch; a user-fn
 	// ReturnsFn owns its RecordUserCall — including multi-return calls) —
@@ -8805,7 +8789,16 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// is concrete) collides with a prior generic event, and skipping the second
 	// would orphan its receiver push. Those fall through to the carrier-identity
 	// de-collision in RecordCall (which mints a fresh ID), so guard on !generic.
-	if len(outs) > 0 {
+	//
+	// EXCEPT `apply` over a LONE gradual lead — a Dynamic carrier no fn type
+	// or concrete value pins, nothing beneath it in the apply's window: its
+	// identity result carries the lead's own id, so this arm elided it as the
+	// lead's producer's, and `each ([kv:Any] => [kv.v apply]) {x: ([] =>
+	// [5])}` compiled to the bare member read — the Applied mark the
+	// interpreter's apply stamps lost, answering whatever the read answered
+	// (NUR220). Such an apply has no modelled overload and no tail window; it
+	// reaches the dynamic-lead decline below.
+	if len(outs) > 0 && !loneGradualApplyLead(word, args) {
 		if pr, ok := es.producedBy[outs[0].ID]; ok && !es.eventInfo[pr.seq].generic {
 			return true
 		}
@@ -8903,6 +8896,13 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		}
 	}
 	return false
+}
+
+// loneGradualApplyLead reports an `apply` whose whole window is one gradual
+// lead — a Dynamic carrier that is neither concrete nor fn-typed (NUR220's
+// exemption from the registered-output elision above).
+func loneGradualApplyLead(word string, args []core.Value) bool {
+	return word == "apply" && len(args) == 1 && args[0].Dynamic && !core.IsConcrete(args[0]) && !core.IsFnTypedCarrier(args[0])
 }
 
 // recordCallCompileFailure classifies a dispatch the recorder cannot lower as a generic
@@ -10797,26 +10797,32 @@ func (es *EmitState) MayBeFn(id string) bool {
 }
 
 // storedUnitFnRead reports a bare read, in a stored fn's unit, that the
-// interpreter DISPATCHES where the unit pushed the value (NUR217) — NUR123's
-// accounting, with none of the routes a named fn's unit has to seat a read:
-// a FN-TYPED read (the recorder's strict count) that no accepted lowering
-// took as the dispatch it is (a paren apply or a trailing apply credit it —
-// creditWordRead), a binding read both bare and by `/v`, and a GRADUAL read
-// that is the body's RESULT (the frame hands it back and the interpreter's
-// re-step of a fn there is the call NUR123's residual replay models, which a
-// stored unit does not take). A gradual read an operation consumes (`m dot
-// name`, a socket handed to a word) keeps its slot push, as NUR123 keeps it
-// in a named fn's unit. Returns the read's binding name for the reason.
-func storedUnitFnRead(rec *fnUnitRec, vals []core.Value) (string, bool) {
+// interpreter DISPATCHES where the unit pushed the value and that no seam can
+// hand back to it (NUR217) — NUR123's accounting, with none of the routes a
+// named fn's unit has to seat a read: a FN-TYPED read (the recorder's strict
+// count) that no accepted lowering took as the dispatch it is (a paren apply
+// or a trailing apply credit it — creditWordRead), a binding read both bare
+// and by `/v`, and a GRADUAL read of a CAPTURE that is the body's RESULT (a
+// capture is no argument, so no seam can refuse its value). A gradual PARAM
+// read — the body's result or an operation's operand — is data for every
+// argument but a fn, and the seams refuse a fn there (FnReadParams), so it
+// keeps the unit: declining it sent every `m.p 5` over an `[x:Any] [x]` body
+// to the interpreter (nine corpus rows, the engine-entry census).
+func storedUnitFnRead(u *emitUnit, rec *fnUnitRec, vals []core.Value) (string, bool) {
 	for id, n := range rec.wordReads {
 		if n > rec.wordReadCredit[id] || rec.valReads[id] > 0 {
 			return rec.wordReadNames[id], true
 		}
 	}
 	for _, v := range vals {
-		if name, read := rec.wordReadNames[v.ID]; read {
-			return name, true
+		name, read := rec.wordReadNames[v.ID]
+		if !read {
+			continue
 		}
+		if slot, local := u.localByID[v.ID]; local && slot < rec.nParams {
+			continue
+		}
+		return name, true
 	}
 	return "", false
 }
@@ -14987,7 +14993,7 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 		// its plain const and the apply takes the interpreter's own
 		// dispatch at the seam.
 		if rec.storedRefUnit {
-			if name, read := storedUnitFnRead(rec, vals); read {
+			if name, read := storedUnitFnRead(u, rec, vals); read {
 				return "stored fn: bare read of `" + name + "` may hold a fn the interpreter dispatches as a word (NUR217)"
 			}
 		}

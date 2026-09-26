@@ -13347,12 +13347,19 @@ compiled: the whole-frame replay's lone token went to `dynApplyEnter`,
 which entered the lambda's stamped unit over the empty window. The landing
 reads the park; the apply entries did not.
 
-**The fix.** `dynApplyParks` in `dynApplyEnter` and `dynApplyForeign`.
-It exposed a silent twin: `[kv.v apply]` compiled to the same code as
+**The fix.** `replayLeadParks` over the replay's lead, ahead of the Apply
+kernel — not inside `dynApplyEnter`, whose other callers include the shaped
+method's NAME reads (`def r (mk)  r` fires: a word dispatch is no value
+re-step; the first draft parked it and `TestBodyLocalWordReadParity` caught
+it). It exposed a silent twin: `[kv.v apply]` compiled to the same code as
 `[kv.v]` — apply's identity result carries the lead's id and the
 registered-output arm elided it, dropping the Applied mark. An `apply`
-over a lone gradual lead now takes the dynamic-lead decline ahead of that
-arm (`recordCallElided`), and the callback's other strategies answer 5.
+over a lone gradual lead is now exempt from that arm
+(`loneGradualApplyLead`), so it reaches the dynamic-lead decline the apply
+block already had — routed through the existing site, since the
+compile-failure site and disposition censuses count `MarkUncompilable`
+lines and a second site read as new debt — and the callback's other
+strategies answer 5.
 
 **Pins.** lang `TestNUR220DynamicApplyParksAnonymousZeroArg`.
 
@@ -13394,10 +13401,13 @@ compiled; a `f:Function` param the same; `[x f]` a count error for 6;
 
 **The fix.** Two halves. The unit DECLINES where no argument makes the read
 data (`storedUnitFnRead`): a fn-typed read no apply lowering credited, a
-binding read both bare and `/v`, a gradual read in the residual. A gradual
-param the body CONSUMES is data for every argument but a fn, and declining
-it would decline every `m k get` over an `Any` param (measured: the lens
-and handler suites), so the unit lists the slot instead
+binding read both bare and `/v`, a gradual CAPTURE read in the residual. A
+gradual PARAM the body reads is data for every argument but a fn, and
+declining it would decline every `m k get` over an `Any` param (measured:
+the lens and handler suites) — declining its residual read sent nine
+corpus rows' data calls (`m.p 5` over `[x:Any] [x]`, fn-value.tsv L122–
+L135, L229/L230, module-parselang.tsv L119) to the interpreter, the
+engine-entry census 183 -> 197 — so the unit lists the slot instead
 (`CompiledFn.FnReadParams`) and every seam that runs a stored unit —
 `dynApplyEnter`, `dynApplyForeign`, `invokeFnValue`, `invokeCompiled`
 (`CompiledFnRef.RefusesArgs`) — refuses an argument list with a fn there,
