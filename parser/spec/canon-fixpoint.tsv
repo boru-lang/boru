@@ -1,0 +1,46 @@
+# parser/spec/canon-fixpoint.tsv — ADR-015's fixpoint diagnostic, its shrink-only ledger.
+#
+# Both parser runners re-render every parse.tsv row that parses: canon of the
+# parsed stream, parsed again, must canon to the same text (a violation of the
+# fixpoint is always a violation of ADR-015's round-trip contract). A row that
+# does not reach its fixpoint must be listed here, with the record that
+# closes it; a listed row that now reaches it fails the runners until it is
+# removed. The row count is pinned in both runners — the ledger only shrinks.
+#
+# Columns: parse.tsv source (escaped as there) <TAB> record <TAB> why.
+# Landed 2026-09-26 with NUR072, whose own kinds (a plain word, the lambda
+# fold, the mini literal, the type bound, the group modifiers) all reach
+# their fixpoint; every row below is a kind that gate found.
+`v ${1} w`	NUR225	a template string canons as interp(…), a debug spelling
+`${x}`	NUR225	a template string canons as interp(…), a debug spelling
+<a>${'s'}</a>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a>${{k:1}}</a>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a>${1}</a>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a b='${2}'/>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a><b>${3}</b></a>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a>pre${1}mid${2}post</a>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a b='p${1}q'/>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+`${1}${2}`	NUR225	a template string canons as interp(…), a debug spelling
+`a${'s'}b`	NUR225	a template string canons as interp(…), a debug spelling
+{'q k':2}	NUR226	a map key that needs quoting canons bare, so the key re-lexes as two tokens
+<a n=${1}/>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a n=${x}/>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a>t${1}u</a>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+`a${1}b`	NUR225	a template string canons as interp(…), a debug spelling
+<a>${}</a>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a b=${1}/>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+`a${1}b\nc`	NUR225	a template string canons as interp(…), a debug spelling
+{'a b': 1}	NUR226	a map key that needs quoting canons bare, so the key re-lexes as two tokens
+<a b=${"x\"y"}/>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a b=${'x\'y'}/>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a b=${`x\`y`}/>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+<a b=${ { } }/>	NUR225	an XML literal with a ${} hole canons as interp-xml(…), a debug spelling
+`${1}`	NUR225	a template string canons as interp(…), a debug spelling
+`${a => [1]}`	NUR225	a template string canons as interp(…), a debug spelling
+`x${1}${2}y`	NUR225	a template string canons as interp(…), a debug spelling
+[`x${1}`]	NUR225	a template string canons as interp(…), a debug spelling
+{a: `x${1}`}	NUR225	a template string canons as interp(…), a debug spelling
+<a/>:A	NUR227	a typed tag before an XML literal (`[:A <a/>]`) re-lexes as the angle sugar A<a/>
+`${a =>	NUR225	a template string canons as interp(…), a debug spelling
+`v ${1}	NUR225	a template string canons as interp(…), a debug spelling
+- `${x}`	NUR225	a template string canons as interp(…), a debug spelling

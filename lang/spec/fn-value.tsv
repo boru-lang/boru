@@ -24,8 +24,8 @@ import module [export "X" {f: (fn [[a:Integer][Integer][a add 1]])}]  X.f 5	6	a 
 import module [import "boru:string-util" export "X" {up: (fn [[s:String][String][StringUtil.upper s]])}]  X.up 'ab'	'AB'	the export body runs in MODULE scope (module-private import resolves)
 #
 # §3  negatives — no match leaves the value as data; module scope is sealed
-def m {f: (fn [[a:Integer][Integer][a add 1]])}  m.f	fn [[a:Integer][Integer][word(a) word(add) 1]]	bare value, no args: stays data
-def m {f: (fn [[a:Integer][Integer][a add 1]])}  m.f 'x'	fn [[a:Integer][Integer][word(a) word(add) 1]] 'x'	type mismatch: no dispatch — the fn stays data, 'x' strands on top
+def m {f: (fn [[a:Integer][Integer][a add 1]])}  m.f	fn [[a:Integer][Integer][a add 1]]	bare value, no args: stays data
+def m {f: (fn [[a:Integer][Integer][a add 1]])}  m.f 'x'	fn [[a:Integer][Integer][a add 1]] 'x'	type mismatch: no dispatch — the fn stays data, 'x' strands on top
 import "boru:string-util"  import module [export "X" {up: (fn [[s:String][String][StringUtil.upper s]])}]  X.up 'ab'	ERROR:undefined_word	an OUTER import does not leak into the module body's scope
 #
 # §4  a paren expression resolving to a FUNCTION WORD never induces a call
@@ -89,8 +89,8 @@ def z fn [[][Integer][42]]  (z/v) apply	42	the placed value still fires where an
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w "x"	ERROR:uncalled_function	a named export called with a mismatched arg raises AT THE CALL
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  print (M.w "x")	ERROR:uncalled_function	and a consumer around it does not silence it — the old drain never fired here
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  def y (M.w "x")  y	ERROR:uncalled_function	nor does binding the result with def
-import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w	fn [[x:Integer][Integer][word(x)]]	a bare reference with no argument is still a VALUE, not a call
-import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w/v	fn [[x:Integer][Integer][word(x)]]	/v means "the function is what I want" — no dispatch, no error
+import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w	fn [[x:Integer][Integer][x]]	a bare reference with no argument is still a VALUE, not a call
+import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  M.w/v	fn [[x:Integer][Integer][x]]	/v means "the function is what I want" — no dispatch, no error
 import module [ def w fn [[x:Integer] [Integer] [x]] export "M" {w: w/v} ] end  def g M.w/v  g 5	5	and the parked value is still callable, which is what a caller wanted it for
 #
 # §6  a value-called dispatch SEALS at collection completion (NUR038).
@@ -192,7 +192,7 @@ def id fn [[x:Any] [Any] [x]] def g fn [[a:Integer] [Integer] [1] [a:String] [St
 #     and the value rides as an ordinary const operand. That
 #     name-independence is what deq rides on: the binding a function was
 #     reached through is not part of what it is.
-def f fn x:Integer [Integer] [x add 1] canon (f/v)	'fn [[x:Integer][Integer][word(x) word(add) 1]]'	canon renders the anonymous fn literal — no `fn f`, because the name is how it was reached
+def f fn x:Integer [Integer] [x add 1] canon (f/v)	'fn [[x:Integer][Integer][x add 1]]'	canon renders the anonymous fn literal — no `fn f`, because the name is how it was reached
 def f fn x:Integer [Integer] [x add 1] def a (f/v) (canon (a/v)) eq (canon (f/v))	true	so one function under two names has ONE canon — the name-independence deq rides on
 #
 # §11 UNDER-APPLICATION: a window WIDER than the callee's arity.
@@ -338,9 +338,9 @@ def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def f (mk 1) e
 # §15  A `/v` ON A MAP MEMBER IS DATA BESIDE ITS ARGUMENTS (NUR213, closed
 #      2026-09-25): the marker qualifies the member read, so the value never
 #      applies over what follows it — the 5 strands on top, on both lanes.
-def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f/v 5	fn [[a:Integer][Integer][word(a) word(add) 1]] 5	the marked member is data; the argument strands
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f/v 5	fn [[a:Integer][Integer][a add 1]] 5	the marked member is data; the argument strands
 def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f 5	6	…the unmarked member applies
-def m {f: (fn [[a:Integer] [Integer] [a add 1]])} (m.f/v) 5	fn [[a:Integer][Integer][word(a) word(add) 1]] 5	…and a paren around the marked read parks the same
+def m {f: (fn [[a:Integer] [Integer] [a add 1]])} (m.f/v) 5	fn [[a:Integer][Integer][a add 1]] 5	…and a paren around the marked read parks the same
 #
 # §16  THE WRAP WORDS TAKE A COMPILED CLOSURE (NUR158, closed 2026-09-25): a
 #      capturing lambda read out of a container wraps under `/u` `/s` `/f`

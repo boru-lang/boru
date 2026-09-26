@@ -1052,6 +1052,7 @@ func (c *CheckState) Clone() *CheckState {
 	cp.FnSummaries = cloneMap(c.FnSummaries)
 	cp.FnInflight = cloneMap(c.FnInflight)
 	cp.FnBodyChecked = cloneMap(c.FnBodyChecked)
+	cp.BehaveMakers = cloneMap(c.BehaveMakers)
 	if c.PendingFnBodies != nil {
 		cp.PendingFnBodies = append([]PendingFnBody(nil), c.PendingFnBodies...)
 	}

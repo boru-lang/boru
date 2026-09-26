@@ -38,10 +38,13 @@ func TestStampBodySigHostsAndRemembers(t *testing.T) {
 		t.Fatal("another input type is another shape, stamped on its own")
 	}
 	res, err := core.InvokeCallback(r, stamped, in, nil)
-	if err != nil || len(res) != 3 {
-		t.Fatalf("the hosted unit answers the frame's whole residual — the input beneath the two atoms: %v %v", res, err)
+	// The hosted unit answers what CallBoru answers for this signature: the
+	// unnamed input the body never consumed is discarded beneath the
+	// declared return (NUR223) — it used to ride back as a third value.
+	if err != nil || len(res) != 2 {
+		t.Fatalf("the hosted unit answers CallBoru's residual — the unconsumed input discarded: %v %v", res, err)
 	}
-	if last, _ := res[2].AsConcreteString(); last != "d" {
+	if last, _ := res[1].AsConcreteString(); last != "d" {
 		t.Fatalf("the residual's top is the body's last atom: %v", res)
 	}
 	// The declined body: `args` is context-dependent inside a stored unit.

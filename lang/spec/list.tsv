@@ -44,7 +44,7 @@
 [ 1 add 2 mul 3 ]	[9]	(1+2)*3 = 9
 [ 10 sub 4 add 1 ]	[7]	10-4=6, 6+1=7
 		
-quote [ 1 add 2 ]	(quote [1 word(add) 2])	quote suppresses auto-eval; add becomes a word atom
+quote [ 1 add 2 ]	(quote [1 add 2])	quote suppresses auto-eval; add becomes a word atom
 quote [ ]	(quote [])	quoted empty list
 		
 # ====================================================================		

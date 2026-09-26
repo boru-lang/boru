@@ -67,7 +67,7 @@ import "boru:string-util" end StringUtil.split "," "a,b,c"	['a' 'b' 'c']	structu
 import "boru:string-util" end StringUtil.upper "abc"	'ABC'	structure
 import "boru:test" end Test.test "ok" [[5] [5] Assert.equal] end Test.fail-count	0	structure
 iota 5	[0 1 2 3 4]	structure
-quote [1 add 2]	(quote [1 word(add) 2])	structure
+quote [1 add 2]	(quote [1 add 2])	structure
 quote add	add/q	structure
 range 2 6	[2 3 4 5]	structure
 true guard 42	42	structure

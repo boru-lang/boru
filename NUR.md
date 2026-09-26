@@ -146,6 +146,9 @@ keep the two in sync in the same commit.
 | [NUR222](#nur222) | FIXED 2026-09-26 (the dyn body's settled lead — the handoff log's entry of that date): a dynamic lead whose argument is another result of the same DYN-BODY dispatch (`do` over a body the closure path declined) is the body's to settle — its handler runs the body with the interpreter's semantics — and the program's residual arm leaves it; a dyn-body result with nothing of its own above it stays the lead the interpreter re-steps over a later token. The original text: `def m {f: inc/v}` from a factory, `do [m.f 5]` is 6 interpreted and `CALL_DYNAMIC underflow` compiled (an internal error): the model left the member over its 5, the residual arm applied it again over a region the body had already settled; `7 do [m.f 5]` and the `/q` twin `do [m.f y]` the same. Loud, pre-existing (measured on the committed head, 2026-09-26) | closing NUR190, 2026-09-26 |
 | [NUR223](#nur223) | FIXED 2026-09-26 (the seam discards the unconsumed input — the handoff log's entry of that date): the callback seam (InvokeCompiled) hands its caller exactly what the interpreter's CallBoru hands — residuals beyond the SIGNATURE's declared return count that are unconsumed unnamed params are discarded, up to the unnamed-param count; a stored fn's unit is compiled count-agnostic, so its RET used to hand back the whole residual. The original text: `def Z fnpred [[Integer] [true]]  0 is Z` is true interpreted and false compiled — the unit returned [0 true], which the predicate protocol refuses ("predicate must return exactly one value, got 2", raised outright by `def v:Z 0` compiled only); `fnpred [[Integer] [dup 0 eq]]` the same. Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR100, 2026-09-26 |
 | [NUR224](#nur224) | FIXED 2026-09-26 (the predicate's refusal is a type_error — the handoff log's entry of that date): a typed def's predicate refusal raises `type_error` on both lanes, as the typed def's other refusals do (`def q:T "x"` — does not unify with declared type T). The original text: `def Big fnpred n:Integer [n gt 10]  def f fn [[x:Any] [Any] [def q:Big x q]]  f 5` raised the refusal as a PLAIN error interpreted and as an `internal_error` annotated "this is a compiler defect" compiled — the typed-bind op raised the same plain error, and the compiled run books any non-BoruError as its own defect. Loud on both, the class split, pre-existing (measured on the committed head, 2026-09-26) | closing NUR100, 2026-09-26 |
+| [NUR225](#nur225) | Template strings and XML literals with `${}` holes canon in DEBUG form — `interp('v ' ${1} ' w')`, `interp-xml(<a>${1}</a>)` — which no parser accepts (a template re-parses as a syntax error, an XML literal as the word `interp-xml` over a group): 30 of parse.tsv's rows fail the canon fixpoint on it, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
+| [NUR226](#nur226) | A map key that needs quoting canons bare: `{'q k':2}` renders `{q k:2}`, which re-parses as two entries (`{q:q k:2}`) — ADR-015's round-trip broken on the key, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
+| [NUR227](#nur227) | A typed tag before an XML literal re-lexes as the angle sugar: `<a/>:A` canons `[:A <a/>]`, which re-parses as `[:A<a/>]` — whitespace does not separate `A` from `<`, so the tag and the element fuse into `A<a/>` | the canon fixpoint gate, closing NUR072, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -172,7 +175,7 @@ keep the two in sync in the same commit.
 | [NUR112](#nur112) | FIXED 2026-09-25 (the plain check's stored member — the handoff log's entry of that date): on a PLAIN check a stored fn value read as a member is the value itself, so the pass applies it over what follows as the run does (`def m {a:size/v}  m.a [1 2 3]` checks [Integer]); the compile pass keeps its dynamic carrier and the shaped method model. The earlier text: NARROWED 2026-09-25 (the extension is irrelevant; the widening is the member read's designed model — the record's resolution line): The checker's residual for a parked native word applied after its name was EXTENDED does not match what runs: `def Pos (refine Integer)  def m {a:size/v}  def size fn [[n:Pos] [Integer] [200]] end  def v:Pos 3  m.a v` is checked `[dynamic(Any) Pos]` — two values, one of them the argument left behind — and actually leaves `[Integer]`. Both ENGINES agree on the answer (3); it is the static model that differs, so no differential can see it — TestCheckTypeSoundness can, and did | writing a corpus row for the parked-native apply gate, 2026-08-29 |
 | [NUR009](#nur009) | Bytes excluded from the DepScalar refinement bases — VERDICT 2026-08-15: WAIT for the ADR-012 `types/go` consolidation to close this through the refinement-base capability; no narrow fix meanwhile | 2026-07-22 uniformity review |
 | [NUR026](#nur026) | Escape sets diverge between quoted strings and templates — NARROWED 2026-08-15: the escape VOCABULARY is resolved by fix (templates take the quoted-string set: \b \f \v \xNN \uNNNN, and an unknown escape drops its backslash); what remains is the malformed-input REPORTING difference, which needs an error channel the template lexer seam does not have | 2026-07-22 uniformity review |
-| [NUR072](#nur072) | Three sugar kinds (mini, type-bound, lambda) still canon in DEBUG form after NUR059 — withdrawn there because the renders do not round-trip: SugarInfo does not retain the mini delimiter, and type-bound renders its Items rather than the bound's text; also carries the undecided bare-word question (`word(foo)` vs `foo`, 175 corpus rows) | NUR059's fix, 2026-08-15 |
+| [NUR072](#nur072) | FIXED 2026-09-26 (canon spells the sugar and the word — the handoff log's entry of that date): canon renders a plain Word bare (ADR-015 settles the bare-word question: `word(foo)` re-parses as the `word` splice over a group, bare `foo` re-parses to the Word), the lambda marker `=>` and its fold group `A => B` without parens, a mini literal `+name'src'` in one canonical delimiter with the lexer's escapes, the type bound `name/t`, and a group modifier after its group (`(1 2) /s`) — in core/go and core/ts alike; the TS `/N` arity is a bigint, so `x/9223372036854775807` round-trips in both ports and left divergent.tsv for parse.tsv; a Go disjunct canon arm (missing, it spelled its members in the debug form) matches TS. A fixpoint gate over the parser corpus runs in both runners with a shrink-only ledger (parser/spec/canon-fixpoint.tsv) — NUR072's kinds all reach their fixpoint; the 33 ledgered rows are NUR225–NUR227. The original text: Three sugar kinds (mini, type-bound, lambda) still canon in DEBUG form after NUR059 — withdrawn there because the renders do not round-trip: SugarInfo does not retain the mini delimiter, and type-bound renders its Items rather than the bound's text; also carries the undecided bare-word question (`word(foo)` vs `foo`, 175 corpus rows) | NUR059's fix, 2026-08-15 |
 | [NUR075](#nur075) | FIXED 2026-09-26 (eq's capability — the handoff log's entry of that date): `eq` is extensible per type on `deq`'s terms — `core.ExactEqualer`, consulted at ExactEqual's terminal `false` exactly where DeepEqualer sits in DeepEqual (so the two reach the same values: the pairs no kernel arm names), and a `behave eq/q` slot with deq's shape (`[[T T] [Boolean]]`) and deq's seam (delegate, decline, re-entry guard). Kernel identity arms are untouched — the capability is additive, as deq's is. The original text: `deq` is extensible per type (`DeepEqualer`), `eq` is not — the one part of the retired NUR031's verdict its fix did not take: the divergences closed by adding kernel arms rather than by routing through `Behavior`, so a type can define its own deep equality but not its own identity | NUR031's fix, 2026-08-16 |
 | [NUR076](#nur076) | FIXED 2026-09-26 (the check pass notes a behave make — the handoff log's entry of that date): `behave`'s check-mode half (its ReturnsFn) validates the call as the handler does and, for the `make` slot, notes the target in the pass's own state (`CheckState.BehaveMakers`), which `HasMaker` reads — so a construction after the call skips the schema validation the type's own constructor replaces, exactly as a Go-side Maker's does; one before it validates, as the run has it. Nothing is installed on the type, so no user body runs during analysis; the other seven slots change only what a program computes, which analysis does not evaluate. `def P class {a: Integer}  behave make/q (fn Any P [make P {a: 42}])  make P {bogus: 1}` checks clean and compiles (Class/P{a:42} on both lanes). The original text: A `behave`-installed capability is invisible to check mode, because `behave` does not run there — for `make` that turns a working program into a check FAILURE: a type whose Maker ignores the schema still has the schema's unknown/missing-field rules applied statically | NUR056's fix, 2026-08-17 (flagged by the PR #379 review, Codex P1) |
 | [NUR060](#nur060) | The parser twins disagree on open-input sources beyond the corpus | PR #337 parity-probe sweep (flagged for NUR by Codex P1) |
@@ -4759,8 +4762,62 @@ had rotted by a factor of two.
 
 ## NUR072 — Three sugar kinds still canon in debug form, and their source spelling is not recoverable {#nur072}
 
-**Status:** Pending · **Recorded:** 2026-08-15 · **Surfaced by:** NUR059's
-fix — the residue its per-row fixpoint check refused
+**Status:** FIXED 2026-09-26 (canon spells the sugar and the word — the
+handoff log's entry of that date) · **Recorded:** 2026-08-15 · **Surfaced
+by:** NUR059's fix — the residue its per-row fixpoint check refused
+
+**The fix.** Every strand, in both ports (core/go canon.go, core/ts
+canon.ts), and a gate so it stays fixed.
+
+- **The bare-word question, decided by ADR-015 itself.** `word(foo)` is not
+  source: it re-parses as the `word` splice applied to the group `(foo)`. The
+  record's worry — that bare `foo` "re-parses as a word that will be
+  DISPATCHED" — is evaluation, which canon does not model: bare `foo` parses
+  back to exactly this Word (a paren body and a type tag already spelled
+  their words bare). So a plain Word renders as its name plus any modifier
+  suffix. The corpus moved with it: parse.tsv, shape.tsv, divergent.tsv,
+  core/spec, eng/spec and the lang spec rows whose expected canon held
+  `word(…)` — each row rewritten only where the new render differs from the
+  old by exactly that spelling (verified per row), the rest untouched.
+- **The lambda.** The marker renders `=>`; its FOLD group — the paren the
+  parser wraps around every `A => B` so the arrow binds tightest — renders
+  without parens, because `A => B` re-folds into the same group and `(A =>
+  B)` re-reads as an explicit paren AROUND a fold. An explicit paren the user
+  wrote holds the fold as its one token, so `(x => [1])` keeps its parens and
+  round-trips (`canonParen`).
+- **The mini literal.** The lexer takes any non-space delimiter, closed by
+  the same character, so the delimiter is not part of the value and no parser
+  change is needed: canon renders `+name'src'` in one canonical delimiter
+  with the lexer's own escapes (`canonMiniSrc`). The withdrawn `+m<src>`
+  failed because `<` is closed by `<`, not `>` — the pairing, not the
+  delimiter.
+- **The type bound** renders `name/t`, reading the name out of the `[name/q]`
+  list its Items hold.
+- **The group modifiers**, a fourth kind the record did not list (it believed
+  them unwritable): `(1 2)/s`, `a.b /2` put the marker BEFORE the group in the
+  stream, so a sequence rule (`canonSeqParts`, exported as `CanonValues` in Go
+  and applied by TS's `canon`) spells it after the group — `(1 2) /s`.
+- **`/N` precision.** TS carries the arity as a `bigint`, as exact as Go's
+  int64, so `x/9223372036854775807` canons identically in both ports and left
+  divergent.tsv for parse.tsv (divergent 10 → 9, parse 724 → 725).
+- **A disjunct arm in Go canon.** It had none and spelled its members through
+  the debug `String()`; the TS canon renders them through canon. The two
+  ports split on `{a?:Integer}` the moment a plain word stopped being
+  `word(…)`, and agree again.
+
+**The gate.** ADR-015 §4 asked for a property gate in both ports; the
+fixpoint diagnostic now runs over every parse.tsv row that parses, in the Go
+runner (`TestParserCanonFixpoint`) and the TS runner, against one
+shrink-only ledger (parser/spec/canon-fixpoint.tsv, pinned at 33 rows in
+both). Every row of NUR072's kinds reaches its fixpoint; the 33 ledgered rows
+are other kinds the gate found — template strings and XML `${}` holes
+(NUR225), a map key that needs quoting (NUR226), a typed tag before an XML
+literal (NUR227). Pinned also: core `TestNUR072SugarKindsSpellTheirSource`
+and `TestNUR072UnspellableSugarKeepsTheFallback`.
+
+Two results changed along the way and are recorded where they belong: the
+lang bail ceiling fell 37 → 36 (NUR224's refusal, no longer booked as a
+defect), and the FnModel golden took `behave`'s new ReturnsFn (NUR076).
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
 
@@ -8580,6 +8637,43 @@ map_literal_flex_member_test.go): the shapes above, nested loops, the
 loop inside and around a fn frame, a callback raising inside the loop, a
 range loop's own iterator name, the `error` handler, the while twin; and
 control.tsv §3's row.
+
+## NUR225 — template strings and XML `${}` holes canon in debug form {#nur225}
+
+**Status:** Pending (fixing next, in the reverse-order run) · **Recorded:**
+2026-09-26 · **Surfaced by:** the canon fixpoint gate that landed with
+NUR072.
+
+**Rule:** ADR-015 — canon renders source that re-parses to the same value;
+a debug spelling is a defect.
+
+**Divergence:** a template string canons as `interp('v ' ${1} ' w')` and an
+XML literal with a `${}` hole as `interp-xml(<a>${1}</a>)`. Neither parses
+back: the template re-parses as a syntax error (`unexpected ${`), the XML
+form as the word `interp-xml` over a paren group. 30 of the fixpoint
+ledger's 33 rows. Both ports render the same debug form, so this is a
+contract defect, not a parity one.
+
+## NUR226 — a map key that needs quoting canons bare {#nur226}
+
+**Status:** Pending (fixing next) · **Recorded:** 2026-09-26 · **Surfaced
+by:** the canon fixpoint gate.
+
+**Rule:** ADR-015.
+
+**Divergence:** `{'q k':2}` canons `{q k:2}`, which re-parses as two
+entries, `{q:q k:2}`; `{'a b': 1}` the same. Two ledger rows, both ports.
+
+## NUR227 — a typed tag before an XML literal re-lexes as an angle sugar {#nur227}
+
+**Status:** Pending (fixing next) · **Recorded:** 2026-09-26 · **Surfaced
+by:** the canon fixpoint gate.
+
+**Rule:** ADR-015.
+
+**Divergence:** `<a/>:A` canons `[:A <a/>]`, and the parser discards the
+space, so `A <a/>` lexes as the angle sugar `A<a/>`: the re-parse is `[:A<a/>]`.
+One ledger row, both ports.
 
 ## NUR224 — a predicate's typed-def refusal is a plain error on one lane and a compiler defect on the other {#nur224}
 

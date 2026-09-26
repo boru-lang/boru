@@ -10,7 +10,7 @@ package parser_test
 // a parser corpus with a shared reader would hide precisely the class of
 // defect design/legacy/TS-PARITY-AUDIT.0.ignore found.
 //
-// Six files, six contracts (lex.tsv and data.tsv have their own strict
+// Seven files, seven contracts (lex.tsv and data.tsv have their own strict
 // runners in lexspec_test.go and dataspec_test.go because they render
 // tokens and decoded data rather than parsed values):
 //
@@ -32,6 +32,10 @@ package parser_test
 //   shape.tsv      case, src -> semantic shape. Positions, flags, modifier
 //                                   payloads, nested values, and diagnostics
 //                                   omitted by the canonical render.
+//   canon-fixpoint.tsv  src, record, why. ADR-015's shrink-only ledger: the
+//                                   parse.tsv rows whose canon, parsed again,
+//                                   does not yet canon the same
+//                                   (TestParserCanonFixpoint, NUR072).
 
 import (
 	"bufio"
@@ -48,10 +52,13 @@ import (
 )
 
 const (
-	parseSpecRowCount     = 724
-	divergentSpecRowCount = 10
+	parseSpecRowCount     = 725
+	divergentSpecRowCount = 9
 	nestingSpecRowCount   = 18
 	shapeSpecRowCount     = 28
+	// canonFixpointRowCount pins canon-fixpoint.tsv, ADR-015's shrink-only
+	// ledger of parse.tsv rows that do not yet reach their canon fixpoint.
+	canonFixpointRowCount = 33
 )
 
 // specRow is one decoded corpus line: the source plus its columns.
@@ -86,8 +93,8 @@ type shapeSpecRow struct {
 func readSpec(t *testing.T, name string) []specRow {
 	t.Helper()
 	wantColumns := 4 // divergent.tsv: src, go, ts, justification
-	if name == "parse.tsv" {
-		wantColumns = 3 // src, expected, optional note (column always present)
+	if name == "parse.tsv" || name == "canon-fixpoint.tsv" {
+		wantColumns = 3 // src, expected, optional note / src, record, why
 	}
 	path := filepath.Join("..", "spec", name)
 	f, err := os.Open(path)
@@ -137,6 +144,9 @@ func readSpec(t *testing.T, name string) []specRow {
 		t.Fatalf("scan %s: %v", path, err)
 	}
 	wantRows := divergentSpecRowCount
+	if name == "canon-fixpoint.tsv" {
+		wantRows = canonFixpointRowCount
+	}
 	if name == "parse.tsv" {
 		wantRows = parseSpecRowCount
 	}
@@ -409,18 +419,16 @@ func decodeSpecEscapes(s string) string {
 	return b.String()
 }
 
-// renderSpec is the corpus's `expected` contract: the canon of each parsed
-// value, space-joined, or "ERR " and the first line of the error text.
+// renderSpec is the corpus's `expected` contract: the canon of the parsed
+// stream (core.CanonValues — each value's canon, space-joined, a group
+// modifier spelled after its group), or "ERR " and the first line of the
+// error text.
 func renderSpec(src string) string {
 	vals, err := parser.Parse(src)
 	if err != nil {
 		return "ERR " + strings.SplitN(err.Error(), "\n", 2)[0]
 	}
-	parts := make([]string, 0, len(vals))
-	for _, v := range vals {
-		parts = append(parts, core.CanonValue(v))
-	}
-	return strings.Join(parts, " ")
+	return core.CanonValues(vals)
 }
 
 func shapeBit(v bool) byte {
@@ -680,5 +688,43 @@ func TestParserSpecShape(t *testing.T) {
 				t.Errorf("shape.tsv:%d (%s): %q\n  want: %s\n  got : %s", r.line, r.name, r.src, r.expected, got)
 			}
 		})
+	}
+}
+
+// TestParserCanonFixpoint is ADR-015's fixpoint diagnostic over the parser
+// corpus (design/CANON-ROUNDTRIP.0.md §1, §4): for every parse.tsv row that
+// parses, the canon of its stream, parsed again, must canon to the same text
+// — a renderer that is consistently wrong can pass a fixpoint, but one that
+// fails it is always wrong. A row that does not reach its fixpoint must be
+// on canon-fixpoint.tsv, with the record that closes it, and a ledgered row
+// that reaches it fails until removed: the ledger only shrinks. The TS
+// runner applies the same gate to the same ledger (NUR072).
+func TestParserCanonFixpoint(t *testing.T) {
+	ledger := map[string]string{}
+	for _, row := range readSpec(t, "canon-fixpoint.tsv") {
+		ledger[row.src] = row.cols[0]
+	}
+	seen := map[string]bool{}
+	for _, row := range readSpec(t, "parse.tsv") {
+		r1 := renderSpec(row.src)
+		if strings.HasPrefix(r1, "ERR") {
+			continue
+		}
+		r2 := renderSpec(r1)
+		rec, ledgered := ledger[row.src]
+		if ledgered {
+			seen[row.src] = true
+		}
+		switch {
+		case r2 != r1 && !ledgered:
+			t.Errorf("parse.tsv:%d %q: canon %q re-parses to %q — not a fixpoint, and not on canon-fixpoint.tsv", row.line, row.src, r1, r2)
+		case r2 == r1 && ledgered:
+			t.Errorf("parse.tsv:%d %q reaches its fixpoint now (%s): remove it from canon-fixpoint.tsv and lower canonFixpointRowCount", row.line, row.src, rec)
+		}
+	}
+	for src := range ledger {
+		if !seen[src] {
+			t.Errorf("canon-fixpoint.tsv lists %q, which is no parse.tsv row that parses", src)
+		}
 	}
 }

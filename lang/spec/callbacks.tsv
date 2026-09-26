@@ -178,4 +178,4 @@ def h fn [[a:Integer b:Integer] [List] [[a b]]] end 0 fold h/v [1 2]	ERROR:uncal
 def h fn [[a:Integer b:Integer] [Integer] [a add b]] end 0 fold h/v ['x']	ERROR:uncalled_function	…and at step 0 the same
 def h fn [[a:Integer b:Integer] [Integer] [a add b]] end 0 fold h/v [1 2]	3	a matching named value folds
 def g fn [[x:Integer] [Any] [typeof x]] end each g/v [1 'a']	ERROR:uncalled_function	each's named value raises on the element no signature admits
-each ([x:Integer] => [typeof x]) [1 'a']	[Integer fn [[x:Integer][Any][word(typeof) word(x)]]]	an ANONYMOUS lambda's no-match leaves the value as data (NUR155's rule)
+each ([x:Integer] => [typeof x]) [1 'a']	[Integer fn [[x:Integer][Any][typeof x]]]	an ANONYMOUS lambda's no-match leaves the value as data (NUR155's rule)

@@ -75,8 +75,14 @@ func TestReachWave3TypeBoundKey(t *testing.T) {
 	if len(vals) != 1 || !core.IsReach(vals[0]) {
 		t.Fatalf("a.b/t: expected one Reach, got %v", vals)
 	}
-	if s := vals[0].String(); !strings.Contains(s, "sugar(type-bound") {
-		t.Errorf("a.b/t: rendering %q lacks the type-bound sugar key", s)
+	ri, _ := core.AsReach(vals[0])
+	last := ri.Segments[len(ri.Segments)-1].KeyLit
+	if info, ok := core.AsSugar(last); !ok || info.Kind != core.SugarTypeBound {
+		t.Errorf("a.b/t: the final key is %v, want the type-bound sugar", last)
+	}
+	// …and it renders as the source it came from (NUR072).
+	if s := vals[0].String(); s != "a.b/t" {
+		t.Errorf("a.b/t: rendering %q, want a.b/t", s)
 	}
 }
 

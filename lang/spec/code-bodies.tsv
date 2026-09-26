@@ -217,7 +217,7 @@ quote [1 add 2] end do	3	a quoted list held, then evaluated
 do (quote [1 add 2])	3	the same written forward
 do (quote [def z 3 z mul z])	9	a quoted body that defines a local
 do (push (quote 2) [1 (quote add)])	1 add/q 2	a body ASSEMBLED at runtime, then run
-do [quote [1 add 2]]	(quote [1 word(add) 2])	a `quote` inside a body keeps its operand as data
+do [quote [1 add 2]]	(quote [1 add 2])	a `quote` inside a body keeps its operand as data
 def m (macro [[e] [ quote [ unquote e add 1 ] ]]) end m 5	6	a macro splicing an operand into a body
 def m (macro [[a b] [ quote [ unquote a add unquote b ] ]]) end m 1 2	3	two spliced operands
 def m (macro [[xs] [ quote [ each [add 1] unquote xs ] ]]) end m [1 2 3]	[2 3 4]	a macro that BUILDS an each call

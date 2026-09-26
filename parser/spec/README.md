@@ -208,6 +208,20 @@ first line: code, detail, row, column, offending source, full source, hint,
 notes, and help suggestions. This catches diagnostic parity drift even when
 the two user-facing first lines still compare equal in `parse.tsv`.
 
+### `canon-fixpoint.tsv` — ADR-015's fixpoint ledger
+
+ADR-015 says `canon` renders source that re-parses to the same value, and
+design/CANON-ROUNDTRIP.0.md §1 keeps the textual FIXPOINT as its diagnostic:
+a renderer that fails it is always wrong. Both runners apply it to every
+`parse.tsv` row that parses — the canon of the parsed stream, parsed again,
+must canon to the same text — and a row that does not must be listed here
+with the record that closes it. A listed row that reaches its fixpoint fails
+both runners until it is removed; the row count is pinned in both, so the
+ledger only shrinks. It landed with NUR072 (2026-09-26), whose own kinds — a
+plain word, the lambda fold, the mini literal, the type bound, the group
+modifiers — all reach their fixpoint; the rows it lists are the kinds that
+gate found (NUR225–NUR227).
+
 ## The current debt
 
 **Corpus parity is exact; open-input parity is not.** Every row of

@@ -171,15 +171,16 @@ function newWordRef(name: string): Value {
 
 // newWordModified mirrors eng.NewWordModified: a word with explicit
 // argument-shape modifiers. Go's -1 argCount sentinel maps to the TS
-// optional-field convention (undefined = unset).
+// optional-field convention (undefined = unset). The arity is a bigint, as
+// exact as Go's int64 (NUR072: a JS number rounded `/N` above 2^53).
 function newWordModified(
   name: string,
-  argCount: number,
+  argCount: bigint,
   forceStack: boolean,
   forceForward: boolean,
 ): Value {
   const info: WordInfo = { name, forceStack, forceForward }
-  if (argCount >= 0) info.argCount = argCount
+  if (argCount >= 0n) info.argCount = argCount
   return new Value(TWord, info)
 }
 
@@ -874,10 +875,10 @@ export function groupModifier(
   if (m.forceForward) {
     return { base: m.base, prefix: [newSugar({ kind: 'forward-args' })], suffix: null }
   }
-  if (m.argCount >= 0) {
+  if (m.argCount >= 0n) {
     return {
       base: m.base,
-      prefix: [newSugar({ kind: 'force-arity', n: BigInt(m.argCount) })],
+      prefix: [newSugar({ kind: 'force-arity', n: m.argCount })],
       suffix: null,
     }
   }
@@ -1628,7 +1629,7 @@ export function orderedKeys(union: Set<string>, ko: string[]): string[] {
 // scanWordModifier's Go multi-return as one record.
 interface WordMod {
   base: string
-  argCount: number
+  argCount: bigint
   forceStack: boolean
   forceForward: boolean
   quoteFlag: boolean
@@ -1651,7 +1652,7 @@ interface WordMod {
 export function scanWordModifier(text: string): WordMod {
   const invalid = (): WordMod => ({
     base: text,
-    argCount: -1,
+    argCount: -1n,
     forceStack: false,
     forceForward: false,
     quoteFlag: false,
@@ -1676,7 +1677,7 @@ export function scanWordModifier(text: string): WordMod {
   // single argCount value.
   let valid = true
   let seenDigits = false
-  let argCount = -1
+  let argCount = -1n
   let forceStack = false
   let forceForward = false
   let quoteFlag = false
@@ -1700,7 +1701,7 @@ export function scanWordModifier(text: string): WordMod {
         if (n > INT64_MAX) {
           valid = false
         } else {
-          argCount = Number(n)
+          argCount = n
           seenDigits = true
         }
         i = j
@@ -1756,7 +1757,7 @@ export function scanWordModifier(text: string): WordMod {
 
   // /t combines with nothing — any companion flag invalidates, in
   // either order.
-  if (typeFlag && (quoteFlag || valFlag || usurpFlag || forceStack || forceForward || argCount >= 0)) {
+  if (typeFlag && (quoteFlag || valFlag || usurpFlag || forceStack || forceForward || argCount >= 0n)) {
     valid = false
   }
   if (!valid) {
@@ -1936,7 +1937,7 @@ export function parseWord(text: string): Value {
     return newWordRef(name)
   }
 
-  if (m.forceStack || m.forceForward || m.argCount >= 0) {
+  if (m.forceStack || m.forceForward || m.argCount >= 0n) {
     return newWordModified(name, m.argCount, m.forceStack, m.forceForward)
   }
 

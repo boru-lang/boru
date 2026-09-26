@@ -34,7 +34,7 @@
 0d12_	ERR [boru/syntax_error]: invalid 0d numeric literal: 0d12_	-
 1.2.3	ERR [boru/syntax_error]: a number has no members to access with `.`	-
 5 . foo	ERR [boru/syntax_error]: a number has no members to access with `.`	-
-a => [1]	word(a) sugar(lambda) [1]	-
+a => [1]	a => [1]	-
 <br/>	<br/>	-
 <a href='u'>t</a>	<a href="u">t</a>	-
 <t a='1' b='2'><u/>text</t>	<t a="1" b="2"><u/>text</t>	-
@@ -48,10 +48,10 @@ a => [1]	word(a) sugar(lambda) [1]	-
 [{x:1}]	[{x:1}]	-
 -2.5e3	-2500.0	-
 1e-7	0.0000001	-
-a:b	{a:word(b)}	-
+a:b	{a:b}	-
 's':1	{s:1}	-
 12:30:00	{12:{30:0}}	-
-a/b/c	word(a/b/c)	-
+a/b/c	a/b/c	-
 f/q	f/q	-
 Box<Integer>	Box<Integer>	-
 Box<(Integer)>	Box<(Integer)>	-
@@ -61,22 +61,22 @@ Box<Pair<(Integer)>>	Box<Pair<(Integer)>>	-
 {x: Box<Integer>}	{x:Box<Integer>}	-
 Box<Integer String>	Box<Integer String>	-
 Box<>	Box<>	-
-(Box of [Integer])	(Box of [word(Integer)])	-
+(Box of [Integer])	(Box of [Integer])	-
 1_000	1000	-
 1_0.5	10.5	-
 'u\\u0041'	'uA'	-
 'x\\x41'	'xA'	-
 'q\\z'	'qz'	-
-{a: true}	{a:word(true)}	-
-[true false]	[word(true) word(false)]	-
+{a: true}	{a:true}	-
+[true false]	[true false]	-
 {b: none}	{b:none}	-
-{x}	{x:word(x)}	-
+{x}	{x:x}	-
 {x/v}	{x:x/v}	-
 {x/2}	{x:x/2}	-
 {x/s}	{x:x/s}	-
 {x/q}	{x:x/q}	-
-{x/zz}	{x/zz:word(x/zz)}	-
-{a x/v}	{a:word(a) x:x/v}	-
+{x/zz}	{x/zz:x/zz}	-
+{a x/v}	{a:a x:x/v}	-
 <a>&amp;&lt;&gt;</a>	<a>&amp;&lt;&gt;</a>	-
 <a b='&amp;'/>	<a b="&amp;"/>	-
 <a>&#65;</a>	<a>&amp;#65;</a>	-
@@ -127,8 +127,8 @@ Box<>	Box<>	-
 # only a comment		-
 . x	ERR [boru/syntax_error]: `.` member access has no receiver	-
 ! . x	ERR [boru/syntax_error]: `.` member access has no receiver	-
-[x:Integer]	[{x:word(Integer)}]	-
-+m'src'	sugar(mini m 'src')	-
+[x:Integer]	[{x:Integer}]	-
++m'src'	+m'src'	-
 (1,,2)	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	-
 (,1)	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	-
 (1,)	ERR [boru/syntax_error]: unmatched opening parenthesis	-
@@ -142,7 +142,7 @@ Box<Integer	ERR [boru/syntax_error]: unclosed angle bracket: Box<… has no matc
 -0x10	-16	-
 [0x10]	[16]	-
 {a?:5}	{a:(None tor Absent tor 5)}	-
-{a?:Integer}	{a:(word(Integer) tor None tor Absent)}	-
+{a?:Integer}	{a:(Integer tor None tor Absent)}	-
 {a?: none}	{a:(None tor none tor Absent)}	TNone optional-key payload rank
 a.b.c	a.b.c	-
 a!.b	a!.b	-
@@ -150,10 +150,10 @@ $.name	$.name	-
 m.'k'	m.'k'	-
 a.(k)	a.(k)	-
 (m n).k	(m n).k	-
-[[x] => [x]]	[([word(x)] sugar(lambda) [word(x)])]	-
-[1 => [2]]	[(1 sugar(lambda) [2])]	-
+[[x] => [x]]	[[x] => [x]]	-
+[1 => [2]]	[1 => [2]]	-
 {f:[x] => [x]}	ERR [boru/syntax_error]: unexpected `=>` — nothing valid can appear here	-
-a.b => [1]	a.(b sugar(lambda) [1])	-
+a.b => [1]	a.(b => [1])	-
 {[k]:1}	{k:1}	-
 {[k]:1 aa:2}	{k:1 aa:2}	-
 {[k]:1 [j]:2}	{k:1 j:2}	-
@@ -180,18 +180,18 @@ a.b => [1]	a.(b sugar(lambda) [1])	-
 </a>	ERR xml: expected a tag name after '<'	-
 <a/ >	ERR xml: expected '/>' to close <a>	-
 < a/>	ERR xml: expected a tag name after '<'	-
-w/t	sugar(type-bound [[w]])	-
+w/t	w/t	-
 w/u	w/u	-
 f/s	f/s	-
 f/12	f/12	-
 x/tt	ERR [boru/syntax_error]: invalid word modifier /tt on "x"	-
 x/uu	ERR [boru/syntax_error]: invalid word modifier /uu on "x"	-
-x => [1]	word(x) sugar(lambda) [1]	-
-[a => [1]]	[(a sugar(lambda) [1])]	-
-(x => [x 1])	((x sugar(lambda) [word(x) 1]))	-
-a b => [1]	word(a) (b sugar(lambda) [1])	-
+x => [1]	x => [1]	-
+[a => [1]]	[a => [1]]	-
+(x => [x 1])	(x => [x 1])	-
+a b => [1]	a b => [1]	-
 {f: x => [x]}	ERR [boru/syntax_error]: unexpected `=>` — nothing valid can appear here	-
-Box<Integer> of [1]	Box<Integer> word(of) [1]	-
+Box<Integer> of [1]	Box<Integer> of [1]	-
 {p: Pair<A B>}	{p:Pair<A B>}	-
 ` plain `	' plain '	-
 `${1}${2}`	interp(${1} ${2})	-
@@ -211,14 +211,14 @@ true:1	{true:1}	-
 {none:1}	{none:1}	-
 (A tor None)	(A tor None)	-
 (None tor A)	(None tor A)	-
-x => y => [x]	word(x) sugar(lambda) (y sugar(lambda) [word(x)])	-
-[x y => [x]]	[word(x) (y sugar(lambda) [word(x)])]	-
-[{k:1} => [1]]	[({k:1} sugar(lambda) [1])]	-
-[a:1 => [2]]	[({a:1} sugar(lambda) [2])]	-
-[1 2 => [3] 4]	[1 (2 sugar(lambda) [3]) 4]	-
-(=> [1])	(sugar(lambda) [1])	-
-n => [n] 5	word(n) sugar(lambda) [word(n)] 5	-
-1 x => [x 2] 3	1 (x sugar(lambda) [word(x) 2]) 3	-
+x => y => [x]	x => y => [x]	-
+[x y => [x]]	[x y => [x]]	-
+[{k:1} => [1]]	[{k:1} => [1]]	-
+[a:1 => [2]]	[{a:1} => [2]]	-
+[1 2 => [3] 4]	[1 2 => [3] 4]	-
+(=> [1])	(=> [1])	-
+n => [n] 5	n => [n] 5	-
+1 x => [x 2] 3	1 x => [x 2] 3	-
 {m: [x] => [x]}	ERR [boru/syntax_error]: unexpected `=>` — nothing valid can appear here	-
 {x.y:1}	ERR [boru/syntax_error]: unexpected `.` — nothing valid can appear here	-
 {n: bf.n addq 1}	ERR [boru/syntax_error]: unexpected `1` — nothing valid can appear here	-
@@ -228,20 +228,20 @@ Box<T extends Integer U = String>	Box<T extends Integer U = String>	-
 Box<T extends>	Box<T extends>	-
 Box<lower>	Box<lower>	-
 Box<T extends Integer,U>	Box<T extends Integer U>	-
-def Box<T> (refine List)	word(def) Box<T> (refine List)	-
-true	word(true)	-
-false	word(false)	-
+def Box<T> (refine List)	def Box<T> (refine List)	-
+true	true	-
+false	false	-
 inf	inf	-
 -inf	-inf	-
 nan	nan	-
-Foo	word(Foo)	-
+Foo	Foo	-
 a/u	a/u	-
 a/s	a/s	-
 a/f	a/f	-
 a/2	a/2	-
 a/q	a/q	-
 a/v	a/v	-
-a/t	sugar(type-bound [[a]])	-
+a/t	a/t	-
 a/qq	ERR [boru/syntax_error]: invalid word modifier /qq on "a"	-
 a/fs	ERR [boru/syntax_error]: invalid word modifier /fs on "a"	-
 a/uv	a/uv	-
@@ -284,7 +284,7 @@ $.end	$.end	a receiverless lens takes the name too (NUR066)
 # marker and `a.;` stays the error it was — and canon spells it back as `;`,
 # not `end`, which would re-parse as the field name above.
 a.;	a.;	a semicolon segment stays the end marker, distinct from a.end (NUR066)
-a.b /s	sugar(stack-args) a.b	reach receiver followed by standalone stack modifier
+a.b /s	a.b /s	reach receiver followed by standalone stack modifier
 a.'k'	a.'k'	-
 a.0	a.0	-
 {:Integer}	{:Integer}	-
@@ -294,8 +294,8 @@ a.0	a.0	-
 `a\\$b`	'a$b'	-
 ( 1 )	(1)	-
 (	ERR [boru/syntax_error]: unmatched opening parenthesis	-
-1 tor 2	1 word(tor) 2	-
-Integer tor String	word(Integer) word(tor) word(String)	-
+1 tor 2	1 tor 2	-
+Integer tor String	Integer tor String	-
 
 # --- arbitrary-precision `0d…` literals (REFERENCE.md) -------------------
 # Rendered by the PARSEABLE form, sign before the marker: -0d789, never
@@ -323,7 +323,7 @@ Integer tor String	word(Integer) word(tor) word(String)	-
 1e400	ERR [boru/float_overflow]: floating-point literal out of range: 1e400 overflows to infinity	-
 -1e400	ERR [boru/float_overflow]: floating-point literal out of range: -1e400 overflows to infinity	-
 1__0	ERR [boru/syntax_error]: misplaced `_` in numeric literal: 1__0	a repeated separator is misplaced too
-_1	word(_1)	not digit-led, so an ordinary word — the separator rule is numeric-only
+_1	_1	not digit-led, so an ordinary word — the separator rule is numeric-only
 1e308	1e+308	the largest exponent that still fits binary64
 1.7e308	1.7e+308	just under the Float ceiling — accepted, unlike 1e400
 
@@ -515,16 +515,16 @@ foo/2	foo/2	NUR059: the /N arity modifier is dropped by canon
 [1 2 3]	[1 2 3]	-
 {a:1 b:2}	{a:1 b:2}	-
 :atom	ERR [boru/syntax_error]: unexpected `:` — nothing valid can appear here	-
-/abs/path	word(/abs/path)	-
-rel/path	word(rel/path)	-
+/abs/path	/abs/path	-
+rel/path	rel/path	-
 a@b.com	a@b.com	-
 https://x.io/p?q=1	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	-
 1.5	1.5	-
 -1.5	-1.5	-
 none	none	-
-x => [x]	word(x) sugar(lambda) [word(x)]	-
-def f fn [[a:Integer] [Integer] [a]]	word(def) word(f) word(fn) [[{a:word(Integer)}] [word(Integer)] [word(a)]]	-
-$x	word($x)	-
+x => [x]	x => [x]	-
+def f fn [[a:Integer] [Integer] [a]]	def f fn [[{a:Integer}] [Integer] [a]]	-
+$x	$x	-
 #comment		-
 "a${1}b"	'a${1}b'	-
 -0	0	-
@@ -560,7 +560,7 @@ $x	word($x)	-
 foo/f	foo/f	-
 foo/s	foo/s	-
 foo/u	foo/u	-
-foo/t	sugar(type-bound [[foo]])	-
+foo/t	foo/t	-
 foo/fs	ERR [boru/syntax_error]: invalid word modifier /fs on "foo"	-
 foo/sf	ERR [boru/syntax_error]: invalid word modifier /sf on "foo"	-
 foo/uu	ERR [boru/syntax_error]: invalid word modifier /uu on "foo"	-
@@ -568,15 +568,15 @@ foo/qu	ERR [boru/syntax_error]: invalid word modifier /qu on "foo"	-
 foo/tq	ERR [boru/syntax_error]: invalid word modifier /tq on "foo"	-
 foo/3	foo/3	-
 foo/0	foo/0	-
-/a\ b	word(/a\\) word(b)	-
-/a\\b	word(/a\\b)	-
+/a\ b	/a\\ b	-
+/a\\b	/a\\b	-
 'a\\ b'	'a b'	-
-{a}	{a:word(a)}	-
-{a b}	{a:word(a) b:word(b)}	-
-{$x}	{$x:word($x)}	-
+{a}	{a:a}	-
+{a b}	{a:a b:b}	-
+{$x}	{$x:$x}	-
 m.a.b.c	m.a.b.c	-
 m.0	m.0	-
-a!	word(a) word(!)	-
+a!	a !	-
 a.	ERR [boru/syntax_error]: `.` member access has no receiver	-
 1 )	1 )	a stray close paren survives as a value and keeps its source form
 
@@ -594,16 +594,16 @@ a.	ERR [boru/syntax_error]: `.` member access has no receiver	-
 (1 2	ERR [boru/syntax_error]: unmatched opening parenthesis	-
 1 ]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	-
 1 }	ERR [boru/syntax_error]: unexpected `}` — nothing valid can appear here	-
-def x 1 ;	word(def) word(x) 1 end	-
+def x 1 ;	def x 1 end	-
 [a: 1]	[{a:1}]	-
 {1: 2}	{1:2}	-
 {'k': 1}	{k:1}	-
 {"k": 1}	{k:1}	-
-$	word($)	-
-$$	word($$)	-
+$	$	-
+$$	$$	-
 ..	ERR [boru/syntax_error]: `.` member access has no receiver	-
 ...	ERR [boru/syntax_error]: `.` member access has no receiver	-
-a..b	a.. word(b)	-
+a..b	a.. b	-
 
 # --- empty `${}` interpolations -------------------------------------------
 # `${}` and `${   }` are NOT holes in an XML ATTRIBUTE: Go tests `p.Expr !=
@@ -629,18 +629,18 @@ a..b	a.. word(b)	-
 # escaped char; every other backslash is preserved raw, so `\d` survives
 # into a regex. `+re/` before whitespace has an empty body and is not a
 # literal at all — it stays an ordinary word.
-+re/x/	sugar(mini re 'x')	-
-+re2/x/	sugar(mini re2 'x')	minilang names may contain digits
-+re/a\/b/	sugar(mini re 'a/b')	-
-+re/a\\b/	sugar(mini re 'a\\b')	-
-+re/a\db/	sugar(mini re 'a\\db')	-
-+re/a\ b/	sugar(mini re 'a b')	-
-+re x	word(+re) word(x)	-
-+re/x	sugar(mini re 'x')	-
-+re/x/ 1	sugar(mini re 'x') 1	-
-+re/ x	word(+re/) word(x)	-
-+re/	word(+re/)	-
-+re/x/ +re/y/	sugar(mini re 'x') sugar(mini re 'y')	-
++re/x/	+re'x'	-
++re2/x/	+re2'x'	minilang names may contain digits
++re/a\/b/	+re'a/b'	-
++re/a\\b/	+re'a\\b'	-
++re/a\db/	+re'a\\db'	-
++re/a\ b/	+re'a\\ b'	-
++re x	+re x	-
++re/x	+re'x'	-
++re/x/ 1	+re'x' 1	-
++re/ x	+re/ x	-
++re/	+re/	-
++re/x/ +re/y/	+re'x' +re'y'	-
 
 # --- template literals and dotted access ---------------------------------
 # A raw template spanning a real newline (the row's `\n` is decoded before
@@ -664,7 +664,7 @@ a..b	a.. word(b)	-
 Map<]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	-
 Map<}	ERR [boru/syntax_error]: unexpected `}` — nothing valid can appear here	-
 [a: Map<]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	-
-a!b	word(a) word(!) word(b)	-
+a!b	a ! b	-
 [1 2].fst	[1 2].fst	-
 {a:1}.a	{a:1}.a	-
 
@@ -679,16 +679,17 @@ a!b	word(a) word(!) word(b)	-
 # the shared render and a one-sided fix fails loudly.
 a/qs	a/q	-
 a/f2	a/2f	-
-Map/t	sugar(type-bound [[Map]])	-
+Map/t	Map/t	-
+x/9223372036854775807	x/9223372036854775807	-
 a/9223372036854775808	ERR [boru/syntax_error]: invalid word modifier /9223372036854775808 on "a"	-
-a/1x	word(a/1x)	-
+a/1x	a/1x	-
 a/ff	ERR [boru/syntax_error]: invalid word modifier /ff on "a"	-
 a/qv	ERR [boru/syntax_error]: invalid word modifier /qv on "a"	-
-a/	word(a/)	-
-(1 2)/2	sugar(force-arity 2) (1 2)	-
-(1 2)/s	sugar(stack-args) (1 2)	-
-(1 2)/f	sugar(forward-args) (1 2)	-
-(1 2)/u	sugar(usurp) (1 2)	-
+a/	a/	-
+(1 2)/2	(1 2) /2	-
+(1 2)/s	(1 2) /s	-
+(1 2)/f	(1 2) /f	-
+(1 2)/u	(1 2) /u	-
 
 # --- optional keys, shorthand entries, and modifiers on keys --------------
 # `a?:` desugars to a disjunct with None and Absent. The shorthand forms
@@ -699,15 +700,15 @@ a/	word(a/)	-
 {a?: 1}	{a:(None tor Absent tor 1)}	-
 {'a'?: 1}	{a:(None tor Absent tor 1)}	-
 [a?: 1]	[{a:(1 tor None tor Absent)}]	-
-{a? }	{a:(word(a) tor None tor Absent)}	-
+{a? }	{a:(a tor None tor Absent)}	-
 {a/v}	{a:a/v}	-
 {a/q}	{a:a/q}	-
-{a/}	{a/:word(a/)}	-
+{a/}	{a/:a/}	-
 {a/v: 1}	ERR [boru/illegal_key]: word modifier not allowed on map key "a/v" (modifiers qualify values, not keys; quote the key as 'a/v' for a literal slash)	-
 {a/s}	{a:a/s}	-
 {a/u}	{a:a/u}	-
-{a/t}	{a:sugar(type-bound [[a]])}	-
-{a/1x}	{a/1x:word(a/1x)}	-
+{a/t}	{a:a/t}	-
+{a/1x}	{a/1x:a/1x}	-
 {'a b': 1}	{a b:1}	-
 {a: 1 a?: 2}	{a:(None tor Absent tor 2)}	-
 {a?: 1 a: 2}	{a:(None tor Absent tor 2)}	-
@@ -716,8 +717,8 @@ a/	word(a/)	-
 # `true`/`false` are ordinary WORDS at parse time (ADR-012 rule 4: the
 # parser is name-opaque), so these rows pin that the front end does NOT
 # resolve them.
-{a: 1.5 b: true}	{a:1.5 b:word(true)}	-
-[1.5 true false]	[1.5 word(true) word(false)]	-
+{a: 1.5 b: true}	{a:1.5 b:true}	-
+[1.5 true false]	[1.5 true false]	-
 
 # --- every rejecting arm of the modifier scan ----------------------------
 # One row per mutually-exclusive pair and per repeated letter, in both the
@@ -795,11 +796,11 @@ a."b c"	a.'b c'	-
 # value, where the sig is the whole pair; a list PAIR folds at the elem
 # level instead, which is why `[a: b => [b]]` groups the pair and
 # `{a: b => [b]}` is a syntax error.
-(m.k => [1])	(m.(k sugar(lambda) [1]))	-
-m.k => [1]	m.(k sugar(lambda) [1])	-
-(a k => [k])	(a (k sugar(lambda) [word(k)]))	-
-[a b => [b]]	[word(a) (b sugar(lambda) [word(b)])]	-
-[a: b => [b]]	[({a:word(b)} sugar(lambda) [word(b)])]	-
+(m.k => [1])	(m.(k => [1]))	-
+m.k => [1]	m.(k => [1])	-
+(a k => [k])	(a k => [k])	-
+[a b => [b]]	[a b => [b]]	-
+[a: b => [b]]	[{a:b} => [b]]	-
 {a: b => [b]}	ERR [boru/syntax_error]: unexpected `=>` — nothing valid can appear here	-
 `${a => [1]}`	interp(${word(a) sugar(lambda) [1]})	-
 
@@ -823,7 +824,7 @@ m.k => [1]	m.(k sugar(lambda) [1])	-
 # the immediately preceding BARE name only — a parenthesised or already
 # angled receiver leaves the `<` to the XML rule.
 [a: 1 b: 2]	[{a:1} {b:2}]	-
-[a: b => [b] c: 2]	[({a:word(b)} sugar(lambda) [word(b)]) {c:2}]	-
+[a: b => [b] c: 2]	[{a:b} => [b] {c:2}]	-
 `${}${1}`	ERR [boru/syntax_error]: unexpected `${` — nothing valid can appear here	-
 `x${1}${2}y`	interp('x' ${1} ${2} 'y')	-
 (Map)<Integer>	ERR xml: unterminated element <Integer>	-
@@ -837,16 +838,16 @@ Map<Integer><String>	ERR xml: unterminated element <String>	-
 # so every kind needs pinning twice — the two have drifted before. `[1 2,]`
 # tolerates a trailing comma where `[,1]` and `[1,,2]` do not.
 [1.5]	[1.5]	-
-[+re/x/]	[sugar(mini re 'x')]	-
+[+re/x/]	[+re'x']	-
 [`x${1}`]	[interp('x' ${1})]	-
 [{:Integer a:1}]	[{:Integer a:1}]	-
 [[:Integer 1]]	[[:Integer 1]]	-
-[a => b]	[(a sugar(lambda) b)]	-
+[a => b]	[a => b]	-
 ['x']	['x']	-
 [<a/>]	[<a/>]	-
 [1 2,]	[1 2]	-
 {a: 1.5}	{a:1.5}	-
-{a: +re/x/}	{a:sugar(mini re 'x')}	-
+{a: +re/x/}	{a:+re'x'}	-
 {a: {b: 1}}	{a:{b:1}}	-
 {a: {:Integer b:1}}	{a:{:Integer b:1}}	-
 {a: [:Integer 1]}	{a:[:Integer 1]}	-
@@ -907,13 +908,13 @@ a/2f2	ERR [boru/syntax_error]: invalid word modifier /2f2 on "a"	-
 # observable after an ordinary word and after a slash following a receiver.
 # Postfix constraints use the same opaque Word payload as their prefix forms;
 # canon intentionally renders that Word as the constraint atom in `[:…]`.
-a's'	word(a) 's'	-
-a"s"	word(a) 's'	-
-(a)/'s'	(a) word(/) 's'	-
-(a)/"s"	(a) word(/) 's'	-
-[a]:a	[:a [word(a)]]	-
+a's'	a 's'	-
+a"s"	a 's'	-
+(a)/'s'	(a) / 's'	-
+(a)/"s"	(a) / 's'	-
+[a]:a	[:a [a]]	-
 {a:1}:A	[:A {a:1}]	-
-[:a a]	[:a word(a)]	-
+[:a a]	[:a a]	-
 {:A a:1}	{:A a:1}	-
 (a):A	[:A (a)]	-
 <a/>:A	[:A <a/>]	-
@@ -928,11 +929,11 @@ a"s"	word(a) 's'	-
 , ]	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	bracket-recovery (probe-agreed)
 2,]	2	bracket-recovery (probe-agreed)
 [1]	[1]	bracket-recovery (probe-agreed)
-=> -	sugar(lambda) word(-)	arrow-with-body (probe-agreed)
-=> {	sugar(lambda) {}	arrow-with-body (probe-agreed)
-=> 42	sugar(lambda) 42	arrow-with-body (probe-agreed)
-=> b]	sugar(lambda) word(b)	arrow-with-body (probe-agreed)
-=> Map	sugar(lambda) word(Map)	arrow-with-body (probe-agreed)
+=> -	=> -	arrow-with-body (probe-agreed)
+=> {	=> {}	arrow-with-body (probe-agreed)
+=> 42	=> 42	arrow-with-body (probe-agreed)
+=> b]	=> b	arrow-with-body (probe-agreed)
+=> Map	=> Map	arrow-with-body (probe-agreed)
 - :	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	trailing-colon-ish (probe-agreed)
 1 :	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	trailing-colon-ish (probe-agreed)
 : +	ERR [boru/syntax_error]: unexpected `:` — nothing valid can appear here	trailing-colon-ish (probe-agreed)
@@ -941,19 +942,19 @@ a"s"	word(a) 's'	-
 )	)	paren (probe-agreed)
 (m	ERR [boru/syntax_error]: unmatched opening parenthesis	paren (probe-agreed)
 2)	2 )	paren (probe-agreed)
-A)	word(A) )	paren (probe-agreed)
+A)	A )	paren (probe-agreed)
 ( !	ERR [boru/syntax_error]: unmatched opening parenthesis	paren (probe-agreed)
 . 2	ERR [boru/syntax_error]: `.` member access has no receiver	dot (probe-agreed)
 . >	ERR [boru/syntax_error]: unexpected `>` — nothing valid can appear here	dot (probe-agreed)
 0 .	ERR [boru/syntax_error]: a number has no members to access with `.`	dot (probe-agreed)
 ] .	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	dot (probe-agreed)
 } .	ERR [boru/syntax_error]: unexpected `}` — nothing valid can appear here	dot (probe-agreed)
-+re/y/	sugar(mini re 'y')	mini (probe-agreed)
++re/y/	+re'y'	mini (probe-agreed)
 +re/x/}	ERR [boru/syntax_error]: unexpected `}` — nothing valid can appear here	mini (probe-agreed)
 ( +re/x/	ERR [boru/syntax_error]: unmatched opening parenthesis	mini (probe-agreed)
-+re/x/ ,	sugar(mini re 'x')	mini (probe-agreed)
++re/x/ ,	+re'x'	mini (probe-agreed)
 +re/x/ >	ERR [boru/syntax_error]: unexpected `>` — nothing valid can appear here	mini (probe-agreed)
-$ <y/>	word($) <y/>	xml (probe-agreed)
+$ <y/>	$ <y/>	xml (probe-agreed)
 , <y/>	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	xml (probe-agreed)
 . <y/>	ERR [boru/syntax_error]: `.` member access has no receiver	xml (probe-agreed)
 0 <y/>	0 <y/>	xml (probe-agreed)
@@ -962,17 +963,17 @@ b=${x	ERR [boru/syntax_error]: unexpected `${` — nothing valid can appear here
 <a b=${	ERR xml: unterminated ${...} interpolation	interp (probe-agreed)
 `${a =>	interp(${word(a) sugar(lambda)})	interp (probe-agreed)
 `v ${1}	interp('v ' ${1})	interp (probe-agreed)
-- `${x}`	word(-) interp(${word(x)})	interp (probe-agreed)
+- `${x}`	- interp(${word(x)})	interp (probe-agreed)
 /s	ERR empty word	mods (probe-agreed)
-) /s	sugar(stack-args) )	mods (probe-agreed)
+) /s	) /s	mods (probe-agreed)
 /s ,	ERR empty word	mods (probe-agreed)
 /s -	ERR empty word	mods (probe-agreed)
 /s :	ERR [boru/illegal_key]: word modifier not allowed on map key "/s" (modifiers qualify values, not keys; quote the key as '/s' for a literal slash)	mods (probe-agreed)
-!	word(!)	pipe-bang (probe-agreed)
-! +	word(!) word(+)	pipe-bang (probe-agreed)
-! 1	word(!) 1	pipe-bang (probe-agreed)
+!	!	pipe-bang (probe-agreed)
+! +	! +	pipe-bang (probe-agreed)
+! 1	! 1	pipe-bang (probe-agreed)
 ! <	ERR [boru/syntax_error]: unexpected `` — nothing valid can appear here	pipe-bang (probe-agreed)
-! =	word(!) word(=)	pipe-bang (probe-agreed)
+! =	! =	pipe-bang (probe-agreed)
 #
 # § numeric syntax prefixes are LOWERCASE ONLY. An uppercase `0X`/`0O`/`0B`/
 #   `0D` run is refused loudly in every context — it is a typo for the
@@ -994,6 +995,6 @@ b=${x	ERR [boru/syntax_error]: unexpected `${` — nothing valid can appear here
 #   rows pin that boundary, so neither side of it can move silently.
 0XFF/q	0XFF/q	a quoted atom is a name: case-symmetric with 0xFF/q
 0XFF/v	0XFF/v	…as is a /v word reference
-0XFF/t	sugar(type-bound [[0XFF]])	…and a type-bound
-{0XFF:a}	{0XFF:word(a)}	…and a bare map key (the lowercase {0xFF:a} is likewise a key, not 255)
-[0XFF:Integer]	[{0XFF:word(Integer)}]	…including the implicit parameter-map form
+0XFF/t	0XFF/t	…and a type-bound
+{0XFF:a}	{0XFF:a}	…and a bare map key (the lowercase {0xFF:a} is likewise a key, not 255)
+[0XFF:Integer]	[{0XFF:Integer}]	…including the implicit parameter-map form

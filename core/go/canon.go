@@ -219,9 +219,7 @@ func CanonValue(v Value) string {
 		if ct, ok := v.Data.(ChildTypeInfo); ok {
 			parts = append(parts, ":"+canonTypeTag(ct.Child))
 		}
-		for i := 0; i < lst.Len(); i++ {
-			parts = append(parts, canonChild(lst.Get(i)))
-		}
+		parts = append(parts, canonSeqParts(lst.Slice(), canonChild)...)
 		body := "[" + strings.Join(parts, " ") + "]"
 		if v.Quoted {
 			return "(quote " + body + ")"
@@ -249,19 +247,21 @@ func CanonValue(v Value) string {
 		return "{" + joinEntries(m, canonChild) + "}"
 	case IsReach(v):
 		return canonReach(v)
-	case IsWord(v) && hasWordModifiers(v):
-		// A word carries its `/`-modifiers in the payload, and dropping
-		// them made canon say something the source did not (NUR059): both
-		// `foo/v` and `foo/2` rendered `word(foo)`, so re-parsing the canon
-		// yielded a different program.
+	case IsWord(v):
+		// A word renders as its NAME plus any `/`-modifier suffix — the
+		// source that re-parses to this word value (ADR-015). The modifiers
+		// ride in the payload, and dropping them made canon say something
+		// the source did not (NUR059): `foo/v` and `foo/2` both rendered
+		// `word(foo)`.
 		//
-		// Scoped to words that HAVE a modifier. A bare word keeps its
-		// existing `word(foo)` spelling: rendering every word bare is a
-		// far larger change (175 of the corpus's 724 rows) and a different
-		// question — `word(foo)` denotes a word VALUE, while bare `foo`
-		// re-parses as a word that will be DISPATCHED — which this record
-		// does not decide. The modifier-bearing form follows the atom
-		// convention the record cites as already correct (`foo/q`).
+		// A plain word used to keep that `word(foo)` spelling, on the
+		// argument that it "denotes a word VALUE while bare `foo` re-parses
+		// as a word that will be DISPATCHED". It denotes nothing: `word(foo)`
+		// re-parses as the `word` splice applied to the group `(foo)`, so it
+		// was the debug spelling ADR-015 calls a defect, and bare `foo`
+		// re-parses to exactly this Word — whether it is later dispatched is
+		// evaluation, which canon does not model (a paren body and a type
+		// tag already spelled their words bare). Decided with NUR072.
 		w, _ := AsWord(v)
 		return w.Name + canonWordModifiers(w)
 	case IsSugar(v):
@@ -279,7 +279,30 @@ func CanonValue(v Value) string {
 		// body renders through canonReachTokens, which keeps words bare —
 		// inside a group they are CODE, not atom data.
 		toks, _ := AsParenExpr(v)
-		return "(" + canonReachTokens(toks) + ")"
+		return canonParen(toks)
+	case IsDisjunct(v):
+		// Alternatives joined by ` tor ` — the word form, so the rendering
+		// re-reads as source. Each alternative renders through CANON: an
+		// atom bare, a type literal as its leaf name, anything else as its
+		// own canon — the TS twin's rule (core/ts canon.ts). This arm was
+		// missing, so a disjunct fell through to Value.String and spelled
+		// its alternatives in the debug form (`word(Integer) tor None`),
+		// which the TS canon never did — the two ports split on
+		// `{a?:Integer}` the moment a plain word stopped canoning as
+		// `word(…)` (NUR072).
+		di, _ := AsDisjunct(v)
+		parts := make([]string, len(di.Alternatives))
+		for i, alt := range di.Alternatives {
+			switch {
+			case alt.Parent != nil && alt.Parent.Equal(TAtom) && alt.Data != nil:
+				parts[i], _ = AsAtom(alt)
+			case alt.Data == nil:
+				parts[i] = TypeNodeOf(alt).Leaf()
+			default:
+				parts[i] = CanonValue(alt)
+			}
+		}
+		return strings.Join(parts, " tor ")
 	case isFnDefValue(v):
 		// A function value participates in the total order (cmp/sort),
 		// so its canon form must DISCRIMINATE between distinct fns —
@@ -346,7 +369,7 @@ func canonReachToken(v Value) string {
 		return w.Name + canonWordModifiers(w)
 	case IsParenExpr(v):
 		toks, _ := AsParenExpr(v)
-		return "(" + canonReachTokens(toks) + ")"
+		return canonParen(toks)
 	case IsReach(v):
 		return canonReach(v)
 	case IsEnd(v):
@@ -364,11 +387,80 @@ func canonReachToken(v Value) string {
 // canonReachTokens renders a token sequence (receiver / computed-key / paren
 // body) as source, each token via canonReachToken so words stay bare.
 func canonReachTokens(toks []Value) string {
-	parts := make([]string, len(toks))
-	for i, t := range toks {
-		parts[i] = canonReachToken(t)
+	return strings.Join(canonSeqParts(toks, canonReachToken), " ")
+}
+
+// canonParen renders a paren group's tokens as source. A group of exactly
+// `A => B` — three tokens, the lambda marker between — is the arrow's FOLD
+// (the parser wraps every `A => B` in a group so the arrow binds tighter
+// than an enclosing word's collection), and renders without parens: `A =>
+// B` re-folds into this same group wherever it is re-read, where `(A =>
+// B)` re-reads as an explicit group AROUND a fold — one level deeper
+// (NUR072). An explicit paren the user wrote around a lambda holds the
+// fold as its one token, so it keeps its parens and the fold inside
+// renders bare: `(x => [1])` round-trips.
+func canonParen(toks []Value) string {
+	if isLambdaFold(toks) {
+		return canonReachTokens(toks)
 	}
-	return strings.Join(parts, " ")
+	return "(" + canonReachTokens(toks) + ")"
+}
+
+// isLambdaFold reports whether a paren group's tokens are an arrow fold,
+// `A => B`.
+func isLambdaFold(toks []Value) bool {
+	if len(toks) != 3 {
+		return false
+	}
+	info, ok := AsSugar(toks[1])
+	return ok && IsSugar(toks[1]) && info.Kind == SugarLambda
+}
+
+// canonSeqParts renders a value SEQUENCE — a list's elements, a paren body,
+// a parsed stream — one part per written unit, with the one rule no single
+// value can apply: a GROUP-MODIFIER marker (`/u /s /f /N` written on a paren
+// or reach group) precedes the group it modifies in the stream, and is
+// spelled as the standalone modifier token AFTER that group — `(1 2) /s`,
+// `a.b /2` — which re-parses to the same marker-then-group pair (NUR072).
+// A marker with nothing after it renders alone, as the value it is.
+func canonSeqParts(vals []Value, render func(Value) string) []string {
+	parts := make([]string, 0, len(vals))
+	for i := 0; i < len(vals); i++ {
+		if mod, ok := groupModifierText(vals[i]); ok && i+1 < len(vals) {
+			parts = append(parts, render(vals[i+1])+" /"+mod)
+			i++
+			continue
+		}
+		parts = append(parts, render(vals[i]))
+	}
+	return parts
+}
+
+// groupModifierText is the suffix letter(s) a group-modifier marker was
+// written as, or !ok for any other value.
+func groupModifierText(v Value) (string, bool) {
+	if !IsSugar(v) {
+		return "", false
+	}
+	info, _ := AsSugar(v)
+	switch info.Kind {
+	case SugarUsurp:
+		return "u", true
+	case SugarStackArgs:
+		return "s", true
+	case SugarForwardArgs:
+		return "f", true
+	case SugarForceArity:
+		return strconv.FormatInt(info.N, 10), true
+	}
+	return "", false
+}
+
+// CanonValues renders a value sequence — a parsed stream, a body's tokens —
+// as the source that re-parses to it: each value's canon, space-joined,
+// with a group-modifier marker spelled after its group (canonSeqParts).
+func CanonValues(vals []Value) string {
+	return strings.Join(canonSeqParts(vals, CanonValue), " ")
 }
 
 // canonReach renders a Reach back to its dotted surface — m.a.b, m!.x,
@@ -456,12 +548,7 @@ func canonFnDef(fd FnDefInfo) string {
 			}
 		}
 		b.WriteString("][")
-		for j, t := range sig.Body() {
-			if j > 0 {
-				b.WriteByte(' ')
-			}
-			b.WriteString(CanonValue(t))
-		}
+		b.WriteString(CanonValues(sig.Body()))
 		b.WriteString("]")
 	}
 	b.WriteByte(']')
@@ -517,20 +604,31 @@ func canonWordModifiers(w WordInfo) string {
 }
 
 // canonSugar renders a sugar marker back to the surface syntax it came
-// from (NUR059). Without this the marker fell through to `Value.String`,
-// so `[:Box<Integer>]` canon'd as `[:sugar(angle Box [word(Integer)])]` —
-// a debug dump no parser accepts.
+// from (NUR059, NUR072). Without this the marker fell through to
+// `Value.String`, so `[:Box<Integer>]` canon'd as
+// `[:sugar(angle Box [word(Integer)])]` — a debug dump no parser accepts.
 //
-// ONLY the angle form is handled, and the restraint is measured rather
-// than cautious. The modifier kinds (usurp / stack-args / forward-args /
-// force-arity) are lowered from a `/`-suffix canonWordModifiers already
-// renders on the word itself, so reaching them here means a bare marker
-// the user cannot write. The other three were TRIED and withdrawn: a
-// per-row fixpoint check (does the new render re-parse to itself?) showed
-// `+m'src'` rendering `+m<src>`, which re-parses with a stray `>` because
-// SugarInfo does not retain the source delimiter, and `w/t` rendering
-// `[w/q]/t`, which does not parse at all. A spelling that does not
-// round-trip is worse than the debug form, because it looks like source.
+// The modifier kinds (usurp / stack-args / forward-args / force-arity) have
+// no spelling of their own: on a word the `/`-suffix rides on the word
+// (canonWordModifiers), and on a group the marker precedes the group in the
+// stream and is spelled AFTER it by the sequence rule (canonSeqParts,
+// `(1 2) /s`), so a marker rendered alone keeps the fallback. The lambda,
+// mini and type-bound kinds spell their source (NUR072) — each re-parses to
+// the marker it came from:
+//
+//   - `=>`, the lambda marker;
+//   - `+name'src'` for a mini literal, in ONE canonical delimiter (the
+//     lexer takes any, closed by the same character, so the one the user
+//     wrote is not part of the value) with the lexer's escapes
+//     (canonMiniSrc). An earlier attempt rendered `+m<src>`, which failed
+//     because `<` is closed by `<`, not `>` — the delimiter was never the
+//     problem, the pairing was;
+//   - `name/t` for the type bound, whose Items hold the bound as the list
+//     `[name/q]` the desugaring feeds `of` — rendering Items gave
+//     `[w/q]/t`, which does not parse.
+//
+// A marker no source can produce (a mini source holding a newline, a bound
+// that is not one quoted name) keeps the fallback.
 func canonSugar(info SugarInfo) (string, bool) {
 	switch info.Kind {
 	case SugarAngle:
@@ -539,6 +637,64 @@ func canonSugar(info SugarInfo) (string, bool) {
 			parts[i] = canonTypeTag(it)
 		}
 		return info.Name + "<" + strings.Join(parts, " ") + ">", true
+	case SugarLambda:
+		return "=>", true
+	case SugarMini:
+		if !miniNameSpellable(info.Name) || strings.ContainsAny(info.Src, "\n\r") {
+			return "", false
+		}
+		return "+" + info.Name + "'" + canonMiniSrc(info.Src) + "'", true
+	case SugarTypeBound:
+		if len(info.Items) == 1 {
+			if l, err := AsList(info.Items[0]); err == nil && !l.IsNil() && l.Len() == 1 && IsAtom(l.Slice()[0]) {
+				name, _ := AsAtom(l.Slice()[0])
+				return name + "/t", true
+			}
+		}
 	}
 	return "", false
+}
+
+// miniNameSpellable reports whether name lexes as a mini literal's kind — a
+// lowercase letter, then lowercase letters, digits and `-`, the lexer's own
+// rule.
+func miniNameSpellable(name string) bool {
+	if name == "" || name[0] < 'a' || name[0] > 'z' {
+		return false
+	}
+	for i := 1; i < len(name); i++ {
+		c := name[i]
+		if (c < 'a' || c > 'z') && (c < '0' || c > '9') && c != '-' {
+			return false
+		}
+	}
+	return true
+}
+
+// canonMiniSrc spells a mini literal's source between the canonical `'`
+// delimiter with the lexer's own escapes: `\'` for the delimiter, `\ ` and
+// `\<tab>` for whitespace (a literal is one whitespace-free span), and `\\`
+// for a backslash wherever the lexer would otherwise read an escape — before
+// the delimiter, a backslash, a space or a tab, or at the end, where the
+// closing delimiter follows. Every other backslash is raw on both sides, so a
+// regex source keeps its escapes as written (`+re'\d+'`).
+func canonMiniSrc(src string) string {
+	var b strings.Builder
+	for i := 0; i < len(src); i++ {
+		c := src[i]
+		switch c {
+		case '\'', ' ', '\t':
+			b.WriteByte('\\')
+			b.WriteByte(c)
+		case '\\':
+			if i+1 == len(src) || strings.IndexByte("'\\ \t", src[i+1]) >= 0 {
+				b.WriteString(`\\`)
+			} else {
+				b.WriteByte('\\')
+			}
+		default:
+			b.WriteByte(c)
+		}
+	}
+	return b.String()
 }

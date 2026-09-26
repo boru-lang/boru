@@ -83,10 +83,10 @@ def Reducer class {step: Function} end def r (make Reducer {step: (fn [[a:Intege
 #
 # §5  fold shapes that do NOT dispatch, and leave the callback stranded as
 #     data. Real code writes these and gets no error — just a wrong value.
-0 fold [([a:Integer e:Integer] => [a add e])] [1 2 3]	fn [[a:Integer e:Integer][Any][word(a) word(add) word(e)]]	a lambda WRAPPED IN A CODE BODY is not a callback: fold leaves it as data — DOES NOT COMPILE: "code-body word fold (Stage 2)"
-{a:1} fold ([acc:Map e:Integer] => [acc add e]) [1 2]	fn [[acc:Map e:Integer][Any][word(acc) word(add) word(e)]]	a Map initial accumulator with a lambda callback: fold does not dispatch at all
+0 fold [([a:Integer e:Integer] => [a add e])] [1 2 3]	fn [[a:Integer e:Integer][Any][a add e]]	a lambda WRAPPED IN A CODE BODY is not a callback: fold leaves it as data — DOES NOT COMPILE: "code-body word fold (Stage 2)"
+{a:1} fold ([acc:Map e:Integer] => [acc add e]) [1 2]	fn [[acc:Map e:Integer][Any][acc add e]]	a Map initial accumulator with a lambda callback: fold does not dispatch at all
 10 fold ([a:Integer f:Function] => [(f a)]) [(fn [[n:Integer][Integer][n add 1]])]	fn [[a:Integer f:Function][Any][(f a)]]	folding a LIST OF FUNCTIONS into a value: no dispatch, the lambda strands
-each [([n:Integer] => [n mul 2])] [1 2 3]	[fn [[n:Integer][Any][word(n) word(mul) 2]] fn [[n:Integer][Any][word(n) word(mul) 2]] fn [[n:Integer][Any][word(n) word(mul) 2]]]	the same trap on each — every element maps to the un-applied lambda — DOES NOT COMPILE: "code-body word each (Stage 2)"
+each [([n:Integer] => [n mul 2])] [1 2 3]	[fn [[n:Integer][Any][n mul 2]] fn [[n:Integer][Any][n mul 2]] fn [[n:Integer][Any][n mul 2]]]	the same trap on each — every element maps to the un-applied lambda — DOES NOT COMPILE: "code-body word each (Stage 2)"
 #
 # §6  each as MAP — the transform half of the pipeline
 0 fold [add] (each [size] ['a' 'bb' 'ccc'])	6	map-then-reduce over Strings
@@ -237,9 +237,9 @@ def reg (flex {}) end def p fn [[kv:Map][Boolean][kv.value gt 1]] end reg set 'f
 # §13d a code body that names a binding the compiled context holds as a
 #      frame local
 def runner fn [[xs:List][Integer][def step fn [[a:Integer e:Integer][Integer][a add e]] 0 fold [step] xs]]  runner [1 2 3]	6	a fn-LOCAL reducer named inside the quotation body — DOES NOT COMPILE: "code-body word fold (Stage 2)"
-def k 5 end 0 fold [([a:Integer e:Integer] => [a add e add k])] [1 2]	fn [[a:Integer e:Integer][Any][word(a) word(add) word(e) word(add) word(k)]]	a closure wrapped in a code body — declined AND, on the interpreter, not applied — DOES NOT COMPILE: "code-body word fold (Stage 2)"
-{} fold [([acc:Map e:String] => [set e (size e) acc])] ['a' 'bb']	fn [[acc:Map e:String][Any][word(set) word(e) (size e) word(acc)]]	the map-building lambda wrapped in a code body — same double failure — DOES NOT COMPILE: "code-body word fold (Stage 2)"
-def stats fn [[xs:List][Map][{n: (size xs) sum: (0 fold [add] xs) max: (0 fold [([a:Integer e:Integer] => [if (e gt a) [e] [a]])] xs)}]]  stats [1 5 3]	{n:3 sum:9 max:fn [[a:Integer e:Integer][Any][word(if) (e gt a) [word(e)] [word(a)]]]}	the wrapped-lambda trap inside a record-building fn: the `max` field is the raw callback — DOES NOT COMPILE: "code-body word fold (Stage 2)"
+def k 5 end 0 fold [([a:Integer e:Integer] => [a add e add k])] [1 2]	fn [[a:Integer e:Integer][Any][a add e add k]]	a closure wrapped in a code body — declined AND, on the interpreter, not applied — DOES NOT COMPILE: "code-body word fold (Stage 2)"
+{} fold [([acc:Map e:String] => [set e (size e) acc])] ['a' 'bb']	fn [[acc:Map e:String][Any][set e (size e) acc]]	the map-building lambda wrapped in a code body — same double failure — DOES NOT COMPILE: "code-body word fold (Stage 2)"
+def stats fn [[xs:List][Map][{n: (size xs) sum: (0 fold [add] xs) max: (0 fold [([a:Integer e:Integer] => [if (e gt a) [e] [a]])] xs)}]]  stats [1 5 3]	{n:3 sum:9 max:fn [[a:Integer e:Integer][Any][if (e gt a) [e] [a]]]}	the wrapped-lambda trap inside a record-building fn: the `max` field is the raw callback — DOES NOT COMPILE: "code-body word fold (Stage 2)"
 #
 # §13e a gradual-Any collection whose runtime type the static model missed —
 #      these do not merely decline, they abort with an INTERNAL error

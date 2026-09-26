@@ -52,8 +52,8 @@ WORD band
 WORD base
   [Any] barrier=1 +returnsfn
 WORD behave
-  [Scalar/String Type/Function] barrier=2
-  [Scalar/Atom Type/Function] barrier=2 quote={0}
+  [Scalar/String Type/Function] barrier=2 +returnsfn
+  [Scalar/Atom Type/Function] barrier=2 quote={0} +returnsfn
 WORD between
   [Scalar Scalar Scalar] barrier=3 runcheck typearg={2} returns=[Scalar]
 WORD bnot

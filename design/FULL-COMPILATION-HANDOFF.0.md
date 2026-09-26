@@ -13322,6 +13322,38 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR072 closed — canon spells the sugar and the word; a fixpoint gate in both ports (2026-09-26)
+
+**The divergence.** ADR-015 requires canon to render source that re-parses
+to the same value. Three sugar kinds rendered their debug dump
+(`sugar(mini m 'src')`, `sugar(type-bound [[w]])`, `sugar(lambda)`), a plain
+word rendered `word(foo)` (the bare-word question the record left open), and
+TS rounded a `/N` arity above 2^53.
+
+**The fix.** ADR-015 answers the bare-word question: `word(foo)` re-parses
+as the `word` splice over a group, bare `foo` as the Word — so words render
+bare. The lambda marker is `=>` and its fold group renders without parens
+(it re-folds); a mini literal renders `+name'src'` with the lexer's escapes
+(the delimiter is not part of the value); the type bound `name/t`; a group
+modifier after its group by a sequence rule (`(1 2) /s` — a fourth kind the
+record thought unwritable). TS carries `/N` as a bigint. Go canon gained the
+disjunct arm TS had. Both ports, the shared corpora rewritten row by row
+where the only difference was the new spelling.
+
+**The gate.** `TestParserCanonFixpoint` and its TS twin re-parse every
+parse.tsv row's canon; 33 rows fail it and are ledgered in
+parser/spec/canon-fixpoint.tsv against NUR225 (template strings, XML
+holes), NUR226 (map keys needing quotes) and NUR227 (a typed tag before an
+XML literal) — none of them NUR072's kinds.
+
+**Also moved.** The lang bail ceiling 37 -> 36 (NUR224's refusal is no
+compiler defect), the FnModel golden (`behave`'s ReturnsFn, NUR076), the
+body-sig test's residual (NUR223: the seam answers CallBoru's residual).
+
+**Pins.** core `TestNUR072SugarKindsSpellTheirSource`,
+`TestNUR072UnspellableSugarKeepsTheFallback`; parser
+`TestParserCanonFixpoint` (Go and TS); parse.tsv's new `/N` row.
+
 ## NUR074 resolved — a parameter's name is part of the function (2026-09-26)
 
 **The record.** `canon` renders parameter names, so `([x:Number] => [mul

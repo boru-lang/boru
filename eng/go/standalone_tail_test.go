@@ -163,10 +163,11 @@ func TestRunPredicateArms(t *testing.T) {
 	if _, _, err := r.RunPredicate(core.NewInteger(1), core.NewInteger(5)); err == nil {
 		t.Error("non-fn constraint must error")
 	}
-	// A two-param fn is not a predicate shape.
+	// A two-param fn takes no ONE value, so a one-value application finds
+	// no signature: not a member, and no arity error (NUR100).
 	two := build("fn [[a:Integer b:Integer] [Boolean] [true]]")
-	if _, _, err := r.RunPredicate(two, core.NewInteger(5)); err == nil {
-		t.Error("two-param constraint must error")
+	if _, ok, err := r.RunPredicate(two, core.NewInteger(5)); ok || err != nil {
+		t.Errorf("two-param constraint admits nothing: ok=%v err=%v", ok, err)
 	}
 	// A predicate returning false rejects the candidate.
 	no := build("fn [[x:Integer] [Boolean] [false]]")
