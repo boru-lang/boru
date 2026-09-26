@@ -43,7 +43,7 @@ func TestRecordDispatchRematchDeclinesReadSubstitutedCarrier(t *testing.T) {
 	es := NewEmitState()
 	carrier := core.NewCarrier(core.TFunction)
 	es.defReads = map[string]string{carrier.ID: "q"}
-	if es.RecordDispatchRematchValues("add", []core.Value{core.NewInteger(1), carrier}, []int{0}, core.SrcPos{}) {
+	if es.RecordDispatchRematchValues("add", []core.Value{core.NewInteger(1), carrier}, 0, []int{0}, core.SrcPos{}) {
 		t.Error("a read-substituted fn-carrier window value must decline the rematch")
 	}
 }

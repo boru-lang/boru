@@ -9,6 +9,38 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR211 closed: the rematch plans the written split (2026-09-26)
+
+**The divergence (main's record, loud).** `def mk fn [[][List][quote [i]]]
+end 3 for (mk)` is the interpreter's `signature_error`. Compiled it was an
+`internal_error`: "DISPATCH_REMATCH at for matched at run time where the
+static model failed".
+
+**Why.** The check pass's no-match over a window that holds a carrier (the
+paren's List result) records a runtime rematch. The rematch read its window
+flat. Window[i] was sig position i, and the window lists the stack run first,
+then the operands written after the word. So `3 for (mk)` was matched as
+`for 3 [i]`, which fits. The interpreter's forward phase takes the written
+operand first. A List where the count goes stops that phase, the stack's 3
+fills the count, and the body finds nothing beneath: no match.
+
+**The fix.** The check pass counts the window's written operands and hands
+the count to the recorder (`RecordDispatchRematchValues`'s `nFwd`). The
+count rides as `DispatchSpec.NFwd`. With any written operand, the VM plans
+the window as `DISPATCH_GENERIC` does: the stack run bottom up, the word,
+then the written operands, through `core.PlanMatch` over the region host
+(`rematchSplitMatches`). A match defers, as before. A plan the host cannot
+run (a written template string it would have to evaluate) defers too. No
+match raises the diagnostic the rematch always built over the written
+tuple. A window with no written operand keeps the flat match.
+
+**Pins.** lang `TestNUR211StackFormCountOverAComputedBody`: both witnesses
+and `3 each (mk)` on both lanes with the interpreter's `signature_error`,
+and the written forms as negatives. eng `TestDispatchRematchPlansTheWrittenSplit`
+covers the split's no-match, the flat match it replaces, a written match
+that defers, and a window the host cannot plan. compiler's rematch test
+adds the forward count's range guard.
+
 ## Main's #512 merged (2026-09-26)
 
 **The conflicts.** Main's #512 conflicted with the branch in nine files.

@@ -87,7 +87,7 @@ func (s *s5bEmit) RecordTrapErr(ae *BoruError, pos SrcPos) bool {
 	s.trapErrs = append(s.trapErrs, ae)
 	return s.trapOK
 }
-func (s *s5bEmit) RecordDispatchRematchValues(word string, vals []Value, written []int, pos SrcPos) bool {
+func (s *s5bEmit) RecordDispatchRematchValues(word string, vals []Value, _ int, written []int, pos SrcPos) bool {
 	s.rematches++
 	return s.rematchOK
 }

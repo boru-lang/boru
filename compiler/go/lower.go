@@ -3988,6 +3988,7 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 			lw.p.Dispatches = append(lw.p.Dispatches, DispatchSpec{
 				Word:    ev.trap.rematchWord,
 				NArgs:   len(ops),
+				NFwd:    ev.trap.rematchNFwd,
 				Written: ev.trap.rematchWritten,
 				Pos:     ev.trap.pos,
 			})
@@ -4014,6 +4015,7 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 		lw.p.Dispatches = append(lw.p.Dispatches, DispatchSpec{
 			Word:    ev.trap.rematchWord,
 			NArgs:   len(ev.trap.rematchOps),
+			NFwd:    ev.trap.rematchNFwd,
 			Written: ev.trap.rematchWritten,
 			Pos:     ev.trap.pos,
 		})

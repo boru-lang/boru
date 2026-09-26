@@ -24,10 +24,21 @@ func (vc *vmContext) dispatchRematch(ds *compiler.DispatchSpec, stack []core.Val
 		window[i] = stack[len(stack)-1-i]
 	}
 	var sigs []core.Signature
-	if fn := r.Lookup(ds.Word); fn != nil {
+	fn := r.Lookup(ds.Word)
+	if fn != nil {
 		sigs = fn.Signatures
 	}
-	if mr := core.MatchSignature(sigs, window, core.WordInfo{ArgCount: -1}); mr != nil && mr.Sig != nil && !mr.Sig.Fallback {
+	matched := false
+	if ds.NFwd > 0 && fn != nil {
+		// Operands written after the word: the interpreter's forward phase
+		// fills the leading positions from them, so the flat match below
+		// is not its match (NUR211) — plan the window as it does.
+		m, planned := vc.rematchSplitMatches(ds, fn, window)
+		matched = m || !planned
+	} else if mr := core.MatchSignature(sigs, window, core.WordInfo{ArgCount: -1}); mr != nil && mr.Sig != nil && !mr.Sig.Fallback {
+		matched = true
+	}
+	if matched {
 		return vmDefer(r, curDebug, pc, "vm:rematch-matched",
 			"DISPATCH_REMATCH at "+ds.Word+" matched at run time where the static model failed; the compiled runtime cannot execute it")
 	}
@@ -42,4 +53,32 @@ func (vc *vmContext) dispatchRematch(ds *compiler.DispatchSpec, stack []core.Val
 	ae := core.RuntimeNoMatch(r, ds.Word, written)
 	ae.Row, ae.Col = ds.Pos.Row, ds.Pos.Col
 	return stampAt(ae, curDebug, pc, r)
+}
+
+// rematchSplitMatches plans a failed window NFwd of whose operands were
+// written after the word, as the interpreter's dispatch plans it (NUR211):
+// the stack run beneath the word, the word, then the written operands, over
+// the region host DISPATCH_GENERIC plans with. The window lists the stack
+// run top down (window[0] is the top) and then the written operands in
+// order, so `3 for (mk)` is the tape `3 for [i]`: for's forward phase stops
+// at the List where a count goes, the stack's 3 fills the count, and the
+// body finds nothing beneath — no match, the interpreter's raise. The flat
+// match read it as `for 3 [i]` and deferred. planned is false when the walk
+// needs an evaluation this host cannot perform; the caller then defers, as
+// it does on a match.
+func (vc *vmContext) rematchSplitMatches(ds *compiler.DispatchSpec, fn *core.FnDefInfo, window []core.Value) (matched, planned bool) {
+	nStack := ds.NArgs - ds.NFwd
+	toks := make([]core.Value, 0, ds.NArgs+1)
+	for i := nStack - 1; i >= 0; i-- {
+		toks = append(toks, window[i])
+	}
+	toks = append(toks, core.NewWord(ds.Word))
+	toks = append(toks, window[nStack:]...)
+	h := newRegionHostOver(vc.r, toks)
+	w := core.WordInfo{Name: ds.Word, ArgCount: -1}
+	if err := h.Collected(core.CollectForward(h, fn, w, nStack+1)); err != nil {
+		return false, false
+	}
+	sig, _, _ := core.PlanMatch(h, h.win, vc.r, fn, w, toks[:nStack], nStack, false, false, false)
+	return sig != nil && !sig.Fallback, true
 }

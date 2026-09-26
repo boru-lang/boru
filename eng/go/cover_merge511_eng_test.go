@@ -73,3 +73,50 @@ func TestCallDynMethodWrapperOverRaisingClosure(t *testing.T) {
 		t.Fatalf("the wrapped closure's raise is the method's error, got %v", err)
 	}
 }
+
+// dispatchRematch over a window with written operands (NUR211): the plan is
+// the interpreter's forward-then-stack split, not the flat window. A
+// for-shaped word ([Integer List] or [List List], both forward): `3 w (mk)`
+// is no match on the interpreter (the List stops the forward phase at the
+// count, and the body finds nothing beneath), and raises; `w 3 [i]` written
+// forward matches, so the rematch defers; a written operand the host would
+// have to evaluate (a template string) cannot be planned here, and defers.
+func TestDispatchRematchPlansTheWrittenSplit(t *testing.T) {
+	r := newTestRegistry(t)
+	impl := core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+		return nil, nil
+	})
+	r.Register("zzfor",
+		core.Signature{Args: []*core.Type{core.TInteger, core.TList}, NoEvalArgs: map[int]bool{1: true}, BarrierPos: 2, Impl: impl},
+		core.Signature{Args: []*core.Type{core.TList, core.TList}, NoEvalArgs: map[int]bool{1: true}, BarrierPos: 2, Impl: impl},
+	)
+	if err := r.Err(); err != nil {
+		t.Fatal(err)
+	}
+	vc := &vmContext{r: r}
+	body := core.NewList([]core.Value{core.NewWord("i")})
+	body.Quoted = true
+	// The window lists the stack run top down, then the written operands:
+	// `3 zzfor (mk)` is [3, [i]] with one written.
+	stack := []core.Value{body, core.NewInteger(3)}
+	err := vc.dispatchRematch(&compiler.DispatchSpec{Word: "zzfor", NArgs: 2, NFwd: 1, Written: []int{1, 0}}, stack, nil, 0)
+	if err == nil || !strings.Contains(err.Error(), "signature_error") {
+		t.Fatalf("3 zzfor (mk) is the interpreter's no-match, got %v", err)
+	}
+	// Flat, the same window matched `zzfor 3 [i]` and deferred.
+	err = vc.dispatchRematch(&compiler.DispatchSpec{Word: "zzfor", NArgs: 2, Written: []int{1, 0}}, stack, nil, 0)
+	if err == nil || !strings.Contains(err.Error(), "matched at run time") {
+		t.Fatalf("the flat window keeps the flat match, got %v", err)
+	}
+	// Both written: `zzfor 3 [i]` matches, and the rematch defers.
+	err = vc.dispatchRematch(&compiler.DispatchSpec{Word: "zzfor", NArgs: 2, NFwd: 2, Written: []int{0, 1}}, []core.Value{body, core.NewInteger(3)}, nil, 0)
+	if err == nil || !strings.Contains(err.Error(), "matched at run time") {
+		t.Fatalf("zzfor 3 [i] written forward matches and defers, got %v", err)
+	}
+	// A written template string needs an evaluation: no plan, a defer.
+	tpl := core.NewInterpString([]core.InterpPart{{Lit: "a"}, {Expr: []core.Value{core.NewInteger(1)}}})
+	err = vc.dispatchRematch(&compiler.DispatchSpec{Word: "zzfor", NArgs: 2, NFwd: 1, Written: []int{1, 0}}, []core.Value{tpl, core.NewInteger(3)}, nil, 0)
+	if err == nil || !strings.Contains(err.Error(), "matched at run time") {
+		t.Fatalf("an unplannable window defers, got %v", err)
+	}
+}

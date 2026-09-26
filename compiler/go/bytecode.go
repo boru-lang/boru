@@ -1263,9 +1263,19 @@ type TrapSpec struct {
 // empty tuple is malformed. An index tuple rather than an offset because a
 // mixed tuple (a forward operand and the stack value beneath it) is not a
 // contiguous slice of a window that lists the stack run first.
+//
+// NFwd is how many of the window's operands were WRITTEN after the word
+// (NUR211). The window lists the stack run first, top down, then the
+// forward operands in written order, so window[NArgs-NFwd:] are the forward
+// ones. With NFwd > 0 the flat match (window[i] as sig position i) is not the
+// interpreter's: its forward phase fills the leading positions from the
+// written operands and the stack fills the rest. `3 for (mk)` matched `for 3
+// [i]` flat where the interpreter raises, so the rematch plans that window
+// as the interpreter does instead.
 type DispatchSpec struct {
 	Word    string
 	NArgs   int
+	NFwd    int
 	Written []int
 	Pos     core.SrcPos
 }

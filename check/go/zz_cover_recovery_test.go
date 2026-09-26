@@ -58,7 +58,7 @@ func (s *zzRecEmit) SuspendedNow() bool             { return s.suspended > 0 }
 func (s *zzRecEmit) MarkUncompilable(reason string) { s.uncomp = append(s.uncomp, reason) }
 func (s *zzRecEmit) MemberFnRead(id string) bool    { return s.member[id] }
 func (s *zzRecEmit) NameLocal(string, string)       {}
-func (s *zzRecEmit) RecordDispatchRematchValues(string, []core.Value, []int, core.SrcPos) bool {
+func (s *zzRecEmit) RecordDispatchRematchValues(string, []core.Value, int, []int, core.SrcPos) bool {
 	s.rematched = true
 	return s.rematchOK
 }

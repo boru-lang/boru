@@ -284,7 +284,7 @@ type EmitRecorder interface {
 	// body unit — scoped to that unit, never the program's terminal trap
 	// (NUR134: a module export's no-match inside a `do` body).
 	RecordUnitTrapErr(ae *BoruError, pos SrcPos) bool
-	RecordDispatchRematchValues(word string, vals []Value, written []int, pos SrcPos) bool
+	RecordDispatchRematchValues(word string, vals []Value, nFwd int, written []int, pos SrcPos) bool
 	RecordTypedBind(spec TypedBindSpec, in, out Value, pos SrcPos) (Value, bool)
 	RecordMakeList(r *Registry, ins []Value, out Value, pos SrcPos) bool
 	RecordMakeListInner(r *Registry, ins []Value, out Value, pos SrcPos) bool
@@ -693,7 +693,7 @@ func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { 
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }
 func (inactiveEmit) RecordUnitTrapErr(*BoruError, SrcPos) bool                { return false }
-func (inactiveEmit) RecordDispatchRematchValues(string, []Value, []int, SrcPos) bool {
+func (inactiveEmit) RecordDispatchRematchValues(string, []Value, int, []int, SrcPos) bool {
 	return false
 }
 func (inactiveEmit) RecordTypedBind(_ TypedBindSpec, _, out Value, _ SrcPos) (Value, bool) {

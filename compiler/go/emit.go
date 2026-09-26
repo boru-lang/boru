@@ -575,6 +575,10 @@ type EmitTrap struct {
 	rematchWord    string
 	rematchOps     []EmitOperand
 	rematchWritten []int
+	// rematchNFwd is how many of the trailing rematchOps were written
+	// after the word (DispatchSpec.NFwd): the window lists the stack run
+	// first, top down, then the forward operands in written order.
+	rematchNFwd int
 }
 
 // EmitEvent is one node of the recorded trace, tagged by kind. The two largest
@@ -8857,10 +8861,11 @@ func (es *EmitState) RecordTrapErr(ae *core.BoruError, pos core.SrcPos) bool {
 // RecordDispatchRematch: it resolves each window VALUE to its operand
 // (a make-result carrier resolves to its producing event; a concrete
 // forward token to a const) and declines — leaving the caller's failure to
-// stand — when any value has no resolvable provenance. written is the render
+// stand — when any value has no resolvable provenance. nFwd counts the
+// trailing vals written after the word (DispatchSpec.NFwd). written is the render
 // tuple (DispatchSpec.Written): the vals indices, in render order, the
 // runtime diagnostic renders as the written tuple.
-func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value, written []int, pos core.SrcPos) bool {
+func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value, nFwd int, written []int, pos core.SrcPos) bool {
 	if !es.Active() || len(vals) == 0 {
 		return false
 	}
@@ -8904,7 +8909,7 @@ func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value,
 		}
 		ops[i] = op
 	}
-	return es.RecordDispatchRematch(word, ops, written, pos)
+	return es.RecordDispatchRematch(word, ops, nFwd, written, pos)
 }
 
 // validRenderTuple reports whether written is a well-formed render tuple
@@ -8933,10 +8938,11 @@ func validRenderTuple(written []int, n int) bool {
 // the window operands in the order the failed match examined them;
 // written is the render tuple over them (one index or more, each inside the
 // window and distinct — anything else declines, the producer's proof did
-// not hold). Same top-level-only guard and
+// not hold); nFwd counts the trailing ops written after the word
+// (DispatchSpec.NFwd), 0..len(ops). Same top-level-only guard and
 // first-trap-wins latch as RecordTrap.
-func (es *EmitState) RecordDispatchRematch(word string, ops []EmitOperand, written []int, pos core.SrcPos) bool {
-	if word == "" || len(ops) == 0 {
+func (es *EmitState) RecordDispatchRematch(word string, ops []EmitOperand, nFwd int, written []int, pos core.SrcPos) bool {
+	if word == "" || len(ops) == 0 || nFwd < 0 || nFwd > len(ops) {
 		return false
 	}
 	if !validRenderTuple(written, len(ops)) {
@@ -8952,6 +8958,7 @@ func (es *EmitState) RecordDispatchRematch(word string, ops []EmitOperand, writt
 		rematchWord:    word,
 		rematchOps:     append([]EmitOperand(nil), ops...),
 		rematchWritten: append([]int(nil), written...),
+		rematchNFwd:    nFwd,
 		pos:            pos,
 	}})
 	return true

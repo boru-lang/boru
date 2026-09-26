@@ -10356,7 +10356,16 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		if e.reorderHint(w.Name, fn) != "" || e.IsFnShapeTypedBindingContext() {
 			return false
 		}
-		return es.RecordDispatchRematchValues(w.Name, vals, idx, pos)
+		// The window lists the stack run first, then the operands written
+		// after the word (checkModeFallbackPositions); the rematch needs the
+		// split to plan the match as the interpreter does (NUR211).
+		nFwd := 0
+		for _, p := range window {
+			if p > e.Pointer {
+				nFwd++
+			}
+		}
+		return es.RecordDispatchRematchValues(w.Name, vals, nFwd, idx, pos)
 	}
 	// Serialise the FULL interpreter error into the trap so the compiled
 	// OpTrap raises byte-identical to the interpreter (Detail + spans +
