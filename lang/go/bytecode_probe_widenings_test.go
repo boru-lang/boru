@@ -23,10 +23,11 @@ func TestProbeWideningComputedRangeStartStep(t *testing.T) {
 		`def f fn [[n:Integer] [Integer] [def acc 0 for [0 6 n] [def acc (acc add i)] end acc]] f 2`, "[6]")
 	mustCompileWithParity(t,
 		`def s 2 def acc 0 for [s 4] [def acc (acc add i)] end acc`, "[5]")
-	// An EVENT-produced step keeps the compile failure (no re-pushable home).
-	mustFailToCompileWithParity(t,
-		`def f fn [[n:Integer] [Integer] [def acc 0 for [5 1 (0 sub n)] [def acc (acc add i)] end acc]] (f 1)`,
-		"computed range start/step")
+	// An EVENT-produced step compiles too since 2026-09-26: the planner
+	// promotes its producer to a frame local (collectLoopRangeSources) and
+	// FOR_SETUP re-pushes it; before, it kept the failure (no re-pushable home).
+	mustCompileWithParity(t,
+		`def f fn [[n:Integer] [Integer] [def acc 0 for [5 1 (0 sub n)] [def acc (acc add i)] end acc]] (f 1)`, "[14]")
 	// A 4-element range is a runtime for_error in BOTH engines (parseRange
 	// arity 1-3; computedRangeBounds falls through the same arity gate).
 	{

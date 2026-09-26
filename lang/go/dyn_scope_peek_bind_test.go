@@ -6,12 +6,16 @@ import (
 )
 
 // The dyn-body trigger the pins below share: a `do … error …` body whose
-// closure probe declines (`rng`'s `for [a b]` over two computed bounds is
-// the "computed range start/step" decline, utils/cut.boru's cut-pick-rng),
-// so the dispatch takes the dyn-body path (tryRecordDynBody) and arms the
-// program-wide DynEnv mode — every def in every unit then owes a
-// registry-visible BIND_DYN_SCOPE twin.
-const dynEnvTrigger = `def rng fn [[n:Integer][Integer][ def a (n add 1) def b (n add 3) def c (flex {n:0}) for [a b] [def _n (c set (quote n) ((c.n) add 1))] c.n ]] end `
+// closure probe declines, so the dispatch takes the dyn-body path
+// (tryRecordDynBody) and arms the program-wide DynEnv mode — every def in
+// every unit then owes a registry-visible BIND_DYN_SCOPE twin. `rng` carries
+// a `for` over a COMPUTED body (`for 1 (mk0)`, code-bodies.tsv L141's
+// shape), which declines "for: body not captured" (TestComputedForBodyDeclines)
+// and takes nothing from rng's value. (Until 2026-09-26 the trigger was
+// rng's `for [a b]` over two computed bounds, utils/cut.boru's cut-pick-rng,
+// the "computed range start/step" decline; an event-sourced start promotes
+// to a frame local now.)
+const dynEnvTrigger = `def mk0 fn [[][List][quote [0]]] end def rng fn [[n:Integer][Integer][ def a (n add 1) def b (n add 3) def c (flex {n:0}) for [a b] [def _n (c set (quote n) ((c.n) add 1))] def _q (for 1 (mk0)) c.n ]] end `
 
 // TestDynScopeDefOfBranchValueCompiles pins the fn-body def of a BRANCH
 // value under DynEnv — `def ap2 (if (ap eq "") [""] [(join "" [" " ap])])`,

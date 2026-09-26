@@ -14646,3 +14646,106 @@ row).
 runtime-defers ledger (`runtime_defers.tsv`) and the sweep's remaining
 cells are the open compilation debt, together with the NUR-caused rows
 recorded in `NUR.md`.
+
+## S2b's first cut — the real-program gate re-measured, the suite body, the loop range, the nominal recovery (2026-09-26)
+
+**The real-program gate was measuring itself.** `TestRealProgramsCompile`
+compiled every program with the registry's BaseDir set to the FILE's own
+directory, but a file import resolves against the process's working
+directory (`resolveImportPath`), and the repo's programs are written for
+the directory their header names: `utils/tests/cat_test.boru` imports
+"./cat.boru" and runs from `utils/`; `kg/tests/*_test.boru` import
+"./schema.boru" and run from `kg/`; the bench apps import
+"./design/examples/apps/…" from the repo root. From the wrong directory
+the import failed silently, the imported words were undefined, and the
+describe bodies naming them declined ("code-body word test-describe") —
+22 of the ledger's 27 entries. `importBaseDir` now walks from the file's
+directory to the repo root for the nearest ancestor where every relative
+import resolves. Real programs: **35 -> 58 of 62 compile**.
+
+**The three mechanisms** that took the next three:
+
+- **The registry-run suite body** (`Test.cover`, lang `test_coverage.go`;
+  core `CompileRunsBodyOnRegistry`; compiler `noEvalBodyBakes`,
+  `runsBodyOnRegistryAtModuleScope`). The coverage harness tree-walks its
+  body in a sub-engine over the enclosing registry in both modes, and the
+  body holds an `import` no closure compiles. At the TOP-LEVEL STATEMENT
+  position (no unit, no fn body, no nested body) the dispatch bakes as a
+  plain CALL_NATIVE over the body list: every name the body reads is a
+  module-level binding the compiled program wrote back, or one the body
+  binds itself; the check pass never runs the handler, so the VM's run is
+  the first (no replay hazard). Every other position DECLINES — and that
+  closes a miscompile present on main: the inert-scope test admitted a
+  word-list body, so `Test.cover [n]` inside a fn and `[… i …]` inside a
+  top-level loop compiled and raised a false `undefined word` against the
+  registry (3b5db68). A word declaring the flag takes only its own rule.
+  `CompileEffect` widened to uint32 (the seventeenth flag). cli_test and
+  sift_test compile.
+- **The event-sourced loop range** (compiler `RecordLoop`,
+  `collectLoopRangeSources`, `RewritePromotedRefs`, `lowerLoop`). A
+  counted loop whose START or STEP is an event-produced value (`def a
+  ((rg get 0) sub 1) … for [a b]`, cut.boru's cut-pick-rng) declined
+  "computed range start/step (Stage 2 follow-on)". The producer now joins
+  forceOrder (store once at the producer, re-push at FOR_SETUP), the
+  rewrite covers the loop's start and step operands, and one the planner
+  cannot promote (a variadic branch value) keeps the failure at lowering.
+  cut_test compiles; two old negative pins inverted; the dyn-env trigger
+  the peek-bind pins shared moved to a computed `for` body.
+- **The nominal single-overload recovery** (check `check_recovery.go`
+  `soleSigParamsNominal`; `check_fnbody.go`'s genArgs). A single-overload
+  user fn over an IMPRECISE carrier — a poly re-match's result, `ds (each
+  [nd] gradual)`, kg/ingest.boru's ingest-entity — recorded the guarded
+  CALL_USER only for Any and Disjunct carriers; the arm that meets other
+  imprecise tags declined by design, naming the predicate hazard. When
+  every param type is NOMINAL (no `HasConstraintUnify`), the nominal entry
+  guard asks the interpreter's question exactly, so the recovery is taken;
+  a constrained param keeps the decline. The first shape MISCOMPILED for
+  one probe: the body unit compiled against the carrier's wrong tag (`sort
+  xs` bound to the Map overload, `sort: AsMap: not a map payload` over the
+  List the interpreter sorted), so genArgs now narrows a non-conforming
+  imprecise carrier to the nominal param as the Any and Disjunct arms do.
+
+**The review's four holes, closed the same day** (a Codex review of
+#509). The registry-run body could CHANGE a binding the program reads after
+it (`def x 1  Test.cover [def x 2]  x`: the check pass never runs the body,
+so the later read baked 1 for the interpreter's 2; `undef x` likewise) —
+`bodyRebindsBoundName` declines a def / var / undef of a name bound at the
+dispatch, or of a computed name; a def of a fresh name stays fine (a read
+after it is a check-time undefined_word), and a re-import binds the same
+loaded module. The nominal recovery admitted an UNDER-ARITY call (`al ds`
+against `(List Integer)`) and a QUOTED param (`xs:List/q`), both the
+interpreter's signature_error — `TryRecordRecoveredUserFn` refuses a
+window shorter than the sig and `SingleOverloadRecoverable` a sig with
+QuoteArgs, NoEvalArgs or a CallableSpec (both arms, the old Any one too).
+And the imprecise-tag narrowing compiled a GENERIC fn's body against its
+type variable (generics-fn.tsv L54's `unbox`), which then ran on the
+interpreter's generic host — an interp-entry census row; a generic fn is
+excluded from the recovery and from that narrowing.
+
+**Measured.** Real programs 58 / 62 (from 35). The four left, each
+ledgered with its cause: mini-redis.boru and echo_redis.boru (a checker
+false positive — after `def had (if …)` over a def-bound Any, the next
+`def h2 (…)` is invisible to a read in the same arm; needs the def-bound
+prelude to reproduce), kg/tests/resolution_test.boru (ingest-entity's
+`aliases:` member — `KgEnt.distinct-sorted (each [var […]] …)` — still
+leaves the fn call's operand without a home; the inline reductions of that
+shape compile, so the difference is in the module's own body), and
+echo_s3.boru (mini-s3's `for [0 total 65536]` body nets several values per
+iteration, S5). lang `compileDefectCeiling` 291 -> 294 (four decline pins
+against one inverted). The filtered langspec gates over control,
+code-bodies, callbacks, fn-value, fold-map-filter, each-variants, the
+module files and recursion pass; the census ceilings as the corpus run
+settles them.
+
+**Pins.** lang `s2b_registry_bodies_test.go`
+(`TestCoverSuiteBodyBakesAtModuleScope`, `TestLoopRangeEventStartCompiles`,
+`TestSingleOverloadUserFnOverImpreciseOperandCompiles`);
+`bytecode_emit_test.go` and `bytecode_probe_widenings_test.go` (the range
+pins inverted); `dyn_scope_peek_bind_test.go` (the trigger);
+`real_program_compile_test.go` (`importBaseDir`, the ledger).
+
+**What is left of S2b.** The 59 undeclared code-body handlers of the
+default registry (`def`'s 34 keyword forms, `import` ×5, `if` ×3, `fn`,
+`fnsig`, `fnpred`, `for` ×2 each, `while`, `var`, `unpack`, `receive`,
+`reach`, `module`, `macro`, `gen`, `enum`, `word`, `afn`) still carry no
+declaration; the census ceiling stays 59.

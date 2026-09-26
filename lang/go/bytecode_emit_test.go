@@ -217,12 +217,13 @@ func TestEmitStage2CompletionShapes(t *testing.T) {
 	if got, _ := compile(t, `if (1 gt 0) [break] [1]`); got != "" {
 		t.Errorf("break outside a loop compiled but must decline:\n%s", got)
 	}
-	// Negative: a range whose START (or step) is computed does NOT compile — a
-	// FOR_SETUP loop const-bakes start/step and can only resolve a computed END,
-	// so a computed start/step keeps islanding over the runtime list (falls
-	// back). The interpreter runs it faithfully.
-	if got, _ := compile(t, `for [(1 add 2), 5] [i]`); got != "" && !strings.Contains(got, "FALLBACK") {
-		t.Errorf("computed-start range compiled NATIVELY but must island/decline:\n%s", got)
+	// A range whose START is an EVENT-produced value compiles natively since
+	// 2026-09-26: the planner promotes the producer to a frame local
+	// (collectLoopRangeSources) and FOR_SETUP re-pushes it, as it always did
+	// for a const or a param read. (It used to decline "computed range
+	// start/step (Stage 2 follow-on)".)
+	if got, reason := compile(t, `for [(1 add 2), 5] [i]`); got == "" || strings.Contains(got, "FALLBACK") {
+		t.Errorf("computed-start range must compile natively: %s\n%s", reason, got)
 	}
 }
 

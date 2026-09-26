@@ -87,8 +87,14 @@ var pinnedAritySites = map[string]int{
 	// parenFeedsPendingForward asks whether a parked Forward is still
 	// collecting (`fwd.CollectedArgs < fwd.Sig.TotalArgs()`, the same test
 	// hasPendingForwardCollecting makes). Both decide where a value's
-	// arguments COME FROM, never what a fn may do by its count.
-	"core/go/engine.go":       29,
+	// arguments COME FROM, never what a fn may do by its count. 29 -> 30
+	// on 2026-09-26: TryRecordRecoveredUserFn refuses a recovered window
+	// shorter than the sole sig (`len(window) < sig.TotalArgs()`) — the
+	// matcher's own arity rule, mirrored so the guarded CALL_USER never
+	// binds a partial window the interpreter's signature_error refuses; it
+	// decides whether the arguments are THERE, not what the fn does by
+	// their count.
+	"core/go/engine.go":       30,
 	"core/go/region_diag.go":  1,
 	"core/go/collect_plan.go": 5,
 	"core/go/signature.go":    12,
