@@ -98,3 +98,41 @@ func TestStoredFnBodyLocalReadIsTheWord(t *testing.T) {
 	agreeOnBothLanes(t, g+`w.g {f: ([] => [42])}`, "[42]")
 	agreeOnBothLanes(t, g+`w.g {f: 5}`, "[5]")
 }
+
+// TestConstConditionMultiValueArm pins a literal list condition's branch
+// (`if [true] …`, the ConstCond record): only the taken arm is recorded, and
+// an arm netting two values makes the branch variadic — never ret-pinned,
+// since no dyn-body call produced it. Both lanes leave the arm's two values.
+func TestConstConditionMultiValueArm(t *testing.T) {
+	agreeOnBothLanes(t, `if [true] [1 2] [3]`, "[1 2]")
+	agreeOnBothLanes(t, `if [false] [3] [1 2]`, "[1 2]")
+}
+
+// TestTrailingApplyOfMultiReturnFnLiteral pins the trailing paren window's
+// single-value gate: a concrete fn literal that declares TWO returns is not
+// lowered as the one-result trailing apply, and the program still compiles
+// and applies it as the interpreter does — `b a` over a:2 b:1.
+func TestTrailingApplyOfMultiReturnFnLiteral(t *testing.T) {
+	agreeOnBothLanes(t, `(1 2 (fn [[a:Integer b:Integer][Integer Integer][b a]]))`, "[1 2]")
+}
+
+// TestArgsProjectionReadAfterADef pins the `args` projection a def consumed:
+// `def xs (args)` records a bind after the projection's OpMakeList, so an
+// `xs.N` fold cannot retract the list (it is no longer the frame's last
+// event) and the indexed get records over the produced list instead.
+func TestArgsProjectionReadAfterADef(t *testing.T) {
+	const f = `def f fn [[a:Integer b:Integer][Any][def xs (args) `
+	agreeOnBothLanes(t, f+`xs.1]] end f 1 2`, "[2]")
+	agreeOnBothLanes(t, f+`xs.1 add xs.0]] end f 1 2`, "[3]")
+}
+
+// TestGradualReadConsumedBySplicedWord pins the deopt point whose statement
+// has no body token: a gradual body-local read consumed by a word a `word`
+// splice expands (`j tp`, the `typeof` written at the splice's definition)
+// places no island, and the read keeps its slot push. Over data both lanes
+// answer the value's type.
+func TestGradualReadConsumedBySplicedWord(t *testing.T) {
+	const h = `def tp word [typeof] end def h fn [[m:Map][Any][def j (m get "f") j tp]] end `
+	agreeOnBothLanes(t, h+`h {f: 3}`, "[Integer]")
+	agreeOnBothLanes(t, h+`h {f: "s"}`, "[ProperString]")
+}

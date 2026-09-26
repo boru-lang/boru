@@ -12143,14 +12143,13 @@ func (es *EmitState) RecordArgsProjection(r *core.Registry, ins []core.Value, ou
 	if !es.RecordMakeListInner(r, ins, out, pos) {
 		return false
 	}
-	pr, ok := es.producedBy[out.ID]
-	if !ok {
-		return false
-	}
 	if es.argsProjSeq == nil {
 		es.argsProjSeq = map[string]int{}
 	}
-	es.argsProjSeq[out.ID] = pr.seq
+	// A recorded list has registered out as its OpMakeList's product
+	// (RecordMakeListInner's setProduced, which only an empty ID skips —
+	// excluded above), so its producer is the projection's event.
+	es.argsProjSeq[out.ID] = es.producedBy[out.ID].seq
 	return true
 }
 

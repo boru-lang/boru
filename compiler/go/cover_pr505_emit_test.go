@@ -242,3 +242,275 @@ func TestSeatDeoptPointUnpromotedGuard(t *testing.T) {
 		t.Errorf("a promoted source's guard tests at its slot: %+v", flw.deoptAtSlot)
 	}
 }
+
+// TestEmbeddedEnclosingIDsSkipsAnEmptyMapMember pins the fn-unit literal's
+// kept-member walk: a nested map member with no entries table embeds
+// nothing, and an enclosing binding's container beside it is kept whole.
+func TestEmbeddedEnclosingIDsSkipsAnEmptyMapMember(t *testing.T) {
+	nilMap := core.Value{Parent: core.TMap, Data: core.MapPayload{M: nil}}
+	member := core.NewList([]core.Value{core.NewInteger(9)})
+	member.ID = "enc"
+	lit := core.NewList([]core.Value{nilMap, core.NewList([]core.Value{nilMap, member})})
+	keep := embeddedEnclosingIDs(lit, map[string]bool{"enc": true})
+	if len(keep) != 1 || !keep["enc"] {
+		t.Errorf("only the enclosing member is kept: %v", keep)
+	}
+}
+
+// TestBranchArmsRetPinnedDivergingArms pins branchArmsRetPinned's arm rule: a
+// diverging arm never reaches the merge, so it does not count against a
+// ret-pinned sibling — but a branch whose arms BOTH diverge delivers no value
+// at all and is not ret-pinned.
+func TestBranchArmsRetPinnedDivergingArms(t *testing.T) {
+	es := NewEmitState()
+	brk := &EmitFragment{events: []EmitEvent{{kind: evBreak}}}
+	cont := &EmitFragment{events: []EmitEvent{{kind: evContinue}}}
+	if es.branchArmsRetPinned(core.BranchRecord{HasElse: true, Then: brk, Els: cont}) {
+		t.Error("two diverging arms are not ret-pinned")
+	}
+	pinned := core.NewCarrier(core.TInteger)
+	es.producedBy[pinned.ID] = producer{seq: 5}
+	es.eventInfo[5] = eventFlags{dynBodyResult: true}
+	if !es.branchArmsRetPinned(core.BranchRecord{HasElse: true, Then: &EmitFragment{}, ThenStk: []core.Value{pinned}, Els: brk}) {
+		t.Error("a dyn-body result beside a diverging arm is ret-pinned")
+	}
+}
+
+// TestRecordRuntimeDispatchUnresolvedOperand pins the run-time binder's
+// record: with the latch set and every operand resolved, the dispatch is the
+// plain 0-result call; an operand with no compiled home hands the dispatch to
+// RecordCall, whose compile-time-word arm declines it.
+func TestRecordRuntimeDispatchUnresolvedOperand(t *testing.T) {
+	sig := &core.Signature{Impl: &core.GoImpl{RunInCheckMode: true}}
+	pos := core.SrcPos{Row: 1, Col: 1}
+
+	es := NewEmitState()
+	src := core.NewCarrier(core.TMap)
+	es.RegisterLocal(src.ID)
+	es.pendingRuntimeBindCall = true
+	es.RecordRuntimeDispatch("unpack", sig, []core.Value{core.NewInteger(1), src}, nil, pos)
+	if evs := es.frames[0]; !es.Compilable || len(evs) != 1 || evs[0].call.word != "unpack" || len(evs[0].call.ops) != 2 || evs[0].call.nout != 0 {
+		t.Fatalf("a resolved binder records its call: compilable=%v %+v", es.Compilable, es.frames[0])
+	}
+
+	es = NewEmitState()
+	es.pendingRuntimeBindCall = true
+	es.RecordRuntimeDispatch("unpack", sig, []core.Value{core.NewInteger(1), core.NewCarrier(core.TMap)}, nil, pos)
+	if es.Compilable || es.Reason != "compile-time word unpack" || len(es.frames[0]) != 0 {
+		t.Fatalf("an operand with no home declines as the compile-time word: %v %q %d", es.Compilable, es.Reason, len(es.frames[0]))
+	}
+	if es.pendingRuntimeBindCall {
+		t.Error("the latch is consumed")
+	}
+}
+
+// TestNameCarriedByABranchSlot pins nameCarried's unit arm: a name the unit
+// carries in a frame slot for a branch join (nameSlots) — never a loop's —
+// is carried all the same, so an undef of it declines.
+func TestNameCarriedByABranchSlot(t *testing.T) {
+	es := NewEmitState()
+	es.units[0].setNameSlot("x", 0)
+	if !es.nameCarried("x") || es.nameCarried("y") {
+		t.Fatal("a branch-carried slot carries its name")
+	}
+	es.DeclineCarriedUndef("x")
+	if es.Compilable || es.Reason != "undef of the loop-carried def `x` (Stage 3)" {
+		t.Errorf("an undef of a carried name declines: %v %q", es.Compilable, es.Reason)
+	}
+}
+
+// TestDynTrailSkipsAFnValuedArgument pins the body-tail trailing apply's
+// argument rule: a window whose argument is itself a fn value is not lowered
+// as the tail apply (the paren's collapse kept it as a token the interpreter
+// stepped); a data argument is.
+func TestDynTrailSkipsAFnValuedArgument(t *testing.T) {
+	for _, c := range []struct {
+		arg  core.Value
+		want int
+	}{
+		{core.NewDynamicCarrier(core.TFunction), 0},
+		{core.NewInteger(5), 1},
+	} {
+		es := NewEmitState()
+		unit, finish, _ := es.StartFnCompile("k", "fn", nil, nil, nil, nil, nil, false, core.SrcPos{})
+		fn := core.NewDynamicCarrier(core.TFunction)
+		es.producedBy[fn.ID] = producer{seq: 2}
+		if core.IsFnValueResidual(c.arg) {
+			es.producedBy[c.arg.ID] = producer{seq: 1}
+		}
+		es.RegisterTrailingApply(fn.ID, 1)
+		finish([]core.Value{c.arg, fn})
+		if got := es.fnRecs[unit].dynTrailArity; got != c.want {
+			t.Errorf("arg %v: dynTrailArity = %d, want %d", c.arg, got, c.want)
+		}
+	}
+}
+
+// TestTrailingWindowDeclinesAFnValuedArgument pins the trailing paren
+// window's argument rule against the leading one's (RecordDynApplyLead): a
+// fn-valued argument of a TRAILING window was a token the interpreter
+// stepped, so the apply declines; the LEADING window's argument arrived inert
+// and the lead collects it as the value it is.
+func TestTrailingWindowDeclinesAFnValuedArgument(t *testing.T) {
+	setup := func() (*EmitState, core.Value, core.Value) {
+		es := NewEmitState()
+		fn, arg := core.NewCarrier(core.TFunction), core.NewCarrier(core.TFunction)
+		es.RegisterLocal(fn.ID)
+		es.RegisterLocal(arg.ID)
+		return es, fn, arg
+	}
+	es, fn, arg := setup()
+	if n, ok := es.RecordDynApply([]core.Value{arg}, fn, core.NewCarrier(core.TAny), core.SrcPos{}); ok || n != 0 || len(es.frames[0]) != 0 {
+		t.Fatalf("a trailing window over a fn-valued argument declines: %d %v", n, ok)
+	}
+	es, fn, arg = setup()
+	if n, ok := es.RecordDynApplyLead([]core.Value{arg}, fn, core.NewCarrier(core.TAny), core.SrcPos{}); !ok || n != 1 || len(es.frames[0]) != 1 {
+		t.Fatalf("a leading window collects its fn-valued argument: %d %v", n, ok)
+	}
+}
+
+// TestContainerReadResultNilSafe pins ContainerReadResult on a nil recorder
+// and on one that has produced nothing.
+func TestContainerReadResultNilSafe(t *testing.T) {
+	var nilES *EmitState
+	if nilES.ContainerReadResult("id") || (&EmitState{}).ContainerReadResult("id") {
+		t.Error("no recorder, no container read")
+	}
+}
+
+// TestRecordArgsProjectionArms pins the `args` projection's record: nothing on
+// a declined recorder or for an identity-less list, nothing when a param has
+// no compiled home, and — recorded — its event remembered for the `args.N`
+// fold, retracted while it is the frame's last event and kept once another
+// event follows it.
+func TestRecordArgsProjectionArms(t *testing.T) {
+	param := core.NewCarrier(core.TInteger)
+	list := func() core.Value {
+		v := core.NewList([]core.Value{param})
+		v.ID = core.GenerateID(core.IDPrefixForType(core.TList))
+		return v
+	}
+
+	declined := NewEmitState()
+	declined.MarkUncompilable("x")
+	if declined.RecordArgsProjection(nil, []core.Value{param}, list(), core.SrcPos{}) {
+		t.Error("a declined recorder records nothing")
+	}
+	es := NewEmitState()
+	if es.RecordArgsProjection(nil, []core.Value{param}, core.NewList([]core.Value{param}), core.SrcPos{}) {
+		t.Error("an identity-less list records nothing")
+	}
+	if es.RecordArgsProjection(nil, []core.Value{param}, list(), core.SrcPos{}) || len(es.argsProjSeq) != 0 {
+		t.Error("a param with no compiled home records nothing")
+	}
+
+	es.RegisterLocal(param.ID)
+	out := list()
+	if !es.RecordArgsProjection(nil, []core.Value{param}, out, core.SrcPos{}) {
+		t.Fatal("a projection over the param locals records")
+	}
+	if seq, ok := es.argsProjSeq[out.ID]; !ok || seq != es.producedBy[out.ID].seq {
+		t.Fatalf("the projection's event is remembered: %v", es.argsProjSeq)
+	}
+	if !es.retractArgsProjection(out.ID) || len(es.frames[0]) != 0 {
+		t.Fatal("the frame's last event is retracted")
+	}
+	kept := list()
+	es.RecordArgsProjection(nil, []core.Value{param}, kept, core.SrcPos{})
+	es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "w"}})
+	if es.retractArgsProjection(kept.ID) || len(es.frames[0]) != 2 {
+		t.Error("a projection another event follows stays put")
+	}
+}
+
+// TestTrailingApplyParksACallResult pins the trailing arm's park rule: a user
+// call's returned closure over one literal is PARKED where it lands, never
+// applied to the value beneath — unless an `apply` word dispatched it.
+func TestTrailingApplyParksACallResult(t *testing.T) {
+	es := NewEmitState()
+	es.frames = [][]EmitEvent{{{kind: evCallUser, uc: emitUserCall{nout: 1}, seq: 1}}}
+	fnv := core.NewCarrier(core.TFunction)
+	es.producedBy[fnv.ID] = producer{seq: 1}
+	lw := &lowerer{vm: []vmSlot{{seq: 1, idx: 0}}}
+	residual := []core.Value{core.NewInteger(7), fnv}
+	if _, ok := es.trailingApply(lw, residual); ok {
+		t.Error("a parked call result is data over the literal beneath")
+	}
+	es.appliedByWord = map[string]bool{fnv.ID: true}
+	if rot, ok := es.trailingApply(lw, residual); !ok || rot[0].ID != fnv.ID {
+		t.Errorf("an `apply` word applies the parked result: %v %v", rot, ok)
+	}
+}
+
+// TestResidualSpliceReRead pins the program residual's splice gate: a
+// dynamic splice's payload surfacing twice (the spread and a re-read of the
+// payload def) declines; once, it resolves to the spread event.
+func TestResidualSpliceReRead(t *testing.T) {
+	es := NewEmitState()
+	payload := core.NewCarrier(core.TList)
+	es.producedBy[payload.ID] = producer{seq: 1}
+	es.eventInfo[1] = eventFlags{spliceDyn: true}
+	if _, reason := es.resolveResidualOperands(&lowerer{}, []core.Value{payload, payload}); reason != "splice payload re-read after the spread (Stage 2)" {
+		t.Errorf("a re-read after the spread declines: %q", reason)
+	}
+	ops, reason := es.resolveResidualOperands(&lowerer{}, []core.Value{payload})
+	if reason != "" || len(ops) != 1 || ops[0].kind != opEvent || ops[0].idx != 1 {
+		t.Errorf("the spread alone resolves to its event: %v %q", ops, reason)
+	}
+}
+
+// TestCallResultRenderKnownOffFrame pins callResultRenderKnown over a value
+// whose producing event is not in the current frame: no event to read, no
+// known render.
+func TestCallResultRenderKnownOffFrame(t *testing.T) {
+	es := NewEmitState()
+	v := core.NewCarrier(core.TFunction)
+	es.producedBy[v.ID] = producer{seq: 9}
+	if es.callResultRenderKnown(v) {
+		t.Error("a producer outside the current frame has no known render")
+	}
+}
+
+// TestApplyChainStepsShapes pins the apply chain's admission (fnUnitRec.
+// applyChain): every pending fn in the residual in order, the last on top,
+// every operand re-pushable, the first step with an argument beneath it, no
+// fn-valued argument, and nothing left over — any other shape is no chain.
+func TestApplyChainStepsShapes(t *testing.T) {
+	val := func(id string, fn bool) core.Value {
+		v := core.NewCarrier(core.TInteger)
+		if fn {
+			v = core.NewCarrier(core.TFunction)
+		}
+		v.ID = id
+		return v
+	}
+	x, h, f, g := val("x", false), val("h", true), val("f", true), val("g", true)
+	pend := []pendingApply{{id: "f"}, {id: "g", pos: core.SrcPos{Row: 1, Col: 9}}}
+	locals := func(n int) []EmitOperand {
+		ops := make([]EmitOperand, n)
+		for i := range ops {
+			ops[i] = localOperand(i)
+		}
+		return ops
+	}
+	steps := applyChainSteps(pend, []core.Value{x, f, g}, locals(3))
+	if len(steps) != 2 || steps[0].n != 1 || len(steps[0].ops) != 2 || steps[1].n != 1 || len(steps[1].ops) != 1 || steps[1].pos.Col != 9 {
+		t.Fatalf("x f/v apply g/v apply is a two-step chain: %+v", steps)
+	}
+	withEvent := locals(3)
+	withEvent[0] = EventOperand(4, 0)
+	for name, got := range map[string][]applyStep{
+		"a single pending apply":         applyChainSteps(pend[:1], []core.Value{x, f}, locals(2)),
+		"an operand count off the stack": applyChainSteps(pend, []core.Value{x, f, g}, locals(2)),
+		"a last fn not on top":           applyChainSteps(pend, []core.Value{x, g, f}, locals(3)),
+		"an event operand":               applyChainSteps(pend, []core.Value{x, f, g}, withEvent),
+		"a pending fn not in the stack":  applyChainSteps([]pendingApply{{id: "z"}, {id: "g"}}, []core.Value{x, f, g}, locals(3)),
+		"a first step with no argument":  applyChainSteps(pend, []core.Value{f, g}, locals(2)),
+		"a fn-valued argument":           applyChainSteps(pend, []core.Value{h, f, g}, locals(3)),
+		"a value left above the chain":   applyChainSteps(pend, []core.Value{x, f, g, g}, locals(4)),
+	} {
+		if got != nil {
+			t.Errorf("%s is no chain: %+v", name, got)
+		}
+	}
+}
