@@ -163,7 +163,7 @@ keep the two in sync in the same commit.
 | [NUR238](#nur238) | FIXED 2026-09-26 (a trailing value is re-stepped as the interpreter re-steps it — the handoff log's entry of that date): a value applied as a trailing window it does not fit parks when anonymous and raises uncalled_function when named, at the top level and in a fn. The original text: a paren-bounded trailing apply that matches nothing: the interpreter parks an anonymous value as data and raises `uncalled_function` for a named fn; the compiled apply raises `signature_error` at the top level (`(5 ([s:String] => [s]))` is `[5 fn (String)]` interpreted) and leaves a named fn's window as residue inside a fn (`(5 f/v)` over a `g/v` argument: a count error compiled) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR239](#nur239) | FIXED 2026-09-26 (both halves — the anonymous `<fn>` earlier, the binding half by the island's word dispatch; the handoff log's entry of that date): an applied fn value's return-contract error names the fn's definition compiled and the binding it was called under interpreted: `(k 5)` over `h z/v` says `z:` compiled, `k:` interpreted; an anonymous class-field fn says `` compiled, `<fn>` interpreted (`each h.cb [1 2 3]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR240](#nur240) | FIXED 2026-09-26 (by NUR238's value-trail no-match — the handoff log's entry of that date): a trapped unmatched module-member call inside a branch arm raises `signature_error` compiled and `uncalled_function` interpreted — a value-level divergence where the code is caught (`do [if true [(true 5 M.dec)] [1] …] error [dot code]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
-| [NUR241](#nur241) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a capturing callback run by `walk`: `acc (tag) append acc (m.path) append` in a factory's lambda raises `signature_error: cannot call append` compiled (the arguments `[]` and `''`) where the interpreter answers `['x' '' 'x' 'a' 'x' 'b']` | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR241](#nur241) | FIXED 2026-09-26 as a sound decline (the word-led arrival — the handoff log's entry of that date): a compiling pass's DEFERRED word-led window (preferWordSig — `ForwardInfo.WordLed`) that takes an arriving value its slot cannot prove, while a narrower window fits the stack beneath the word, flags the gradual split (NUR228's discipline), and the program declines loudly where it raised a wrong `cannot call append`; a window that is not word-led, or with nothing beneath the word for a narrower window, or with a proven arrival, compiles as before. The original text: a capturing callback run by `walk`: `acc (tag) append acc (m.path) append` in a factory's lambda raises `signature_error: cannot call append` compiled (the arguments `[]` and `''`) where the interpreter answers `['x' '' 'x' 'a' 'x' 'b']` | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR242](#nur242) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): eight programs compile and then fail inside the compiled runtime (internal_error) where the interpreter answers: three `/q`-capturing member landings (RESTEP_LANDING), two shaped method applies, `do [args drop] 7` in a fn (STORE_LOCAL underflow), `do b 7` over a list param (CALL_DYN_FRAME underflow) and `fold` over a gradual class field (CALL_NATIVE_POLY no match) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR243](#nur243) | FIXED 2026-09-26 (the three programs compile — the handoff log's entry of that date): a constant branch's taken arm with no value is a 0-value statement, a loop rebind of a branch-bound name is carried, and a parser dispatch declines over its parser operand only. The original text: three valid programs refused: a loop carrying a branch-bound name (`if c [def x 1] [] for 3 [def x 5] x`, "body result of unknown provenance"), a constant-true branch whose taken arm leaves no value (`def x 0 if [true] [def x 1] [2] end x`, "branch produces no value" — its guard carried a `//covergate:allow` whose proof was false, removed), and NUR109's bound-slot arm declining a parser dispatch over a branch-bound SOURCE operand | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR244](#nur244) | FIXED 2026-09-26 (an arm that may not run is speculative — the handoff log's entry of that date): a fn def in a branch arm the model knows is SKIPPED (a literal, def-bound or folded false condition — or true, for the else arm) or in an else-less if's arm was the join's own value, and a read past the merge ran it: `if false [def f fn [[a:Integer] [Any] [7]]] [] end 3 f` answered `[7]` compiled for undefined_word, and `import "boru:parselang" def c false if c [def p (fn [[source:String opts:Map] [Any] [7]])] [] end parse p 'x'` `[7]` for `parse_unknown_lang`. Silent wrong answers | closing NUR243, 2026-09-26 |
@@ -174,6 +174,7 @@ keep the two in sync in the same commit.
 | [NUR249](#nur249) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix — the SILENT half fixed 2026-09-26: a consumed layout raises now, booked on the bail ledger): a fn-typed CARRIER read by name and applied over a paren window (`(k 5)` over a `k:Function` param) that turns out 0-arg at run time fires over nothing and leaves the window beside its result (NUR176's arm) — n+1 values where the compiled event claims one — so a fixed layout takes the wrong count: `def c fn [[] [Integer] [7]] end def h fn [[k:Function] [] [[(k 5)]]] end h c/v` is `[[7 5]]` interpreted and `[7 [5]]` compiled. Silent under a no-contract fn (pre-existing); a declared return raises the count error instead | closing NUR239's binding half, 2026-09-26 |
 | [NUR250](#nur250) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix — the SILENT half fixed 2026-09-26: such a lead declines the compile now): a BARE read of a fn-typed param before the `apply` word is a CALL on the interpreter (NUR078) — `f` fires at the word and `apply` meets its result — while the compiled lane hands the value to `apply`: `def h fn [[f:Function] [Any] [(5 f apply)]] end h ([s:Integer] => [s add 1])` raises `cannot call apply` interpreted and answers `[6]` compiled; over a `[s:String]` lambda the interpreter raises `cannot call f` and the compiled lane answers `[5 fn f(String)]`. Silent (pre-existing) | closing NUR247's silent half, 2026-09-26 |
 | [NUR251](#nur251) | FIXED 2026-09-25 (numbered NUR208 until the merge of main's #510, where main's NUR208 kept the number; the loop region's residual — the handoff log's entry of that date), found the same day closing NUR197: a `for` loop abandoned by a raise the caller TRAPS left its ITERATOR installed on the interpreter — `def i 9  do [for 2 [raise 'x']]  i` read 0, `for 3 [if (i eq 1) [raise 'x'] []]` under the same trap read 1 — where the compiled lane's loop keeps `i` in a frame slot and the read answers the root's 9; silent, present on main. NUR201's loop twin: the fault return unwinds every live loop's iterator (`Engine.unwindLiveLoops`) before the frames, as a break's region discard does | probing NUR197's neighbours, 2026-09-25 |
+| [NUR252](#nur252) | FIXED 2026-09-26 (the foreign value's count — the handoff log's entry of that date), found the same day probing NUR242: a module export fn VALUE whose body leaves the wrong count, applied through a factory-returned map's member read (`def mk fn [[] [Map] [{f: M.inc/v}]] end def m (mk) end m.f 5` over `inc [[n:Integer] [Integer] [n 1]]`), answered `[5 1]` compiled for the interpreter's `inc: expected 1 return value(s), got 2` — silent. The dynamic apply hosted the module's stamped VALUE unit (dynApplyForeign) under the trim discipline, and that unit declares no contract; its results answer to the applied value's declared contract now (applyRetContract, as the Apply kernel's frame). | probing NUR242's shaped method apply (2026-09-26) |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -9419,9 +9420,34 @@ unit's root frame, and the call's compiled no-match raises its own code.
 
 ## NUR241 — a capturing callback run by walk: a captured read and a flex append {#nur241}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
-— the main-side coverage agent (walk_core.go's closure hook).
+**Status:** FIXED 2026-09-26 as a sound decline (the word-led arrival —
+the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** closing #505's merged-coverage gap (ADR-008) — the
+main-side coverage agent (walk_core.go's closure hook).
+
+**The fix.** The restriction the diagnosis below asks for, at the arrival.
+`insertForward` marks the Forward of a plan that is the DEFERRED word-led
+window (`ForwardInfo.WordLed`): a Word next on the tape and no name capture
+at the chosen signature's first slot, which is exactly the case
+`PlanMatch` defers every candidate for. On a compiling pass, a value that
+arrives into such a window unproven for its slot (`unprovenStackOperand`:
+a paren's gradual result) flags the gradual split when a window collecting
+fewer forward tokens also fits the stack beneath the word, over any of the
+word's signatures (`narrowerWindowFits`, the windows the interpreter's
+planner prunes to). The program then declines loudly, NUR228's discipline,
+where it compiled to a wrong `cannot call append`.
+
+The naive latch's false positive stays out: `1 2 add (m.v)` is not
+word-led. `add x (m.v)` over an empty frame has no narrower window.
+`append (m.path) acc` and `acc (m.path) append` plan as before, as does a
+proven arrival. Only an operand the plan took PAST the word asks. The
+word-led token's own arrival is the gradual first operand of every `f x`
+(`pf d`, `helper opts`), and a Fallback or 0-arg signature plans no window
+(`PlanMatch` defers both), so a boru fn's synthesized fallback, which fits
+any stack, is no narrower window (`g k (id 5)` compiles). Pinned by core `TestNUR241WordLedArrivalIsAmbiguous`,
+`TestNUR241NoAmbiguity` and `TestNUR241WordLedPlanIsMarked`, and lang
+`TestNUR241WordLedArrivalDeclines`. Compiling the program, a run-time
+re-plan of the window over the paren's value, stays open work.
 
 **Rule:** one callback, one result, on both lanes.
 
@@ -9458,9 +9484,11 @@ blanket decline.
 
 ## NUR242 — programs that compile and then fail inside the compiled runtime {#nur242}
 
-**Status:** OPEN — the `do` half FIXED 2026-09-26 (the handoff log's
-entry of that date); the re-step, method-apply and `fold` programs stay
-open (proposed verdict: resolve by fix) · **Recorded:** 2026-09-26 ·
+**Status:** OPEN — the `do` half FIXED 2026-09-26, and the module
+export's count under a shaped method apply (`do [m.f 5]`) FIXED the same
+day with NUR252 (the handoff log's entries of that date); the three
+re-step landings, the overloaded member's paren apply and `fold` stay open
+(proposed verdict: resolve by fix) · **Recorded:** 2026-09-26 ·
 **Surfaced by:** closing #505's merged-coverage gap (ADR-008) — the
 coverage agents' probes.
 
@@ -9480,7 +9508,17 @@ the interpreter does. Two consumers that need the count decline instead of
 popping seats the run did not leave: a list literal (`[do [3 drop] 7]`,
 which bailed at MAKE_LIST) and a fn residual's fixed-width replay window
 (`do b 7` over a List param, which bailed at CALL_DYN_FRAME). Pinned by
-`TestNUR242DoBodyRunsToNothing`. The other five programs remain: the three
+`TestNUR242DoBodyRunsToNothing`.
+
+**The count under a shaped method apply.** `do [m.f 5]` over an export
+whose body leaves two values bailed ("result count 2 violates the
+host-registered shape claim 1"): the op read any count that missed its
+claim as a host registration's violation. A single-signature boru fn
+value's miss is the interpreter's own count error (`namedFnCountError`,
+`NamedFnReturnCount`'s text), so the `do` catches it on both lanes. Pinned
+with NUR252 by `TestNUR252ForeignValueKeepsItsCount`.
+
+The other four programs remain: the three
 re-step landings over a `/q` param, the two shaped method applies, and
 `fold` over a class member, whose runtime no-match has no record-time
 probe (the dispatch succeeded optimistically over a gradual operand, so
@@ -13213,7 +13251,11 @@ lowered to a data push. Now the root records its gradual def reads
   from the read's token on, over the values beneath it, and the island's
   residual ends the run (`Program.Deopts`, `Program.Body`). `j`, `5 j`,
   `j j`, `r 5 3` and `r 'x' 3` answer the interpreter's results, the
-  no-match's notes included.
+  no-match's notes included. A read that LEADS the residual's
+  leading-form dynamic apply deopts only on a no-match
+  (`DeoptSpec.NoMatchOnly`): over a window the value matches, that apply
+  is the word dispatch's own answer and stays native (`h {x:3 y:4}` over a
+  `find` result, patrun.tsv L41).
 - A read a root event CONSUMES takes the fn units' placement
   (`deoptStatementStart`, `deoptDeferred`): an island from its statement's
   start where the compiled stack there is the interpreter's. `j typeof`,
@@ -13314,3 +13356,38 @@ that would re-step the marked value is not emitted.
 **The direction.** Placement is a layout fact the branch arm must ask like
 its siblings; the `apply` word over a branch value needs its own landing.
 
+## NUR252 — a foreign fn value's count through the dynamic apply {#nur252}
+
+**Status:** FIXED 2026-09-26 (the foreign value's count — the handoff
+log's entry of that date). Found the same day, probing NUR242's shaped
+method apply; silent, default lane, present before the reverse-order run's
+merge of main's #510.
+
+**Rule:** a named fn's return count is enforced on every path that runs
+it (NUR191).
+
+**The witness.**
+
+```
+import module [def inc fn [[n:Integer] [Integer] [n 1]] export "M" {inc: inc/v}] end
+def mk fn [[] [Map] [{f: M.inc/v}]] end def m (mk) end m.f 5
+  interpreted   [boru/type_error]: inc: expected 1 return value(s), got 2 — [5 1]
+  compiled      [5 1]
+```
+
+**Where it sat.** The member read's value leads the residual's dynamic
+apply (`OpCallDynamic`), whose foreign arm (`dynApplyForeign`) hosts the
+module's stamped VALUE unit. That unit declares no contract of its own:
+the Apply kernel's frame carries the applied value's contract for exactly
+that reason (`applyRetContract`), and the foreign arm carried none, under
+the trim discipline besides.
+
+**The fix.** The foreign arm hosts the unit under the NAMED discipline, as
+the interpreter's cross-registry dispatch runs a foreign value strictly
+(`InvokeCallbackStrict`), and checks the results against the applied
+value's declared contract (`checkReturnContract` over
+`applyRetContract`). Its record-literal twin (`def m {f: M.inc/v} end
+m.f 5`) took the shaped method apply and bailed. It raises the same error
+now (NUR242's count program). Pinned by lang
+`TestNUR252ForeignValueKeepsItsCount`, with a value that keeps its count
+beside each shape.

@@ -1719,6 +1719,13 @@ type ForwardInfo struct {
 	// plan had no speculative word at all.
 	Speculative   bool
 	SpeculativeAt int
+	// WordLed records that the plan committed the DEFERRED word-led window
+	// (PlanMatch's bestDeferred): the first forward token was a Word and the
+	// chosen signature captures no name at its first slot. The interpreter's
+	// planner evaluates a paren in such a window before it commits and prunes
+	// to a narrower window when the value misses its slot, which the compile
+	// pass cannot see; its arrival asks (noteWordLedArrival, NUR241).
+	WordLed bool
 }
 
 // Value is the single node type of the boru kernel: it is at once a

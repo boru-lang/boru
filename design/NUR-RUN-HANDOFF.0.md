@@ -9,6 +9,78 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR252 closed, NUR242's count program fixed: a foreign fn value's count (2026-09-26)
+
+Probing NUR242's shaped method apply turned up a silent twin. A module
+export fn VALUE whose body leaves the wrong count, read off a
+factory-returned map (`def mk fn [[] [Map] [{f: M.inc/v}]] end def m (mk)
+end m.f 5` over `inc [[n:Integer] [Integer] [n 1]]`), answered `[5 1]`
+compiled where the interpreter raises `inc: expected 1 return value(s),
+got 2`. The member read leads the residual's dynamic apply, whose foreign
+arm (`dynApplyForeign`) hosts the module's stamped VALUE unit. That unit
+declares no contract of its own (the Apply kernel's frame carries the
+applied value's contract for exactly that reason, `applyRetContract`), and
+the arm ran it under the trim discipline. It runs it under the named
+discipline now, as the interpreter's cross-registry dispatch runs a foreign
+value strictly, and checks the results against the applied value's
+declared contract. Recorded and closed as NUR252.
+
+Its record-literal twin (`def m {f: M.inc/v} end m.f 5`) took the shaped
+method apply (`OpCallDynMethod`) and bailed with "result count 2 violates
+the host-registered shape claim 1": the op read any count that missed its
+claim as a host registration's violation. A single-signature boru fn
+value's miss is the interpreter's own count error, so the op raises that
+(`namedFnCountError`, `NamedFnReturnCount`'s text) and `do [m.f 5]`
+catches it on both lanes. That is NUR242's count program; the three
+re-step landings, the overloaded member's paren apply and `fold` stay open.
+
+**A refinement of NUR207's residual island.** The merged corpus showed two
+rows (callbacks.tsv L159, patrun.tsv L41: `def h (find …) end h {…}`)
+islanded where they had compiled natively. The read leads the residual's
+leading-form dynamic apply, and over a window the value matches that apply
+IS the word dispatch's answer. Such a point deopts only on a no-match now
+(`DeoptSpec.NoMatchOnly`), which the value apply parks and the word
+raises.
+
+**Pins.** lang `TestNUR252ForeignValueKeepsItsCount` (the three raising
+shapes, beside a value that keeps its count under each).
+
+## NUR241 closed as a sound decline: the word-led arrival (2026-09-26)
+
+`acc "x" append acc (m.path) append` compiled to a wrong `cannot call
+append`. The first `append`'s forward window is the word `acc` and a
+paren. The interpreter's planner evaluates the paren first and prunes to
+the all-stack window when the value misses its slot. The check pass planned
+the paren unevaluated, the word-led window was its deferred plan
+(`preferWordSig`), and the paren's gradual value arrived in the FlexList
+slot optimistically.
+
+The fix is the restriction the record asked for, at the arrival.
+`insertForward` marks a deferred word-led plan's Forward
+(`ForwardInfo.WordLed`: a Word next, no name capture at the chosen
+signature's first slot). A compiling pass flags the gradual split when an
+unproven value arrives into such a window and a narrower window fits the
+stack beneath the word, over any of the word's signatures
+(`narrowerWindowFits`). The program declines loudly, NUR228's discipline.
+`1 2 add (m.v)` (not word-led), `add x (m.v)` over an empty frame (no
+narrower window), and a proven arrival compile as before.
+
+The first cut over-declined, and thirteen lang unit tests caught it. The
+word-led token's own arrival (`pf d`, `helper opts`, `zp n`)
+is the gradual first operand of every `f x`, so only an operand the plan
+took past the word asks. A boru fn's synthesized 0-arg Fallback fits any
+stack, and `PlanMatch` never plans a window from one, so neither a Fallback
+nor a 0-arg signature counts as a narrower window (`g k (id 5)` over two
+2-arg overloads compiles). The ledger moves by the three pinned witnesses
+alone (336 -> 339, all "forward/stack split depends on a gradual
+operand").
+
+**Pins.** core `TestNUR241WordLedArrivalIsAmbiguous`,
+`TestNUR241NoAmbiguity`, `TestNUR241WordLedPlanIsMarked` (core's own suite
+covers the new code at 100%), and lang `TestNUR241WordLedArrivalDeclines`.
+A run-time re-plan of the window, which would compile the program, stays
+open.
+
 ## NUR207 and NUR208 closed: the root's gradual def read, a branch of fn values (2026-09-26)
 
 Main's two new records were silent wrong answers on the merged tree, so

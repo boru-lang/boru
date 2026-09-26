@@ -4099,12 +4099,95 @@ func (e *Engine) insertForward(w WordInfo, sig *Signature, forwardNeeded, stackA
 		// will DISPATCH rather than arrive (see ForwardInfo docs).
 		Speculative:   specAt >= 0,
 		SpeculativeAt: max(specAt, 0),
+		// The deferred word-led plan (ForwardInfo.WordLed): a Word next
+		// on the tape and no name capture at the first slot is exactly
+		// the case PlanMatch defers every candidate for.
+		WordLed: e.Pointer+1 < e.Tape.Len() && IsWord(e.Tape.At(e.Pointer+1)) && (sig.QuoteArgs == nil || !sig.QuoteArgs[0]),
 	})
 
 	e.Tape.Insert(e.Pointer+1, fwd)
 
 	e.Pointer += 2
 	return nil
+}
+
+// noteWordLedArrival latches the gradual-split ambiguity (NUR241) when a
+// compile pass's DEFERRED word-led window (ForwardInfo.WordLed) takes an
+// arriving value its slot cannot prove — a paren's gradual result — while a
+// window collecting fewer forward tokens also fits the stack beneath the
+// word. The interpreter's planner evaluates such a paren before it commits
+// a window and prunes to the narrower one when the value misses the slot:
+// `acc "x" append acc (m.path) append` appends "x" to acc where the pass
+// committed acc into m.path's slot. No static window is faithful, so the
+// compile declines, NUR228's discipline. A proven arrival, and a window
+// that is not word-led (`1 2 add (m.v)`), plan as before, as does the
+// word-led token's OWN arrival (slot 0): that is the gradual first operand
+// of every `f x`, the naive latch the record rules out. Only an operand the
+// plan took PAST the word asks.
+func (e *Engine) noteWordLedArrival(fwd *ForwardInfo, valIdx, funcIdx int) {
+	if !e.Registry.analysisActive() || !e.Registry.analysisCompiling() {
+		return
+	}
+	slot := fwd.CollectedArgs
+	if slot == 0 || slot >= fwd.Sig.TotalArgs() || !unprovenStackOperand(e.Tape.At(valIdx), SigArgType(fwd.Sig, slot)) {
+		return
+	}
+	if e.narrowerWindowFits(fwd, funcIdx) {
+		e.Registry.noteAmbiguousGradualSplit()
+	}
+}
+
+// narrowerWindowFits reports whether a window collecting fewer forward
+// tokens than fwd's plan fits one of the word's signatures — the planner
+// re-plans over all of them: its first k slots the values already
+// collected (k at most fwd.CollectedArgs), every later slot from the stack
+// beneath them, top first — the windows the interpreter's planner prunes
+// to. A Fallback or 0-arg signature plans no window (PlanMatch defers both
+// to its fallback section), so neither is one: a boru fn's synthesized
+// fallback fits any stack and would flag every word-led call.
+func (e *Engine) narrowerWindowFits(fwd *ForwardInfo, funcIdx int) bool {
+	sigs := []Signature{*fwd.Sig}
+	if fd := e.Registry.Lookup(fwd.FuncName); fd != nil {
+		sigs = fd.Signatures
+	}
+	base := funcIdx - fwd.CollectedArgs
+	for si := range sigs {
+		if sigs[si].Fallback || sigs[si].TotalArgs() == 0 {
+			continue
+		}
+		if windowFitsBelow(e.Tape, &sigs[si], base, fwd.CollectedArgs) {
+			return true
+		}
+	}
+	return false
+}
+
+// windowFitsBelow reports whether sig fits a window whose first k slots are
+// the values at base.. (k at most collected, and within sig's forward
+// limit) and whose later slots come from the stack beneath base, top first.
+func windowFitsBelow(win *Tape, sig *Signature, base, collected int) bool {
+	n := sig.TotalArgs()
+	limit := sig.BarrierPos
+	if limit < 0 || limit > n {
+		limit = n
+	}
+	below := resolvedIndicesBeforeInto(win, base, make([]int, 0, n), n)
+	for k := 0; k <= collected && k <= limit; k++ {
+		if len(below) < n-k {
+			continue
+		}
+		fits := true
+		for i := 0; i < k && fits; i++ {
+			fits = SigArgMatches(sig, i, win.At(base+i))
+		}
+		for j := 0; j < n-k && fits; j++ {
+			fits = SigArgMatches(sig, k+j, win.At(below[len(below)-1-j]))
+		}
+		if fits {
+			return true
+		}
+	}
+	return false
 }
 
 // stepLiteral handles a resolved (non-word, non-forward) value at the pointer.
@@ -4379,6 +4462,9 @@ func (e *Engine) stepLiteral() error {
 		return e.implicitEnd(fwdIdx)
 	case ArrivalImplicitEnd:
 		return e.implicitEnd(fwdIdx)
+	}
+	if fwd.WordLed {
+		e.noteWordLedArrival(&fwd, valIdx, funcIdx)
 	}
 
 	// Remove the value from its current position.

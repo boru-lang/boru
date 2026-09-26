@@ -1860,6 +1860,11 @@ type DeoptSpec struct {
 	// the statement's own, which the island produces again from their
 	// tokens.
 	Beneath bool
+	// NoMatchOnly marks a Beneath point whose read LEADS the residual's
+	// leading-form dynamic apply (OpCallDynamic): over a window the value
+	// matches, that apply is the word dispatch's own answer, so only a
+	// no-match — which the value apply parks and the word raises — deopts.
+	NoMatchOnly bool
 }
 
 // slotNames renders a CompiledFn's slot→name table for the

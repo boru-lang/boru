@@ -15331,6 +15331,7 @@ func (es *EmitState) seatRootResidualReads(lw *lowerer, reads map[string]rootWor
 		spec := DeoptSpec{Name: r.name, Pos: r.reads[0], Slot: -1, Depth: len(residual) - 1 - at, Token: -1, RetPC: -1}
 		if tok, ok := es.rootResidualIsland(lw, r, residual, at, n, dynOp); ok {
 			spec.Token, spec.Beneath = tok, true
+			spec.NoMatchOnly = at == 0 && dynOp == OpCallDynamic
 		} else {
 			// A guard reads the value's own slot when it has one: the
 			// entries above may be a runtime-variable region.
