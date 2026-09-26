@@ -9347,6 +9347,16 @@ return check names its frame `<fn>`, as the interpreter's fn-value frame
 does (`core.FnValueFrameName`; lang `TestNUR239NamelessFnValueIsFn`). The
 binding half — `k:` for the interpreter, `z:` compiled — stays open.
 
+**The binding half, diagnosed (2026-09-26).** Only the paren spelling
+`(k 5)` still splits. `k 5`, `k` and `(1 k)` all agree, because their
+replay window seats the word's name. The paren apply's head does carry `k`
+(`DynApplyName`: Name k, Leading), and its 0-arg arm runs the value in an
+island. But the value has a compiled stamp, so the island runs the stamped
+unit, whose own RET check labels the error with the unit's
+`CompiledFn.Name`. Renaming the value's copy does not reach it. The fix
+threads a frame label through the VM's unit entry (the name the value was
+read under, when there is one) for the RET check to prefer.
+
 ## NUR240 — a trapped unmatched member call inside a branch arm: a different code {#nur240}
 
 **Status:** FIXED 2026-09-26 (by NUR238's close — the handoff log's

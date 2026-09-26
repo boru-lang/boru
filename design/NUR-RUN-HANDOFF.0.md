@@ -35,6 +35,10 @@ and a new one fails them.
 
 A redefinition in a skipped arm now compiles, so
 `frontier-conditional-fn-shadow.tsv:15` graduated to `control.tsv` §9.
+The diagnostic-parity ledger rises 350 → 352 with it (CI's langspec shard 3
+on d493ef4; both rows named beside the ceiling). The two graduated rows carry
+the constant-condition `unreachable_branch` advisory that only the plain pass
+emits, the ledger's largest shape. The frontier file was never in that walk.
 Its decided-condition twin moved from `mustFailToCompile` to
 `mustCompileWithParity` in the edge-finding test. The taken arm's
 redefinition still declines.
