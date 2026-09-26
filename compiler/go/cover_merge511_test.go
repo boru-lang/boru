@@ -226,3 +226,17 @@ func TestRootResidualIslandNeedsTheWrittenOrder(t *testing.T) {
 		t.Error("a rotated layout is not the written order")
 	}
 }
+
+// collectRegionTop (NUR247 / NUR249's collect): an armed list whose
+// operands are not the sim's top slots is no collect — the ordinary lowering
+// keeps the event, and its layout gives the honest verdict.
+func TestCollectRegionTopNeedsTheRegionsOnTop(t *testing.T) {
+	lw := &lowerer{collectAtSeq: 7, vm: []vmSlot{{seq: 3}}, dead: map[int]bool{}}
+	ev := &EmitEvent{seq: 7, kind: evCall, call: emitCall{word: "list", nout: 1, ops: []EmitOperand{EventOperand(5, 0)}}}
+	if lw.collectRegionTop(ev) {
+		t.Fatal("a region that is not the sim's top slot must not be collected")
+	}
+	if len(lw.vm) != 1 || lw.vm[0].seq != 3 {
+		t.Errorf("a declined collect leaves the sim untouched: %+v", lw.vm)
+	}
+}
