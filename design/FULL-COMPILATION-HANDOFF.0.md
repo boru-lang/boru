@@ -14835,3 +14835,115 @@ shape, exact flags; def's 32 by rule; 58 in all),
 code-body sig with a check-mode handler or a ReturnsFn, never beside
 CompileResteps), `TestS2BDeclaredWordsKeepParity` (16 programs, both lanes,
 compiled).
+
+## The runtime-defers ledger — the plain-error disposition, the retired-node replay, the type-name reach (2026-09-26)
+
+**The rows.** `test/go/langspec/runtime_defers.tsv` named 51 corpus rows
+across 19 files that COMPILE and then BAIL. Forty of them were one family:
+"<native>'s own error under the compiled runtime, no defer site". They were
+not bails at all. The walk books a row when the compiled error carries
+`compiledRunError`'s defect note, and `compiledRunError` put that note on
+EVERY non-Boru error, on the theory that a foreign Go error could only be
+the VM's. But a handler's plain `fmt.Errorf` — convert's "cannot convert
+Float to BigInteger", defTypedHandler's "def q: value 5 does not satisfy
+predicate type Even", make's field errors, Fmt.format-with / Net.prepare /
+Query.from / StructUtil.setpath / MatrixUtil.create's own guards — is the
+PROGRAM's result, and the interpreter surfaces it untouched
+(`Engine.stampErrPos` leaves a non-BoruError alone). The compiled lane
+raised the right error and the walk called it a compiler defect.
+
+**The three mechanisms.**
+
+- **The plain-error disposition** (lang `compiledRunError`). A non-Boru
+  error passes through as the program's own. The VM never reports its own
+  failures that way: `vmErrAt`, both panic guards (`vmInternalError`) and,
+  new here, the three entry refusals (`vmEntryError`: a nil program, a nil
+  or out-of-range unit reference, `fmt.Errorf` until now) all carry
+  `VMDefer`, which is the marker the defect arm reads. Forty corpus rows
+  leave. The two disposition pins turned over:
+  `TestCompiledRunErrorClassifies` (a plain error is the program's; the
+  entry refusal is a defect) and `TestForeignErrorIsTheProgramsOwnOnBothLanes`
+  (was `…BailPropagatesAsADefect`: the `zz-boom` plain error on both lanes,
+  the same value, the effect once).
+- **The retired-node replay** (core `applyTwinPush`). `def Point class {…}
+  … undef Point` minted AND retired the node during the check pass. The
+  rollback's snapshot predates the mint, so `readmitRetired` does not bring
+  it back, and the type-install twin re-pushed the binding without
+  re-registering the node. Every `OpPushType` between the two twins then
+  met "unresolvable type operand Point" (class.tsv L98–L101). The twin
+  `Adopt`s the node back (idempotent, canonical pointer); the undef twin
+  retires it again at its own position, as the interpreter's undef does.
+- **The type-name reach** (core `polyReachBound`). The poly no-match
+  plan (`PolyNoMatchSpec`) needs a trustworthy bound on the operands a
+  wider-arity overload could collect. `convert Integer none` failed it
+  because the bound read `word(Integer)` as an UNBOUND word ("undefined_word
+  preempts"). But stepWord's own `ResolveBuiltinTypeName` arm steps an
+  unbound builtin type name to exactly one value, its type literal. The
+  bound counts it now, so convert's three-argument overloads are excluded
+  and the VM raises the interpreter's signature_error (detail, notes,
+  position) instead of bailing at vm:poly-no-match (convert-ideal.tsv L33,
+  edge-scalars-3.tsv L218). Counting it is the conservative direction: a
+  larger bound declines more wider-arity exclusions, never fewer.
+
+**The drift the disposition exposed.** With the plain errors no longer
+booked, their TEXT could be compared, and the walk did not compare it:
+`fallbackVerdict` checks taxonomy ("non-boru" on both lanes) and a Boru
+error's Detail, and a plain error has no Detail. A by-hand pass over the 44
+rows found two that differed: generics.tsv L56 and resource.tsv L156,
+`def b:(Box of [Integer]) {value:'no'}` and `def e:Entity {…}`, raised the
+bare `make: field "value": …` compiled for the interpreter's `def b: make:
+…`. The typed def's construction is recorded as a synthetic `make` event
+(`core.RecordTypedDefMake`), and defTypedHandler's `fmt.Errorf("def %s:
+%w")` wrap lived only on the interpreter's path. The recorder now records
+a per-def COPY of make's signature whose handler wraps a failure the same
+way (`typedDefMakeSig`; the name is a new parameter, both basic callers
+pass it). And `fallbackVerdict` compares a plain error's text, so the next
+such drift fails the gate instead of waiting for a reader.
+
+**Measured.** runtime-defers ledger 51 -> 7 (bignum 10, class 4,
+convert-ideal 1, edge-dispatch-3 3, fnpred 4, generics 1, module-fmt 3,
+module-matrix 1, module-net 2, module-query 1, module-struct 2, record 3,
+resource 1 and weak-flex 2 all deleted; edge-scalars-3 2 -> 0, deleted;
+flex 7 -> 3). langspec `bailDefectCeiling` 51 -> 7, `deferCeiling` 7 -> 5
+(vm:poly-no-match×2 gone). lang `bailDefectCeiling` 46 -> 39
+(TestCompiledIslandErrorRendering's four convert-in-callback programs,
+TestTypedDefBindCompiles' predicate validate-FAIL, the two `zz-boom`
+rows — each asserting full error parity now), lang/go/test
+`refDefectCeiling` 102 -> 96 (TestBehaveUnify_RejectsBadShape's four
+`behave unify` errors; TestTypeShadow_PredicateOverLiteral and
+TestTypeShadow_DepScalar, the retired-node replay). Filtered langspec gates
+over the 19 ledgered files and the typed-def, module, generics, edge and
+user-type families: 0 unledgered divergences, with the plain-error text
+gate on. core, compiler, basic, eng, lang and lang/go/test pass.
+
+**Pins.** lang `runtime_defers_parity_test.go`
+(`TestPlainHandlerErrorIsTheProgramsOwnOnBothLanes`,
+`TestTypedDefMakeErrorKeepsTheDefWrap`, `TestVMEntryRefusalStaysADefect`,
+`TestRetiredTypeNodeReplaysForTheRun` — including the node gone by ID
+after the run on both lanes — and `TestConvertNoMatchRaisesTheInterpretersError`,
+each with its negative); core `TestTypedDefMakeSigWrapsOnlyTheFailure`;
+the two turned-over disposition pins above.
+
+**What is left** (seven rows, three causes):
+
+- flex.tsv L228, L230, L236 — `set b 9 f.a` on a flex member,
+  vm:poly-nout-drift. The COMPILE pass types the member read `f.a` Any
+  (plain Check says FlexMap), so `set` over an Any receiver commits its
+  first overload, `[Atom Any Class]` with 0 results, and the poly record
+  claims 0. The runtime lands on FlexMap and returns the node. The
+  overloads reachable from Any disagree on result count (Class / Store /
+  Micron 0, the flex / Map / List arms 1), so no single claim is sound.
+  Closing it needs either a SOUND typed model of a mutated flex member in
+  the compile pass (a flex member can be any value, including a Store or a
+  class instance, so FlexMap is not a proof) or a variadic-count poly
+  result that only the residual or a drop may consume (the dyn-body
+  backstop's `variadicResult` is the precedent). Not attempted.
+- edge-quote-1.tsv L28 and edge-quote-3.tsv L56 — `quote [add 1 2] get
+  0`: the handler returns a bare Word, which the interpreter re-steps at
+  the pointer (raising add's signature_error at the word's own position
+  inside the quote). The VM's result screen refuses a tape-coupled value
+  ("tape-coupled handler result at get"). Raising faithfully needs a model
+  of that re-step: the Word dispatching against the live stack and the
+  tokens after it, which is the re-step landing's territory, not a screen.
+- fn-value.tsv L317, L318 — NUR190's `/q` capture, booked by choice
+  (vm:landing-quote-claim×2); unchanged.

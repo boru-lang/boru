@@ -492,6 +492,17 @@ func (e *Engine) polyReachBound() (int, bool) {
 				n++ // reserved literals resolve to one value
 				continue
 			}
+			if _, ok := ResolveBuiltinTypeName(wi.Name); ok {
+				// A builtin type name steps to exactly one value, its type
+				// literal — stepWord's own ResolveBuiltinTypeName arm, the
+				// one it takes for an unbound name before undefined_word.
+				// Reading it as unbound made `convert Integer none` and
+				// `convert Integer (make Foo {})` unboundable, so their
+				// recorded poly carried no faithful-raise plan and the
+				// runtime no-match bailed (vm:poly-no-match, 2026-09-26).
+				n++
+				continue
+			}
 			// Unbound word: undefined_word preempts the dispatch. (A
 			// REGISTERED word never reaches here — registration pushes its
 			// FnDefInfo binding, so Defs.Top caught it above.)

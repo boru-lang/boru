@@ -1263,7 +1263,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			// instance has the same provenance an explicit make gives it (a
 			// downstream `b typeof` then compiles). Outside emit mode this is a
 			// no-op and the concrete instance is bound.
-			if carrier, ok := core.RecordTypedDefMake(r, constraint, body, defPos); ok {
+			if carrier, ok := core.RecordTypedDefMake(r, name, constraint, body, defPos); ok {
 				return InstallAndRecordDef(r, name, carrier, defPos)
 			}
 			result, err := core.MakeObject(info, body, r)
@@ -1292,7 +1292,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// looks the schema up by name when the constraint carries no body.
 	if resInfo, isRes := ResolveResourceTypeInfo(r, constraint); isRes {
 		if body.Parent.Equal(TMap) {
-			if carrier, ok := core.RecordTypedDefMake(r, constraint, body, defPos); ok {
+			if carrier, ok := core.RecordTypedDefMake(r, name, constraint, body, defPos); ok {
 				return InstallAndRecordDef(r, name, carrier, defPos)
 			}
 			provided, merr := AsMutableMap(body)

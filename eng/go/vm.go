@@ -254,7 +254,7 @@ func (vc *vmContext) screenResults(results []core.Value, label string, debug []c
 
 func runProgram(p *compiler.Program, r *core.Registry, stepLimit int) (result []core.Value, runErr error) {
 	if p == nil {
-		return nil, fmt.Errorf("bytecode: nil program")
+		return nil, vmEntryError("bytecode: nil program")
 	}
 	// §6.5's rollback, carried by the Program: roll this registry's bindings
 	// back to the base the recorder captured before the check pass, so the
@@ -296,10 +296,10 @@ func runProgram(p *compiler.Program, r *core.Registry, stepLimit int) (result []
 // isolated run and the guard in runVMEntry never rejects them.
 func RunUnit(ref *compiler.CompiledFnRef, r *core.Registry, args []core.Value) ([]core.Value, error) {
 	if ref == nil || ref.Prog == nil {
-		return nil, fmt.Errorf("bytecode: nil unit reference")
+		return nil, vmEntryError("bytecode: nil unit reference")
 	}
 	if ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) {
-		return nil, fmt.Errorf("bytecode: unit index %d out of range", ref.Unit)
+		return nil, vmEntryError(fmt.Sprintf("bytecode: unit index %d out of range", ref.Unit))
 	}
 	return runVMEntry(ref.Prog, r, core.StepLimitFor(r, core.DefaultStepLimit), func(vc *vmContext) ([]core.Value, error) {
 		return vc.enterCallbackUnit(r, ref.Unit, bindUnitLocals(r, &ref.Prog.Fns[ref.Unit], args, ref.Captures))

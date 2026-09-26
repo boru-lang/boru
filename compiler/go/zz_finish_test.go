@@ -23,13 +23,13 @@ func (c *countingRecorder) RecordCall(word string, sig *core.Signature, args, ou
 }
 
 func TestS6aRecordTypedDefMakeGuards(t *testing.T) {
-	if _, ok := core.RecordTypedDefMake(nil, core.Value{}, core.Value{}, core.SrcPos{}); ok {
+	if _, ok := core.RecordTypedDefMake(nil, "", core.Value{}, core.Value{}, core.SrcPos{}); ok {
 		t.Error("nil registry must decline")
 	}
 	r := newTestRegistry(t)
 	armEmit(r)
 	// eng registries have no `make` word: objectMakeSig returns nil.
-	if _, ok := core.RecordTypedDefMake(r, core.NewTypeLiteral(core.TInteger), core.NewMap(core.NewOrderedMap()), core.SrcPos{}); ok {
+	if _, ok := core.RecordTypedDefMake(r, "", core.NewTypeLiteral(core.TInteger), core.NewMap(core.NewOrderedMap()), core.SrcPos{}); ok {
 		t.Error("a registry without `make` must decline")
 	}
 }

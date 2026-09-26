@@ -48,7 +48,17 @@ import (
 // 54 -> 51 on 2026-09-25 (the strict-Any dyn-body recovery): fold-map-filter.tsv
 // L246–L248 run natively where they bailed at the rematch trap
 // (runtime_defers.tsv's fold-map-filter line deleted).
-const bailDefectCeiling = 51
+// 51 -> 7 on 2026-09-26 (the plain-error disposition, the retired-node
+// replay, the type-name reach): forty rows were a handler's plain Go error
+// (convert, make, a predicate type's rejection, the module words' own
+// guards) that compiledRunError booked as a defect while the interpreter
+// surfaced it untouched; class.tsv L98–L101 read a node the check pass's
+// `undef` retired and the type-install twin did not re-adopt; convert-ideal
+// L33 and edge-scalars-3 L218 bailed at vm:poly-no-match for want of a
+// faithful-raise plan. Left: flex.tsv L228/L230/L236 (vm:poly-nout-drift),
+// edge-quote-1 L28 / edge-quote-3 L56 (a tape-coupled Word from get) and
+// fn-value.tsv L317/L318 (NUR190, booked by choice).
+const bailDefectCeiling = 7
 
 var bailDefects = struct {
 	mu      sync.Mutex
