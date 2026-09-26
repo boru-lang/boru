@@ -303,6 +303,9 @@ func TestGradualReadAccounting(t *testing.T) {
 		t.Errorf("a top-level folded read awaits its fire, got %q/%q", es.pendingFoldedFire, es.armReadCompileFailure)
 	}
 	es.pendingFoldedFire = ""
+	// An open unit carries its record, as every real one does (the kept-defs
+	// observer walks the open records on a read).
+	es.fnRecs = []*fnUnitRec{{}}
 	es.openUnitRecs = []int{0}
 	es.NoteDefRead("j1", "j")
 	es.DefReadName("j1")
