@@ -152,8 +152,10 @@ keep the two in sync in the same commit.
 | [NUR228](#nur228) | FIXED 2026-09-26 (the gradual window declines — the handoff log's entry of that date): the matcher flags a split whose window hangs on a gradual stack operand while a later overload forward-collects past the token the selected one stopped at (`laterCandidateCollectsPast`), and the compile declines with the gradual-split reason — the mirror of the existing split flag. The original text: `def v (whereis "x") v send {a: 1} "nobody"` is `[None]` interpreted (v is None, so `send (Any, String)` takes both forward tokens) and raised signature_error compiled: the check pass matched `send (Any, Pid)` over ONE forward token and the dynamic v, and compiled that window — `{a: 1}` sent to None; `whereis "x" send {a: 1} (self)` declined as a "stack discipline" compiler defect. A wrong answer (a program error the interpreter does not raise), pre-existing (measured on main at 3b5db68) | closing NUR064, 2026-09-26 |
 | [NUR229](#nur229) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): a boru matcher refuses a malformed quoted-string escape before jsonic's lexer reads it, the escape itself named, in both ports. The original text: the two tabnas ports reported a malformed escape in a quoted string differently — `"a\x4"` an invalid ascii escape in Go and an unterminated string in TS, `"a\xZZb"` spanning `"a\xZZ` in Go and `\xZZ` in TS. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
 | [NUR230](#nur230) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): Go's shared escape writer pairs a UTF-16 surrogate split across two `\uXXXX` escapes into one code point, as jsonic does in a quoted string. The original text: in a template, `\ud83d\ude00` read as two U+FFFD in Go and as one code point in TS (whose UTF-16 strings pair the units); both ports read it as one in a quoted string. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
-| [NUR231](#nur231) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): a refinement constructor over a bound the check pass does not know latches a run-time construct and the dispatch records as the call it is, so the run builds the refinement; a refinement bakes only over const bounds, `between` decides no empty interval from an unknown one, a membership check over one decides nothing in the pass, and a TYPE over one (a named install, an inline typed def or signature type) declines the compile loudly. The original text: `3 is (Integer gt (size "abc"))` was false interpreted and true compiled — the check pass built the refinement over its carrier for the computed bound and the recorder baked it; a carrier orders below every value, so a lower bound admitted everything, an upper one refused everything (a false check-time type_error too), `between` over one was Never, and a type over one bound or dispatched unchecked compiled. Pre-existing | closing NUR009, 2026-09-26 |
+| [NUR231](#nur231) | FIXED 2026-09-26 (value half: Bytes a refinement base, a computed bound the run's; type half: the run-time type install — the handoff log's entries of that date): a refinement constructor over a bound the check pass does not know latches a run-time construct and the dispatch records as the call it is, so the run builds the refinement; a refinement bakes only over const bounds, `between` decides no empty interval from an unknown one, and a membership check over one decides nothing in the pass (an intersection keeps the unknown bound, a complement admits). A TYPE over one compiles to the run-time install: the run installs it from the body it computed (OpBindTypeRun) and the pass's node forwards to the run's, a typed def records the run's own membership check, and an overload set over one re-matches at run time. A signature the RUN builds (an inline parameter or return type over such a bound, a typed container's child) and a fn body's per-call type def decline through the existing compile-time-word site. The original text: `3 is (Integer gt (size "abc"))` was false interpreted and true compiled — the check pass built the refinement over its carrier for the computed bound and the recorder baked it; a carrier orders below every value, so a lower bound admitted everything, an upper one refused everything (a false check-time type_error too), `between` over one was Never, and a type over one bound or dispatched unchecked compiled. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR232](#nur232) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the return-pattern check defers a refinement's value-level membership over an abstract residual not provably outside its base, the named return type's rule. The original text: `def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5` was a check-time type_error ("expected (Integer gt 3), got Integer") that both lanes then returned 5 for; the named twin (`[Big]`) is check-clean. Pre-existing | closing NUR009, 2026-09-26 |
+| [NUR233](#nur233) | FIXED 2026-09-26 (a make field's refusal is a type_error — the handoff log's entry of that date): a make field the run refuses raises a type_error on both lanes; a refusal already structured keeps its code. The original text: the refusal was a plain error, which the interpreter printed bare and a compiled run booked as a compiler defect (internal_error with its "please report it" note) — `def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}`. Pre-existing | compiling NUR231's type half, 2026-09-26 |
+| [NUR234](#nur234) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a compiled direct call's param-contract no-match reports every argument, where the interpreter reports its attempted window — the forward candidates up to the first bare read, filled from the stack beneath: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` notes "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Code, message head and caret agree; the notes differ. Pre-existing (a gradual argument, measured at b3bcd9a); NUR231's type half reaches it too (`def v 2 f v` over a parameter typed by a computed-bound name) | compiling NUR231's type half, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -8894,7 +8896,7 @@ is still U+FFFD. Pinned by NUR026's `parse.tsv` rows and the direct
 
 ## NUR231 — a refinement over a computed bound: the compile pass baked a bound it did not know {#nur231}
 
-**Status:** FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Status:** FIXED 2026-09-26 (the value half: Bytes a refinement base, a computed bound the run's; the type half: the run-time type install — the handoff log's entries of that date) · **Recorded:** 2026-09-26 ·
 **Surfaced by:** closing NUR009 — every Bytes bound is computed, so pinning
 Bytes refinements on both lanes met it first.
 
@@ -8932,22 +8934,71 @@ was Never, and a type over one checked nothing the run would.
   and agree.
 - *The pass decides nothing over an unknown bound.* `depBoundCheck`
   admits (gradually), so `boru check` raises no diagnostic of its own.
-- *A type over one declines.* A named type's install, an inline typed def
-  and an inline signature type are checked against a bound only the run
-  knows, and the compiled lane replays the pass's install and verdict;
-  those sites decline the compile (`DeclineUnknownRefinement`: "… refines
-  over a computed bound, which only the run knows (NUR231)"), and the
-  interpreter's answer stands. Compiling them is owed — a run-time type
-  install and a run-time-checked bind over the run's refinement. The
-  decline is one new site in the compile-failure censuses (91 → 92,
-  written down where a silent wrong answer was), carrying that plan as
-  its disposition: generic, stage 6, beside the DepScalar typed-def site.
+- *A type over one is installed by the run* (the type half, the same
+  day). The pass cannot check a value against a bound it does not know,
+  and the compiled lane replayed the pass's install and verdict; the first
+  cut declined those sites (`DeclineUnknownRefinement`, one new census
+  site, 91 → 92). They compile now:
+  - *The run installs the type.* The type installer notes a body holding
+    a refinement over an unknown bound — directly, or in a union,
+    negation or typed container's child (`HasUnknownRefinement`) — and
+    the def's dispatch records the body operand and `OpBindTypeRun` in the
+    def's place. At run time `core.RunTypeInstall` runs the interpreter's
+    own `InstallType` over the body the run computed — a mint, or the
+    adopted Never of an empty interval — and forwards the node the pass
+    minted to the run's (`RunForward`). Every compiled reference names
+    the pass's node: a type operand pushes the run's node
+    (`ForwardedType`), and a signature slot or typed-bind spec decides
+    membership, unification, rendering and equality through it
+    (`forwardingBehavior`). The def's type twin is written back, so its
+    replay installs nothing. Only at the root: a fn body's per-call
+    install would share the forwarded node across calls, a loop body's
+    across iterations, so there the def declines as the compile-time word
+    it is.
+  - *A typed def records the run's check.* `OpBindTyped` over
+    `TypedBindRunMembership` runs the registry-armed Unify the
+    interpreter's typed def runs, against the named node or against the
+    inline constraint the run computed, which sits beneath the value
+    (`ConsOperand`). A concrete value records too: the pass's verdict over
+    an unknown bound is no verdict.
+  - *An overload set re-matches at run time.* The pass's match over an
+    unknown bound admits every value, the leniency the fn-predicate
+    overload hazard already routes to `OpCallUserPoly`; committing to the
+    refinement's overload answered a signature_error where the
+    interpreter fell through to `[n:Integer]`.
+  - *The pass decides nothing over an unknown bound, anywhere.* An
+    intersection keeps the unknown bound and proves no emptiness over it
+    (`(Integer lt (size s)) tand (Integer gt 5)` was Never at compile
+    time), and a complement admits (`tnot` over an admitting refinement
+    refused everything).
+  - *A signature the run builds declines.* An inline parameter or return
+    type over such a bound, or a typed container's child, is resolved
+    when the fn is built, and the compiled unit would carry the pass's
+    placeholder; the word building it notes itself run-dependent
+    (`NoteRuntimeDependent`) and declines through the existing
+    compile-time-word site. `DeclineUnknownRefinement` is retired, and
+    both censuses are back to 91.
+
+Measured while compiling the type half, beyond the table above (each now
+agrees): `def T ((Integer gt (size "abc")) tor String) 2 is T` (interp
+false, compiled true — the union's install had no decline);
+`def T ((Integer lt (size "abcdefghij")) tand (Integer gt 5)) T` (interp
+`T`, compiled Never); `def T (Integer gt (size "abc"))` with `f [n:T]` and
+`f [n:Integer]`, `f 2` (interp 1, compiled signature_error). Found on the
+way: NUR233 (a make field's refusal was a plain error, a compiler defect
+when compiled) and NUR234 (a direct call's contract no-match notes).
 
 Pinned by core's `TestRefinementConstructorsNoteUnknownBounds`,
-`TestUnknownBoundDecidesNothing`, `TestRefinementConstOnlyOverKnownBounds`
-and `TestUnknownRefinementDeclines`, and lang's
-`TestNUR231ComputedBoundValuesCompile` and
-`TestNUR231ComputedBoundTypesDecline` (with their known-bound twins).
+`TestUnknownBoundDecidesNothing`, `TestRefinementConstOnlyOverKnownBounds`,
+`TestUnknownRefinementIsTheRuns`, `TestRunTypeInstallForwards`,
+`TestForwardingBehaviorOperands`, `TestHasUnknownRefinementWalks`,
+`TestCombineOverUnknownBounds`, `TestNegationOverUnknownAdmits`,
+`TestTypedBindRunMembership` and `TestWrittenBackTypeTwinInstallsNothing`;
+compiler's `TestRecordTypeRun`, `TestPlacedTypeTwin`,
+`TestRuntimeLatchesNeedALiveRecorder` and `TestRecordTypedBindRun`; eng's
+`TestBindTypeRunRefusal`; and lang's `TestNUR231ComputedBoundValuesCompile`,
+`TestNUR231ComputedBoundTypesCompile` (with their known-bound twins),
+`TestNUR231TypeRunDisassembles` and `TestNUR231RunBuiltSignaturesDecline`.
 
 ## NUR232 — an inline refinement return refused an abstract residual at check time; the named twin defers it {#nur232}
 
@@ -8975,6 +9026,74 @@ provably outside its base (`refinementUndecided`, check_fnbody.go) — the
 named path's rule. A residual provably outside (`[n:String]`) and a failing
 constant (`[2]`) are still flagged. Pinned by lang's
 `TestNUR232InlineRefinementReturnDefers`.
+
+## NUR233 — a make field's refusal: a bare error interpreted, a compiler defect compiled {#nur233}
+
+**Status:** FIXED 2026-09-26 (a make field's refusal is a type_error — the
+handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** compiling NUR231's type half — a class field typed by a
+refinement over a computed bound is the run's to check.
+
+**Rule:** one refusal, one error, on both lanes.
+
+**Divergence** (pre-existing; measured at b3bcd9a):
+
+```
+def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}
+  interp:   make: field "x": expected Big, got Integer (3): value does not satisfy DepScalar bounds
+  compiled: [boru/internal_error]: make: field "x": … — "this is a compiler defect: the program
+            compiled and then failed inside the compiled runtime; please report it"
+```
+
+`make`'s field checks wrapped the refusal in a plain Go error. The
+interpreter printed it bare; a compiled run books a plain error as a
+compiler defect (`compiledRunError`). The check pass already calls the same
+refusal a type_error when it knows the value, so the compile only reached
+the run-time raise for a value only the run knows: a loop-carried one, or,
+since NUR231's type half, a field typed by a refinement over a computed
+bound.
+
+**The fix.** The refusal is a type_error on both lanes (`makeFieldError`,
+core_make.go, at all five field-check sites). A refusal that is already
+structured keeps its own code beneath the prefix. Pinned by core's
+`TestMakeFieldErrorIsStructured` and lang's
+`TestNUR233MakeFieldRefusalIsATypeError`.
+
+## NUR234 — a compiled direct call's contract no-match reports every argument; the interpreter reports its attempted window {#nur234}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** compiling NUR231's type half — a call over a
+parameter typed by a computed-bound name is admitted by the pass and
+checked by the run.
+
+**Rule:** one failed dispatch, one diagnostic, on both lanes.
+
+**Divergence** (pre-existing; measured at b3bcd9a with a gradual argument):
+
+```
+def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]
+  interp:   signature_error … note: candidate `f (String)` takes 1 argument, but none were supplied
+  compiled: signature_error … note: the argument was 5 (an Integer)
+                              note: candidate `f (String)` — argument 1: expected String, got 5 (an Integer)
+```
+
+The code, message head and caret agree; the notes differ. The interpreter
+reports its ATTEMPTED WINDOW (`attemptedWindowOver`): the forward
+candidates written after the word, which stop at the first bare read, and,
+when those are fewer than the smallest overload's arity, the stack prefix
+beneath. `f e` inside a body, and `def v 2 f v` at the top level, attempt
+an empty window. The compiled direct call's contract check
+(`checkParamContract` at `OpCallUser` / `OpTailCallUser`) reports every
+argument (`RuntimeNoMatch` over `guardArgs`). The spellings whose window
+holds the value agree: `e f` (a stack argument), `f (e)` (a paren group)
+and `f (g e 1)` (a nested call).
+
+NUR122 closed the same gap for a trailing fn-value apply, by carrying the
+written run (`DynApplyHead.NWritten`, from `writtenRun`). **Proposed fix:**
+carry each user call's written run and forward/stack split on its record,
+and build the contract's no-match over the same window: the written
+prefix, filled from the unit's stack beneath the call's operands to the
+smallest arity.
 
 ## NUR228 — a native's forward window binds a gradual stack operand the runtime value may not fit {#nur228}
 

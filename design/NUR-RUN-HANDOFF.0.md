@@ -9,6 +9,45 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR231's type half compiled — the run-time type install (2026-09-26)
+
+**The record.** NUR231's first cut left a TYPE over a refinement whose
+bound only the run knows declining the compile at its three sites (a
+named install, an inline typed def, an inline signature type:
+`DeclineUnknownRefinement`, one census site, 91 → 92), with the plan as its
+disposition: install the type at run time and check against it there.
+
+**The fix.** The type installer notes a body holding an unknown-bound
+refinement, in a union, negation or typed container's child too, and the
+def's dispatch records the body operand and `OpBindTypeRun` in the def's
+place. The run installs the type through the interpreter's own
+`InstallType` (a mint, or Never adopted for an empty interval), and the
+node the pass minted forwards to the run's. That node is the one every
+compiled reference names: a type operand pushes the run's node, and a
+signature slot or typed-bind spec asks membership, unification, rendering
+and equality through it. So named params, returns, class fields, generic
+bounds, `is` and `T eq Never` agree without re-planning a single
+signature. The def's type twin is written back and replays nothing. A
+typed def records the run's own check (`TypedBindRunMembership`, against
+the node or the inline constraint the run computed). An overload set over
+such a type re-matches at run time, because the pass's match over an
+unknown bound admits every value. The pass decides nothing over an
+unknown bound anywhere: an intersection keeps it, and a complement admits.
+
+A signature the RUN builds still declines, through the existing
+compile-time-word site: an inline parameter or return type over such a
+bound, a typed container's child, and a fn body's per-call type def. The
+retired site takes both censuses back to 91; the frontier row and oracle
+row for a type def in an each body decline one step earlier, as the
+code-body word.
+
+Found on the way, both pre-existing. NUR233: a make field's refusal was a
+plain error, bare interpreted and a compiler defect compiled; it is a
+type_error on both lanes now, CLOSED. NUR234: a compiled direct call's
+contract no-match reports every argument where the interpreter reports its
+attempted window. The notes differ and the code and head agree. Recorded
+OPEN with a proposed fix: NUR122's written-run carried to user calls.
+
 ## NUR009 closed — Bytes a refinement base, a computed bound the run's (2026-09-26)
 
 **The record.** Bytes, the one ordered scalar leaf the comparison words
