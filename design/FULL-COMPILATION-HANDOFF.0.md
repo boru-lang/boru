@@ -14947,3 +14947,56 @@ the two turned-over disposition pins above.
   tokens after it, which is the re-step landing's territory, not a screen.
 - fn-value.tsv L317, L318 — NUR190's `/q` capture, booked by choice
   (vm:landing-quote-claim×2); unchanged.
+
+**The follow-up, the same day: `receive` declared, the census 1 -> 0.**
+`receive (List)` declares `CompileRunsBodyOnRegistry` (lang
+`native_process.go`). The premise the flag's module-scope rule rests on —
+the CHECK pass never runs the body, so the VM's run is the first and the
+replay-hazard screen does not apply — was checked for receive, not assumed:
+the word is neither RunInCheck nor carries a ReturnsFn, so its check-mode
+dispatch returns the declared Any carrier and never touches the clause
+list (`TestS2BReceiveDeclaresRunsBodyOnRegistry` pins both facts beside the
+flag). A body that binds a name read after it is a check-time
+undefined_word or, for a bound name, `bodyRebindsBoundName`'s decline.
+
+The module-scope rule closed three miscompiles measured on main (ae17688),
+each now a loud decline: a clause body reading a fn param inside the fn
+(`… after 5 [ n ] …` inside `f`, `undefined word: n` compiled for 7), a
+top-level loop's iterator (`for 2 [receive [ … after 5 [ i ] ]]`,
+`undefined word: i` for `[0 1]`), and a body rebinding a name read after it
+(`def x 1 end receive [ … after 5 [ def x 2 ] ] x`, an internal
+RESTEP_LANDING underflow for `[2]`).
+
+**The rule alone regressed the generated sweep** — call-form failures 245 ->
+260: every nested call form of the `receive` seeds (`receive [{} [1] after 0
+[0]]` inside a fn, a lambda, a branch arm, a loop, a module body) had
+compiled with parity through the inert-scope bake and now declined. Rather
+than raise the ceiling, the compiler admits a nested position when the
+operand names nothing the program or the registry knows
+(`registryBodyNamesNothingKnown` in compiler `emit.go`, read beside
+`runsBodyOnRegistryAtModuleScope` by `noEvalBodyBakes`): the operand is
+inert-scoped (no computed paren, carrier or interp string; no sentinel; no
+replay hazard) and every Word at any depth — list elements, map values,
+paren tokens — is neither bound in the recorder's registry (every frame
+local is bound there while its scope is recorded) nor a registered word
+(so no `args` / `context`, and no binder: `def` / `var` / `undef` /
+`import` are registered); a Reach or Splice declines. What passes is the
+handler's own keyword (`after`), literals and names neither lane knows (an
+unknown name raises the same undefined_word on both). It applies to
+`Test.cover` too, whose nested pins still decline (each names a param, an
+iterator or a Reach). Sweep back at 245, SWEEP_STATUS.md unchanged.
+
+**Measured.** Census `undeclaredHandlerCeiling` 1 -> 0 (`render` prints
+`none`). lang `compileDefectCeiling` 298 -> 303: five NEW decline pins of
+`TestS2BReceiveBodyOnRegistryLowering` — the three miscompile witnesses and
+two fences of the nested admission (a fn param as a map member, `{a: n}`;
+the registered `args`). No spec file exercises `receive`; the filtered
+langspec over control.tsv and code-bodies.tsv passes (the sweep included),
+and module-test.tsv (Test.cover's rows) passes. Unit suites of compiler,
+lang (root, native, the process tests) and the census green; lint clean.
+
+**Pins.** `s2b_declarations_test.go`: the receive negative became
+`TestS2BReceiveDeclaresRunsBodyOnRegistry` (exact flag + the check-pass
+premise) and `TestS2BReceiveBodyOnRegistryLowering` (six programs compile
+with parity — three top-level, three nested with a nothing-known clause
+list; five decline loudly; one unknown name raises on both lanes).

@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"fmt"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -113,13 +114,16 @@ func TestS2BDeclarationsByWordAndShape(t *testing.T) {
 	}
 }
 
-// TestS2BReceiveStaysUndeclared is the negative: `receive`'s clause body runs
-// on a sub-engine over the ENCLOSING registry (runClauseBody), whose true
-// declaration, CompileRunsBodyOnRegistry, changes lowering — so a
-// declaration-only line leaves it at the zero value rather than write a flag
-// that is not its contract. When the word is migrated this pin moves with
-// it, and the census ceiling goes to 0.
-func TestS2BReceiveStaysUndeclared(t *testing.T) {
+// TestS2BReceiveDeclaresRunsBodyOnRegistry: `receive`'s clause body runs on
+// a sub-engine over the ENCLOSING registry (runClauseBody → New(r).Run) in
+// both modes, so its declaration is CompileRunsBodyOnRegistry — the census's
+// last code-body signature (2026-09-26, the S2b follow-up). The flag's
+// module-scope rule drops the replay-hazard screen on the premise that the
+// CHECK pass never runs the body; for receive that holds because the word is
+// neither check-mode nor carries a ReturnsFn (its result is the declared Any),
+// and this pins the premise beside the flag so a later ReturnsFn that ran the
+// clause bodies would have to revisit it.
+func TestS2BReceiveDeclaresRunsBodyOnRegistry(t *testing.T) {
 	reg, err := native.DefaultRegistry()
 	if err != nil {
 		t.Fatal(err)
@@ -128,11 +132,79 @@ func TestS2BReceiveStaysUndeclared(t *testing.T) {
 	if fd == nil {
 		t.Fatal("receive: not registered")
 	}
-	for i := range fd.Signatures {
-		sig := &fd.Signatures[i]
-		if sig.CompileEffect != core.CompileDefault || sig.Callable != nil {
-			t.Errorf("receive %s: declared %v — update the census ceiling, this pin and the handoff together", s2aShape(sig), sig.CompileEffect)
+	if len(fd.Signatures) != 1 {
+		t.Fatalf("receive: %d signatures, want 1", len(fd.Signatures))
+	}
+	sig := &fd.Signatures[0]
+	if sig.CompileEffect != core.CompileRunsBodyOnRegistry {
+		t.Errorf("receive %s: CompileEffect %v, want exactly CompileRunsBodyOnRegistry", s2aShape(sig), sig.CompileEffect)
+	}
+	if sig.RunInCheckMode() || sig.ReturnsFn != nil {
+		t.Errorf("receive: the check pass must not run the clause bodies (check mode %v, ReturnsFn %v) — the replay-hazard exemption rests on it",
+			sig.RunInCheckMode(), sig.ReturnsFn != nil)
+	}
+}
+
+// TestS2BReceiveBodyOnRegistryLowering: the declaration's behaviour on both
+// lanes. At the top-level statement position the dispatch bakes and answers
+// as the interpreter does (the module-scope rule). At a NESTED position — a
+// fn body, a loop body, a branch arm — it bakes only when the clause list
+// names nothing the program or the registry knows
+// (registryBodyNamesNothingKnown): the handler's own keyword `after` and
+// literals, as the sweep's seeds are. Every clause body that could read a
+// name the VM holds as a frame local — a fn param (bare, in a list, in a map
+// member), a loop iterator — or reach interpreter-maintained state (`args`),
+// or change a binding the program reads after it, DECLINES. The fn-param,
+// iterator and rebind shapes all miscompiled on main before the flag
+// (ae17688): `undefined word` for the first two, an internal RESTEP_LANDING
+// underflow for the third.
+func TestS2BReceiveBodyOnRegistryLowering(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{`receive [ {never: 1} [ "msg" ] after 5 [ "timed-out" ] ]`, "[timed-out]"},
+		{`def k 4 end receive [ {never: 1} [ 0 ] after 5 [ k add 1 ] ]`, "[5]"},
+		{`receive [ {never: 1} [ 0 ] after 5 [ (1 add 2) ] ]`, "[3]"},
+		// Nested positions whose clause list names nothing known.
+		{`def f fn [[n:Integer][Integer][receive [ {never: 1} [ 0 ] after 5 [ 9 ] ]]] end f 7`, "[9]"},
+		{`for 2 [receive [ {} [ 1 ] after 0 [ 7 ] ]]`, "[7 7]"},
+		{`if true [receive [ {never: 1} [ 0 ] after 5 [ 9 ] ]] [0]`, "[9]"},
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		if errC != nil || errI != nil || !compiled {
+			t.Errorf("%q: want a compiled run on both lanes, compiled=%v errC=%v errI=%v", c.src, compiled, errC, errI)
+			continue
 		}
+		if fmt.Sprint(gotC) != c.want || fmt.Sprint(gotI) != c.want {
+			t.Errorf("%q: compiled %v, interp %v, want %s", c.src, gotC, gotI, c.want)
+		}
+	}
+	for _, c := range []struct{ src, want string }{
+		// A clause body reading a fn param inside the fn (the miscompile).
+		{`def f fn [[n:Integer][Integer][receive [ {never: 1} [ 0 ] after 5 [ n ] ]]] end f 7`, "[7]"},
+		// ... a top-level loop's iterator.
+		{`for 2 [receive [ {never: 1} [ 0 ] after 5 [ i ] ]]`, "[0 1]"},
+		// ... a body that rebinds a name the program reads after it.
+		{`def x 1 end receive [ {never: 1} [ 0 ] after 5 [ def x 2 ] ] x`, "[2]"},
+		// ... a fn param one level down, as a map member.
+		{`def f fn [[n:Integer][Any][receive [ {never: 1} [ 0 ] after 5 [ {a: n} ] ]]] end f 7`, "[{a:7}]"},
+		// ... a registered word reading interpreter-maintained state.
+		{`def f fn [[n:Integer][Any][receive [ {never: 1} [ 0 ] after 5 [ args ] ]]] end f 7`, "[[7]]"},
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		if compiled {
+			t.Errorf("%q: must decline, compiled to %v/%v", c.src, gotC, errC)
+		}
+		if errI != nil || fmt.Sprint(gotI) != c.want {
+			t.Errorf("%q: interp %v/%v, want %s", c.src, gotI, errI, c.want)
+		}
+		// The decline is loud and counted, never a wrong compiled answer.
+		requireEngineParity(t, c.src, false)
+	}
+	// A name NEITHER lane knows is admitted at a nested position and raises
+	// the same undefined_word on both.
+	const unknown = `def f fn [[n:Integer][Any][receive [ {never: 1} [ 0 ] after 5 [ zzq ] ]]] end f 7`
+	_, compiled, errC, _, errI := runBothEngines(t, unknown)
+	if !compiled || errC == nil || errI == nil || codeOf(errC) != "undefined_word" || codeOf(errI) != "undefined_word" {
+		t.Errorf("%q: want a compiled run raising undefined_word on both lanes, compiled=%v errC=%v errI=%v", unknown, compiled, errC, errI)
 	}
 }
 

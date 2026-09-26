@@ -89,8 +89,17 @@ import (
 // carries a live miscompile the flag's module-scope rule would close
 // (a clause body reading a fn param inside a fn compiles to
 // undefined_word; see the S2b entry of FULL-COMPILATION-HANDOFF.0.md))
-// -> 0 (Stage 6).
-const undeclaredHandlerCeiling = 1
+// -> 0 (2026-09-26, the S2b follow-up: `receive (List)` declares
+// CompileRunsBodyOnRegistry. The check pass never runs its clause bodies —
+// no RunInCheck, no ReturnsFn — so the flag's module-scope rule holds for it
+// as for Test.cover, and the rule closes the miscompile: a clause body
+// reading a fn param or a loop iterator, or rebinding a name read after it,
+// declines now; a top-level receive still compiles with parity, and so does
+// a nested one whose clause list names nothing the program or the registry
+// knows (the new registryBodyNamesNothingKnown, which keeps the sweep's
+// receive call forms passing). Stage 6's
+// census reads `none`.)
+const undeclaredHandlerCeiling = 0
 
 // relevant reports whether the recorder needs a handler declaration for
 // this signature, and why.

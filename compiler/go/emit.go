@@ -11788,7 +11788,10 @@ func bindNameToken(v core.Value) string {
 // body (`Test.cover [n]` inside a fn, `[… i …]` inside a top-level loop) that
 // the handler's sub-engine then resolves against the registry, where the
 // VM's frame local is invisible — a false undefined_word, present on main
-// at 3b5db68 and closed here (the nested positions decline). An
+// at 3b5db68 and closed here (the nested positions decline). Since the S2b
+// follow-up (2026-09-26, `receive` declares the flag) a nested position is
+// admitted only when its body names nothing the program or the registry
+// knows (registryBodyNamesNothingKnown) — the hazard needs a known name. An
 // isolated-frame word (CompileRunsBodyIsolated) bakes unconditionally;
 // every other word bakes an inert-scoped body.
 func (es *EmitState) noEvalBodyBakes(sig *core.Signature, args []core.Value) bool {
@@ -11796,10 +11799,83 @@ func (es *EmitState) noEvalBodyBakes(sig *core.Signature, args []core.Value) boo
 	case sig.CompileEffect.Has(core.CompileRunsBodyIsolated):
 		return true
 	case sig.CompileEffect.Has(core.CompileRunsBodyOnRegistry):
-		return es.runsBodyOnRegistryAtModuleScope(sig, args)
+		return es.runsBodyOnRegistryAtModuleScope(sig, args) || es.registryBodyNamesNothingKnown(sig, args)
 	default:
 		return es.noEvalBodiesInertScoped(sig, args)
 	}
+}
+
+// registryBodyNamesNothingKnown is the NESTED-position admission of a
+// CompileRunsBodyOnRegistry word (the S2b follow-up, 2026-09-26: `receive`'s
+// clause list — `receive [{} [1] after 0 [0]]` inside a fn, a loop, a branch
+// arm). The module-scope rule declines every nested position because a body
+// word naming a VM frame local resolves against the registry instead; that
+// hazard needs a NAME the program binds, so a body that names nothing the
+// program or the registry knows is re-run identically anywhere. Admitted only
+// when the operand is inert-scoped (noEvalBodiesInertScoped: an inert const —
+// no computed paren, carrier or interp string at a nested position — with no
+// flow sentinel and no replay hazard) and every Word token in it, at any
+// depth, is NEITHER bound in the recorder's registry (every frame local — a
+// param, a capture, a loop iterator, a promoted def — is bound there while
+// its scope is recorded) NOR a registered word (so no builtin whose result
+// reads interpreter-maintained state — `args`, `context` — and no binder:
+// `def` / `var` / `undef` / `import` are registered, so a body that binds
+// declines here and keeps its module-scope rule). What remains are the
+// handler's own keywords (receive's `after`) and the names the handler binds
+// itself (a clause's `[x:Integer]` binding, installed on the registry by
+// runClauseBody on both lanes). A Reach or Splice token carries a name the
+// walk cannot resolve, so it declines.
+func (es *EmitState) registryBodyNamesNothingKnown(sig *core.Signature, args []core.Value) bool {
+	if es.reg == nil || !es.noEvalBodiesInertScoped(sig, args) {
+		return false
+	}
+	for i := range args {
+		if sig.NoEvalArgs[i] && es.valueNamesKnown(args[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// valueNamesKnown reports whether v carries, at any depth (list elements, map
+// values, paren tokens), a Word the recorder's registry binds or registers, or
+// a Reach / Splice token — the names registryBodyNamesNothingKnown refuses.
+func (es *EmitState) valueNamesKnown(v core.Value) bool {
+	if core.IsReach(v) || core.IsSplice(v) {
+		return true
+	}
+	if core.IsWord(v) {
+		w, _ := core.AsWord(v)
+		if _, bound := es.reg.Defs.Top(w.Name); bound {
+			return true
+		}
+		return es.reg.Lookup(w.Name) != nil
+	}
+	switch d := v.Data.(type) {
+	case core.ListPayload:
+		for _, e := range d.Elems {
+			if es.valueNamesKnown(e) {
+				return true
+			}
+		}
+	case core.MapPayload:
+		if d.M == nil {
+			return false
+		}
+		for _, k := range d.M.Keys() {
+			mv, _ := d.M.Get(k)
+			if es.valueNamesKnown(mv) {
+				return true
+			}
+		}
+	case core.ParenExprPayload:
+		for _, tk := range d.Toks {
+			if es.valueNamesKnown(tk) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // runsBodyOnRegistryAtModuleScope reports whether a NoEvalArgs dispatch may

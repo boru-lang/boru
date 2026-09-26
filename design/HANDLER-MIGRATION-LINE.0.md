@@ -294,3 +294,9 @@ miscompile that flag's module-scope rule would close (a clause body reading
 a fn param inside a fn) — the details and the reproducer are in the S2b
 entry of FULL-COMPILATION-HANDOFF.0.md. Pins:
 `lang/go/s2b_declarations_test.go`.
+
+Later the same day: `receive` declares `CompileRunsBodyOnRegistry` and the
+census reads **0**. The module-scope rule closes the in-fn / in-loop /
+rebind miscompiles; a nested clause list naming nothing the program or the
+registry knows stays compiled (compiler `registryBodyNamesNothingKnown`),
+which kept the generated sweep's call forms at their ceiling.

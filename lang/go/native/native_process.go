@@ -72,8 +72,23 @@ var processNatives = []NativeFunc{
 		Signatures: []Signature{
 			// receive [ {pat} [body] … (after <ms> [body]) ] — take the front
 			// mailbox message and dispatch it by clause.
+			//
+			// CompileRunsBodyOnRegistry (S2b, 2026-09-26): the handler runs
+			// the chosen clause body on a sub-engine over the ENCLOSING
+			// registry (runClauseBody → New(r).Run) in both modes, and the
+			// check pass never runs it (no RunInCheck, no ReturnsFn — the
+			// result is the declared Any), so the VM's run is the first run
+			// and the replay-hazard screen does not apply. The recorder
+			// honours the flag at the top-level statement position
+			// (runsBodyOnRegistryAtModuleScope), and at a nested one only for a
+			// clause list naming nothing the program or registry knows
+			// (registryBodyNamesNothingKnown): inside a fn a clause body naming
+			// a param used to bake as inert data and resolve the name against
+			// the registry — `undefined word` compiled where the interpreter
+			// answered — and now declines.
 			{Args: []*Type{TList}, Impl: Go(receiveHandler), Returns: []*Type{TAny},
-				BarrierPos: -1, NoEvalArgs: map[int]bool{0: true}},
+				BarrierPos: -1, NoEvalArgs: map[int]bool{0: true},
+				CompileEffect: CompileRunsBodyOnRegistry},
 		},
 	},
 	{

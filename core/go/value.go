@@ -562,7 +562,11 @@ const (
 	// loud rather than reading a stale slot. Inside a compiled fn frame a body
 	// token naming a frame local would resolve against the registry instead
 	// of the VM slot, so the recorder honours the flag only when no unit is
-	// open (len(es.units)==1) and keeps the inert-scope decline otherwise. The
+	// open (len(es.units)==1) and keeps the inert-scope decline otherwise — save
+	// a body that names nothing the program or the registry knows, which the
+	// hazard cannot reach (registryBodyNamesNothingKnown, 2026-09-26, added when
+	// `receive` declared the flag: its handler runs the chosen clause body on
+	// New(r) the same way, and the check pass never runs it). The
 	// flag exempts ONLY the inert-scoped disjunct of the code-body compile
 	// failure, as CompileRunsBodyIsolated does.
 	CompileRunsBodyOnRegistry
