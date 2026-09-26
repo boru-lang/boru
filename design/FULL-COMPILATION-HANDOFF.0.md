@@ -13322,6 +13322,48 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR218 closed — a member reference is its word twin (2026-09-26)
+
+**The divergence.** `/v` yields the binding's value whoever reads it, but a
+MEMBER read's value was quoted where its word twin's is not:
+execFnDefLiteral's peek consumed the group's marker and set `Quoted`, and
+the quote rode into a paren's survivor, a callback slot and a branch
+result. `each (m.f/v) [1 2 3]` stepped the value per element as data
+interpreted (`[fn fn fn]`) and applied it compiled; `(m.f/v 5)` was `fn 5`
+for the word twin's 6; `def g (m.f/v) end g 4` was 5 interpreted and `fn 4`
+compiled; `[1 2 3] each [m.f/v]` applied the member compiled. Silent both
+ways, pre-existing.
+
+**The fix.** The peek DELIVERS: marker consumed, pointer past the value,
+no quote — position keeps it inert, exactly as it keeps `inc/v` — and under
+the check pass a value-read note (`NoteValRead`), so NUR186's frame-tail
+decline and the code-body replay read the delivery as inert. Three
+check-side stand-ins stopped leaking their quote: the forward scan tags the
+value it quoted for its marker (`ReachGroup`) and the arrival delivers any
+such value unquoted, a carrier included (the flex twin of `if true m.h/v
+[2]` was data compiled — a NUR078 regression, loud before it); a bare read
+of a binding that may hold a fn un-quotes the stand-in (the run routes a
+bound fn through Lookup whatever its quote); the NUR213 marker drop notes
+the carrier's delivery beside its quote, so `noteClosureBodyReplay` stands
+aside for it (`[1 2 3] each [m.f/v]` declines loudly now — "result above a
+literal" — where the word twin compiles).
+
+**Found alongside, fixed with it.** A DYNAMIC member at a branch arm —
+`if true m.h [2]` over a flex, bare spelling included — is re-stepped by the
+interpreter after `if` returns (a 0-arg member fires: 1), and compiled to
+the member itself. `RecordBranch` marks a dynamic arm `MayBeFn`
+(`branchArmMayBeFn`), and `lowerComputedBranch` — the eager-arm merge the
+check pass takes for a computed arm — emits the guarded landing the general
+merge already emitted (NUR159). The measured matrix: ten shapes × word /
+map / flex / module twins agree on both lanes, compiled; the loud declines
+left are the word twin's own (`inc/v 5`), the member forms the corpus
+already declined (`5 m.f/v`, `def ret fn [[][Function][m.f/v]]` over a
+container), and the body shape above.
+
+**Pins.** lang `TestNUR218MemberRefIsItsWordTwin`,
+`TestNUR218DynamicBranchArmLands`; core `TestFnValueDispatchModLeavesInert`
+(the delivery is unquoted).
+
 ## The merge of main's #508, NUR206 closed by it (2026-09-26)
 
 Main's #508 (the apply chain for callbacks.tsv L125, the withdrawn hosted

@@ -4738,7 +4738,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 				es.MarkUncompilable("if: then value of unknown provenance")
 				return
 			}
-			if core.IsFnValueResidual(*b.ThenValue) {
+			if branchArmMayBeFn(*b.ThenValue) {
 				mayBeFn = true
 				mayBeFnArgs = mayBeFnArgs || es.branchArmMayTakeArgs(*b.ThenValue)
 			}
@@ -4777,7 +4777,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 					es.MarkUncompilable("if: else value of unknown provenance")
 					return
 				}
-				if core.IsFnValueResidual(*b.ElsValue) {
+				if branchArmMayBeFn(*b.ElsValue) {
 					mayBeFn = true
 					mayBeFnArgs = mayBeFnArgs || es.branchArmMayTakeArgs(*b.ElsValue)
 				}
@@ -10798,6 +10798,17 @@ func (es *EmitState) MayBeFn(id string) bool {
 	return ok && es.eventInfo[pr.seq].mayBeFn
 }
 
+// branchArmMayBeFn reports whether a branch arm's VALUE may be a fn at run
+// time: a fn value, or a DYNAMIC carrier whose static bound does not exclude
+// Function — a member read over a container the pass cannot see into (`if
+// true m.h [2]` over a flex). The interpreter re-steps whatever `if`
+// returned, so such an arm dispatches when it holds a fn (`1` for a 0-arg
+// member), and the merge must land it as it lands a named fn arm (NUR159);
+// read as data it compiled to `fn one` (NUR218's container twin).
+func branchArmMayBeFn(v core.Value) bool {
+	return core.IsFnValueResidual(v) || (v.Dynamic && !v.Quoted && core.SigTypeMatches(v, core.TFunction))
+}
+
 // fnValueMayTakeArgs reports whether a fn VALUE in a branch arm may take
 // arguments at run time: a concrete fn with any parameterised overload, or a
 // carrier whose overloads are unknown. Only-0-arg fns (and 0-arg lambdas,
@@ -14522,6 +14533,13 @@ func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []c
 	}
 	top := vals[len(vals)-1]
 	if es.placedNotReStepped(top) || es.callResultPlacedIn(top, rec.frag) {
+		return
+	}
+	// A member read its `/v` marker DELIVERED is data where it sits: the
+	// interpreter's pointer stepped past it, so nothing inside the body
+	// re-steps it (`[1 2 3] each [m.f/v]` is three fn values on both
+	// lanes, as `each [inc/v]` is — NUR218).
+	if es.placedValRead(top.ID) {
 		return
 	}
 	if !es.MemberFnRead(top.ID) || !(top.Dynamic || core.IsFnTypedCarrier(top)) {

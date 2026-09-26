@@ -4521,6 +4521,7 @@ func (lw *lowerer) lowerComputedCond(br *emitBranch, condOnTop bool) (int, strin
 //     the FALSE (jump-target) path drops it and runs the else arm.
 func (lw *lowerer) lowerComputedBranch(ev *EmitEvent, jf int) string {
 	br := ev.br
+	multi := false
 	if br.thenComputed {
 		// TRUE/fall-through keeps the eager then value; jump over the else arm.
 		jend := lw.emit(OpJmp, 0, br.pos)
@@ -4530,6 +4531,7 @@ func (lw *lowerer) lowerComputedBranch(ev *EmitEvent, jf int) string {
 		if reason := lw.lowerArm(br.elseArm(), br.elsVal, br.els, &br.elsOut, false, br.pos); reason != "" {
 			return reason
 		}
+		multi = lw.fragMulti
 		(*lw.code)[jend].Arg = int32(len(*lw.code))
 	} else {
 		// TRUE/fall-through drops the eager else value and runs the then arm;
@@ -4539,11 +4541,19 @@ func (lw *lowerer) lowerComputedBranch(ev *EmitEvent, jf int) string {
 		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, false, br.pos); reason != "" {
 			return reason
 		}
+		multi = lw.fragMulti
 		jend := lw.emit(OpJmp, 0, br.pos)
 		(*lw.code)[jf].Arg = int32(len(*lw.code)) // FALSE lands here, eager value intact
 		(*lw.code)[jend].Arg = int32(len(*lw.code))
 	}
 	lw.vm = append(lw.vm, vmSlot{seq: ev.seq})
+	// The guarded landing over the merged value, as the general merge lands
+	// it: the eager arm is a COMPUTED value — a member read over a container
+	// the pass cannot see into (`if true m.h [2]` over a flex) — which the
+	// interpreter re-steps after `if` returns, firing a 0-arg fn (NUR218).
+	if !multi {
+		lw.emitBranchLanding(ev)
+	}
 	lw.note()
 	return ""
 }

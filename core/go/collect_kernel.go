@@ -338,10 +338,20 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 			// function is passed exactly that way now that no slot type
 			// takes one as a reference (NUR078: `mini M.dbl/v 'ab'`
 			// counted the marker as mini's String argument).
+			// The value is QUOTED here — the marker's word to the pointer, in
+			// case no position collects it — and TAGGED as a group's value,
+			// so its arrival delivers it unquoted as the reference it is
+			// (CollectArrival). The tag is what marks the quote as this
+			// marker's: the check pass's carrier for a member read (a
+			// dynamic container's `m.f`) carries none of its own, and
+			// collected quoted it was data where the run's value is the fn
+			// (`if true m.h/v [2]` over a flex: 1 interpreted, `fn one`
+			// compiled).
 			if scanIdx+1 < win.Len() {
 				if _, marked := AsDispatchMod(win.At(scanIdx + 1)); marked {
 					win.Remove(scanIdx + 1)
 					res.Quoted = true
+					res.ReachGroup = true
 					win.Set(scanIdx, res)
 				}
 			}
@@ -936,7 +946,7 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 	// lane applies it — `[1 2 3] each M.inc/v` was `[fn fn fn]` against
 	// `[2 3 4]`, `each (m.f/v) [1 2 3]` and `if true m.f/v [2]` the same
 	// (NUR078's `/v` spelling).
-	if matches && val.ReachGroup && val.Quoted && isFnDefValue(val) {
+	if matches && val.ReachGroup && val.Quoted && (isFnDefValue(val) || val.Carrier) {
 		val.Quoted = false
 		val.ReachGroup = false
 		win.Set(valIdx, val)

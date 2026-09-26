@@ -2779,6 +2779,16 @@ func (e *Engine) stepWord(val Value) error {
 			// NoteDefRead is a no-op outside a pass, but the bare call still
 			// evaluated top.ID unconditionally on the run-mode hot path.
 			if e.Registry.analysisActive() {
+				// A bare read of a binding that may hold a fn is the WORD
+				// dispatch whatever the bound value's quote — the run routes
+				// a bound FnDefInfo through Lookup — so the pass's stand-in
+				// for such a binding is read, not substituted as the quoted
+				// data it was where it was bound: `def g (m.f/v) end g 4` is
+				// 5 (NUR218; the marker drop quotes the member carrier,
+				// NUR213, and a def binds what the paren left).
+				if top.Quoted && (IsFnTypedCarrier(top) || (top.Dynamic && SigTypeMatches(top, TFunction))) {
+					top.Quoted = false
+				}
 				e.Registry.analysisRecorder().NoteDefRead(top.ID, w.Name)
 				e.Registry.analysisRecorder().NoteLocalRead(top.ID, val.Pos())
 				e.noteWordRead(top, w.Name, val.Pos())
@@ -4122,6 +4132,13 @@ func (e *Engine) stepLiteral() error {
 				if prev := e.Tape.At(valIdx - 1); !prev.Quoted && (prev.Dynamic || prev.Carrier) {
 					prev.Quoted = true
 					e.Tape.Set(valIdx-1, prev)
+					// And note the delivery as the peek notes the concrete
+					// value's (NUR218): a code body whose top is this read
+					// takes no replay — `[1 2 3] each [m.f/v]` is three fn
+					// values on both lanes.
+					if e.Registry.analysisActive() {
+						e.Registry.analysisRecorder().NoteValRead(prev.ID, "")
+					}
 				}
 			}
 			e.Tape.Remove(valIdx)
@@ -5510,13 +5527,25 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// A `/v` or `/q` modifier on a paren / dotted-path result is emitted by
 	// the parser as a Word/__DM marker right after the group (/u /s /f /N
 	// are the usurp / stack-args / forward-args / force-arity words). Peek
-	// and consume it: it leaves the function inert (data).
+	// and consume it: the function is DELIVERED, not dispatched — pushed and
+	// stepped past, unquoted, exactly as stepWordVal delivers `inc/v`
+	// (NUR218). A member read `m.f/v` is the same value as its word twin:
+	// quoted, it rode into a paren's survivor, a callback slot and a branch
+	// result as DATA where `inc/v` is the fn (`each (m.f/v) [1 2 3]` stepped
+	// it per element as data; `(m.f/v 5)` stayed `fn 5` for `(inc/v 5)`'s
+	// 6). Position keeps it inert, as it keeps the word twin: nothing
+	// re-steps a value behind the pointer but a rewind, and a rewind over a
+	// fn value is the language's apply.
 	if valIdx+1 < e.Tape.Len() {
 		if _, ok := AsDispatchMod(e.Tape.At(valIdx + 1)); ok {
 			e.Tape.Remove(valIdx + 1)
-			v := e.Tape.At(valIdx)
-			v.Quoted = true
-			e.Tape.Set(valIdx, v)
+			// The value spelling is noted as stepWordVal notes it: the
+			// residual lowering must know the delivery is INERT where it
+			// sits (placedValRead) — a named fn at a frame's tail is
+			// returned, not the zero-argument call NUR186 declines.
+			if e.Registry != nil && e.Registry.analysisActive() {
+				e.Registry.analysisRecorder().NoteValRead(e.Tape.At(valIdx).ID, "")
+			}
 			e.Pointer++
 			return nil
 		}
