@@ -609,7 +609,8 @@ func declineArrival(es core.EmitRecorder, reason string) bool {
 func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
-	if v.Quoted || v.ID == "" || !core.IsFnTypedCarrier(v) {
+	gradual := !core.IsFnTypedCarrier(v)
+	if v.Quoted || v.ID == "" || (gradual && !(v.Carrier && core.SigTypeMatches(v, core.TFunction))) {
 		return false
 	}
 	name, read := es.DefReadName(v.ID)
@@ -637,19 +638,58 @@ func tryShapedFnReadArrival(e *core.Engine, valIdx int, es core.EmitRecorder) bo
 		if why == shortReadWindow && es.InClosureUnit() && len(e.EffectiveResolved()) == n {
 			return false
 		}
+		// A GRADUAL claim (NUR207: an `Any`-typed factory result, a
+		// pinpointed member read) declines only what the program-level
+		// paths before it got wrong: the bare read with nothing beneath it
+		// in the frame (pushed as data where the interpreter dispatches or
+		// raises), a written token the parameter does not take (parked
+		// where the interpreter raises) and a function word the forward
+		// phase stops at. A frame holding values beneath, any other
+		// computed token and any read inside a fn, closure or nested body
+		// keep the paths they had: the trailing and mixed window islands
+		// and the unit's word replay (NUR123) re-step those as the
+		// interpreter does.
+		if gradual && (r.Check.FnBodyDepth > 0 || r.Check.NestedBodyDepth > 0 || es.InClosureUnit() || len(e.EffectiveResolved()) > 0 ||
+			(why == unfixedWindowToken && !functionWordInWindow(e, valIdx, n))) {
+			return false
+		}
 		return decline(why)
 	}
 	out := shapedReadOut(r, v.ID)
 	if !es.RecordDynMethod(v, args, []core.Value{out}, name, v.Pos()) {
+		if gradual {
+			return false
+		}
 		return decline("an operand has no compiled home")
 	}
 	e.Tape.Splice(valIdx, 1+n, out)
 	return true
 }
 
+// functionWordInWindow reports whether a FUNCTION word — a barrier the
+// interpreter's forward phase stops at (landingNextForWord) — stands among
+// the n tokens after valIdx, before any other token the window cannot fix:
+// with nothing beneath the read in its frame, the dispatch then matches
+// nothing and raises (`def j m.f end j add 1` over a one-parameter member).
+func functionWordInWindow(e *core.Engine, valIdx, n int) bool {
+	for i := 1; i <= n && valIdx+i < e.Tape.Len(); i++ {
+		tv := e.Tape.At(valIdx + i)
+		if evalFixedWindowToken(tv) {
+			continue
+		}
+		return core.IsWord(tv) && !core.IsDispatchMod(tv) && landingNextForWord(e, tv) == core.LandingNextWord
+	}
+	return false
+}
+
 // shortReadWindow is shapedFnReadWindow's verdict when the statement ends
 // before the wrapper's arity of tokens.
 const shortReadWindow = "the statement ends short of the wrapper's arity"
+
+// unfixedWindowToken is shapedFnReadWindow's verdict when a token inside
+// the window is not evaluation-fixed (a word, a paren, a carrier): the
+// interpreter evaluates it under the pending collection.
+const unfixedWindowToken = "an argument is not an evaluation-fixed value"
 
 // unfitWindowToken is shapedFnReadWindow's verdict when a written token
 // does not conform to the wrapper's parameter the claim knows: the
@@ -674,7 +714,7 @@ func shapedFnReadWindow(e *core.Engine, valIdx int, shape core.FnShape) (args []
 			return nil, shortReadWindow
 		}
 		if !evalFixedWindowToken(tv) {
-			return nil, "an argument is not an evaluation-fixed value"
+			return nil, unfixedWindowToken
 		}
 		if i-1 < len(shape.Params) && shape.Params[i-1] != nil && !core.SigTypeMatches(tv, shape.Params[i-1]) {
 			return nil, unfitWindowToken

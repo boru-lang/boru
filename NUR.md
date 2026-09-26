@@ -138,7 +138,10 @@ keep the two in sync in the same commit.
 | [NUR211](#nur211) | A STACK-FORM count over a computed `for` body — `def mk fn [[][List][quote [i]]] end 3 for (mk)`, `(1 add 2) for (mk)` — is the interpreter's `signature_error` (`cannot call `for``: the forward body fills the count slot) and the compiled lane's `internal_error: DISPATCH_REMATCH at for matched at run time where the static model failed`. The check pass recovers the unmatched dispatch to a rematch the runtime cannot execute; the error CODE diverges though both lanes fail. Present on main at b4fad6c with `for`'s declaration as it stood (measured with the 2026-09-26 CompileDynBody reverted) | the clause-list `if` / hosted splice work (2026-09-26), probing the hosted splice's positions |
 | [NUR210](#nur210) | A COMPUTED `do` body (the dyn-body backstop) diverges on two shapes: a value BENEATH the `do` is seated after the body's values — `def mk fn [[][List][quote [1 2]]] end 9 do (mk)` is `[9 1 2]` interpreted and `[1 9 2]` compiled, SILENT — and a body that rebinds a program binding read after it — `def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x` — is `5` interpreted and `internal_error: CALL_DYNAMIC underflow` compiled (its `undef x` twin: `undefined_word` against the same internal error). Present on main at b4fad6c; the four shapes the review of #508 measured against the withdrawn per-iteration `for` host, in `do`'s form | the clause-list `if` / hosted splice work (2026-09-26), measuring the `do` analogues of the hosted splice's declines |
 | [NUR209](#nur209) | FIXED 2026-09-26 (the `behave` × container and `fnsig` × module-export cells — the handoff log's entry of that date), found the same day: a CompileFnHandlerStrict store slot (behave, the fn-util combinators, service `add`) validates an interpreter FnDefInfo, and a factory's CAPTURING closure reached it as a compiled ClosurePayload — `behave canon/q (mk 'K')` raised `behave canon: fn arg has invalid payload` and `FnUtil.compose (mk 1) (mk 2)` a type_error where the interpreter answered; and behave's stored body, run later against the registry, resolved its names without the dynamic-scope mirror (`def g fn [[][String] [def k 'K' canon (make Temp 5)]] def k 'Z'  behave canon/q (fn [[t:Temp][String][k]])  g` answered 'Z' for 'K'). The strict slot admits only an operand proven to arrive as a fn value, and behave arms DynEnv when its stored body names something | the `behave` × container cell (2026-09-26) |
-| [NUR207](#nur207) | A name DEF-BOUND to a fn value that arrives through a dynamic or `Any`-typed carrier is a WORD dispatch on the interpreter and data on the compiled lane: `def mk fn [[][Any][([] => [42])]] end def j (mk) end j` is `42` interpreted and `[fn]` compiled; `def m {s: ([a:Integer b:Integer] => [a sub b])} end def r (m.s) end r 'x' 3` raises the interpreter's `cannot call r` and answers `[fn (Integer, Integer) x 3]` compiled (the value parks where the name would raise). Silent, default lane, present on main at ae17688. The def-read model claims a window only for a carrier with a claimed shape (NUR194); a gradual carrier's read is plain data | the generated sweep's last cells (2026-09-26), measuring why the `if` × container read could not stand aside |
+| [NUR207](#nur207) | FIXED 2026-09-26 for its witnesses and the `if` × container cell (the handoff log's entry of that date); the family's residue is recorded as NUR216–NUR218. A name DEF-BOUND to a fn value that arrives through a dynamic or `Any`-typed carrier is a WORD dispatch on the interpreter and was data on the compiled lane: `def mk fn [[][Any][([] => [42])]] end def j (mk) end j` answered `[fn]` for 42 and `def m {s: ([a:Integer b:Integer] => [a sub b])} end def r (m.s) end r 'x' 3` `[fn (Integer, Integer) x 3]` for the interpreter's `cannot call r`. Now: a parking member read over a concrete container folds to the lambda itself, fenced: the folded value reaching any consumer other than a def, a branch arm, `apply`, `typeof` or the residual declines (so no program that declined at the member's landing on main compiles to a wrong answer); an `Any` factory's result and a pinpointed member lambda claim their shape at the def, so the read dispatches the name over its whole window and the unfit and bare windows decline; a def-bound read of a branch result an arm of which leaves a fn declines; `apply` over a gradual lead is the pending apply; a gradual carrier proven to hold a fn declines at a user fn parameter not typed Function | the generated sweep's last cells (2026-09-26), measuring why the `if` × container read could not stand aside |
+| [NUR216](#nur216) | A def-bound computed fn whose shape IS claimed, read where the read model does not reach, is data on the compiled lane: collected by a pending word (`def mk fn [[][Function][([] => [42])]] end def j (mk) end typeof j` answers `[Function]` and `… j eq j` `[false]` where the interpreter's function-word barrier raises `signature_error`; `def k j end k` and `print j` likewise), renamed by `/v` (`… def j (mk) end j/v` is `fn j` interpreted, `fn` compiled), and read inside a code or fn body (`do [j]`, `[1 2] each [drop j]`, `def g fn [[][Any][j]] end g` BAIL with internal_error — loud). Silent for the first two groups, default lane, present on main at 45c3bdb for the Function-declared factory. NUR207's claims made the `Any`-declared factory's and the pinpointed member lambda's reads the model's: a collected read of such a claim DECLINES now (`typeof j`, `j eq j`, `def k j`), the body reads of the member lambda and of the `Any` factory's `do` / `each` agree, and `j/v` over the `Any` factory stays the divergence main had | NUR207's family, measured 2026-09-26 |
+| [NUR217](#nur217) | A fn value LAUNDERED through a producer the pass cannot see into, then def-bound, is data on the compiled lane: a flex store round trip (`def s (flex {}) end s set f ([] => [42]) end def j (s get "f") end j` is `{f:fn} 42` interpreted, `{f:fn} fn` compiled), a `do` body's result (`def l [([] => [42])] end def j (do [l.0]) end j` — 42 / `fn`), a factory returning another factory's result (`def mk fn [[][Function][([] => [42])]] end def mk2 fn [[][Any][(mk)]] end def j (mk2) end j` — 42 / `fn`), a `set` result (`def m {f: ([] => [42])} end def m (m set f ([] => [7])) end def j m.f end j` — 7 / `fn`), a branch BODY arm over an `Any` result (`def mk fn [[][Any][([] => [42])]] end def c true end def j (if c [(mk)] [2]) end j` — 42 / `fn`); a stack shuffle (`def j ((mk) dup drop) end j`) BAILS. Silent, default lane, present on main at 45c3bdb | NUR207's family, measured 2026-09-26 |
+| [NUR218](#nur218) | A pinpointed ARG-TAKING member lambda handed to an `Any` parameter and read bare in the callee is data on the compiled lane: `def m {f: ([n:Integer] => [n add 1])} end def g fn [[h:Any][Any][h]] end g m.f` raises the interpreter's `cannot call h` and answers `[fn h(Integer)]` compiled; `… [h typeof] …` answers `[Function]`, and through a pass-through fn `def id fn [[x:Any][Any][x]] end def j (id m.f) end j 5` answers `[6]` for the interpreter's `signature_error`. The same lambda WRITTEN as the argument is Function-typed at the param and agrees (or declines); the member read arrives as a dynamic(Any) carrier, and a gradual param's read is best effort (NUR123). Silent, default lane, present on main at 45c3bdb | NUR207's family, measured 2026-09-26 |
 | [NUR206](#nur206) | A `for` loop's INDEX SURVIVES an error the enclosing `do` catches on the interpreter, for the rest of the program, where the compiled lane reads the outer binding: `def i 99 end do [for 3 [raise oops 'x']] error [drop] end i` is the interpreter's `0` (the raise unwinds the spliced body before its move cleanup, so the loop's index level stays installed over the outer `i`) and the compiled lane's `99`; the same with the handler reading `i`, and with a computed body (`for 3 (mk)` over `[raise oops 'x']`). Silent, default lane, present on main at 9e02915 — the compiled `do` body traps or islands the loop and the handler reads `i` from its compiled slot. The direction is the interpreter: an error unwind out of a spliced loop body should run the frame's cleanup as break/continue's `unwindLiveFrames` does, not leave the index bound. Pinned `TestLoopIndexSurvivesCaughtErrorPending` (lang) | the Codex review of #508 (2026-09-25), measuring the withdrawn hosted for body; the literal-body twin found on the follow-up |
 | [NUR205](#nur205) | An inline `import module […]` inside a LOOP body runs its module body ONCE on the compiled lane where the interpreter re-imports it per iteration, so module STATE carries across iterations: `for 2 [import module [def acc (flex []) export "M" {acc: acc}] end M.acc push 1 end size M.acc]` is the interpreter's `[[1] 1 [1] 1]` (a fresh `acc` each time) and the compiled lane's `[[1 1] 1 [1 1] 2]` — silent, default lane, present on main at 00ec530 with no callback involved (the import is a compile-time word whose body the check pass ran once and whose bindings the loop body replays). Found by the generated sweep when the `for-each` and `walk` × module-export seeds graduated (their module carries `acc`): their for-body variants diverge the same way (`[3 6]` for `[3 3]`; `… 5 … 10` for `… 5 … 5`) and are pinned in `sweepKnownMiscompiles`. The `each` twin (`each M.stp [1 2 3]` in the same loop) diverges identically and always has; its sweep seed carries no state, so the matrix never saw it. | the generated sweep, closing the fn-value callback cells (2026-09-25) |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
@@ -9750,7 +9753,12 @@ the divergence as it stands so the close is noticed.
 
 ## NUR207 — a def-bound fn value that arrives as a gradual carrier is read as data {#nur207}
 
-**Status:** Pending (recorded 2026-09-26).
+**Status:** FIXED 2026-09-26 for both witnesses and the `if` × container
+cell (the handoff log's entry of that date); the family's residue, all
+present on main at 45c3bdb, is recorded as NUR216 (a claimed read the model
+does not reach), NUR217 (a fn laundered through a producer the pass cannot
+see into) and NUR218 (a member lambda at an `Any` parameter). Recorded
+2026-09-26.
 **Found:** the generated sweep's last cells, on `main` at ae17688 —
 measuring why the `if` × container cell's member read could not simply
 stand aside (the anonymous 0-arg member parks at the landing, but the
@@ -9782,6 +9790,195 @@ the dynamic apply parks a non-matching value where the name would raise.
 question — fn or data — so it wants the guarded re-step the landing models
 use (a `RESTEP_LANDING` of the NAME, dispatched as the word), or a decline;
 never a data push.
+
+**The fix (2026-09-26).** Five pieces, each measured against main over a
+battery of fn sources (a lambda literal, a map member, a list member, both
+factories, a branch) in fifty-odd reading contexts:
+
+- **The parking member folds** (compiler `tryFoldParkedMemberFn`, the map
+  twin of `tryFoldStaticIndex`'s list fold). A get / dot read over a
+  concrete container and key of a member every value landing PARKS — an
+  anonymous, capture-free, unapplied, non-macro fn whose signatures are all
+  real zero-argument ones — is the member value itself: the lambda literal
+  on both passes, so `def j (m get "f")  j` is 42 and `if true m.f [2]` is
+  the `if` × lambda cell. The list member (`l.0`) always folded this way.
+- **The fold's escape fence** (compiler `foldedEscape`, riding the
+  placement-gate poison `armReadCompileFailure` — no new compile-failure
+  site). The fold is measured against a def of the member, a branch arm,
+  `apply` of the member itself, `typeof` and the program residual; the
+  folded value reaching anything else — a native word's operand (`set`,
+  `eq`, a stack shuffle), a user fn's argument, a list or map literal, a
+  baked container, a `/v` read of a def of it, an `if` condition, a code
+  body's or a lambda's result — declines, as the member's 0-arg landing did
+  on main. The value takes its own identity at the fold (`foldedMembers`),
+  every copy of it is known by its body's backing array (`foldedBodies`: a
+  def's install re-normalises the signatures but shares the body), a
+  branch merge over a folded arm and a named fn's call result returning it
+  carry the taint on (`carryFoldedTaint`, `returnsFolded`), and a
+  def-bound read of a folded carrier the read model stands aside for, or
+  that sits inside a fn or code body, declines too. A list twin (`l.0`)
+  diverging on main is no licence: the map member's program declined there
+  and must not compile to a wrong answer.
+- **The gradual claims** (compiler `noteClosureShapeBind`,
+  `memberLambdaShape`; check `tryShapedFnReadArrival`). A def of a carrier
+  not typed Function claims a shape when the pass can prove one — an
+  `Any`-returning factory's closure (the producer's out-op), a pinpointed
+  member lambda (one signature of plain typed params) — and the read model
+  dispatches the name over its whole window (witness 1 is 42). It declines
+  only what the program-level paths got wrong — a bare read with nothing
+  beneath it, a written token the parameter does not take (witness 2), a
+  function word the forward phase stops at — and stands aside to the paths
+  it had everywhere else (a frame holding values beneath, a computed
+  token, any read in a fn, closure or nested body), so `10 3 r` keeps its
+  trailing-window island. A gradual claim is the def-read model's alone
+  (`gradualClaims`: no other reader of the shape table sees it), it answers
+  only the read the pass is stepping (`pendingGradualRead`), and a read of
+  it the model never sees — a pending word collected it: `def k j`,
+  `typeof j`, `j eq j` — declines at the next recorded event
+  (`flushGradualRead`, NUR216's collected reads).
+- **The branch def-read declines** (compiler `armLeavesFn`,
+  `noteMayBeFnRead`). A def of a branch result an arm of which may leave a
+  fn value the merge's landing does not fire — a parked lambda, an
+  arg-taking fn, a fn carrier, a nested branch or `Any` result proven to
+  hold one — declines at the read (`def c true end def g (if c ([] => [42])
+  [2]) end g` answered `[fn]` for 42, its `g/v` `fn` for `fn g`).
+- **`apply` over a gradual lead** (compiler `recordCallElided`). A lead not
+  typed Function whose identity result carries a structured producer's id
+  was elided silently — `(mk) apply` answered `[fn]` for 42 and `[5]` for
+  the interpreter's `signature_error` over data. It is the pending apply
+  now: OpCallDynApplyTop applies a fn and raises apply's no-match over
+  anything else, or the program declines.
+- **A proven fn at an `Any` parameter** (compiler `RecordUserCall`). A
+  carrier the pass proves holds a fn (`gradualHoldsFn`) handed to a user fn
+  parameter not typed Function declines: the callee is analysed over the
+  gradual carrier and reads the param as data (`def g fn [[h:Any][Any][h]]
+  end g (mk)` answered `[fn h]` for 42).
+
+## NUR216 — a claimed def-bound fn read where the read model does not reach {#nur216}
+
+**Status:** Pending (recorded 2026-09-26).
+**Found:** measuring NUR207's family (the `if` × container cell), on
+`main` at 45c3bdb — every witness below measured there.
+
+**The witnesses.**
+
+```
+def mk fn [[][Function][([] => [42])]] end def j (mk) end typeof j
+  interpreted   [boru/signature_error]   typeof waits; `j` is a function word, a barrier
+  compiled      [Function]
+
+def mk fn [[][Function][([] => [42])]] end def j (mk) end j eq j
+  interpreted   [boru/signature_error]
+  compiled      [false]
+
+def mk fn [[][Any][([] => [42])]] end def j (mk) end def k j end k
+  interpreted   [boru/signature_error]   def is still waiting when `j` begins its own dispatch
+  compiled      [fn]    (declines since NUR207's claim: the model never sees the read)
+
+def mk fn [[][Any][([] => [42])]] end def j (mk) end j/v
+  interpreted   fn j    (installDef renames the fn to the name)
+  compiled      fn
+
+def mk fn [[][Function][([] => [42])]] end def j (mk) end do [j]
+def mk fn [[][Function][([] => [42])]] end def j (mk) end [1 2] each [drop j]
+def mk fn [[][Function][([] => [42])]] end def j (mk) end def g fn [[][Any][j]] end g
+  interpreted   42 / [42 42] / 42
+  compiled      internal_error (a BAIL — loud)
+```
+
+**Where it sits.** The def-read model (check `tryShapedFnReadArrival`)
+fires where the check pass STEPS the substituted carrier at the pointer. A
+read a pending word collects (`typeof j`, `eq j`, `def k j`, `print j`) is
+the interpreter's function-word barrier — the word is a fn definition, so
+the strict forward rule raises or commits the pending word first — while
+the pass's simple-value substitution hands the carrier to the collection as
+data. The `/v` read renders the interpreter's renamed fn. A read inside a
+code body or a fn body reaches the unit machinery (NUR123), which bails on
+these.
+
+**Since NUR207 (2026-09-26).** For a GRADUAL claim (the `Any`-declared
+factory, the pinpointed member lambda) a read a pending word collects
+declines (`flushGradualRead`): `typeof j`, `j eq j` and `def k j`, which
+compiled to wrong answers on main, decline; the member lambda's `j/v`,
+`do [j]`, `each [drop j]` and `def g fn [[][Any][j]] end g` agree with the
+interpreter. The `Any` factory's `j/v` (`fn` for `fn j`) and its
+`def g fn [[][Any][j]] end g` bail are main's own, unchanged. The
+Function-declared witnesses above are untouched.
+
+**The direction.** Model the barrier for a def-bound computed fn the way
+stepWord models it for a registered fn (the stranded-forward error and the
+commit), carry the def's name onto the compiled value for `/v`, and give
+the unit replay the claimed shape.
+
+## NUR217 — a fn laundered through a producer the pass cannot see into, then def-bound {#nur217}
+
+**Status:** Pending (recorded 2026-09-26).
+**Found:** measuring NUR207's family, on `main` at 45c3bdb.
+
+**The witnesses.**
+
+```
+def s (flex {}) end s set f ([] => [42]) end def j (s get "f") end j
+  interpreted   {f:fn} 42        compiled   {f:fn} fn
+def l [([] => [42])] end def j (do [l.0]) end j
+  interpreted   42               compiled   fn
+def mk fn [[][Function][([] => [42])]] end def mk2 fn [[][Any][(mk)]] end def j (mk2) end j
+  interpreted   42               compiled   fn
+def m {f: ([] => [42])} end def m (m set f ([] => [7])) end def j m.f end j
+  interpreted   7                compiled   fn
+def mk fn [[][Any][([] => [42])]] end def c true end def j (if c [(mk)] [2]) end j
+  interpreted   42               compiled   fn
+def mk fn [[][Any][([] => [42])]] end def j ((mk) dup drop) end j
+  interpreted   42               compiled   internal_error (a BAIL)
+```
+
+**Where it sits.** NUR207's fix proves a gradual carrier holds a fn only
+through producers it can see into: a user fn whose unit returns a closure
+it builds (or a branch that leaves one), a branch whose arm is a fn, a
+pinpointed member. A flex store, a `do` body's residual, a factory whose
+out-op is another call's result, a `set` over the container, a branch BODY
+arm whose value is a gradual call result and a stack shuffle all hand the
+fn on as a plain dynamic(Any) — and the def-bound read of a plain gradual
+carrier is data, as NUR207's witnesses were.
+
+**The direction.** The same runtime question NUR207 named for the general
+case: a guarded read that dispatches the NAME when the binding holds a fn
+(the NUR123 deopt at the program level), or a decline wherever the pass
+cannot prove the carrier holds data.
+
+## NUR218 — a member lambda at an `Any` parameter, read bare in the callee {#nur218}
+
+**Status:** Pending (recorded 2026-09-26).
+**Found:** measuring NUR207's family, on `main` at 45c3bdb.
+
+**The witnesses.**
+
+```
+def m {f: ([n:Integer] => [n add 1])} end def g fn [[h:Any][Any][h]] end g m.f
+  interpreted   [boru/signature_error]: cannot call `h`
+  compiled      [fn h(Integer)]
+def m {f: ([n:Integer] => [n add 1])} end def g fn [[h:Any][Any][h typeof]] end g m.f
+  interpreted   [boru/signature_error]
+  compiled      [Function]
+def m {f: ([n:Integer] => [n add 1])} end def id fn [[x:Any][Any][x]] end def j (id m.f) end j 5
+  interpreted   [boru/signature_error]
+  compiled      [6]
+```
+
+**Where it sits.** The same lambda WRITTEN as the argument (`g ([n:Integer]
+=> [n add 1])`) reaches the parameter Function-typed, and the unit's
+strict word-read accounting agrees or declines (NUR123). The member read of
+an arg-taking lambda is not folded (NUR207's fold takes only the PARKING
+members; an arg-taking member's landing is the arrival model's) and
+arrives as a dynamic(Any) carrier, whose param read is the unit's best
+effort — data. NUR207's parameter decline covers only carriers the pass
+proves hold a fn by their producer; a pinpointed member read is not one of
+them, because a module export read the same way (`M.inc`) is the commonest
+callback argument there is.
+
+**The direction.** Type the pinpointed member read by its member (a
+Function carrier with the member's claimed shape), so the callee is
+analysed over a fn-typed parameter as it is for the written lambda.
 
 ## NUR208 — a paren-placed branch of fn values: applied where the interpreter places it {#nur208}
 

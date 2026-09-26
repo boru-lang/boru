@@ -57,6 +57,14 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 	// NoEvalArgs code slot re-runs its tokens the same way). See
 	// recordCodeBodyClosureRead.
 	if rec, isEmit := r.Check.Recorder().(*EmitState); isEmit {
+		rec.flushGradualRead()
+		// The fold's escape fence: `if` is RecordBranch's to judge, `typeof`
+		// only names its type, and `apply` dispatches the folded lambda
+		// itself — not a call result carrying it, which the apply word
+		// re-steps over the frame.
+		if word != "if" && word != "typeof" && rec.anyFolded(args) && !(word == "apply" && !rec.anyFoldedCarrier(args)) {
+			rec.foldedEscape("`" + word + "`")
+		}
 		if rec.recordCodeBodyClosureRead(args) {
 			return
 		}
@@ -166,6 +174,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 	if !tryFoldReStepWord(r, word, args, out) &&
 		!check.TryRecordMethodApply(r, word, args, out, pos) &&
 		!tryFoldStaticIndex(r, word, args, out) &&
+		!tryFoldParkedMemberFn(r, word, args, out) &&
 		!tryFoldModuleConst(r, word, sig, args, out) &&
 		!tryRecordDeferredList(r, sig, out) &&
 		!tryRecordClosure(r, word, sig, args, out, pos) &&
@@ -253,6 +262,56 @@ func tryFoldStaticIndex(r *core.Registry, word string, args, outs []core.Value) 
 		return false
 	}
 	outs[0] = elem
+	return true
+}
+
+// tryFoldParkedMemberFn folds a get / dot read of a PARKING member — see
+// parkedMemberFn — over a concrete container and a concrete key to the
+// member value itself, emitting nothing (NUR207): the read is the lambda
+// literal on both passes, the map twin of tryFoldStaticIndex's list fold.
+// Every value landing parks such a member as data on the interpreter, so the
+// read's own step is inert, and every later reader that DISPATCHES a lambda
+// (a NAME read of a def of it, `apply`, a param read) finds the fn the
+// dynamic(Any) read carrier hid. The receiver and key operands are left
+// unconsumed for the simulation to drop, exactly as the list fold leaves
+// them.
+func tryFoldParkedMemberFn(r *core.Registry, word string, args, outs []core.Value) bool {
+	es, _ := r.Check.Recorder().(*EmitState)
+	if es == nil || !es.Active() || !core.IsGetWord(word) || len(args) != 2 || len(outs) != 1 {
+		return false
+	}
+	member, ok := readFnMemberValue(args)
+	if !ok || !parkedMemberFn(member) {
+		return false
+	}
+	// No operand check: a capture-free non-macro fn value is an inert const
+	// (core.IsInertConst's FnDefInfo arm), so its consumer interns it. The
+	// folded value takes its own identity, so the escape fence
+	// (foldedEscape) can follow it.
+	member.ID = core.GenerateID(core.IDPrefixForType(member.Parent))
+	es.noteFolded(member)
+	outs[0] = member
+	return true
+}
+
+// parkedMemberFn reports a fn value every VALUE landing parks as data: an
+// anonymous (lambda or nameless `fn`), capture-free, unapplied, non-macro
+// fn whose every signature is a real zero-argument one — the interpreter's
+// anonymous park (execFnDefLiteral), read through the one predicate that
+// states it (core.FnValueOnlyZeroArgSigs).
+func parkedMemberFn(v core.Value) bool {
+	fd, ok := v.Data.(core.FnDefInfo)
+	if !ok || v.Quoted || v.Carrier || !fd.Anonymous || fd.Applied || fd.Macro || len(fd.Captured) != 0 ||
+		!core.FnValueOnlyZeroArgSigs(fd) {
+		return false
+	}
+	// A fallback overload makes the landing's aggregate view unmodelled
+	// (core.FnValueZeroArg's own rule).
+	for i := range fd.Signatures {
+		if fd.Signatures[i].Fallback {
+			return false
+		}
+	}
 	return true
 }
 

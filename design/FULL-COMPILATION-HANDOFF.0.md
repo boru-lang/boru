@@ -15593,3 +15593,121 @@ asserting its twins replay in the pass's order;
 `TestClauseListIfDeclinesLoudly`: the remaining declines); compiler
 `cond_keep_test.go`; core `carrier_body_test.go`
 (`TestRunCarrierCondBodyKeepDefsKeeps`); basic `cond_binding_test.go`.
+## NUR207 and the sweep's last cell — `if` × container compiles (2026-09-26)
+
+**The cell.** `def m {f: ([] => [1])} end if true m.f [2]` declined at
+the member's 0-arg landing because standing the landing aside left a
+dynamic(Any) carrier that hid the fn from every later reader the
+interpreter dispatches — a NAME read of a def of it (`def j (m get "f")
+j`, 42), `apply`, a param read. That is NUR207 (a def-bound fn value
+arriving through a gradual carrier is read as data), and fixing it is what
+graduates the cell.
+
+**The fold** (compiler `tryFoldParkedMemberFn`). A get / dot read over a
+concrete container and key of a PARKING member — anonymous, capture-free,
+unapplied, non-macro, every signature a real 0-arg one (the interpreter's
+anonymous park, `core.FnValueOnlyZeroArgSigs`) — is the member value
+itself: the lambda literal on both passes, emitting nothing. It is the map
+twin of `tryFoldStaticIndex`'s list fold, which has always done this for
+`l.0`. It is FENCED (`foldedEscape`, on the placement-gate poison — no
+new compile-failure site): the folded value may reach a def of it, a
+branch arm (the merge carries the taint, `carryFoldedTaint`), `apply` of
+the member itself, `typeof`, a named fn's return (its call results carry
+the taint, `returnsFolded`) and the residual; reaching any other consumer
+— a native operand (`set`, `eq`, a shuffle), a user fn argument, a list or
+map literal, a baked container, a `/v` read of its def, an `if`
+condition, a code body's or lambda's result, or a def-bound read the model
+stands aside for or that sits in a unit — declines, as the member's 0-arg
+landing did on main. The fence's first cut let thirteen programs that
+declined on main compile to wrong answers because their `l.0` twins
+diverged on main; a loud decline must never become a silent wrong answer,
+so the twin argument was dropped and the fence put in. Copies of the fn
+are known by the body's backing array (`foldedBodies`), since a def's
+install re-normalises the signatures but shares the body.
+
+**NUR207 itself.** Both witnesses and the classes around them:
+
+- *Gradual claims* (compiler `noteClosureShapeBind`, `memberLambdaShape`,
+  `lambdaOwnParams`; check `tryShapedFnReadArrival`). A def of a carrier
+  not typed Function claims a shape when the pass proves one — an
+  `Any`-returning factory's closure, a pinpointed member lambda — so the
+  read model dispatches the name over its whole window (witness 1: 42).
+  The claim is the model's alone (`gradualClaims`: other shape readers skip
+  it), answers only the read being stepped (`pendingGradualRead`), and a
+  read the model never sees — collected by a pending word: `def k j`,
+  `typeof j`, `j eq j` — declines (`flushGradualRead`; NUR216's collected
+  reads, which compiled wrong on main for the `Any` factory).
+  It declines only what the program-level paths got wrong: the bare read
+  with nothing beneath, a written token the parameter does not take
+  (witness 2: `cannot call r`), a function word the forward phase stops
+  at. Everywhere else — values beneath in the frame, a computed token, a
+  read in a fn, closure or nested body — it stands aside to the paths it
+  had (`10 3 r` keeps its trailing-window island; the unit replay keeps
+  body reads).
+- *Branch def-reads* (compiler `armLeavesFn`, `noteFnLeavingBind`,
+  `noteMayBeFnRead`). A def of a branch result an arm of which may leave a
+  fn the merge's landing does not fire declines at the read, riding the
+  existing arm-read poison (NUR159's): `def g (if true ([] => [42]) [2])
+  end g` answered `[fn]` for 42 on main, and its `g/v` `fn` for `fn g`.
+  Keyed on the BOUND value, so a Function-declared factory whose unit
+  returns such a branch keeps the fn-carrier paths (TestFnValueSeam's
+  `each f` row was the witness).
+- *`apply` over a gradual lead* (compiler `recordCallElided`). The
+  registered-output arm elided it silently: `(mk) apply` answered the fn
+  for 42 and `5` for the interpreter's signature_error over data. It is the
+  pending apply now (OpCallDynApplyTop), or the program declines.
+- *A proven fn at an `Any` parameter* (compiler `RecordUserCall`, at the
+  existing operand-provenance site). `gradualHoldsFn` / `eventLeavesFn`
+  prove a carrier holds a fn by its producer; handed to a parameter not
+  typed Function it declines (`g (mk)` answered `[fn h]` for 42).
+
+**Found and recorded, not fixed** (all present on main at 45c3bdb):
+NUR216 — a claimed def-bound fn read where the read model does not reach
+(`typeof j`, `j eq j`, `def k j`, `print j`: the interpreter's barrier
+raises; `j/v` renders `fn j`; reads in code / fn bodies bail); NUR217 — a
+fn laundered through a producer the pass cannot see into (a flex store, a
+`do` body's result, a factory of a factory, a `set` result, a branch BODY
+arm over an `Any` result); NUR218 — a pinpointed arg-taking member lambda
+at an `Any` parameter, read bare in the callee.
+
+**Measured.** The acceptance bar, over the 14 fn sources × 72 reading
+contexts against main (1002 programs; RunCompiled vs RunInterp, value and
+error code): 504 match the interpreter, 454 decline, 44 were already a
+divergence on main with the same wrong answer, 0 otherwise — no program
+that declined on main compiles to a divergence and no divergence changed
+its wrong answer. Three side batteries (container launderings, arg-taking
+members, error / flex round trips; 490, 80 and 100 programs) hold the same
+bar with 0 violations. Sweep compile failures 1 -> 0
+(`sweepFailureCeiling`), call-form failures 304 -> 302
+(`sweepVariantFailureCeiling`): the graduated seed passes eleven of its
+fourteen call forms and three decline (do-body, do-catch, each-body — the
+fence), and `def` × container's if-then, if-else, for-body, each-body and
+module-body pass where they declined; no variant that passed before fails
+(SWEEP_STATUS.md diffed). lang `compileDefectCeiling` stays at main's 301 (reasons
+diffed against main: -2 0-arg landing pins, now parity pins; +1 witness
+2's booked decline; +1 the fence's pin, a folded member stored into a
+flex); `bailDefectCeiling` 39 unchanged. The compile-failure
+site census stays 91 (the new declines ride existing sites: the arrival
+model's, the arm-read poison — the fence and the unseen-read decline
+included — and RecordUserCall's operand site). aritygate
+pins unchanged (the fold reads the park through
+`core.FnValueOnlyZeroArgSigs`, the claim through `lambdaOwnParams`).
+The full langspec corpus passes with every gate at its ceiling (no
+interp-entry, engine-entry, runtime-defer, compile-failure or diagnostic-
+parity ceiling moved); its one red line on the first run was
+TestVariationDifferential's 30-second hang budget on five module-sift
+variants while four corpus runs shared the machine — rerun alone (whole
+test, and filtered to module-sift.tsv) it passes. The test/go suites, lang
+root / native / modules, cmd, compiler, check and eng pass; `make
+cover-gate-core` 100%, `cover-gate-check` at main's 83 uncovered (every
+new statement covered), `cover-gate-compiler` 73.5% over its 62% floor.
+
+**Pins.** lang `sweep_nur207_test.go` (`TestParkedMemberReadIsTheLambda`,
+`TestGradualFnCarrierNameReads` with witness 2's decline);
+`sweep_cells_s2b_test.go` (the container pin inverted);
+`word_read_dispatch_test.go` (the top-level `def j (m get "f") j` row
+inverted); compiler `nur207_gradual_fn_test.go`, `nur207_fence_test.go`
+(the fence's sites, the taint through a branch and a call, the gradual
+read accounting); check
+`fn_read_arrival_gradual_test.go`. Docs: NUR.md (NUR207 fixed for its
+witnesses; NUR216–NUR218 recorded), the sweep ceilings, SWEEP_STATUS.md.

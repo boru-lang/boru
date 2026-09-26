@@ -220,18 +220,15 @@ func TestBodyLocalWordReadParity(t *testing.T) {
 		}
 		requireParity(t, c.src, gotC, errC, gotI, errI)
 	}
-	// the top-level spelling has no frame to seat in: the Stage-3 compile failure
-	// it always had, and the interpreter's answer
-	a, err := New()
-	if err != nil {
-		t.Fatalf("New: %v", err)
-	}
+	// The top-level spelling has no frame to seat in, and declined at the
+	// member's 0-arg landing until 2026-09-26 (NUR207): the read over a
+	// concrete container folds to the lambda itself, so `j` is a def of a
+	// concrete fn and dispatches as the word it is on both lanes.
 	src := `def m {f: ([] => [42])}  def j (m get "f")  j`
-	prog, reason, _, cerr := a.CompileCheck(src)
-	if cerr != nil || prog != nil || !strings.Contains(reason, "fn value read from a container auto-dispatches") {
-		t.Errorf("%q: want the Stage-3 container compile failure, got prog=%v reason=%q err=%v", src, prog != nil, reason, cerr)
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if !compiled {
+		t.Errorf("%q: must compile natively; err=%v", src, errC)
 	}
-	gotC, _, errC, gotI, errI := runBothEngines(t, src)
 	requireParity(t, src, gotC, errC, gotI, errI)
 }
 

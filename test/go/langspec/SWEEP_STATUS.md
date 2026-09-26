@@ -11,7 +11,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `behave` | ✓ 11/14 | n/a | ✓ 11/14 | ✓ 10/14 | ✓ 11/14 | ✓ 13/14 | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | D! | ✓ 14/14 |
 | `codequote` | ✓ 14/14 | ✓ 14/14 | n/a | ✓ 13/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
-| `def` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 10/14 | ✓ 7/14 | ✓ 12/14 | ✓ 13/14 |
+| `def` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 10/14 | ✓ 12/14 | ✓ 12/14 | ✓ 13/14 |
 | `del` | ✓ 14/14 | — | — | — | — | — | — |
 | `describe` | ✓ 14/14 | — | — | — | — | — | — |
 | `do` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
@@ -31,7 +31,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `force-arity` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 8/14 | ✓ 8/14 | ✓ 13/14 | n/a |
 | `forward-args` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 8/14 | ✓ 8/14 | ✓ 13/14 | n/a |
 | `gen` | ✓ 11/14 | n/a | n/a | n/a | n/a | n/a | ✓ 11/14 |
-| `if` | ✓ 14/14 | ✓ 10/14 | ✓ 13/14 | ✓ 13/14 | F | ✓ 13/14 | ✓ 14/14 |
+| `if` | ✓ 14/14 | ✓ 10/14 | ✓ 13/14 | ✓ 13/14 | ✓ 11/14 | ✓ 13/14 | ✓ 14/14 |
 | `import` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
 | `inner` | I | n/a | n/a | n/a | n/a | n/a | I |
 | `inspect` | ✓ 14/14 | — | — | — | — | — | — |
@@ -61,8 +61,8 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells
 
-- pass: 186
-- failed: 1
+- pass: 187
+- failed: 0
 - islanded: 2
 - DIVERGED: 1
 - PANIC: 0
@@ -76,7 +76,6 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 ## Cells that are not green
 
 - `case` module-export — **DIVERGED**: `import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl` — error divergence: compiled [boru/case_error]: case: clause list must be a concrete list of match/block pairs (optional t…
-- `if` container — **failed**: `def m {f: ([] => [1])} end if true m.f [2]` — fn value read from a container auto-dispatches (Stage 3): 0-arg landing not modelable at fn value
 - `inner` literal — **islanded**: `inner [add] [mul] [1 2] [3 4]` — program embeds an OpFallback island
 - `inner` computed — **islanded**: `def c (quote [add]) end inner c [mul] [1 2] [3 4]` — program embeds an OpFallback island
 
@@ -127,11 +126,6 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `def` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` container · if-then — **declined** — if: then-branch result of unknown provenance
-- `def` container · if-else — **declined** — if: else-branch result of unknown provenance
-- `def` container · for-body — **declined** — for: body nets multiple values per iteration
-- `def` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` container · module-body — **declined** — fn-value application bounded by a paren (dynamic value precedes args)
 - `def` module-export · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` computed · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -287,6 +281,9 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `if` lambda · suffix-def — **declined** — a call: a fn-typed result is re-stepped into a dispatch the model cannot make (NUR124)
 - `if` named-fn · for-body — **declined** — fn 'one' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `if` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `if` container · do-body — **declined** — a container member read folded to its parking lambda reaches a code body's or a lambda's result, where the fold's parity…
+- `if` container · do-catch — **declined** — a container member read folded to its parking lambda reaches a code body's or a lambda's result, where the fold's parity…
+- `if` container · each-body — **declined** — a container member read folded to its parking lambda reaches a code body's or a lambda's result, where the fold's parity…
 - `if` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `import` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `import` computed · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
