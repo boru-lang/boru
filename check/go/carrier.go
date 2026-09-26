@@ -2981,6 +2981,21 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	return result
 }
 
+// emptyBodyResidual is an EMPTY body's frame: its unnamed args alone, in
+// order. The interpreter pushes them beneath the body and nothing consumes
+// them, so they are the frame's residual, and its return check takes the
+// declared count off them (`def f fn [[Integer] [Integer] []]` returns its
+// argument). nil when every param is named (NUR258).
+func emptyBodyResidual(paramNames []string, args []core.Value) []core.Value {
+	var out []core.Value
+	for i, a := range args {
+		if i >= len(paramNames) || paramNames[i] == "" {
+			out = append(out, a)
+		}
+	}
+	return out
+}
+
 // AnalyseFnBody runs a user-defined fn body through a sub-engine in
 // check mode, treating named parameters as deffed values bound to
 // their arg carriers and unnamed parameters as pre-pushed stack
@@ -3024,7 +3039,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	r.Check.SpecArmDepth = 0
 	defer func() { r.Check.SpecArmDepth = savedSpecArm }()
 	if len(body) == 0 {
-		return nil
+		return emptyBodyResidual(paramNames, args)
 	}
 	// Record the caller→callee edge for the dynamic-scope undefined-word
 	// rescue. The current top of FnNameStack is the fn whose body is executing

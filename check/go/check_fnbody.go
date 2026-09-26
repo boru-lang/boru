@@ -308,8 +308,9 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 	// an anonymous lambda's placeholder count (LambdaCountContract), which
 	// stands at run time even though the ANALYSER below infers past it.
 	compileReturns := declaredReturns
+	lambdaReturns := len(s.Returns)
 	if fnDef.Anonymous {
-		compileReturns = LambdaCountContract(len(s.Returns))
+		compileReturns = LambdaCountContract(lambdaReturns)
 		declaredReturns = nil
 		declaredReturnPatterns = nil
 	}
@@ -776,6 +777,12 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// those N carriers so downstream resolves them to this dispatch — or,
 		// for a construction-scope-capture unit, the fn-VALUE apply fallback
 		// (the anonymous-lambda factory result is exactly this arm's shape).
+		// An anonymous lambda's frame keeps its placeholder count off the top
+		// and drops the unnamed args pushed beneath the body, as its unit's
+		// RET does (trimUnnamedArgs, NUR255).
+		if fnDef.Anonymous {
+			stk = trimUnnamedArgs(stk, lambdaReturns, unnamedParamCount(sigParams))
+		}
 		if fnUnit >= 0 {
 			stk = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, call, args, freshResidual(stk))
 		}

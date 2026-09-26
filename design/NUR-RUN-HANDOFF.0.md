@@ -9,6 +9,36 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR255 and NUR258 closed, NUR259 recorded: the unnamed args (2026-09-26)
+
+**The count the frame keeps.** The interpreter pushes an anonymous lambda's
+unnamed args beneath its body. Its return check then takes the declared
+count off the top and drops up to that many unconsumed args from the
+bottom, so `(0 ([0] => [1]))` nets 1. The check pass seated the analysed
+residual whole, the pushed arg included, so the call's model said two
+values where the unit returns one. A list after it then underflowed at
+STORE_LOCAL: `[(0 ([0] => [1])) 7]` bailed where the interpreter answers
+`[[1 7]]`.
+
+Two routes carry an anonymous lambda's call. A paren's re-step goes through
+`spliceAnonCheckResult`. A literal dispatch goes through
+`BuildFnBodyReturnsFn`, whose anonymous arm drops the declared count to
+leave the unit a placeholder contract. Both now trim as the frame does
+(`trimUnnamedArgs`). A residual the unnamed args cannot account for stays
+whole: the interpreter raises its count error there, and so do both lanes.
+
+**NUR258, found on the way and closed (loud, pre-existing).** When a body
+leaves FEWER values than its count, the unconsumed unnamed args ARE the
+return on the interpreter. `def f fn [[Integer] [Integer] []] end [(f 3) 7]`
+raised `got 0` compiled. It was narrower than it looked. A non-empty body's
+residual already carried the unnamed args, which the unit trims. Only an
+EMPTY body lost them, because `AnalyseFnBody` returned nothing for it. Its
+residual is its unnamed args now (`emptyBodyResidual`).
+
+**NUR259, recorded (loud on both lanes).** The count error of a lambda
+applied inside a list anchors at the paren compiled and nowhere
+interpreted. The text is identical.
+
 ## Main's #511 merged; NUR257 recorded (2026-09-26)
 
 **The conflicts.** Main's #511 conflicted with the branch in twelve files.

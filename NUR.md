@@ -177,9 +177,11 @@ keep the two in sync in the same commit.
 | [NUR252](#nur252) | FIXED 2026-09-26 (the foreign value's count — the handoff log's entry of that date), found the same day probing NUR242: a module export fn VALUE whose body leaves the wrong count, applied through a factory-returned map's member read (`def mk fn [[] [Map] [{f: M.inc/v}]] end def m (mk) end m.f 5` over `inc [[n:Integer] [Integer] [n 1]]`), answered `[5 1]` compiled for the interpreter's `inc: expected 1 return value(s), got 2` — silent. The dynamic apply hosted the module's stamped VALUE unit (dynApplyForeign) under the trim discipline, and that unit declares no contract; its results answer to the applied value's declared contract now (applyRetContract, as the Apply kernel's frame). | probing NUR242's shaped method apply (2026-09-26) |
 | [NUR253](#nur253) | FIXED 2026-09-26 (the void branch's phantom — the handoff log's entry of that date), found the same day closing NUR245: an `if` whose arms leave nothing registers a phantom None the recorder elides its dispatch by, and the phantom sat on the compiling pass's tape though it is on no run's stack — `if true [def k 1] [] end depth` answered `[1]` compiled for the interpreter's `[0]` (silent), and a definite no-match after it reported "the arguments were 'x' and None" where the interpreter reports the one argument. The full-stack fold skips it, and a no-match report's stack prefix is the run's (`runPrefix`) | closing NUR245 (2026-09-26) |
 | [NUR254](#nur254) | FIXED 2026-09-26 (the undecided pattern park — the handoff log's entry of that date), found the same day closing NUR247: an anonymous fn value whose value pattern met a CARRIER at its re-step was parked statically by the check pass though the run applies it where the value meets the pattern — `def h fn [[n:Integer] [List] [[(n ([0] => [1])) 7]]] end h 0` answered `[[0 fn (Integer) 7]]` compiled for the interpreter's `[[1 7]]` (silent). The re-step records the trailing dynamic apply the run decides now, a variadic region under NUR246's rules | closing NUR247 (2026-09-26) |
-| [NUR255](#nur255) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): an anonymous lambda with an UNNAMED param, applied inside a list literal beside a later element, compiles and then bails: `[(0 ([0] => [1])) 7]` and `[(0 ([Integer] => [1])) 7]` are `[[1 7]]` and `[[0 1]]` interpreted and fail at STORE_LOCAL (stack underflow) compiled — the check model seats two results where the unit returns one. Loud | closing NUR254 (2026-09-26) |
+| [NUR255](#nur255) | FIXED 2026-09-26 (the unnamed args' trim — the handoff log's entry of that date), found the same day closing NUR254: an anonymous lambda with an UNNAMED param, applied inside a list literal beside a later element, compiled and then bailed at STORE_LOCAL (`[(0 ([0] => [1])) 7]` and `[(0 ([Integer] => [1])) 7]`, `[[1 7]]` and `[[0 1]]` interpreted). The interpreter's frame keeps its declared count off the top and drops the unnamed args pushed beneath the body; the check pass seated the analysed residual whole, the pushed arg included. Both routes an anonymous lambda's call takes now trim it as the frame does (`trimUnnamedArgs`) | closing NUR254 (2026-09-26) |
 | [NUR256](#nur256) | FIXED 2026-09-25 (numbered NUR209 until the merge of main's #511, where main's NUR209 kept the number; the loop region's residual — the handoff log's entry of that date), found the same day closing NUR197: a `do` body that is ONE container literal over the loop variable — `for 2 [do [[i]]]`, `for 2 [do [{a:i}]]`, `for 2 [do [[(i add 1)]] i]` — answered `error(undefined word: i)` per iteration on the compiled lane for the interpreter's `[0] [1]`, silent, exit 0, present on main: the token body was analysed as a DEFERRING lambda (bodyInFrame false), its residual recorded no assembly, the closure declined on the unknown provenance and the dyn-body backstop baked the literal as a const the handler re-ran through the interpreter, where the loop's `i` is a frame slot the registry never held; a multi-token body (`do [[i] 5]`) compiled. A token body compiles in-frame now (recordClosureDispatch's bodyInFrame true — the InvokeBody seam's sub-engine sweeps the residual at its end, with the bindings live), and the closure assembles the list from the captured slot | probing NUR197's neighbours, 2026-09-25 |
 | [NUR257](#nur257) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): an anonymous fn VALUE's end-of-pass body check (NUR105's drain) has no call-graph identity, so the dynamic-scope rescue cannot ask whether a binder frame reaches it. A name only a fn binds is a false positive when the value runs in that frame (`def m [(fn [[t:Temp][String][k]])]` stored by `behave` and dispatched inside a fn that defines `k`: interpreted `K`, check `undefined word: k`) and silence where it does not. Interim, from the merge of main's #511: the FOLDED map member alone answers optimistically (a name some fn binds is not a finding there; a name nothing binds still is), so no verdict is weaker than main's | merging main's #511, 2026-09-26 |
+| [NUR258](#nur258) | FIXED 2026-09-26 (the empty body's frame — the handoff log's entry of that date), found the same day closing NUR255: a fn whose body leaves FEWER values than its declared count returns its unconsumed unnamed args on the interpreter, and its compiled unit returned nothing: `def f fn [[Integer] [Integer] []] end [(f 3) 7]` and `[(3 ([Integer] => [])) 7]` answered `[[3 7]]` interpreted and raised `expected 1 return value(s), got 0` compiled. The body analysis returned nothing for an EMPTY body; its residual is its unnamed args now (`emptyBodyResidual`), so the unit returns them | closing NUR255, 2026-09-26 |
+| [NUR259](#nur259) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): the return-count error of an anonymous lambda applied inside a list literal anchors at the paren on the compiled lane (`--> 1:3`) and at no position on the interpreter; the text is identical (`[(0 ([0] => [1 2])) 7]`). Loud on both lanes; pre-existing | closing NUR255, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -13568,6 +13570,20 @@ site seats and the unit it calls disagree on the count. The same
 lambda in place (`(0 λ)`), in a list alone, and a named fn with the same
 pattern (`def f fn [[0] [Any] [1]]`, `[(f 0) 7]`) answer on both lanes.
 
+**Fixed 2026-09-26.** The interpreter's frame return (its ReturnCheck)
+keeps the declared count off the top of the frame and discards up to the
+unnamed-param count of unconsumed args from the bottom: `(0 ([0] => [1]))`
+nets the one value 1. The check pass seated an anonymous lambda's analysed
+residual whole, the pushed arg included, on both routes the call takes (the
+paren re-step's `spliceAnonCheckResult`, and the literal dispatch through
+`BuildFnBodyReturnsFn`, whose anonymous arm had dropped the declared count).
+Both now trim it as the frame does (`trimUnnamedArgs`), and the model agrees
+with the unit. A residual the unnamed args cannot account for is left whole,
+because the interpreter raises its count error there, and so do both lanes.
+Pinned by lang `TestNUR255UnnamedParamLambdaInAList` and check
+`TestTrimUnnamedArgs`. The neighbouring shape, where an unconsumed unnamed
+arg IS the return, is NUR258.
+
 ## NUR209 — a compiled closure at a strict store slot; behave's deferred body without the dynamic scope {#nur209}
 
 **Status:** FIXED 2026-09-26 (the `behave` × container and `fnsig` ×
@@ -13688,3 +13704,66 @@ the call graph can reach: an edge from the frame that dispatches the value
 (a behaviour's word inside a fn, a higher-order word's callback) to the
 value's body. Then `DynamicScopeReachable` decides every anonymous position
 the way it decides a named one, and the interim rule goes.
+
+## NUR258 — an unconsumed unnamed param that fills the declared count is not returned compiled {#nur258}
+
+**Status:** FIXED 2026-09-26 (the empty body's frame — the handoff log's
+entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:** closing
+NUR255.
+
+**Rule:** a program the compiler admits, the compiled runtime runs, and
+answers as the interpreter does.
+
+**Divergence** (pre-existing; loud):
+
+```
+def f fn [[Integer] [Integer] []] end [(f 3) 7]
+  interpreted   [[3 7]]
+  compiled      f: expected 1 return value(s), got 0
+
+[(3 ([Integer] => [])) 7]          (the lambda takes the 7 that follows)
+  interpreted   [[3 7]]
+  compiled      expected 1 return value(s), got 0
+```
+
+**Where it sat.** The interpreter pushes a frame's unnamed args beneath its
+body, and its return check takes the declared count off the top of
+everything in the frame. When the body leaves fewer values than the count,
+the unconsumed unnamed args are the return values. The body analysis
+(`AnalyseFnBody`) returned nothing at all for an EMPTY body, so the unit
+compiled from it was a bare `RET`, and the VM's return contract counted
+nothing. The VM's contract itself already matched the interpreter's
+(`checkReturnContract`), and a non-empty body's residual already carried the
+unnamed args (the unit trims them, `trimUnconsumedUnnamed`).
+
+**The fix.** An empty body's residual is its unnamed args, in order
+(`emptyBodyResidual`): the unit returns them, the call's model seats them,
+and the declared contract is checked over them, a type error included. A
+0-return fn's unnamed args flow out as they do on the interpreter
+(`def v fn [[Integer] [] []] end v 1 99` is `[1 99]`). Pinned by lang
+`TestNUR258UnconsumedUnnamedArgsReturn` and check `TestEmptyBodyResidual`.
+The count error's anchor, found beside it, is NUR259.
+
+## NUR259 — a list-bound lambda's count error anchors at the paren compiled, nowhere interpreted {#nur259}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** closing NUR255.
+
+**Rule:** one error, one report: the same text at the same place on both
+lanes.
+
+**Divergence** (pre-existing; loud on both lanes):
+
+```
+[(0 ([0] => [1 2])) 7]
+  interpreted   [boru/type_error]: : expected 1 return value(s), got 2 — [1 2]
+                  --> source position unknown
+  compiled      [boru/type_error]: : expected 1 return value(s), got 2 — [1 2]
+                  --> 1:3
+```
+
+The text is identical, and the anchor differs. The lambda alone in a list
+(`[(0 ([0] => [1 2]))]`) reports no position on both lanes. The compiled
+lane's anchor is the paren the unit's call is recorded at; the
+interpreter's frame, re-stepped inside the list's element evaluation, has
+no call position to give its return check.

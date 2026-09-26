@@ -437,11 +437,28 @@ func spliceAnonCheckResult(e *core.Engine, valIdx, nArgs int, sig *core.FnSig, a
 		paramNames[i] = p.Name
 	}
 	result := AnalyseFnBody(e.Registry, "", paramNames, sig.Body(), args, captures, sig.Returns, true)
+	result = trimUnnamedArgs(result, len(sig.Returns), unnamedParamCount(sig.Params))
 	if len(result) == 0 {
 		result = []core.Value{core.NewCarrier(core.TAny)}
 	}
 	spliceFnCheckTail(e, valIdx, nArgs, result)
 	return nil
+}
+
+// trimUnnamedArgs is the frame return's discipline over an analysed
+// anonymous body's residual (the interpreter's ReturnCheck): the UNNAMED
+// params were pushed beneath the body, and the frame keeps its nret returns
+// off the top, discarding up to unnamed unconsumed args from the bottom. So
+// `(0 ([0] => [1]))` nets the one value 1 on the interpreter, and the call's
+// model must seat one: it seated the pushed 0 beside it, and a list after
+// the call underflowed at run time (NUR255). A residual the unnamed args
+// cannot account for is left as it is, since the interpreter raises its
+// count error there.
+func trimUnnamedArgs(result []core.Value, nret, unnamed int) []core.Value {
+	if extra := len(result) - nret; nret > 0 && extra > 0 && extra <= unnamed {
+		return result[extra:]
+	}
+	return result
 }
 
 // SpliceFnValueCheckResult is the check-mode dispatch for a NON-anonymous
