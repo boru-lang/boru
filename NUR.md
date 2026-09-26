@@ -9100,6 +9100,28 @@ and build the contract's no-match over the same window: the written
 prefix, filled from the unit's stack beneath the call's operands to the
 smallest arity.
 
+The window, measured on the interpreter inside a fn body (`e` a param
+holding 5, `f` one String parameter, `g` two):
+
+```
+7 f e      the argument was 7              (a bare read ends the run; the prefix fills)
+f e 7      takes 1 argument, none supplied (the run is empty and so is the prefix)
+9 e f      the arguments were 5 and 9      (no forward run: the prefix, top first)
+g "x" e    the argument was 'x'            (the run is ["x"]; the prefix is empty)
+g e "x"    none supplied                   (the first forward token is a read)
+e g "x"    'x' and 5                       (the run ["x"], filled from the prefix)
+"x" e g    5 and 'x'                       (the prefix, top first)
+f (e)      the argument was 5              (a paren group is evaluated first: written)
+```
+
+A bare word read is resolved by lookup at the dispatch and never lands
+in the forward window. A paren group is evaluated before the dispatch and
+does. So the written count is the check pass's own
+`ReorderForwardCandidates` at the dispatch, bounded by the forward count,
+published beside `CurCallWord` for the user-fn record. The VM then needs
+it per call site, next to the call's forward count, to rebuild the window
+over its own stack prefix.
+
 ## NUR228 — a native's forward window binds a gradual stack operand the runtime value may not fit {#nur228}
 
 **Status:** FIXED 2026-09-26 (the gradual window declines — the handoff
