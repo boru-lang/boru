@@ -703,6 +703,12 @@ func convertTopLevelValueInner(v any, d *parseDepth) (core.Value, error) {
 	case unclosedAngle:
 		return core.Value{}, unclosedAngleError(val)
 
+	case unclosedParen:
+		// An unclosed group in a member or operand position (`a.(`,
+		// `quote . ( =`): the item loop's refusal, never the internal
+		// marker's type name (NUR060).
+		return core.Value{}, core.MakeBoruError("syntax_error", "unmatched opening parenthesis", "(", "", "")
+
 	case bool:
 		return core.NewBoolean(val), nil
 
@@ -726,9 +732,13 @@ func convertTopLevelValueInner(v any, d *parseDepth) (core.Value, error) {
 func emptyElementError() error {
 	return &core.BoruError{
 		Code:   "syntax_error",
-		Detail: "empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)",
+		Detail: emptyElementDetail,
 	}
 }
+
+// emptyElementDetail is the empty-element refusal's detail, shared by the
+// converter's nil-slot check and the grammar's empty list child (NUR060).
+const emptyElementDetail = "empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)"
 
 // isNumberLiteral reports whether a (deSited) jsonic item is a numeric
 // literal: an integer arrives from jsonic as a float64, a decimal as a
@@ -1501,11 +1511,22 @@ func reachSegmentName(keyItem any, key core.Value, pos core.SrcPos) core.Value {
 	return withPos(core.NewWord(text.Str), pos)
 }
 
+// bareModifierError refuses a `/` modifier with nothing before it (`/s`,
+// `/v`, `/2`): a modifier follows the word or group it modifies. It used to
+// leave the parser as a plain `empty word` error — the one parse failure
+// that was no syntax_error, in both ports (NUR060).
+func bareModifierError(text string) error {
+	return &core.BoruError{
+		Code:   "syntax_error",
+		Detail: "`" + text + "` modifies nothing: a `/` modifier follows the word or group it modifies",
+	}
+}
+
 func parseWord(text string) (core.Value, error) {
 	name, argCount, forceStack, forceForward, quoteFlag, valFlag, usurpFlag, typeFlag, valid := scanWordModifier(text)
 
 	if name == "" {
-		return core.Value{}, fmt.Errorf("empty word")
+		return core.Value{}, bareModifierError(text)
 	}
 
 	// An invalid modifier combination spelled entirely from the modifier
@@ -1726,6 +1747,13 @@ func convertInterpGroup(grp interpGroup, d *parseDepth) (core.Value, error) {
 			// Template literal segment (Quote="tl").
 			parts = append(parts, core.InterpPart{Lit: v.Str})
 		case iexprGroup:
+			if len(v) == 0 {
+				// An empty hole (`${}`, `${ }`) holds no expression and
+				// contributes nothing: a template whose holes are all empty
+				// is the plain string it spells, as `abc` in backticks is
+				// (NUR060) — and as an XML attribute's empty hole folds.
+				continue
+			}
 			hasExpr = true
 			exprVals, err := convertTopLevelItems([]any(v), d)
 			if err != nil {

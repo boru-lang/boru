@@ -179,7 +179,7 @@ keep the two in sync in the same commit.
 | [NUR072](#nur072) | FIXED 2026-09-26 (canon spells the sugar and the word — the handoff log's entry of that date): canon renders a plain Word bare (ADR-015 settles the bare-word question: `word(foo)` re-parses as the `word` splice over a group, bare `foo` re-parses to the Word), the lambda marker `=>` and its fold group `A => B` without parens, a mini literal `+name'src'` in one canonical delimiter with the lexer's escapes, the type bound `name/t`, and a group modifier after its group (`(1 2) /s`) — in core/go and core/ts alike; the TS `/N` arity is a bigint, so `x/9223372036854775807` round-trips in both ports and left divergent.tsv for parse.tsv; a Go disjunct canon arm (missing, it spelled its members in the debug form) matches TS. A fixpoint gate over the parser corpus runs in both runners with a shrink-only ledger (parser/spec/canon-fixpoint.tsv) — NUR072's kinds all reach their fixpoint; the 33 ledgered rows are NUR225–NUR227. The original text: Three sugar kinds (mini, type-bound, lambda) still canon in DEBUG form after NUR059 — withdrawn there because the renders do not round-trip: SugarInfo does not retain the mini delimiter, and type-bound renders its Items rather than the bound's text; also carries the undecided bare-word question (`word(foo)` vs `foo`, 175 corpus rows) | NUR059's fix, 2026-08-15 |
 | [NUR075](#nur075) | FIXED 2026-09-26 (eq's capability — the handoff log's entry of that date): `eq` is extensible per type on `deq`'s terms — `core.ExactEqualer`, consulted at ExactEqual's terminal `false` exactly where DeepEqualer sits in DeepEqual (so the two reach the same values: the pairs no kernel arm names), and a `behave eq/q` slot with deq's shape (`[[T T] [Boolean]]`) and deq's seam (delegate, decline, re-entry guard). Kernel identity arms are untouched — the capability is additive, as deq's is. The original text: `deq` is extensible per type (`DeepEqualer`), `eq` is not — the one part of the retired NUR031's verdict its fix did not take: the divergences closed by adding kernel arms rather than by routing through `Behavior`, so a type can define its own deep equality but not its own identity | NUR031's fix, 2026-08-16 |
 | [NUR076](#nur076) | FIXED 2026-09-26 (the check pass notes a behave make — the handoff log's entry of that date): `behave`'s check-mode half (its ReturnsFn) validates the call as the handler does and, for the `make` slot, notes the target in the pass's own state (`CheckState.BehaveMakers`), which `HasMaker` reads — so a construction after the call skips the schema validation the type's own constructor replaces, exactly as a Go-side Maker's does; one before it validates, as the run has it. Nothing is installed on the type, so no user body runs during analysis; the other seven slots change only what a program computes, which analysis does not evaluate. `def P class {a: Integer}  behave make/q (fn Any P [make P {a: 42}])  make P {bogus: 1}` checks clean and compiles (Class/P{a:42} on both lanes). The original text: A `behave`-installed capability is invisible to check mode, because `behave` does not run there — for `make` that turns a working program into a check FAILURE: a type whose Maker ignores the schema still has the schema's unknown/missing-field rules applied statically | NUR056's fix, 2026-08-17 (flagged by the PR #379 review, Codex P1) |
-| [NUR060](#nur060) | The parser twins disagree on open-input sources beyond the corpus | PR #337 parity-probe sweep (flagged for NUR by Codex P1) |
+| [NUR060](#nur060) | FIXED 2026-09-26 (the parity ledger is empty again — the handoff log's entry of that date): all nine classes fixed in both ports and moved to parse.tsv with neighbours — a bodiless `=>` where the arrow folds is refused on the arrow, a typed list child with no value is an empty element, a `]` never closes a list no `[` opened, the first fault in source order is reported, an unclosed member group is an unmatched paren, a bare `/` modifier is a syntax_error, an empty `${}` contributes nothing. The original text: The parser twins disagree on open-input sources beyond the corpus | PR #337 parity-probe sweep (flagged for NUR by Codex P1) |
 | [NUR063](#nur063) | FIXED 2026-09-26 (boru:scry ships the seven, the debug copies deprecated — the handoff log's entry of that date): `boru:scry` ships `words`, `defs`, `modules`, `sig`, `body`, `deps`, `shape` from the one constructor boru:debug's frozen copies use (`selfKnowledge`), and `describe` marks each `Debug.*` copy deprecated, naming its `Scry.*` twin and the removal release — the maintainer's verdict, implemented. The original text: Seven self-knowledge words are proposed to dispatch from two module surfaces (`boru:debug` and `boru:scry`) — VERDICT 2026-08-15: `boru:scry` canonical, the `boru:debug` copies frozen behind shared handlers and deprecated on a stated timeline | design/BORU-SCRY.0.md §6 (flagged for NUR by PR #344 Codex P1) |
 | [NUR064](#nur064) | FIXED 2026-09-26 (add patterns bind as receive clauses do — the handoff log's entry of that date): a service `add` pattern is read by the one clause-pattern splitter `receive` uses (`splitClausePattern`) — scalar fields route, `name:Type` fields are binding slots that decide whether the routed handler takes the request (falling back to a slot-free catch-all, else `no_match`) and are bound by name around the handler's run; `add`'s check-mode half notes the handler body's reads of a slot so the undefined-word rescue excuses exactly those tokens. The original text: Pattern clauses route-and-bind in `receive` but route-only in `add` — VERDICT 2026-08-15: defer to the processes/services design line, to be decided when those modules are built | `design/STATE-MACHINES.0.md` §8 (flagged for NUR by the PR #345 review, Codex P1) |
 | [NUR065](#nur065) | RESOLVED 2026-09-26 (one set of guarantees for both classifier spellings — the handoff log's entry of that date): open question #7 of design/STATE-MACHINES.0.md is decided in the design, `boru:state` being unbuilt — the fn form declares its output alphabet (`classify: {fn: … yields: […]}`) and returns a class ATOM the machine wraps in the table form's frozen `{event raw}` payload, so alphabet closure (define-time `state_unknown_name` on `yields:`), payload shape and the `state_bad_class` / `state_class_gap` / `state_bad_event` diagnostics are one rule for both; only the mapping inside the fn stays opaque. The original text: Two spellings of the classifier role get different static guarantees: `classes:` is alphabet-closed and diagnosed, `classify:` is neither — VERDICT 2026-08-15: defer to the state-machine design line (its open question #7) | `design/STATE-MACHINES.0.md` §3.6 (flagged for NUR by the PR #352 review, Codex P1) |
@@ -5059,9 +5059,10 @@ current answer.
 
 ## NUR060 — The parser twins disagree on open-input sources beyond the corpus {#nur060}
 
-**Status:** Pending · **Recorded:** 2026-08-09 · **Surfaced by:** PR #337
-parity-probe sweep; flagged for this register by the PR #337 review
-(Codex P1)
+**Status:** FIXED 2026-09-26 (the parity ledger is empty again — the
+handoff log's entry of that date) · **Recorded:** 2026-08-09 · **Surfaced
+by:** PR #337 parity-probe sweep; flagged for this register by the PR #337
+review (Codex P1)
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
 
@@ -5102,6 +5103,51 @@ follow. The record discharges when the ledger is empty again.
 > 2,587-source sweep on the new dependency measures the byte-identical 55
 > divergences, which is what distinguishes the two categories. This record
 > stays Pending on those nine.
+
+**The fix (2026-09-26).** Every class is fixed in BOTH ports, each ledger
+row moved to `parse.tsv` (§"NUR060: the parity-debt ledger, resolved")
+with one or two neighbours, and `divergent.tsv` is empty (pinned at 0 in
+both runners). Where the two renders disagreed, neither was taken as the
+contract; each class got the rule its agreed neighbours imply:
+
+- **Bodiless `=>`** (fold loss): an `arrowfold`/`arrowfoldelem` Open
+  alternate matches the arrow followed by the end, a closer or a
+  separator and raises `arrow_no_body` on the arrow
+  (`` `=>` has no body ``). Before, the half-built fold fell to the val
+  coalescer, which dropped the arrow (`[1 =>]` read `[1]`, in both ports)
+  or doubled the input as the body (`def x 2 =>`, Go). A bare `x =>` that
+  does not fold is unchanged.
+- **Trailing bare `:`** (accept/reject): an element that opens with `:`
+  and has no value is refused as an empty element (`empty_child`) in both
+  grammars — Go's tabnas port records an empty list child as a nil
+  `Child`, indistinguishable from none, so only its grammar can see it.
+  The same `? :` shape was `[:]` and `[1, :]` too, both newly pinned.
+- **`=> ,`** (accept/reject): the bodiless-arrow rule.
+- **Post-`]` recovery detail**: a list whose open token is not `[` is
+  implicit, and its `]` is refused where it stands — `1 2 ]` used to parse
+  as `1 2` while `0 ]` was refused, and `1 2 ] 3` failed only at the
+  end-of-parse check the two tabnas ports report on different tokens.
+- **Error precedence** (`. (`, `/s (`): TS's paren BC threw for a trailing
+  hole — including the empty element TS leaves where the source ends inside
+  a group — before its converter ran; it now marks the group unclosed, as
+  Go's derailed grammar does, and the converter reports the first fault in
+  source order.
+- **Type-name leak** (`quote . ( =`, `a.(`): the value converters gained
+  the unclosed-paren arm the item loop had.
+- **Bare `/s`**: `` `/s` modifies nothing `` is a syntax_error in both,
+  no longer a plain `empty word`.
+- **Empty `${}`**: the empty-expression alternate consumed the `}`, so the
+  Close wanted another and the template broke after an empty hole
+  (`` `x${}y` `` read `y` as unexpected); it now backtracks, and both
+  converters skip an empty hole — `` `x${}y` `` is `'xy'`, as an XML
+  attribute's empty hole already folded.
+
+Pinned: the 24 new `parse.tsv` rows and the 12 re-rendered ones, in both
+runners; `TestArrowWave3Degenerate`, `TestTemplateWave3InterpErrors`, the
+seam tests for the now-direct-only fold guards; the TS guard test for the
+bare modifier. Go and TS parser coverage stay at 100%, and the crossdiff
+over eng/spec is identical. REFERENCE.md states the three user-visible
+rules (bodiless arrow, empty hole, bare modifier).
 
 ---
 

@@ -21,7 +21,6 @@
 /* eslint-disable @typescript-eslint/no-explicit-any */
 
 import { Jsonic } from '@tabnas/jsonic'
-import { BoruError } from '@boru-lang/core'
 
 import {
   type DeclGrammar,
@@ -901,6 +900,9 @@ export function setupValRule(j: any, t: ParserTokens): void {
       },
     ])
     setOpen(rs, [
+      // An arrow with nothing to fold — the source ends, or a closer
+      // or separator follows — has no body: refuse it (NUR060).
+      arrowNoBody(j, t),
       // Consume the arrow, parse exactly one following val as the body.
       { s: [t.AR], p: 'val' },
     ])
@@ -994,7 +996,7 @@ export function setupValRule(j: any, t: ParserTokens): void {
         }
       },
     ])
-    setOpen(rs, [{ s: [t.AR], p: 'val' }])
+    setOpen(rs, [arrowNoBody(j, t), { s: [t.AR], p: 'val' }])
     setClose(rs, [{ b: 1 }])
   })
 
@@ -1359,10 +1361,37 @@ export function setupPairGrammar(j: any, t: ParserTokens): void {
     })
   })
 
+  // --- A `]` never closes a list no `[` opened ---
+  //
+  // jsonic's list Close takes `]` for every list, so a bracket-less
+  // (implicit) top-level list swallowed a stray one: `1 2 ]` parsed as
+  // `1 2`, while `0 ]` (no list yet) was refused, and `1 2 ] 3` failed only
+  // at the end-of-parse check — which the two tabnas ports report on
+  // different tokens (NUR060). A list whose open token is not `[` is
+  // implicit; its `]` is an unexpected token, refused where it stands.
+  j.rule('list', (rs: any) => {
+    prependClose(rs, [
+      {
+        s: [j.token('#CS')],
+        c: (r: any) => undefined === r.o0 || r.o0.tin !== j.token('#OS'),
+        e: (_r: any, ctx: any) => ctx.t0.bad('unexpected'),
+      },
+    ])
+  })
+
   // --- Optional field syntax in list context: [x?:Integer] ---
 
   j.rule('elem', (rs: any) => {
     prependOpen(rs, [
+      // An element that OPENS with `:` is a typed list's child; one with no
+      // value after the colon (`[:]`, `[1, :]`, `? :`) is an empty element,
+      // refused like `{:}` and `[1 :]` — in both ports alike, though the TS
+      // tabnas port alone keeps an empty child apart from no child (NUR060).
+      {
+        s: [j.token('#CL'), [j.token('#ZZ'), j.token('#CS'), j.token('#CA')]],
+        c: (r: any) => !('boru_qm' in r.k),
+        e: (_r: any, ctx: any) => ctx.t0.bad('empty_child'),
+      },
       // Step 1: match KEY ? — save key, push to elem.
       {
         s: ['#KEY', t.QM],
@@ -1462,9 +1491,15 @@ export function setupParenGrammar(j: any, t: ParserTokens): void {
       (r: any) => {
         if (Array.isArray(r.node)) {
           if (r.node.length > 0 && r.node[r.node.length - 1] === null) {
-            // A trailing comma hole (`(1,)`, `(,)`): Go's grammar
-            // derails the paren close here — same taxonomy and text.
-            throw new BoruError('syntax_error', 'unmatched opening parenthesis', '(')
+            // A trailing hole — a comma hole (`(1,)`, `(,)`), or the empty
+            // element the TS port leaves where the source ends inside a
+            // group (`(`, `(1,`). Go's grammar derails the paren close here
+            // and hands the converter an UNCLOSED group, which reports the
+            // first fault in source order — `. (` is the receiverless `.`
+            // (NUR060). Mark this one unclosed the same way instead of
+            // throwing ahead of the converter.
+            r.node.length = r.node.length - 1
+            r.u['hole'] = true
           }
           r.node = new ParenGroup(r.node)
         }
@@ -1472,7 +1507,7 @@ export function setupParenGrammar(j: any, t: ParserTokens): void {
     ])
     setAC(rs, [
       (r: any) => {
-        if (true !== r.u['closed']) {
+        if (true !== r.u['closed'] || true === r.u['hole']) {
           if (r.node instanceof ParenGroup) {
             r.node = new UnclosedParen(r.node.items)
           }
@@ -1633,8 +1668,12 @@ export function setupInterpGrammar(j: any, t: ParserTokens): void {
       },
     ])
     setOpen(rs, [
-      // Empty expression: ${}
-      { s: [CB] },
+      // Empty expression: ${}. Backtrack so the Close alternate takes the
+      // `}` — consuming it here left the Close wanting a second one, so the
+      // template broke after an empty hole (`x${}y` read `y` as unexpected)
+      // and only an unterminated one survived, in two different shapes
+      // (NUR060).
+      { s: [CB], b: 1 },
       // First expression value.
       { p: 'ieval' },
     ])
@@ -1852,4 +1891,17 @@ export function setupNumberSub(j: any, source?: string): void {
 // diverge, and its arms were reachable from neither corpus.
 function wordBaseName(text: string): string {
   return scanWordModifier(text).base
+}
+
+// arrowNoBody is the fold's refusal of an arrow with no body: `=>` followed
+// by the end of the source, a closer (`]` `}` `)`) or a separator (`,` `;`).
+// Before it, the half-built (SIG afn) group fell to the tabnas val coalescer,
+// which restored the SIG alone — the arrow vanished (`[1 =>]` read `[1]`) —
+// or, where the body val re-read the SIG token, doubled it as the body,
+// differently in the two ports (NUR060). The error sits on the arrow.
+function arrowNoBody(j: any, t: ParserTokens): any {
+  return {
+    s: [t.AR, [j.token('#ZZ'), j.token('#CS'), j.token('#CB'), t.CP, j.token('#CA'), t.SC]],
+    e: (_r: any, ctx: any) => ctx.t0.bad('arrow_no_body'),
+  }
 }

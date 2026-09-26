@@ -54,8 +54,8 @@ import { parse } from './index.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SPEC_DIR = path.resolve(__dirname, '..', '..', 'spec')
-const PARSE_SPEC_ROW_COUNT = 725
-const DIVERGENT_SPEC_ROW_COUNT = 9
+const PARSE_SPEC_ROW_COUNT = 749
+const DIVERGENT_SPEC_ROW_COUNT = 0
 const NESTING_SPEC_ROW_COUNT = 18
 const SHAPE_SPEC_ROW_COUNT = 28
 // canon-fixpoint.tsv: ADR-015's shrink-only ledger of parse.tsv rows that do

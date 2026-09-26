@@ -52,8 +52,8 @@ import (
 )
 
 const (
-	parseSpecRowCount     = 725
-	divergentSpecRowCount = 9
+	parseSpecRowCount     = 749
+	divergentSpecRowCount = 0
 	nestingSpecRowCount   = 18
 	shapeSpecRowCount     = 28
 	// canonFixpointRowCount pins canon-fixpoint.tsv, ADR-015's shrink-only

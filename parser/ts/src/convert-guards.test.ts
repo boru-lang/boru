@@ -219,7 +219,7 @@ describe('parseWord numeric classification', () => {
     // `/v` — the modifier scan strips everything and leaves nothing.
     // Pinned as a row too; kept here because the row asserts the rendered
     // error and this asserts the throw site.
-    assert.throws(() => parseWord('/v'), /empty word/)
+    assert.throws(() => parseWord('/v'), /`\/v` modifies nothing/)
   })
 
   it('parses base-prefixed integers that reached it as words', () => {

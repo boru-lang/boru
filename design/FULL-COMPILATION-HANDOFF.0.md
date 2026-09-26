@@ -13322,6 +13322,22 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR060 closed — the parser parity ledger is empty again (2026-09-26)
+
+**The record.** `parser/spec/divergent.tsv` carried nine classes of source
+the Go and TS parsers rendered differently (a 2,587-source probe sweep).
+
+**The fix.** Each class got the rule its agreed neighbours implied, in both
+ports: a bodiless `=>` where the arrow folds is refused on the arrow; a
+typed list child with no value is an empty element; a `]` never closes a
+list no `[` opened; TS no longer throws for an empty unclosed group ahead
+of its converter, so both report the first fault in source order; the value
+converters refuse an unclosed member group; a bare `/` modifier is a
+syntax_error; an empty `${}` no longer eats its `}` and contributes nothing.
+24 rows moved or added to parse.tsv, 12 re-rendered, the ledger pinned at 0
+in both runners; parser coverage 100% in both ports; `make parser-parity`
+green.
+
 ## NUR063 closed — boru:scry ships the seven, the debug copies deprecated (2026-09-26)
 
 **The record.** The maintainer ruled `boru:scry` canonical for the seven

@@ -302,6 +302,8 @@ arriving at a paren:
 ### Template-string escapes
 
 `\\`, `` \` ``, `\$`, `\n`, `\t`, `\r`. Use `\$` for a literal `${`.
+An empty hole (`${}`, `${ }`) holds no expression and contributes nothing:
+`` `x${}y` `` is the string `'xy'`.
 
 ### Word modifiers
 
@@ -325,9 +327,11 @@ with nothing, and digits form one contiguous run. When `q` is present
 the result is an atom and any companion shape letters are ignored. An
 **invalid combination spelled from the modifier letters** (`add/fs`,
 `foo/qv`, `add/1f2`) is a loud `[boru/syntax_error]` — never a silent
-fall-through. A suffix containing any other character is not a modifier
-at all: the whole token is one plain word, which is how the full type
-paths (`Scalar/Number/Integer`) parse.
+fall-through. A modifier with **nothing before it** (`/s` alone, `/v 1`)
+is a syntax error too (`` `/s` modifies nothing ``). A suffix containing
+any other character is not a modifier at all: the whole token is one
+plain word, which is how the full type paths (`Scalar/Number/Integer`)
+parse.
 
 <!-- boru-test: skip -->
 ```
@@ -1571,7 +1575,9 @@ The signature spellings:
 
 The body must be **one** token — wrap multi-token bodies as `[…]` or
 `(…)`, both captured as code and run per call (a bare-word body like
-`=> x` fails; write `=> [x]`). Chained arrows curry right-
+`=> x` fails; write `=> [x]`). An arrow with **no** body — the source
+ends, or `]` `)` `}` `,` `;` follows — is a syntax error on the arrow
+(`` `=>` has no body ``). Chained arrows curry right-
 associatively, as in `make-adder` above: each inner lambda is
 constructed at call time with the outer params bound and captured.
 The arrow produces exactly one signature with return type `Any`; for

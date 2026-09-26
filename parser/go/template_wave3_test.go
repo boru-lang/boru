@@ -145,7 +145,16 @@ func TestTemplateWave3InterpNested(t *testing.T) {
 func TestTemplateWave3InterpErrors(t *testing.T) {
 	// A malformed expression inside ${} surfaces the inner error.
 	wantParseErrWave3(t, "`${1__0}`", "interpolation expression error")
-	// Empty ${} holes are rejected by the grammar (no panic).
-	wantParseErrWave3(t, "`${}`", "")
-	wantParseErrWave3(t, "`${} tail`", "")
+	// An empty ${} hole holds no expression and contributes nothing
+	// (NUR060): the template continues past it, and one whose holes are
+	// all empty is the plain string it spells.
+	for src, want := range map[string]string{"`${}`": "", "`${} tail`": " tail", "`x${ }y`": "xy"} {
+		vals := mustParseWave3(t, src)
+		if len(vals) != 1 {
+			t.Fatalf("%q: got %d values, want 1: %v", src, len(vals), vals)
+		}
+		if got, err := core.AsString(vals[0]); err != nil || got != want {
+			t.Errorf("%q: got %v (%v), want the plain string %q", src, vals[0], err, want)
+		}
+	}
 }

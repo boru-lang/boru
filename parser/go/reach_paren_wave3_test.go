@@ -354,16 +354,13 @@ func TestArrowWave3Degenerate(t *testing.T) {
 	if info, ok := core.AsSugar(vals[1]); !ok || info.Kind != core.SugarLambda {
 		t.Errorf("x =>: second value %v, want the lambda marker", vals[1])
 	}
-	// A pair arrow with no body inside a list also parses (empty fold),
-	// as does a plain-value arrow with no body.
-	for _, src := range []string{"[x:1 =>]", "[1 x =>]"} {
-		if _, err := parseWave3(t, src); err != nil {
-			t.Fatalf("%q: unexpected error: %v", src, err)
-		}
+	// Where the arrow FOLDS — a pair or plain value inside a list, a
+	// paren — a bodiless one is refused on the arrow (NUR060): it used to
+	// vanish (`[1 x =>]` read `[1 x]`) or double its input as the body,
+	// differently in the two ports.
+	for _, src := range []string{"[x:1 =>]", "[1 x =>]", "(1 x =>)"} {
+		wantParseErrWave3(t, src, "`=>` has no body")
 	}
-	// Inside a paren, a bodyless arrow leaves the group unfinished — the
-	// unmatched-paren diagnostic fires (no panic).
-	wantParseErrWave3(t, "(1 x =>)", "unmatched opening parenthesis")
 	// A top-level bare pair with arrow and body parses flat or folded —
 	// never an error.
 	if _, err := parseWave3(t, "x:Integer => [x]"); err != nil {

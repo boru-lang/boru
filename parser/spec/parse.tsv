@@ -452,7 +452,7 @@ _1	_1	not digit-led, so an ordinary word — the separator rule is numeric-only
 # arrow body, while a typed-map child still wins before its concrete entry.
 1.e:	ERR [boru/syntax_error]: a number has no members to access with `.`	incomplete trailing-dot exponent before a colon
 -5.25e:	ERR [boru/syntax_error]: a number has no members to access with `.`	signed multi-digit fraction keeps the same receiver precedence
-+12.30e=>	ERR [boru/syntax_error]: a number has no members to access with `.`	the outer receiver wins before the malformed arrow body
++12.30e=>	ERR [boru/syntax_error]: `=>` has no body	the arrow with no body is a grammar fault, raised before any converter fault — the number receiver no longer wins (NUR060)
 1..1:	ERR [boru/syntax_error]: a number has no members to access with `.`	consecutive-dot receiver before a numeric pair key
 1.e2:	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	a complete exponent remains one number, so the colon's empty value wins
 [1.e:]	ERR [boru/syntax_error]: a number has no members to access with `.`	explicit-list source order
@@ -621,7 +621,7 @@ a..b	a.. b	-
 <a b=${1}/>	<a b="${1}"/>	-
 "x${}y"	'x${}y'	-
 "${}"	'${}'	-
-`x${}y`	ERR [boru/syntax_error]: unexpected `y` — nothing valid can appear here	-
+`x${}y`	'xy'	an empty hole contributes nothing: the template continues past it and folds to the plain string (NUR060)
 
 # --- minilang literals: delimiters, escapes, and the open form ------------
 # `+name<delim>src<delim>`. An unescaped delimiter closes it; unescaped
@@ -767,7 +767,7 @@ Map<Integer	ERR [boru/syntax_error]: unclosed angle bracket: Map<… has no matc
 <a b=${x	ERR xml: unterminated ${...} interpolation	-
 <a b="${x"/>	ERR xml: unterminated ${...} interpolation	-
 <a b=${ { } }/>	<a b="${{}}"/>	-
-`${}`	ERR [boru/syntax_error]: unexpected ``` — nothing valid can appear here	-
+`${}`	''	an empty hole contributes nothing (NUR060)
 `${1}`	`${1}`	-
 
 # --- pair keys that are not plain unquoted words --------------------------
@@ -825,7 +825,7 @@ m.k => [1]	m.(k => [1])	-
 # angled receiver leaves the `<` to the XML rule.
 [a: 1 b: 2]	[{a:1} {b:2}]	-
 [a: b => [b] c: 2]	[{a:b} => [b] {c:2}]	-
-`${}${1}`	ERR [boru/syntax_error]: unexpected `${` — nothing valid can appear here	-
+`${}${1}`	`${1}`	an empty hole contributes nothing (NUR060)
 `x${1}${2}y`	`x${1}${2}y`	-
 (Map)<Integer>	ERR xml: unterminated element <Integer>	-
 [Map<Integer>]	[Map<Integer>]	-
@@ -869,8 +869,8 @@ Map<Integer><String>	ERR xml: unterminated element <String>	-
 +0d10	0d10	-
 0i	ERR [boru/syntax_error]: invalid numeric literal: 0i	-
 0i1_0	ERR [boru/syntax_error]: invalid numeric literal: 0i1_0	-
-/v	ERR empty word	-
-/q	ERR empty word	-
+/v	ERR [boru/syntax_error]: `/v` modifies nothing: a `/` modifier follows the word or group it modifies	a bare modifier is a syntax_error, not a plain error (NUR060)
+/q	ERR [boru/syntax_error]: `/q` modifies nothing: a `/` modifier follows the word or group it modifies	a bare modifier is a syntax_error, not a plain error (NUR060)
 a/2f2	ERR [boru/syntax_error]: invalid word modifier /2f2 on "a"	-
 
 # --- duplicate map keys, and errors raised inside `${…}` -----------------
@@ -926,13 +926,13 @@ a"s"	a 's'	-
 #   divergent.tsv.
 1]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	bracket-recovery (probe-agreed)
 2]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	bracket-recovery (probe-agreed)
-, ]	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	bracket-recovery (probe-agreed)
-2,]	2	bracket-recovery (probe-agreed)
+, ]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	a `]` never closes a list no `[` opened (NUR060)
+2,]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	a `]` never closes a list no `[` opened (NUR060)
 [1]	[1]	bracket-recovery (probe-agreed)
 => -	=> -	arrow-with-body (probe-agreed)
 => {	=> {}	arrow-with-body (probe-agreed)
 => 42	=> 42	arrow-with-body (probe-agreed)
-=> b]	=> b	arrow-with-body (probe-agreed)
+=> b]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	a `]` never closes a list no `[` opened (NUR060)
 => Map	=> Map	arrow-with-body (probe-agreed)
 - :	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	trailing-colon-ish (probe-agreed)
 1 :	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	trailing-colon-ish (probe-agreed)
@@ -964,10 +964,10 @@ b=${x	ERR [boru/syntax_error]: unexpected `${` — nothing valid can appear here
 `${a =>	`${a =>}`	interp (probe-agreed)
 `v ${1}	`v ${1}`	interp (probe-agreed)
 - `${x}`	- `${x}`	interp (probe-agreed)
-/s	ERR empty word	mods (probe-agreed)
+/s	ERR [boru/syntax_error]: `/s` modifies nothing: a `/` modifier follows the word or group it modifies	a bare modifier is a syntax_error, not a plain error (NUR060)
 ) /s	) /s	mods (probe-agreed)
-/s ,	ERR empty word	mods (probe-agreed)
-/s -	ERR empty word	mods (probe-agreed)
+/s ,	ERR [boru/syntax_error]: `/s` modifies nothing: a `/` modifier follows the word or group it modifies	a bare modifier is a syntax_error, not a plain error (NUR060)
+/s -	ERR [boru/syntax_error]: `/s` modifies nothing: a `/` modifier follows the word or group it modifies	a bare modifier is a syntax_error, not a plain error (NUR060)
 /s :	ERR [boru/illegal_key]: word modifier not allowed on map key "/s" (modifiers qualify values, not keys; quote the key as '/s' for a literal slash)	mods (probe-agreed)
 !	!	pipe-bang (probe-agreed)
 ! +	! +	pipe-bang (probe-agreed)
@@ -998,3 +998,38 @@ b=${x	ERR [boru/syntax_error]: unexpected `${` — nothing valid can appear here
 0XFF/t	0XFF/t	…and a type-bound
 {0XFF:a}	{0XFF:a}	…and a bare map key (the lowercase {0xFF:a} is likewise a key, not 255)
 [0XFF:Integer]	[{0XFF:Integer}]	…including the implicit parameter-map form
+
+# --- NUR060: the parity-debt ledger, resolved -----------------------------
+# The nine divergence classes parser/spec/divergent.tsv carried, each fixed
+# in BOTH ports and moved here with the agreed render, plus a neighbour or
+# two per class. A bodiless arrow where the arrow folds is refused on the
+# arrow; a typed list child with no value is an empty element; a `]` never
+# closes a list no `[` opened; the first fault in source order is reported
+# (an empty group the source ends inside no longer pre-empts it in TS); an
+# unclosed group in a member position is an unmatched paren, never a type
+# name; a bare `/` modifier is a syntax_error; an empty `${}` contributes
+# nothing and the template continues past it.
+[1 =>	ERR [boru/syntax_error]: `=>` has no body	formerly divergent.tsv (NUR060)
+if . `${x}` =>	ERR [boru/syntax_error]: `=>` has no body	formerly divergent.tsv (NUR060)
+? ? :	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	formerly divergent.tsv (NUR060)
+def x 2 => ,	ERR [boru/syntax_error]: `=>` has no body	formerly divergent.tsv (NUR060)
+y 0 ] Map	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	formerly divergent.tsv (NUR060)
+.. (	ERR [boru/syntax_error]: `.` member access has no receiver	formerly divergent.tsv (NUR060)
+/s 1e400 ( #c	ERR [boru/syntax_error]: `/s` modifies nothing: a `/` modifier follows the word or group it modifies	formerly divergent.tsv (NUR060)
+quote . ( =	ERR [boru/syntax_error]: unmatched opening parenthesis	formerly divergent.tsv (NUR060)
+`${}	''	formerly divergent.tsv (NUR060)
+[1 =>]	ERR [boru/syntax_error]: `=>` has no body	NUR060
+def x 2 =>	ERR [boru/syntax_error]: `=>` has no body	NUR060
+(1 =>)	ERR [boru/syntax_error]: `=>` has no body	NUR060
+a.b =>	ERR [boru/syntax_error]: `=>` has no body	NUR060
+[x => ,]	ERR [boru/syntax_error]: `=>` has no body	NUR060
+[:]	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	NUR060
+[1, :]	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	NUR060
+? :	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	NUR060
+1 2 ] 3	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	NUR060
+1 2 ]	ERR [boru/syntax_error]: unexpected `]` — nothing valid can appear here	NUR060
+. (1,	ERR [boru/syntax_error]: `.` member access has no receiver	NUR060
+/s (	ERR [boru/syntax_error]: `/s` modifies nothing: a `/` modifier follows the word or group it modifies	NUR060
+a.(	ERR [boru/syntax_error]: unmatched opening parenthesis	NUR060
+`a${}b	'ab'	NUR060
+`x${ }y`	'xy'	NUR060

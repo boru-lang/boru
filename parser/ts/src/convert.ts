@@ -1021,6 +1021,13 @@ export function convertTopLevelValueInner(v: unknown, d: ParseDepth): Value {
     throw unclosedAngleError(v)
   }
 
+  if (v instanceof UnclosedParen) {
+    // An unclosed group in a member or operand position (`a.(`,
+    // `quote . ( =`): the item loop's refusal, never the internal marker's
+    // type name (NUR060).
+    throw new BoruError('syntax_error', 'unmatched opening parenthesis', '(')
+  }
+
   if (typeof v === 'boolean') {
     return newBoolean(v)
   }
@@ -1863,7 +1870,14 @@ export function parseWord(text: string): Value {
   const name = m.base
 
   if (name === '') {
-    throw new Error('empty word')
+    // A `/` modifier with nothing before it (`/s`, `/v`, `/2`): a modifier
+    // follows the word or group it modifies. It used to leave the parser as
+    // a plain `empty word` Error — the one parse failure that was no
+    // syntax_error, in both ports (NUR060).
+    throw new BoruError(
+      'syntax_error',
+      '`' + text + '` modifies nothing: a `/` modifier follows the word or group it modifies',
+    )
   }
 
   // An invalid modifier combination spelled entirely from the modifier
@@ -2102,6 +2116,13 @@ export function convertInterpGroup(grp: InterpGroup, d: ParseDepth): Value {
       continue
     }
     if (item instanceof IexprGroup) {
+      if (0 === item.items.length) {
+        // An empty hole (`${}`, `${ }`) holds no expression and contributes
+        // nothing: a template whose holes are all empty is the plain string
+        // it spells, as `abc` in backticks is (NUR060) — and as an XML
+        // attribute's empty hole folds.
+        continue
+      }
       hasExpr = true
       let exprVals: Value[]
       try {
