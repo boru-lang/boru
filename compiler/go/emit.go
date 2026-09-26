@@ -958,6 +958,18 @@ type EmitState struct {
 	// per-element install put the value, is the one answer (NUR203:
 	// `def t 0 each b xs drop t` inside a fn read the pre-call 0).
 	dynLeakNames map[string]bool
+	// rootDynLeak latches a keep-defs word over a DYNAMIC body dispatched
+	// at the program root (noteDynKeepDefsLeak, NUR210's rebinding half):
+	// the body may have rebound any name, so every later root read of a
+	// value binding seats live, and the registry the body installed into
+	// answers it as the interpreter's lookup does.
+	rootDynLeak bool
+	// defReadPos is every position a def-bound value was READ at, by the
+	// value's ID (NoteLiveRead sees each read at its token). The reads of
+	// one binding share the value, so no single position is the read's;
+	// crossesStatementEnd proves a crossing for such an entry only when
+	// every read of it sits past the boundary (NUR266).
+	defReadPos map[string][]core.SrcPos
 	// runtimeStub latches, per name, the ONE install a native the program
 	// calls is about to make at run time (`unpack [a b] d` over a source the
 	// pass cannot read — NoteRuntimeBind, right before the handler's own
@@ -5657,6 +5669,9 @@ func (es *EmitState) NoteKeepDefsLeak(pos core.SrcPos) {
 // left alone: a root read is live already (NUR203's own measurement).
 func (es *EmitState) noteDynKeepDefsLeak(pos core.SrcPos) {
 	if es.TopFrameOnly() {
+		if es != nil {
+			es.rootDynLeak = true
+		}
 		return
 	}
 	cur := es.frames[len(es.frames)-1]
@@ -6603,6 +6618,12 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 	if !es.Active() || v == nil || name == "" {
 		return
 	}
+	if v.ID != "" && pos.Row > 0 {
+		if es.defReadPos == nil {
+			es.defReadPos = map[string][]core.SrcPos{}
+		}
+		es.defReadPos[v.ID] = append(es.defReadPos[v.ID], pos)
+	}
 	// A stored-ref unit's bare read of a module-scope value is live too
 	// (the seventy-first increment): the unit is invoked by the host after
 	// the store, when the binding may have moved, so the read is seated
@@ -6614,7 +6635,8 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		}
 		es.liveReadNames[name] = true
 		es.noteUnitLive(name)
-	} else if (es.keepLeakNames[name] && (!es.readHasHome(*v) || es.dynLeakNames[name])) || es.mutableRefCarrierRead(*v) {
+	} else if (es.keepLeakNames[name] && (!es.readHasHome(*v) || es.dynLeakNames[name])) || es.mutableRefCarrierRead(*v) ||
+		(es.rootDynLeak && es.TopFrameOnly() && !es.fnLikeResidual(*v)) {
 		// A name a KEEP-DEFS body leaked (NoteKeepDefsLeak), or a mutable
 		// reference — a flex, a store — the pass now holds as a CARRIER
 		// with no compiled home (a body's check-mode mutation re-modelled
@@ -6644,6 +6666,12 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		return
 	}
 	v.ID = core.GenerateID(core.IDPrefixForType(v.Parent))
+	if pos.Row > 0 {
+		if es.defReadPos == nil {
+			es.defReadPos = map[string][]core.SrcPos{}
+		}
+		es.defReadPos[v.ID] = []core.SrcPos{pos}
+	}
 	if es.defReads == nil {
 		es.defReads = map[string]string{}
 	}
@@ -10545,6 +10573,14 @@ func (es *EmitState) crossesStatementEnd(v core.Value, rest []core.Value) bool {
 		return false
 	}
 	for _, r := range rest {
+		// A def-bound READ has no position of its own (residualPos), but
+		// its reads were each seen at their token: when every one of them
+		// sits past a boundary after the lead, this entry does too
+		// (NUR266: `do (mk) end x` over a run ending in a lambda applied
+		// it to x, where the interpreter's re-step stopped at the `end`).
+		if es.isDefRead(r) && es.defReadCrossed(r.ID, from) {
+			return true
+		}
 		to := es.residualPos(r)
 		if to.Row == 0 {
 			continue
@@ -10556,6 +10592,29 @@ func (es *EmitState) crossesStatementEnd(v core.Value, rest []core.Value) bool {
 		}
 	}
 	return false
+}
+
+// defReadCrossed reports whether every recorded read of the def-bound value
+// id sits past a statement boundary that follows from (defReadPos). No
+// recorded read proves nothing.
+func (es *EmitState) defReadCrossed(id string, from core.SrcPos) bool {
+	reads := es.defReadPos[id]
+	if len(reads) == 0 {
+		return false
+	}
+	for _, to := range reads {
+		crossed := false
+		for _, end := range es.stmtEnds {
+			if srcPosBefore(from, end) && srcPosBefore(end, to) {
+				crossed = true
+				break
+			}
+		}
+		if !crossed {
+			return false
+		}
+	}
+	return true
 }
 
 // containerFnAutoDispatchRisk reports whether a get-family dispatch may

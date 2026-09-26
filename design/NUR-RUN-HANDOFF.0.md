@@ -9,6 +9,53 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR210's rebinding half closed, with NUR266 and NUR267 found and closed (2026-09-26)
+
+**The divergence (NUR210's rebinding half).** A computed `do` body at the
+root runs in the root's scope, so a later read of a name sees its defs and
+undefs. `def x 99 end do (mk) end x` over `[def x 5]` bailed compiled
+(`CALL_DYNAMIC underflow`) where the interpreter answers 5, and over
+`[undef x]` bailed where it raises `undefined word: x`.
+
+**Three defects stood in the way, two of them silent in their own right.**
+- **The read was baked** as the check pass's binding. `noteDynKeepDefsLeak`
+  now latches `rootDynLeak` at the top frame. A later root read of a value
+  binding seats live (`NoteLiveRead` → `LOOKUP_DYN_SCOPE`), on the registry
+  the body installed into.
+- **NUR266 (new; silent).** The residual's leading apply took the body's run
+  as a lead over a read written after the statement's `end`. Over a run
+  ending in a lambda, `do (mk) end x` answered 6 for the interpreter's `[fn
+  (Integer) 5]`. The statement-boundary rule (`crossesStatementEnd`, NUR187)
+  could not place a def read, because one binding's reads share a value. The
+  recorder now keeps every read's position (`defReadPos`), and an entry whose
+  reads all sit past a boundary after the lead proves the crossing.
+- **NUR267 (new; silent).** A computed body's `undef` did not take effect:
+  `[undef x x]` over `def x 99` answered 99 for a caught `undefined word:
+  x`. The run-time token-body stamp compiles the body as a detached fn unit,
+  whose frame does not model an unbind it did not make. A body with an
+  `undef` anywhere in it is no longer stamped (`bodyUndefs`), and runs on the
+  interpreter.
+
+**Why they had to land together.** Measured one at a time on this tree:
+- NUR266's proof alone turned the `[def x 5]` witness from a loud bail into
+  a silent `[99]`: the apply stood aside over the baked read.
+- The live read without NUR267 turned the `[undef x]` witness into a silent
+  `[99]`: the stamp had lost the unbind.
+
+Only the three together answer every witness.
+
+**What stays open (loud).** These are NUR266's open half:
+- `x do (mk) end x` declines. It answered `[5 6]` silently before; the run
+  between two reads of one value needs the prefix island to close right
+  after the run.
+- `do (mk) end [x]` and `do (mk) x` over a body that nets nothing bail at
+  `CALL_DYNAMIC` as before, because the dynamic apply's window counts the
+  run as one value.
+
+**Pins.** Lang `TestNUR210ComputedBodyRebindsTheRoot`,
+`TestNUR266RunLeadStopsAtTheStatementEnd` and
+`TestNUR267ComputedBodyUndefTakesEffect`; compiler `TestNUR267BodyUndefs`.
+
 ## NUR242's `fold` program closed, NUR263–NUR265 recorded, NUR265 closed: the exact layout (2026-09-26)
 
 **The divergence.** `def Box class {data: Any} end def b (make Box {data:

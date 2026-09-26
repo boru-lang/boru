@@ -132,7 +132,7 @@ keep the two in sync in the same commit.
 | [NUR207](#nur207) | FIXED 2026-09-26 (the root's gradual def read — the handoff log's entry of that date): the program root plans a bare read of a def-bound gradual value as the fn units do (NUR123). A read the residual holds tests after the residual is laid out and, when the value is a fn, hands the interpreter the program from the read's token over the values beneath it; a consumed read tests at its statement's start where the compiled stack is the interpreter's. The island installs the value under its name for the word dispatch. Where no island starts from the interpreter's own state (`7 j typeof`, `(j)`), the read is a GUARD that raises loudly. The original text: A name DEF-BOUND to a fn value that arrives through a dynamic or `Any`-typed carrier is a WORD dispatch on the interpreter and data on the compiled lane: `def mk fn [[][Any][([] => [42])]] end def j (mk) end j` is `42` interpreted and `[fn]` compiled; `def m {s: ([a:Integer b:Integer] => [a sub b])} end def r (m.s) end r 'x' 3` raises the interpreter's `cannot call r` and answers `[fn (Integer, Integer) x 3]` compiled (the value parks where the name would raise). Silent, default lane, present on main at ae17688. The def-read model claims a window only for a carrier with a claimed shape (NUR194); a gradual carrier's read is plain data | the generated sweep's last cells (2026-09-26), measuring why the `if` × container read could not stand aside |
 | [NUR208](#nur208) | FIXED 2026-09-26 (the branch of fn values — the handoff log's entry of that date): the residual's may-be-fn lead arm asks the placement question its siblings ask (leadPlacedNotRead), so a paren-placed branch result is data; and `apply` over a branch result registers the word's pending application (the produced closure's arm), so it lowers as the apply word's own op. The original text: A paren-placed BRANCH whose arms are both fn values is applied by the compiled lane where the interpreter places it, and not applied where the interpreter's `apply` word dispatches it: `def c true end (if c ([x:Integer] => [x]) ([x:Integer] => [0])) 5` is the interpreter's `[fn (Integer) 5]` and the compiled lane's `[5]`; `def c true end (if c ([] => [42]) ([] => [2])) apply` is `42` interpreted and `[fn]` compiled. Silent, default lane, present on main at ae17688 (measured on a clean tree) — the residual's lead arm reads the branch event's `mayBeFn` flag and applies over the entry after it with no placement test, and the `apply` word's record over a branch result is elided | probing the neighbours of the sweep's `if` × lambda cell (2026-09-26) |
 | [NUR209](#nur209) | FIXED 2026-09-26 (the `behave` × container and `fnsig` × module-export cells — the handoff log's entry of that date), found the same day: a CompileFnHandlerStrict store slot (behave, the fn-util combinators, service `add`) validates an interpreter FnDefInfo, and a factory's CAPTURING closure reached it as a compiled ClosurePayload — `behave canon/q (mk 'K')` raised `behave canon: fn arg has invalid payload` and `FnUtil.compose (mk 1) (mk 2)` a type_error where the interpreter answered; and behave's stored body, run later against the registry, resolved its names without the dynamic-scope mirror (`def g fn [[][String] [def k 'K' canon (make Temp 5)]] def k 'Z'  behave canon/q (fn [[t:Temp][String][k]])  g` answered 'Z' for 'K'). The strict slot admits only an operand proven to arrive as a fn value, and behave arms DynEnv when its stored body names something | the `behave` × container cell (2026-09-26) |
-| [NUR210](#nur210) | OPEN, its SILENT half FIXED 2026-09-26 (the prefix island — the reverse-order run's handoff log, its entry of that date; recorded on main's #512): A COMPUTED `do` body (the dyn-body backstop) diverges on two shapes: a value BENEATH the `do` is seated after the body's values — `def mk fn [[][List][quote [1 2]]] end 9 do (mk)` is `[9 1 2]` interpreted and `[1 9 2]` compiled, SILENT — and a body that rebinds a program binding read after it — `def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x` — is `5` interpreted and `internal_error: CALL_DYNAMIC underflow` compiled (its `undef x` twin: `undefined_word` against the same internal error). Present on main at b4fad6c; the four shapes the review of #508 measured against the withdrawn per-iteration `for` host, in `do`'s form | the clause-list `if` / hosted splice work (2026-09-26), measuring the `do` analogues of the hosted splice's declines |
+| [NUR210](#nur210) | FIXED 2026-09-26: its SILENT half by the prefix island, its rebinding half by live root reads after a computed body with NUR266 and NUR267 (the reverse-order run's handoff log, its entries of that date; recorded on main's #512): A COMPUTED `do` body (the dyn-body backstop) diverges on two shapes: a value BENEATH the `do` is seated after the body's values — `def mk fn [[][List][quote [1 2]]] end 9 do (mk)` is `[9 1 2]` interpreted and `[1 9 2]` compiled, SILENT — and a body that rebinds a program binding read after it — `def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x` — is `5` interpreted and `internal_error: CALL_DYNAMIC underflow` compiled (its `undef x` twin: `undefined_word` against the same internal error). Present on main at b4fad6c; the four shapes the review of #508 measured against the withdrawn per-iteration `for` host, in `do`'s form | the clause-list `if` / hosted splice work (2026-09-26), measuring the `do` analogues of the hosted splice's declines |
 | [NUR211](#nur211) | FIXED 2026-09-26 (the rematch plans the written split — the reverse-order run's handoff log, its entry of that date; recorded on main's #512): A STACK-FORM count over a computed `for` body — `def mk fn [[][List][quote [i]]] end 3 for (mk)`, `(1 add 2) for (mk)` — is the interpreter's `signature_error` (`cannot call `for``: the forward body fills the count slot) and the compiled lane's `internal_error: DISPATCH_REMATCH at for matched at run time where the static model failed`. The check pass recovers the unmatched dispatch to a rematch the runtime cannot execute; the error CODE diverges though both lanes fail. Present on main at b4fad6c with `for`'s declaration as it stood (measured with the 2026-09-26 CompileDynBody reverted) | the clause-list `if` / hosted splice work (2026-09-26), probing the hosted splice's positions |
 | [NUR212](#nur212) | FIXED 2026-09-26 (declined, PR #512's review follow-up), found by Codex on PR #512 and present on `main` at b4fad6c: a code-body `if` CONDITION that binds a name — `def x 1 end if [def x 5 true] [2] [3] end x` — answered [2 1] compiled for the interpreter's [2 5]; the condition fragment rolled its binding back, where the interpreter runs the condition inline and keeps it. if2, if3, the clause-list if and a `case` code-body scrutinee all declined now | PR #512's review (2026-09-26) |
 | [NUR213](#nur213) | FIXED 2026-09-25 (the marker's intent on the value — the handoff log's entry of that date): the check pass quotes the dynamic member read a standalone marker qualifies (the drop of the marker at the pointer, where the concrete value's peek quotes it at run time), and the residual layout leaves a quoted lead or trailing value alone; `m.f/v 5` is `fn (Integer) 5` on both lanes, `5 m.f/v` declines at an existing residual limit and answers by fallback. The original text: A `/v`-marked MAP MEMBER read with arguments beside it is applied on the compiled lane and data on the interpreter: `def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f/v 5` is `fn (Integer) 5` interpreted (the marker says data; the 5 strands on top) and `6` compiled, `5 m.f/v` is `5 fn (Integer)` for `6` — the checker's shaped member apply (`RecordDynMethod` through the method-shape model) collects the window past the reach's dispatch-modifier marker as if it were not there; `m.f/v` alone agrees (`fn (Integer)`, the alone-in-a-live-reach-group rung). Silent, pre-existing at the merge base (measured on `wt-head`, 2026-09-25) | closing NUR262, 2026-09-25 |
@@ -188,6 +188,8 @@ keep the two in sync in the same commit.
 | [NUR263](#nur263) | OPEN (recorded 2026-09-26, probing NUR242's `fold`; proposed verdict: resolve by fix): a code-body word's closure bake over a declared-Any operand runs the overload the check pass picked, and a run-time value that overload refuses raises a signature_error without the interpreter's report. `def mk fn [[][Any]["s"]] end 0 fold [add] (mk)` is `fold`'s no-match on both lanes; compiled it carries none of the notes (the attempted window, the candidates) or the help. Loud; a List or Map result answers on both lanes | probing NUR242's `fold`, 2026-09-26 |
 | [NUR264](#nur264) | OPEN (recorded 2026-09-26, probing NUR242's `fold`; proposed verdict: resolve by fix): an error inside a matched signature's data list, which the check pass auto-evaluates under an OPTIMISTIC static match over a declared-Any operand, is recorded as a static trap that raises unconditionally — the run evaluates the list only when the outer dispatch matches. `def mk fn [[][Any][5]] end each (mk) [dup]` is `each`'s no-match interpreted and `dup`'s compiled; `filter (mk) [gt 1]` over 5 is `filter`'s and `gt`'s. Loud, the wrong error; over a List both lanes raise the inner one | probing NUR242's `fold`, 2026-09-26 |
 | [NUR265](#nur265) | FIXED 2026-09-26 (the handler runs over its arity — the handoff log's entry of that date): the check pass PANICKED — index out of range, recovered as an internal engine error — on `def mk fn [[][Any][5]] end filter (mk) [gt 1]`: the auto-evaluated `[gt 1]` recovered `gt` over one operand, and the const fold ran `gt`'s handler over that short window, which indexes its second argument. A compile-time handler run declines a window shorter than its signature (`concreteHandlerEval`) | probing NUR242's `fold`, 2026-09-26 |
+| [NUR266](#nur266) | OPEN, the read-after-a-boundary half FIXED 2026-09-26 (the handoff log's entry of that date), found probing NUR210's rebinding half: a computed `do` body's run whose last value is a fn was APPLIED to a def-bound read written after the statement's `end` — `def mk fn [[][List][quote [([n:Integer] => [n add 1])]]] end def x 5 end do (mk) end x` answered 6 compiled for the interpreter's `[fn (Integer) 5]`, silent. The statement-boundary rule (crossesStatementEnd, NUR187) could not place a def read; each read's position is kept now. Open and loud: a run between two reads of one value (`x do (mk) end x`, silent `[5 6]` before, declines now), and a run under a later dynamic apply whose window counts it as one value (`do (mk) end [x]`, `do (mk) x` over a body that nets nothing — CALL_DYNAMIC underflow) | probing NUR210, 2026-09-26 |
+| [NUR267](#nur267) | FIXED 2026-09-26 (a body that unbinds stays the interpreter's — the handoff log's entry of that date), found probing NUR210's rebinding half: a computed body's `undef` did not take effect on the compiled lane — `def mk fn [[][List][quote [undef x x]]] end def x 99 end do (mk)` answered `[99]` for the interpreter's caught `undefined word: x`, and `[def x 5 undef x x]` 5 for 99, silent. The run-time token-body stamp compiles the body as a detached fn unit, whose frame does not model an unbind of a binding it did not make; such a body is no longer stamped (`bodyUndefs`) | probing NUR210, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -9713,6 +9715,77 @@ masked, is back on L213 (diagnostic parity 354 → 355, the documented
 no_signature suppression). Its root, the condition analysed without the
 element the run supplies, is the rows' next cut.
 
+## NUR266 — a computed body's run applied across a statement's end to a later read {#nur266}
+
+**Status:** OPEN — the read-after-a-boundary half FIXED 2026-09-26 (the
+handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** probing NUR210's rebinding half.
+
+**Rule:** a value's re-step collects nothing past its statement's end
+(NUR187); one answer on both lanes.
+
+**Divergence** (silent, pre-existing):
+
+```
+def mk fn [[][List][quote [([n:Integer] => [n add 1])]]] end def x 5 end do (mk) end x
+  interp    [fn (Integer) 5]     the run's fn re-steps at the do; the end stops it
+  compiled  [6]                  the residual's leading apply took x
+… do (mk) end x x               interp [fn (Integer) 5 5], compiled [6 5]
+… x do (mk) end x               interp [6 5] (the fn takes the x beneath), compiled [5 6]
+```
+
+**The fix (the read after the boundary).** The residual's lead arms stand
+aside when a statement boundary separates the lead from the entries above it
+(`crossesStatementEnd`), but a def-bound READ has no position of its own:
+the reads of one binding share one value, so the rule could not prove the
+crossing and the arms applied the run's fn to the read. The recorder now
+keeps every position a def-bound value is read at (`defReadPos`, from
+`NoteLiveRead`, which sees each read at its token), and an entry whose reads
+all sit past a boundary after the lead proves the crossing. A value also read
+before the boundary proves nothing, as before. Pinned by lang
+`TestNUR266RunLeadStopsAtTheStatementEnd`.
+
+**Open (loud).**
+- **A run between two reads of one value.** `x do (mk) end x` declines
+  ("dynamic value precedes residual args"). It answered `[5 6]` silently
+  until the reads after a computed body read live (NUR210). Seating it needs
+  the prefix island to close right after the run, before the later entries
+  land.
+- **A run under a later dynamic apply** whose window counts it as one value:
+  `do (mk) end [x]` and `do (mk) x` over a body that nets nothing bail at
+  `CALL_DYNAMIC` (underflow), as they did before.
+
+## NUR267 — a computed body's undef is lost on the compiled lane {#nur267}
+
+**Status:** FIXED 2026-09-26 (a body that unbinds stays the interpreter's —
+the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** probing NUR210's rebinding half.
+
+**Rule:** a `do` body runs in its caller's scope on both lanes; its defs and
+undefs are the caller's.
+
+**Divergence** (silent, pre-existing):
+
+```
+def mk fn [[][List][quote [undef x x]]] end def x 99 end do (mk)
+  interp    [error(undefined word: x)]
+  compiled  [99]
+… [def x 5 undef x x] …         interp [99], compiled [5]
+```
+
+**Why.** A token body that exists only at run time — a quoted list a fn
+returned — is compiled at run time (`StampTokenBody`, the S3 slice): the
+tokens become a detached anonymous fn unit. A fn unit's frame does not model
+an unbind of a binding it did not make, so a read after the `undef` answered
+the value the name held before it, where the interpreter's `do` had unbound
+it in the caller's scope.
+
+**The fix.** The stamp declines a body with an `undef` anywhere in it
+(`bodyUndefs`: the top level, a nested list, a paren group), and such a body
+runs on the interpreter, as every declined body does. No corpus row puts
+`undef` in a computed body, so no census moved. Pinned by lang
+`TestNUR267ComputedBodyUndefTakesEffect` and compiler `TestNUR267BodyUndefs`.
+
 ## NUR243 — three valid programs refused {#nur243}
 
 **Status:** FIXED 2026-09-26 (the three programs compile — the handoff
@@ -13930,9 +14003,9 @@ place. The named-call fallback is unchanged. Pinned by lang
 
 ## NUR210 — a computed `do` body: a value beneath it re-seated, a rebinding it leaks unmodelled {#nur210}
 
-**Status:** OPEN. The silent half was FIXED 2026-09-26 (the prefix island —
-the entry of that date in design/NUR-RUN-HANDOFF.0.md); the rebinding half
-stays loud. Recorded 2026-09-26 on main's #512.
+**Status:** FIXED 2026-09-26. The silent half by the prefix island, the
+rebinding half the same day with NUR266 and NUR267 (the entries of that date
+in design/NUR-RUN-HANDOFF.0.md). Recorded 2026-09-26 on main's #512.
 **Found:** measuring the `do` analogues of the hosted splice's declines
 (the 2026-09-26 handoff entry), on `main` at b4fad6c.
 
@@ -13994,6 +14067,25 @@ layout too (fn-value.tsv L332 and L333 stay native). Pinned by lang
 [def x 5]]] end do (mk) end x` bakes the read of `x` as the check pass's 99,
 and the run's leading apply then underflows (`internal_error`, loud). A read
 after a keep-defs dyn body of a name the body could bind must read live.
+
+**The rebinding half, fixed.** A computed body at the root runs in the
+root's scope, so a later read of a name sees its defs and undefs. Three
+things stood between the witnesses and that answer:
+- **The read was baked** as the check pass's binding. After such a body
+  (`noteDynKeepDefsLeak` at the top frame now latches `rootDynLeak`) a root
+  read of a value binding seats live on the registry the body installed
+  into (`NoteLiveRead`).
+- **The residual's leading apply** took the body's run as a lead over the
+  read, across the statement's `end`, and underflowed when the run netted
+  nothing. The statement-boundary rule could not place a def read; each
+  read's position is kept now (NUR266).
+- **A body that unbinds** was stamped as a detached fn unit that lost the
+  unbind (NUR267); it runs on the interpreter.
+
+The three witnesses answer `[5]`, `[99]` and `undefined word: x` on both
+lanes. Pinned by lang `TestNUR210ComputedBodyRebindsTheRoot`. The shapes
+the run's count cannot seat under a later dynamic apply stay loud, and are
+NUR266's open half.
 
 ## NUR211 — a stack-form count over a computed `for` body: a rematch the runtime cannot run {#nur211}
 

@@ -58,3 +58,39 @@ func TestNUR210ComputedDoRunBeneathAndCollected(t *testing.T) {
 	requireEngineParity(t, mk(`1 2`)+`do (mk) end 9`, true)
 	requireEngineParity(t, `def ops [quote [1 add 2]] 9 do (ops get 0)`, true)
 }
+
+// TestNUR210ComputedBodyRebindsTheRoot pins NUR210's rebinding half: a
+// computed `do` body at the root runs in the root's scope, so its defs and
+// undefs are what a later read of the name sees. The compiled lane baked the
+// read as the check pass's binding and led a dynamic apply over it that
+// underflowed. After such a body a root read of a value binding seats live
+// on the registry the body installed into (EmitState.rootDynLeak), a statement
+// boundary between the body's run and the read is proven (NUR266), and a body
+// that unbinds runs on the interpreter (NUR267).
+func TestNUR210ComputedBodyRebindsTheRoot(t *testing.T) {
+	mk := func(body string) string { return `def mk fn [[][List][quote [` + body + `]]] end def x 99 end ` }
+	for _, src := range []string{
+		mk(`def x 5`) + `do (mk) end x`,   // [5]: the body's def
+		mk(`def y 5`) + `do (mk) end x`,   // [99]: another name
+		mk(`undef x`) + `do (mk) end x`,   // undefined_word: the body's undef
+		mk(`def x 5 7`) + `do (mk) end x`, // [7 5]: the run, then the read
+		mk(`1 2`) + `do (mk) end x`,       // a body that binds nothing
+	} {
+		requireEngineParity(t, src, true)
+	}
+	// Negative: the shapes the run's count still cannot seat stay loud —
+	// never the read's stale value.
+	for _, src := range []string{
+		mk(`def x 5`) + `do (mk) end [x]`,
+		mk(`def x 5`) + `do (mk) x`,
+	} {
+		gi, ei := mustNew(t).RunInterp(src)
+		gc, ec := mustNew(t).Run(src)
+		if fmt.Sprint(gc) == fmt.Sprint(gi) && fmt.Sprint(ec) == fmt.Sprint(ei) {
+			continue
+		}
+		if ec == nil || !(strings.Contains(ec.Error(), "internal_error") || strings.Contains(ec.Error(), "compile_failed")) {
+			t.Errorf("%s: the interpreter's answer or a loud failure, never another answer; got %v / %v", src, gc, ec)
+		}
+	}
+}
