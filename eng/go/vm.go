@@ -2637,14 +2637,13 @@ func (vc *vmContext) gateNamedCall(curReg *core.Registry, word string, have, nee
 	return vc.gateWord(curReg, word)
 }
 
-// bindDynScopeMode executes one OpBindDynScope or OpBindDynScopePeek:
-// install the top value under the name for dynamic-scope readers
-// (OpLookupDynScope), through the same installer the interpreter's `def`
-// runs, and record the prior depth so the frame's RET (or the error unwind)
-// truncates the binding stack back. The pop is a choice: OpBindDynScope pops
-// the value it installs (the lowering pushed a copy for the install),
-// OpBindDynScopePeek leaves it in place (the value is live on the sim for
-// its downstream readers).
+// bindDynScopeMode executes one OpBindDynScope / OpBindDynScopePeek: install
+// the top value under the name for dynamic-scope readers (OpLookupDynScope),
+// through the same installer the interpreter's `def` runs; record the prior
+// depth so the frame's RET (or the error unwind) truncates the binding stack
+// back. The pop is the choice: OpBindDynScope pops the value it installs
+// (the lowering pushed a copy for the install), OpBindDynScopePeek leaves it
+// in place (the value is live on the sim for its downstream readers).
 func (vc *vmContext) bindDynScopeMode(curReg *core.Registry, p *compiler.Program, arg int, stack []core.Value, curDebug []core.SrcPos, pc int, pop bool) ([]core.Value, error) {
 	if len(stack) == 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return nil, vmErrAt(curDebug, pc, "BIND_DYN_SCOPE underflow")
@@ -3664,7 +3663,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 		case compiler.OpBindDynScope, compiler.OpBindDynScopePeek:
 			ns, err := vc.bindDynScopeMode(curReg, p, int(in.Arg), stack, curDebug, pc, in.Op == compiler.OpBindDynScope)
-			if err != nil { //covergate:allow bindDynScope's only error paths are its own allow-listed defensive guards (underflow / bad name const), unreachable without a bytecode-level fault (§compiler)
+			if err != nil { //covergate:allow bindDynScopeMode's only error paths are its own allow-listed defensive guards (underflow / bad name const), unreachable without a bytecode-level fault (§compiler)
 				return nil, err
 			}
 			stack = ns

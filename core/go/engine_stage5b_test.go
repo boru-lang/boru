@@ -1752,3 +1752,46 @@ func TestConcreteFnSingleReturn(t *testing.T) {
 		}
 	}
 }
+
+// TestS5BCloseParenTrailingApplyConcreteReturn pins the trailing arm's result
+// typing (NUR180): a CONCRETE named lead whose own signatures declare one
+// return nets a value of that type on every run, so the recorded out
+// carries it — strict, not gradual — where a fn-typed carrier lead keeps
+// the Any.
+func TestS5BCloseParenTrailingApplyConcreteReturn(t *testing.T) {
+	r := covRegistry(t, nil)
+	es := newS5BEmit()
+	es.dynApplyOK = true
+	installS5BEmit(t, r, es)
+	e := NewTop(r)
+	fnv := namedFnVal("inc2", []FnParam{{Name: "n", Type: TInteger}}, []*Type{TInteger},
+		parenBody(NewWord("cadd"), NewWord("n"), NewInteger(2)))
+	e.Tape = NewTape([]Value{NewOpenParen(), NewInteger(3), fnv, NewCloseParen()}, StackHeadroom)
+	e.Pointer = 3
+	if err := e.stepCloseParen(true, false); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.dynApplies != 1 || e.Tape.Len() != 1 {
+		t.Fatalf("the concrete lead records one apply and collapses: applies=%d len=%d", es.dynApplies, e.Tape.Len())
+	}
+	if out := es.lastOut; !out.Carrier || out.Dynamic || !out.Parent.Equal(TInteger) {
+		t.Errorf("the out carries the lead's declared return (a strict Integer), got %v dyn=%v", out, out.Dynamic)
+	}
+}
+
+// TestS5BProducedLeadWindowSkipsNonLiteral pins the curried-chain
+// classifier's walk over the window: a token that is no recordable literal
+// (an End marker inside the group) is neither the lead nor an argument —
+// the walk steps over it and the window is the lead over the data value.
+func TestS5BProducedLeadWindowSkipsNonLiteral(t *testing.T) {
+	es := newS5BEmit()
+	es.producedOK, es.producedRet = true, TInteger
+	e, lead := producedLeadEngine(t, es, NewEnd(), NewInteger(2))
+	w, ok := e.parenProducedLeadApplyIdx(es, 0, e.Pointer, 2, true)
+	if !ok || w.lead != 1 || len(w.argIdxs) != 1 || w.argIdxs[0] != 3 {
+		t.Fatalf("the window is the lead at 1 over the value at 3, the End skipped: ok=%v lead=%d args=%v", ok, w.lead, w.argIdxs)
+	}
+	if e.Tape.At(w.lead).ID != lead.ID || len(es.producedArgs) != 1 {
+		t.Errorf("the recorder is asked over the one data argument: asked=%v", es.producedArgs)
+	}
+}

@@ -425,3 +425,21 @@ func TestStepWordNestedBodySubstitutesCarrier(t *testing.T) {
 		t.Error("a plain check must not set the compile-only mark")
 	}
 }
+
+// TestCheckFnCarrierBindDepthWithoutDepthTable pins the depth read's second
+// guard: a name the BINDS table holds while its depth twin is absent (the
+// two are separate registry capabilities — a writer that sets one alone, or
+// a partial reset, leaves exactly this state) reads as bound at no depth
+// rather than panicking on a nil map or inventing depth 0.
+func TestCheckFnCarrierBindDepthWithoutDepthTable(t *testing.T) {
+	r := covRegistry(t, nil)
+	if err := r.Capabilities.Set(capCheckFnCarrierBinds, map[string]Value{"solo": NewCarrier(TFunction)}); err != nil {
+		t.Fatalf("Capabilities.Set: %v", err)
+	}
+	if _, bound := CheckFnCarrierBind(r, "solo"); !bound {
+		t.Fatal("the binds table alone resolves the bind")
+	}
+	if d, bound := CheckFnCarrierBindDepth(r, "solo"); bound || d != 0 {
+		t.Errorf("no depth table: the name has no bind depth, got %d %v", d, bound)
+	}
+}

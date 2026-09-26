@@ -119,9 +119,13 @@ func TestApplyOverParamFnCompiles(t *testing.T) {
 	fnValueM2CompileFailure(t, "mid-body apply (result dropped, tail is a literal)",
 		`def h fn [[comp:Function v:Integer] [Integer] [v comp/v apply drop 42]] h (([x:Integer] => [x add 1])/v) 5`,
 		"apply of a dynamic fn value not at the body tail")
-	fnValueM2CompileFailure(t, "double apply (two pendings, one window)",
+	// The double apply GRADUATED 2026-09-25: two pendings over one window
+	// are an APPLY CHAIN (fnUnitRec.applyChain) — every step but the last
+	// emits OpCallDynApplyOne over its own operand window, the last
+	// OpCallDynApplyTop over the residual (callbacks.tsv L125's shape).
+	fnValueM2Native(t, "double apply (two pendings, one window — the apply chain)",
 		`def h fn [[c1:Function c2:Function v:Integer] [Integer] [v c1/v apply c2/v apply]] h (([x:Integer] => [x add 1])/v) (([x:Integer] => [x mul 3])/v) 5`,
-		"apply of a dynamic fn value not at the body tail")
+		"[18]")
 }
 
 // --- M2b — path-modifier map-stored fns -----------------------------------

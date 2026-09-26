@@ -607,3 +607,26 @@ func TestS5VIsTypeValue(t *testing.T) {
 		t.Error("plain concrete map is not a type value")
 	}
 }
+
+// TestS5VIsUnboundSlot pins the VM's bound-checked local read: the ZERO
+// Value — what a compiled frame slot holds before any store — and nothing
+// the engine mints: a runtime value carries a Parent, a type node its
+// metadata, a carrier its flag, an identity-only or dynamic value its bit.
+func TestS5VIsUnboundSlot(t *testing.T) {
+	if !(Value{}).IsUnboundSlot() {
+		t.Error("the zero Value is the unbound slot")
+	}
+	for name, v := range map[string]Value{
+		"an integer":     NewInteger(1),
+		"a carrier":      NewCarrier(TInteger),
+		"a type node":    NewTypeLiteral(TInteger),
+		"an identity":    {ID: "slot-1"},
+		"a dynamic bit":  {Dynamic: true},
+		"a carrier bit":  {Carrier: true},
+		"a bare payload": {Data: IntPayload{N: 1}},
+	} {
+		if v.IsUnboundSlot() {
+			t.Errorf("%s is not the unbound slot", name)
+		}
+	}
+}

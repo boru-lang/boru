@@ -128,6 +128,7 @@ keep the two in sync in the same commit.
 | [NUR203](#nur203) | FIXED 2026-09-25 (the dynamic body's leak — the handoff log's entry of that date): A keep-defs word over a DYNAMIC body inside a fn — `def f fn [[b:List xs:List][Integer][def t 0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]` — is the interpreter's 3 (the body leaks its def per element into the fn's frame) and the compiled lane's 0: the run-time stamp installs the leak (NUR202's close), but the compile pass never sees the body's tokens, so the fn's later read of `t` keeps its compile-time home instead of seating live. The root twin agrees. Present on main at 3768c46. Fence: `TestDynamicKeepDefsBodyLeakInFnPending`. |
 | [NUR204](#nur204) | FIXED 2026-09-25 (the lexical index scope — the handoff log's entry of that date): A body def of the for loop's OWN index — `def i 0 end for 3 [def i 9] end i` — is the interpreter's 2 (the loop leaves its index level bound past the loop: the last index; 0 inside a nested loop, whose outer cleanup pops it) and was the compiled lane's 9 on main (the loop carried the def and wrote the body's value back), for a native or a user-call value alike, inside a fn and through an arm too; neither is the pre-loop 0 a lexical loop scope would give. The compiled lane DECLINES the shape loudly now (the for's index name rides RecordLoop into the loop event). Present on main at 3768c46; found while landing the user-call write-back. Fence: `TestForIndexDefInBodyPending`. |
 | [NUR205](#nur205) | FIXED 2026-09-25 (the module replay's own bind — the handoff log's entry of that date): a loop whose body binds a MODULE declines — its join's twin is noted with its placement withheld, so the twin regime's full-placement gate declines — where the compiled lane's one replay of the check pass's bind (the join's twin, placed at the loop) is not the interpreter's bind — when the loop may run zero times (the name stays unbound on the interpreter), and when the body's import mints a NEW instance per iteration (an inline `import module […]`; the two analysis rounds' namespaces share no export map) — and an `if` arm that may not run withholds a module bind's twin the same way (installArmJoins) (`if c [import …] [] M.a` raised `undefined_word` interpreted and answered compiled); a cached `boru:` import in a loop that provably runs, and the arm a decided condition takes, keep their one replay and agree. The original text: An inline `import module […]` inside a LOOP body runs its module body ONCE on the compiled lane where the interpreter re-imports it per iteration, so module STATE carries across iterations: `for 2 [import module [def acc (flex []) export "M" {acc: acc}] end M.acc push 1 end size M.acc]` is the interpreter's `[[1] 1 [1] 1]` (a fresh `acc` each time) and the compiled lane's `[[1 1] 1 [1 1] 2]` — silent, default lane, present on main at 00ec530 with no callback involved (the import is a compile-time word whose body the check pass ran once and whose bindings the loop body replays). Found by the generated sweep when the `for-each` and `walk` × module-export seeds graduated (their module carries `acc`): their for-body variants diverge the same way (`[3 6]` for `[3 3]`; `… 5 … 10` for `… 5 … 5`) and are pinned in `sweepKnownMiscompiles`. The `each` twin (`each M.stp [1 2 3]` in the same loop) diverges identically and always has; its sweep seed carries no state, so the matrix never saw it. | the generated sweep, closing the fn-value callback cells (2026-09-25) |
+| [NUR206](#nur206) | FIXED 2026-09-26 (the merge of main's #508 with the reverse-order NUR run — the handoff log's entry of that date): closed by the run's NUR208, the same defect found independently — the fault path unwinds every live loop (`Engine.unwindLiveLoops`), so a caught error leaves the registry as the loop found it and all three witnesses are 99 on both lanes. The original text: A `for` loop's INDEX SURVIVES an error the enclosing `do` catches on the interpreter, for the rest of the program, where the compiled lane reads the outer binding: `def i 99 end do [for 3 [raise oops 'x']] error [drop] end i` is the interpreter's `0` (the raise unwinds the spliced body before its move cleanup, so the loop's index level stays installed over the outer `i`) and the compiled lane's `99`; the same with the handler reading `i`, and with a computed body (`for 3 (mk)` over `[raise oops 'x']`). Silent, default lane, present on main at 9e02915 — the compiled `do` body traps or islands the loop and the handler reads `i` from its compiled slot. The direction is the interpreter: an error unwind out of a spliced loop body should run the frame's cleanup as break/continue's `unwindLiveFrames` does, not leave the index bound. Pinned `TestLoopIndexSurvivesCaughtErrorPending` (lang) | the Codex review of #508 (2026-09-25), measuring the withdrawn hosted for body; the literal-body twin found on the follow-up |
 | [NUR208](#nur208) | FIXED 2026-09-25 (the loop region's residual — the handoff log's entry of that date), found the same day closing NUR197: a `for` loop abandoned by a raise the caller TRAPS left its ITERATOR installed on the interpreter — `def i 9  do [for 2 [raise 'x']]  i` read 0, `for 3 [if (i eq 1) [raise 'x'] []]` under the same trap read 1 — where the compiled lane's loop keeps `i` in a frame slot and the read answers the root's 9; silent, present on main. NUR201's loop twin: the fault return unwinds every live loop's iterator (`Engine.unwindLiveLoops`) before the frames, as a break's region discard does | probing NUR197's neighbours, 2026-09-25 |
 | [NUR209](#nur209) | FIXED 2026-09-25 (the loop region's residual — the handoff log's entry of that date), found the same day closing NUR197: a `do` body that is ONE container literal over the loop variable — `for 2 [do [[i]]]`, `for 2 [do [{a:i}]]`, `for 2 [do [[(i add 1)]] i]` — answered `error(undefined word: i)` per iteration on the compiled lane for the interpreter's `[0] [1]`, silent, exit 0, present on main: the token body was analysed as a DEFERRING lambda (bodyInFrame false), its residual recorded no assembly, the closure declined on the unknown provenance and the dyn-body backstop baked the literal as a const the handler re-ran through the interpreter, where the loop's `i` is a frame slot the registry never held; a multi-token body (`do [[i] 5]`) compiled. A token body compiles in-frame now (recordClosureDispatch's bodyInFrame true — the InvokeBody seam's sub-engine sweeps the residual at its end, with the bindings live), and the closure assembles the list from the captured slot | probing NUR197's neighbours, 2026-09-25 |
 | [NUR210](#nur210) | FIXED 2026-09-25 (the reach group's survivor — the handoff log's entry of that date): A module fn returning a NAMED fn value, read through its reach group with a value beneath — `import module [def ff fn [[][Function][inc/v]] def inc fn [[n:Integer][Integer][n add 1]] export "M" {ff: ff/v}] end 5 M.ff` — is 6 on the interpreter (the reach group `( M dot ff )` never parks, its collapse re-steps the lone survivor, a NAMED fn at the pointer, and a name always calls: ADR-011) and `[5 fn inc(Integer)]` on the compiled lane, which seats the returned value as data; `M.ff 5` the same. The main-registry twin `5 ff` parks on both lanes, and so does `5 (M.ff)`. Present on main; found closing NUR191. Fence: `TestModuleFnNamedValueThroughReachPending` | probing NUR191's neighbours, 2026-09-25 |
@@ -11216,3 +11217,53 @@ carried by the fallback removal that found it.
 reason NUR171 has one: the notes are compared only by the compile-or-fallback
 gate, so a `knownDivergences` pin would fail the differential gate for not
 seeing a divergence it does not look for.
+
+## NUR206 — the loop index survives an error the enclosing `do` catches {#nur206}
+
+**Status:** FIXED 2026-09-26 (the merge of main's #508 with the
+reverse-order NUR run — the handoff log's entry of that date). Recorded
+2026-09-25.
+
+**The fix.** None of its own: the reverse-order NUR run had closed the same
+defect as NUR208 (found closing NUR197) — the interpreter's fault return
+unwinds every `for` loop the error leaves live on the tape
+(`Engine.unwindLiveLoops`, the escape paths' twin), so the raise that `do`
+catches uninstalls the loop's index level. Measured on the merged tree: all
+three witnesses answer 99 on both lanes, compiled, and with no outer
+binding the name is `undefined_word` after the caught error. The pin is
+flipped to the closed state: `TestLoopIndexUnwoundByCaughtError`.
+
+**Found:** the Codex review of #508, measuring the hosted computed `for`
+body that push withdrew; the literal-body twin measured on the follow-up,
+on `main` at 9e02915.
+
+**The witness.**
+
+```
+def i 99 end do [for 3 [raise oops 'x']] error [drop] end i
+
+  interpreted   0      the loop's index level stays installed after the raise
+  compiled      99     the handler and the read see the outer binding
+```
+
+The same with the handler reading the name (`error [i]`), and with a
+computed body (`def mk fn [[][List][quote [raise oops 'x']]] end do [for 3
+(mk)] error [drop] end i`). An `each` body raising inside the same `do`
+agrees on both lanes (99): the callback runs in its own body run, whose
+cleanup the error path takes.
+
+**Where it sits.** The interpreter splices the `for` body onto its tape
+with a move cleanup after it; the raise unwinds to `do`'s trap without
+reaching that cleanup, and nothing else pops the index level, so `i` stays
+bound to the iteration's value for the rest of the program. Break and
+continue take `unwindLiveFrames` for exactly this reason; the error path
+does not. The compiled lane traps or islands the loop inside `do`'s body
+and the later read of `i` is its compiled slot, the outer binding.
+
+**The direction of the fix is the interpreter, not the VM.** A caught error
+should leave the registry as the loop found it — the frame cleanup the
+escape paths already run. Making the compiled lane leak the index to match
+would be a uniform wrong answer.
+
+**Pinned:** `TestLoopIndexSurvivesCaughtErrorPending` (lang/go), asserting
+the divergence as it stands so the close is noticed.

@@ -681,3 +681,82 @@ func TestInstallJoinedDefsNarrowingSkipAndBothArmsNote(t *testing.T) {
 		t.Fatalf("the both-arms join must note its push (this note was missing); got %+v", led)
 	}
 }
+
+// armedJoinRegistry is a registry whose check state answers Armed() — the
+// compile-pass configuration condBoundCarrier keys on — restored on cleanup.
+func armedJoinRegistry(t *testing.T) *Registry {
+	t.Helper()
+	r := w8reg(t)
+	prev := r.Check.Emit
+	r.Check.Emit = &s5aEmit{EmitRecorder: TheInactiveEmit, active: true, armed: true}
+	t.Cleanup(func() { r.Check.Emit = prev })
+	return r
+}
+
+// TestCondBoundCarrierUnderArmedRecorder pins the binding InstallJoinedDefs
+// pushes for a name bound in ONE arm of an undecided branch with no
+// pre-branch binding under a COMPILE pass: a payload-less carrier of the
+// arm's value with a FRESH identity, so a later read resolves through the
+// compiler's frame slot (the branch-carried def) rather than baking the
+// arm's value. A capitalised name, a fn value and a Function-typed value
+// keep the arm's own value — their consumers read the payload itself.
+func TestCondBoundCarrierUnderArmedRecorder(t *testing.T) {
+	r := armedJoinRegistry(t)
+
+	then := NewInteger(5)
+	InstallJoinedDefs(r, map[string]Value{"cbx": then}, nil)
+	got, ok := r.Defs.Top("cbx")
+	if !ok || IsConcrete(got) || !got.Carrier || !got.Parent.Equal(TInteger) {
+		t.Fatalf("a then-only fresh binding under an armed recorder is a payload-less Integer carrier: %v/%v", got, ok)
+	}
+	if got.ID == then.ID {
+		t.Error("the carrier takes a FRESH identity, not the arm's value's")
+	}
+
+	els := NewString("s")
+	InstallJoinedDefs(r, nil, map[string]Value{"cby": els})
+	if got, ok := r.Defs.Top("cby"); !ok || IsConcrete(got) || !got.Parent.ConformsTo(TString) || got.ID == els.ID {
+		t.Errorf("an else-only fresh binding takes the same carrier: %v/%v", got, ok)
+	}
+
+	capName := NewInteger(7)
+	fnv := NewFunction(FnDefInfo{Name: "cbg"})
+	fnCarrier := NewCarrier(TFunction)
+	InstallJoinedDefs(r, map[string]Value{"Cbz": capName, "cbf": fnv, "cbc": fnCarrier}, nil)
+	for name, want := range map[string]Value{"Cbz": capName, "cbf": fnv, "cbc": fnCarrier} {
+		if got, ok := r.Defs.Top(name); !ok || got.ID != want.ID {
+			t.Errorf("%s: a capitalised name, a fn value and a Function-typed value keep the arm's own value: %v/%v", name, got, ok)
+		}
+	}
+
+	// Off the compile pass the arm's own value is kept exactly as before.
+	plain := w8reg(t)
+	InstallJoinedDefs(plain, map[string]Value{"cbx": then}, nil)
+	if got, ok := plain.Defs.Top("cbx"); !ok || got.ID != then.ID {
+		t.Errorf("a plain check keeps the arm's own value: %v/%v", got, ok)
+	}
+}
+
+// TestInstallTakenArmDefs pins the CONSTANT-condition twin: the one analysed
+// arm always runs, so its binding is unconditionally the post-branch one —
+// the arm's own value even under an armed recorder — and every join it
+// reports is flagged Taken.
+func TestInstallTakenArmDefs(t *testing.T) {
+	r := armedJoinRegistry(t)
+	tv := NewInteger(1)
+	joins := InstallTakenArmDefs(r, map[string]Value{"tka": tv}, nil)
+	if len(joins) != 1 || !joins[0].Taken || !joins[0].ThenBinds || joins[0].ElseBinds || joins[0].Name != "tka" {
+		t.Fatalf("a then-arm taken binding reports one Taken then-join: %+v", joins)
+	}
+	if got, ok := r.Defs.Top("tka"); !ok || got.ID != tv.ID {
+		t.Errorf("the taken arm's binding is the arm's own value, not a carrier: %v/%v", got, ok)
+	}
+	ev := NewString("e")
+	joins = InstallTakenArmDefs(r, nil, map[string]Value{"tkb": ev})
+	if len(joins) != 1 || !joins[0].Taken || joins[0].ThenBinds || !joins[0].ElseBinds {
+		t.Fatalf("an else-arm taken binding reports one Taken else-join: %+v", joins)
+	}
+	if got, ok := r.Defs.Top("tkb"); !ok || got.ID != ev.ID {
+		t.Errorf("the taken else arm's binding is the arm's own value: %v/%v", got, ok)
+	}
+}

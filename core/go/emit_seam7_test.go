@@ -250,3 +250,12 @@ func TestInactiveConstructorSlots(t *testing.T) {
 		t.Fatal("inactiveIsolatedEmitHook must hand out the inactive recorder")
 	}
 }
+
+// TestIsInertReachForeignPayload: a value typed Reach whose payload is not a
+// ReachInfo (AsReach errors) declines the standalone lens test exactly as
+// the member test does — the const table never pools a malformed reach.
+func TestIsInertReachForeignPayload(t *testing.T) {
+	if isInertReach(Value{Parent: TReach, Data: IntPayload{N: 1}}) {
+		t.Fatal("a non-reach payload should decline")
+	}
+}

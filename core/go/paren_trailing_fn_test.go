@@ -163,3 +163,102 @@ func TestNoteWordReadMarksFnCarrier(t *testing.T) {
 		t.Errorf("a bare read before a Function slot is marked: %v", e.Registry.Check.WordReadFnIDs)
 	}
 }
+
+// TestParenFeedsPendingForwardAfterGroup pins the scan's exhausted exit: a
+// forward that lives AFTER the group (the tape holds one, so the fast exit
+// does not fire) is nobody the group feeds — the backward scan runs out of
+// tape without meeting a forward or an open paren.
+func TestParenFeedsPendingForwardAfterGroup(t *testing.T) {
+	sig := &Signature{Args: []*Type{TAny, TAny}, BarrierPos: 2}
+	collecting := NewForward(ForwardInfo{FuncName: "cadd", ExpectedArgs: 2, CollectedArgs: 1, Sig: sig})
+	tape := []Value{NewOpenParen(), NewInteger(2), NewCloseParen(), collecting}
+	e := &Engine{Tape: NewTape(tape, 8)}
+	if e.parenFeedsPendingForward(0) {
+		t.Error("a forward after the group is not one the group feeds: the scan exhausts the tape")
+	}
+}
+
+// trailingFnCloseEngine is the collapse harness for NUR184's trailing-fn
+// arms: a check pass with an ACTIVE recorder, the paren `(3 <fn carrier>)`
+// laid out after any prefix tokens, the pointer on the close paren.
+func trailingFnCloseEngine(t *testing.T, prefix []Value, suffix ...Value) (*Engine, *s5bEmit, Value) {
+	t.Helper()
+	r := covRegistry(t, nil)
+	es := newS5BEmit()
+	es.dynApplyOK = true
+	installS5BEmit(t, r, es)
+	e := NewTop(r)
+	last := NewCarrier(TFunction)
+	last.ID = "fnc-trailing"
+	tape := append([]Value(nil), prefix...)
+	tape = append(tape, NewOpenParen(), NewInteger(3), last, NewCloseParen())
+	closeIdx := len(tape) - 1
+	tape = append(tape, suffix...)
+	e.Tape = NewTape(tape, StackHeadroom)
+	e.Pointer = closeIdx
+	return e, es, last
+}
+
+// TestCloseParenTrailingFnFeedsForward pins stepCloseParen's forward-fed
+// arm of the trailing-fn switch (NUR184): a collapse under the eager
+// forward-argument evaluator (feedsForward) or directly under a PARKED
+// forward still collecting (parenFeedsPendingForward) records NO apply —
+// the survivors become that collection's candidates, and the fn value is
+// marked re-stepped and a possible forward leftover. `10 mul (2 (mk 1))`
+// is 21: mul takes the 2, the closure re-steps later over the 20.
+func TestCloseParenTrailingFnFeedsForward(t *testing.T) {
+	sig := &Signature{Args: []*Type{TAny, TAny}, BarrierPos: 2}
+	collecting := NewForward(ForwardInfo{FuncName: "cadd", ExpectedArgs: 2, CollectedArgs: 1, Sig: sig})
+	cases := []struct {
+		name         string
+		prefix       []Value
+		reStepped    bool
+		feedsForward bool
+	}{
+		{"the group's own close under the eager evaluator", nil, false, true},
+		{"a main-loop collapse directly under a collecting forward", []Value{NewInteger(10), collecting}, true, false},
+	}
+	for _, tc := range cases {
+		t.Run(tc.name, func(t *testing.T) {
+			e, es, last := trailingFnCloseEngine(t, tc.prefix)
+			if err := e.stepCloseParen(tc.reStepped, tc.feedsForward); err != nil {
+				t.Fatalf("stepCloseParen: %v", err)
+			}
+			if es.dynApplies != 0 || len(es.trailing) != 0 {
+				t.Errorf("a forward-fed collapse records no apply and registers no residual: applies=%d trailing=%v", es.dynApplies, es.trailing)
+			}
+			if e.Tape.Len() != len(tc.prefix)+2 {
+				t.Errorf("both survivors stay for the collection, tape len %d", e.Tape.Len())
+			}
+			ck := e.Registry.Check
+			if !ck.ParenReSteppedFnIDs[last.ID] || !ck.ForwardLeftoverFnIDs[last.ID] {
+				t.Errorf("the fn value is marked re-stepped and a forward leftover: restepped=%v leftover=%v", ck.ParenReSteppedFnIDs, ck.ForwardLeftoverFnIDs)
+			}
+		})
+	}
+}
+
+// TestCloseParenTrailingFnCollectsPastClose pins the switch's third arm: a
+// trailing fn value that would forward-collect the token after the close
+// paren once re-stepped (`(2 (mk 1)) 10` is `[2 11]`) records no apply over
+// the values INSIDE the paren and is marked re-stepped only — not a
+// forward leftover, since no collection is pending.
+func TestCloseParenTrailingFnCollectsPastClose(t *testing.T) {
+	e, es, last := trailingFnCloseEngine(t, nil, NewOpenParen(), NewInteger(10), NewCloseParen())
+	if err := e.stepCloseParen(true, false); err != nil {
+		t.Fatalf("stepCloseParen: %v", err)
+	}
+	if es.dynApplies != 0 || len(es.trailing) != 0 {
+		t.Errorf("a fn collecting past the close records no in-paren apply: applies=%d trailing=%v", es.dynApplies, es.trailing)
+	}
+	if e.Tape.Len() != 5 {
+		t.Errorf("both survivors stay ahead of the following group, tape len %d", e.Tape.Len())
+	}
+	ck := e.Registry.Check
+	if !ck.ParenReSteppedFnIDs[last.ID] {
+		t.Errorf("the fn value is marked re-stepped: %v", ck.ParenReSteppedFnIDs)
+	}
+	if ck.ForwardLeftoverFnIDs[last.ID] {
+		t.Errorf("no collection is pending, so no forward-leftover mark: %v", ck.ForwardLeftoverFnIDs)
+	}
+}
