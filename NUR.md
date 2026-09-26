@@ -9414,9 +9414,16 @@ so `preferWordSig` defers the non-`/q` match (`PlanMatch`'s
 The paren's gradual Any then arrives in the FlexList slot optimistically.
 NUR228's `AmbiguousGradualSplit` covers a gradual STACK operand at the
 normal return. This one is a forward operand whose type is known only at
-ARRIVAL, so the fix belongs at the arrival or its force-stack re-step. It
-should decline, as NUR228 does, when the arrived value is unproven for its
-slot and a narrower stack window matches.
+ARRIVAL, so the fix belongs at the arrival or its force-stack re-step.
+
+A naive arrival latch over-declines. "The arrived value is unproven for its
+slot and a narrower stack window matches" also fires on `1 2 add (m.v)`:
+the same shape, and an idiom gradual code uses constantly, where the value
+fits in nearly every real run. The fix needs NUR228's discipline: a
+restriction that names what makes the narrower window the runtime's
+likely one (here the plan was the deferred word-led window,
+`preferWordSig`), or a run-time re-plan of the window. It must not be a
+blanket decline.
 
 ## NUR242 — programs that compile and then fail inside the compiled runtime {#nur242}
 
