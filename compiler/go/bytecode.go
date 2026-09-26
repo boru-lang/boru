@@ -890,6 +890,30 @@ func UnitIsFnValue(fn *CompiledFn) bool {
 	return fn != nil && fn.Lambda && len(fn.Params) == fn.NArgs
 }
 
+// ClosureIsAnonymous reports whether closure cl over unit fn is an
+// ANONYMOUS fn value (`afn` / `=>`): the interpreter parks such a value,
+// unapplied, where nothing supplies an argument (ADR-016's gate); a named
+// one — a `fn` literal, cl.Named — calls (NUR235).
+func ClosureIsAnonymous(fn *CompiledFn, cl core.ClosurePayload) bool {
+	return fn != nil && fn.Lambda && !cl.Named
+}
+
+// ClosureCallsAtLanding reports whether a fn-value closure landing with
+// nothing to apply CALLS rather than parks: a NAMED fn value whose unit
+// takes no argument — its only call form is nullary, and a name always
+// calls (NUR235). An anonymous value, or one that needs arguments, parks.
+func ClosureCallsAtLanding(v core.Value) bool {
+	cl, ok := v.Data.(core.ClosurePayload)
+	if !ok || !cl.Named {
+		return false
+	}
+	prog, ok := cl.Prog.(*Program)
+	if !ok || prog == nil || cl.Unit < 0 || cl.Unit >= len(prog.Fns) {
+		return false
+	}
+	return prog.Fns[cl.Unit].NArgs == 0
+}
+
 // ClosureIsFnValue reports whether v is a compiled closure minted from a fn
 // VALUE — a capturing `fn` / `=>` literal pushed at run time (a factory's
 // result, a def-bound one read back), in the plain value shape — which every

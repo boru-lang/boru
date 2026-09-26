@@ -107,7 +107,7 @@ func (vmCompiledRuntime) ClosureAsFnDef(r *core.Registry, v core.Value) (core.Va
 	// signature: SigMatched, so the invoker applies the unit positionally
 	// (ClosurePayload.SigMatched).
 	matched := core.ClosureSigMatched(v)
-	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
+	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl, func(args []core.Value) ([]core.Value, error) {
 		return invoke(r, matched, args)
 	})
 	if !ok {

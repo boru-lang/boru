@@ -588,6 +588,12 @@ type ClosurePayload struct {
 	// diagnostic agrees in value and taxonomy but loses the position, which
 	// the full-corpus parity gate compares.
 	RetPos SrcPos
+	// Named marks a closure pushed from a NAMED fn value — a `fn` literal;
+	// only `afn` / `=>` make one anonymous. The unit is shared with
+	// anonymous values over the same body, so the push carries it
+	// (compiler ClosureRetSpec.Named): a name always calls, so a nullary
+	// named value fires where an anonymous one parks (NUR235).
+	Named bool
 }
 
 // NewStoreShapeCarrier mints an abstract store-shaped carrier: a

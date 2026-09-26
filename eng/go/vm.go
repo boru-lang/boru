@@ -1400,7 +1400,9 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		// interpreter entry for nothing: invokeFnValueClosure declines a
 		// parameterised unit and RunResolved steps the body to the same answer
 		// (bytecode-migrated.tsv:L285, callbacks.tsv:L150).
-		if compiler.ClosureIsFnValue(v) {
+		// A NAMED fn value that takes no argument is the other side of the
+		// gate: a name always calls, so it fires (NUR235).
+		if compiler.ClosureIsFnValue(v) && !compiler.ClosureCallsAtLanding(v) {
 			return stack, nil, nil
 		}
 		results, err := vc.invokeClosure(vc.r, v, nil)
@@ -1744,7 +1746,7 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 		if head.Name != "" {
 			if fn, known := vc.closureUnit(cl); known && !closureMatchesArgs(fn, args) {
 				// A render-only bridge: the no-match only reads its signature.
-				if fnv, built := closureFnDef(fn, cl.Ident, nil); built {
+				if fnv, built := closureFnDef(fn, cl, nil); built {
 					fd, _ := fnv.Data.(core.FnDefInfo)
 					view := installedSigView(fd)
 					written := args[:min(head.NWritten, len(args))]
@@ -3405,7 +3407,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if spec, has := closureRetAt(p, curUnit, pc); has {
 				cl.RetTypes, cl.RetPatterns = spec.Types, spec.Patterns
 				cl.RetDecl, cl.RetName, cl.RetPos = spec.Decl, spec.Name, spec.Pos
-				cl.Source = spec.Source
+				cl.Source, cl.Named = spec.Source, spec.Named
 				v.Data = cl
 				if spec.DefName != "" {
 					// A `/v` read of a def-bound capturing literal: the

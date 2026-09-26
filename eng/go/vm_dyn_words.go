@@ -110,7 +110,7 @@ func nameClosureValue(v core.Value, name string) core.Value {
 		// renamed FnDefInfo gives (`fn h(Integer)`); no handler is attached,
 		// this value is only ever formatted.
 		if params, ok := closureSigParams(&prog.Fns[cl.Unit]); ok {
-			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: prog.Fns[cl.Unit].Lambda})
+			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: compiler.ClosureIsAnonymous(&prog.Fns[cl.Unit], cl)})
 		}
 	}
 	v.Data = cl
@@ -302,7 +302,7 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 	// the bridged signature, args in signature order: SigMatched, so the
 	// invoker applies the unit positionally (ClosurePayload.SigMatched).
 	body := core.ClosureSigMatched(v)
-	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
+	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl, func(args []core.Value) ([]core.Value, error) {
 		return vc.invokeClosureOn(reg, body, args)
 	})
 	if !ok {
@@ -364,7 +364,7 @@ func closureMatchesArgs(fn *compiler.CompiledFn, args []core.Value) bool {
 // (CompiledFn.Lambda): it is what parks a 0-arg lambda VALUE nothing calls
 // at the pointer (ADR-016's gate), so the value-path bridge parks in the
 // same places the interpreter's own value does.
-func closureFnDef(fn *compiler.CompiledFn, ident core.FnIdentity, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
+func closureFnDef(fn *compiler.CompiledFn, cl core.ClosurePayload, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
 	params, ok := closureSigParams(fn)
 	if !ok {
 		return core.Value{}, false
@@ -388,7 +388,7 @@ func closureFnDef(fn *compiler.CompiledFn, ident core.FnIdentity, invoke func(ar
 	// function, as the interpreter's copies of the source lambda are
 	// (Codex P1 on PR #444: each bridge minted its own, and `[(mk 3)] each
 	// [dup eq]` answered false for the interpreter's true).
-	return core.NewFunctionIdentified(core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: fn.Lambda}, ident), true
+	return core.NewFunctionIdentified(core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: compiler.ClosureIsAnonymous(fn, cl)}, cl.Ident), true
 }
 
 // callWindowAt is the no-match window of the CALL_USER / TAIL_CALL_USER at

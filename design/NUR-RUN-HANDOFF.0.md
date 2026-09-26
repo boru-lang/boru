@@ -9,6 +9,35 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## The three silent wrong answers closed: NUR235, NUR236, NUR237 (2026-09-26)
+
+**NUR235.** A fn value's closure unit is shared by every value over the
+same body and inputs, because the memo key holds neither the name nor
+the anonymity. `lambdaUnit` read every fn value as the anonymous `=>`
+flavour, so the landing parked a `fn` literal's named value where the
+interpreter calls it.
+
+Splitting the memo key was tried and reverted. `AnalyseFnBody` keeps its
+own memo, keyed by the unit name, and the unit memo and the analysis memo
+must move in lockstep. A split key opened a fresh unit whose analysis hit
+the old summary and recorded nothing, which declined `m.g 3` as "body
+result of unknown provenance".
+
+So the name rides on the push, as the return contract does:
+`ClosureRetSpec.Named` becomes `ClosurePayload.Named`.
+`ClosureCallsAtLanding` fires a named closure over a nullary unit, and
+the bridge reads `ClosureIsAnonymous`.
+
+**NUR236.** The per-read deopt ordered a read and its consumer by source
+position. A spliced word's expansion carries its DEFINITION's positions,
+so the point declined and the read kept its slot push. A consumer from
+outside the body is now ordered by the event stream.
+
+**NUR237.** A top-level read of an S5 loop-split name reads the registry.
+The program's residual resolves after the events lower, so its rescue
+came too late for the arm's def (`loopSplitRebind`: every later root def
+of such a name is registry-visible).
+
 ## NUR234 closed, main's #509 merged, and the merged ADR-008 gap covered (2026-09-26)
 
 **NUR234.** A compiled user call's param-contract no-match now reports

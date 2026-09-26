@@ -156,9 +156,9 @@ keep the two in sync in the same commit.
 | [NUR232](#nur232) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the return-pattern check defers a refinement's value-level membership over an abstract residual not provably outside its base, the named return type's rule. The original text: `def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5` was a check-time type_error ("expected (Integer gt 3), got Integer") that both lanes then returned 5 for; the named twin (`[Big]`) is check-clean. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR233](#nur233) | FIXED 2026-09-26 (a make field's refusal is a type_error — the handoff log's entry of that date): a make field the run refuses raises a type_error on both lanes; a refusal already structured keeps its code. The original text: the refusal was a plain error, which the interpreter printed bare and a compiled run booked as a compiler defect (internal_error with its "please report it" note) — `def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}`. Pre-existing | compiling NUR231's type half, 2026-09-26 |
 | [NUR234](#nur234) | FIXED 2026-09-26 (the call carries the interpreter's window — the handoff log's entry of that date): a compiled user call's param-contract no-match reports the window the interpreter's failed dispatch reports — the written run, which a bare read ends, filled from the stack beneath. The original text: a compiled direct call's param-contract no-match reported every argument, where the interpreter reports its attempted window: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` noted "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Pre-existing | compiling NUR231's type half, 2026-09-26 |
-| [NUR235](#nur235) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a fn-body-local fn def bound into a returned map: the member read returns the fn compiled, calls it interpreted — `def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g` answers `[fn g]` compiled, `[5]` interpreted. A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
-| [NUR236](#nur236) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a word splice over a def-bound gradual read of a fn: `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}` answers `[Function]` compiled (typeof over the fn value) and `[Integer]` interpreted (`j` calls the fn). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
-| [NUR237](#nur237) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a def rebound in a taken branch after a loop-result def reads the pre-branch value compiled: `def x (for 2 [5]) def c true if c [def x 1] [] end x` answers `[5 5]` compiled, `[5 1]` interpreted (both arms binding x too; a read of x before the branch makes the lanes agree). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR235](#nur235) | FIXED 2026-09-26 (a named fn value's push carries its name — the handoff log's entry of that date): a member read of a nullary fn value from a `fn` literal fires on both lanes; the closure's unit is shared with anonymous values over the same body, so the name rides on the push. The original text: a fn-body-local fn def bound into a returned map: the member read returns the fn compiled, calls it interpreted — `def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g` answers `[fn g]` compiled, `[5]` interpreted. A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR236](#nur236) | FIXED 2026-09-26 (a spliced consumer is ordered by the stream — the handoff log's entry of that date): a gradual def read consumed by a spliced word's expansion carries its deopt, so a read that holds a fn at run time dispatches it on both lanes. The original text: a word splice over a def-bound gradual read of a fn: `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}` answers `[Function]` compiled (typeof over the fn value) and `[Integer]` interpreted (`j` calls the fn). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR237](#nur237) | FIXED 2026-09-26 (an S5 name's later root defs are registry-visible — the handoff log's entry of that date): a taken branch arm's rebind of a name an S5 loop bind bound is seen after the merge on both lanes. The original text: a def rebound in a taken branch after a loop-result def reads the pre-branch value compiled: `def x (for 2 [5]) def c true if c [def x 1] [] end x` answers `[5 5]` compiled, `[5 1]` interpreted (both arms binding x too; a read of x before the branch makes the lanes agree). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR238](#nur238) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a paren-bounded trailing apply that matches nothing: the interpreter parks an anonymous value as data and raises `uncalled_function` for a named fn; the compiled apply raises `signature_error` at the top level (`(5 ([s:String] => [s]))` is `[5 fn (String)]` interpreted) and leaves a named fn's window as residue inside a fn (`(5 f/v)` over a `g/v` argument: a count error compiled) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR239](#nur239) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): an applied fn value's return-contract error names the fn's definition compiled and the binding it was called under interpreted: `(k 5)` over `h z/v` says `z:` compiled, `k:` interpreted; an anonymous class-field fn says `` compiled, `<fn>` interpreted (`each h.cb [1 2 3]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR240](#nur240) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a trapped unmatched module-member call inside a branch arm raises `signature_error` compiled and `uncalled_function` interpreted — a value-level divergence where the code is caught (`do [if true [(true 5 M.dec)] [1] …] error [dot code]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
@@ -9176,8 +9176,8 @@ over its own stack prefix.
 
 ## NUR235 — a fn-body-local fn def bound into a returned map: the member read returns the fn {#nur235}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+**Status:** FIXED 2026-09-26 (a named fn value's push carries its name — the handoff log's entry of that
+date) · **Recorded:** 2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
 — the emit.go coverage agent's probes.
 
 **Rule:** one read, one dispatch — a member read of a function calls it
@@ -9195,10 +9195,23 @@ The body-local `g` captures the param `c`; the returned map carries it as
 a member, and `m.g` reads it. The interpreter calls the 0-arg fn (5); the
 compiled read leaves the fn value.
 
+**The fix.** The closure unit a fn value compiles to is shared by every fn
+value over the same body and inputs (its memo key), so it cannot carry the
+value's anonymity; `lambdaUnit` read every fn value as the anonymous `=>`
+flavour, and the landing parked a named one. The push now carries the name
+(`namedFnValueSpec` marks `ClosureRetSpec.Named` for a value whose FnDefInfo
+is not Anonymous, making a contract-free spec when the value declares none;
+the VM copies it to `ClosurePayload.Named`). The landing fires a named
+closure over a nullary unit (`ClosureCallsAtLanding`) where an anonymous
+one parks, and the bridge and the renamed render read anonymity as the
+unit's lambda flavour without a name (`ClosureIsAnonymous`). Pinned: lang
+`TestNUR235NamedFnValueMemberCalls` (six rows); compiler
+`TestNamedFnValueSpec`, `TestClosureCallsAtLanding`.
+
 ## NUR236 — a word splice over a def-bound gradual read of a fn {#nur236}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+**Status:** FIXED 2026-09-26 (a spliced consumer is ordered by the stream — the handoff log's entry of that
+date) · **Recorded:** 2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
 — the emit.go coverage agent (block 16050, `deoptStatementStart`).
 
 **Rule:** one read, one dispatch — a bare name bound to a function calls
@@ -9215,10 +9228,21 @@ def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] =
 The same program over a data member (`h {f: 5}`) agrees; the agent's test
 (`TestGradualReadConsumedBySplicedWord`) pins those.
 
+**The fix.** The per-read deopt (planDeopts) places its test at the read's
+push when the consumer follows the read — decided by comparing source
+positions. A spliced word's expansion carries the positions of the word's
+DEFINITION, earlier than the read, so the point was declined and the read
+kept its slot push. A consumer from outside the body is now ordered by the
+event stream (`deoptStatementStart`): tested at the read's push when no
+body event after the read runs before the consumer, else before that
+event, as the in-body case. Pinned: lang `TestNUR236SplicedConsumerDeopts`
+(six rows, an intervening event among them). The general "best effort"
+remains where a point cannot be placed at all.
+
 ## NUR237 — a def rebound in a taken branch after a loop-result def reads the pre-branch value {#nur237}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+**Status:** FIXED 2026-09-26 (an S5 name's later root defs are registry-visible — the handoff log's entry of that
+date) · **Recorded:** 2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
 — the main-side coverage agent (branch_carried.go).
 
 **Rule:** one binding, one value — a read sees the last def that ran.
@@ -9236,6 +9260,16 @@ def x (for 2 [5]) def c true if c [def x 1] [def x 2] end x
 
 `def x (for 2 [5])` binds x to the loop's last value and leaves the other
 on the stack. A read of `x` before the branch makes the lanes agree.
+
+**The fix.** A top-level read of a name an S5 first-value loop bind bound
+has no event or local home and reads the live registry binding
+(`dynScopeRescue`'s top-level arm). The program's residual is resolved
+only after the events lower, so its rescue marked the name dynamic-scope
+too late for the arm's `def x 1` — lowered to nothing, its twin a carrier
+the replay skips. Every later ROOT def of such a name is now
+registry-visible (`loopSplitRebind`: not the split bind itself, whose
+splice installs it). Pinned: lang `TestNUR237LoopSplitRebindInABranch`
+(eight rows, `undef` and a fn read among them).
 
 ## NUR238 — a paren-bounded trailing apply that matches nothing {#nur238}
 

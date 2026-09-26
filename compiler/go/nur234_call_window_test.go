@@ -223,3 +223,51 @@ func TestSeatCallWindow(t *testing.T) {
 		t.Fatal("an empty stack holds nothing")
 	}
 }
+
+// TestNamedFnValueSpec pins NUR235's push flag: a named fn value marks its
+// push, making a spec with no contract when it declares none; an anonymous
+// one's spec is untouched.
+func TestNamedFnValueSpec(t *testing.T) {
+	anon := &core.FnDefInfo{Anonymous: true}
+	named := &core.FnDefInfo{}
+	if namedFnValueSpec(nil, anon) != nil {
+		t.Error("an anonymous value with no contract has no spec")
+	}
+	if s := namedFnValueSpec(nil, named); s == nil || !s.Named || s.Types != nil {
+		t.Errorf("a named value with no contract: a Named spec, no types: %+v", s)
+	}
+	spec := &ClosureRetSpec{Name: "g"}
+	if s := namedFnValueSpec(spec, named); s != spec || !s.Named {
+		t.Errorf("a named value marks its own spec: %+v", s)
+	}
+}
+
+// TestClosureCallsAtLanding pins the landing's reading of NUR235's flag: a
+// named closure over a nullary unit calls; an anonymous one, one over a
+// unit that takes arguments, one from a program not its own, and a value
+// that is no closure park; the bridge's anonymity is the unit's lambda
+// flavour without a name.
+func TestClosureCallsAtLanding(t *testing.T) {
+	p := &Program{Fns: []CompiledFn{{Lambda: true}, {Lambda: true, NArgs: 1}}}
+	mk := func(unit int, named bool, prog any) core.Value {
+		return core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: prog, Unit: unit, Named: named}}
+	}
+	for name, c := range map[string]struct {
+		v    core.Value
+		want bool
+	}{
+		"named nullary":     {mk(0, true, p), true},
+		"anonymous":         {mk(0, false, p), false},
+		"named with args":   {mk(1, true, p), false},
+		"foreign program":   {mk(0, true, "other"), false},
+		"unit out of range": {mk(5, true, p), false},
+		"not a closure":     {core.NewInteger(1), false},
+	} {
+		if got := ClosureCallsAtLanding(c.v); got != c.want {
+			t.Errorf("%s: %v, want %v", name, got, c.want)
+		}
+	}
+	if !ClosureIsAnonymous(&p.Fns[0], core.ClosurePayload{}) || ClosureIsAnonymous(&p.Fns[0], core.ClosurePayload{Named: true}) || ClosureIsAnonymous(nil, core.ClosurePayload{}) {
+		t.Error("anonymous: a lambda unit's closure without a name")
+	}
+}

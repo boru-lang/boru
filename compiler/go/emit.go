@@ -3674,7 +3674,24 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	// values, and the interpreter raises `expected 1 return value(s), got 2`
 	// where an uncontracted closure answered [7 8] (the twenty-ninth
 	// increment; latent before it, every such call site declined).
-	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps, closureRet: fnValueRetSpec(&fd, lam, pos)}, true
+	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps, closureRet: namedFnValueSpec(fnValueRetSpec(&fd, lam, pos), &fd)}, true
+}
+
+// namedFnValueSpec marks a push of a NAMED fn value (a `fn` literal — only
+// `afn` / `=>` make one anonymous) on its spec, making one when the value
+// declares no return contract (no Types: none is enforced). The unit is
+// shared across fn values over one body, anonymous or not, so the name
+// rides on the push as the contract does (NUR235): a name always calls, and
+// the landing fires a nullary one where an anonymous value parks.
+func namedFnValueSpec(spec *ClosureRetSpec, fd *core.FnDefInfo) *ClosureRetSpec {
+	if fd.Anonymous {
+		return spec
+	}
+	if spec == nil {
+		spec = &ClosureRetSpec{}
+	}
+	spec.Named = true
+	return spec
 }
 
 // fnValueHome is the registry a fn VALUE's body compiles in — its home, never
@@ -10756,6 +10773,20 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	es.noteBindHazard(name)
 }
 
+// loopSplitRebind reports whether d is a later ROOT def of a name an S5
+// first-value loop bind bound (NUR237). A top-level read of such a name has
+// no event or local home and reads the live registry binding
+// (dynScopeRescue's top-level arm), so every later def of the name must be
+// registry-visible too. That read may be the program's residual, which is
+// resolved only after the events lower: the rescue then marks the name too
+// late for dynScopeNames to reach this def, and a branch arm's `def x 1`
+// lowered to nothing — `def x (for 2 [5]) def c true if c [def x 1] []
+// end x` answered [5 5] for the interpreter's [5 1]. The split bind itself
+// (spliceDepth) installs through its splice and is not a rebind.
+func (es *EmitState) loopSplitRebind(d *emitDynBind) bool {
+	return d.root && d.spliceDepth < 0 && es.loopSplitBinds[d.name]
+}
+
 // keepInstallable reports whether a KEEP-DEFS unit's def can install its
 // value at run time: the value has a home the install re-pushes from — a
 // producing event (promoted to a frame slot for the re-push), a frame
@@ -16143,6 +16174,20 @@ func (es *EmitState) deoptStatementStart(rec *fnUnitRec, seq int, name string, f
 		d.atPush = true
 		for i := range events {
 			if p := eventPos(events[i]); p.Row > 0 && posAfter(p, first) && posAfter(eventPos(events[ci]), p) {
+				d.atPush = false
+				break
+			}
+		}
+	case readTok >= 0 && direct && bodyTokenContaining(rec.body, eventPos(events[ci])) < 0:
+		// A consumer from OUTSIDE the body — a spliced word's expansion
+		// (`j tp` over `def tp word [typeof]`, NUR236): its position names
+		// the word's definition, not its place here, so the order is the
+		// stream's: tested at the read's push when no event of the body after
+		// the read runs before the consumer, else before that event, as the
+		// case above.
+		d.atPush = true
+		for i := 0; i < ci; i++ {
+			if p := eventPos(events[i]); p.Row > 0 && posAfter(p, first) {
 				d.atPush = false
 				break
 			}

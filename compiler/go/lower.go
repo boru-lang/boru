@@ -347,6 +347,15 @@ func (lw *lowerer) storeIndexBind(d *emitDynBind, twin int) (reason string, done
 // records the prior depth; the frame's RET truncates back — the
 // interpreter's def-cleanup discipline). A def of any other name lowers to
 // nothing here — its value flows by provenance exactly as before.
+// bindNeedsDyn reports whether a value def must be registry-visible — a
+// kept OpBindDynScope — because something reads the name through the live
+// registry: a keep-defs unit's leak, a dynamic-env body, an island that
+// names it, a dyn-scope read, a routed dispatch, or a top-level read of an
+// S5 loop-split name (loopSplitRebind).
+func (lw *lowerer) bindNeedsDyn(d *emitDynBind) bool {
+	return lw.es != nil && ((lw.keepsDefs && !d.keepSkip) || lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]) || lw.es.routedBindsDyn(d) || lw.es.loopSplitRebind(d))
+}
+
 func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	d := ev.dyn
 	if d.residentTwin >= 0 {
@@ -414,7 +423,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	// interpreter runs the body in the caller's frame and the binding
 	// leaks, so each is registry-visible — a kept OpBindDynScope the VM
 	// leaves standing past this unit's RET (CompiledFn.KeepsDefs).
-	needDyn := lw.es != nil && ((lw.keepsDefs && !d.keepSkip) || lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]) || lw.es.routedBindsDyn(d))
+	needDyn := lw.bindNeedsDyn(d)
 	if needDyn && d.root && lw.twinInstalls(twin) {
 		// A ROOT def whose bind twin REPLAYS at this very site (a concrete
 		// captured entry, not written back) is registry-visible by that
