@@ -9,6 +9,44 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## Main's #512 merged (2026-09-26)
+
+**The conflicts.** Main's #512 conflicted with the branch in nine files.
+One of them was code. Main moved if3's decided-condition arm into
+`ifTakenArmReturns`, so that the clause-list `if` can lower its decided
+clauses through it. The helper keeps this run's NUR243 rule: a taken arm
+that nets nothing is a 0-value statement. Main's new decline stays as main
+wrote it: a taken arm that leaves a fn value. With that decline disabled on
+the merged tree, both sides compiled the fn's APPLICATION silently. `if
+[true] [g/v] [1]` answered `[5]` for the interpreter's `[fn g]`, and `10 if
+[true] [g/v] [1]` answered `[15]` for `[10 fn g(Integer)]`.
+`TestLoopIndexUnwoundByCaughtError` keeps this run's NUR206 close, and
+`code-bodies.tsv` keeps both sides' rows: main's L141 compiles as the
+hosted splice, and this run's L142 is NUR154's decline.
+
+**The register.** Main's NUR210, NUR211 and NUR212 keep their numbers. This
+run's NUR210, NUR211 and NUR212 (all closed) are NUR260, NUR261 and NUR262
+everywhere they are cited.
+
+**Main's one test that failed.** `TestClauseListIfDeclinesLoudly` expected
+`if [true []]` to decline with "branch produces no value". NUR243 compiles
+it, and it answers `[]` on both lanes. The row is in
+`TestClauseListIfCompilesWithParity` now, beside `if [true []] end 5` and
+`if [true [] false [1]]`.
+
+**The ledgers.**
+- **The compile-failure site and disposition censuses, 90 → 91.** Main's
+  `ifTakenArmReturns#1` is the fn-value decline. Main's own count held at 91
+  because the site moved from if3. This run had retired that site's 0-netting
+  half.
+- **Unit-suite compile, 339 → 338.** Main's hosted splice compiles
+  `TestComputedForBodyDeclines`' first witness.
+- **`compile_failures.tsv`, code-bodies 2 → 1.** L141 compiles, and L142
+  declines.
+- **Engine entries 185 → 186 and interpreter entry rows 38 → 39.** L141's
+  hosted loop runs once on the VM's island, which was main's own +1 on
+  each.
+
 ## NUR255, NUR258 and NUR259 closed: the unnamed args and the lambda's anchor (2026-09-26)
 
 **The count the frame keeps.** The interpreter pushes an anonymous lambda's
@@ -1566,7 +1604,9 @@ and takes main's S2a quote declaration (a bit set); the frame's error path
 (NUR201's fault-return unwind) supersedes `unwindFrameTailOnError`, whose
 teardown already calls main's `UninstallFrameBinding`. **The register:**
 main's new NUR205 keeps its number; this run's NUR205, NUR206 and NUR207
-(all closed) are NUR211, NUR212 and NUR213 everywhere they are cited.
+(all closed) are NUR211, NUR212 and NUR213 everywhere they are cited (NUR261,
+NUR262 and NUR213 since the merge of main's #512, where main's NUR211 and
+NUR212 kept their numbers).
 
 **The fallout, fixed.** `TestCheckProp_ShrinksFailingInput` shrank to 40
 for 10: NUR077's recorder fix records the generator's bound faithfully
@@ -1586,7 +1626,7 @@ kernel code. `fn`'s describe data and the fn-model golden carry NUR091's
 (the two sides compose from the merge base's 291 / 44; NUR205's six
 declines). The langspec: engine entries 165 -> 183 and interp-entry
 census rows 24 -> 36 (thirteen rows the run ADDED enter on known seams —
-callbacks, fn-value and user-types rows pinned for NUR166, NUR211,
+callbacks, fn-value and user-types rows pinned for NUR166, NUR261,
 NUR168, NUR158 and NUR167 — and code-bodies L77 leaves; measured with
 BORU_LOG_CENSUS_ROWS=1 against 00ec530); type-soundness 4 -> 7 (three
 rows the run added: NUR201's two `do [g]` pins and the parked module
@@ -1741,7 +1781,7 @@ NUR128 is FIXED.
 
 The dynamic loop residual that turns out callable is a reach group's
 survivor — a member fn read the pass cannot type; the collapse records it
-(`ReachSurvivorFnIDs`, NUR210's mark widened to dynamic survivors) and
+(`ReachSurvivorFnIDs`, NUR260's mark widened to dynamic survivors) and
 `RecordLoop` declines a body that leaves one beside the named-fn hazard
 (`loopHazards`), so `for 2 [m.f]` over `{f: g/v}` answers the
 interpreter's `uncalled_function` by fallback where it compiled `[fn g fn
@@ -1793,7 +1833,7 @@ loop's own bind variable. `def i 0 end for 3 [def i 9] end i` is 0
 everywhere, `for 3 [def i (i add 1) i]` leaves `1 2 3 0`
 (`TestForIndexDefInBodyIsTheIterations`). NUR204 is FIXED.
 
-## NUR210 closed — the reach group's survivor (2026-09-25)
+## NUR260 closed — the reach group's survivor (2026-09-25)
 
 A reach group never parks: its collapse re-steps the lone survivor over
 the values beneath, a call result included. The check pass now records a
@@ -1802,7 +1842,7 @@ beside the concrete named value's `ReachGroup` tag), and the residual
 lowering's placed-call gate exempts it unless an enclosing user paren
 placed the same value, so `5 M.ff` and `M.ff 5` over a module fn returning
 `inc/v` are 6 on both lanes and `5 (M.ff)` stays parked
-(`TestModuleFnNamedValueThroughReachApplies`). NUR210 is FIXED.
+(`TestModuleFnNamedValueThroughReachApplies`). NUR260 is FIXED.
 
 ## NUR081 closed — one contract for the family (2026-09-25)
 
@@ -2032,17 +2072,17 @@ under the render gate rather than answering under another name
 
 ## NUR213 closed — the marker's intent on the value (2026-09-25)
 
-**The divergence.** `def m {f: (fn [[a:Integer] [Integer] [a add 1]])}  m.f/v 5` was `fn (Integer) 5` on the interpreter (the marker says data; the 5 strands) and `6` compiled; `5 m.f/v` was `5 fn (Integer)` for `6`. Found closing NUR212; pre-existing.
+**The divergence.** `def m {f: (fn [[a:Integer] [Integer] [a add 1]])}  m.f/v 5` was `fn (Integer) 5` on the interpreter (the marker says data; the 5 strands) and `6` compiled; `5 m.f/v` was `5 fn (Integer)` for `6`. Found closing NUR262; pre-existing.
 
 **The mechanism.** The disassembly was `CALL_NATIVE_POLY dot; PUSH_CONST 5; CALL_DYNAMIC /1` — Finalize's residual layout applying a dynamic lead, not the shaped member apply. Under the check pass the member read is a DYNAMIC Any carrier: execFnDefLiteral's marker peek (which quotes the concrete value at run time) needs `fnDefAtPointer`, which fails on a carrier, so the marker reached the pointer standalone and was dropped as a no-op, and the pass's residual held an unquoted dynamic lead beside the 5.
 
 **The fix.** The standalone-marker drop quotes the dynamic or carrier value the marker follows — the peek's rule applied to the value the pass holds — and `resolveDynamicApply` honours the quote: the dynamic-lead arms and the `mayBeFn` arm skip a quoted lead, the "dynamic value precedes residual args" boundary exempts one (data beside its neighbours), and `trailingApply` declines a quoted trailing value. `m.f/v 5` compiles to the data layout; `5 m.f/v` declines at the existing "call result above a literal" residual limit and the fallback answers as the interpreter.
 
-**Measured:** the compiler and core builds; the NUR212/207 pin green. The broader suites run in the next batch. **Scoped (same day, the milestone batch).** The drop quotes a dynamic or carrier value only; a concrete Function value is the peek's at run time on both lanes. A quoted fn-typed carrier passes the residual render gate as data — `(f MathUtil.sqrt/v) 16.0` compiles again (its render divergence stays the measured-open NUR119 shape `TestClosureCaptureOpenShapes` pins).
+**Measured:** the compiler and core builds; the NUR262/207 pin green. The broader suites run in the next batch. **Scoped (same day, the milestone batch).** The drop quotes a dynamic or carrier value only; a concrete Function value is the peek's at run time on both lanes. A quoted fn-typed carrier passes the residual render gate as data — `(f MathUtil.sqrt/v) 16.0` compiles again (its render divergence stays the measured-open NUR119 shape `TestClosureCaptureOpenShapes` pins).
 
 **Pins.** lang `TestReachValueMarkerIsNoArgument` (four more same-verdict rows, the trailing decline's parity, the interpreter's own answers), fn-value.tsv §15 (three rows). Docs: NUR.md (NUR213 FIXED), the handover, this entry.
 
-## NUR212 closed — the marker is no argument (2026-09-25)
+## NUR262 closed — the marker is no argument (2026-09-25)
 
 **The divergence.** `import module [ def up1 fn [[value:Any] [String] ['UP']] export "M" {up1: up1/v} ]  def g M.up1/v` raised `signature_error: cannot call def — no signature matches the arguments … none were supplied` on both lanes, where `def g M.up2/v` (an Integer first parameter), `def g (M.up1/v)`, `def g up1/v` and the bare `M.up1/v` all bind or answer. NUR163's record carried it as a side note.
 
@@ -2052,9 +2092,9 @@ under the render gate rather than answering under another name
 
 **Measured:** the core and lang root suites green; the langspec gates over module-fnvalue-boundary.tsv at their ceilings.
 
-**Pins.** lang `TestReachValueMarkerIsNoArgument` (twelve same-verdict rows, the interpreter's own answers for three), module-fnvalue-boundary.tsv §5 (four rows). Docs: NUR.md (NUR212 FIXED, NUR213 recorded, NUR210's record traced), the handover, this entry.
+**Pins.** lang `TestReachValueMarkerIsNoArgument` (twelve same-verdict rows, the interpreter's own answers for three), module-fnvalue-boundary.tsv §5 (four rows). Docs: NUR.md (NUR262 FIXED, NUR213 recorded, NUR260's record traced), the handover, this entry.
 
-## NUR211 closed — the named value's no-match on the seam (2026-09-25)
+## NUR261 closed — the named value's no-match on the seam (2026-09-25)
 
 **The divergence.** `def h fn [[a:Integer b:Integer] [List] [[a b]]]  0 fold h/v [1 2]`: step 0 answers `[0 1]`, step 1 offers that List to `a:Integer` and no signature matches — `fold: step 1: uncalled_function: call to 'h' matched no signature` interpreted, `[fn (Integer, Integer)]` compiled (the value itself). A no-match at step 0 raised on both lanes; `scan` parks on both.
 
@@ -2064,17 +2104,17 @@ under the render gate rather than answering under another name
 
 **Measured:** the eng and lang root suites green; the langspec gates over callbacks.tsv at their ceilings. **Anchored (same day, the milestone batch).** The raise carries the reference token's position (`ClosurePayload.RetPos`, `h/v` at 1:60) — the corpus lane had flagged the compiled raise as positionless.
 
-**Pins.** lang `TestNamedValueNoMatchOnTheSeamRaises` (eight same-verdict rows and the interpreter's own verdicts), callbacks.tsv §11 (five rows). Docs: NUR.md (NUR211 FIXED), the handover, this entry.
+**Pins.** lang `TestNamedValueNoMatchOnTheSeamRaises` (eight same-verdict rows and the interpreter's own verdicts), callbacks.tsv §11 (five rows). Docs: NUR.md (NUR261 FIXED), the handover, this entry.
 
 ## NUR163 closed — the value's own signatures (2026-09-25)
 
 **The divergence.** With a module exporting `dbl` (`fn [[src:String opts:Map] [String] [src add src]]`), `mini M.dbl 'ab'` and `mini (M.dbl) 'ab'` raised `mini_bad_signature: every signature must start with the standard prefix [src:String opts:Map …]` while `def g M.dbl/v end mini g 'ab'` answered `abab`; `emit M.up {a:1}` and `parse M.p 'xy'` the same way. The record filed it as the member read hiding the fn's signatures. Measured closer: `mini (dbl/v) 'ab'` fails identically with no module at all. What a `/v` read, a member read in place and a paren deliver is `Registry.Lookup`'s dispatch AGGREGATE, which carries a synthesized 0-arg fallback signature (`Signature.Fallback`, an empty parameter list); the def-bound spelling stores the own signatures (installDef's rebind arm) and passed. The contracts iterated `fnDef.Signatures` and the fallback failed the prefix check.
 
-**The fix.** `MiniLangFnSigWhy`, `EmitLangFnSigWhy`, `ParseLangFnSigWhy`, `MiniLangFnFilterShaped` and both callers of `miniPartialFromSigs` read `FnDefInfo.OwnSigs()`. The filter-shaped `/v` value (`mini (f3/v)`) used to crash the partial's build once past the probe — `index out of range [2]` over the fallback's parameters — and builds over the own signatures now. Interpreter-side, both lanes. The record's side note — `def g M.up/v end` raising `cannot call def` for an export whose first parameter is `Any` — is a forward-window quirk of its own (the reach's value reaches the pointer ahead of its dispatch-modifier marker inside `def`'s window), recorded as NUR212.
+**The fix.** `MiniLangFnSigWhy`, `EmitLangFnSigWhy`, `ParseLangFnSigWhy`, `MiniLangFnFilterShaped` and both callers of `miniPartialFromSigs` read `FnDefInfo.OwnSigs()`. The filter-shaped `/v` value (`mini (f3/v)`) used to crash the partial's build once past the probe — `index out of range [2]` over the fallback's parameters — and builds over the own signatures now. Interpreter-side, both lanes. The record's side note — `def g M.up/v end` raising `cannot call def` for an export whose first parameter is `Any` — is a forward-window quirk of its own (the reach's value reaches the pointer ahead of its dispatch-modifier marker inside `def`'s window), recorded as NUR262.
 
 **Measured:** the lang native and modules suites green; the langspec gates over module-minilang.tsv, module-emitlang.tsv, module-parse.tsv and module-parselang.tsv at their ceilings.
 
-**Pins.** lang `TestMiniLanguageValueIsTheFn` (eleven same-verdict rows, the interpreter's own answers for five), the `§fnv` / `§10` closing sections of module-minilang.tsv (five rows), module-emitlang.tsv (three) and module-parselang.tsv (two). Docs: NUR.md (NUR163 FIXED, NUR212 recorded), the handover, this entry.
+**Pins.** lang `TestMiniLanguageValueIsTheFn` (eleven same-verdict rows, the interpreter's own answers for five), the `§fnv` / `§10` closing sections of module-minilang.tsv (five rows), module-emitlang.tsv (three) and module-parselang.tsv (two). Docs: NUR.md (NUR163 FIXED, NUR262 recorded), the handover, this entry.
 
 ## NUR162 closed — the 0-arg apply at a paren's tail (2026-09-25)
 
@@ -2094,11 +2134,11 @@ under the render gate rather than answering under another name
 
 **The fix.** `applyClosure` brackets a closure unit that carries a param contract — `CompiledFn.Params` non-empty: a named fn's body or a lambda's, compiled at the callback slot with the value's own params — with `pushRootArgs` over `args[:NArgs]`, the frame the interpreter's dispatch opens for the value. A quotation body (`each [do [args]] xs`) carries no contract and runs in the caller's frame, reading the caller's args, on both lanes (`def w fn [[x:Integer] [Any] [each [do [args]] [x 5]]]  w 7` is `[[7] [7]]`; the fn-value twin `[[7] [5]]`). No-op outside a DynEnv program.
 
-**Found beside it, recorded as NUR211:** a NAMED fn value driving `fold` whose signature stops matching past step 0 is parked as data compiled (`unmatchedLambdaBody`'s NUR155 rule, meant for an anonymous value) where the interpreter raises `uncalled_function`; pre-existing at the merge base.
+**Found beside it, recorded as NUR261:** a NAMED fn value driving `fold` whose signature stops matching past step 0 is parked as data compiled (`unmatchedLambdaBody`'s NUR155 rule, meant for an anonymous value) where the interpreter raises `uncalled_function`; pre-existing at the merge base.
 
 **Measured:** the eng suite and the lang root suite green; the langspec gates over callbacks.tsv at their ceilings.
 
-**Pins.** lang `TestFnValueCallbackHasOwnArgs` (twelve same-verdict rows, the interpreter's own answers for four), callbacks.tsv §10 (five rows). Docs: NUR.md (NUR166 FIXED, NUR211 recorded), the handover, this entry.
+**Pins.** lang `TestFnValueCallbackHasOwnArgs` (twelve same-verdict rows, the interpreter's own answers for four), callbacks.tsv §10 (five rows). Docs: NUR.md (NUR166 FIXED, NUR261 recorded), the handover, this entry.
 
 ## NUR167 closed — the analysis is not a call (2026-09-25)
 
@@ -2140,9 +2180,9 @@ under the render gate rather than answering under another name
 
 **What leaned on the leniency.** Three fixtures declared one return and left more: boru:repl's `repl-eval-line` (`st set history …` left the store beneath its reply; the preamble drops it now), the dyn-env drift test's `srv` (three values; it declares `[Any Any Any]` now) and a process test's `worker` (`send` leaves nothing; it declares `[]` now). Each would have raised on the main registry's frame path all along.
 
-**Found on the way, recorded:** NUR210 — a module fn returning a NAMED fn value read through its reach group with a value beneath (`5 M.ff` over `def ff fn [[][Function][inc/v]]`) is 6 on the interpreter (the reach group never parks: its collapse re-steps the named survivor, and a name always calls) and `[5 fn inc(Integer)]` on the compiled lane, which seats the value as data; `5 (M.ff)` and the main registry's `5 ff` park on both. Pinned pending (`TestModuleFnNamedValueThroughReachPending`).
+**Found on the way, recorded:** NUR260 — a module fn returning a NAMED fn value read through its reach group with a value beneath (`5 M.ff` over `def ff fn [[][Function][inc/v]]`) is 6 on the interpreter (the reach group never parks: its collapse re-steps the named survivor, and a name always calls) and `[5 fn inc(Integer)]` on the compiled lane, which seats the value as data; `5 (M.ff)` and the main registry's `5 ff` park on both. Pinned pending (`TestModuleFnNamedValueThroughReachPending`).
 
-**Pins.** lang `TestModuleFnReturnContractIsTheFrames` (module_fn_return_contract_test.go: NUR191's witnesses and the count contract's neighbours with the same verdict on both lanes — an error compared by code and detail, the positions differing by lane per NUR118 — the interpreter's own answers, the main-registry twins), `TestModuleFnStampedAtLoadAndRerouted`'s decliner probe (the count error on both interpreters), core `TestNoCompiledRuntimeDeclines` (the strict seam's inactive default); edge-modules-2.tsv §12's seven rows. Docs: NUR.md (NUR191 FIXED, NUR210 recorded), the handover, this entry.
+**Pins.** lang `TestModuleFnReturnContractIsTheFrames` (module_fn_return_contract_test.go: NUR191's witnesses and the count contract's neighbours with the same verdict on both lanes — an error compared by code and detail, the positions differing by lane per NUR118 — the interpreter's own answers, the main-registry twins), `TestModuleFnStampedAtLoadAndRerouted`'s decliner probe (the count error on both interpreters), core `TestNoCompiledRuntimeDeclines` (the strict seam's inactive default); edge-modules-2.tsv §12's seven rows. Docs: NUR.md (NUR191 FIXED, NUR260 recorded), the handover, this entry.
 
 ## NUR198 closed — the None receiver's bare-word key (2026-09-25)
 

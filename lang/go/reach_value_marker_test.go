@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestReachValueMarkerIsNoArgument pins NUR212's close. The parser emits a
+// TestReachValueMarkerIsNoArgument pins NUR262's close. The parser emits a
 // dotted path's `/v` as the reach followed by a dispatch-modifier marker;
 // inside a forward window the marker fell to the claim probe's literal arm,
 // where an `Any` parameter matched it, so the reach's fn value read as a
@@ -56,7 +56,7 @@ func TestReachValueMarkerIsNoArgument(t *testing.T) {
 	}
 }
 
-// TestNamedValueNoMatchOnTheSeamRaises pins NUR211's close. A NAMED fn value
+// TestNamedValueNoMatchOnTheSeamRaises pins NUR261's close. A NAMED fn value
 // driving fold whose signature stops matching past the first step raises
 // uncalled_function on both lanes now — the token seam's unmatched-lambda
 // arm applied the anonymous value's data rule (NUR155) to a named value,

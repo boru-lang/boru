@@ -124,7 +124,7 @@ func TestModuleFnReturnContractIsTheFrames(t *testing.T) {
 	}
 }
 
-// TestModuleFnNamedValueThroughReachApplies pins NUR210's close: a module
+// TestModuleFnNamedValueThroughReachApplies pins NUR260's close: a module
 // fn's NAMED fn value read through its reach group (`M.ff` is `( M dot ff
 // )`) is the group's lone survivor, and a reach group never parks — its
 // collapse re-steps the survivor over the values beneath, a call result

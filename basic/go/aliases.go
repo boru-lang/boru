@@ -459,6 +459,8 @@ var (
 	IsConcrete               = core.IsConcrete
 	IsModuleFamilyValue      = core.IsModuleFamilyValue
 	IsSteplessWindow         = core.IsSteplessWindow
+	IsFnValueResidual        = core.IsFnValueResidual
+	IsGenMemoName            = core.IsGenMemoName
 	IsRecordShape            = core.IsRecordShape
 	IsTypeBody               = core.IsTypeBody
 	IsTypeLiteral            = core.IsTypeLiteral

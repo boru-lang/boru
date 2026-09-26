@@ -103,7 +103,7 @@ func TestNamedCallbackRootRetTakesTheFramesCount(t *testing.T) {
 }
 
 // TestUnmatchedNamedBodyAnchorsAtTheValue pins the anchor of a NAMED
-// callback value's no-match (NUR211): the interpreter raises
+// callback value's no-match (NUR261): the interpreter raises
 // uncalled_function at the reference's own token, which the closure carries
 // as RetPos. A closure that carries a name but no reference position — a
 // binding renames the value it binds (nameClosureValue) without writing a

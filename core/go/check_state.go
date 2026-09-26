@@ -392,7 +392,7 @@ type CheckState struct {
 	// compiler's residual lowering must not treat such a call result as
 	// PLACED data (callResultPlaced): `5 M.ff` over `def ff fn
 	// [[][Function][inc/v]]` is 6 on the interpreter and seated `[5 fn
-	// inc]` compiled (NUR210). Recorded at the collapse (tagReachCollapsedFn),
+	// inc]` compiled (NUR260). Recorded at the collapse (tagReachCollapsedFn),
 	// keyed by value ID like ParenPlacedFnIDs.
 	ReachSurvivorFnIDs map[string]bool
 	// ForceFnReanalysis makes AnalyseFnBody run a body past a cached summary

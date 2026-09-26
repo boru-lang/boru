@@ -62,7 +62,7 @@ import module [def lim fn [[n:Integer] [Integer] [2]] def big fn [[e:Map] [Boole
 # The negative: scope travels with the VALUE, it does not open the module.
 import module [def hidden fn [[n:Integer] [Integer] [n add 1]] def only fn [[n:Integer] [Integer] [hidden n]] export "A" {only: only/v}] end hidden 5	ERROR:undefined_word	a module-private word stays private — the importer cannot reach `hidden`, only the exported value can
 #
-# §5  A `/v` ON A MODULE MEMBER IS DATA WHEREVER IT IS WRITTEN (NUR212, closed
+# §5  A `/v` ON A MODULE MEMBER IS DATA WHEREVER IT IS WRITTEN (NUR262, closed
 #     2026-09-25): the reach's dispatch-modifier marker is never an argument,
 #     so a member whose first parameter is `Any` binds through `def` as a
 #     bare `/v` word always did.

@@ -170,7 +170,7 @@ def g ([n:Integer] => [do [args]]) end each g/v [1 2]	[[1] [2]]	a lambda value t
 def h fn [[a:Integer] [Any] [do [args]]] end def w fn [[x:Integer] [Any] [each h/v [x 5]]] end w 7	[[7] [5]]	…and inside a fn: the value's frame, not the enclosing fn's
 def w fn [[x:Integer] [Any] [each [do [args]] [x 5]]] end w 7	[[7] [7]]	a QUOTATION body runs in the caller's frame: the enclosing fn's args
 #
-# §11  A NAMED VALUE'S NO-MATCH ON THE SEAM IS THE WORD'S RAISE (NUR211, closed
+# §11  A NAMED VALUE'S NO-MATCH ON THE SEAM IS THE WORD'S RAISE (NUR261, closed
 #      2026-09-25): a named fn value driving fold whose signature stops
 #      matching past the first step raises uncalled_function, as the word
 #      does; an anonymous lambda's no-match leaves the value as data (NUR155).

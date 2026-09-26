@@ -238,32 +238,81 @@ func TestApplyChainWrittenOperandDeclines(t *testing.T) {
 		"apply of a dynamic fn value not at the body tail")
 }
 
-// TestComputedForBodyCompiles — `for` declares CompileDynBody (2026-09-25):
-// a COMPUTED loop body (a fn's result, a quoted list read at run time) lowers
-// to the plain CALL_NATIVE under DynEnv where the loop lowering has no tokens
-// to capture, and RunForLoop hosts the loop over the InvokeBody seam under a
-// compiled run — the index installed per iteration as the interpreter's, an
-// escaped body (break / continue) discarding that iteration's values
-// (code-bodies.tsv L141). A LITERAL body keeps the native loop lowering.
-// TestComputedForBodyDeclines pins that a COMPUTED for body DECLINES at
-// compile time, and why. A hosted attempt (2026-09-25, withdrawn the same
-// day on a Codex review of #508) ran each iteration through the InvokeBody
-// seam and diverged from the interpreter's INLINE SPLICE on four measured
-// shapes, the witnesses below: the body reads the caller's stack beneath
-// the loop, its defs and undefs leak into the enclosing scope, a caught body
-// error leaves the iterator installed, and the zero-out event seated a
-// residual beneath the loop after the loop's values. No body activation
-// models the splice, so the row declines loud and both lanes agree through
-// the fallback (code-bodies.tsv L141).
-func TestComputedForBodyDeclines(t *testing.T) {
+// TestComputedForBodyHostedAtProgramEnd — `for` declares CompileDynBody
+// (2026-09-26, the second attempt): a COMPUTED loop body (a fn's result, a
+// def-bound fn result) has no tokens for RecordLoop to capture, so the
+// dispatch takes the dyn-body backstop as a HOSTED SPLICE — a CALL_NATIVE
+// whose handler returns the interpreter's own loop tokens, which the VM runs
+// on its interpreter island (SigRef.HostSplice). The island is the
+// interpreter's tape exactly where nothing compiled can tell them apart: the
+// program's last statement over an empty stack (compiler's hostSpliceHere
+// and hostedSpliceAdmitted). code-bodies.tsv L141.
+func TestComputedForBodyHostedAtProgramEnd(t *testing.T) {
 	for _, src := range []string{
 		`def mk fn [[n:Integer][List][quote [i]]] end for 3 (mk 0)`,
+		`def mk fn [[][List][quote [1 add 2]]] end for 3 (mk)`,
+		`def mk fn [[][List][quote [i mul 2]]] end for [1 4] (mk)`,
+		`def mk fn [[][List][quote [i]]] end def n 3 end for n (mk)`,
+		`def mk fn [[][List][quote [i]]] end for 3 (mk) end`,
+		`def mk fn [[][List][quote [i]]] end (for 3 (mk))`,
+		`def mk fn [[][List][quote [i]]] end (1 add 2) drop for 3 (mk)`,
+		`def mk fn [[][List][quote [i]]] end def b (mk) end for 3 b`,
+		`def mk fn [[][List][quote [i i]]] end for 2 (mk)`,
+		`def mk fn [[][List][quote []]] end for 2 (mk)`,
+		`def mk fn [[][List][quote [depth]]] end for 3 (mk)`,
+		// the body reads the program's bindings (DynEnv) and its own
+		`def k 10 end def mk fn [[][List][quote [i add k]]] end for 3 (mk)`,
+		`def mk fn [[][List][quote [i]]] end def i 7 end for 2 (mk)`,
+		`def mk fn [[][List][quote [def x i x]]] end for 3 (mk)`,
+		`def mk fn [[][List][quote [f i]]] end def f fn [[x:Integer][Integer][x mul 7]] end for 3 (mk)`,
+		`def T class {a:Integer} end def mk fn [[][List][quote [make T {a:i}]]] end for 2 (mk)`,
+		`def g fn [[x:Integer][Integer][x add 5]] end def mk fn [[][List][quote [i g/v]]] end for 2 (mk)`,
+		// flow signals and errors raised by the spliced body
+		`def mk fn [[][List][quote [if (i eq 1) [break] [i]]]] end for 3 (mk)`,
+		`def mk fn [[][List][quote [if (i eq 1) [continue] [i]]]] end for 3 (mk)`,
+		`def mk fn [[][List][quote [i add]]] end for 3 (mk)`,
+		`def mk fn [[][List][quote [raise oops 'x']]] end for 3 (mk)`,
+		`def mk fn [[][List][quote [args]]] end for 2 (mk)`,
+	} {
+		requireEngineParity(t, src, true)
+	}
+}
+
+// TestComputedForBodyDeclines pins where a COMPUTED for body still DECLINES,
+// and why. A per-iteration host (2026-09-25, withdrawn the same day on a
+// Codex review of #508) ran each iteration through the InvokeBody seam and
+// diverged from the interpreter's INLINE SPLICE on four measured shapes; the
+// hosted splice runs the whole loop as the splice, and admits it only where
+// those four cannot arise — so each is a decline: the body reads the
+// caller's stack beneath the loop, a residual is seated around the loop's
+// values, the body's defs and undefs leak into the enclosing scope for a
+// later read, and a caught body error leaves the iterator installed (the
+// last was the interpreter's own leak, NUR206, closed below).
+func TestComputedForBodyDeclines(t *testing.T) {
+	const beneath = "for: a computed body is hosted only over an empty stack"
+	const last = "for: a computed body is hosted only as the program's last statement"
+	for _, src := range []string{
 		`def mk fn [[][List][quote [i add]]] end 9 for 1 (mk)`,
 		`def mk fn [[][List][quote [i]]] end 9 for 2 (mk)`,
 		`def x 99 end def mk fn [[][List][quote [def x i]]] end for 3 (mk) end x`,
 		`def x 99 end def mk fn [[][List][quote [undef x]]] end for 1 (mk) end x`,
 	} {
-		fnValueM2CompileFailure(t, "computed for body: "+src, src, "for: body not captured")
+		fnValueM2CompileFailure(t, "computed for body: "+src, src, beneath)
+	}
+	// The other positions decline too: a statement after the loop, and any
+	// position other than the program's top level (a branch arm, a loop body
+	// — the record-time half), or a gradual body (a poly re-match runs no
+	// host).
+	for _, c := range []struct{ src, reason, want string }{
+		{`def mk fn [[][List][quote [i]]] end for 3 (mk) end 5`, beneath, "[0 1 2 5]"},
+		{`def mk fn [[][List][quote [i]]] end for 3 (mk) drop`, last, "[0 1]"},
+		{`def mk fn [[][List][quote [i]]] end for 3 (mk) end undef mk`, last, "[0 1 2]"},
+		{`def mk fn [[][List][quote [i]]] end [for 3 (mk)]`, last, "[[0 1 2]]"},
+		{`def mk fn [[][List][quote [i]]] end if true [for 3 (mk)] [1]`, "code-body word for", "[0 1 2]"},
+		{`def mk fn [[][List][quote [i]]] end for 2 [for 2 (mk)]`, "code-body word for", "[0 1 0 1]"},
+		{`def mk fn [[][Any][quote [i]]] end for 3 (mk)`, "code-body word for", "[0 1 2]"},
+	} {
+		requireLoudDecline(t, c.src, c.reason, c.want)
 	}
 	// The fourth divergence the review measured — a caught body error
 	// leaving the iterator installed — was the interpreter's own leak,
@@ -310,4 +359,38 @@ func TestLoopIndexUnwoundByCaughtError(t *testing.T) {
 		t.Errorf("no outer binding: the index must not survive the caught error, got %v / %v", got, err)
 	}
 	requireEngineParity(t, `def i 99 end do [[1 2] each [raise oops 'x']] error [i]`, true)
+}
+
+// TestHostedSpliceHonoursStepLimit pins the hosted splice's step metering
+// (Codex P2 on PR #512): the island runs on what REMAINS of the program's
+// step budget and charges its steps back, so a host's lang.Options.Steps
+// bounds the hosted loop exactly as it bounds the interpreter's run of the
+// same tokens — the island used to start a fresh counter and ran free — and
+// the exhausted run names the bound the host configured.
+func TestHostedSpliceHonoursStepLimit(t *testing.T) {
+	src := `def mk fn [[][List][quote [i add 1 drop]]] end for 50 (mk)`
+	for _, lane := range []string{"compiled", "interpreted"} {
+		b, err := New(Options{Steps: 200})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var runErr error
+		if lane == "compiled" {
+			var compiled bool
+			_, compiled, runErr = b.RunCompiled(src)
+			if !compiled {
+				t.Fatalf("the hosted splice must compile")
+			}
+		} else {
+			_, runErr = b.RunInterp(src)
+		}
+		if runErr == nil || !strings.Contains(runErr.Error(), "evaluation_limit") || !strings.Contains(runErr.Error(), "step limit of 200") {
+			t.Errorf("%s: a 50-iteration hosted loop under Steps 200 must raise evaluation_limit naming 200, got %v", lane, runErr)
+		}
+	}
+	// Under a budget the loop fits, both lanes finish.
+	b, _ := New(Options{Steps: 1000})
+	if _, compiled, err := b.RunCompiled(src); err != nil || !compiled {
+		t.Errorf("under Steps 1000 the hosted loop finishes compiled: compiled=%v err=%v", compiled, err)
+	}
 }

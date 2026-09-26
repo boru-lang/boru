@@ -22,15 +22,19 @@ func TestS2BDeclarationsByWordAndShape(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	own, resteps := core.CompileOwnLowering, core.CompileResteps
+	own, resteps, dyn := core.CompileOwnLowering, core.CompileResteps, core.CompileDynBody
 	key, inert := core.CompileQuoteKey, core.CompileQuoteInert
 	// word -> shape -> the EXACT CompileEffect every NoEvalArgs sig of that
 	// shape carries. def's keyword forms are checked by rule below (34
 	// forms, synthesized from the constructors' tables).
 	want := map[string]map[string]core.CompileEffect{
-		// Structured ReturnsFn lowering (RecordBranch / RecordLoop).
-		"if":    {"(Any Any Any)": own, "(Any Any)": own, "(List)": resteps},
-		"for":   {"(Integer List)": own, "(List List)": own},
+		// Structured ReturnsFn lowering (RecordBranch / RecordLoop). Two
+		// moved on 2026-09-26, each CHANGING lowering: the clause-list `if`
+		// (List) left CompileResteps — its ReturnsFn now records the chain
+		// as branch events (basic's ifClauseRecord) — and `for` took
+		// CompileDynBody, the hosted splice of a computed body.
+		"if":    {"(Any Any Any)": own, "(Any Any)": own, "(List)": own},
+		"for":   {"(Integer List)": own | dyn, "(List List)": own | dyn},
 		"while": {"(List List)": own},
 		// Check-mode constructors: the value is built on the check engine.
 		"fn":     {"(Any Any List)": own, "(List)": own},

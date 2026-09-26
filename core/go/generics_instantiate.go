@@ -38,8 +38,16 @@ func PopGenBindings(r *Registry, spec *GenSpecInfo) {
 // genMemoKey builds the registry-local interning key for an
 // instantiation (the const-interning pattern: a hidden Defs binding).
 func genMemoKey(schemaID string, canon string) string {
-	return "__gen:" + schemaID + ":" + canon
+	return genMemoPrefix + schemaID + ":" + canon
 }
+
+const genMemoPrefix = "__gen:"
+
+// IsGenMemoName reports whether name is an instantiation's hidden memo
+// binding (genMemoKey). The binding is an IDEMPOTENT cache: a later
+// `Box of [Integer]` re-mints or re-reads the same node, so a pass that
+// rolls one back changes no answer — unlike a program's own def.
+func IsGenMemoName(name string) bool { return strings.HasPrefix(name, genMemoPrefix) }
 
 // canonTypeArg renders one instantiation argument canonically for the
 // memo key and the instantiation node's display name. A named node

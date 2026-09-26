@@ -58,8 +58,13 @@ type Engine struct {
 	// skip its prefix scan entirely for a program that has none. Monotonic by
 	// design — see inFnFrame.
 	sawFnFrame bool
-	stepLimit  int             // hard cap on the Run loop; always positive, set by the New/NewTop constructors below
-	marks      map[string]bool // active mark IDs (for mark/move control flow)
+	stepLimit  int // hard cap on the Run loop; always positive, set by the New/NewTop constructors below
+	// stepsTaken counts every Run-loop step this engine has taken, across
+	// runs (StepsTaken); limitReport, when positive, is the bound an
+	// exhausted run REPORTS in place of stepLimit (StepBudget).
+	stepsTaken  int
+	limitReport int
+	marks       map[string]bool // active mark IDs (for mark/move control flow)
 	// sealFnValue / sealFnValueIdx: one-shot commit seal for a VALUE-called
 	// function whose forward collection just COMPLETED. Completion re-steps
 	// the callee stack-only; a WORD callee gets that via the /s token
@@ -307,6 +312,24 @@ func StepLimitFor(r *Registry, def int) int {
 	}
 	return def
 }
+
+// StepBudget caps the engine's Run loop at limit steps (at least one) for
+// every run until the returned restore is called, and makes an exhausted run
+// report report as the limit it hit. The VM's hosted splice uses it to run
+// its island on what REMAINS of the program's step budget while the error
+// names the budget the host configured — the interpreter meters the same
+// tokens against that one bound (Codex P2 on PR #512).
+func (e *Engine) StepBudget(limit, report int) (restore func()) {
+	prevLimit, prevReport := e.stepLimit, e.limitReport
+	e.stepLimit = max(limit, 1)
+	e.limitReport = report
+	return func() { e.stepLimit, e.limitReport = prevLimit, prevReport }
+}
+
+// StepsTaken is the number of Run-loop steps this engine has taken, across
+// every run on it: a caller reads it before and after a run to charge that
+// run's work to its own budget.
+func (e *Engine) StepsTaken() int { return e.stepsTaken }
 
 // New creates an Engine with the given function registry.
 // The returned engine uses the sub-engine step limit.
@@ -1409,6 +1432,9 @@ func (e *Engine) runtimeError(code, detail, word, hint string) *BoruError {
 // (non-terminating or pathologically deep) program, replacing the
 // phantom "unmatched opening parenthesis" the old silent break produced.
 func (e *Engine) evalLimitError(limit int) *BoruError {
+	if e.limitReport > 0 {
+		limit = e.limitReport
+	}
 	return e.runtimeError("evaluation_limit",
 		fmt.Sprintf("evaluation exceeded the step limit of %d — the program ran too long (an infinite loop or unbounded recursion?)", limit),
 		"",
@@ -1618,6 +1644,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	limit := e.stepLimit
 	completed := false
 	for step := 0; step < limit; step++ {
+		e.stepsTaken++
 		// Memory guard FIRST: a previous edit hit the tape's growth
 		// ceiling (and was dropped to avoid an out-of-bounds write).
 		// This must precede the completion check — a dropped FINAL
@@ -7244,7 +7271,7 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 	// returning `[Function]`), or DYNAMIC, a member read the pass cannot
 	// type (`m.f` over `{f: g/v}`). The collapse re-steps it just the same,
 	// so the compiler must not read the call's result as placed data
-	// (callResultPlaced, NUR210), and a loop body that leaves one is the
+	// (callResultPlaced, NUR260), and a loop body that leaves one is the
 	// interpreter's per-iteration re-step (RecordLoop, NUR129): record it
 	// (CheckState.ReachSurvivorFnIDs).
 	if e.Registry != nil && e.Registry.analysisActive() && !v.Quoted && v.ID != "" && (IsFnTypedCarrier(v) || v.Dynamic) {
@@ -7748,7 +7775,7 @@ func ForwardClaimProbeOn(win CollectWindow, reg *Registry, idx int) (Value, int)
 		// is never an argument: it fell to the literal arm below, where an
 		// `Any` parameter matched it, so a `/v`-marked module member with
 		// an Any first parameter read as a call head that would claim its
-		// own marker and `def g M.up1/v` collected nothing (NUR212).
+		// own marker and `def g M.up1/v` collected nothing (NUR262).
 		return Value{}, probeNone
 	case IsWord(v):
 		wi, werr := AsWord(v)
