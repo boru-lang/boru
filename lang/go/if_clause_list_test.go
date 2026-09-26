@@ -142,6 +142,14 @@ func TestClauseListIfDeclinesLoudly(t *testing.T) {
 		{`def g fn [[][Integer][5]] end if [true] [g/v] [1]`, "if: the taken arm leaves a fn value", "[fn g]"},
 		{`def g fn [[x:Integer][Integer][x add 5]] end 10 if [true] [g/v] [1]`, "if: the taken arm leaves a fn value", "[10 fn g(Integer)]"},
 		{`def h fn [[f:Function][Any][if [[true] [f/v] [1]]]] end def g fn [[][Integer][5]] end h g/v`, "if: the taken arm leaves a fn value", "[fn f]"},
+		// A condition that BINDS a name: the interpreter keeps the binding
+		// past the condition; the rolled-back condition fragment lost it
+		// (Codex P1 on PR #512 — present on main for if2 / if3 too).
+		{`def x 1 end if [[def x 5 true] [2] [3]] end x`, "the condition binds a name the interpreter keeps past it", "[2 5]"},
+		{`def x 1 end if [def x 5 true] [2] [3] end x`, "the condition binds a name the interpreter keeps past it", "[2 5]"},
+		{`def x 1 end if [def x 5 true] [x] [3]`, "the condition binds a name the interpreter keeps past it", "[5]"},
+		{`def x 1 end if [def x 5 true] [2] end x`, "the condition binds a name the interpreter keeps past it", "[2 5]"},
+		{`def x 1 end case [def x 5 1] [1 "one" "other"] end x`, "the condition binds a name the interpreter keeps past it", "[one 5]"},
 	} {
 		requireLoudDecline(t, c.src, c.reason, c.want)
 	}

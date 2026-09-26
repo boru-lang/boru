@@ -249,6 +249,24 @@ func (vc *vmContext) islandRun(reg *core.Registry, tokens []core.Value) ([]core.
 	return runIslandResolved(reg, nil, tokens)
 }
 
+// hostedSpliceRun runs a hosted splice's tokens on the island within what
+// REMAINS of the program's step budget and charges the island's steps back
+// to it, so the hosted loop is metered against the one bound the host set
+// (lang.Options.Steps) exactly as the interpreter's own run of those tokens
+// is; an exhausted island reports that configured bound (Codex P2 on PR
+// #512: with Steps 12, `for 1 (mk)` finished compiled where the interpreter
+// raised evaluation_limit). The recorder admits a hosted splice only on the
+// program registry, so the island is vc.island().
+func (vc *vmContext) hostedSpliceRun(reg *core.Registry, tokens []core.Value) ([]core.Value, error) {
+	eng := vc.island()
+	restore := eng.StepBudget(vc.stepLimit-vc.steps, vc.stepLimit)
+	before := eng.StepsTaken()
+	res, err := vc.islandRun(reg, tokens)
+	vc.steps += eng.StepsTaken() - before
+	restore()
+	return res, err
+}
+
 // screenResults rejects handler / island results that carry a tape-coupled
 // token (Word/Mark/Move/Forward/OpenParen/Splice) — a value the interpreter
 // would re-STEP rather than treat as data. No compiled-reachable handler should
@@ -3254,7 +3272,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// interpreter's tape would run them — the recorder admitted
 				// the site only as the program's last statement over an
 				// empty stack, where the two cannot be told apart.
-				results, err = vc.islandRun(curReg, results)
+				results, err = vc.hostedSpliceRun(curReg, results)
 			}
 			if err != nil {
 				return nil, stampAt(err, curDebug, pc, curReg)

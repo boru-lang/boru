@@ -1045,8 +1045,25 @@ func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
 		return nil, nil
 	}
 	es.ArmBranchCapture()
-	stk, _ := RunCarrierCondBody(r, cond)
-	return es.TakeFragment(), stk
+	stk, adds := RunCarrierCondBody(r, cond)
+	frag := es.TakeFragment()
+	if len(adds) > 0 {
+		// A condition body that BINDS a name (`if [def x 5 true] …`): the
+		// interpreter runs the condition inline, once, so the binding stays
+		// visible to the taken arm and to everything after the `if`; the
+		// fragment records it as a rolled-back body and the compiled run
+		// reads the stale binding — `def x 1 end if [def x 5 true] [2] [3]
+		// end x` answered [2 1] for [2 5] (Codex P1 on PR #512, present on
+		// main at b4fad6c for if2 / if3; the clause-list if inherited it).
+		// Declined through the branch record's uncaptured-arm site, the
+		// clause-list if's own decline, so no new site is minted.
+		taken := true
+		recorderState(r.Check).RecordBranch(BranchRecord{
+			ConstCond: &taken, HasElse: true, Pos: cond.Pos(),
+			Uncaptured: "the condition binds a name the interpreter keeps past it",
+		})
+	}
+	return frag, stk
 }
 
 func If2ReturnsFn(args []Value, r *Registry) []Value {

@@ -348,3 +348,37 @@ func TestLoopIndexSurvivesCaughtErrorPending(t *testing.T) {
 	}
 	requireEngineParity(t, `def i 99 end do [[1 2] each [raise oops 'x']] error [i]`, true)
 }
+
+// TestHostedSpliceHonoursStepLimit pins the hosted splice's step metering
+// (Codex P2 on PR #512): the island runs on what REMAINS of the program's
+// step budget and charges its steps back, so a host's lang.Options.Steps
+// bounds the hosted loop exactly as it bounds the interpreter's run of the
+// same tokens — the island used to start a fresh counter and ran free — and
+// the exhausted run names the bound the host configured.
+func TestHostedSpliceHonoursStepLimit(t *testing.T) {
+	src := `def mk fn [[][List][quote [i add 1 drop]]] end for 50 (mk)`
+	for _, lane := range []string{"compiled", "interpreted"} {
+		b, err := New(Options{Steps: 200})
+		if err != nil {
+			t.Fatal(err)
+		}
+		var runErr error
+		if lane == "compiled" {
+			var compiled bool
+			_, compiled, runErr = b.RunCompiled(src)
+			if !compiled {
+				t.Fatalf("the hosted splice must compile")
+			}
+		} else {
+			_, runErr = b.RunInterp(src)
+		}
+		if runErr == nil || !strings.Contains(runErr.Error(), "evaluation_limit") || !strings.Contains(runErr.Error(), "step limit of 200") {
+			t.Errorf("%s: a 50-iteration hosted loop under Steps 200 must raise evaluation_limit naming 200, got %v", lane, runErr)
+		}
+	}
+	// Under a budget the loop fits, both lanes finish.
+	b, _ := New(Options{Steps: 1000})
+	if _, compiled, err := b.RunCompiled(src); err != nil || !compiled {
+		t.Errorf("under Steps 1000 the hosted loop finishes compiled: compiled=%v err=%v", compiled, err)
+	}
+}

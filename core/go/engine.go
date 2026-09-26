@@ -59,6 +59,11 @@ type Engine struct {
 	// design — see inFnFrame.
 	sawFnFrame bool
 	stepLimit  int             // hard cap on the Run loop; always positive, set by the New/NewTop constructors below
+	// stepsTaken counts every Run-loop step this engine has taken, across
+	// runs (StepsTaken); limitReport, when positive, is the bound an
+	// exhausted run REPORTS in place of stepLimit (StepBudget).
+	stepsTaken  int
+	limitReport int
 	marks      map[string]bool // active mark IDs (for mark/move control flow)
 	// sealFnValue / sealFnValueIdx: one-shot commit seal for a VALUE-called
 	// function whose forward collection just COMPLETED. Completion re-steps
@@ -307,6 +312,24 @@ func StepLimitFor(r *Registry, def int) int {
 	}
 	return def
 }
+
+// StepBudget caps the engine's Run loop at limit steps (at least one) for
+// every run until the returned restore is called, and makes an exhausted run
+// report report as the limit it hit. The VM's hosted splice uses it to run
+// its island on what REMAINS of the program's step budget while the error
+// names the budget the host configured — the interpreter meters the same
+// tokens against that one bound (Codex P2 on PR #512).
+func (e *Engine) StepBudget(limit, report int) (restore func()) {
+	prevLimit, prevReport := e.stepLimit, e.limitReport
+	e.stepLimit = max(limit, 1)
+	e.limitReport = report
+	return func() { e.stepLimit, e.limitReport = prevLimit, prevReport }
+}
+
+// StepsTaken is the number of Run-loop steps this engine has taken, across
+// every run on it: a caller reads it before and after a run to charge that
+// run's work to its own budget.
+func (e *Engine) StepsTaken() int { return e.stepsTaken }
 
 // New creates an Engine with the given function registry.
 // The returned engine uses the sub-engine step limit.
@@ -1209,6 +1232,9 @@ func (e *Engine) runtimeError(code, detail, word, hint string) *BoruError {
 // (non-terminating or pathologically deep) program, replacing the
 // phantom "unmatched opening parenthesis" the old silent break produced.
 func (e *Engine) evalLimitError(limit int) *BoruError {
+	if e.limitReport > 0 {
+		limit = e.limitReport
+	}
 	return e.runtimeError("evaluation_limit",
 		fmt.Sprintf("evaluation exceeded the step limit of %d — the program ran too long (an infinite loop or unbounded recursion?)", limit),
 		"",
@@ -1418,6 +1444,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	limit := e.stepLimit
 	completed := false
 	for step := 0; step < limit; step++ {
+		e.stepsTaken++
 		// Memory guard FIRST: a previous edit hit the tape's growth
 		// ceiling (and was dropped to avoid an out-of-bounds write).
 		// This must precede the completion check — a dropped FINAL
