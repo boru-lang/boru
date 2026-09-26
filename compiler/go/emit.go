@@ -1641,6 +1641,10 @@ type fnUnitRec struct {
 	// program frozen-read hammer is for ordinary CALL_USER units, which
 	// have no per-unit fallback.
 	storedRefUnit bool
+	// fnReadParams are a stored unit's param slots read bare under a
+	// gradual carrier (storedUnitFnReadParams), stamped on
+	// CompiledFn.FnReadParams for the seams' refusal (NUR217).
+	fnReadParams []int
 	// liveNames are the module-scope names this unit reads LIVE — a routed
 	// slot, a seated live read, a routed lead (noteUnitLive) — so a stored
 	// ref made over it can tell the latch which of its deps hold no bake
@@ -8774,6 +8778,22 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 			return true
 		}
 	}
+	// `apply` over a LONE gradual lead — a Dynamic carrier no fn type or
+	// concrete value pins, and nothing beneath it in the apply's window —
+	// has no modelled overload (at run time the [Function] one marks the
+	// value applied and re-steps it) and no tail window to seat; the decline
+	// is the dynamic-lead one below. It is taken HERE because apply's
+	// identity result carries the lead's own id, which the registered-output
+	// arm below elides as the lead's producer's: `each ([kv:Any] => [kv.v
+	// apply]) {x: ([] => [5])}` compiled to the bare member read, the Applied
+	// mark the interpreter's apply stamps lost, and it answered whatever the
+	// read answered — the lambda once the dynamic apply honoured the
+	// anonymous park (NUR220).
+	if word == "apply" && len(args) == 1 && args[0].Dynamic && !core.IsConcrete(args[0]) && !core.IsFnTypedCarrier(args[0]) {
+		es.SiteCounts[SiteMeta]++
+		es.MarkUncompilable("apply over a dynamic lead (overload unprovable)")
+		return true
+	}
 	// A dispatch whose output is already registered was recorded by a
 	// structured hook (RecordBranch owns the `if` dispatch; a user-fn
 	// ReturnsFn owns its RecordUserCall — including multi-return calls) —
@@ -10776,6 +10796,52 @@ func (es *EmitState) MayBeFn(id string) bool {
 	return ok && es.eventInfo[pr.seq].mayBeFn
 }
 
+// storedUnitFnRead reports a bare read, in a stored fn's unit, that the
+// interpreter DISPATCHES where the unit pushed the value (NUR217) — NUR123's
+// accounting, with none of the routes a named fn's unit has to seat a read:
+// a FN-TYPED read (the recorder's strict count) that no accepted lowering
+// took as the dispatch it is (a paren apply or a trailing apply credit it —
+// creditWordRead), a binding read both bare and by `/v`, and a GRADUAL read
+// that is the body's RESULT (the frame hands it back and the interpreter's
+// re-step of a fn there is the call NUR123's residual replay models, which a
+// stored unit does not take). A gradual read an operation consumes (`m dot
+// name`, a socket handed to a word) keeps its slot push, as NUR123 keeps it
+// in a named fn's unit. Returns the read's binding name for the reason.
+func storedUnitFnRead(rec *fnUnitRec, vals []core.Value) (string, bool) {
+	for id, n := range rec.wordReads {
+		if n > rec.wordReadCredit[id] || rec.valReads[id] > 0 {
+			return rec.wordReadNames[id], true
+		}
+	}
+	for _, v := range vals {
+		if name, read := rec.wordReadNames[v.ID]; read {
+			return name, true
+		}
+	}
+	return "", false
+}
+
+// storedUnitFnReadParams are the param slots a closure unit — a stored fn's
+// or a callback body's — reads bare where the unit pushes the slot: under a
+// gradual carrier, or fn-typed with a read no apply lowering took (the
+// recorder's word-read names that are this unit's params, less a fn-typed
+// read every one of whose reads was credited — `(g 3)` applies the value
+// natively). storedUnitFnRead already declined a stored unit's uncredited
+// fn-typed read, and a callback body's is not accounted at all. The unit
+// runs over data there, and the seams refuse a fn argument in one of them
+// (CompiledFn.FnReadRefused, NUR217 and NUR219). Sorted, for a stable
+// Program.
+func storedUnitFnReadParams(u *emitUnit, rec *fnUnitRec) []int {
+	var slots []int
+	for id := range rec.wordReadNames {
+		if slot, local := u.localByID[id]; local && slot < rec.nParams && (rec.wordReads[id] == 0 || rec.wordReads[id] > rec.wordReadCredit[id]) {
+			slots = append(slots, slot)
+		}
+	}
+	sort.Ints(slots)
+	return slots
+}
+
 // pendingApplyTail seats the unit's pending `apply` words at the body tail
 // (StartFnCompile's finish): one pending apply over the whole residual is
 // the single tail apply, a CHAIN of applies over inert operands (`x f/v
@@ -10962,6 +11028,21 @@ func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []c
 	lead := args[0]
 	if core.IsConcrete(lead) || !lead.Dynamic || lead.ID == "" {
 		return false
+	}
+	// A lead the interpreter RE-STEPS where it stands — a container read the
+	// check pass noted a landing after (no `/v`, no paren) — dispatches
+	// there when it holds a fn that claims the value beneath: `3 kv.v
+	// apply` over an inc member applies it to 3 BEFORE apply runs, and apply
+	// then raises over the 4; this event applied the member once, to 3, and
+	// answered 4 (NUR221). The landing applies over an empty window only, so
+	// no op models the claim: such a lead takes the dynamic-lead decline
+	// below. A `/v` read or a user paren's placed result (`nd (m get "inc")
+	// apply` — its re-step ran inside the sealed paren, over nothing) is the
+	// inert value this event models.
+	if pr, produced := es.producedBy[lead.ID]; produced && !es.valReadNoted[lead.ID] && !es.parenPlacedMemberFn(lead) {
+		if _, landed := es.landingAfter[pr.seq]; landed {
+			return false
+		}
 	}
 	fnOp, ok := es.resolveOperand(lead)
 	if !ok {
@@ -14145,7 +14226,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		names := make([]string, rec.numLoc)
 		copy(names, rec.locals)
 		fillSlotNames(names, rec.slotNames)
-		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render, Lambda: rec.lambdaUnit}
+		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render, Lambda: rec.lambdaUnit, FnReadParams: rec.fnReadParams}
 		if es.isForeignRegistry(rec.reg) {
 			// Stamp the unit's dispatch registry ONLY for a FOREIGN sub-registry
 			// (a `module [...]` preamble fn — decision.cond, repl-eval-line):
@@ -14894,6 +14975,26 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 		}
 	}
 	if rec.closure && !rec.plainLambda() {
+		// A STORED fn value's unit (storedfn$body, run when the value is
+		// applied through a container member or handed to a native seam)
+		// is compiled once under the declared param types: no per-call
+		// re-analysis re-runs it under an argument's runtime type, no body
+		// tokens seat a deopt, no replay re-steps its residual. A bare read
+		// of a param or capture that may hold a fn is the interpreter's
+		// WORD dispatch when it does (NUR123) — `def g fn [[f:Any] [Any]
+		// [f]] def m {g: g/v} m.g ([] => [42])` is 42 — and here it was a
+		// slot push, `fn f` (NUR217). The unit declines; the value keeps
+		// its plain const and the apply takes the interpreter's own
+		// dispatch at the seam.
+		if rec.storedRefUnit {
+			if name, read := storedUnitFnRead(rec, vals); read {
+				return "stored fn: bare read of `" + name + "` may hold a fn the interpreter dispatches as a word (NUR217)"
+			}
+		}
+		// The params such a unit — stored or a callback body — reads bare
+		// under a gradual carrier: the seams that run it refuse a fn there
+		// (NUR217's stored fn, NUR219's callback body).
+		rec.fnReadParams = storedUnitFnReadParams(u, rec)
 		// One replay a code body DOES take: its top value re-stepped by the
 		// interpreter's pointer inside the body (noteClosureBodyReplay).
 		es.noteClosureBodyReplay(u, rec, vals)

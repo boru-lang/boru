@@ -323,7 +323,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// typechecks, then record the dispatch with the body as a closure the
 	// handler drives through InvokeBody.
 	if fd, isFn := body.Data.(core.FnDefInfo); isFn {
-		return tryRecordLambdaClosure(r, word, spec, sig, args, &fd, body.Pos(), extraLamSlots, outs, pos)
+		return tryRecordLambdaClosure(r, word, spec, sig, args, body, &fd, extraLamSlots, outs, pos)
 	}
 
 	// A token-list body (`filter [body] data`): the body consumes its inputs
@@ -430,7 +430,8 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 // (`p.value`, `kv.v`, `acc`+`kv.v`) typechecks. Returns false — leaving the
 // compile failure to stand — for a shape the word has no lambda convention for, an
 // arity mismatch, or a body that does not compile.
-func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpec, sig *core.Signature, args []core.Value, fd *core.FnDefInfo, fnPos core.SrcPos, extraLamSlots []int, outs []core.Value, pos core.SrcPos) bool {
+func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpec, sig *core.Signature, args []core.Value, body core.Value, fd *core.FnDefInfo, extraLamSlots []int, outs []core.Value, pos core.SrcPos) bool {
+	fnPos := body.Pos()
 	inputs, shape, ok := lambdaCallbackInputs(r, word, spec, args)
 	if !ok {
 		return false
@@ -496,11 +497,26 @@ func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpe
 	if foreignFnHome(r, fd) {
 		restore := check.ShareCheckStateFrom(fd.Registry, r)
 		defer restore()
-		return recordClosureDispatch(fd.Registry, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, fnValueRetSpec(fd, lam, fnPos), lamParamContract(lam), !fd.Anonymous, pos, nil)
+		return recordClosureDispatch(fd.Registry, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, callbackSourceSpec(fnValueRetSpec(fd, lam, fnPos), body), lamParamContract(lam), !fd.Anonymous, pos, nil)
 	}
 	// A lambda body is a fn body: its defs are frame-locals and nothing
 	// leaks, so it needs no re-run environment.
-	return recordClosureDispatch(r, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, fnValueRetSpec(fd, lam, fnPos), lamParamContract(lam), !fd.Anonymous, pos, nil)
+	return recordClosureDispatch(r, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, callbackSourceSpec(fnValueRetSpec(fd, lam, fnPos), body), lamParamContract(lam), !fd.Anonymous, pos, nil)
+}
+
+// callbackSourceSpec carries the callback fn VALUE on its push's spec
+// (ClosureRetSpec.Source → ClosurePayload.Source): a callback body unit whose
+// body reads a param bare under a gradual carrier runs over data, and the VM
+// hands an invocation with a fn in such a slot to the interpreter's own step
+// of the value, which dispatches it there as a word (NUR219). The contract
+// fields ride as fnValueRetSpec built them — none when it built none.
+func callbackSourceSpec(ret *ClosureRetSpec, src core.Value) *ClosureRetSpec {
+	out := ClosureRetSpec{}
+	if ret != nil {
+		out = *ret
+	}
+	out.Source = &src
+	return &out
 }
 
 // lamParamContract is a lambda's declared PARAM contract — the types and

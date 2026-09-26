@@ -30,7 +30,9 @@ func invokeCompiled(r *core.Registry, sig *core.Signature, args []core.Value, na
 	if ref != nil && ref.Prog != nil && !ref.DepsFresh(r) {
 		ref = ref.JitRestamp(r)
 	}
-	if ref == nil || ref.Prog == nil {
+	if ref == nil || ref.Prog == nil || ref.RefusesArgs(args) {
+		// No unit — or a fn argument in a slot the unit reads bare, the
+		// interpreter's word dispatch (NUR217): CallBoru answers.
 		return nil, nil, false
 	}
 	res, err, ran := invokeCompiledUnit(r, ref, args, named)

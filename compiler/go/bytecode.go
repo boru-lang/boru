@@ -1674,6 +1674,39 @@ type CompiledFn struct {
 	Body []core.Value
 	// Deopts is the unit's per-read deopt table (OpDeoptIfFn's Arg).
 	Deopts []DeoptSpec
+	// FnReadParams are the param slots a closure unit — a STORED fn's
+	// (NUR217) or a callback body's (NUR219) — reads BARE under a gradual
+	// carrier: a binding the interpreter dispatches as a word when the
+	// argument is a fn (NUR123), which the unit's slot push cannot. The seams
+	// that run the unit refuse an argument list holding a fn in one of these
+	// slots (FnReadRefused), and the value takes the interpreter's own
+	// dispatch there; data arguments run the unit.
+	FnReadParams []int
+}
+
+// FnReadRefused reports whether args (positional — args[i] fills param slot
+// i) put a fn value in one of fn's FnReadParams: the call the unit cannot
+// run faithfully, which the seam hands to the interpreter (NUR217, NUR219).
+// A nil unit refuses nothing.
+func (fn *CompiledFn) FnReadRefused(args []core.Value) bool {
+	if fn == nil {
+		return false
+	}
+	for _, i := range fn.FnReadParams {
+		if i < len(args) && core.IsAppliableFn(args[i]) {
+			return true
+		}
+	}
+	return false
+}
+
+// RefusesArgs is FnReadRefused on the unit ref names; a ref that names no
+// unit refuses nothing (the seams' own guards decline it).
+func (ref *CompiledFnRef) RefusesArgs(args []core.Value) bool {
+	if ref == nil || ref.Prog == nil || ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) {
+		return false
+	}
+	return ref.Prog.Fns[ref.Unit].FnReadRefused(args)
 }
 
 // DeoptSpec is one OpDeoptIfFn: the gradual word read it guards (Name, its

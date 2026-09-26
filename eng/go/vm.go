@@ -681,7 +681,50 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 			return res, err
 		}
 	}
-	return vc.applyClosure(reg, cl, shapeInputs(cl, inputs))
+	args := shapeInputs(cl, inputs)
+	if res, err, ran := vc.closureSourceStep(reg, cl, inputs, args); ran {
+		return res, err
+	}
+	return vc.applyClosure(reg, cl, args)
+}
+
+// closureSourceStep hands one invocation of a callback body unit to the
+// interpreter when an input lands in a param slot the body reads bare under a
+// gradual carrier (CompiledFn.FnReadParams): the interpreter dispatches a fn
+// there as a word — `def g fn [[f:Any] [Any] [f]]  each g/v [([] => [1]) 7]`
+// is [1 7] — where the unit pushed the slot, [fn f 7] (NUR219). The callback
+// fn VALUE rides on the closure (ClosurePayload.Source) with the closure's
+// runtime captures in place of the compile-time ones, and it runs the way the
+// handler's own interpreter lane runs it: through the fn-VALUE seam (RetTrim)
+// matched and called by InvokeCallbackFn, through the TOKEN seam stepped over
+// the inputs as InvokeBody's no-Invoker branch steps it. Data inputs run the
+// unit.
+func (vc *vmContext) closureSourceStep(reg *core.Registry, cl core.ClosurePayload, inputs, args []core.Value) ([]core.Value, error, bool) {
+	if cl.Source == nil {
+		return nil, nil, false
+	}
+	fn, _ := vc.closureUnit(cl)
+	if !fn.FnReadRefused(args) {
+		return nil, nil, false
+	}
+	src := *cl.Source
+	fd, _ := src.Data.(core.FnDefInfo)
+	if len(fd.Captured) > 0 {
+		bound := append([]core.CapturedBinding(nil), fd.Captured...)
+		for i := range bound {
+			if i < len(cl.Captures) {
+				bound[i].Value = cl.Captures[i]
+			}
+		}
+		fd.Captured = bound
+		src.Data = fd
+	}
+	if sig := core.MatchFnSig(src, inputs); cl.RetTrim && sig != nil {
+		res, err := core.InvokeCallbackFn(reg, &fd, sig, inputs)
+		return res, err, true
+	}
+	res, err := core.RunResolved(reg, inputs, []core.Value{src})
+	return res, err, true
 }
 
 // unmatchedLambdaBody is the token seam's per-element signature match for a
@@ -3280,6 +3323,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if spec, has := closureRetAt(p, curUnit, pc); has {
 				cl.RetTypes, cl.RetPatterns = spec.Types, spec.Patterns
 				cl.RetDecl, cl.RetName, cl.RetPos = spec.Decl, spec.Name, spec.Pos
+				cl.Source = spec.Source
 				v.Data = cl
 				if spec.DefName != "" {
 					// A `/v` read of a def-bound capturing literal: the

@@ -13322,6 +13322,91 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR221 closed — a landed lead is no apply-event lead (2026-09-26)
+
+**The divergence.** The gradual apply event (`recordGradualApplyEvent` →
+OpCallDynApplyOne) applies its lead to the one value beneath. A bare
+member read is no inert lead: `3 kv.v apply` over an inc member claims the
+3 at the read's own step and apply raises over the 4 (interpreted), where
+the event applied the member once and answered `{x:4}`. Silent,
+pre-existing.
+
+**The fix.** A lead whose producing event carries a re-step landing
+(`landingAfter`) is refused by the event unless a `/v` read delivered it
+or a user paren placed it (`nd (m get "inc") apply` — the re-step ran in
+the sealed paren); it takes the dynamic-lead decline, and the callback's
+other strategies answer.
+
+**Pins.** lang `TestNUR221LandedLeadIsNoApplyEventLead`.
+
+## NUR220 closed — the dynamic apply reads the anonymous park (2026-09-26)
+
+**The divergence.** A map-each lambda's `kv.v` over a `([] => [5])`
+member is the lambda interpreted (the ANONYMOUS-0-ARG PARK) and was 5
+compiled: the whole-frame replay's lone token went to `dynApplyEnter`,
+which entered the lambda's stamped unit over the empty window. The landing
+reads the park; the apply entries did not.
+
+**The fix.** `dynApplyParks` in `dynApplyEnter` and `dynApplyForeign`.
+It exposed a silent twin: `[kv.v apply]` compiled to the same code as
+`[kv.v]` — apply's identity result carries the lead's id and the
+registered-output arm elided it, dropping the Applied mark. An `apply`
+over a lone gradual lead now takes the dynamic-lead decline ahead of that
+arm (`recordCallElided`), and the callback's other strategies answer 5.
+
+**Pins.** lang `TestNUR220DynamicApplyParksAnonymousZeroArg`.
+
+## NUR219 closed — a callback body's word read runs the source value (2026-09-26)
+
+**The divergence.** A fn value or lambda handed to a higher-order word
+compiles to a callback body unit (`tryRecordLambdaClosure`) whose bare read
+of a gradual param pushed the slot: `def g fn [[f:Any] [Any] [f]]  each
+g/v [([] => [1]) 7]` was `[fn f 7]` compiled for the interpreter's `[1 7]`;
+the lambda spelling, `x typeof`, a gradual list param, `(f)` and the
+map-iteration fold's accumulator likewise. Silent, pre-existing.
+
+**The fix.** NUR217's slot list is computed for every closure unit, and a
+fn-typed read no apply lowering credited joins the gradual reads (a
+callback body's reads are not accounted). The closure push carries its
+callback VALUE (`callbackSourceSpec` → `ClosureRetSpec.Source` →
+`ClosurePayload.Source`), and `closureSourceStep` on the token seam hands
+an invocation with a fn in a listed slot to the interpreter's run of that
+value — stepped over the inputs on the TOKEN seam, `InvokeCallbackFn` on
+the fn-VALUE seam — with the closure's runtime captures bound. Data runs
+the unit.
+
+**Pins.** lang `TestNUR219CallbackParamReadIsTheWord`; compiler
+`TestFnReadRefused`, `TestCallbackSourceSpec`.
+
+## NUR217 closed — a stored fn's word read declines its unit or its call (2026-09-26)
+
+**The divergence.** A fn value applied through a container member runs its
+STORED unit (`compileStoredFnUnit`, `storedfn$body`), compiled once under
+the declared param types. A bare read of a frame binding that holds a fn
+is the interpreter's word dispatch (NUR123), and the stored unit had none
+of the routes a named call's unit has for it — no per-call re-analysis
+under the argument's runtime type (that is what compiles `g ([] => [42])`
+to a frame replay), no seated body tokens for a deopt, no residual replay
+(`noteClosureBodyReplay` takes member reads only). So `def g fn [[f:Any]
+[Any] [f]] def m {g: g/v} m.g ([] => [42])` was 42 interpreted and `fn f`
+compiled; a `f:Function` param the same; `[x f]` a count error for 6;
+`[[f]]` `[[fn f]]` for `[[42]]`. Silent, pre-existing.
+
+**The fix.** Two halves. The unit DECLINES where no argument makes the read
+data (`storedUnitFnRead`): a fn-typed read no apply lowering credited, a
+binding read both bare and `/v`, a gradual read in the residual. A gradual
+param the body CONSUMES is data for every argument but a fn, and declining
+it would decline every `m k get` over an `Any` param (measured: the lens
+and handler suites), so the unit lists the slot instead
+(`CompiledFn.FnReadParams`) and every seam that runs a stored unit —
+`dynApplyEnter`, `dynApplyForeign`, `invokeFnValue`, `invokeCompiled`
+(`CompiledFnRef.RefusesArgs`) — refuses an argument list with a fn there,
+so that call takes the interpreter's dispatch. Data through the same member
+runs the unit (`m.g 5`), and the per-call routes — a module member, a
+def-bound value — keep their compiled frame replay.
+
+**Pins.** lang `TestNUR217StoredFnParamReadIsTheWord`.
+
 ## NUR218 closed — a member reference is its word twin (2026-09-26)
 
 **The divergence.** `/v` yields the binding's value whoever reads it, but a

@@ -138,8 +138,11 @@ keep the two in sync in the same commit.
 | [NUR214](#nur214) | FIXED 2026-09-25 (the loop's fresh cell — the handoff log's entry of that date): a fresh name a loop body binds, in a loop not proven to run, is carried in the unit's cell with NO init (NoteLoopFresh) — each body def stores into it, its install a per-iteration dyn-scope bind — and the post-loop binding is a carrier aliased to the cell and read BOUND-CHECKED, so a zero-trip read raises `undefined_word` on both lanes and a loop that ran reads its last binding; a dynamic read of the name from a fn after a zero-trip loop is the interpreter's `undefined_word` too (NUR215, closed with it). The original text: A FRESH `def` inside a loop that may run ZERO times binds anyway on the compiled lane: `def n (0 add 0) end for n [def x 5] x` answers `5` compiled and raises `undefined_word` interpreted; `for n [def x (n add 5)] x` answers an empty stack compiled (the unset slot) for the same raise, and `while` and a fn body (`f 0`) do the same. NUR110's loop twin: NUR110 measured only a STATIC `for 0`, which the pass prunes, and closed the branch with a bound-checked slot the loop never got. | closing NUR205, 2026-09-25 |
 | [NUR215](#nur215) | FIXED 2026-09-25 (the conditionally bound name's miss — the handoff log's entry of that date): the Program names every bound-checked cell's name (CondBoundNames: an arm's def with no pre binding, NUR110; a fresh def in a loop that may run zero times, NUR214), so a fn's dynamic read of one that misses raises the interpreter's `undefined_word` at the read, as a speculative undef's name does. The original text: a fn that reads such a name DYNAMICALLY on the path that skipped its binding — `def c (1 gt 2) end if c [def k 5] [] def g fn [[][Any][k]] end g`, `def n (0 add 0) end for n [def x 5] def g fn [[][Any][x]] end g` — bailed compiled (`internal_error`: dynamic-scope read miss) where the interpreter raises `undefined_word`; loud on both lanes, the error's code non-uniform. | closing NUR214, 2026-09-25 |
 | [NUR216](#nur216) | FIXED 2026-09-25 (the quoted lead is data on every arm — the handoff log's entry of that date): no residual arm applies a value a `/v` marker quoted — the fn-typed carrier lead arm and the verbatim window islands now ask what the dynamic lead arm already asked (NUR213) — so a CLASS member's `c.op/v 5` is `fn (Integer) 5` on both lanes, and the window spellings `3 c.op/v 2` / `3 4 c.op/v` compile and agree; the map twins `3 m.f/v 2` / `3 4 m.f/v` decline at the existing residual limit ("call result above a literal") and answer by fallback. The original text: a `/v`-marked CLASS member read with arguments beside it was applied compiled and data interpreted — `def T fnsig Integer Integer def C class {op:T} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) c.op/v 5` answered `6` compiled for the interpreter's `fn (Integer) 5`, `3 c.op/v 2` `[3 3]` for `[3 fn (Integer) 2]`, `3 4 c.op/v` `[3 5]` for `[3 4 fn (Integer)]`, and NUR213's map member in the two window spellings the same way. Silent, pre-existing (measured with NUR096's change stashed) | closing NUR096, 2026-09-25 |
-| [NUR217](#nur217) | A member-read fn applied over a fn argument whose body reads a GRADUAL param bare: `def g fn [[f:Any] [Any] [f]] def m {g: g/v} m.g ([] => [42])` is 42 interpreted (the bare read of a frame binding holding a fn dispatches it — NUR123's rule) and `fn f` compiled — the unit the dynamic apply runs was compiled for an `Any` param and keeps the slot push NUR123 left a gradual read; `m.g (z/v)` the same (0 for `fn f`). Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR078, 2026-09-26 |
+| [NUR217](#nur217) | FIXED 2026-09-26 (the stored unit's word read — the handoff log's entry of that date): a STORED fn value's unit (storedfn$body — a container member's apply, a native seam's callback) is compiled once under the declared param types, with no per-call re-analysis, no seated deopt and no replay. It declines where its body reads a binding bare that no argument makes data — a fn-typed read no apply lowering took, a binding read both bare and `/v`, a gradual read in the residual — and for a GRADUAL param the body consumes (`[[f]]`, `[x f]`) it lists the slot (CompiledFn.FnReadParams): every seam that runs the unit (the in-program frame push, the foreign host, the token seam, the callback seam) refuses an argument list with a fn in such a slot, and that one call takes the interpreter's own dispatch. `m.g ([] => [42])` is 42 on both lanes, the fn-typed param, `[[f]]` and the applied read with it; data through the same member (`m.g 5`) runs the unit, and the per-call routes (a module member, a def) are untouched. The original text: A member-read fn applied over a fn argument whose body reads a GRADUAL param bare: `def g fn [[f:Any] [Any] [f]] def m {g: g/v} m.g ([] => [42])` is 42 interpreted (the bare read of a frame binding holding a fn dispatches it — NUR123's rule) and `fn f` compiled — the unit the dynamic apply runs was compiled for an `Any` param and keeps the slot push NUR123 left a gradual read; `m.g (z/v)` the same (0 for `fn f`). Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR078, 2026-09-26 |
 | [NUR218](#nur218) | FIXED 2026-09-26 (a member reference is its word twin — the handoff log's entry of that date): the peek that consumes a group's `/v` marker DELIVERS the value — pushed and stepped past, unquoted, noted as a value read — as `stepWordVal` delivers `inc/v`; the check pass reads a quoted fn-possible binding as the word, a code body's `/v` member takes no replay, and a DYNAMIC branch arm (a flex member, bare or `/v`) is landed on the computed-arm merge as NUR159 lands a named one (`if true m.h [2]` compiled to the member for the interpreter's 1, pre-existing). Every shape answers what the word twin answers, for a map, a flex and a module member, on both lanes; a body's `[m.f/v]` declines loudly where it compiled to the applied value. The original text: A `/v`-quoted MEMBER read is not the value its word twin is: inside a paren, as a def's value, or as a code body's result the quote rides on — `each (m.f/v) [1 2 3]` is `[fn fn fn]` interpreted and `[2 3 4]` compiled (`each (inc/v) [1 2 3]` is `[2 3 4]` on both), `fold (m.f/v) …`, `if true (m.f/v) [2]` and `(m.f/v 5)` the same way; `def g (m.f/v) end g 4` is 5 interpreted and `[fn 4]` compiled, `[1 2 3] each [m.f/v]` `[fn fn fn]` interpreted and `[2 3 4]` compiled. Silent both ways, pre-existing (measured on the committed head, 2026-09-26) | closing NUR078, 2026-09-26 |
+| [NUR219](#nur219) | FIXED 2026-09-26 (the callback body's word read — the handoff log's entry of that date): a callback BODY unit (each$body, fold$body, … compiled from a fn value or a lambda at a higher-order word's slot) lists the params it reads bare where it pushes the slot (CompiledFn.FnReadParams — the stored unit's list, NUR217), the pushed closure carries the callback value it was compiled from (ClosureRetSpec.Source → ClosurePayload.Source), and the VM's token seam hands an invocation with a fn in such a slot to the interpreter's own run of that value — stepped over the inputs on the TOKEN seam, matched and called on the fn-VALUE seam — with the closure's runtime captures; data elements run the unit. The original text: A fn value or lambda handed to a higher-order word reads its gradual param bare: `def g fn [[f:Any] [Any] [f]]  each g/v [([] => [1]) 7]` is [1 7] interpreted and [fn f 7] compiled; `each ([x:Any] => [x]) …`, `x typeof`, a gradual list param, a paren `(f)` and the map-iteration fold's accumulator (`fold ([a:Any kv:Any] => [a]) {x: 1} ([] => [5])`, 5 against `fn a`) the same way. Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR217, 2026-09-26 |
+| [NUR220](#nur220) | FIXED 2026-09-26 (the anonymous park at the dynamic apply — the handoff log's entry of that date): the VM's dynamic apply entries read the interpreter's ANONYMOUS-0-ARG PARK (dynApplyParks — a lambda or macro value with an empty window is data unless `apply` marked it), as the landing already did, and an `apply` over a LONE gradual lead declines where the registered-output arm elided its identity result silently, dropping the Applied mark. The original text: A map-each lambda's member read of a 0-arg lambda: `def m {x: ([] => [5])}  each ([kv:Any] => [kv.v]) m` is `{x:fn}` interpreted and `{x:5}` compiled — the whole-frame replay entered the lambda's stamped unit over an empty window; `kv get "v"` the same. Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR219, 2026-09-26 |
+| [NUR221](#nur221) | FIXED 2026-09-26 (a landed lead is no apply-event lead — the handoff log's entry of that date): the gradual apply event (OpCallDynApplyOne) applies its lead to the one value beneath, which is the interpreter's answer only for an INERT lead; a lead whose producer carries a re-step landing (a bare member read, not `/v`, not a user paren's placed result) takes the dynamic-lead decline instead. The original text: `def m {x: inc/v}  each ([kv:Any] => [3 kv.v apply]) m` raises apply's no-match interpreted (the member claims the 3 at its own step, and apply meets the 4) and answered `{x:4}` compiled. Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR220, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -8428,6 +8431,120 @@ loop inside and around a fn frame, a callback raising inside the loop, a
 range loop's own iterator name, the `error` handler, the while twin; and
 control.tsv §3's row.
 
+## NUR221 — a gradual apply event's lead the interpreter re-steps where it stands {#nur221}
+
+**Status:** FIXED 2026-09-26 (a landed lead is no apply-event lead — the
+handoff log's entry of that date) · **Recorded:** 2026-09-26 · **Surfaced
+by:** closing NUR220, probing `apply` over a map-each member read with a
+value beneath it.
+
+**Rule:** the interpreter steps a member read where it is written (NUR038):
+a fn that claims the value beneath applies there, before any later word
+sees it.
+
+**Divergence** (measured on the committed head):
+
+```
+def inc fn [[n:Integer][Integer][n add 1]] end def m {x: inc/v} end
+each ([kv:Any] => [3 kv.v apply]) m        interp: apply's signature_error   compiled: {x:4}
+```
+
+The gradual apply event (recordGradualApplyEvent → OpCallDynApplyOne, the
+twenty-seventh increment) models `apply` over [lead, receiver] as the lead
+applied to the receiver — right for an INERT lead (`3 kv.v/v apply`, `3
+(kv get "v") apply`: 4 on both lanes). A bare member read is not inert: its
+re-step claims the 3 at its own step (the check pass notes the landing),
+so apply meets the 4 and raises. The landing applies over an empty window
+only, so nothing compiled the claim; the event applied the member once and
+answered 4. Silent, pre-existing.
+
+**The fix.** The event admits no lead whose producing event carries a
+re-step landing (`landingAfter`), unless a `/v` read delivered it
+(`valReadNoted`) or a user paren placed it (`ParenPlacedFnIDs` — `nd (m
+get "inc") apply`, whose re-step ran inside the sealed paren over
+nothing); such a lead takes the existing dynamic-lead decline, and the
+callback's other strategies answer it. Pinned: lang
+`TestNUR221LandedLeadIsNoApplyEventLead` (the inert spellings compiled at
+4, the landed one's no-match on both lanes).
+
+## NUR220 — a dynamic apply enters an anonymous 0-arg lambda the interpreter parks {#nur220}
+
+**Status:** FIXED 2026-09-26 (the anonymous park at the dynamic apply —
+the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** closing NUR219, probing the map-iteration seam.
+
+**Rule:** ADR-016 as the interpreter reads it (execFnDefLiteral): a
+lambda VALUE with an empty window — no forward args, no stack args — is
+data, unless `apply` asked for the application (FnDefInfo.Applied).
+
+**Divergence** (measured on the committed head):
+
+```
+def m {x: ([] => [5])} end each ([kv:Any] => [kv.v]) m          interp: {x:fn}   compiled: {x:5}
+def m {x: ([] => [5])} end each ([kv:Any] => [kv get "v"]) m    interp: {x:fn}   compiled: {x:5}
+```
+
+The body's member read arms the whole-frame replay (noteClosureBodyReplay:
+a member fn read at the residual's top), and the replay's lone token went
+to `dynApplyEnter`, which matched the 0-arg signature and entered the
+lambda's stamped unit. The landing reads the park (landingWalk); the apply
+entries did not. Silent, pre-existing.
+
+**The fix.** `dynApplyEnter` and `dynApplyForeign` park such a value
+(`dynApplyParks`), and the replay's island parks it as the interpreter
+does. That exposed the other half: `[kv.v apply]` compiled to the SAME
+code as `[kv.v]` — apply's identity result carries the lead's own id, and
+the registered-output arm elided it as the lead's producer's, dropping the
+Applied mark (so the replay answered 5 for both, right only by accident
+for the apply). An `apply` over a LONE gradual lead now takes the
+dynamic-lead decline before that arm, and the callback's other strategies
+answer `{x:5}`. A named 0-arg member still fires (`{x:1}`). Pinned: lang
+`TestNUR220DynamicApplyParksAnonymousZeroArg`.
+
+## NUR219 — a callback body reads its gradual param as a slot {#nur219}
+
+**Status:** FIXED 2026-09-26 (the callback body's word read — the handoff
+log's entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:**
+closing NUR217, probing the same read through `each`.
+
+**Rule:** NUR123 — a bare read of a frame binding that holds a fn is a WORD
+dispatch on the interpreter, whatever the param's declared type.
+
+**Divergence** (measured on the committed head):
+
+```
+def g fn [[f:Any] [Any] [f]] end each g/v [([] => [1]) 7]             interp: [1 7]              compiled: [fn f 7]
+each ([x:Any] => [x]) [([] => [1]) 7]                                  interp: [1 7]              compiled: [fn x 7]
+def g fn [[x:Any] [Any] [x typeof]] end each g/v [([] => [1]) 7]      interp: [Integer Integer]  compiled: [Function Integer]
+fold ([a:Any kv:Any] => [a]) {x: 1} ([] => [5])                        interp: 5                  compiled: fn a
+```
+
+A fn value or lambda handed to a higher-order word compiles to a callback
+BODY unit with the value's own named params (tryRecordLambdaClosure), run
+by the handler per element through the token seam (InvokeBody) or the
+fn-VALUE seam (InvokeCallbackBody). The unit is analysed under the
+element's carrier — gradual for a mixed or unknown collection, fn-typed
+for a list of fns — and a callback body's reads are not accounted
+(NUR123's accounting is a plain-unit concern), so the read pushed the
+slot. Silent, pre-existing; the named call `g ([] => [1])` already
+declines loudly.
+
+**The fix.** A callback body unit lists the params it reads bare where it
+pushes the slot — a gradual read, or a fn-typed read no apply lowering
+credited (`storedUnitFnReadParams`, NUR217's list, now for every closure
+unit) — and the pushed closure carries the callback VALUE it was compiled
+from (`callbackSourceSpec` → `ClosureRetSpec.Source` →
+`ClosurePayload.Source`). The VM's token seam (`closureSourceStep`, before
+`applyClosure`) hands an invocation with a fn in such a slot to the
+interpreter's run of that value, as the handler's own interpreter lane runs
+it: stepped over the inputs (InvokeBody's no-Invoker branch) on the TOKEN
+seam, matched and called by `InvokeCallbackFn` on the fn-VALUE seam — with
+the closure's runtime captures in place of the check pass's carriers
+(`run 5 [([] => [1]) 7]` over `[x:Any] => [(x add k)]` is `[6 12]`). Data
+elements run the unit. Pinned: lang `TestNUR219CallbackParamReadIsTheWord`
+(twelve rows compiled, the 1-arg no-match on both lanes); compiler
+`TestFnReadRefused`, `TestCallbackSourceSpec`.
+
 ## NUR218 — a `/v`-quoted member read is not the value its word twin is {#nur218}
 
 **Status:** FIXED 2026-09-26 (a member reference is its word twin — the
@@ -8492,8 +8609,37 @@ record.
 
 ## NUR217 — a member-read fn applied over a fn argument reads its gradual param as a slot {#nur217}
 
-**Status:** Pending · **Recorded:** 2026-09-26 · **Surfaced by:** closing
-NUR078 (`m.g z/v` stopped raising and reached the apply).
+**Status:** FIXED 2026-09-26 (the stored unit's word read — the handoff
+log's entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:**
+closing NUR078 (`m.g z/v` stopped raising and reached the apply).
+
+**The fix.** The unit a stored fn value runs (compileStoredFnUnit's
+`storedfn$body`) is compiled ONCE, under the declared param types: nothing
+re-runs it under an argument's runtime type the way a named call's unit is
+(the per-call-shape analysis that makes `g ([] => [42])` compile a frame
+replay), no body tokens are seated for a deopt, and the code-body replay
+is for member reads only. So a bare read of one of its own frame bindings
+that may hold a fn had no faithful lowering, and the slot push answered
+the value where the interpreter dispatches the word. Two halves close it.
+The unit DECLINES where no argument can make the read data
+(`storedUnitFnRead`): a fn-typed read no apply lowering credited, a
+binding read both bare and `/v`, and a gradual read left in the residual —
+the value keeps its plain const and the apply falls to the interpreter's
+own dispatch, per value, not per program. A GRADUAL param the body
+consumes (`[[f]]`, `[x f]`, `f typeof`) is data for every argument but a
+fn, so declining it would decline every `m k get` over an `Any` param;
+instead the unit LISTS the slot (`storedUnitFnReadParams` →
+`CompiledFn.FnReadParams`) and each seam that runs a stored unit — the
+in-program frame push (`dynApplyEnter`), the foreign host
+(`dynApplyForeign`), the token seam (`invokeFnValue`) and the callback
+seam (`invokeCompiled`, `CompiledFnRef.RefusesArgs`) — refuses an argument
+list with a fn in such a slot, so that one call takes the interpreter's
+dispatch and data keeps the unit. Measured: `m.g ([] => [42])` 42, `m.g
+(z/v)` 0, a `f:Function` param 42, `[x f]` 6, `[[f]]` `[[42]]`, the 1-arg
+no-match the word's `signature_error`, all on both lanes; `m.g 5` is 5 and
+runs the unit; the module member and a def-bound value compile per call
+and are untouched. The same read in a CALLBACK body is NUR219.
+Pinned: lang `TestNUR217StoredFnParamReadIsTheWord`.
 
 **Rule:** NUR123 — a bare read of a frame binding that holds a fn is a WORD
 dispatch on the interpreter, whatever the param's declared type.

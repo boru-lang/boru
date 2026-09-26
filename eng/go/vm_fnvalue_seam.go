@@ -87,9 +87,10 @@ func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs [
 		return nil, nil, false
 	}
 	unit := &ref.Prog.Fns[ref.Unit]
-	if unit.NParams-len(ref.Captures) != len(args) {
+	if unit.NParams-len(ref.Captures) != len(args) || unit.FnReadRefused(args) {
 		// A compile/run drift: entering on it would bind the wrong locals
-		// silently (dynApplyEnter's rule) — the stepping path answers.
+		// silently (dynApplyEnter's rule) — the stepping path answers; as it
+		// does a fn argument in a slot the unit reads bare (NUR217).
 		return nil, nil, false
 	}
 	delivered := deliverArgs(args)
