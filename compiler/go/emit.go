@@ -12334,6 +12334,13 @@ func valueRefsName(v core.Value) bool {
 				return true
 			}
 		}
+	case core.InterpStringPayload, core.XmlInterpPayload:
+		// A `${expr}` hole evaluates its expression at run time, against
+		// the scope the string is evaluated in — a name inside it resolves
+		// exactly like a bare word (Codex P1 on PR #511: a behaviour body
+		// `` `${k}` `` read the root's `k` compiled for the caller's).
+		// Conservative, as the doc above says: the payload counts as naming.
+		return true
 	}
 	return false
 }

@@ -39,8 +39,41 @@ import (
 // strictFnOperandProven reports whether the operand op, resolved for the
 // value v, provably holds an interpreter FnDefInfo at run time.
 func (es *EmitState) strictFnOperandProven(v core.Value, op EmitOperand) bool {
-	_, ok := es.provenFnDef(v, op)
-	return ok
+	if _, ok := es.provenFnDef(v, op); ok {
+		return true
+	}
+	switch op.kind {
+	case opEvent:
+		return op.resIdx == 0 && es.strictNativeFnResult(op.idx)
+	case opLocal:
+		pr, ok := es.producedBy[v.ID]
+		return ok && pr.idx == 0 && es.strictNativeFnResult(pr.seq)
+	}
+	return false
+}
+
+// strictNativeFnResult reports whether event seq is a strict fn-handler
+// native (CompileFnHandlerStrict) whose one declared result is a Function —
+// the fn-util combinators (`FnUtil.compose`, `flip`, `partial`, …) and the
+// dispatch modifiers' FnDefInfo forms (`usurp`, `force-arity`, …). Such a
+// native VALIDATES every Function operand as an FnDefInfo (and each of those
+// operands passed this same gate when its own call was recorded) and returns
+// a Go-built FnDefInfo wrapper it mints itself, never a ClosurePayload — so
+// its result arrives as an interpreter fn value on both lanes (Codex P2 on
+// PR #511: `FnUtil.flip (FnUtil.compose inc/v dbl/v)`). The wrapper's body is
+// not known here, so a store-fn word reading it still arms DynEnv
+// (storedFnNeedsDynEnv asks provenFnDef, which declines it).
+func (es *EmitState) strictNativeFnResult(seq int) bool {
+	ev := es.eventInAnyFrame(seq)
+	if ev == nil || ev.kind != evCall {
+		return false
+	}
+	c := &ev.call
+	if c.sig == nil || !c.sig.CompileEffect.Has(core.CompileFnHandlerStrict) || c.nout != 1 || c.dynApply > 0 || c.dynMethod != nil || c.live {
+		return false
+	}
+	rs := c.sig.Returns
+	return len(rs) == 1 && rs[0] != nil && rs[0].Equal(core.TFunction)
 }
 
 // provenFnDef is strictFnOperandProven with the proven fn value itself: the

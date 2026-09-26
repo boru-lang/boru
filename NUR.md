@@ -9815,3 +9815,22 @@ returns one (a capture-free factory), or a member read over a const
 container whose member is a concrete fn. Everything else declines, named.
 behave declares CompileDynBody, and its record arms DynEnv when a proven
 stored body names anything (an unproven one always).
+
+**Review follow-ups (Codex on PR #511, 2026-09-26).** Two gaps in the fix
+itself, both closed before merge.
+
+- *A name inside an interpolation.* The DynEnv test read the stored body
+  through `valueRefsName`, which returned false for an interpolated string
+  and an XML template, so a body naming `k` only inside `` `${k}` `` kept
+  DynEnv off and answered the root's 'Z' for the interpreter's 'K'. Both
+  payloads now count as naming, as that function's own doc already said an
+  unknown payload must; the same test guards `execBodyRefsNames`, so a
+  re-run code body carrying a `${…}` hole is treated as naming there too.
+  Pinned by lang `TestStrictStoreSlotRefusesACompiledClosure` and compiler
+  `TestValueRefsNameInterpolation`.
+- *A native producer.* The proof declined a strict native's own result
+  (`FnUtil.flip (FnUtil.compose inc/v dbl/v)`), a Go-built FnDefInfo the
+  native mints over operands the same gate already proved. It is proven now
+  (compiler `strictNativeFnResult`), with its body still unknown, so a
+  store-fn word reading it keeps DynEnv armed. Pinned by compiler
+  `TestStrictNativeFnResultProven`.

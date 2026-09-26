@@ -76,6 +76,7 @@ var operandKindSites = map[string]bool{
 	"regionSourceOf":        true,
 	"residualReadHazard":    true,
 	"provenFnDef":           true,
+	"strictFnOperandProven": true,
 }
 
 // evKinds is every event kind, with the name a failure should print.

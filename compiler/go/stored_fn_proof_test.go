@@ -366,3 +366,85 @@ func TestTryRecordDynBodyRoutesAStoredFn(t *testing.T) {
 		t.Error("a strict Function carrier is not the gradual operand the arm records")
 	}
 }
+
+// TestStrictNativeFnResultProven pins the native-producer arm of the proof
+// (Codex P2 on PR #511): a strict fn-handler native whose one declared result
+// is a Function mints a Go-built FnDefInfo, so its result is proven at the
+// next strict slot — as an event operand and through a promoted local — but
+// its body is unknown, so provenFnDef still declines it (DynEnv arms).
+func TestStrictNativeFnResultProven(t *testing.T) {
+	es := NewEmitState()
+	strict := &core.Signature{Returns: []*core.Type{core.TFunction}, CompileEffect: core.CompileFnHandlerStrict}
+	plain := &core.Signature{Returns: []*core.Type{core.TFunction}}
+	anyRet := &core.Signature{Returns: []*core.Type{core.TAny}, CompileEffect: core.CompileFnHandlerStrict}
+	twoRet := &core.Signature{Returns: []*core.Type{core.TFunction, core.TFunction}, CompileEffect: core.CompileFnHandlerStrict}
+	nilRet := &core.Signature{Returns: []*core.Type{nil}, CompileEffect: core.CompileFnHandlerStrict}
+	call := func(seq int, c emitCall) EmitEvent { return EmitEvent{seq: seq, kind: evCall, call: c} }
+	es.frames[0] = []EmitEvent{
+		call(1, emitCall{word: "compose", sig: strict, nout: 1}),
+		call(2, emitCall{word: "compose", sig: plain, nout: 1}),
+		call(3, emitCall{word: "valof", sig: anyRet, nout: 1}),
+		call(4, emitCall{word: "compose", sig: twoRet, nout: 1}),
+		call(5, emitCall{word: "compose", sig: nilRet, nout: 1}),
+		call(6, emitCall{word: "compose", nout: 1}),
+		call(7, emitCall{word: "compose", sig: strict, nout: 2}),
+		call(8, emitCall{word: "compose", sig: strict, nout: 1, dynApply: 1}),
+		call(9, emitCall{word: "compose", sig: strict, nout: 1, live: true}),
+		{seq: 10, kind: evCallUser, uc: emitUserCall{nout: 1}},
+	}
+	v := core.NewDynamicCarrier(core.TFunction)
+	for _, c := range []struct {
+		name string
+		seq  int
+		want bool
+	}{
+		{"a strict native with one Function result", 1, true},
+		{"a native that is not strict", 2, false},
+		{"a strict native returning Any", 3, false},
+		{"two declared results", 4, false},
+		{"an undeclared result type", 5, false},
+		{"no signature", 6, false},
+		{"a multi-result call", 7, false},
+		{"an apply riding the call", 8, false},
+		{"a live lookup", 9, false},
+		{"a user call is not a native", 10, false},
+		{"no such event", 99, false},
+	} {
+		if got := es.strictFnOperandProven(v, EventOperand(c.seq, 0)); got != c.want {
+			t.Errorf("%s: proven = %v, want %v", c.name, got, c.want)
+		}
+	}
+	if es.strictFnOperandProven(v, EventOperand(1, 1)) {
+		t.Error("a non-first result is unproven")
+	}
+	if _, ok := es.provenFnDef(v, EventOperand(1, 0)); ok {
+		t.Error("the wrapper's body is unknown: provenFnDef must decline it")
+	}
+	es.producedBy[v.ID] = producer{seq: 1}
+	if !es.strictFnOperandProven(v, localOperand(0)) {
+		t.Error("a promoted def of the native's result is proven")
+	}
+	es.producedBy[v.ID] = producer{seq: 1, idx: 1}
+	if es.strictFnOperandProven(v, localOperand(0)) {
+		t.Error("a promoted def of a non-first result is unproven")
+	}
+	delete(es.producedBy, v.ID)
+	if es.strictFnOperandProven(v, localOperand(0)) {
+		t.Error("a local with no producer is unproven")
+	}
+}
+
+// TestValueRefsNameInterpolation pins the interpolation arms (Codex P1 on
+// PR #511): a `${expr}` hole resolves names at run time, so an interpolated
+// string or XML template counts as naming.
+func TestValueRefsNameInterpolation(t *testing.T) {
+	if !valueRefsName(core.Value{Data: core.InterpStringPayload{}}) {
+		t.Error("an interpolated string counts as naming")
+	}
+	if !valueRefsName(core.Value{Data: core.XmlInterpPayload{}}) {
+		t.Error("an XML template counts as naming")
+	}
+	if valueRefsName(core.NewString("plain")) {
+		t.Error("a plain string names nothing")
+	}
+}

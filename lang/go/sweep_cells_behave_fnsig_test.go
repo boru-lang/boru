@@ -22,7 +22,14 @@ func requireDeclines(t *testing.T, src, wantReason string) {
 		t.Errorf("%q: compiled; want a decline (%s)", src, wantReason)
 		return
 	}
-	if err == nil && !strings.Contains(reason, wantReason) {
+	if err != nil {
+		// A fence must stop the RECORDER: a checker error here means the
+		// fence regressed into a different refusal and proves nothing
+		// about where compilation stops (Codex P2 on PR #511).
+		t.Errorf("%q: checker error %v; want the compiler's decline (%s)", src, err, wantReason)
+		return
+	}
+	if !strings.Contains(reason, wantReason) {
 		t.Errorf("%q: decline reason %q; want substring %q", src, reason, wantReason)
 	}
 	if _, errI := mustNew(t).RunInterp(src); errI != nil {
@@ -100,8 +107,37 @@ func TestStrictStoreSlotRefusesACompiledClosure(t *testing.T) {
 		`import "boru:fn-util"  def mk fn [[][Function][(x:Integer => [add 1 x])]] end def h (FnUtil.compose (mk) (mk)) end (h 5)`,
 		// The literal fn's body reads the fn-local `k` under DynEnv.
 		behaveTemp + `def g fn [[][String] [def k 'K' canon (make Temp 5)]] end def k 'Z' end behave canon/q (fn [[t:Temp][String][k]]) end g`,
+		// A body naming `k` only inside an interpolated string reads the
+		// fn-local `k` too: the `${expr}` hole counts as naming, so DynEnv
+		// arms (Codex P1 on PR #511 — it answered the root's 'Z').
+		behaveTemp + "def g fn [[][String] [def k 'K' canon (make Temp 5)]] end def k 'Z' end behave canon/q (fn [[t:Temp][String][`${k}`]]) end g",
+		behaveTemp + "def m {c: (fn [[t:Temp][String][`${k}`]])} end def g fn [[][String] [def k 'K' canon (make Temp 5)]] end def k 'Z' end behave canon/q m.c end g",
+		// A strict combinator over another's result: the inner native
+		// mints a Go-built FnDefInfo, so the outer slot's operand is proven
+		// (Codex P2 on PR #511 — it declined where it used to compile).
+		`import "boru:fn-util"  def inc fn [[x:Integer][Integer][x add 1]] end def dbl fn [[x:Integer][Integer][x mul 2]] end def h (FnUtil.compose (FnUtil.compose inc/v dbl/v) inc/v) end (h 5)`,
 	} {
 		requireEngineParity(t, src, true)
+	}
+	// flip over compose's result passes the proof too: what stops it is the
+	// def-bound computed apply `(h 5)`, the decline main already gave this
+	// program (measured on b4fad6c), never the strict slot's.
+	src := `import "boru:fn-util"  def inc fn [[x:Integer][Integer][x add 1]] end def dbl fn [[x:Integer][Integer][x mul 2]] end def h (FnUtil.flip (FnUtil.compose inc/v dbl/v)) end (h 5)`
+	requireDeclines(t, src, "def-bound computed fn apply")
+}
+
+// requireCheckRejects asserts the CHECKER refuses src with an error naming
+// wantErr — a fence that stops before the recorder, asserted on its own
+// path so requireDeclines' recorder fences stay strict — while the
+// interpreter answers.
+func requireCheckRejects(t *testing.T, src, wantErr string) {
+	t.Helper()
+	prog, _, _, err := mustNew(t).CompileCheck(src)
+	if prog != nil || err == nil || !strings.Contains(err.Error(), wantErr) {
+		t.Errorf("%q: compiled=%v err=%v; want a checker error naming %q", src, prog != nil, err, wantErr)
+	}
+	if _, errI := mustNew(t).RunInterp(src); errI != nil {
+		t.Errorf("%q: the interpreter must answer: %v", src, errI)
 	}
 }
 
@@ -140,8 +176,8 @@ func TestFnsigRuntimeSpecListCompiles(t *testing.T) {
 		"check diagnostics")
 	// A name the pass already holds keeps fnsig's own verdict on the carrier
 	// (the check pass would read the OLD T after the run replaced it).
-	requireDeclines(t, fnsigModule+`def T refine Integer end def T fnsig M.sg end def f fn x:Integer String [convert String x] end f/v is T`,
-		"")
+	requireCheckRejects(t, fnsigModule+`def T refine Integer end def T fnsig M.sg end def f fn x:Integer String [convert String x] end f/v is T`,
+		"fnsig_invalid_spec")
 	// A later type of the same name part: the run-time install would meet a
 	// part the pass registered AFTER it (the replay rolls parts back never).
 	requireDeclines(t, fnsigModule+`def T fnsig M.sg end def T refine Integer end 1`,
