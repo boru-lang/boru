@@ -1451,6 +1451,11 @@ type EmitState struct {
 	// or replaced (RecordSpeculativeFnDef): its dispatches route with a
 	// live lead, at root too, and a dispatch that cannot route declines.
 	specFnNames map[string]bool
+	// specFnFirst is each placed family's FIRST placement's fn, which the
+	// family's call sites compile the units of while the join's model is
+	// that fn: a second placement of a differing shape (NUR245) compiles
+	// them itself, since the join's model is then a widened one.
+	specFnFirst map[string]core.Value
 	// pendingSpecFn is the speculative fn def the next RecordDynBind of its
 	// name stamps as a placed install (emitDynBind.specFn / replace).
 	pendingSpecFn *pendingSpecFnDef
@@ -6415,14 +6420,20 @@ func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, out
 	// types its calls against the first arm's fn, so no call site compiles
 	// its unit: compile each own signature's now, where the routed op
 	// locates it by its declaration site (specFnUnit). The first placement
-	// keeps its call sites' units.
+	// keeps its call sites' units, unless the two differ in shape: the
+	// join's model is then a WIDENED fn with no declaration site
+	// (core.specFamilyJoinModel), so no call site compiles the first
+	// placement's units either, and they are compiled here too.
 	if again := es.specFnNames[name]; again && !replace {
-		if fd, ok := fn.Data.(core.FnDefInfo); ok {
-			fd.Name = name // the unit's RET labels a contract error with the binding's name
-			for i := range fd.Signatures {
-				es.compileSpecOuterUnit(fd, i)
-			}
+		es.compileSpecPlacementUnits(name, fn)
+		if first, ok := es.specFnFirst[name]; ok && !sameOwnSigShapes(first, fn) {
+			es.compileSpecPlacementUnits(name, first)
 		}
+	} else if !again && !replace {
+		if es.specFnFirst == nil {
+			es.specFnFirst = map[string]core.Value{}
+		}
+		es.specFnFirst[name] = fn
 	}
 	es.specFnNames[name] = true
 	es.pendingSpecFn = &pendingSpecFnDef{name: name, replace: replace}
@@ -6444,6 +6455,28 @@ func (es *EmitState) RecordSpeculativeFnDef(reg *core.Registry, name string, out
 		}
 	}
 	return true
+}
+
+// compileSpecPlacementUnits compiles every signature of a placed family
+// member fn under the family's name (compileSpecOuterUnit): the unit's RET
+// labels a contract error with the binding's name, as the interpreter's
+// does.
+func (es *EmitState) compileSpecPlacementUnits(name string, fn core.Value) {
+	if fd, ok := fn.Data.(core.FnDefInfo); ok {
+		fd.Name = name
+		for i := range fd.Signatures {
+			es.compileSpecOuterUnit(fd, i)
+		}
+	}
+}
+
+// sameOwnSigShapes reports whether two placed fn values of one family share
+// every signature shape a call's record fixes (core.SameSigShapes), so the
+// join's model is the first of them and its call sites compile its units.
+func sameOwnSigShapes(a, b core.Value) bool {
+	fa, okA := a.Data.(core.FnDefInfo)
+	fb, okB := b.Data.(core.FnDefInfo)
+	return okA && okB && core.SameSigShapes(fa.OwnSigs(), fb.OwnSigs())
 }
 
 // compileSpecOuterUnit compiles one own signature of the outer overload a
@@ -8530,6 +8563,11 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 	if !es.atUnitRootFrame() {
 		return nil, false
 	}
+	// A 0-output statement guard's phantom None (a zeroOut branch's
+	// registered result) is in the model's stack and on no run's: `if true
+	// [def k 1] [] end depth` folded 1 where the interpreter answers 0. It
+	// is not counted, and a shuffle's index skips it.
+	phantoms := 0
 	for _, v := range preserved {
 		if v.ID == "" {
 			return nil, false
@@ -8537,6 +8575,10 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		if pr, ok := es.producedBy[v.ID]; ok {
 			if es.eventInfo[pr.seq].variadicResult {
 				return nil, false
+			}
+			if es.eventInfo[pr.seq].zeroOut {
+				phantoms++
+				continue
 			}
 			// An EVENT-produced entry is the one a fold can permute into a
 			// shape the residual seating cannot lay out in place — a result
@@ -8566,7 +8608,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 	}
 	switch word {
 	case "depth":
-		n := core.NewInteger(int64(len(preserved)))
+		n := core.NewInteger(int64(len(preserved) - phantoms))
 		n.ID = core.GenerateID(core.IDPrefixForType(core.TInteger))
 		return append(append([]core.Value(nil), preserved...), n), true
 	case "pick", "roll":
@@ -8602,7 +8644,23 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		if err != nil || nn < 0 || int(nn) >= len(preserved) {
 			return nil, false
 		}
-		idx := len(preserved) - 1 - int(nn)
+		// The run's index counts its own entries only: a phantom is skipped,
+		// and kept where it is. A run shorter than n+1 raises out of range on
+		// the interpreter: no fold.
+		idx := -1
+		for i, seen := len(preserved)-1, 0; i >= 0; i-- {
+			if phantoms > 0 && es.ZeroOutProduced(preserved[i].ID) {
+				continue
+			}
+			if seen == int(nn) {
+				idx = i
+				break
+			}
+			seen++
+		}
+		if idx < 0 {
+			return nil, false
+		}
 		if word == "pick" {
 			picked := preserved[idx]
 			es.MarkValueDef(picked)

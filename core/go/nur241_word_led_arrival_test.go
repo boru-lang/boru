@@ -96,6 +96,14 @@ func TestNUR241NoAmbiguity(t *testing.T) {
 	if nur241ArrivalOver(t, true, true, nur241SigsWithFallback(), nil, NewDynamicCarrier(TAny)) {
 		t.Error("a Fallback signature is no narrower window")
 	}
+	// A narrower-ARITY overload the collected values alone fill draws
+	// nothing from the stack: `slice from (add 1 upto) data` beside slice's
+	// two-operand form (mini-s3.boru) is no NUR241 ambiguity.
+	one := Signature{Args: []*Type{TFlexList}, BarrierPos: -1}
+	NormalizeSig(&one)
+	if nur241ArrivalOver(t, true, true, append(nur241Sigs(), one), nil, NewDynamicCarrier(TAny)) {
+		t.Error("a window of the collected values alone is no narrower window")
+	}
 	// The word-led token's own arrival (slot 0): the gradual first operand
 	// of every `f x` — `pf d` over a gradual d — never asks, however much
 	// sits beneath the word.

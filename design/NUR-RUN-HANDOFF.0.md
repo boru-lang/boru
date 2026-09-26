@@ -9,6 +9,58 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR245 closed, NUR253 recorded and closed: differing arm shapes, a void branch's phantom (2026-09-26)
+
+**NUR245's open half: arms that disagree on the fn's shape.** The routed op
+already did what such a call needs. It plans the live binding's signatures
+over the window, raises the interpreter's no-match byte for byte, and enters
+the live signature's own unit (`specFnUnit`, by declaration site). Only the
+join's model stood in the way. A decided condition's model is now the
+running arm's fn whatever the other arm declares. Undecided arms that differ
+only in a parameter or return type agree on everything the routed op's
+claim fixes (`claimCompatible`), and join to a WIDENED model: the then
+arm's fn with each type joined and no declaration site, so the unit a call
+site compiles from it is never entered. The first placement's units, which
+call sites no longer compile, are compiled at the second placement.
+`def m {e: false} if (m 'e' get) [f:Integer 7] [f:String 8] end 3 f`
+raises the interpreter's `cannot call f`, `"x" f` answers 8, and each arm's
+return contract answers under the family's name. Arms that differ on the
+claim (an arity, a pattern, a return count) keep a sound decline.
+
+**NUR253, found on the way.** The decided `3 f` row's compiled report listed
+a `None` argument. An `if` whose arms leave nothing returns a phantom None
+while recording is live: the result it registers so `RecordCall` elides its
+dispatch, never seated. The phantom sits on the pass's tape, and two readers
+took it for a value. `FoldFullStack` counted it (`if true [def k 1] [] end
+depth` answered `[1]` compiled for `[0]`, silent), and a definite
+no-match's TRAP serialized `sigError` over it. The fold skips it now: a
+shuffle's index counts the run's entries, with the phantom kept in place.
+A no-match report's stack prefix is the run's (`runPrefix`), which the
+trap's `sigError` and the rematch's written tuple both read. Two pinned
+declines in `TestSpeculativeUndefIsPlacedAndReadLive` changed reason with
+it: the rematch had declined over the phantom as its only operand, and now
+declines with no tuple to render, so the recovery's failure stands.
+
+**NUR241 and the real programs.** Gate18 (on b7e384d) failed only on
+`TestRealProgramsCompile`: the word-led latch declined mini-s3.boru and
+echo_s3.boru at `slice from (add 1 upto) data`. The "narrower window" it
+found was slice's two-operand overload over the two collected values alone,
+which is arity pruning over forward operands, not the stack-style reading
+the planner prunes to. A fitting window must now draw at least one value
+from the stack beneath the word. Both programs compile again, and NUR241's
+witnesses still decline.
+
+**Ledger.** lang `compileDefectCeiling` 339 -> 340: the NUR253 pin's
+out-of-range `pick` over a phantom, a pinned decline where the interpreter
+raises.
+
+**Pins.** lang `TestNUR245BothArmsDefineOneFn` (rewritten: the differing
+types compile, the differing arity declines),
+`TestNUR253ZeroOutPhantomIsOnNoRunsStack`; core
+`TestSpecFamilyBothArmsJoin` (decided and widened models),
+`TestNUR253RunPrefixSkipsPhantoms`, and `TestNUR241NoAmbiguity`'s
+arity-pruning negative.
+
 ## NUR252 closed, NUR242's count program fixed: a foreign fn value's count (2026-09-26)
 
 Probing NUR242's shaped method apply turned up a silent twin. A module

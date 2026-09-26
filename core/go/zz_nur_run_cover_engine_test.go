@@ -246,19 +246,19 @@ func TestNurRunAttemptedWindowQuotesBareWord(t *testing.T) {
 	}}
 	name := WithPosAt(NewWord("name"), SrcPos{Row: 1, Col: 6})
 	tape := NewTape([]Value{NewWord("nrcq"), name}, StackHeadroom)
-	got := attemptedWindowOver(tape, 0, quoting, nil)
+	got := attemptedWindowOver(tape, 0, quoting, nil, nil)
 	if len(got) != 1 || !IsAtom(got[0]) || got[0].String() != "name" || got[0].Pos().Col != 6 {
 		t.Fatalf("want the quoted 'name at 1:6, got %s", renderAll(got))
 	}
 
 	// Negative: a `/v` word is a reference, not a bare name.
 	refTape := NewTape([]Value{NewWord("nrcq"), NewWordRef("name")}, StackHeadroom)
-	if got := attemptedWindowOver(refTape, 0, quoting, nil); len(got) != 0 {
+	if got := attemptedWindowOver(refTape, 0, quoting, nil, nil); len(got) != 0 {
 		t.Fatalf("a /v word must not be quoted: %s", renderAll(got))
 	}
 	// Negative: no overload quotes its first slot.
 	plain := &FnDefInfo{Name: "nrcp", Signatures: []Signature{{Params: []FnParam{{Name: "k", Type: TAtom}}}}}
-	if got := attemptedWindowOver(tape, 0, plain, nil); len(got) != 0 {
+	if got := attemptedWindowOver(tape, 0, plain, nil, nil); len(got) != 0 {
 		t.Fatalf("an fn with no quoting slot must not quote: %s", renderAll(got))
 	}
 }

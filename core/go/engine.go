@@ -479,7 +479,32 @@ func (e *Engine) rematchWritten(fn *FnDefInfo) []Value {
 	// lanes). The Atom the bare-word rule mints carries no value ID, so a
 	// tuple that needs it declines the spec (mapTupleToWindow) and the
 	// runtime keeps its best-effort report.
-	return attemptedWindowOver(e.Tape, e.Pointer, fn, written)
+	return attemptedWindowOver(e.Tape, e.Pointer, fn, written, e.runPrefix())
+}
+
+// runPrefix is the stack prefix beneath the pointer a no-match report
+// renders (ReorderCandidates), as the RUN holds it: a compiling pass's tape
+// also holds each 0-output statement guard's phantom None (the result a
+// both-arms-void `if` registers so the recorder can elide its dispatch — the
+// recorder's zeroOut result), which is on no run's stack, and a report over
+// it listed a None the interpreter's never does (`if true [def k 1] [] end
+// "x" f` — "the arguments were 'x' and None"). Off a recording pass the
+// recorder marks nothing and the prefix is the tape's.
+func (e *Engine) runPrefix() []Value {
+	prefix := ReorderCandidates(e.Tape.Prefix(e.Pointer))
+	es := e.Registry.analysisRecorder()
+	for i, v := range prefix {
+		if es.ZeroOutProduced(v.ID) {
+			kept := append([]Value(nil), prefix[:i]...)
+			for _, w := range prefix[i+1:] {
+				if !es.ZeroOutProduced(w.ID) {
+					kept = append(kept, w)
+				}
+			}
+			return kept
+		}
+	}
+	return prefix
 }
 
 // polyNoMatchProbe snapshots, at a FAILED dispatch's tape state, the pieces
@@ -882,7 +907,7 @@ func (e *Engine) sigError(name string, fn *FnDefInfo, pos SrcPos) *BoruError {
 	// The failing tuple in assignment order: unclaimed forward tokens
 	// (source order) when present, else the stack prefix (top-first) —
 	// the same two views the swap probe reads.
-	written := attemptedWindow(e.Tape, e.Pointer, fn)
+	written := attemptedWindowOver(e.Tape, e.Pointer, fn, ReorderForwardCandidates(e.Tape, e.Pointer), e.runPrefix())
 	// Reorder probe: when the actual argument types match some declared
 	// signature under a PERMUTATION, the arguments are almost certainly
 	// swapped — say so, with the declared parameter order, and suppress
@@ -901,8 +926,8 @@ func (e *Engine) sigError(name string, fn *FnDefInfo, pos SrcPos) *BoruError {
 // (diag_msg.go) — the SAME builder the compiled VM's runtime guards
 // call, so an interpreter and a compiled no-signature error are
 // byte-identical over the same failing tuple.
-// attemptedWindow is the operand window a failed dispatch of fn at pointer
-// ATTEMPTED, for the no-match report: the forward candidates written after
+// attemptedWindowOver is the operand window a failed dispatch of fn at
+// pointer ATTEMPTED, for the no-match report: the forward candidates written after
 // the word — a bare word right after it counted as the Atom a `/q` slot of
 // some overload would capture — and, when those are fewer than the smallest
 // overload's arity, the stack prefix beneath, in signature order. The report
@@ -911,15 +936,11 @@ func (e *Engine) sigError(name string, fn *FnDefInfo, pos SrcPos) *BoruError {
 // over the 5 with `name` written after it — reported "the argument was 5 …
 // takes 2 arguments, but 1 was supplied" where the compiled lane's poly
 // window reported the two values the source wrote and the type failure on
-// the second: NUR172. The same window, both lanes.
-func attemptedWindow(tape *Tape, pointer int, fn *FnDefInfo) []Value {
-	return attemptedWindowOver(tape, pointer, fn, ReorderForwardCandidates(tape, pointer))
-}
-
-// attemptedWindowOver is attemptedWindow over a forward tuple already
-// collected — the runtime's concrete candidates, or the check pass's
-// carrier-aware ones (rematchWritten), so the two derive one window.
-func attemptedWindowOver(tape *Tape, pointer int, fn *FnDefInfo, written []Value) []Value {
+// the second: NUR172. The same window, both lanes. written is the forward
+// tuple already collected — the runtime's concrete candidates, or the check
+// pass's carrier-aware ones (rematchWritten), so the two derive one window —
+// and prefix the stack prefix beneath as the run holds it (runPrefix).
+func attemptedWindowOver(tape *Tape, pointer int, fn *FnDefInfo, written, prefix []Value) []Value {
 	if len(written) == 0 && pointer+1 < tape.Len() && fn != nil {
 		if w, err := AsWord(tape.At(pointer + 1)); err == nil && !w.ForceVal {
 			for i := range fn.Signatures {
@@ -933,7 +954,6 @@ func attemptedWindowOver(tape *Tape, pointer int, fn *FnDefInfo, written []Value
 			}
 		}
 	}
-	prefix := ReorderCandidates(tape.Prefix(pointer))
 	if len(written) == 0 {
 		return prefix
 	}
@@ -4164,7 +4184,12 @@ func (e *Engine) narrowerWindowFits(fwd *ForwardInfo, funcIdx int) bool {
 
 // windowFitsBelow reports whether sig fits a window whose first k slots are
 // the values at base.. (k at most collected, and within sig's forward
-// limit) and whose later slots come from the stack beneath base, top first.
+// limit) and whose later slots — at least one — come from the stack
+// beneath base, top first. A window of the collected values alone is a
+// narrower-ARITY overload over the forward operands (`slice from (add 1
+// upto) data` beside slice's two-operand form, mini-s3.boru), which leaves
+// the arriving operand stranded after the call: not the stack-style reading
+// NUR241's planner prunes to.
 func windowFitsBelow(win *Tape, sig *Signature, base, collected int) bool {
 	n := sig.TotalArgs()
 	limit := sig.BarrierPos
@@ -4172,7 +4197,7 @@ func windowFitsBelow(win *Tape, sig *Signature, base, collected int) bool {
 		limit = n
 	}
 	below := resolvedIndicesBeforeInto(win, base, make([]int, 0, n), n)
-	for k := 0; k <= collected && k <= limit; k++ {
+	for k := 0; k <= collected && k <= limit && k < n; k++ {
 		if len(below) < n-k {
 			continue
 		}

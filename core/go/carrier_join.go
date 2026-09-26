@@ -315,7 +315,7 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 			// noted. Decided, the running arm's def is an ordinary install:
 			// its transition is noted as a taken arm's is, so the registry
 			// the routed op reads holds it.
-			if model, ok := specFamilyJoinModel(tv, ev, runs == elseArmRuns); ok && specFnJoin(r, k) {
+			if model, ok := specFamilyJoinModel(tv, ev, runs); ok && specFnJoin(r, k) {
 				r.Defs.Push(k, model)
 				if runs != armsUndecided {
 					r.NoteBindTransition(BindDef, k, model.Pos())
