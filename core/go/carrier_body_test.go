@@ -9,7 +9,10 @@ package core
 // so it does not). The decline arms are pinned separately in
 // carrier_body_gate_test.go; what is proved here is the RUN.
 
-import "testing"
+import (
+	"errors"
+	"testing"
+)
 
 // bodyProbeWords registers the two natives the body tests drive: one that
 // pushes a def (so the net-additions accounting has something to report)
@@ -234,21 +237,21 @@ func TestRecordTypedDefMake(t *testing.T) {
 	body := NewMap(NewOrderedMap())
 
 	// A nil registry declines.
-	if _, ok := RecordTypedDefMake(nil, typeArg, body, SrcPos{}); ok {
+	if _, ok := RecordTypedDefMake(nil, "", typeArg, body, SrcPos{}); ok {
 		t.Error("a nil registry must decline")
 	}
 
 	// An INACTIVE recorder declines — outside emit mode the caller binds
 	// the concrete value instead.
 	r := makeWordReg(t, true)
-	if _, ok := RecordTypedDefMake(r, typeArg, body, SrcPos{}); ok {
+	if _, ok := RecordTypedDefMake(r, "b", typeArg, body, SrcPos{}); ok {
 		t.Error("an inactive recorder must decline")
 	}
 
 	// Active recorder but NO [Ideal Map] overload to attribute the call to.
 	r = makeWordReg(t, false)
 	r.Check.Emit = &probeEmit{EmitRecorder: TheInactiveEmit}
-	if _, ok := RecordTypedDefMake(r, typeArg, body, SrcPos{}); ok {
+	if _, ok := RecordTypedDefMake(r, "b", typeArg, body, SrcPos{}); ok {
 		t.Error("a missing make overload must decline")
 	}
 
@@ -258,7 +261,7 @@ func TestRecordTypedDefMake(t *testing.T) {
 	r = makeWordReg(t, true)
 	pe := &probeEmit{EmitRecorder: TheInactiveEmit}
 	r.Check.Emit = pe
-	carrier, ok := RecordTypedDefMake(r, typeArg, body, SrcPos{Row: 2, Col: 4})
+	carrier, ok := RecordTypedDefMake(r, "b", typeArg, body, SrcPos{Row: 2, Col: 4})
 	if !ok {
 		t.Fatal("an active recorder with a make overload must record")
 	}
@@ -270,5 +273,33 @@ func TestRecordTypedDefMake(t *testing.T) {
 	}
 	if len(pe.outs) != 1 || len(pe.outs[0]) != 1 || !ValuesEqual(pe.outs[0][0], carrier) {
 		t.Errorf("recorded output = %v, want the returned carrier", pe.outs)
+	}
+}
+
+// typedDefMakeSig runs make's own handler and wraps ONLY its failure as the
+// typed-def handler does (`def <name>: <err>`); a success passes through
+// untouched, and the original signature is left as it was.
+func TestTypedDefMakeSigWrapsOnlyTheFailure(t *testing.T) {
+	boom := errors.New("make: missing field \"spec\" for Entity")
+	orig := &Signature{Impl: Go(func(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+		if len(args) == 0 {
+			return nil, boom
+		}
+		return args, nil
+	})}
+	w := typedDefMakeSig(orig, "e")
+	if w == orig {
+		t.Fatal("the wrap must be a copy, not make's own signature")
+	}
+	_, err := w.DispatchHandler()(nil, nil, nil, nil)
+	if err == nil || err.Error() != "def e: "+boom.Error() || !errors.Is(err, boom) {
+		t.Errorf("failure = %v, want the def-wrapped make error", err)
+	}
+	in := []Value{NewInteger(7)}
+	if got, err := w.DispatchHandler()(in, nil, nil, nil); err != nil || len(got) != 1 || !ValuesEqual(got[0], in[0]) {
+		t.Errorf("success = %v / %v, want the handler's own result", got, err)
+	}
+	if _, err := orig.DispatchHandler()(nil, nil, nil, nil); err != boom {
+		t.Errorf("make's own signature changed: %v", err)
 	}
 }

@@ -44,26 +44,29 @@ var realProgramLedger = map[string]string{
 	// CompileRunsBodyOnRegistry (cli_test, sift_test compile), an event-
 	// sourced loop range start promotes to a frame local (cut_test compiles).
 
-	// A checker false positive: inside the HDEL handler lambda, after
-	// `def had (if ((cur get f) eq None) [0] [1])` over a def-bound Any
-	// (`def cur (hashes get k)`), the next `def h2 (cur set (f) None)` is
-	// invisible to the read `(hashes set (k) h2)` in the same arm —
-	// undefined_word h2 at 230:57. Needs the def-bound prelude to
-	// reproduce (a param-typed `cur` compiles); echo_redis imports the app.
-	"design/examples/apps/mini-redis.boru":  "check diagnostics",
-	"bench/networking/apps/echo_redis.boru": "check diagnostics",
-
-	// kg/ingest.boru's ingest-entity: the `aliases:` member —
-	// `KgEnt.distinct-sorted (each [var […]] (get-or raw "aliases" []))`, a
-	// bare-form fn over a poly re-match result, whose own body is a
-	// sort over a fold with a var-block callback — leaves the fn call's
-	// operand without a compiled home. The gate's other kg suites compile.
-	"kg/tests/resolution_test.boru": "fn call operand of unknown provenance",
-
-	// design/examples/apps/mini-s3.boru's `for [0 total 65536]` chunk loop
-	// nets more than one value per iteration — the loop lowering's
-	// one-value-or-nothing body contract (S5); echo_s3 imports the app.
-	"bench/networking/apps/echo_s3.boru": "for: body nets multiple values per iteration",
+	// THE LAST FOUR GRADUATED 2026-09-26 (62 of 62):
+	//   - design/examples/apps/mini-redis.boru and bench/networking/apps/
+	//     echo_redis.boru ("check diagnostics"): the HDEL handler's false
+	//     `undefined word: h2` — `(cur get f)` narrowed a def-bound dynamic
+	//     DISJUNCT to get's first overload's slot (Module), because
+	//     slotIsPolymorphic measured the siblings against the carrier's
+	//     Parent, the bare Disjunct node, rather than its bound; the later
+	//     `cur set (f) None` then declined and took `def h2` with it.
+	//   - kg/tests/resolution_test.boru ("fn call operand of unknown
+	//     provenance"): `each […] xs` over a dynamic xs committed to each's
+	//     Map form and applyGradualContagion kept that return STRICT (a
+	//     ReturnsFn sibling had made dynamicReachableReturns abandon the
+	//     union), so ingest-entity's `KgEnt.distinct-sorted (each …)` stayed
+	//     uncalled beside a Map and the `aliases:` member had no home. The
+	//     committed return widens to dynamic(Any) now.
+	//   - bench/networking/apps/echo_s3.boru ("for: body nets multiple values
+	//     per iteration"): mini-s3-client's `Net.send-bytes (slice i hi body)
+	//     sock` over an `Any` param parked the fn value as data, netting
+	//     [fn bytes sock] per iteration; a module native's fn value over an
+	//     operand of unknown type now takes the bare word's no-signature
+	//     recovery (a runtime re-match over the module's registry, raising the
+	//     value's own uncalled_function on a runtime no-match).
+	// Pins: lang/go/real_programs_s2b_test.go.
 
 	// `kg/main.boru` GRADUATED 2026-09-19 (S1a of
 	// design/FULL-COMPILATION-REPLAN.0.md): the knowledge-graph pipeline's

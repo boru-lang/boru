@@ -74,6 +74,14 @@ type Engine struct {
 	// word twin's /s retry.
 	sealFnValue    bool
 	sealFnValueIdx int
+	// fnValueRecovery is set while a module NATIVE reached as a fn VALUE runs
+	// the check pass's no-signature recovery (execFnDefLiteral →
+	// fnValueNoMatchRecovers). The interpreter's fn-value no-match PARKS the
+	// value as data where a word's raises, so the two recovery arms that
+	// replay a word's raise — the poly no-match spec (PolyNoMatchProbe) and
+	// the definite-mismatch trap (TryRecordUnmatchedDispatchTrap) — stand
+	// down under it: a runtime no-match then defers to the interpreter.
+	fnValueRecovery bool
 	// debugLabel names the CALL this engine's run realises, when the
 	// dispatch knows it (CallBoruNamed: a module fn body run in its own
 	// sub-engine, whose Defs-based frame leaves no tape marks). A debug
@@ -423,6 +431,9 @@ type polyNoMatchProbe struct {
 	// to — the void-argument-group error and the fn-shape typed-binding hint
 	// — do not apply at this state.
 	ok bool
+	// uncalled: a fn VALUE's recovery (Engine.fnValueRecovery) — the raise to
+	// replay is uncalled_function at pos (PolyNoMatchSpec.Uncalled).
+	uncalled bool
 	// written / stackVals are sigError's two tape tuples at this state: the
 	// WRITTEN tuple its notes render (rematchWritten — the carrier-aware twin
 	// of the forward-else-stack derivation) and the SECONDARY reorder-probe
@@ -440,6 +451,12 @@ type polyNoMatchProbe struct {
 
 func (e *Engine) PolyNoMatchProbe(name string, pos SrcPos) polyNoMatchProbe {
 	p := polyNoMatchProbe{pos: pos}
+	if e.fnValueRecovery {
+		// The fn value's own raise, uncalled_function, carries no tape tuple:
+		// the position (the one fnValueRecoveryPos derived) is all it needs.
+		p.ok, p.uncalled = true, true
+		return p
+	}
 	if e.voidArgErrorFor(name, pos) != nil || e.IsFnShapeTypedBindingContext() {
 		return p
 	}
@@ -492,6 +509,17 @@ func (e *Engine) polyReachBound() (int, bool) {
 				n++ // reserved literals resolve to one value
 				continue
 			}
+			if _, ok := ResolveBuiltinTypeName(wi.Name); ok {
+				// A builtin type name steps to exactly one value, its type
+				// literal — stepWord's own ResolveBuiltinTypeName arm, the
+				// one it takes for an unbound name before undefined_word.
+				// Reading it as unbound made `convert Integer none` and
+				// `convert Integer (make Foo {})` unboundable, so their
+				// recorded poly carried no faithful-raise plan and the
+				// runtime no-match bailed (vm:poly-no-match, 2026-09-26).
+				n++
+				continue
+			}
 			// Unbound word: undefined_word preempts the dispatch. (A
 			// REGISTERED word never reaches here — registration pushes its
 			// FnDefInfo binding, so Defs.Top caught it above.)
@@ -541,6 +569,12 @@ func (p polyNoMatchProbe) Spec(fn *FnDefInfo, window []Value) *PolyNoMatchSpec {
 	if !p.ok || fn == nil || len(window) == 0 {
 		return nil
 	}
+	if p.uncalled {
+		if !windowArityFirstMatch(fn, window) {
+			return nil
+		}
+		return &PolyNoMatchSpec{NSigs: len(fn.Signatures), Pos: p.pos, Uncalled: true}
+	}
 	arity := len(window)
 	for i := range fn.Signatures {
 		s := &fn.Signatures[i]
@@ -560,6 +594,66 @@ func (p polyNoMatchProbe) Spec(fn *FnDefInfo, window []Value) *PolyNoMatchSpec {
 		return nil
 	}
 	return &PolyNoMatchSpec{Written: written, StackTuple: stackTuple, NSigs: len(fn.Signatures), Pos: p.pos}
+}
+
+// Uncalled reports whether the probe is a fn VALUE's recovery
+// (Engine.fnValueRecovery). Its Spec is then the ONLY faithful record: a nil
+// Spec means the window's first match is unproven, and the recovery must not
+// record the poly at all — the no-spec defer's alt raise is a word's
+// signature_error, never the fn value's uncalled_function.
+func (p polyNoMatchProbe) Uncalled() bool { return p.uncalled }
+
+// windowArityFirstMatch proves that fn's first match over a window of
+// len(window) operands is always a WINDOW-ARITY overload, on the
+// interpreter's dispatch and on the VM's exact-arity re-match alike — the
+// soundness condition for a fn value's poly recovery. No overload may be
+// wider than the window (the interpreter's forward collection could claim
+// more operands), and every narrower overload s' (arity k) must be SHADOWED:
+// some window-arity overload s precedes it in match order, each of the k slots of s'
+// conforms to s's, and every window operand past k is a concrete value
+// s's slot admits. Then s' matching implies s matching first, so the
+// interpreter never takes s', and a window every window-arity overload
+// rejects is rejected by s' too — the uncalled_function raise stands. The
+// mini-s3 client's `Net.recv-until sock crlf {within:…}` (3- and 2-arity
+// overloads, the Map a literal) is the admitted shape.
+func windowArityFirstMatch(fn *FnDefInfo, window []Value) bool {
+	arity := len(window)
+	for i := range fn.Signatures {
+		s := &fn.Signatures[i]
+		n := s.TotalArgs()
+		if s.Fallback || n == arity {
+			continue
+		}
+		if n > arity || !narrowOverloadShadowed(fn, i, window) {
+			return false
+		}
+	}
+	return true
+}
+
+// narrowOverloadShadowed is windowArityFirstMatch's per-overload proof for
+// fn.Signatures[j] (narrower than the window).
+func narrowOverloadShadowed(fn *FnDefInfo, j int, window []Value) bool {
+	narrow := &fn.Signatures[j]
+	k := narrow.TotalArgs()
+	for i := 0; i < j; i++ {
+		s := &fn.Signatures[i]
+		if s.Fallback || s.TotalArgs() != len(window) {
+			continue
+		}
+		ok := true
+		for q := 0; q < k && ok; q++ {
+			ns, ws := SigArgType(narrow, q), SigArgType(s, q)
+			ok = ns != nil && ws != nil && ns.ConformsTo(ws)
+		}
+		for q := k; q < len(window) && ok; q++ {
+			ok = IsConcrete(window[q]) && SigArgMatches(s, q, window[q])
+		}
+		if ok {
+			return true
+		}
+	}
+	return false
 }
 
 // mapTupleToWindow resolves each tape-tuple value to a distinct operand-window
@@ -5386,6 +5480,24 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// back here with fwdCount == 0 and dispatching via the stack
 	// path. Macro values are excluded: they stay on the legacy path
 	// (data — applied only by name; MACROS-PHASE1.10.md §5).
+	// A module NATIVE reached as a fn value (`Net.send-bytes b sock`) whose
+	// window holds an operand of statically-unknown type (a strict or
+	// gradual Any, a union) takes the SAME no-signature recovery its bare-
+	// word twin takes — the runtime re-match over the module's own registry
+	// — instead of parking as data: at run time the operand is concrete and
+	// the value dispatches, so a parked model over-counts the residual (the
+	// mini-s3 chunk loop netted [fn bytes sock] per iteration where the
+	// interpreter nets nothing, "for: body nets multiple values per
+	// iteration", 2026-09-26). See fnValueNoMatchRecovers for the gate.
+	if sig == nil && e.fnValueNoMatchRecovers(valIdx, fnDef, fn) {
+		rfn := *fn
+		rfn.Registry, _ = FnHome(e.Registry, &fnDef)
+		pos := uncalledRaisePos(e.Tape.At(valIdx).Pos(), append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...))
+		e.fnValueRecovery = true
+		err := CheckBraid.CheckModeAssumeSig(e, w, &rfn, &rfn.Signatures[0], pos)
+		e.fnValueRecovery = false
+		return err
+	}
 	if sig == nil || (sig.DispatchHandler() == nil && !fnDef.Anonymous && (fwdCount == 0 || fnDef.Macro)) {
 		return e.ExecFnDefSigStackMatch(valIdx, fnDef, resolved)
 	}
@@ -5703,6 +5815,70 @@ func (e *Engine) recordDispatch(name string, arity int, results []Value) {
 	e.recorder.OnCall(name, arity, len(results))
 }
 
+// fnValueNoMatchRecovers reports whether a fn value's no-match at the pointer
+// (check mode only) takes the bare word's no-signature recovery instead of
+// parking as data. All of:
+//   - an analysis pass, the value AT the pointer, a named non-anonymous
+//     non-macro fn from a FOREIGN registry whose name is a registered native
+//     THERE (a module word — `Net.send-bytes`): exactly the dispatch a poly
+//     re-match over that registry reproduces (tryRecordPoly's matchReg);
+//   - no overload with a code body, a quoted/no-eval slot or a callable spec
+//     (none of which a poly re-match can drive);
+//   - an operand of statically-UNKNOWN type in the candidate window: a strict
+//     or gradual Any, or a union carrier. That operand is why the static
+//     match failed, and at run time it is one concrete value. A window of
+//     definite operands is a definite mismatch, which the interpreter parks
+//     — and so does this path, unchanged.
+func (e *Engine) fnValueNoMatchRecovers(valIdx int, fnDef FnDefInfo, fn *FnDefInfo) bool {
+	// NamedDef and !Quoted: the interpreter's no-match RAISES only for a named,
+	// unquoted value (the uncalled_function arm below); any other value parks
+	// silently, which a poly re-match cannot replay.
+	//
+	// A COMPILE pass only: the recovery exists to record the runtime
+	// re-match, and the plain pass models some residuals more optimistically
+	// than the compile pass — a 0-return mutator over a dynamic receiver nets
+	// ONE gradual value there (applyGradualContagion) — so recovering on it
+	// recovered over that phantom and dropped the plain surface's genuine
+	// uncalled_function (`… set mem true  IO.seek 42 0`, the diag-surface
+	// parity gate, 2026-09-26). The plain pass keeps the value's own arm.
+	if !e.Registry.analysisActive() || !e.Registry.analysisCompiling() || valIdx != e.Pointer || fn == nil || len(fn.Signatures) == 0 ||
+		!fnDef.NamedDef() || fnDef.Macro || e.Tape.At(valIdx).Quoted || !FnHomeForeign(e.Registry, &fnDef) {
+		return false
+	}
+	reg, _ := FnHome(e.Registry, &fnDef)
+	if reg == nil || reg == e.Registry || !reg.IsBuiltinWord(fnDef.Name) {
+		return false
+	}
+	// Other-arity overloads are screened where the window is known
+	// (polyNoMatchProbe.Spec's uncalled arm); a recovery that cannot prove its
+	// window's first match declines to record there.
+	maxN := 0
+	for i := range fn.Signatures {
+		s := &fn.Signatures[i]
+		if s.Callable != nil || len(s.NoEvalArgs) > 0 || len(s.QuoteArgs) > 0 || len(s.Body()) > 0 {
+			return false
+		}
+		if n := s.TotalArgs(); n > maxN {
+			maxN = n
+		}
+	}
+	for _, p := range CheckBraid.CheckModeFallbackPositions(e, maxN) {
+		v := e.Tape.At(p)
+		if IsWord(v) {
+			if wv, werr := AsWord(v); werr == nil {
+				if top, ok := e.Registry.Defs.Top(wv.Name); ok {
+					v = top
+				}
+			}
+		}
+		if v.Carrier && v.Parent != nil && !IsBareTypeNode(v) &&
+			(v.Dynamic || v.Parent.Equal(TAny) || v.Parent.ConformsTo(TDisjunct)) {
+			return true
+		}
+	}
+	return false
+}
+
 // trivialDelegationTarget reports the inner native name a wrapper FnSig
 // purely delegates to — body of the form `[Word(inner)]` with all-
 // unnamed Params — and whether the sig has that shape at all. Unlike
@@ -5907,17 +6083,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 		valIdx < e.Tape.Len() && !e.Tape.At(valIdx).Quoted {
 		candidates := append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...)
 		if len(candidates) > 0 {
-			pos := e.Tape.At(valIdx).Pos()
-			// Borrow a span from the nearest argument when the FnDef value
-			// itself carries none, so the report points somewhere real.
-			if pos.Row == 0 {
-				for _, c := range candidates {
-					if c.Pos().Row > 0 {
-						pos = c.Pos()
-						break
-					}
-				}
-			}
+			pos := uncalledRaisePos(e.Tape.At(valIdx).Pos(), candidates)
 			// The detail no longer says "was left on the stack as data" — that
 			// described what the OLD contract did with the value, and saying it
 			// while raising would tell the reader the opposite of what happened.
@@ -5976,6 +6142,23 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 
 	e.Pointer++
 	return nil
+}
+
+// uncalledRaisePos is where a named fn value's no-match raises
+// uncalled_function: the value's own position, or — when the FnDef value
+// carries none — the nearest argument's, so the report points somewhere
+// real. Shared by the raise itself and the check pass's recovery of the same
+// dispatch (fnValueNoMatchRecovers), whose replayed raise must land on the
+// identical position.
+func uncalledRaisePos(pos SrcPos, candidates []Value) SrcPos {
+	if pos.Row == 0 {
+		for _, c := range candidates {
+			if c.Pos().Row > 0 {
+				return c.Pos()
+			}
+		}
+	}
+	return pos
 }
 
 // uncalledDispatchDefinite reports whether a failed NAMED-fn-value dispatch
@@ -9425,7 +9608,9 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 // leaves the caller's MarkUncompilable compile failure to stand.
 func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos SrcPos) bool {
 	es := e.Registry.analysisRecorder()
-	if !es.Active() || !e.Registry.analysisCompiling() {
+	// A fn VALUE's no-match parks the value in the interpreter; it never
+	// raises at this point, so there is no raise to replay (fnValueRecovery).
+	if e.fnValueRecovery || !es.Active() || !e.Registry.analysisCompiling() {
 		return false
 	}
 	maxN := 0

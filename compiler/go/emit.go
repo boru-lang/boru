@@ -149,10 +149,15 @@ type producer struct{ seq, idx int }
 //   - generic:  event seq → recorded by the GENERIC RecordCall path (a plain
 //     native), not a structured hook
 type eventFlags struct {
-	zeroOut  bool
-	typeOut  bool
-	valueDef bool
-	generic  bool
+	// replayedCall marks a user call whose callee REPLAYS a dynamic apply at
+	// its frame's tail (fnUnitRec.dynFrameW) while the check pass handed back
+	// the un-applied residual: the call's seated values are not what its RET
+	// pushes, so no residual apply may read them (resolveDynamicApply).
+	replayedCall bool
+	zeroOut      bool
+	typeOut      bool
+	valueDef     bool
+	generic      bool
 	// mayBeFn marks a BRANCH event whose result may be a Function at run time
 	// (an arm is an fn value), so a trailing arg over it in the residual lowers
 	// to a runtime-conditional OpCallDynamic (`if c [99] MathUtil.sqrt 16`).
@@ -6941,9 +6946,21 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	// variadic too). The self-recursive call records before its own fn finishes
 	// (rec.variadic not yet set) — fine: that result flows only to the body's own
 	// variadic merge, never to a fixed operand.
-	if es.fnRecs[unit].variadic {
+	//
+	// A callee whose frame REPLAYS a dynamic apply at its tail (dynFrameW — a
+	// lambda body `[force-arity 2 (m.s) 1 2]` whose wrapper the check pass
+	// could not apply) is runtime-variable against THIS seat the same way:
+	// the replay applies the residual's lead and the RET returns the declared
+	// count, where the check pass's call handed back the un-applied residual.
+	// Seating that residual as fixed values let the caller apply the lead a
+	// second time (`def zzvlam ([] => [...]) zzvlam` bailed "CALL_DYNAMIC
+	// underflow" where the interpreter answered -1); as a variadic result
+	// only a variadic-absorbing position (the program residual) takes it
+	// (2026-09-26).
+	if rec := es.fnRecs[unit]; rec.variadic || (rec.dynFrameW > 0 && len(rec.returns) > 0 && len(outs) != len(rec.returns)) {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
+		f.replayedCall = !rec.variadic
 		es.eventInfo[seq] = f
 	}
 	for i := range outs {
@@ -10754,11 +10771,65 @@ func (es *EmitState) producerReturnedClosureShape(id string) (core.FnShape, bool
 // eventProducedFnShape is the shape of the fn value the event seq NETS
 // (eventProducedFnOp's out-op through closureOpShape).
 func (es *EmitState) eventProducedFnShape(seq, depth int) (core.FnShape, bool) {
+	if s, ok := es.modifierWrappedFnShape(seq, depth); ok {
+		return s, true
+	}
 	op, ok := es.eventProducedFnOp(seq, depth)
 	if !ok {
 		return core.FnShape{}, false
 	}
 	return es.closureOpShape(op, depth)
+}
+
+// modifierWrappedFnShape is the shape of the wrapper a dispatch-modifier
+// word's GRADUAL poly record builds at run time over a fn operand whose own
+// shape is known (a factory's returned closure, a const lambda): `usurp`
+// reverses the parameter order, `forward-args` keeps it — the
+// wrapper's signatures are the operand's own, all-forward (core's usurpOver /
+// rebarrierOver) — the read model's window. With the claim, a def of the wrapper
+// is read by the def-bound read model like any produced closure, so a
+// written argument the wrapper does not take declines (NUR194's unfit
+// window) where the flattened dynamic apply would park it: `def r (usurp
+// (mk 100))  r 'x' 3` is the interpreter's `cannot call r`. `stack-args`
+// makes no claim (an all-STACK wrapper collects nothing forward, which is
+// not the window the model reads), nor does `force-arity`: its wrapper takes
+// N untyped arguments and re-dispatches the original over them, a two-step
+// match the one-signature window does not describe; both keep the dynamic
+// apply that answers them.
+func (es *EmitState) modifierWrappedFnShape(seq, depth int) (core.FnShape, bool) {
+	if depth > 8 {
+		return core.FnShape{}, false
+	}
+	ev := es.eventInAnyFrame(seq)
+	if ev == nil || ev.kind != evCall || !ev.call.poly || ev.call.nout != 1 || len(ev.call.ops) != 1 {
+		return core.FnShape{}, false
+	}
+	word := ev.call.word
+	if word != "usurp" && word != "forward-args" {
+		return core.FnShape{}, false
+	}
+	op := ev.call.ops[0]
+	var s core.FnShape
+	var ok bool
+	if op.kind == opEvent {
+		if op.resIdx != 0 {
+			return core.FnShape{}, false
+		}
+		s, ok = es.eventProducedFnShape(op.idx, depth+1)
+	} else {
+		s, ok = es.closureOpShape(op, depth+1)
+	}
+	if !ok {
+		return core.FnShape{}, false
+	}
+	if word == "usurp" && s.Params != nil {
+		rev := make([]*core.Type, len(s.Params))
+		for i, p := range s.Params {
+			rev[len(s.Params)-1-i] = p
+		}
+		s.Params = rev
+	}
+	return s, true
 }
 
 // eventProducedFnOp is the out-op that BUILDS the fn value the event seq
@@ -11788,7 +11859,10 @@ func bindNameToken(v core.Value) string {
 // body (`Test.cover [n]` inside a fn, `[… i …]` inside a top-level loop) that
 // the handler's sub-engine then resolves against the registry, where the
 // VM's frame local is invisible — a false undefined_word, present on main
-// at 3b5db68 and closed here (the nested positions decline). An
+// at 3b5db68 and closed here (the nested positions decline). Since the S2b
+// follow-up (2026-09-26, `receive` declares the flag) a nested position is
+// admitted only when its body names nothing the program or the registry
+// knows (registryBodyNamesNothingKnown) — the hazard needs a known name. An
 // isolated-frame word (CompileRunsBodyIsolated) bakes unconditionally;
 // every other word bakes an inert-scoped body.
 func (es *EmitState) noEvalBodyBakes(sig *core.Signature, args []core.Value) bool {
@@ -11796,10 +11870,83 @@ func (es *EmitState) noEvalBodyBakes(sig *core.Signature, args []core.Value) boo
 	case sig.CompileEffect.Has(core.CompileRunsBodyIsolated):
 		return true
 	case sig.CompileEffect.Has(core.CompileRunsBodyOnRegistry):
-		return es.runsBodyOnRegistryAtModuleScope(sig, args)
+		return es.runsBodyOnRegistryAtModuleScope(sig, args) || es.registryBodyNamesNothingKnown(sig, args)
 	default:
 		return es.noEvalBodiesInertScoped(sig, args)
 	}
+}
+
+// registryBodyNamesNothingKnown is the NESTED-position admission of a
+// CompileRunsBodyOnRegistry word (the S2b follow-up, 2026-09-26: `receive`'s
+// clause list — `receive [{} [1] after 0 [0]]` inside a fn, a loop, a branch
+// arm). The module-scope rule declines every nested position because a body
+// word naming a VM frame local resolves against the registry instead; that
+// hazard needs a NAME the program binds, so a body that names nothing the
+// program or the registry knows is re-run identically anywhere. Admitted only
+// when the operand is inert-scoped (noEvalBodiesInertScoped: an inert const —
+// no computed paren, carrier or interp string at a nested position — with no
+// flow sentinel and no replay hazard) and every Word token in it, at any
+// depth, is NEITHER bound in the recorder's registry (every frame local — a
+// param, a capture, a loop iterator, a promoted def — is bound there while
+// its scope is recorded) NOR a registered word (so no builtin whose result
+// reads interpreter-maintained state — `args`, `context` — and no binder:
+// `def` / `var` / `undef` / `import` are registered, so a body that binds
+// declines here and keeps its module-scope rule). What remains are the
+// handler's own keywords (receive's `after`) and the names the handler binds
+// itself (a clause's `[x:Integer]` binding, installed on the registry by
+// runClauseBody on both lanes). A Reach or Splice token carries a name the
+// walk cannot resolve, so it declines.
+func (es *EmitState) registryBodyNamesNothingKnown(sig *core.Signature, args []core.Value) bool {
+	if es.reg == nil || !es.noEvalBodiesInertScoped(sig, args) {
+		return false
+	}
+	for i := range args {
+		if sig.NoEvalArgs[i] && es.valueNamesKnown(args[i]) {
+			return false
+		}
+	}
+	return true
+}
+
+// valueNamesKnown reports whether v carries, at any depth (list elements, map
+// values, paren tokens), a Word the recorder's registry binds or registers, or
+// a Reach / Splice token — the names registryBodyNamesNothingKnown refuses.
+func (es *EmitState) valueNamesKnown(v core.Value) bool {
+	if core.IsReach(v) || core.IsSplice(v) {
+		return true
+	}
+	if core.IsWord(v) {
+		w, _ := core.AsWord(v)
+		if _, bound := es.reg.Defs.Top(w.Name); bound {
+			return true
+		}
+		return es.reg.Lookup(w.Name) != nil
+	}
+	switch d := v.Data.(type) {
+	case core.ListPayload:
+		for _, e := range d.Elems {
+			if es.valueNamesKnown(e) {
+				return true
+			}
+		}
+	case core.MapPayload:
+		if d.M == nil {
+			return false
+		}
+		for _, k := range d.M.Keys() {
+			mv, _ := d.M.Get(k)
+			if es.valueNamesKnown(mv) {
+				return true
+			}
+		}
+	case core.ParenExprPayload:
+		for _, tk := range d.Toks {
+			if es.valueNamesKnown(tk) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // runsBodyOnRegistryAtModuleScope reports whether a NoEvalArgs dispatch may
@@ -12690,6 +12837,17 @@ func eventBySeq(events []EmitEvent, seq int) *EmitEvent {
 // order if the value is not callable. Every other dynamic / fn-value-precedes-
 // args shape, and any unconsumed fn-value carrier, declines.
 func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]core.Value, Opcode, string) {
+	// A REPLAYED call's seated values (eventFlags.replayedCall) are the
+	// check pass's un-applied residual, not what the callee's RET pushes —
+	// its frame replay applied the lead already. Alone they are the variadic
+	// region the program residual absorbs as it stands (no apply: the
+	// replay was it); beside other values the layout is unknowable.
+	if n := es.replayedCallEntries(residual); n > 0 {
+		if n == len(residual) {
+			return residual, 0, ""
+		}
+		return residual, 0, "a call whose frame replays a dynamic apply leaves a runtime count its seat does not describe (beside other residual values)"
+	}
 	// Leading dynamic value (statically Any — the checker cannot tell a Function
 	// from data) with every following arg static. An ANNOTATED method-read
 	// carrier is excluded: the statement-window model (method_shape.go) owns
@@ -12970,7 +13128,8 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 			// raw runtime value cannot reproduce; that shape keeps the
 			// failure (NUR119).
 			if (es.placedNotReStepped(residual[i]) ||
-				(es.callResultPlaced(residual[i]) && es.callResultRenderKnown(residual[i]))) &&
+				(es.callResultPlaced(residual[i]) && es.callResultRenderKnown(residual[i])) ||
+				es.branchResultRenderKnown(residual[i])) &&
 				!es.isDefRead(residual[i]) {
 				continue
 			}
@@ -13012,6 +13171,52 @@ func anyFnOrDynamicTail(residual []core.Value) bool {
 // boundary) and true. Bounded to one arg: with >1 the island's forward
 // collection would order them opposite to the interpreter's top-down stack
 // collection.
+// replayedCallEntries counts the residual values a replayed call seated.
+func (es *EmitState) replayedCallEntries(residual []core.Value) int {
+	n := 0
+	for _, rv := range residual {
+		if pr, ok := es.producedBy[rv.ID]; ok && es.eventInfo[pr.seq].replayedCall {
+			n++
+		}
+	}
+	return n
+}
+
+// claimSpliceApplies marks the fn operand of the residual's dynamic apply
+// (markSpliceApplied): the lead of a leading or trailing apply, and for the
+// verbatim window island (OpCallDynamicMixed) its one dynamic / fn entry —
+// mixedDynamicApplyShape's single fn-like value, or the trailing window's
+// last.
+func (es *EmitState) claimSpliceApplies(lw *lowerer, dynOp Opcode, residual []core.Value) {
+	switch {
+	case (dynOp == OpCallDynamic || dynOp == OpCallDynamicTrailing) && len(residual) > 0:
+		es.markSpliceApplied(lw, residual[0])
+	case dynOp == OpCallDynamicMixed:
+		for _, rv := range residual {
+			if es.fnLikeResidual(rv) {
+				es.markSpliceApplied(lw, rv)
+			}
+		}
+	}
+}
+
+// markSpliceApplied claims a dynamic apply's FN operand, when it is a
+// computed splice's spread (OpSpliceDyn — `def dbl word m.f  5 dbl`), as
+// exactly ONE value: the apply lays the spread out as a single fn slot, so
+// the op's Arg tells the VM to admit a one-fn payload (the re-step this apply
+// models) and to defer any other count — a list payload of N values would be
+// rotated as if it were one (`[1 5 2]` for the interpreter's `[5 1 2]`,
+// measured 2026-09-26 on main), and its elements were never the apply's.
+func (es *EmitState) markSpliceApplied(lw *lowerer, fn core.Value) {
+	pr, ok := es.producedBy[fn.ID]
+	if !ok || pr.idx != 0 || !es.eventInfo[pr.seq].spliceDyn {
+		return
+	}
+	if pc, emitted := lw.spliceDynPC[pr.seq]; emitted && pc < len(*lw.code) && (*lw.code)[pc].Op == OpSpliceDyn {
+		(*lw.code)[pc].Arg = 1
+	}
+}
+
 func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.Value, bool) {
 	if len(residual) != 2 {
 		return residual, false
@@ -13583,6 +13788,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if dynReason != "" {
 		return nil, dynReason, false
 	}
+	es.claimSpliceApplies(lw, dynOp, residual)
 	dynOpPos := lastPos
 	if dynOp == OpCallDynApplyTop && lw.dynOpPos != (core.SrcPos{}) {
 		dynOpPos = lw.dynOpPos // the op raises where the interpreter's `apply` does
@@ -16267,6 +16473,77 @@ func (es *EmitState) callResultRenderKnown(v core.Value) bool {
 		return false
 	}
 	return es.unitRenderKnown(ev.uc.unit, 0)
+}
+
+// branchResultRenderKnown reports whether v is the merged result of an `if`
+// whose every value-producing arm is a fn value the compiler renders exactly
+// as the interpreter does — a capture-free lambda baked as a const, or a
+// compiled closure carrying its render string (unitRenderKnown's two leaves).
+// Such a result is PLACED data at the residual: the branch landing
+// (emitBranchLanding, NUR159) already parks a 0-arg lambda and stands an
+// arg-taking one aside, so what reaches the render gate is the value the
+// interpreter parks, rendered from the same payload (`if true ([] => [1])
+// ([] => [2])` is `[fn]` on both lanes — the sweep's `if` × lambda cell,
+// 2026-09-26). An arm that is anything else — an event, a local, a named fn
+// the landing fires — answers false and keeps the decline.
+func (es *EmitState) branchResultRenderKnown(v core.Value) bool {
+	if es == nil || v.ID == "" {
+		return false
+	}
+	pr, ok := es.producedBy[v.ID]
+	if !ok || pr.idx != 0 {
+		return false
+	}
+	ev := es.eventBySeq(pr.seq)
+	if ev == nil || ev.kind != evBranch {
+		return false
+	}
+	b := ev.br
+	var arms []EmitOperand
+	switch {
+	case b.thenIsVal:
+		arms = append(arms, b.thenVal)
+	case b.hasThenOut:
+		arms = append(arms, b.thenOut)
+	}
+	if b.constCond == nil {
+		switch {
+		case b.elsIsVal:
+			arms = append(arms, b.elsVal)
+		case b.hasElsOut:
+			arms = append(arms, b.elsOut)
+		default:
+			return false // a variadic 2-arg if, or an else that nets nothing
+		}
+	}
+	if len(arms) == 0 {
+		return false
+	}
+	for _, op := range arms {
+		if !es.fnOpRenderKnown(op) {
+			return false
+		}
+	}
+	return true
+}
+
+// fnOpRenderKnown is unitRenderKnown's leaf test over one operand: a compiled
+// closure with its render string, or a const ANONYMOUS fn value (a capture-free
+// lambda literal — the interpreter formats that very value). A named fn value
+// is excluded: at a branch landing it fires rather than parks.
+func (es *EmitState) fnOpRenderKnown(op EmitOperand) bool {
+	switch op.kind {
+	case opClosure:
+		cu := op.closureUnit
+		return cu >= 0 && cu < len(es.fnRecs) && es.fnRecs[cu] != nil && es.fnRecs[cu].render != ""
+	case opConst:
+		if op.idx < 0 || op.idx >= len(es.consts) {
+			return false
+		}
+		fd, isFn := es.consts[op.idx].Data.(core.FnDefInfo)
+		return isFn && fd.Anonymous && !fd.Macro
+	}
+	return false
 }
 
 // unitRenderKnown is callResultRenderKnown's question of one UNIT: does its

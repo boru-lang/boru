@@ -18,6 +18,18 @@ func vmInternalError(rec any, src string) error {
 	return e
 }
 
+// vmEntryError is the VM's refusal to START — a nil program, a nil or
+// out-of-range unit reference — as the same marked class. It used to be a
+// plain fmt.Errorf, and while every plain Go error out of a compiled run was
+// read as a compiler defect that was enough; a plain error is the PROGRAM's
+// own result now (a handler's fmt.Errorf surfaces on both lanes untouched),
+// so the VM's own refusals carry VMDefer like every other error it builds.
+func vmEntryError(msg string) error {
+	e := core.MakeBoruError("internal_error", msg, "", "", "")
+	e.VMDefer = true
+	return e
+}
+
 // Foreign (detached) unit hosting — the half of InvokeCallback's contract that
 // was missing.
 //

@@ -265,8 +265,8 @@ func TestCheckErrorAfterCheckEffectSurfacesItself(t *testing.T) {
 // --- the foreign-error (non-BoruError) bail class ----------------------------
 
 // zzForeignBoom registers `zz-boom`, a plain native whose handler returns a
-// foreign Go error — the non-BoruError class runtimeShouldFallback also
-// resolves by re-running the interpreter.
+// plain Go error — the non-BoruError class the interpreter surfaces
+// untouched, and the compiled lane now surfaces the same way.
 func zzForeignBoom(t *testing.T) *Boru {
 	t.Helper()
 	a := mustNew(t)
@@ -281,11 +281,12 @@ func zzForeignBoom(t *testing.T) *Boru {
 	return a
 }
 
-// A FOREIGN error out of a native handler is the same class: not a boru
-// error, so not the program's own verdict — it is wrapped in an
-// internal_error carrying the foreign text and the defect note, before or
-// after an effect, and the effect fires exactly once.
-func TestForeignErrorBailPropagatesAsADefect(t *testing.T) {
+// A PLAIN Go error out of a native handler is the program's own verdict on
+// both lanes: the interpreter's dispatch returns it untouched, and so does
+// the compiled run — the very same error value, no internal_error wrapper,
+// no defect note (2026-09-26; before that it was booked as a compiler defect
+// and rolled the registry back). The effect before it fires exactly once.
+func TestForeignErrorIsTheProgramsOwnOnBothLanes(t *testing.T) {
 	for _, c := range []struct{ name, src, want string }{
 		{"after an effect", `print "once" ; zz-boom`, "once\n"},
 		{"with no effect", `zz-boom`, ""},
@@ -299,14 +300,20 @@ func TestForeignErrorBailPropagatesAsADefect(t *testing.T) {
 			if noteCompileDefect(t, c.src, nil, err) {
 				return
 			}
-			if codeOf(err) != "internal_error" {
-				t.Fatalf("foreign bail: err=[%s] %v compiled=%v; want the wrapped internal_error", codeOf(err), err, compiled)
+			if !compiled {
+				t.Fatalf("plain error: the program did not run compiled (err=%v)", err)
 			}
-			if !strings.Contains(err.Error(), "zz-boom: foreign failure") || !strings.Contains(err.Error(), "compiler defect") {
-				t.Errorf("foreign bail: error should carry the foreign text and the defect note, got: %v", err)
+			if codeOf(err) != "non-boru" || err.Error() != "zz-boom: foreign failure" {
+				t.Fatalf("plain error: err=[%s] %v; want the handler's own plain error, untouched", codeOf(err), err)
 			}
 			if out.String() != c.want {
-				t.Errorf("foreign bail: output = %q, want exactly %q", out.String(), c.want)
+				t.Errorf("plain error: output = %q, want exactly %q", out.String(), c.want)
+			}
+			b := zzForeignBoom(t)
+			b.SetOutput(&bytes.Buffer{})
+			_, errI := b.RunInterp(c.src)
+			if errI == nil || errI.Error() != err.Error() || codeOf(errI) != codeOf(err) {
+				t.Errorf("plain error: lanes disagree: compiled=%v interpreted=%v", err, errI)
 			}
 		})
 	}

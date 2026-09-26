@@ -699,10 +699,15 @@ type loopCtx struct {
 }
 
 type lowerer struct {
-	es    *EmitState
-	p     *Program
-	code  *[]Instr       // current emission target (main or one fn unit)
-	debug *[]core.SrcPos // 1:1 with code
+	// spliceDynPC is the pc of each OpSpliceDyn this target emitted, by the
+	// splice event's seq: the residual's dynamic-apply classification claims
+	// the spread as ONE fn operand by setting that instruction's Arg
+	// (markSpliceApplied).
+	spliceDynPC map[int]int
+	es          *EmitState
+	p           *Program
+	code        *[]Instr       // current emission target (main or one fn unit)
+	debug       *[]core.SrcPos // 1:1 with code
 	// closureRet is the emission target's callback-contract table
 	// (Program.ClosureRet for the main code, CompiledFn.ClosureRet for a fn
 	// unit), keyed by the target's own pc — see pushOperand.
@@ -3234,7 +3239,11 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	} else if c.spliceDyn {
 		// Spread the laid-out payload at run time (§9.2b) — value payloads
 		// spread verbatim, code-bearing ones defer to the interpreter.
-		lw.emit(OpSpliceDyn, 0, c.pos)
+		pc := lw.emit(OpSpliceDyn, 0, c.pos)
+		if lw.spliceDynPC == nil {
+			lw.spliceDynPC = map[int]int{}
+		}
+		lw.spliceDynPC[ev.seq] = pc
 	} else if c.xmlTmpl != nil {
 		// Assemble the n laid-out hole operands into an interpolated XML
 		// element (§9.2c); the template skeleton rides in XmlInterps.

@@ -1223,7 +1223,8 @@ func compileFailureReason(reason string) string {
 // VM/lowering soundness assertion, a designed defer or a recovered panic is a
 // compiler DEFECT: there is no interpreter re-run to resolve it any more, so
 // the error carries a note saying what it is and asking for it to be
-// reported. A foreign Go error is the same class.
+// reported. A plain (non-Boru) Go error is NOT that class: it is what a
+// handler returned, and the interpreter returns the same one (see the arm).
 //
 // The VM's own errors are identified by BoruError.VMDefer (core.IsVMDefer),
 // the marker vmErrAt and both VM panic guards set. The CODE alone will not
@@ -1255,9 +1256,19 @@ func compiledRunError(r *native.Registry, err error) (error, bool) {
 	}
 	var ae *core.BoruError
 	if !errors.As(err, &ae) {
-		wrapped := core.MakeBoruError("internal_error", err.Error(), "", "", "")
-		wrapped.Notes = append(wrapped.Notes, note)
-		return wrapped, true
+		// A plain Go error (a handler's `fmt.Errorf`, a kernel helper's
+		// `errors.New`) is the PROGRAM's own result, exactly as the
+		// interpreter surfaces it: its dispatch returns a handler's error
+		// untouched (Engine.stampErrPos leaves a non-BoruError alone), so
+		// `convert BigInteger 3.14`, `def q:Even 5`, a make over a refined
+		// Record's bad field, Fmt.format-with's rule errors raise the same
+		// plain error on both lanes. Wrapping it as a defect booked the
+		// compiler for forty-odd corpus rows whose only fault was the
+		// handler's choice of error type (2026-09-26). The VM never reports
+		// its OWN failures this way: every vmErrAt / vmInternalError /
+		// entry-guard error is a BoruError carrying VMDefer, which is the
+		// marker the arm below reads.
+		return err, false
 	}
 	if !core.IsVMDefer(err) {
 		return err, false

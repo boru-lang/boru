@@ -191,6 +191,16 @@ type vmContext struct {
 // as data. The single definition keeps the four call sites in lockstep.
 func tapeCoupled(results []core.Value) bool {
 	for _, rv := range results {
+		// A Word-typed BARE type node is a type literal, never a live word:
+		// a word token carries its WordInfo payload, and the interpreter
+		// leaves the literal as data like any other — `typeof (codequote
+		// (1 add 2))` is the __PE node, `word()` on both lanes (the sweep's
+		// `codequote` × literal / lambda / factory cells bailed here,
+		// 2026-09-26). The payload-less MARKERS (an open paren) are tokens
+		// with no payload, so they keep their screen.
+		if core.IsWord(rv) && core.IsBareTypeNode(rv) {
+			continue
+		}
 		if core.IsWord(rv) || core.IsMark(rv) || core.IsMove(rv) || core.IsForward(rv) ||
 			core.IsOpenParen(rv) || core.IsSplice(rv) {
 			return true
@@ -254,7 +264,7 @@ func (vc *vmContext) screenResults(results []core.Value, label string, debug []c
 
 func runProgram(p *compiler.Program, r *core.Registry, stepLimit int) (result []core.Value, runErr error) {
 	if p == nil {
-		return nil, fmt.Errorf("bytecode: nil program")
+		return nil, vmEntryError("bytecode: nil program")
 	}
 	// §6.5's rollback, carried by the Program: roll this registry's bindings
 	// back to the base the recorder captured before the check pass, so the
@@ -296,10 +306,10 @@ func runProgram(p *compiler.Program, r *core.Registry, stepLimit int) (result []
 // isolated run and the guard in runVMEntry never rejects them.
 func RunUnit(ref *compiler.CompiledFnRef, r *core.Registry, args []core.Value) ([]core.Value, error) {
 	if ref == nil || ref.Prog == nil {
-		return nil, fmt.Errorf("bytecode: nil unit reference")
+		return nil, vmEntryError("bytecode: nil unit reference")
 	}
 	if ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) {
-		return nil, fmt.Errorf("bytecode: unit index %d out of range", ref.Unit)
+		return nil, vmEntryError(fmt.Sprintf("bytecode: unit index %d out of range", ref.Unit))
 	}
 	return runVMEntry(ref.Prog, r, core.StepLimitFor(r, core.DefaultStepLimit), func(vc *vmContext) ([]core.Value, error) {
 		return vc.enterCallbackUnit(r, ref.Unit, bindUnitLocals(r, &ref.Prog.Fns[ref.Unit], args, ref.Captures))
@@ -1149,6 +1159,20 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 				iargs[i] = args[n-1-i]
 			}
 		}
+		// A wrapper over a COMPILED CLOSURE (a modifier word applied to a
+		// factory's returned closure — core's closureShape) re-dispatches
+		// the closure itself: the window is re-laid fn-first over the
+		// permuted args and applied by the closure arm above, whose no-match
+		// leaves the CLOSURE and its args as written — the interpreter's
+		// re-dispatch tokens hold the original, never the wrapper, so its
+		// park is the original's too. Only once the WRAPPER's own signature
+		// takes the window: a wrapper that does not (a def-bound `r` over
+		// the wrong types) is the interpreter's no-match on the wrapper,
+		// which the paths below keep answering.
+		if _, isCl := inner.Data.(core.ClosurePayload); isCl && !trailing && core.MatchFnSig(fnVal, args) != nil {
+			relaid := append(append(stack[:base:base], inner), iargs...)
+			return vc.callDynamic(reg, n, false, relaid, curDebug, pc)
+		}
 		if ifd, isFn := inner.Data.(core.FnDefInfo); isFn && vmNativeApplicable(vc.r, ifd) {
 			if results, done, err := vc.tryNativeFnApply(inner, iargs); done {
 				if err != nil {
@@ -1466,14 +1490,21 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 // arm), built for the landing: the same code, detail and hint; the position
 // is stamped from the op's debug entry (the noted landing's token).
 func uncalledFunctionError(reg *core.Registry, fnDef core.FnDefInfo) error {
-	detail := "call to '" + fnDef.Name + "' matched no signature"
+	return uncalledFunctionErrorAt(reg, fnDef.Name, core.SrcPos{})
+}
+
+// uncalledFunctionErrorAt is uncalledFunctionError at an explicit position —
+// the recorded raise anchor of a poly re-match's fn-value no-match
+// (PolyNoMatchSpec.Uncalled).
+func uncalledFunctionErrorAt(reg *core.Registry, name string, pos core.SrcPos) *core.BoruError {
+	detail := "call to '" + name + "' matched no signature"
 	hint := "hint: check the call's argument types and arity — or use " +
-		fnDef.Name + "/v to push the function as a value deliberately"
+		name + "/v to push the function as a value deliberately"
 	src := ""
 	if reg != nil {
 		src = reg.Source
 	}
-	return core.MakeBoruErrorAt("uncalled_function", detail, fnDef.Name, src, hint, core.SrcPos{})
+	return core.MakeBoruErrorAt("uncalled_function", detail, name, src, hint, pos)
 }
 
 // landingResults seats one applied landing's results over the value it
@@ -1947,6 +1978,15 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 			for i := range args {
 				iargs[i] = args[n-1-i]
 			}
+		}
+		// A wrapper over a compiled closure applies the closure itself
+		// (callDynamic's arm; the closure arm above, under the same guard).
+		if _, isCl := inner.Data.(core.ClosurePayload); isCl && !inner.Quoted && core.MatchFnSig(fnVal, args) != nil {
+			results, err := vc.invokeClosurePositional(vc.r, inner, iargs)
+			if err != nil {
+				return nil, nil, stampAt(err, curDebug, pc, reg)
+			}
+			return guard(results)
 		}
 		if ifd, isFn := inner.Data.(core.FnDefInfo); isFn && vmNativeApplicable(vc.r, ifd) {
 			if results, done, err := vc.tryNativeFnApply(inner, iargs); done {
@@ -2957,7 +2997,25 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			payload := stack[len(stack)-1]
 			stack = stack[:len(stack)-1]
 			elems := core.SpliceExpand(payload)
+			// Arg 1 is the recorder's claim that the spread is the FN
+			// operand of the dynamic apply that follows (markSpliceApplied):
+			// exactly one value, whose re-step at the marker IS that apply —
+			// `def dbl word m.f  5 dbl` over `{f: ([n:Integer] => [n add 1])}`
+			// is SPLICE_DYN then CALL_DYNAMIC_TRAILING, 6 on both lanes (the
+			// sweep's `word` × container cell bailed here, 2026-09-26). A
+			// payload that IS one fn value is admitted under the claim; any
+			// other count defers, since the apply would lay N values out as
+			// one. Without the claim a fn payload defers as before: nothing
+			// models its re-step.
+			if in.Arg == 1 && len(elems) != 1 {
+				return nil, vmDefer(vc.r, curDebug, pc, "vm:splice-active-payload",
+					"splice of a multi-value payload where the program applies one value; the compiled runtime cannot execute it")
+			}
+			singleFn := in.Arg == 1 && core.IsAppliableFn(payload) && !core.IsWord(payload)
 			for _, el := range elems {
+				if singleFn {
+					break
+				}
 				if core.IsWord(el) || core.IsParenExpr(el) || core.IsReach(el) || core.IsInterpString(el) || core.IsSplice(el) ||
 					core.IsForward(el) || core.IsOpenParen(el) || core.IsCloseParen(el) || core.IsAppliableFn(el) {
 					return nil, vmDefer(vc.r, curDebug, pc, "vm:splice-active-payload",

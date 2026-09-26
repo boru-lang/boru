@@ -25,6 +25,15 @@ func (vc *vmContext) polyNoMatchRaise(r *core.Registry, pr *compiler.PolyRef, fn
 	if spec == nil || fn == nil || len(fn.Signatures) != spec.NSigs {
 		return nil
 	}
+	// A named fn VALUE's no-match (the check pass's fn-value recovery): the
+	// interpreter raises uncalled_function at the recorded position, the
+	// raise execFnDefLiteral builds — not sigError's signature_error. Its
+	// narrower-arity overloads were proved shadowed at the record
+	// (core.windowArityFirstMatch, pinned by NSigs), so the word screen
+	// below does not apply to it.
+	if spec.Uncalled {
+		return stampAt(uncalledFunctionErrorAt(r, pr.Word, spec.Pos), curDebug, pc, r)
+	}
 	for i := range fn.Signatures {
 		s := &fn.Signatures[i]
 		if !s.Fallback && s.TotalArgs() < pr.Arity {

@@ -896,6 +896,41 @@ func checkModeSurfaceShape(e *core.Engine, w core.WordInfo, pos core.SrcPos) (bo
 	return true, nil
 }
 
+// noMatchProber is the engine's poly no-match probe (Engine.PolyNoMatchProbe)
+// as the recovery reads it.
+type noMatchProber interface {
+	Spec(fn *core.FnDefInfo, window []core.Value) *core.PolyNoMatchSpec
+	Uncalled() bool
+}
+
+// recoverySpec is the no-match spec a recovered poly records with, and ok=false
+// when the recovery must not record at all: a fn VALUE's recovery (the probe's
+// Uncalled) whose spec is unproven would record a no-spec poly, and that
+// defer's alt raise is a word's signature_error where the interpreter raises
+// the value's uncalled_function (core.windowArityFirstMatch).
+func recoverySpec(p noMatchProber, fn *core.FnDefInfo, sw []core.Value) ([]core.Value, *core.PolyNoMatchSpec, bool) {
+	spec := p.Spec(fn, sw)
+	return sw, spec, spec != nil || !p.Uncalled()
+}
+
+// recoveryPolyOwner is the registry a recovered dispatch's poly re-match runs
+// over (tryRecordPoly's ownerReg): the registry the word's native is
+// REGISTERED in. That is the dispatching registry for a core word, and for a
+// module word dispatched inside its own module body (e.Registry is then the
+// sub-registry). A module native reached from OUTSIDE as a fn value
+// (`Net.send-bytes`, execFnDefLiteral's recovery) carries its home on
+// fn.Registry, where the word IS a builtin, and its signatures are that
+// registry's own — the pair tryRecordPoly's identity guard checks
+// (2026-09-26). A bare word REBOUND by `unpack [send-bytes] Net` also carries
+// the home, but its signatures are copies, so the guard still refuses it and
+// it keeps "unmatched dispatch recovered".
+func recoveryPolyOwner(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo) *core.Registry {
+	if core.FnHomeForeign(e.Registry, fn) && fn.Registry.IsBuiltinWord(w.Name) {
+		return fn.Registry
+	}
+	return e.Registry
+}
+
 func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fallback *core.Signature, pos core.SrcPos) error {
 	// Publish the dispatching word token for every ReturnsFn this recovery
 	// can invoke — the disjunct-partition combos, TryRecordRecoveredUserFn,
@@ -904,6 +939,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// own position. Without it a recovered user call's ReturnsFn read the
 	// PREVIOUS dispatch's cursor and keyed its region claim by that.
 	e.Registry.Check.CurCallWord, e.Registry.Check.CurCallPos = w.Name, pos
+	owner := recoveryPolyOwner(e, w, fn)
 	// Gather candidate positions once and try to pick a signature
 	// whose arity matches and whose declared types are compatible
 	// with (or at least not contradicted by) the actual carrier
@@ -1017,7 +1053,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// fill the rest top-down (the deepest-last ascending run reversed).
 		// Feeding the raw tape order here was the prior `[1x]`-vs-`[x1]`
 		// operand-order divergence. Only decline when poly isn't safe.
-		if sw := core.SigOrderArgs(args, nStack); dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, out, pos, true, nil, false, noMatchProbe.Spec(fn, sw)) {
+		if sw, spec, ok := recoverySpec(noMatchProbe, fn, core.SigOrderArgs(args, nStack)); ok && dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, out, pos, true, owner, false, spec) {
 			spliceCheckResults(e, positions, out)
 			return nil
 		}
@@ -1110,7 +1146,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 				}
 			}
 		}
-		if sw := core.SigOrderArgs(args, nStack); dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, results, pos, false, e.Registry, true, noMatchProbe.Spec(fn, sw)) {
+		if sw, spec, ok := recoverySpec(noMatchProbe, fn, core.SigOrderArgs(args, nStack)); ok && dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, results, pos, false, owner, true, spec) {
 			spliceCheckResults(e, positions, results)
 			return nil
 		}
@@ -1206,7 +1242,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 				resume := es.Suspend()
 				results := CarrierResults(e.Registry, w.Name, sig, args, pos, nil, false)
 				resume()
-				if sw := core.SigOrderArgs(args, nStack); dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, results, pos, false, e.Registry, true, noMatchProbe.Spec(fn, sw)) {
+				if sw, spec, ok := recoverySpec(noMatchProbe, fn, core.SigOrderArgs(args, nStack)); ok && dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, results, pos, false, owner, true, spec) {
 					spliceCheckResults(e, positions, results)
 					recovered = true
 				}
