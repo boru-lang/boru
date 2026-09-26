@@ -586,6 +586,18 @@ func looksLikeTypeName(name string) bool {
 
 // ResolveSigType converts a Value (from a pair's value side) to a *Type
 // plus an optional pattern Value for structural matching.
+// noteRuntimeSigType — an inline signature type holding a refinement over a
+// bound the analysis pass does not know (`n:(Integer gt (size s))`): the
+// signature is the run's to build, and a compiled unit would carry the
+// pass's placeholder for the bound, so the word building it declines as the
+// compile-time word it is (NUR231). A named type over such a bound compiles:
+// its node forwards to the one the run installs (RunTypeInstall).
+func noteRuntimeSigType(r *Registry, v Value) {
+	if r != nil && r.analysisActive() && HasUnknownRefinement(v) {
+		r.analysisRecorder().NoteRuntimeDependent()
+	}
+}
+
 func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	if IsBareTypeNode(v) {
 		return ValueType(v), nil, nil
@@ -710,6 +722,7 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// constrains through its minted Behavior. Previously this fell to
 	// the TAny tail: a silent wildcard that dispatched EVERYTHING.
 	if IsDisjunct(v) {
+		noteRuntimeSigType(r, v)
 		pattern := v
 		return TAny, &pattern, nil
 	}
@@ -722,9 +735,7 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// The literal arm below hand-lists five bases, and a Bytes refinement fell
 	// to the TAny tail: a wildcard slot (NUR009).
 	if v.IsDepScalar() {
-		if !IsInertConst(v) {
-			DeclineUnknownRefinement(r, "an inline signature type")
-		}
+		noteRuntimeSigType(r, v)
 		pattern := v
 		return v.Parent, &pattern, nil
 	}
@@ -756,6 +767,7 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 				return nil, nil, err
 			}
 			resolved = ResolveSigChildParam(r, resolved)
+			noteRuntimeSigType(r, resolved)
 			return TMap, &resolved, nil
 		}
 		// An INLINE record pattern (`o:{pretty:Boolean}`) resolves its
@@ -776,6 +788,7 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 				return nil, nil, err
 			}
 			resolved = ResolveSigChildParam(r, resolved)
+			noteRuntimeSigType(r, resolved)
 			return TList, &resolved, nil
 		}
 		return TList, &v, nil

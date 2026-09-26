@@ -644,14 +644,6 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		if err := validateSubtypeNameFor(body.Parent, name); err != nil {
 			return err
 		}
-		// A refinement over a bound the analysis pass does not know (a
-		// computed one, `def T (Integer gte (size s))` — the pass's
-		// carrier) mints a type whose membership the pass cannot decide,
-		// and the compiled lane replays the pass's install, carrier bound
-		// and all: `def v:T 3` bound unchecked (NUR231). Decline.
-		if !IsInertConst(body) {
-			DeclineUnknownRefinement(r, "type "+name)
-		}
 		def := r.Types.MintType(name, body.Parent)
 		installDepScalarUnifier(def, body.Parent, di, name)
 		installTypeBinding(r, name, def, body)
@@ -694,5 +686,21 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 	for _, p := range strings.Split(name, "/") {
 		r.RegisterPart(p)
 	}
+	noteRuntimeTypeInstall(r, name, body)
 	return nil
+}
+
+// noteRuntimeTypeInstall tells the analysis pass that the type it just
+// installed holds a refinement over a bound it does not know — a computed
+// one, `def T (Integer gte (size s))`, whose bound is the pass's carrier
+// (NUR231): replaying this install would bind the placeholder, so the run
+// installs the type itself from the body it computes (OpBindTypeRun), and
+// the node minted here forwards to the run's. A no-op outside a pass.
+func noteRuntimeTypeInstall(r *Registry, name string, body Value) {
+	if !r.analysisActive() || !HasUnknownRefinement(body) {
+		return
+	}
+	if e, ok := r.Defs.TopEntry(name); ok && e.TypeDef != nil {
+		r.analysisRecorder().NoteRuntimeTypeInstall(name, e.TypeDef, body)
+	}
 }

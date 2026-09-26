@@ -3373,6 +3373,13 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		ti := len(lw.p.TypedBinds)
 		lw.p.TypedBinds = append(lw.p.TypedBinds, *c.typedBind)
 		lw.emit(OpBindTyped, ti, c.pos)
+	} else if c.typeRun != nil {
+		// A root type def's run-time install (NUR231): pop the body operand
+		// (laid out above), install it as the interpreter does, forward the
+		// pass's node to the run's.
+		ti := len(lw.p.TypeRuns)
+		lw.p.TypeRuns = append(lw.p.TypeRuns, *c.typeRun)
+		lw.emit(OpBindTypeRun, ti, c.pos)
 	} else if c.word == wordDynApply && c.dynApply == 0 {
 		// A dyn-apply record over NO argument has no signature to call
 		// under (its SigRef would carry none — NUR162's crash); the arms

@@ -118,6 +118,13 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.NoteRuntimeBind("x")
 	e.NoteRuntimeConstruct()
 	e.RecordRuntimeDispatch("w", nil, nil, nil, SrcPos{})
+	// NUR231's type half: the run-time type install, the run-dependent
+	// compile-time word, the run-time membership bind.
+	e.NoteRuntimeTypeInstall("T", nil, Value{})
+	e.NoteRuntimeDependent()
+	if got, ok := e.RecordTypedBindRun(TypedBindSpec{}, Value{}, Value{}, out, SrcPos{}); ok || !ValuesEqual(got, out) {
+		t.Fatal("inactive RecordTypedBindRun must pass out through and decline")
+	}
 	if e.ContainerReadResult("id") {
 		t.Fatal("inactive ContainerReadResult must decline")
 	}

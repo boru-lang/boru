@@ -289,6 +289,21 @@ type EmitRecorder interface {
 	// (NUR231): the result is no const, so the dispatch records as the call
 	// it is and the run builds the value over the real operand.
 	NoteRuntimeConstruct()
+	// NoteRuntimeTypeInstall records that the type installer minted name's
+	// node over a body holding a refinement whose bound the pass does not
+	// know (NUR231): the def's dispatch records the run-time install of the
+	// body the run computes, the node forwarding to the run's.
+	NoteRuntimeTypeInstall(name string, node *Type, body Value)
+	// NoteRuntimeDependent records that the compile-time word now
+	// dispatching has an effect only the run knows, which the compile cannot
+	// record: the dispatch declines as the compile-time word it is (NUR231).
+	NoteRuntimeDependent()
+	// RecordTypedBindRun records a typed def's run-time membership check
+	// over a constraint only the run can decide (TypedBindRunMembership,
+	// NUR231), a concrete value included; with spec.ConsOperand the
+	// constraint the run computed is an operand. ok=false leaves the def to
+	// its caller's decline.
+	RecordTypedBindRun(spec TypedBindSpec, cons, in, out Value, pos SrcPos) (Value, bool)
 	// RecordRuntimeDispatch records the dispatch of a check-mode-run word
 	// whose handler latched a run-time effect in THIS dispatch: a binder's
 	// run-time binds (NoteRuntimeBind — a plain 0-result native call, so the
@@ -650,11 +665,16 @@ func (inactiveEmit) RecordDispatchRematchValues(string, []Value, []int, SrcPos) 
 func (inactiveEmit) RecordTypedBind(_ TypedBindSpec, _, out Value, _ SrcPos) (Value, bool) {
 	return out, false
 }
-func (inactiveEmit) RecordMakeList(*Registry, []Value, Value, SrcPos) bool              { return false }
-func (inactiveEmit) RecordMakeListInner(*Registry, []Value, Value, SrcPos) bool         { return false }
-func (inactiveEmit) RecordArgsProjection(*Registry, []Value, Value, SrcPos) bool        { return false }
-func (inactiveEmit) NoteRuntimeBind(string)                                             {}
-func (inactiveEmit) NoteRuntimeConstruct()                                              {}
+func (inactiveEmit) RecordMakeList(*Registry, []Value, Value, SrcPos) bool       { return false }
+func (inactiveEmit) RecordMakeListInner(*Registry, []Value, Value, SrcPos) bool  { return false }
+func (inactiveEmit) RecordArgsProjection(*Registry, []Value, Value, SrcPos) bool { return false }
+func (inactiveEmit) NoteRuntimeBind(string)                                      {}
+func (inactiveEmit) NoteRuntimeConstruct()                                       {}
+func (inactiveEmit) NoteRuntimeTypeInstall(string, *Type, Value)                 {}
+func (inactiveEmit) NoteRuntimeDependent()                                       {}
+func (inactiveEmit) RecordTypedBindRun(_ TypedBindSpec, _, _, out Value, _ SrcPos) (Value, bool) {
+	return out, false
+}
 func (inactiveEmit) RecordRuntimeDispatch(string, *Signature, []Value, []Value, SrcPos) {}
 func (inactiveEmit) RecordMakeMap(*Registry, []string, []Value, bool, Value, SrcPos) bool {
 	return false

@@ -963,16 +963,40 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 	return InstallAndRecordDef(r, name, out, pos)
 }
 
-// declineComputedRefinementBind declines the compile of a typed def whose
-// refinement has a bound the pass does not know — a computed one, `def
-// x:(Integer gt (size s)) 2`, whose bound is the pass's carrier: the run
-// alone checks it, the pass admits gradually, and a compiled bind would
-// replay the pass's verdict (a concrete body) or carry the carrier for a
-// bound (a recorded one) (NUR231).
-func declineComputedRefinementBind(r *Registry, cons Value, name string) {
-	if cons.IsDepScalar() && !core.IsInertConst(cons) {
-		core.DeclineUnknownRefinement(r, "typed-def `"+name+"`")
+// defRunMembershipBind binds a typed def whose constraint holds a refinement
+// over a bound the analysis pass does not know — a computed one, `def
+// x:(Integer gt (size s)) 2` or `def v:T 3` over such a T, whose bound is
+// the pass's carrier (NUR231). The membership is the run's: the pass admits
+// gradually and records the run's check, OpBindTyped over
+// TypedBindRunMembership, against the named node (which forwards to the
+// node the run installed, core.RunTypeInstall) or, inline, against the
+// constraint the run computed (ConsOperand). It binds what the run binds
+// when the check admits. A bind the compile cannot record declines as the
+// compile-time word it is (NoteRuntimeDependent). ok=false hands a concrete
+// value the constraint refuses whatever the bound — outside its base — to
+// the general arm, whose raise is the run's too.
+func defRunMembershipBind(r *Registry, name string, constraint, body Value, describe string, pos SrcPos) (Value, bool) {
+	bound := body
+	if IsConcrete(body) {
+		unified, ok := UnifyR(body, constraint, r)
+		if !ok {
+			return Value{}, false
+		}
+		bound = unified
 	}
+	spec := core.TypedBindSpec{Kind: core.TypedBindRunMembership, Name: name, Describe: describe}
+	if IsBareTypeNode(constraint) {
+		cons := constraint
+		spec.Cons = &cons
+	} else {
+		spec.ConsOperand = true
+	}
+	es := r.Check.Recorder()
+	if out, ok := es.RecordTypedBindRun(spec, constraint, body, bound, pos); ok {
+		return out, true
+	}
+	es.NoteRuntimeDependent()
+	return bound, true
 }
 
 // MarkFnPredicateBindUncompilable declines compilation when a fn-predicate
@@ -1319,7 +1343,15 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			}
 		}
 	}
-	declineComputedRefinementBind(r, depScalarCons, name)
+	if r.Check.IsActive() && core.HasUnknownRefinement(constraint) {
+		describe := typeName
+		if IsBareTypeNode(constraint) {
+			describe = describeType()
+		}
+		if bound, ok := defRunMembershipBind(r, name, constraint, body, describe, defPos); ok {
+			return InstallAndRecordDef(r, name, bound, defPos)
+		}
+	}
 	if r.Check.IsActive() && depScalarCons.IsDepScalar() && !IsConcrete(body) {
 		if body.Parent.ConformsTo(depScalarCons.Parent) {
 			// An ABSTRACT (carrier) body admits on base conformance only —

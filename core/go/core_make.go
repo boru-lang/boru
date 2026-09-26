@@ -1,6 +1,7 @@
 package core
 
 import (
+	"errors"
 	"fmt"
 	"strconv"
 	"strings"
@@ -47,6 +48,20 @@ func MakeRecord(recType RecordTypeInfo, srcVal Value, useBase bool) ([]Value, er
 	return MakeRecordR(recType, srcVal, useBase, nil)
 }
 
+// makeFieldError is a make field's refusal: a structured type_error on both
+// lanes. A plain error here was the interpreter's raise, and a compiled run
+// books a plain error as a compiler defect (internal_error and its note) —
+// reached once a field value only the run knows, a loop-carried value or a
+// refinement's computed bound, left the check pass admitting (NUR233). An
+// error already structured keeps its own code beneath the prefix.
+func makeFieldError(key string, err error) error {
+	var ae *BoruError
+	if errors.As(err, &ae) {
+		return fmt.Errorf("make: field %q: %w", key, err)
+	}
+	return &BoruError{Code: "type_error", Detail: fmt.Sprintf("make: field %q: %v", key, err)}
+}
+
 // MakeRecordR is MakeRecord with Registry threading for
 // predicate-typed field constraints. See MakeFieldValueR.
 func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry) ([]Value, error) {
@@ -66,7 +81,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 				if useBase {
 					bv, err := BaseValueForConstraint(constraint)
 					if err != nil {
-						return fmt.Errorf("make: field %q: %w", key, err)
+						return makeFieldError(key, err)
 					}
 					result.Set(key, bv)
 					continue
@@ -80,7 +95,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 			}
 			converted, err := MakeFieldValueR(val, constraint, r)
 			if err != nil {
-				return fmt.Errorf("make: field %q: %w", key, err)
+				return makeFieldError(key, err)
 			}
 			result.Set(key, converted)
 		}
@@ -140,7 +155,7 @@ func MakeRecordR(recType RecordTypeInfo, srcVal Value, useBase bool, r *Registry
 			constraint, _ := recType.Fields.Get(key)
 			converted, err := MakeFieldValueR(elems.Get(i), constraint, r)
 			if err != nil {
-				return nil, fmt.Errorf("make: field %q: %w", key, err)
+				return nil, makeFieldError(key, err)
 			}
 			result.Set(key, converted)
 		}
@@ -233,7 +248,7 @@ func makeClassInstance(objType ClassTypeInfo, provided *OrderedMap, r *Registry)
 
 		checked, err := MakeClassFieldValue(val, constraint, r)
 		if err != nil {
-			return nil, fmt.Errorf("make: field %q: %w", key, err)
+			return nil, makeFieldError(key, err)
 		}
 		result.Set(key, checked)
 	}
@@ -285,7 +300,7 @@ func makeResource(resType ResourceTypeInfo, provided *OrderedMap, r *Registry) (
 		}
 		checked, err := MakeClassFieldValue(val, constraint, r)
 		if err != nil {
-			return nil, fmt.Errorf("make: field %q: %w", key, err)
+			return nil, makeFieldError(key, err)
 		}
 		result.Set(key, checked)
 	}

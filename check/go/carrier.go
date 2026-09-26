@@ -1557,7 +1557,9 @@ func comboTypeNames(combo []core.Value) string {
 // one arm reachable for these args — the combination where a static arm
 // commit can diverge from the interpreter's runtime predicate fall-through.
 // DepScalar and Go-member types match self-contained in check mode (no
-// leniency), so they carry no hazard.
+// leniency), so they carry no hazard — unless the refinement's bound is one
+// the pass does not know (a computed one, `def T (Integer gt (size s))`):
+// its check-mode match admits every value (NUR231), the same leniency.
 func FnPredicateOverloadHazard(r *core.Registry, word string, args []core.Value) bool {
 	fn := r.Lookup(word)
 	if fn == nil || len(fn.Signatures) < 2 {
@@ -1574,6 +1576,9 @@ func FnPredicateOverloadHazard(r *core.Registry, word string, args []core.Value)
 			t := core.SigArgType(s, j)
 			if t != nil {
 				if _, ok := t.Behavior().(*core.PredicateUnifier); ok {
+					hasPred = true
+				}
+				if core.HasUnknownRefinement(core.NewTypeLiteral(t)) {
 					hasPred = true
 				}
 			}

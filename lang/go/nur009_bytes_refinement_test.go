@@ -117,35 +117,65 @@ func TestNUR231ComputedBoundValuesCompile(t *testing.T) {
 	}
 }
 
-// TestNUR231ComputedBoundTypesDecline pins NUR231's type half: a TYPE over a
-// computed bound — a named type, an inline typed def, a fn parameter or
-// return — is checked against a bound only the run knows, and the compiled
-// lane replayed the check pass's verdict over its carrier (`def v:T 3` bound
-// unchecked, a parameter admitted everything). The compile declines loudly,
-// naming the site, and the interpreter's answer stands; the check pass
-// raises no diagnostic of its own (it admits, gradually — `Integer lte
-// (size s)` had refused 3 whatever s held).
-func TestNUR231ComputedBoundTypesDecline(t *testing.T) {
-	for _, tc := range []struct{ src, want, site string }{
-		{`def T (Integer gte (size "abcd")) def v:T 3 v`, "ERROR:does not unify with declared type T", "type T"},
-		{`def T (Integer lte (size "abcd")) def v:T 3 v`, "[3]", "type T"},
-		{`def x:(Integer gt (size "abc")) 2 x`, "ERROR:does not unify", "typed-def `x`"},
-		{`def x:(Integer gt (size "abc")) 5 x`, "[5]", "typed-def `x`"},
-		{`def x:(between 1 (size "abc") Integer) 7 x`, "ERROR:does not unify", "typed-def `x`"},
-		{`def g fn [[n:(Integer gt (size "abc"))] [Any] [n]] g 2`, "ERROR:no signature matches", "an inline signature type"},
-		{`def g fn [[n:Integer] [(Integer gt (size "abc"))] [n]] g 2`, "ERROR:expected (Integer gt 3)", "an inline signature type"},
+// TestNUR231ComputedBoundTypesCompile pins NUR231's type half: a TYPE over
+// a computed bound — a named type, a typed def, a fn parameter or return
+// typed by such a name, a class field, a generic bound — compiles to the
+// run-time install. The run installs the type from the body it computed
+// (OpBindTypeRun), the node the check pass minted forwards to the run's, and
+// a typed def records the run's own membership check (OpBindTyped over
+// TypedBindRunMembership, against the named node or the constraint the run
+// computed). Unions, negations and intersections holding such a refinement,
+// and an empty interval the run computes (Never), agree on both lanes; an
+// overload set over such a type re-matches at run time (the pass's match
+// over an unknown bound admits every value). The check pass raises no
+// diagnostic of its own: it admits, gradually — `Integer lte (size s)` had
+// refused 3 whatever s held.
+func TestNUR231ComputedBoundTypesCompile(t *testing.T) {
+	const tt = `def T (Integer gt (size "abc")) `
+	const bb = `def B (Bytes gt (convert Bytes (convert String (size "ab")))) `
+	for _, tc := range []struct{ src, want string }{
+		{`def T (Integer gte (size "abcd")) def v:T 3 v`, "ERROR:does not unify with declared type T"},
+		{`def T (Integer lte (size "abcd")) def v:T 3 v`, "[3]"},
+		{`def x:(Integer gt (size "abc")) 2 x`, "ERROR:does not unify with declared type (Integer gt 3)"},
+		{`def x:(Integer gt (size "abc")) 5 x`, "[5]"},
+		{`def x:(between 1 (size "abc") Integer) 7 x`, "ERROR:does not unify with declared type (Integer gte 1 lte 3)"},
+		{`def s "abc" def x:(Integer gt (size s)) 5 x add 1`, "[6]"},
+		{tt + `2 is T`, "[false]"},
+		{tt + `5 is T`, "[true]"},
+		{tt + `T`, "[T]"},
+		{tt + `def U T 1 is U`, "[false]"},
+		{tt + `def T (Integer gt (size "abcdef")) 5 is T`, "[false]"},
+		{tt + `T tcmp (Integer gt 3)`, "[1]"},
+		{`def T ((Integer gt (size "abc")) tor String) 2 is T`, "[false]"},
+		{`def T ((Integer gt (size "abc")) tor String) "s" is T`, "[true]"},
+		{`def x:((Integer gt (size "abc")) tor String) 1 x`, "ERROR:does not unify with declared type (Integer gt 3) tor String"},
+		{`def T (tnot (Integer gt (size "abc"))) 1 is T`, "[true]"},
+		{`def T (tnot (Integer gt (size "abc"))) 9 is T`, "[false]"},
+		{`def x:(tnot (Integer gt (size "abc"))) 9 x`, "ERROR:does not unify"},
+		{`def T ((Integer lt (size "abcdefghij")) tand (Integer gt 5)) 7 is T`, "[true]"},
+		{`def T ((Integer lt (size "abcdefghij")) tand (Integer gt 5)) T`, "[T]"},
+		{`def T (between 5 (size "ab") Integer) T`, "[Never]"},
+		{`def T (between 5 (size "ab") Integer) T eq Never`, "[true]"},
+		{tt + `def f fn [[n:T] [Integer] [n add 1]] f 5`, "[6]"},
+		{tt + `def f fn [[n:T] [Integer] [n add 1]] f 2`, "ERROR:no signature matches"},
+		{tt + `def f fn [[n:T] [Integer] [n add 1]] def f fn [[n:Integer] [Integer] [n sub 1]] f 2`, "[1]"},
+		{tt + `def f fn [[n:T] [Integer] [n add 1]] def f fn [[n:Integer] [Integer] [n sub 1]] f 5`, "[6]"},
+		{tt + `def g fn [[n:Integer] [T] [n]] g 5`, "[5]"},
+		{tt + `def g fn [[n:Integer] [T] [n]] g 2`, "ERROR:expected T, got Integer"},
+		{tt + `def S class {x:T} (make S {x:50}) dot x`, "[50]"},
+		{tt + `def S class {x:T} make S {x:2}`, "ERROR:does not satisfy DepScalar bounds"},
+		{tt + `def f gen [(X extends T)] fn [[x:X] [X] [x]] f 5`, "[5]"},
+		{tt + `def f gen [(X extends T)] fn [[x:X] [X] [x]] f 2`, "ERROR:no signature matches"},
+		{bb + `(convert Bytes "3") is B`, "[true]"},
+		{bb + `def v:B (convert Bytes "1") v`, "ERROR:does not unify with declared type B"},
+		// Inside a callback or loop body, the typed def's own check is the
+		// run's too; the named type installed at the root is read there.
+		{`each ([e:Integer] => [def x:(Integer gt (size "abc")) e x]) [4 5]`, "[[4 5]]"},
+		{`each ([e:Integer] => [def x:(Integer gt (size "abc")) e x]) [1 5]`, "ERROR:does not unify with declared type (Integer gt 3)"},
+		{tt + `each ([e:Integer] => [def x:T e x]) [1 5]`, "ERROR:does not unify with declared type T"},
+		{`for 2 [def x:(Integer gt (size "abc")) 2]`, "ERROR:does not unify with declared type (Integer gt 3)"},
 	} {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, tc.src)
-		if sub, isErr := strings.CutPrefix(tc.want, "ERROR:"); isErr {
-			if errI == nil || !strings.Contains(errI.Error(), sub) {
-				t.Errorf("%s: interpreter %v / %v, want an error containing %q", tc.src, gotI, errI, sub)
-			}
-		} else if errI != nil || fmt.Sprint(gotI) != tc.want {
-			t.Errorf("%s: interpreter %v / %v, want %s", tc.src, gotI, errI, tc.want)
-		}
-		if compiled || errC == nil || !strings.Contains(errC.Error(), tc.site+" refines over a computed bound, which only the run knows (NUR231)") {
-			t.Errorf("%s: compiled %v / %v (compiled=%v), want the NUR231 decline at %s", tc.src, gotC, errC, compiled, tc.site)
-		}
+		agreeOnBothLanes(t, tc.src, tc.want)
 		a, err := New()
 		if err != nil {
 			t.Fatal(err)
@@ -159,6 +189,56 @@ func TestNUR231ComputedBoundTypesDecline(t *testing.T) {
 	agreeOnBothLanes(t, `def T (Integer lte 4) def v:T 3 v`, "[3]")
 	agreeOnBothLanes(t, `def x:(Integer gt 3) 2 x`, "ERROR:does not unify")
 	agreeOnBothLanes(t, `def g fn [[n:(Integer gt 3)] [Any] [n]] g 2`, "ERROR:no signature matches")
+}
+
+// TestNUR231TypeRunDisassembles pins the run-time install's shape in the
+// bytecode: the body the run computes, the def's twin (written back, so it
+// replays nothing) and BIND_TYPE_RUN at the def's position.
+func TestNUR231TypeRunDisassembles(t *testing.T) {
+	a, err := New()
+	if err != nil {
+		t.Fatal(err)
+	}
+	prog, reason, _, err := a.CompileCheck(`def T (Integer gt (size "abc")) 5 is T`)
+	if prog == nil || err != nil {
+		t.Fatalf("compiles: %q %v", reason, err)
+	}
+	dis := prog.Disassemble()
+	for _, want := range []string{"CALL_NATIVE s1   ; gt", "BIND_TWIN   w0   ; bind twin type-install T", "BIND_TYPE_RUN v0   ; run-time type install T"} {
+		if !strings.Contains(dis, want) {
+			t.Errorf("disassembly lacks %q:\n%s", want, dis)
+		}
+	}
+}
+
+// TestNUR231RunBuiltSignaturesDecline pins what NUR231's type half leaves:
+// a signature the RUN builds — an inline parameter or return type, or a
+// typed container's child, over a computed bound — and a type def the run
+// re-installs per call (a fn body's) decline as the compile-time word they
+// are, through the generic site, and the interpreter's answer stands. A
+// NAMED type over the same bound compiles (TestNUR231ComputedBoundTypesCompile).
+func TestNUR231RunBuiltSignaturesDecline(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{`def g fn [[n:(Integer gt (size "abc"))] [Any] [n]] g 2`, "ERROR:no signature matches"},
+		{`def g fn [[n:(Integer gt (size "abc"))] [Any] [n]] g 5`, "[5]"},
+		{`def g fn [[n:Integer] [(Integer gt (size "abc"))] [n]] g 2`, "ERROR:expected (Integer gt 3)"},
+		{`def g fn [[n:((Integer gt (size "abc")) tor String)] [Any] [n]] g 2`, "ERROR:no signature matches"},
+		{`def g fn [[xs:[:(Integer gt (size "abc"))]] [Any] [xs]] g [5]`, "[[5]]"},
+		{`def xs:[:(Integer gt (size "abc"))] [5] xs`, "[[5]]"},
+		{`def h fn [[s:String] [Boolean] [def T (Integer gt (size s)) 5 is T]] h "abc"`, "[true]"},
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, tc.src)
+		if sub, isErr := strings.CutPrefix(tc.want, "ERROR:"); isErr {
+			if errI == nil || !strings.Contains(errI.Error(), sub) {
+				t.Errorf("%s: interpreter %v / %v, want an error containing %q", tc.src, gotI, errI, sub)
+			}
+		} else if errI != nil || fmt.Sprint(gotI) != tc.want {
+			t.Errorf("%s: interpreter %v / %v, want %s", tc.src, gotI, errI, tc.want)
+		}
+		if compiled || errC == nil || !strings.Contains(errC.Error(), "compile-time word def") {
+			t.Errorf("%s: compiled %v / %v (compiled=%v), want the compile-time word's decline", tc.src, gotC, errC, compiled)
+		}
+	}
 }
 
 // TestNUR232InlineRefinementReturnDefers pins NUR232: the check pass refused

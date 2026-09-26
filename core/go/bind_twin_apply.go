@@ -41,6 +41,12 @@ import "strings"
 // nothing. Replaying it would bind the placeholder; the arm that binds the
 // real value is elsewhere by construction.
 //
+// A TYPE twin is written back too when the def's body holds a refinement
+// over a bound the pass did not know (NUR231): the run installs the type
+// itself (OpBindTypeRun, RunTypeInstall) from the body it computed, so the
+// twin re-installs nothing — neither the pass's node nor its name's parts,
+// which that install reserves.
+//
 // THE TYPE NAME is the one thing a twin re-checks rather than replays. The
 // rollback frees the part reservation the pass made for a type binding it
 // rolls back (BindingSandbox.typeParts), so a type twin reserves its name
@@ -85,7 +91,7 @@ func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) error {
 // through the rollback — a compile-time product), an adopted alias
 // re-adopts the canonical node.
 func applyTwinPush(r *Registry, tr BindTransition, entry DefEntry) error {
-	if entry.TypeDef == nil && (tr.WrittenBack || (!IsConcrete(entry.Body) && !IsBareTypeNode(entry.Body))) {
+	if tr.WrittenBack || (entry.TypeDef == nil && !IsConcrete(entry.Body) && !IsBareTypeNode(entry.Body)) {
 		return nil
 	}
 	switch {

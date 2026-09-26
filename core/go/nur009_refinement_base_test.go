@@ -1,7 +1,6 @@
 package core
 
 import (
-	"strings"
 	"testing"
 )
 
@@ -13,11 +12,19 @@ type constructRecorder struct {
 	constructs int
 	remembered []Value
 	declined   []string
+	typeRuns   []string
+	typeNodes  []*Type
+	dependents int
 }
 
 func (c *constructRecorder) NoteRuntimeConstruct()          { c.constructs++ }
 func (c *constructRecorder) RememberOriginal(v Value)       { c.remembered = append(c.remembered, v) }
 func (c *constructRecorder) MarkUncompilable(reason string) { c.declined = append(c.declined, reason) }
+func (c *constructRecorder) NoteRuntimeDependent()          { c.dependents++ }
+func (c *constructRecorder) NoteRuntimeTypeInstall(name string, node *Type, _ Value) {
+	c.typeRuns = append(c.typeRuns, name)
+	c.typeNodes = append(c.typeNodes, node)
+}
 
 func analysingRegistry(t *testing.T) (*Registry, *constructRecorder) {
 	t.Helper()
@@ -180,42 +187,64 @@ func TestRefinementConstOnlyOverKnownBounds(t *testing.T) {
 	}
 }
 
-// TestUnknownRefinementDeclines pins the sites that would bake a refinement
-// over an unknown bound: a type install and an inline signature type decline
-// the compile; over a known bound neither does, and nothing declines outside
-// an analysis pass. The inline signature type's slot is the refinement's own
-// base — whichever type declared itself one — not a hand-listed five (an
-// inline Bytes refinement was a wildcard, NUR009).
-func TestUnknownRefinementDeclines(t *testing.T) {
-	DeclineUnknownRefinement(nil, "nothing") // no registry: no-op
+// TestUnknownRefinementIsTheRuns pins what the install sites tell the
+// compile pass about a refinement over a bound it does not know (NUR231's
+// type half): a type install notes the run-time install — the run installs
+// the type, and the node minted here forwards to the run's — and so does a
+// union, a negation or a typed container's child holding one; an inline
+// signature type notes the word building it as run-dependent. Over a known
+// bound neither is noted, and nothing is noted outside an analysis pass. The
+// inline signature type's slot is the refinement's own base — whichever type
+// declared itself one — not a hand-listed five (an inline Bytes refinement
+// was a wildcard, NUR009).
+func TestUnknownRefinementIsTheRuns(t *testing.T) {
+	unknown := NewDepScalar(DepGT, NewCarrier(TInteger))
 	plain, err := NewRegistry()
 	if err != nil {
 		t.Fatal(err)
 	}
-	DeclineUnknownRefinement(plain, "an interpreter run") // not analysing: no-op
+	if err := InstallType(plain, "Pl", unknown); err != nil { // not analysing: nothing to note
+		t.Fatal(err)
+	}
 
 	r, rec := analysingRegistry(t)
 	if err := InstallType(r, "Kn", NewDepScalar(DepGT, NewInteger(3))); err != nil {
 		t.Fatal(err)
 	}
-	if len(rec.declined) != 0 {
-		t.Fatalf("a type over a known bound declines nothing: %q", rec.declined)
+	if len(rec.typeRuns) != 0 || len(rec.declined) != 0 {
+		t.Fatalf("a type over a known bound is the pass's to install: %q %q", rec.typeRuns, rec.declined)
 	}
-	if err := InstallType(r, "Un", NewDepScalar(DepGT, NewCarrier(TInteger))); err != nil {
+	if err := InstallType(r, "Un", unknown); err != nil {
 		t.Fatal(err)
 	}
-	if len(rec.declined) != 1 || !strings.Contains(rec.declined[0], "type Un refines over a computed bound") ||
-		!strings.Contains(rec.declined[0], "(NUR231)") {
-		t.Fatalf("a type over an unknown bound declines: %q", rec.declined)
+	if len(rec.typeRuns) != 1 || rec.typeRuns[0] != "Un" || rec.typeNodes[0] != r.LookupTypeName("Un") {
+		t.Fatalf("a type over an unknown bound is the run's to install, over the pass's node: %q %v", rec.typeRuns, rec.typeNodes)
+	}
+	if err := InstallType(r, "Uu", NewDisjunct([]Value{unknown, NewTypeLiteral(TString)})); err != nil {
+		t.Fatal(err)
+	}
+	if err := InstallType(r, "Ng", NewNegation(unknown)); err != nil {
+		t.Fatal(err)
+	}
+	if len(rec.typeRuns) != 3 || rec.typeRuns[1] != "Uu" || rec.typeRuns[2] != "Ng" {
+		t.Fatalf("a union or a negation holding one is the run's too: %q", rec.typeRuns)
+	}
+	if len(rec.declined) != 0 {
+		t.Fatalf("nothing declines: %q", rec.declined)
 	}
 
 	kind, pat, err := ResolveSigType(r, NewDepScalar(DepLT, NewInteger(9)))
-	if err != nil || kind != TInteger || pat == nil || !pat.IsDepScalar() || len(rec.declined) != 1 {
-		t.Fatalf("an inline refinement's slot is its base, the refinement its pattern: %v %v %v %q", kind, pat, err, rec.declined)
+	if err != nil || kind != TInteger || pat == nil || !pat.IsDepScalar() || rec.dependents != 0 {
+		t.Fatalf("an inline refinement's slot is its base, the refinement its pattern: %v %v %v %d", kind, pat, err, rec.dependents)
 	}
-	if _, _, err = ResolveSigType(r, NewDepScalar(DepLT, NewCarrier(TInteger))); err != nil ||
-		len(rec.declined) != 2 || !strings.Contains(rec.declined[1], "an inline signature type refines over a computed bound") {
-		t.Fatalf("an inline signature type over an unknown bound declines: %v %q", err, rec.declined)
+	if _, _, err = ResolveSigType(r, NewDepScalar(DepLT, NewCarrier(TInteger))); err != nil || rec.dependents != 1 {
+		t.Fatalf("an inline signature type over an unknown bound is the run's to build: %v %d", err, rec.dependents)
+	}
+	if _, _, err = ResolveSigType(r, NewDisjunct([]Value{unknown, NewTypeLiteral(TString)})); err != nil || rec.dependents != 2 {
+		t.Fatalf("an inline union holding one is too: %v %d", err, rec.dependents)
+	}
+	if _, _, err = ResolveSigType(plain, unknown); err != nil || rec.dependents != 2 {
+		t.Fatalf("an interpreter run notes nothing: %v %d", err, rec.dependents)
 	}
 	zz := r.Types.MintTypeWithBehavior("Zz", TScalar, zzFormatBehavior{})
 	DeclareRefinementBase(zz)

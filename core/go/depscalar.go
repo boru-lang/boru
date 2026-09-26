@@ -351,6 +351,8 @@ func combineDepScalars(a, b DepScalarInfo) (DepScalarInfo, bool) {
 		out.Lo = b.Lo
 	case b.Lo == nil:
 		out.Lo = a.Lo
+	case !depBoundKnown(a.Lo) || !depBoundKnown(b.Lo):
+		out.Lo = unknownBound(a.Lo, b.Lo)
 	default:
 		t, ok := tightenSameSide(a.Lo, b.Lo, true)
 		if !ok {
@@ -364,6 +366,8 @@ func combineDepScalars(a, b DepScalarInfo) (DepScalarInfo, bool) {
 		out.Hi = b.Hi
 	case b.Hi == nil:
 		out.Hi = a.Hi
+	case !depBoundKnown(a.Hi) || !depBoundKnown(b.Hi):
+		out.Hi = unknownBound(a.Hi, b.Hi)
 	default:
 		t, ok := tightenSameSide(a.Hi, b.Hi, false)
 		if !ok {
@@ -371,8 +375,11 @@ func combineDepScalars(a, b DepScalarInfo) (DepScalarInfo, bool) {
 		}
 		out.Hi = t
 	}
-	// Verify the resulting interval is non-empty.
-	if out.Lo != nil && out.Hi != nil {
+	// Verify the resulting interval is non-empty — decided only over KNOWN
+	// bounds: an unknown one is the analysis pass's carrier, which orders
+	// below every value, so `(Integer lt (size s)) tand (Integer gt 5)` was
+	// Never at compile time whatever s held (NUR231).
+	if out.Lo != nil && out.Hi != nil && depBoundKnown(out.Lo) && depBoundKnown(out.Hi) {
 		cmp, err := CompareValues(out.Lo.Value, out.Hi.Value)
 		if err != nil {
 			return DepScalarInfo{}, false
@@ -386,6 +393,21 @@ func combineDepScalars(a, b DepScalarInfo) (DepScalarInfo, bool) {
 		}
 	}
 	return out, true
+}
+
+// depBoundKnown reports whether a bound is a value the analysis pass knows
+// (not its carrier for a computed one, NUR231).
+func depBoundKnown(b *DepBound) bool { return IsConcrete(b.Value) }
+
+// unknownBound picks, of two same-side bounds at least one of which the
+// pass does not know, an unknown one: which is tighter is the run's to
+// decide, and keeping the unknown keeps the result a type the run installs
+// (HasUnknownRefinement) rather than one whose content looks known.
+func unknownBound(a, b *DepBound) *DepBound {
+	if !depBoundKnown(a) {
+		return a
+	}
+	return b
 }
 
 // flipBound returns the opposite-side complement of a single bound: the
@@ -479,17 +501,6 @@ func MakeDepScalarSig(opName string, kind DepKind) Signature {
 		// constructors (lt / gt / lte / gte). BetweenHandler below is the
 		// exported algorithm primitive.
 		-1,
-	}
-}
-
-// DeclineUnknownRefinement declines the compile at a site that would carry a
-// refinement over a bound the analysis pass does not know — a computed one,
-// whose bound is the pass's carrier: the compiled lane would bake the
-// carrier for the bound, which only the run knows (NUR231). A no-op outside
-// an analysis pass (the interpreter's own runs).
-func DeclineUnknownRefinement(r *Registry, site string) {
-	if r != nil && r.analysisActive() {
-		r.analysisRecorder().MarkUncompilable(site + " refines over a computed bound, which only the run knows (NUR231)")
 	}
 }
 

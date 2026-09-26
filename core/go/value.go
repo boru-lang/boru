@@ -1843,6 +1843,11 @@ type typeMeta struct {
 	// registers it (DeclareRefinementBase, NUR009); canonicalBaseType walks
 	// to the nearest declaring ancestor instead of a hand-listed switch.
 	RefinementBase *Type
+	// RunForward, non-nil, is the node the RUN installed under the name the
+	// analysis pass minted this node for — a type over a refinement whose
+	// bound only the run knows (NUR231, RunTypeInstall). Compiled references
+	// name this node; ForwardedType follows the forward to the run's.
+	RunForward *Type
 }
 
 // ensureTMeta returns v's typeMeta, allocating it if absent. Writers of

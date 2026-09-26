@@ -3439,7 +3439,9 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if t == nil {
 				return nil, vmErrAt(curDebug, pc, "unresolvable type operand "+p.Types[in.Arg].Name)
 			}
-			stack = append(stack, core.NewTypeLiteral(t))
+			// A node the pass minted over a bound only the run knows pushes
+			// the node the run installed in its place (OpBindTypeRun, NUR231).
+			stack = append(stack, core.NewTypeLiteral(core.ForwardedType(t)))
 		case compiler.OpForSetup:
 			var err error
 			if stack, loops, err = vc.opForSetup(stack, loops, int(in.Arg), curCode, curUnit, pc, curDebug); err != nil {
@@ -3567,7 +3569,21 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			// Ascription hygiene: the typed-def bind stores the REAL value
 			// (interpreter parity — defTypedHandler's arg arrived stripped).
-			bound, err := core.RunTypedBind(r, &p.TypedBinds[in.Arg], core.StripAscribed(stack[len(stack)-1]))
+			spec := &p.TypedBinds[in.Arg]
+			var bound core.Value
+			var err error
+			if spec.ConsOperand {
+				// An inline constraint the run computed (NUR231) sits beneath
+				// the value: pop both, bind against the run's constraint.
+				if len(stack) < 2 {
+					return nil, vmErrAt(curDebug, pc, "BIND_TYPED stack underflow")
+				}
+				cons := stack[len(stack)-2]
+				bound, err = core.RunTypedBindCons(r, spec, cons, core.StripAscribed(stack[len(stack)-1]))
+				stack = stack[:len(stack)-1]
+			} else {
+				bound, err = core.RunTypedBind(r, spec, core.StripAscribed(stack[len(stack)-1]))
+			}
 			if err != nil {
 				return nil, stampAt(err, curDebug, pc, curReg)
 			}
@@ -3814,6 +3830,18 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// A type twin whose name a run-time mint ahead of it holds
 				// (core.ApplyBindTwin's doc): the interpreter's `def` at
 				// this position raises the same type_error.
+				return nil, stampAt(err, curDebug, pc, curReg)
+			}
+		case compiler.OpBindTypeRun:
+			// A root type def over a bound only the run knows (NUR231): the
+			// interpreter's own install of the body the run computed, and the
+			// pass's node forwarded to the node it bound.
+			if len(stack) == 0 {
+				return nil, vmErrAt(curDebug, pc, "BIND_TYPE_RUN stack underflow")
+			}
+			body := stack[len(stack)-1]
+			stack = stack[:len(stack)-1]
+			if err := core.RunTypeInstall(curReg, &p.TypeRuns[in.Arg], body); err != nil {
 				return nil, stampAt(err, curDebug, pc, curReg)
 			}
 		case compiler.OpBindFnType:

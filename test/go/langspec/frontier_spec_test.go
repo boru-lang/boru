@@ -506,7 +506,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// Graduation = an op that REBUILDS the type per element (re-evaluating
 	// the expression against that element) rather than re-installing one
 	// captured body.
-	`[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`: {why: "a type def inside a multi-run body whose bound READS the element: the bound is computed, so the type install declines first — only the run knows it (NUR231, 2026-09-26) — and behind that the twin placement: each element mints a different node, so no one captured body stands for them", failsWith: "refines over a computed bound"},
+	`[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`: {why: "a type def inside a multi-run body whose bound READS the element: the bound is computed, a type only the run can install, and the run-time install (OpBindTypeRun, NUR231's type half, 2026-09-26) is a root-only op — per element it would forward one node to each element's in turn — so the def declines as the compile-time word it is, the body's unit with it, and the each as the code-body word; behind that the twin placement: each element mints a different node, so no one captured body stands for them", failsWith: "code-body word each (Stage 2)"},
 	// (The third shape — `do [def b true  do [1 2 (if b [] [9 9])]]` —
 	// GRADUATED 2026-09-11 (the fifty-seventh increment) and its entry is
 	// deleted. Rows in lang/spec/control.tsv.

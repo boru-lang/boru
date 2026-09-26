@@ -59,6 +59,7 @@ const (
 	wordInterp    = "`…`"
 	wordDynApply  = "(…fn)"
 	wordTypedBind = "def:…"
+	wordTypeRun   = "def T…"
 )
 
 // operandKind discriminates how an EmitOperand sources its value. The kind
@@ -285,6 +286,11 @@ type emitCall struct {
 	// machinery (operand provenance, value-def promotion, dead-drop, fragment
 	// walks) working unchanged for the bind result.
 	typedBind *core.TypedBindSpec
+	// typeRun, when non-nil, marks this event as a root type def's RUN-TIME
+	// install (OpBindTypeRun over the single operand, the body the run
+	// computed) — recorded by RecordRuntimeDispatch off the type installer's
+	// NoteRuntimeTypeInstall latch (NUR231).
+	typeRun *core.TypeRunInstallSpec
 	// dynMethod, when non-nil, marks this event as a GUARDED shaped-instance-
 	// method apply (Stage M2c, OpCallDynMethod): ops[0] is the runtime method
 	// value (the dynamic dot-read result), ops[1..] the inert statement-window
@@ -934,6 +940,14 @@ type EmitState struct {
 	// pendingRuntimeConstruct latches between a constructor handler's
 	// NoteRuntimeConstruct and the dispatch's RecordRuntimeDispatch (NUR231).
 	pendingRuntimeConstruct bool
+	// pendingTypeRun latches between the type installer's
+	// NoteRuntimeTypeInstall and the def's RecordRuntimeDispatch (NUR231).
+	pendingTypeRun *pendingTypeRun
+	// pendingRuntimeDependent latches between a handler's
+	// NoteRuntimeDependent and its dispatch's RecordRuntimeDispatch: the
+	// compile-time word's effect is the run's to redo, and the compile cannot
+	// record it (NUR231).
+	pendingRuntimeDependent bool
 	// armBoundTypeNames are TYPE names whose binding, after adoption, exists
 	// at runtime only through arm-resident type installs — a node minted
 	// per element, whose depth and identity are body-run-dependent — so a
@@ -5615,6 +5629,74 @@ func (es *EmitState) NoteRuntimeConstruct() {
 	}
 }
 
+// pendingTypeRun is a root type def the run must install itself — the
+// latch NoteRuntimeTypeInstall sets for RecordRuntimeDispatch.
+type pendingTypeRun struct {
+	name string
+	node *core.Type
+	body core.Value
+}
+
+// NoteRuntimeTypeInstall — the type installer minted a type whose content
+// holds a refinement over a bound the pass does not know (NUR231): the
+// replay would install the pass's placeholder, so the def's dispatch
+// records the run-time install instead (RecordRuntimeDispatch).
+func (es *EmitState) NoteRuntimeTypeInstall(name string, node *core.Type, body core.Value) {
+	if es.Active() {
+		es.pendingTypeRun = &pendingTypeRun{name: name, node: node, body: body}
+	}
+}
+
+// NoteRuntimeDependent — the compile-time word now dispatching has an
+// effect only the run knows, which the compile cannot record (an inline
+// signature type over a computed bound, a typed def over one whose bind
+// has no compiled home, NUR231): the dispatch declines as the compile-time
+// word it is (RecordRuntimeDispatch hands it to RecordCall).
+func (es *EmitState) NoteRuntimeDependent() {
+	if es.Active() {
+		es.pendingRuntimeDependent = true
+	}
+}
+
+// recordTypeRun records a root type def's run-time install: the body
+// operand, then OpBindTypeRun, with the def's type twin written back so the
+// replay installs nothing. Only at the root, outside any unit or fragment —
+// a fn body's per-call install would share the forwarded node across
+// recursive calls, a loop body's across its iterations — and only when the
+// body the run computes has a compiled home (a typed container's literal
+// child has none). At the root the install's twin is always noted and
+// placed (a live recorder, no fn or rolled-back body); a def without one
+// declines with the operand.
+func (es *EmitState) recordTypeRun(p *pendingTypeRun, pos core.SrcPos) bool {
+	if len(es.openUnitRecs) != 0 || len(es.frames) != 1 {
+		return false
+	}
+	twin := es.placedTypeTwin(p.name)
+	op, ok := es.resolveOperand(p.body)
+	if !ok || twin < 0 {
+		return false
+	}
+	es.bindTwins[twin].WrittenBack = true
+	spec := core.TypeRunInstallSpec{Name: p.name, Node: p.node}
+	es.SiteCounts[SiteDynamic]++
+	es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordTypeRun, ops: []EmitOperand{op}, nout: 0, pos: pos, typeRun: &spec}})
+	return true
+}
+
+// placedTypeTwin is the index of name's latest type-install twin when that
+// twin has a stream placement, else -1.
+func (es *EmitState) placedTypeTwin(name string) int {
+	for i := len(es.bindTwins) - 1; i >= 0; i-- {
+		if tr := es.bindTwins[i]; tr.Kind == core.BindTypeInstall && tr.Name == name {
+			if i < len(es.twinPlaced) && es.twinPlaced[i] {
+				return i
+			}
+			return -1
+		}
+	}
+	return -1
+}
+
 // RecordRuntimeDispatch — the dispatch of a check-mode-run word whose
 // handler latched a RUN-TIME effect in this very dispatch:
 //
@@ -5627,15 +5709,33 @@ func (es *EmitState) NoteRuntimeConstruct() {
 //   - a constructor whose value is built over an operand the pass does not
 //     know (NoteRuntimeConstruct's latch, NUR231): the call is emitted with
 //     its outs, which later operands resolve to, so the run builds the
-//     refinement over the real bound.
+//     refinement over the real bound;
+//   - a root type def over such a refinement (NoteRuntimeTypeInstall's
+//     latch, NUR231's type half): the run-time install is recorded in the
+//     def's place (recordTypeRun);
+//   - a word whose effect only the run knows and the compile cannot record
+//     (NoteRuntimeDependent's latch — an inline signature type over such a
+//     refinement, a type def the root-only install cannot place).
 //
 // A no-op when no latch is set (the ordinary elision of a compile-time word
-// stands); an operand with no compiled home hands the dispatch to
-// RecordCall, whose compile-time-word arm declines it loudly (no decline
-// site of its own — the site census).
+// stands); an operand with no compiled home, and a run-dependent word, hand
+// the dispatch to RecordCall, whose compile-time-word arm declines it loudly
+// (no decline site of its own — the site census).
 func (es *EmitState) RecordRuntimeDispatch(word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos) {
 	construct := es.pendingRuntimeConstruct
 	es.pendingRuntimeConstruct = false
+	typeRun, dependent := es.pendingTypeRun, es.pendingRuntimeDependent
+	es.pendingTypeRun, es.pendingRuntimeDependent = nil, false
+	if typeRun != nil && !dependent && es.Active() && !es.recordTypeRun(typeRun, pos) {
+		dependent = true
+	}
+	if dependent && es.Active() {
+		// The word's effect is the run's to redo and the compile could not
+		// record it: it declines as the compile-time word it is.
+		es.pendingRuntimeBindCall = false
+		es.RecordCall(word, sig, args, nil, pos, false, false)
+		return
+	}
 	if !es.Active() || !(es.pendingRuntimeBindCall || construct) {
 		return
 	}
@@ -8561,6 +8661,37 @@ func (es *EmitState) RecordTypedBind(spec core.TypedBindSpec, in, out core.Value
 	sp := spec
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: wordTypedBind, ops: []EmitOperand{op}, nout: 1, pos: pos, typedBind: &sp,
+	}})
+	out.ID = core.GenerateID(core.IDPrefixForType(out.Parent))
+	es.setProduced(out, seq)
+	return out, true
+}
+
+// RecordTypedBindRun records a typed def's run-time membership check over a
+// constraint only the run can decide (TypedBindRunMembership, NUR231):
+// unlike RecordTypedBind it records a CONCRETE value too — the pass's
+// verdict over a placeholder bound is no verdict — and, with ConsOperand,
+// takes the constraint the run computed as an operand beneath the value
+// (ops[0] is the top of the laid-out stack).
+func (es *EmitState) RecordTypedBindRun(spec core.TypedBindSpec, cons, in, out core.Value, pos core.SrcPos) (core.Value, bool) {
+	if !es.Active() {
+		return out, false
+	}
+	op, ok := es.resolveOperand(in)
+	if !ok {
+		return out, false
+	}
+	ops := []EmitOperand{op}
+	if spec.ConsOperand {
+		cop, ok := es.resolveOperand(cons)
+		if !ok {
+			return out, false
+		}
+		ops = append(ops, cop)
+	}
+	sp := spec
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
+		word: wordTypedBind, ops: ops, nout: 1, pos: pos, typedBind: &sp,
 	}})
 	out.ID = core.GenerateID(core.IDPrefixForType(out.Parent))
 	es.setProduced(out, seq)

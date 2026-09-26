@@ -673,6 +673,16 @@ const (
 	// a branch merge (`def x (if …)`) or a loop value a frame slot cannot
 	// seat — under the widened environment (dynEnv, a deopt unit).
 	OpBindDynScopePeek
+	// OpBindTypeRun is the RUN-TIME type install (NUR231's type half): a
+	// root `def T <body>` whose body holds a refinement over a bound the
+	// analysis pass did not know (`def T (Integer gte (size s))`). It pops
+	// the body the run computed and installs it through the interpreter's own
+	// type installer (core.RunTypeInstall — a fresh mint, or an alias of an
+	// empty interval's Never), then forwards the node the pass minted — the
+	// one every compiled reference names — to the run's. The same def's bind
+	// twin is written back: this op is the one install. Arg indexes
+	// Program.TypeRuns.
+	OpBindTypeRun
 )
 
 // opcodeNames is the single source of each opcode's disassembler mnemonic,
@@ -741,6 +751,7 @@ var opcodeNames = [...]string{
 	OpUndefDynScope:        "UNDEF_DYN_SCOPE",
 	OpReStepLanding:        "RESTEP_LANDING",
 	OpBindDynScopePeek:     "BIND_DYN_SCOPE_PEEK",
+	OpBindTypeRun:          "BIND_TYPE_RUN",
 }
 
 func (o Opcode) String() string {
@@ -1308,6 +1319,9 @@ type Program struct {
 	// there), keyed by the main code's own pc.
 	StoreNames map[int]string
 	TypedBinds []core.TypedBindSpec
+	// TypeRuns backs OpBindTypeRun: one entry per root type def the run
+	// installs from the body it computed (NUR231).
+	TypeRuns []core.TypeRunInstallSpec
 	// GlobalBinds backs OpBindGlobal: one entry per top-level computed `def`,
 	// naming the binding and the DEPTH its check-pass install recorded. The
 	// runtime value is PUSHED: the pass's install was rolled back to
@@ -1902,6 +1916,8 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 		case OpBindTyped:
 			tb := p.TypedBinds[in.Arg]
 			fmt.Fprintf(sb, " y%-3d ; typed bind %s:%s", in.Arg, tb.Name, tb.Describe)
+		case OpBindTypeRun:
+			fmt.Fprintf(sb, " v%-3d ; run-time type install %s", in.Arg, p.TypeRuns[in.Arg].Name)
 		case OpBindGlobal:
 			gb := p.GlobalBinds[in.Arg]
 			fmt.Fprintf(sb, " g%-3d ; global bind %s @depth %d", in.Arg, gb.Name, gb.Depth)

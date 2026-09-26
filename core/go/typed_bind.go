@@ -68,6 +68,21 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 					spec.Name, v.String(), spec.Describe), spec.Name)
 		}
 		return ReparentValue(v, def), nil
+	case TypedBindRunMembership:
+		if spec.Cons == nil {
+			return Value{}, fmt.Errorf("bytecode: internal: typed bind %s has no constraint", spec.Name)
+		}
+		// Mirrors defTypedHandler's registry-armed Unify tail, over a
+		// constraint whose refinement only the run knows (NUR231): the named
+		// node forwards to the node the run installed (RunTypeInstall); an
+		// inline constraint is the one the run computed (RunTypedBindCons).
+		unified, ok := UnifyR(v, *spec.Cons, r)
+		if !ok {
+			return Value{}, r.BoruError("type_error",
+				fmt.Sprintf("def %s: value %s does not unify with declared type %s",
+					spec.Name, v.String(), spec.Describe), spec.Name)
+		}
+		return unified, nil
 	case TypedBindDepScalar:
 		if spec.Cons == nil {
 			return Value{}, fmt.Errorf("bytecode: internal: typed bind %s has no DepScalar constraint", spec.Name)
@@ -85,4 +100,16 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 		return unified, nil
 	}
 	return Value{}, fmt.Errorf("bytecode: internal: typed bind %s has invalid kind %d", spec.Name, spec.Kind)
+}
+
+// RunTypedBindCons is RunTypedBind over a constraint the run computed
+// (TypedBindSpec.ConsOperand, NUR231): the spec's Cons is the popped
+// constraint, and an empty Describe renders it.
+func RunTypedBindCons(r *Registry, spec *TypedBindSpec, cons, v Value) (Value, error) {
+	s := *spec
+	s.Cons = &cons
+	if s.Describe == "" {
+		s.Describe = cons.String()
+	}
+	return RunTypedBind(r, &s, v)
 }

@@ -2170,7 +2170,9 @@ type BindTransition struct {
 	// would, so the twin's replay must not push the check pass's capture
 	// beside it (ApplyBindTwin). Set by the lowering, never by the ledger —
 	// the ledger records what the check pass did, the flag what the
-	// program will do about it.
+	// program will do about it. A type-install twin is written back by the
+	// run's own install of a type over a bound only the run knows
+	// (OpBindTypeRun, NUR231).
 	WrittenBack bool
 }
 

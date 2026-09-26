@@ -132,6 +132,8 @@ func TestSeam7RunUnderflowArms(t *testing.T) {
 		{"for-next", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpForNext, Arg: 0}}}, "FOR_NEXT without a loop"},
 		{"jmpiffalse", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpJmpIfFalse, Arg: 5}}}, "JMP_IF_FALSE underflow"},
 		{"bind-typed", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpBindTyped, Arg: 0}}, TypedBinds: []core.TypedBindSpec{{Kind: core.TypedBindDepScalar, Name: "x"}}}, "BIND_TYPED stack underflow"},
+		{"bind-typed-cons", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpPushConst, Arg: 0}, {Op: compiler.OpBindTyped, Arg: 0}}, Consts: []core.Value{core.NewInteger(1)}, TypedBinds: []core.TypedBindSpec{{Kind: core.TypedBindRunMembership, Name: "x", ConsOperand: true}}}, "BIND_TYPED stack underflow"},
+		{"bind-type-run", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpBindTypeRun, Arg: 0}}, TypeRuns: []core.TypeRunInstallSpec{{Name: "T"}}}, "BIND_TYPE_RUN stack underflow"},
 		{"call-native-poly", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpCallNativePoly, Arg: 0}}, PolyRefs: []compiler.PolyRef{{Word: "p", Arity: 2}}}, "CALL_NATIVE_POLY underflow"},
 		{"drop-to-mark", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpDropToMark}}}, "DROP_TO_MARK with no open mark"},
 		{"pop-mark", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpPopMark}}}, "POP_MARK with no open mark"},
@@ -142,6 +144,21 @@ func TestSeam7RunUnderflowArms(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			wantInternal(t, runMalformed(t, c.p), c.sub)
 		})
+	}
+}
+
+// TestBindTypeRunRefusal: the run-time type install's own refusal (NUR231's
+// type half) is the interpreter's installer's raise, stamped at the op.
+func TestBindTypeRunRefusal(t *testing.T) {
+	p := &compiler.Program{
+		Code:     []compiler.Instr{{Op: compiler.OpPushConst, Arg: 0}, {Op: compiler.OpBindTypeRun, Arg: 0}},
+		Consts:   []core.Value{core.NewDepScalar(core.DepGT, core.NewInteger(1))},
+		TypeRuns: []core.TypeRunInstallSpec{{Name: "lower"}},
+	}
+	err := runMalformed(t, p)
+	var ae *core.BoruError
+	if !errors.As(err, &ae) || ae.Code != "type_error" || !strings.Contains(ae.Detail, "type names must start with a capital letter") {
+		t.Fatalf("the installer's refusal surfaces: %v", err)
 	}
 }
 
