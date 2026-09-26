@@ -720,14 +720,24 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 			joins = InstallTakenArmDefs(r, nil, defs)
 		}
 		frag := recorderState(es).TakeFragment()
-		// Reachable, and a compile defect (NUR243): a taken arm that leaves no
-		// value (`if [true] [def x 1] [2]`) is valid code the lowering refuses.
+		taken := lit
 		if len(stk) == 0 {
-			es.Recorder().MarkUncompilable("if: branch produces no value (Stage 2 lowers single-result branches)")
-			return nil
+			// The taken arm leaves no value (`if [true] [def x 1] [2]`, NUR243):
+			// a 0-value STATEMENT, recorded like the both-arms-zero branch below —
+			// RecordBranch marks it zeroOut, and the registered result is a
+			// phantom None the residual reconciliation skips. A plain check has
+			// no event to strip, so the if nets 0 there, as the run does.
+			out := NewCarrier(TNone)
+			recorderState(es).RecordBranch(BranchRecord{
+				ConstCond: &taken, HasElse: true,
+				Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,
+			})
+			if !es.Recorder().Active() {
+				return nil
+			}
+			return []Value{out}
 		}
 		out := stk[len(stk)-1]
-		taken := lit
 		recorderState(es).RecordBranch(BranchRecord{
 			ConstCond: &taken, HasElse: true,
 			Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,

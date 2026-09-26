@@ -65,26 +65,16 @@ func TestForIndexDefUnstorableSourceDeclines(t *testing.T) {
 	}
 }
 
-// TestFnDispatchBranchBoundOperandDeclines pins the bound-checked slot arm
-// of NUR109's refusal: parselang-fn-dispatch declines over an operand that
-// a branch-carried def some path leaves unbound fills (lowerer.boundSlots),
-// since no op re-resolves a name at run time. The fn-valued parser a branch
-// binds takes the other arm (TestParseFnDispatchMissParity) — the join does
-// not carry a fn value, so no bound-checked slot ever holds a parser; what
-// reaches this arm is the SOURCE operand, a String the join carries. The
-// arm scans every operand of the dispatch, so the source declines under the
-// parser's wording; the interpreter answers the bound twin and raises
-// undefined_word for the unbound one. Measured 2026-09-26: with the scan
-// restricted to the parser operand, both twins compile and agree (the
-// source's PUSH_LOCAL_BOUND raises the interpreter's undefined_word) — so
-// this is a sound over-decline, and whoever narrows the scan revises this
-// test, and finds the arm left with no program to reach it.
-func TestFnDispatchBranchBoundOperandDeclines(t *testing.T) {
+// TestFnDispatchBranchBoundSourceAgrees pins NUR243's third program: only a
+// parser dispatch's PARSER operand resolves as a kind when unbound, so a
+// SOURCE operand bound on one branch is a plain bound-checked push — it
+// compiles, answers the parser's value when bound and raises the
+// interpreter's undefined_word when not.
+func TestFnDispatchBranchBoundSourceAgrees(t *testing.T) {
 	const pre = `import "boru:parselang" def p (fn [[source:String opts:Map] [Any] [7]]) `
-	const reason = "`s` is bound only on a branch — an unbound name resolves as a kind at run time (NUR109)"
-	soundDecline(t, pre+`def c true if c [def s 'inc'] [] end parse p s`, reason, "[7]")
-	soundDecline(t, pre+`def c false if c [def s 'inc'] [] end parse p s`, reason, "ERROR:undefined_word")
-	soundDecline(t, `import "boru:parselang" def c true if c [def s 'inc'] [] end parse (fn [[source:String opts:Map] [Any] [7]]) s`, reason, "[7]")
+	agreeOnBothLanes(t, pre+`def c true if c [def s 'inc'] [] end parse p s`, "[7]")
+	agreeOnBothLanes(t, pre+`def c false if c [def s 'inc'] [] end parse p s`, "ERROR:undefined_word")
+	agreeOnBothLanes(t, `import "boru:parselang" def c true if c [def s 'inc'] [] end parse (fn [[source:String opts:Map] [Any] [7]]) s`, "[7]")
 }
 
 // TestLandingLayoutsWithoutSkipOrIsland pins the NUR190 landing layouts

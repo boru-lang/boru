@@ -3359,18 +3359,16 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	// `parse_error: the parser is not a usable function value`, where the
 	// interpreter, finding no binding, resolves the atom as a registered
 	// KIND (`parse_unknown_lang`). No op re-resolves a name at run time;
-	// the unit declines and the interpreter answers (NUR109).
-	if c.word == "parselang-fn-dispatch" {
-		for _, op := range c.ops {
-			if op.kind != opLocal || lw.slotStoredInScope(op.idx, ev.seq) {
-				continue
-			}
-			if name := lw.boundSlots[op.idx]; name != "" {
-				return "parser name `" + name + "` is bound only on a branch — an unbound name resolves as a kind at run time (NUR109)"
-			}
-			// A fn-valued arm def is not carried by the join at all
-			// (carryBranchJoin leaves fn values to their own machinery): the
-			// operand is the ARM's own promoted event, pushed from its slot.
+	// the unit declines and the interpreter answers (NUR109). Only the
+	// PARSER operand (ops[0]) resolves as a kind: the source and the opts
+	// are plain operands whose bound-checked push raises the interpreter's
+	// undefined_word itself (NUR243 — checking every operand declined
+	// `parse p s` over a branch-bound `s`). A parser is a fn value, which
+	// the join never carries (carryBranchJoin leaves fn values to their own
+	// machinery), so the operand is the ARM's own promoted event, pushed
+	// from its slot; a branch-carried kind NAME fails the check pass first.
+	if c.word == "parselang-fn-dispatch" && len(c.ops) > 0 {
+		if op := c.ops[0]; op.kind == opLocal && !lw.slotStoredInScope(op.idx, ev.seq) {
 			for seq, slot := range lw.promoted {
 				if slot == op.idx && lw.rootSeqs != nil && !lw.rootSeqs[seq] {
 					return "parser name is bound only on a branch — an unbound name resolves as a kind at run time (NUR109)"

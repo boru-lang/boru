@@ -72,7 +72,11 @@ func fnInstallNames(s FnSig, captured []CapturedBinding) []string {
 // value dispatched straight off the tape. No registered Signature
 // carries this meta, so such frames anchor probe scans but never
 // satisfy a sig-identity gate.
-var fnValueFrameMeta = &FnFrameMeta{Name: "<fn>"}
+// FnValueFrameName is the name a nameless fn value's frame carries: its
+// diagnostics (a return-contract error) say `<fn>`.
+const FnValueFrameName = "<fn>"
+
+var fnValueFrameMeta = &FnFrameMeta{Name: FnValueFrameName}
 
 // FrameOpenInfo is the payload on a fn frame's open paren. The token
 // remains an ordinary OpenParen for every structural purpose (IsOpenParen

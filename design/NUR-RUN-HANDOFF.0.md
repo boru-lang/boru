@@ -9,6 +9,32 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR243 closed; NUR239's anonymous half; NUR244 recorded (2026-09-26)
+
+**NUR243.** Three valid programs compile now:
+- A constant branch whose taken arm leaves no value is recorded as a
+  0-value statement: a phantom None result, marked zeroOut. Its guard's
+  covergate pragma had a false proof; it was removed in the previous
+  commit.
+- The loop carry no longer returns on a branch-join pre binding. Its
+  comment blamed the loop index, which never reaches it. The loop reuses
+  the branch's cell, so no init reads the pre early, and the post-loop
+  binding stays bound-checked: a zero-iteration loop's read raises
+  undefined_word, as the interpreter's does.
+- NUR109's parser arm checks the parser operand alone. Its bound-slot test
+  is deleted: a parser is a fn value the join never carries, and a
+  branch-carried kind name fails the check pass first.
+
+**NUR239.** The anonymous half is fixed: a nameless fn value's return check
+names its frame `<fn>` (`core.FnValueFrameName`). The binding half stays
+open.
+
+**NUR244**, found probing NUR109's arm (pre-existing, a silent wrong
+answer): a parser bound only on a skipped arm, spelled as an inline `fn`
+literal, bakes as a value and runs compiled. The interpreter finds no
+binding and raises `parse_unknown_lang`. NUR109 catches only a promoted
+call-result parser.
+
 ## The three silent wrong answers closed: NUR235, NUR236, NUR237 (2026-09-26)
 
 **NUR235.** A fn value's closure unit is shared by every value over the

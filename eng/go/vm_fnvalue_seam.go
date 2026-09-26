@@ -190,7 +190,12 @@ func checkFnValueReturn(r *core.Registry, fd core.FnDefInfo, sig *core.Signature
 	if len(sig.Returns) == 0 {
 		return res, nil, true
 	}
-	fn := &compiler.CompiledFn{Name: fd.Name, Returns: sig.Returns, ReturnPatterns: sig.ReturnPatterns, Decl: sig.Decl, NUnnamed: nUnnamed}
+	// A nameless fn value's frame is `<fn>` on the interpreter (NUR239).
+	name := fd.Name
+	if name == "" {
+		name = core.FnValueFrameName
+	}
+	fn := &compiler.CompiledFn{Name: name, Returns: sig.Returns, ReturnPatterns: sig.ReturnPatterns, Decl: sig.Decl, NUnnamed: nUnnamed}
 	if extra := len(res) - len(sig.Returns); extra > nUnnamed {
 		return res, vmReturnCountErr(r, fn, len(sig.Returns), len(res)-nUnnamed, res[nUnnamed:], at), true
 	}

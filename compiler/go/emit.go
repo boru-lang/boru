@@ -4766,6 +4766,9 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 			return
 		}
 		ev.br.then, ev.br.thenOut, ev.br.hasThenOut = bThen, out, has
+		// A taken arm with no value (NUR243) — an arm that leaves nothing or
+		// diverges: the branch is a 0-value statement on its only path.
+		zeroOut = !has
 	} else if !b.HasElse && (len(b.ThenStk) == 0 || fragDiverges(bThen)) {
 		// 2-arg if (no else) whose then produces 0 values — a 0-value word
 		// (raise/set/printstr) or a diverging arm (break/continue/raise): the
@@ -5202,15 +5205,14 @@ func (es *EmitState) NoteLoopCarried(name string, joined, pre core.Value) {
 		return
 	}
 	u := es.units[len(es.units)-1]
-	// The loop's OWN bind variable (its index, named at the round's entry —
-	// NameLocal) is never loop-carried: a body def of it rebinds the
-	// ITERATION's binding, which the lowering stores into the index slot
-	// (lowerDynBind), and the pre-loop binding of the same name is
-	// untouched — the lexical index scope, NUR204. Carrying it wrote the
-	// body's value back to the root (`def i 0  for 3 [def i 9]  i` was 9).
-	if pre.ID != "" && u != nil && u.boundLocals[pre.ID] == name && !u.loopFresh[pre.ID] {
-		return
-	}
+	// The loop's OWN bind variable (its index) never reaches here: the
+	// loop analysis skips bind names, and a body def of the index rebinds
+	// the ITERATION's binding, which the lowering stores into the index slot
+	// (lowerDynBind, NUR204). A pre binding that is a branch join the arms
+	// may leave unbound (boundLocals) IS carried — the guard that returned
+	// here on it refused `if c [def x 1] [] for 3 [def x 5] x` (NUR243);
+	// the loop reuses the branch's cell, so no init reads it early, and the
+	// joined binding stays bound-checked below.
 	if es.carriedNames == nil {
 		es.carriedNames = map[string]bool{}
 	}
