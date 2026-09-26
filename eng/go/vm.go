@@ -1799,6 +1799,12 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 		if err != nil {
 			return nil, nil, stampAt(err, curDebug, pc, reg)
 		}
+		if head.OneResult && len(results) != 1 {
+			// The layout consuming this apply seats one value, and the
+			// window stayed beside the result (NUR249): raise rather than
+			// hand the consumer the wrong values.
+			return nil, nil, vmDefer(reg, curDebug, pc, "vm:dyn-trail-zero-arg-count", "CALL_DYN_TRAIL_TOP at `"+head.Name+"`: a 0-arg lead left "+strconv.Itoa(len(results))+" values where the record seats one; the compiled runtime cannot seat them")
+		}
 		if err := vc.screenResults(results, "dynamic trailing-top result at a 0-arg lead", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			return nil, nil, err
 		}

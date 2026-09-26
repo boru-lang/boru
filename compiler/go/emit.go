@@ -202,6 +202,11 @@ type eventFlags struct {
 	// MAKE_LIST) cannot take it; the region and dyn-body marks above are
 	// broader and do not imply it.
 	catchVariadic bool
+	// dynOneResult marks a fn-value apply under a NAMED head, or an
+	// `apply`-word event, whose result a later event consumes as an operand
+	// (planValueDefLocals): its op seats DynApplyHead.OneResult (NUR249), or
+	// takes the word's one-result form (OpCallDynApplyOne, NUR247).
+	dynOneResult bool
 	// variadicResult marks an event whose result count is RUNTIME-VARIABLE — a
 	// loop, or a branch whose arms leave different / multiple counts (`if c [] [a
 	// b]`). Only a variadic-absorbing position (the program residual or a
@@ -9213,7 +9218,12 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		// single-consumer window, and Finalize's resolveDynamicApply lowers
 		// the one pending apply that sits on the residual's top as the
 		// whole-residual OpCallDynApplyTop, exactly as a unit's finish does.
-		if len(es.units) >= 1 && sig != nil && sig.FnFrame() == nil && core.IsFnTypedCarrier(args[0]) {
+		// A BARE read of the binding is not the word's lead at all (NUR250):
+		// the interpreter CALLED it at the word (NUR078), and `apply` meets
+		// its result — which the record has no model of — so it takes the
+		// dynamic lead's decline below.
+		bareRead := es.reg != nil && es.reg.Check != nil && es.reg.Check.WordReadFnIDs[args[0].ID]
+		if len(es.units) >= 1 && sig != nil && sig.FnFrame() == nil && core.IsFnTypedCarrier(args[0]) && !bareRead {
 			u := es.units[len(es.units)-1]
 			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos})
 			return true
@@ -9240,7 +9250,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		// fn arrive at `apply` as an untyped carrier — so a recorded poly
 		// call carries the wrong arity and can only die as a VM-internal
 		// no-match. No overload is provable at record time: decline.
-		if !core.IsConcrete(args[0]) && !core.IsFnTypedCarrier(args[0]) {
+		if (!core.IsConcrete(args[0]) && !core.IsFnTypedCarrier(args[0])) || bareRead {
 			es.SiteCounts[SiteMeta]++
 			es.MarkUncompilable("apply over a dynamic lead (overload unprovable)")
 			return true

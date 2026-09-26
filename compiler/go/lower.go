@@ -2273,6 +2273,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 	storeSrc := collectStoreSourceSeqs(events)
 	es.countRefsAndBurials(events, producerIndex, leaverPrefix, storeSrc,
 		refs, fragRef, buried)
+	es.markDynOneResults(events, refs)
 	// A SIDE-EFFECT loop (zeroOut: body nets 0 per iteration) lowers cleanly as an
 	// UNCONSUMED statement (its result is dropped, RecordLoop marked it zeroOut).
 	// But if its (zero-value) RESULT is CONSUMED — bound by `def x (for …)`
@@ -3303,6 +3304,29 @@ func (lw *lowerer) reconcileResults(ops []EmitOperand, who string, noContract, v
 	return reason
 }
 
+// markDynOneResults marks every fn-value apply under a NAMED head, and every
+// `apply`-word event, whose result a later event consumes as an operand —
+// refs counted from the operand scans alone, before the residual's
+// references fold in — so its op raises where the run leaves more than the
+// one value the consumer seats: a 0-arg named lead (DynApplyHead.OneResult,
+// NUR249), or the word's re-step parking the value beside its window
+// (OpCallDynApplyOne, NUR247).
+func (es *EmitState) markDynOneResults(events []EmitEvent, refs map[int]int) {
+	for i := range events {
+		ev := &events[i]
+		if ev.kind == evCall && ev.call.dynApply > 0 && (ev.call.dynApplyName.Name != "" || ev.call.dynApplyUnquote) && refs[ev.seq] > 0 {
+			f := es.eventInfo[ev.seq]
+			f.dynOneResult = true
+			es.eventInfo[ev.seq] = f
+		}
+		for _, frag := range childFragments(ev) {
+			if frag != nil {
+				es.markDynOneResults(frag.events, refs)
+			}
+		}
+	}
+}
+
 // opsHaveVariadicResult reports whether any operand names an event whose
 // RESULT COUNT is runtime-variable (eventFlags.variadicResult — a loop, or a
 // branch whose arms leave different counts). lw.variadic covers the loop
@@ -3459,8 +3483,11 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		if c.dynApplyUnquote {
 			op = OpCallDynApplyTop
 		}
-		if c.dynApplyOne {
+		if c.dynApplyOne || (c.dynApplyUnquote && lw.es != nil && lw.es.eventInfo[ev.seq].dynOneResult) {
 			// A GRADUAL lead under the apply word: exactly one result or defer.
+			// So is any `apply`-word event a later event consumes (NUR247): the
+			// word's re-step leaves the window beside a value it parks, and the
+			// consuming layout seats one.
 			op = OpCallDynApplyOne
 		}
 		if c.dynApplyKeepQuote {
@@ -3473,7 +3500,9 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// against the whole preceding stack, a different dispatch whose
 		// diagnostics this pair does not describe.
 		if op != OpCallDynApplyTop && op != OpCallDynApplyOne {
-			lw.seatDynApplyName(c.dynApplyName)
+			head := c.dynApplyName
+			head.OneResult = lw.es != nil && lw.es.eventInfo[ev.seq].dynOneResult
+			lw.seatDynApplyName(head)
 		}
 		lw.emit(op, c.dynApply, c.pos)
 	} else if c.dynMixed {

@@ -1580,6 +1580,13 @@ type DynApplyHead struct {
 	// makes, so a window it does not fit leaves it as data (NUR124's fifth
 	// witness) rather than raising the no-match.
 	ValueDelivery bool
+	// OneResult marks a NAMED head whose one result a later event consumes
+	// (eventFlags.dynOneResult): the layout seats exactly one value, so a
+	// lead that turns out 0-arg — it fires over nothing and leaves its
+	// window beside its result (NUR176), n+1 values — raises instead of
+	// misaligning that layout (NUR249). A result seated in place (the
+	// residual, a RET tail) takes the n+1 values as the interpreter does.
+	OneResult bool
 }
 
 type CompiledFn struct {

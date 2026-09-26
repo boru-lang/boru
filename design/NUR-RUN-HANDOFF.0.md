@@ -9,6 +9,38 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## The silent halves of NUR249, NUR247 and NUR250 (2026-09-26)
+
+A named fn-typed carrier applied over a paren window can turn out 0-arg at
+run time. It then fires over nothing and leaves its window beside its
+result: n+1 values where the record seats one. A consumed layout took the
+wrong count silently under a no-contract fn (`[(k 5)]` compiled `[7 [5]]`).
+
+A static mark cannot separate that lead from the comparator convention's
+`(a b comp)`. So the plan's operand scan marks a named-head apply whose
+result a later event consumes (`markDynOneResults`, eventFlags
+`dynOneResult`), and the op seats `DynApplyHead.OneResult`. Its 0-arg arm
+raises when the run leaves anything but one value.
+
+That is a loud bail on the ledger instead of a silent wrong answer, by the
+maintainer's rule at `runtime_defer_ledger_test.go`. The unit-suite bail
+ceiling rises 36 → 38 with the two witnesses, named beside it. In place,
+the n+1 values stay the interpreter's answer.
+
+**NUR247's silent half.** The same scan marks an `apply`-word event a later
+event consumes. It takes the word's existing one-result form
+(`OpCallDynApplyOne`), so a lead that parks raises where `[(5 f/v apply)]`
+answered `[5 [fn]]` in a no-contract fn. The Church-encoding and CPS rows
+are unaffected, since their applies net one value. The bail ceiling
+rises 38 → 40 with two witnesses.
+
+**NUR250, found closing NUR247** (pre-existing, silent). A bare fn-param
+read before `apply`, `(5 f apply)`, is a call on the interpreter (NUR078):
+`f` fires at the word and `apply` meets its result. The compiled lane
+handed the value to the word. Such a lead is no longer the word's pending
+apply: it takes the dynamic lead's existing decline. The compile-defect
+ceiling rises 330 → 332 with two witnesses.
+
 ## NUR246 and NUR239 closed; NUR245's same-shape half; NUR247–NUR249 recorded (2026-09-26)
 
 **NUR246 was a silent wrong answer, not only a loud one.** A paren-bounded
@@ -67,7 +99,7 @@ static mark cannot separate it from the comparator convention.
 
 **The compile-defect ledger** rises 319 → 330 with the new witnesses, named
 beside the ceiling: NUR246's eleven fixed layouts and NUR245's
-differing-shape pair, less the one both-arms program that compiles now.
+differing-shape witness, less the one both-arms program that compiles now.
 
 ## The merged ADR-008 gate on d493ef4; NUR246 recorded (2026-09-26)
 
