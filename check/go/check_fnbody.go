@@ -1229,10 +1229,7 @@ func refinementUndecided(pattern, got core.Value) bool {
 		return !residualProvablyDisjoint(got, pattern.Parent)
 	}
 	if core.IsDisjunct(pattern) {
-		di, err := core.AsDisjunct(pattern)
-		if err != nil {
-			return false
-		}
+		di, _ := core.AsDisjunct(pattern) // IsDisjunct: the payload is a DisjunctInfo
 		for _, alt := range di.Alternatives {
 			if refinementUndecided(alt, got) {
 				return true
