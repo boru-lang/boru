@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestNUR220DynamicApplyParksAnonymousZeroArg pins NUR220's close. The
+// TestNUR269DynamicApplyParksAnonymousZeroArg pins NUR269's close. The
 // interpreter's ANONYMOUS-0-ARG PARK (execFnDefLiteral) holds a lambda VALUE
 // with an empty window as data, unless `apply` asked for the application: a
 // map-each lambda's `kv.v` over a `([] => [5])` member is the lambda. The
@@ -16,7 +16,7 @@ import (
 // elide, dropping the Applied mark with it — declines to the strategies
 // that model it. A named 0-arg fn keeps firing: its only call form is
 // nullary.
-func TestNUR220DynamicApplyParksAnonymousZeroArg(t *testing.T) {
+func TestNUR269DynamicApplyParksAnonymousZeroArg(t *testing.T) {
 	const m = `def m {x: ([] => [5])} end `
 	for _, c := range []struct{ src, want string }{
 		{m + `each ([kv:Any] => [kv.v]) m`, "[{x:fn}]"},
@@ -40,7 +40,7 @@ func TestNUR220DynamicApplyParksAnonymousZeroArg(t *testing.T) {
 	}
 }
 
-// TestNUR221LandedLeadIsNoApplyEventLead pins NUR221's close. The gradual
+// TestNUR270LandedLeadIsNoApplyEventLead pins NUR270's close. The gradual
 // apply event (OpCallDynApplyOne) applies its lead to the one value beneath
 // — right for an INERT lead, wrong for one the interpreter re-steps where it
 // stands: `3 kv.v apply` over an inc member applies the member to 3 at its
@@ -48,7 +48,7 @@ func TestNUR220DynamicApplyParksAnonymousZeroArg(t *testing.T) {
 // once and answered 4. A lead whose producer carries a re-step landing now
 // takes the dynamic-lead decline; a `/v` read and a user paren's placed
 // result stay the event's, as does the bare read with no apply after it.
-func TestNUR221LandedLeadIsNoApplyEventLead(t *testing.T) {
+func TestNUR270LandedLeadIsNoApplyEventLead(t *testing.T) {
 	const m = `def inc fn [[n:Integer][Integer][n add 1]] end def m {x: inc/v} end `
 	for _, c := range []struct{ src, want string }{
 		{m + `each ([kv:Any] => [3 kv.v/v apply]) m`, "[{x:4}]"},

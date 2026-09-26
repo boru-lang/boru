@@ -191,7 +191,7 @@ type ClosureRetSpec struct {
 	Pos core.SrcPos
 	// Source is the callback fn VALUE itself (ClosurePayload.Source): the
 	// VM steps it on the interpreter for an invocation whose input lands in
-	// a slot the unit reads bare (CompiledFn.FnReadParams, NUR219).
+	// a slot the unit reads bare (CompiledFn.FnReadParams, NUR268).
 	Source *core.Value
 	// Named marks a push of a NAMED fn value (ClosurePayload.Named,
 	// namedFnValueSpec): the unit is shared with anonymous values over the

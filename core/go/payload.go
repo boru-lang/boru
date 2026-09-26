@@ -554,7 +554,7 @@ type ClosurePayload struct {
 	// a param slot the body reads bare (the unit's FnReadParams), which the
 	// interpreter dispatches as a word when it holds a fn and the unit
 	// pushes as a slot. The VM hands that invocation to the interpreter's
-	// own step of Source (NUR219). Nil for every other closure.
+	// own step of Source (NUR268). Nil for every other closure.
 	Source *Value
 	// RetTrim marks a closure handed through the fn-VALUE seam
 	// (InvokeCallbackBody): the handler would hand a FnDefInfo to

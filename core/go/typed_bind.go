@@ -34,7 +34,7 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 		}
 		if !matched {
 			// A type_error, as the typed bind's other refusals are, on both
-			// lanes (NUR224): a plain error here is what the compiled run
+			// lanes (NUR273): a plain error here is what the compiled run
 			// books as a compiler defect.
 			return Value{}, r.BoruError("type_error",
 				fmt.Sprintf("def %s: value %s does not satisfy predicate type %s",

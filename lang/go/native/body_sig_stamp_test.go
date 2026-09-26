@@ -40,7 +40,7 @@ func TestStampBodySigHostsAndRemembers(t *testing.T) {
 	res, err := core.InvokeCallback(r, stamped, in, nil)
 	// The hosted unit answers what CallBoru answers for this signature: the
 	// unnamed input the body never consumed is discarded beneath the
-	// declared return (NUR223) — it used to ride back as a third value.
+	// declared return (NUR272) — it used to ride back as a third value.
 	if err != nil || len(res) != 2 {
 		t.Fatalf("the hosted unit answers CallBoru's residual — the unconsumed input discarded: %v %v", res, err)
 	}

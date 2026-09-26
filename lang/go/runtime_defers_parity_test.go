@@ -48,7 +48,7 @@ func hasDefectNote(err error) bool {
 // merge of main's #510 with the reverse-order NUR run): over a CONCRETE
 // candidate the check pass runs the pure predicate and raises statically
 // (NUR141), so `def q:Even 5` never runs compiled, and at run time the
-// refusal is a type_error on both lanes (NUR224). Its row here is the run-time
+// refusal is a type_error on both lanes (NUR273). Its row here is the run-time
 // one, a candidate the pass cannot know, whose raise is still the program's
 // own on both lanes.
 func TestPlainHandlerErrorIsTheProgramsOwnOnBothLanes(t *testing.T) {

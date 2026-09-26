@@ -7,7 +7,7 @@ import (
 )
 
 // TestFnReadRefused pins the refusal the seams ask of a closure unit that
-// reads a param bare where it pushes the slot (NUR217's stored fn, NUR219's
+// reads a param bare where it pushes the slot (NUR217's stored fn, NUR268's
 // callback body): a fn argument in one of its FnReadParams slots is refused,
 // data in the same slot is not, and a slot the unit does not list refuses
 // nothing whatever it holds.
@@ -50,7 +50,7 @@ func TestFnReadRefused(t *testing.T) {
 }
 
 // TestCallbackSourceSpec pins the callback fn VALUE riding on its push's
-// spec (NUR219): the contract fnValueRetSpec built is kept, and a value with
+// spec (NUR268): the contract fnValueRetSpec built is kept, and a value with
 // no declared contract still carries its source — with no contract fields.
 func TestCallbackSourceSpec(t *testing.T) {
 	src := core.NewFunction(core.FnDefInfo{Name: "g"})

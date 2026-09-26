@@ -1193,9 +1193,9 @@ parser/spec/canon-fixpoint.tsv against NUR225 (template strings, XML
 holes), NUR226 (map keys needing quotes) and NUR227 (a typed tag before an
 XML literal) — none of them NUR072's kinds.
 
-**Also moved.** The lang bail ceiling 37 -> 36 (NUR224's refusal is no
+**Also moved.** The lang bail ceiling 37 -> 36 (NUR273's refusal is no
 compiler defect), the FnModel golden (`behave`'s ReturnsFn, NUR076), the
-body-sig test's residual (NUR223: the seam answers CallBoru's residual).
+body-sig test's residual (NUR272: the seam answers CallBoru's residual).
 
 **Pins.** core `TestNUR072SugarKindsSpellTheirSource`,
 `TestNUR072UnspellableSugarKeepsTheFallback`; parser
@@ -1281,14 +1281,14 @@ now fires when an overload declaring `CompileResteps` is reachable over the
 dynamic operands (`restepOverloadReachable`). Every decline the corpus
 measured was such an `apply` window, so coverage is unchanged.
 
-**Found on the way — NUR223.** A predicate body that leaves its unnamed
+**Found on the way — NUR272.** A predicate body that leaves its unnamed
 input beneath its verdict (`fnpred [[Integer] [true]]`) answered one value
 through CallBoru and two through the compiled seam, whose stored unit is
 compiled count-agnostic; `0 is Z` split true/false. `InvokeCompiled` now
 applies CallBoru's discard with the signature it holds
 (`trimUnconsumedUnnamed`).
 
-**Found on the way — NUR224.** The predicate branch of a typed def raised
+**Found on the way — NUR273.** The predicate branch of a typed def raised
 its refusal as a plain Go error on both lanes, and the compiled run's error
 boundary books any non-BoruError as a compiler defect (`internal_error` plus
 the defect note). It is a `type_error` now, as the typed def's other
@@ -1301,8 +1301,8 @@ it duplicated remains). langspec `bailDefectCeiling` 46 -> 44, the NUR190
 rows' ledger move that the previous commit left un-ratcheted.
 
 **Pins.** lang `TestNUR100PredicateIsAOneValueApplication`,
-`TestNUR223CallbackSeamDiscardsUnconsumedUnnamed`,
-`TestNUR224PredicateRefusalIsATypeError`; compiler
+`TestNUR272CallbackSeamDiscardsUnconsumedUnnamed`,
+`TestNUR273PredicateRefusalIsATypeError`; compiler
 `TestRestepOverloadReachable`; `lang/spec/fnpred.tsv` §8.
 
 ## NUR190 closed — the landing's island and skip take the `/q` capture (2026-09-26)
@@ -1336,7 +1336,7 @@ interp-entry rows 36 -> 38, `vm:island-resolved` 7 -> 9); the lang bail line
 
 **Pins.** lang `TestNamedFnCandidatesOpenShapes` (every placement).
 
-## NUR222 closed — a dyn body settles its own lead (2026-09-26)
+## NUR271 closed — a dyn body settles its own lead (2026-09-26)
 
 **The divergence.** `do [m.f 5]` over a factory's map was 6 interpreted and
 `CALL_DYNAMIC underflow` compiled: the dyn body (tryRecordDynBody) ran the
@@ -1349,9 +1349,9 @@ the same dyn-body dispatch above it stands aside in resolveDynamicApply —
 the window was the body's; a lone dyn-body lead over a later token keeps the
 apply (`do [m.f/v] 5` is 6).
 
-**Pins.** lang `TestNUR222DynBodySettlesItsOwnLead`.
+**Pins.** lang `TestNUR271DynBodySettlesItsOwnLead`.
 
-## NUR221 closed — a landed lead is no apply-event lead (2026-09-26)
+## NUR270 closed — a landed lead is no apply-event lead (2026-09-26)
 
 **The divergence.** The gradual apply event (`recordGradualApplyEvent` →
 OpCallDynApplyOne) applies its lead to the one value beneath. A bare
@@ -1366,9 +1366,9 @@ or a user paren placed it (`nd (m get "inc") apply` — the re-step ran in
 the sealed paren); it takes the dynamic-lead decline, and the callback's
 other strategies answer.
 
-**Pins.** lang `TestNUR221LandedLeadIsNoApplyEventLead`.
+**Pins.** lang `TestNUR270LandedLeadIsNoApplyEventLead`.
 
-## NUR220 closed — the dynamic apply reads the anonymous park (2026-09-26)
+## NUR269 closed — the dynamic apply reads the anonymous park (2026-09-26)
 
 **The divergence.** A map-each lambda's `kv.v` over a `([] => [5])`
 member is the lambda interpreted (the ANONYMOUS-0-ARG PARK) and was 5
@@ -1390,9 +1390,9 @@ compile-failure site and disposition censuses count `MarkUncompilable`
 lines and a second site read as new debt — and the callback's other
 strategies answer 5.
 
-**Pins.** lang `TestNUR220DynamicApplyParksAnonymousZeroArg`.
+**Pins.** lang `TestNUR269DynamicApplyParksAnonymousZeroArg`.
 
-## NUR219 closed — a callback body's word read runs the source value (2026-09-26)
+## NUR268 closed — a callback body's word read runs the source value (2026-09-26)
 
 **The divergence.** A fn value or lambda handed to a higher-order word
 compiles to a callback body unit (`tryRecordLambdaClosure`) whose bare read
@@ -1411,7 +1411,7 @@ value — stepped over the inputs on the TOKEN seam, `InvokeCallbackFn` on
 the fn-VALUE seam — with the closure's runtime captures bound. Data runs
 the unit.
 
-**Pins.** lang `TestNUR219CallbackParamReadIsTheWord`; compiler
+**Pins.** lang `TestNUR268CallbackParamReadIsTheWord`; compiler
 `TestFnReadRefused`, `TestCallbackSourceSpec`.
 
 ## NUR217 closed — a stored fn's word read declines its unit or its call (2026-09-26)

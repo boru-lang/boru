@@ -62,7 +62,7 @@ func TestNUR100PredicateIsAOneValueApplication(t *testing.T) {
 	}
 }
 
-// TestNUR223CallbackSeamDiscardsUnconsumedUnnamed pins NUR223, found closing
+// TestNUR272CallbackSeamDiscardsUnconsumedUnnamed pins NUR272, found closing
 // NUR100: the callback seam hands its caller exactly the values the
 // interpreter's CallBoru hands — residuals beyond the signature's declared
 // return count that are UNCONSUMED unnamed params are discarded, up to the
@@ -71,7 +71,7 @@ func TestNUR100PredicateIsAOneValueApplication(t *testing.T) {
 // protocol refused the pair: `0 is Z` over `fnpred [[Integer] [true]]` was
 // true interpreted and false compiled, and a typed def raised "predicate must
 // return exactly one value, got 2" compiled only.
-func TestNUR223CallbackSeamDiscardsUnconsumedUnnamed(t *testing.T) {
+func TestNUR272CallbackSeamDiscardsUnconsumedUnnamed(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
 		{`def Z fnpred [[Integer] [true]] end 0 is Z`, "[true]"},
 		{`def Z fnpred [[Integer] [dup 0 eq]] end [(0 is Z) (1 is Z)]`, "[[true false]]"},
@@ -97,13 +97,13 @@ func TestNUR223CallbackSeamDiscardsUnconsumedUnnamed(t *testing.T) {
 	requireParity(t, src, gotC, errC, gotI, errI)
 }
 
-// TestNUR224PredicateRefusalIsATypeError pins NUR224, found closing NUR100: a
+// TestNUR273PredicateRefusalIsATypeError pins NUR273, found closing NUR100: a
 // typed def's predicate refusal is a type_error on both lanes, as the typed
 // def's other refusals are (`def q:T "x"` — does not unify with declared type
 // T). It was a PLAIN error, which the interpreter surfaced bare while the
 // compiled run, raising the same refusal from its typed-bind op over a
 // runtime value, wrapped it as an internal_error annotated a compiler defect.
-func TestNUR224PredicateRefusalIsATypeError(t *testing.T) {
+func TestNUR273PredicateRefusalIsATypeError(t *testing.T) {
 	const big = `def Big fnpred n:Integer [n gt 10] end `
 	for _, src := range []string{
 		big + `def f fn [[x:Any] [Any] [def q:Big x q]] end f 5`,

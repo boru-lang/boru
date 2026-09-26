@@ -985,7 +985,7 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 		// q:T "x"` — does not unify with declared type T): the predicate's
 		// refusal was a PLAIN error, which the interpreter surfaced bare and
 		// the compiled run — raising the same refusal from OpBindTyped —
-		// booked as a compiler defect's internal_error (NUR224).
+		// booked as a compiler defect's internal_error (NUR273).
 		return nil, r.BoruError("type_error",
 			fmt.Sprintf("def %s: value %s does not satisfy predicate type %s",
 				name, body.String(), describeType()), name)

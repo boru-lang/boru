@@ -720,7 +720,7 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 // interpreter when an input lands in a param slot the body reads bare under a
 // gradual carrier (CompiledFn.FnReadParams): the interpreter dispatches a fn
 // there as a word — `def g fn [[f:Any] [Any] [f]]  each g/v [([] => [1]) 7]`
-// is [1 7] — where the unit pushed the slot, [fn f 7] (NUR219). The callback
+// is [1 7] — where the unit pushed the slot, [fn f 7] (NUR268). The callback
 // fn VALUE rides on the closure (ClosurePayload.Source) with the closure's
 // runtime captures in place of the compile-time ones, and it runs the way the
 // handler's own interpreter lane runs it: through the fn-VALUE seam (RetTrim)
@@ -2543,7 +2543,7 @@ func (vc *vmContext) callDynFrame(reg *core.Registry, w, frameBase int, stack []
 // asked for (`f/v apply` marks it Applied) — whatever unit its 0-arg
 // signature carries. The Apply kernel below entered that unit: the replay of
 // `each ([kv:Any] => [kv.v]) {x: ([] => [5])}` answered {x:5} for the
-// interpreter's {x:fn} (NUR220); the island it falls to parks the value. A
+// interpreter's {x:fn} (NUR269); the island it falls to parks the value. A
 // lead the body read BARE BY NAME (words[0]) is the binding's WORD
 // dispatch, which fires a 0-arg fn whatever its origin (`def r (mk)  r` is
 // 42), so it is not parked.

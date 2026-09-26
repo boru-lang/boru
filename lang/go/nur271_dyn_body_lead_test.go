@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestNUR222DynBodySettlesItsOwnLead pins NUR222's close. A `do` whose body
+// TestNUR271DynBodySettlesItsOwnLead pins NUR271's close. A `do` whose body
 // the closure path declined runs as a DYN BODY: its handler runs the body
 // with the interpreter's semantics, re-steps included, and the result is the
 // body's own residual. The check pass modelled a dynamic member read in that
@@ -16,7 +16,7 @@ import (
 // same dyn body's results is the body's to settle, and the residual arm
 // leaves it; a dyn-body result with nothing of its own above it is still the
 // lead the interpreter re-steps over a later token.
-func TestNUR222DynBodySettlesItsOwnLead(t *testing.T) {
+func TestNUR271DynBodySettlesItsOwnLead(t *testing.T) {
 	const m = `def inc fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{f: inc/v}]] end def m (mk) end `
 	const q = `def y fn [[] [Integer] [42]] end def h fn [[] [Integer] [42]] end def h fn [[x:Atom/q] [Atom] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
 	const strict = `def y fn [[] [Integer] [42]] end def h fn [[x:Integer] [Integer] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `

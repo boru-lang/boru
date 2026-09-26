@@ -59,7 +59,7 @@ func invokeCompiled(r *core.Registry, sig *core.Signature, args []core.Value, na
 // why the seam, holding the signature, trims here: `fnpred [[Integer]
 // [true]]` answered ONE verdict interpreted and [candidate true] compiled,
 // which the predicate protocol refuses — `0 is Z` was true on one lane and
-// false on the other (NUR223). A NAMED call's root RET already discards
+// false on the other (NUR272). A NAMED call's root RET already discards
 // through the frame's own contract (checkReturnContract, NUnnamed).
 func trimUnconsumedUnnamed(sig *core.Signature, res []core.Value) []core.Value {
 	unnamed := 0

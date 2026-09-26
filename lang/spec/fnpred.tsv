@@ -118,6 +118,6 @@ def K fnpred [[a:Any b:Any] [a]]  4 is K	false	…and `is` agrees
 def Z fnpred [[0] [true]]  0 is Z	true	a value PATTERN selects as it does for any call
 def Z fnpred [[0] [true]]  1 is Z	false	…and a value it does not match is not a member, with no body run
 #     An UNNAMED input the body leaves beneath its verdict is call-scoped data
-#     the seam discards on both lanes, exactly as a call's frame does (NUR223).
+#     the seam discards on both lanes, exactly as a call's frame does (NUR272).
 def Z fnpred [[Integer] [dup 0 eq]]  0 is Z	true	the verdict is the top of the residual; the unconsumed input is discarded
 def Z fnpred [[Integer] [dup 0 eq]]  1 is Z	false	…and a false verdict stays false

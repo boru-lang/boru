@@ -508,7 +508,7 @@ func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpe
 // (ClosureRetSpec.Source → ClosurePayload.Source): a callback body unit whose
 // body reads a param bare under a gradual carrier runs over data, and the VM
 // hands an invocation with a fn in such a slot to the interpreter's own step
-// of the value, which dispatches it there as a word (NUR219). The contract
+// of the value, which dispatches it there as a word (NUR268). The contract
 // fields ride as fnValueRetSpec built them — none when it built none.
 func callbackSourceSpec(ret *ClosureRetSpec, src core.Value) *ClosureRetSpec {
 	out := ClosureRetSpec{}

@@ -9263,7 +9263,7 @@ func (es *EmitState) residualHasVariadicRegion(residual []core.Value) bool {
 // there (`do [m.f 5]` is 6: the body's member read claimed the 5), where
 // the model left the member unapplied over its argument; the residual
 // arm's apply over that window re-applied it and underflowed at run time
-// (NUR222). A dyn-body result with nothing of its own above it is a lead
+// (NUR271). A dyn-body result with nothing of its own above it is a lead
 // the root's apply may take (`do [m.f/v] 5` is 6: the interpreter
 // re-steps the returned fn over the later 5).
 func (es *EmitState) dynBodySettledLead(residual []core.Value) bool {
@@ -9400,7 +9400,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// lead's producer's, and `each ([kv:Any] => [kv.v apply]) {x: ([] =>
 	// [5])}` compiled to the bare member read — the Applied mark the
 	// interpreter's apply stamps lost, answering whatever the read answered
-	// (NUR220). Such an apply has no modelled overload and no tail window; it
+	// (NUR269). Such an apply has no modelled overload and no tail window; it
 	// reaches the dynamic-lead decline below.
 	if len(outs) > 0 && !loneGradualApplyLead(word, args) {
 		if pr, ok := es.producedBy[outs[0].ID]; ok && !es.eventInfo[pr.seq].generic {
@@ -9508,7 +9508,7 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 }
 
 // loneGradualApplyLead reports an `apply` whose whole window is one gradual
-// lead — a Dynamic carrier that is neither concrete nor fn-typed (NUR220's
+// lead — a Dynamic carrier that is neither concrete nor fn-typed (NUR269's
 // exemption from the registered-output elision above).
 func loneGradualApplyLead(word string, args []core.Value) bool {
 	return word == "apply" && len(args) == 1 && args[0].Dynamic && !core.IsConcrete(args[0]) && !core.IsFnTypedCarrier(args[0])
@@ -11511,7 +11511,7 @@ func storedUnitFnRead(u *emitUnit, rec *fnUnitRec, vals []core.Value) (string, b
 // natively). storedUnitFnRead already declined a stored unit's uncredited
 // fn-typed read, and a callback body's is not accounted at all. The unit
 // runs over data there, and the seams refuse a fn argument in one of them
-// (CompiledFn.FnReadRefused, NUR217 and NUR219). Sorted, for a stable
+// (CompiledFn.FnReadRefused, NUR217 and NUR268). Sorted, for a stable
 // Program.
 func storedUnitFnReadParams(u *emitUnit, rec *fnUnitRec) []int {
 	var slots []int
@@ -11716,7 +11716,7 @@ func (es *EmitState) recordGradualApplyEvent(sig *core.Signature, args, outs []c
 	// there when it holds a fn that claims the value beneath: `3 kv.v
 	// apply` over an inc member applies it to 3 BEFORE apply runs, and apply
 	// then raises over the 4; this event applied the member once, to 3, and
-	// answered 4 (NUR221). The landing applies over an empty window only, so
+	// answered 4 (NUR270). The landing applies over an empty window only, so
 	// no op models the claim: such a lead takes the dynamic-lead decline
 	// below. A `/v` read or a user paren's placed result (`nd (m get "inc")
 	// apply` — its re-step ran inside the sealed paren, over nothing) is the
@@ -16437,7 +16437,7 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 		}
 		// The params such a unit — stored or a callback body — reads bare
 		// under a gradual carrier: the seams that run it refuse a fn there
-		// (NUR217's stored fn, NUR219's callback body).
+		// (NUR217's stored fn, NUR268's callback body).
 		rec.fnReadParams = storedUnitFnReadParams(u, rec)
 		// One replay a code body DOES take: its top value re-stepped by the
 		// interpreter's pointer inside the body (noteClosureBodyReplay).

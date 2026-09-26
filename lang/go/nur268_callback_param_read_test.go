@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestNUR219CallbackParamReadIsTheWord pins NUR219's close. A fn value or a
+// TestNUR268CallbackParamReadIsTheWord pins NUR268's close. A fn value or a
 // lambda handed to a higher-order word compiles to a callback BODY unit
 // (each$body, fold$body, …) with the value's own named params, and a bare
 // read of a param is a WORD dispatch on the interpreter when the element it
@@ -15,7 +15,7 @@ import (
 // closure carries the callback value it was compiled from, and an invocation
 // with a fn in such a slot runs the value the handler's own interpreter lane
 // runs it; data elements run the unit. Every row compiles and agrees.
-func TestNUR219CallbackParamReadIsTheWord(t *testing.T) {
+func TestNUR268CallbackParamReadIsTheWord(t *testing.T) {
 	const g = `def g fn [[f:Any] [Any] [f]] end `
 	for _, c := range []struct{ src, want string }{
 		// The token seam (each over a list): the named fn, the lambda, a
