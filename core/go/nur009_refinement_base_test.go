@@ -94,6 +94,11 @@ func TestRefinementRendersOverAFormatterBase(t *testing.T) {
 	if got := NewValueRaw(zz, IntPayload{N: 1}).String(); got != "Zz<?>" {
 		t.Errorf("a plain value of the base renders %q, want its Formatter's Zz<?>", got)
 	}
+	// The kernel's default renderer — reached directly by any Behavior that
+	// embeds defaultBehavior — renders a refinement the same way.
+	if got := (defaultBehavior{}).Format(NewDepScalar(DepGT, NewInteger(3))); got != "(Integer gt 3)" {
+		t.Errorf("the default renderer gives %q for a refinement, want (Integer gt 3)", got)
+	}
 }
 
 // TestRefinementConstructorsNoteUnknownBounds pins NUR231 at the

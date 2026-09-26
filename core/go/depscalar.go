@@ -505,7 +505,12 @@ func noteRefinementConstruct(r *Registry, dep Value, bounds ...Value) {
 	}
 	for _, b := range bounds {
 		if !IsConcrete(b) {
-			r.analysisRecorder().NoteRuntimeConstruct()
+			// Only the analysis pass itself latches: a concrete sub-run (a
+			// const-fold probe) records nothing, and a latch it left would be
+			// consumed by the pass's next compile-time word.
+			if r.analysisActive() {
+				r.analysisRecorder().NoteRuntimeConstruct()
+			}
 			return
 		}
 	}

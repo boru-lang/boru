@@ -1861,11 +1861,12 @@ clear error rather than looping.
 
 ```
 def twice (macro [[e] [ quote [ unquote e add unquote e ] ]])
-macroexpand (twice 5)                 # returns [5 word(add) 5]
+macroexpand (twice 5)                 # returns [5 add 5]
 ```
 
-(The result is a *token list*: `add` shows as `word(add)` because it is an
-unevaluated word in the expansion, not a call yet.)
+(The result is a *token list*, spelled here as source: `add` is an
+unevaluated word in the expansion, not a call yet — the REPL marks it so by
+printing `word(add)`.)
 
 Macros are **define-before-use**: a macro must be defined before its call site
 is reached (using one earlier raises `undefined_word`). A macro referenced

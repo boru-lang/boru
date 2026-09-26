@@ -149,13 +149,14 @@ var compileFailureDispositions = map[string]compileFailureDisposition{
 	"compiler/go/user_poly_plan.go:planUserPolyDispatch#2":            {dispGeneric, 4, "a fn-predicate-typed overload: predicate units inside matching, then a runtime re-match"},
 
 	// core/go — the interpreter's own recorder calls.
-	"core/go/core_helpers.go:installDef#1":        {dispGeneric, 4, "a capturing closure's conditional redefinition, and a fn-body redefinition by a capturing fn value (family L's closure arms): the binder half, NUR110's third binding state; a capture-free conditional-body redefinition is PLACED since the seventieth increment (NoteSpecFnDef — the recorder declines what it cannot place)"},
-	"core/go/emit_recorder.go:<decl>#1":           {dispDelete, 9, "the EmitRecorder method itself retires with the compile failure mechanism"},
-	"core/go/engine.go:stepLiteral#1":             {dispGeneric, 5, "a splice over a computed payload: the generalized mark region"},
-	"core/go/engine.go:evalInterpString#1":        {dispGeneric, 7, "an interpolated string's runtime-computed part: compile the part when it is computed"},
-	"core/go/engine.go:EvalXmlInterp#1":           {dispGeneric, 7, "as evalInterpString, for XML"},
-	"core/go/engine.go:recordParenLeadingApply#1": {dispGeneric, 3, "a paren-bounded application with the fn value first: the Apply kernel"},
-	"core/go/engine.go:recordParenLeadingApply#2": {dispGeneric, 3, "as #1"},
+	"core/go/core_helpers.go:installDef#1":            {dispGeneric, 4, "a capturing closure's conditional redefinition, and a fn-body redefinition by a capturing fn value (family L's closure arms): the binder half, NUR110's third binding state; a capture-free conditional-body redefinition is PLACED since the seventieth increment (NoteSpecFnDef — the recorder declines what it cannot place)"},
+	"core/go/depscalar.go:DeclineUnknownRefinement#1": {dispGeneric, 6, "a type over a refinement whose bound only the run knows (NUR231): the run-time type install over the run's refinement, and a compiled run-time membership check at the typed def and the call — the DepScalar family's stage 6, beside DefTypedHandler#1"},
+	"core/go/emit_recorder.go:<decl>#1":               {dispDelete, 9, "the EmitRecorder method itself retires with the compile failure mechanism"},
+	"core/go/engine.go:stepLiteral#1":                 {dispGeneric, 5, "a splice over a computed payload: the generalized mark region"},
+	"core/go/engine.go:evalInterpString#1":            {dispGeneric, 7, "an interpolated string's runtime-computed part: compile the part when it is computed"},
+	"core/go/engine.go:EvalXmlInterp#1":               {dispGeneric, 7, "as evalInterpString, for XML"},
+	"core/go/engine.go:recordParenLeadingApply#1":     {dispGeneric, 3, "a paren-bounded application with the fn value first: the Apply kernel"},
+	"core/go/engine.go:recordParenLeadingApply#2":     {dispGeneric, 3, "as #1"},
 
 	// lang/go — the module layer.
 	"lang/go/native/native_macro.go:miniHandler#1": {dispGeneric, 7, "a mini hook's expansion: compiled when it is produced"},
@@ -236,7 +237,7 @@ func siteKeysIn(rel, src string) []string {
 // this number in the same change, so the history below records every
 // retirement. Equal to compileFailureSiteCeiling by construction (the two scans
 // count the same sites).
-const compileFailureDispositionCeiling = 91 // 92 -> 91 on 2026-09-24 (the selective freshen): compiler/go/emit.go:resolveOperand#1 retired — a body literal embedding an enclosing binding's container no longer declines; the fresh push clones the literal's spine and keeps the embedded member (Program.ConstKeep), the disposition the row prescribed. Before: 92 (2026-09-14, the census's first cut) -> 0 (Stage 9)
+const compileFailureDispositionCeiling = 92 // 91 -> 92 on 2026-09-26 (NUR231): core/go/depscalar.go:DeclineUnknownRefinement#1 — a type over a refinement whose bound only the run knows compiled silently wrong and declines now; its plan is its row (generic, stage 6). Before: 92 -> 91 on 2026-09-24 (the selective freshen): compiler/go/emit.go:resolveOperand#1 retired — a body literal embedding an enclosing binding's container no longer declines; the fresh push clones the literal's spine and keeps the embedded member (Program.ConstKeep), the disposition the row prescribed. Before: 92 (2026-09-14, the census's first cut) -> 0 (Stage 9)
 
 // dispositionFindings is the gate, factored so its negative arms can be
 // driven over synthetic input: every finding is one string, and an empty

@@ -8938,7 +8938,10 @@ was Never, and a type over one checked nothing the run would.
   those sites decline the compile (`DeclineUnknownRefinement`: "… refines
   over a computed bound, which only the run knows (NUR231)"), and the
   interpreter's answer stands. Compiling them is owed — a run-time type
-  install and a run-time-checked bind over the run's refinement.
+  install and a run-time-checked bind over the run's refinement. The
+  decline is one new site in the compile-failure censuses (91 → 92,
+  written down where a silent wrong answer was), carrying that plan as
+  its disposition: generic, stage 6, beside the DepScalar typed-def site.
 
 Pinned by core's `TestRefinementConstructorsNoteUnknownBounds`,
 `TestUnknownBoundDecidesNothing`, `TestRefinementConstOnlyOverKnownBounds`

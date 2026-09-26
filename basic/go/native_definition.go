@@ -963,6 +963,18 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 	return InstallAndRecordDef(r, name, out, pos)
 }
 
+// declineComputedRefinementBind declines the compile of a typed def whose
+// refinement has a bound the pass does not know — a computed one, `def
+// x:(Integer gt (size s)) 2`, whose bound is the pass's carrier: the run
+// alone checks it, the pass admits gradually, and a compiled bind would
+// replay the pass's verdict (a concrete body) or carry the carrier for a
+// bound (a recorded one) (NUR231).
+func declineComputedRefinementBind(r *Registry, cons Value, name string) {
+	if cons.IsDepScalar() && !core.IsInertConst(cons) {
+		core.DeclineUnknownRefinement(r, "typed-def `"+name+"`")
+	}
+}
+
 // MarkFnPredicateBindUncompilable declines compilation when a fn-predicate
 // typed-def's bind record declined: the predicate is a runtime evaluation
 // for every body shape, so there is no faithful bake to emit. The compile failure
@@ -1307,14 +1319,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			}
 		}
 	}
-	// A refinement over a bound the pass does not know — a computed one,
-	// `def x:(Integer gt (size s)) 2`, whose bound is the pass's carrier —
-	// is checked by the run alone: the pass admits gradually, and a compiled
-	// bind would replay the pass's verdict (a concrete body) or carry the
-	// carrier for a bound (a recorded one). Decline (NUR231).
-	if depScalarCons.IsDepScalar() && !core.IsInertConst(depScalarCons) {
-		core.DeclineUnknownRefinement(r, "typed-def `"+name+"`")
-	}
+	declineComputedRefinementBind(r, depScalarCons, name)
 	if r.Check.IsActive() && depScalarCons.IsDepScalar() && !IsConcrete(body) {
 		if body.Parent.ConformsTo(depScalarCons.Parent) {
 			// An ABSTRACT (carrier) body admits on base conformance only —

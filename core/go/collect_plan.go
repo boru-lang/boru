@@ -312,7 +312,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 				allMatch = false
 				break
 			}
-			if !IsConcrete(stackVal) && !stackVal.Parent.ConformsTo(SigArgType(sig, sigIdx)) {
+			if unprovenStackOperand(stackVal, SigArgType(sig, sigIdx)) {
 				gradualStack = true
 			}
 			positions[sigIdx] = resolvedIdx[ri]
@@ -346,7 +346,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 		// static choice forward-collects and the runtime one grabs the
 		// carrier (NUR228). An all-stack match (fwd 0) is the forward-drift
 		// guard's (DeclineForwardStackDrift and its drift window).
-		if compiling && fwd > 0 && gradualStack && laterCandidateCollectsPast(h, fn, si, w, pointer, fwd, checkActive, compiling) {
+		if compiling && gradualWindowAmbiguous(h, fn, si, w, pointer, fwd, gradualStack, checkActive) {
 			reg.noteAmbiguousGradualSplit()
 		}
 		return sig, positions, specAt
@@ -377,6 +377,20 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 // selected candidate's scan stopped at. That candidate is the interpreter's
 // dispatch whenever the selected one's gradual stack operand misses its slot
 // at run time, and it binds a different window (NUR228).
+// unprovenStackOperand reports a stack operand matched on no proof — a
+// carrier whose static type does not conform to the slot, so the runtime
+// value may miss it (NUR228).
+func unprovenStackOperand(v Value, slot *Type) bool {
+	return !IsConcrete(v) && !v.Parent.ConformsTo(slot)
+}
+
+// gradualWindowAmbiguous reports a compile-pass window that took fwd forward
+// tokens and hangs on an unproven stack operand while a LATER candidate
+// forward-collects past the token this one's scan stopped at (NUR228).
+func gradualWindowAmbiguous(h CollectHost, fn *FnDefInfo, si int, w WordInfo, pointer, fwd int, gradualStack, checkActive bool) bool {
+	return fwd > 0 && gradualStack && laterCandidateCollectsPast(h, fn, si, w, pointer, fwd, checkActive, true)
+}
+
 func laterCandidateCollectsPast(h CollectHost, fn *FnDefInfo, si int, w WordInfo, pointer, fwd int, checkActive, compiling bool) bool {
 	for k := si + 1; k < len(fn.Signatures); k++ {
 		alt := &fn.Signatures[k]
