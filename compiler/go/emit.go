@@ -13995,6 +13995,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			arg = 0 // the mark is the boundary; the op takes no count
 		}
 		lw.emit(dynOp, arg, dynOpPos)
+		lw.sealLandingSkip(dynOp, ops)
 	}
 
 	// Lower the compiled fn units. Tail positions are marked first so

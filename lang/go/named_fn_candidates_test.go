@@ -206,38 +206,38 @@ func TestNamedFnCandidatesWalk(t *testing.T) {
 }
 
 // TestNamedFnCandidatesOpenShapes pins NUR190's `/q` and Function-typed
-// halves as the maintainer settled them (2026-09-24): a DYNAMIC fn value
-// under a FUNCTION word whose arg-taking overload claims the word. The
-// interpreter's `/q` slot captures the word (`y` never runs); the landing's
-// walk cannot honour the claim (the compiled code calls the word) and
-// DEFERS loudly, kept on the runtime-defers ledger — where it used to stand
-// aside and the lead arm applied the fn over the word's result (`[42 42]`
-// for `[y]`, silent; fn-value.tsv's `m.f z` passed by coincidence, z's
-// result being its own atom). The mixed twin declines soundly since the
-// islands read the word as a crossing (NUR187).
+// halves: a DYNAMIC fn value under a FUNCTION word whose arg-taking overload
+// claims the word. The interpreter's `/q` slot captures the word (`y` never
+// runs). The landing's walk honours the claim where the lowering laid the
+// word's call and the residual apply out right after it (LandingWord.Skip,
+// 2026-09-26): it enters the fn over the atom and resumes past both — where
+// it deferred loudly (2026-09-24) and, before that, stood aside so the lead
+// arm applied the fn over the word's RESULT (`[42 42]` for `[y]`, silent;
+// fn-value.tsv's `m.f z` passed by coincidence, z's result being its own
+// atom). A capture the lowering did not lay out that way — a word that
+// collects, a wider residual — still defers, and so does the Function-typed
+// reference (the stored-fn unit it would enter reads a bare Function param
+// as data, NUR220). The mixed twin declines soundly since the islands read
+// the word as a crossing (NUR187).
 func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 	const nfQ = `def z fn [[] [Atom] [(quote z)]] end def y fn [[] [Integer] [42]] end ` +
 		`def h fn [[] [Integer] [42]] end def h fn [[x:Atom/q] [Atom] [x]] end ` +
 		`def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
-	// The landing's overload walk (the same day) settles the typed slot, the
-	// Any-typed claim and the anonymous park (TestNamedFnCandidatesWalk); the
-	// `/q` capture and a Function-typed slot's reference BAIL loudly at the
-	// landing (`m.q z` is `[z]` interpreted and used to compile `[42 0]`,
-	// the residual apply over the word's result; `m.g z` is 7 interpreted,
-	// where the wordless landing raised a false uncalled_function) — the
-	// word's call is compiled after the landing and cannot be skipped, and
-	// the maintainer chose the deferral kept on the runtime-defers ledger
-	// (2026-09-24) over a compile-time decline.
 	const nfR = `def g fn [[f:Function] [Integer] [7]] end def q fn [[] [Integer] [42]] end def q fn [[x:Atom/q] [Atom] [x]] end ` +
 		`def mk fn [[] [Map] [{g: g/v q: q/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end `
+	const nfA = `def h fn [[x:Atom/q] [Any] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end `
 	rows := []struct {
 		src, interp, compiled, reason string
 		bail                          bool
 	}{
-		{nfQ + `m.f y`, "[y]", "", "CAPTURES the word `y`", true},
-		{nfQ + `m.f z`, "[z]", "", "CAPTURES the word `z`", true},
+		{nfQ + `m.f y`, "[y]", "[y]", "", false},
+		{nfQ + `m.f z`, "[z]", "[z]", "", false},
+		{nfQ + `m get 'f' z`, "[z]", "[z]", "", false},
+		{nfR + `m.q z`, "[z]", "[z]", "", false},
+		{nfA + `m.f z`, "[z]", "[z]", "", false},
+		{nfA + `m.f typeof`, "[typeof]", "", "CAPTURES the word `typeof`", true},
+		{nfQ + `m.f y 5`, "[y 5]", "", "CAPTURES the word `y`", true},
 		{nfQ + `7 m.f y`, "[7 y]", "", "dynamic value precedes residual args", false},
-		{nfR + `m.q z`, "[z]", "", "CAPTURES the word `z`", true},
 		{nfR + `m.g z`, "[7]", "", "takes the word `z` as its argument", true},
 	}
 	for _, c := range rows {
@@ -257,8 +257,25 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 			continue
 		}
 		if !compiled || errC != nil || fmt.Sprint(gotC) != c.compiled {
-			t.Errorf("%q: compiled (measured, open): want %s, got %v err=%v", c.src, c.compiled, gotC, errC)
+			t.Errorf("%q: compiled: want %s, got %v err=%v", c.src, c.compiled, gotC, errC)
 		}
+	}
+	// The claim's effects are the fn's own, in the interpreter's order: the
+	// captured word never runs (a word that raises would raise), a body that
+	// raises raises the interpreter's error, the declared return contract
+	// holds, and a multi-result body leaves every result.
+	for _, src := range []string{
+		nfA + `def w fn [[] [Integer] [raise "ran"]] end m.f w`,
+		`def h fn [[x:Atom/q] [Any] [raise "boom"]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end m.f z`,
+		`def h fn [[x:Atom/q] [Integer] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end m.f z`,
+		`def h fn [[x:Atom/q] [Any Any] [x x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end m.f z`,
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if !compiled {
+			t.Errorf("%q: not compiled: %v", src, errC)
+			continue
+		}
+		requireParity(t, src, gotC, errC, gotI, errI)
 	}
 }
 

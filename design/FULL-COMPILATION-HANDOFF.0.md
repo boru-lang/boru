@@ -15474,3 +15474,68 @@ included); `s2_declared_bodies_test.go`
 rewritten over the hosted splice's reasons); `s2b_declarations_test.go`
 (`if (List)` own, `for` own | dyn); compiler `host_splice_test.go`; eng
 `host_splice_test.go`; basic `if_clause_record_test.go`.
+
+## NUR190's `/q` claim — the landing skips the captured word, the runtime-defers ledger reads 0 (2026-09-26)
+
+**The rows.** `runtime_defers.tsv` held two rows, fn-value.tsv L317/L318
+(`m.f z`, `m get 'f' z`), booked by choice on 2026-09-24 at
+`vm:landing-quote-claim`: h's `/q` overload CAPTURES the word after the
+dynamic fn value, and the compiled code calls that word after the landing
+and applies the value over its result. Both now RUN with parity; nothing
+was converted to a decline. The ledger is empty.
+
+**How.** The skip the 2026-09-24 note said the lowering could not make is
+possible where the lowering can PROVE the layout. The main program's
+residual apply is `OpCallDynamic /1` whose fn operand is the landed event's
+one result and whose argument is the word's own call — an argument-free,
+one-result `CALL_USER` of the word's unit, or `CALL_NATIVE` /
+`CALL_NATIVE_POLY` under the word — and the three ops are contiguous
+(landing, call, apply). compiler `sealLandingSkip` (lower.go, called
+right after the residual's dynamic-apply op is emitted) checks exactly
+that and seats the pc past the apply on the landing's word
+(`LandingWord.Skip`; `seatLandingWord` now records the landed event's seq
+beside the op, `landingSeq`). The VM's walk (`landingWalk`'s `/q` arm)
+calls `landingQuoteClaim`: it ENTERS the plan's own overload over the word
+as an atom at the word's position (the interpreter's arrival converts it
+so, `CollectArrival`) through the Apply kernel's frame push
+(`dynApplyEnterSig`, split out of `dynApplyEnter`; the declared return
+contract rides as it does for the residual apply), and arms
+`vmContext.landingSkip`. The run loop, right after the landing op, jumps
+to it — before the frame push, so the entered frame returns there too. The
+word never runs. No seal, or an overload with no unit of this program,
+keeps the loud defer. The Function-typed reference (`m.g z`) is NOT
+claimed: the stored-fn unit it would enter reads a bare Function param as
+data (`[fn f]` for `[0]`, NUR220), so claiming it would trade a loud
+defer for a silent wrong answer; it keeps `vm:landing-claim`.
+
+**Measured.** Probes side by side against a 45c3bdb build: every probe
+that changed moved from the loud defer to the interpreter's answer (`m.f
+z` / `m get 'f' z` `[z]`, `m.f y` `[y]` — the silent `[42 42]` of
+2026-09-23 —, `m.q z`, a body returning a fn value, `typeof` of the atom,
+a return-contract type_error, a raising body, a two-result body, a
+captured word that would raise). Still deferring: `m.f typeof` (typeof
+collects the value), `m.f y 5` (a wider residual), `m.g z`, and every
+landing inside a fn unit (no seal there). Three pre-existing divergences
+found on the way, none touched by this change: NUR219 (`m.f true`, the
+check pass folds the word to a Boolean and the landing raises where the
+`/q` slot captures; plus the walk raise's caret), NUR220 (the stored-fn
+unit's bare Function param, silent), NUR221 (`def r m.f z r`, silent).
+
+Ceilings: the corpus runtime defers 2 -> 0 (`deferCeiling`, at its end
+state), the corpus bail ceiling 2 -> 0 (`bailDefectCeiling`,
+compiled_defect_test.go), runtime_defers.tsv's fn-value line deleted; lang
+`bailDefectCeiling` 39 -> 38 (three `/q` bails now run; two new pins of
+the remaining defer book it by design), `compileDefectCeiling` 301
+unchanged. The compile-failure site census stays 91 (no decline site
+added). The engine-entry census is unchanged at 166 (the claim enters a frame, no
+island).
+The full langspec corpus passes at those ceilings (all nine shards); the
+unit suites of compiler, eng, lang (root, native, modules), cmd and the
+non-langspec test/go packages pass; core is untouched.
+
+**Pins.** lang `TestNamedFnCandidatesOpenShapes` (rewritten: the claims'
+parity, the remaining defers); eng `TestReStepLandingQuoteClaim` (the
+sealed claim end to end on a hand-built program, and its two defers),
+`TestReStepLandingWalk` (the unsealed `/q` defer); compiler
+`TestSealLandingSkip` (every shape that seals and every one that does
+not).

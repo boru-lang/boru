@@ -64,7 +64,12 @@ import (
 // dispatch records — here add's no-match trap), and flex.tsv L228/L230/L236
 // commit the FlexMap `set` through the member's recorded write shape. Left:
 // fn-value.tsv L317/L318 (NUR190, booked by choice).
-const bailDefectCeiling = 2
+// 2 -> 0 on 2026-09-26 (NUR190's `/q` claim): fn-value.tsv L317/L318 run —
+// the landing enters the fn's `/q` overload over the word as an atom where
+// the lowering sealed its claim target (LandingWord.Skip) and resumes past
+// the word's call and the residual apply (runtime_defers.tsv's fn-value
+// line deleted; the ledger is empty).
+const bailDefectCeiling = 0
 
 var bailDefects = struct {
 	mu      sync.Mutex

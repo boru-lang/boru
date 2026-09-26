@@ -721,6 +721,10 @@ type lowerer struct {
 	// (Program.LandingWords / CompiledFn.LandingWords), keyed by the
 	// target's own pc — see seatLandingWord.
 	landingWords *map[int]LandingWord
+	// landingSeq is the event each seated landing op lands, keyed by the
+	// op's pc (seatLandingWord): the residual apply reads it to tell that
+	// its fn operand IS the landed value (sealLandingSkip).
+	landingSeq map[int]int
 	// storeNames is the emission target's def-name table for promoted
 	// stores of produced fn values (Program.StoreNames / CompiledFn.StoreNames),
 	// keyed by the target's own pc — see seatStoreName.
@@ -1096,22 +1100,80 @@ func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) {
 	if c.nout != 1 {
 		return
 	}
-	lw.seatLandingWord(lw.es.landingWordAt(ev.seq))
+	lw.seatLandingWord(lw.es.landingWordAt(ev.seq), ev.seq)
 	lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos)
 }
 
 // seatLandingWord records the function word noted after a landing at the pc
 // of the OpReStepLanding about to be emitted (LandingWords), so the VM's
-// landing can walk the run-time fn's overloads over it (NUR190). A landing
-// with no word after it records nothing.
-func (lw *lowerer) seatLandingWord(w LandingWord) {
+// landing can walk the run-time fn's overloads over it (NUR190), and the
+// event the op lands (landingSeq). A landing with no word after it records
+// nothing.
+func (lw *lowerer) seatLandingWord(w LandingWord, seq int) {
 	if lw.landingWords == nil || w.Name == "" {
 		return
 	}
 	if *lw.landingWords == nil {
 		*lw.landingWords = map[int]LandingWord{}
 	}
+	if lw.landingSeq == nil {
+		lw.landingSeq = map[int]int{}
+	}
 	(*lw.landingWords)[len(*lw.code)] = w
+	lw.landingSeq[len(*lw.code)] = seq
+}
+
+// sealLandingSkip gives a landing its CLAIM target (LandingWord.Skip, NUR190)
+// when the residual apply just emitted is the one the lowering laid over the
+// word after it. The interpreter's re-step of a fn value plans over the live
+// tape, and a `/q` slot CAPTURES the next word as an atom (`m.f z` is `[z]`)
+// where a Function-typed slot takes its REFERENCE (`m.g z` is g over z's
+// fn): either way the word never runs. The compiled code calls it after the
+// landing and applies the value over its result, so the landing that claims
+// the word must enter the fn over the claimed argument and resume PAST both
+// — and that is only sound when the three ops are exactly, contiguously:
+//
+//	pc     OpReStepLanding  over the landed event's one result (landingSeq)
+//	pc+1   the word's call  argument-free, one result (the residual's arg)
+//	pc+2   OpCallDynamic /1 the landed value applied over that result
+//
+// Anything else — a promoted or dropped result, a word that collects, a
+// wider residual — seats no target, and the landing's claim defers at run
+// time as it did before.
+func (lw *lowerer) sealLandingSkip(dynOp Opcode, ops []EmitOperand) {
+	at := len(*lw.code) - 3
+	if dynOp != OpCallDynamic || len(ops) != 2 || at < 0 || lw.landingWords == nil {
+		return
+	}
+	w, seated := (*lw.landingWords)[at]
+	if !seated || ops[0].kind != opEvent || ops[0].idx != lw.landingSeq[at] || ops[0].resIdx != 0 || ops[1].kind != opEvent {
+		return
+	}
+	if lw.isLandingWordCall(lw.es.eventBySeq(ops[1].idx), w.Name, (*lw.code)[at+1]) {
+		w.Skip = at + 3
+		(*lw.landingWords)[at] = w
+	}
+}
+
+// isLandingWordCall reports whether ev — the residual apply's argument — is
+// a call of the function word name that collects nothing and leaves one
+// result, lowered to in alone: a compiled fn's committed CALL_USER of its
+// own unit (the unit's name is the word's), or a native's CALL_NATIVE /
+// CALL_NATIVE_POLY recorded under the word.
+func (lw *lowerer) isLandingWordCall(ev *EmitEvent, name string, in Instr) bool {
+	switch {
+	case ev == nil:
+		return false
+	case ev.kind == evCallUser:
+		uc := &ev.uc
+		return in.Op == OpCallUser && uc.poly == nil && !uc.generic && int(in.Arg) == uc.unit &&
+			uc.unit >= 0 && uc.unit < len(lw.es.fnRecs) && lw.es.fnRecs[uc.unit].name == name &&
+			len(uc.ops) == 0 && uc.nout == 1
+	case ev.kind == evCall:
+		return (in.Op == OpCallNative || in.Op == OpCallNativePoly) && ev.call.word == name &&
+			len(ev.call.ops) == 0 && ev.call.nout == 1
+	}
+	return false
 }
 
 // emitBranchLanding is emitLandingAfter for a BRANCH event: the landing the
@@ -1129,7 +1191,7 @@ func (lw *lowerer) emitBranchLanding(ev *EmitEvent) {
 		return
 	}
 	delete(lw.es.landingAfter, ev.seq)
-	lw.seatLandingWord(lw.es.landingWordAt(ev.seq))
+	lw.seatLandingWord(lw.es.landingWordAt(ev.seq), ev.seq)
 	lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos)
 }
 

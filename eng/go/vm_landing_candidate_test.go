@@ -82,8 +82,8 @@ func walkReg(t *testing.T) *core.Registry {
 // taking the word raises, an anonymous one parks INERT (the later residual
 // apply leaves it), a mixed overload fires its zero-argument fallback, an
 // Any-typed slot's speculative claim raises the stranded-forward error, a
-// `/q` slot's capture stands aside (the open half), and a Function-typed
-// slot's reference bails loudly. Without a word beside the op, with a value
+// `/q` slot's capture with no claim target sealed and a Function-typed
+// slot's reference bail loudly. Without a word beside the op, with a value
 // beneath, or over a fn with no signatures, the wordless landing decides.
 func TestReStepLandingWalk(t *testing.T) {
 	r := walkReg(t)
@@ -154,10 +154,10 @@ func TestReStepLandingWalk(t *testing.T) {
 		t.Errorf("a speculative claim strands at the word: got %v %v", ent, err)
 	}
 
-	// A `/q` slot captures the word: the walk cannot honour the claim (the
-	// compiled code calls the word) and defers loudly, as the Function-typed
-	// reference does — NUR190's open halves, kept on the runtime-defers
-	// ledger.
+	// A `/q` slot captures the word: with no claim target sealed beside the
+	// op (LandingWord.Skip — TestReStepLandingQuoteClaim runs the sealed
+	// one) the walk cannot honour the claim and defers loudly, as the
+	// Function-typed reference does.
 	quoteFn := core.NewFunction(core.FnDefInfo{Name: "q", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TAtom, Quote: true}}, QuoteArgs: map[int]bool{0: true}, BarrierPos: 1, Returns: []*core.Type{core.TAtom}}}})
 	_, ent, err = vc.reStepLanding(r, 3, 0, []core.Value{quoteFn}, seam7Dbg, 0, z)
 	if err == nil || ent != nil || !strings.Contains(err.Error(), "CAPTURES the word `z`") {
@@ -195,5 +195,73 @@ func TestLandingWordAt(t *testing.T) {
 	}
 	if landingWordAt(p, 5, 1).Name != "" {
 		t.Error("a unit out of range has no table")
+	}
+}
+
+// quoteClaimProg is the lowering's sealed `/q` claim (NUR190, 2026-09-26),
+// hand-built: a named fn value h whose one overload captures its argument
+// (`[x:Atom/q] [Atom] [x]`, unit 0), landed with the function word z after
+// it (unit 1, a zero-argument Integer producer), z's call, the residual
+// apply of h over z's result, and a trailing 5. skip is the landing word's
+// claim target; 0 seals none. unit is the unit h's overload is compiled to.
+func quoteClaimProg(skip, unit int) *compiler.Program {
+	prog := &compiler.Program{
+		Consts: []core.Value{{}, core.NewInteger(5), core.NewInteger(0)},
+		Fns: []compiler.CompiledFn{
+			{Name: "h", NParams: 1, NLocals: 1, NArgs: 1,
+				Code:  []compiler.Instr{{Op: compiler.OpPushLocal, Arg: 0}, {Op: compiler.OpRet, Arg: 0}},
+				Debug: make([]core.SrcPos, 2)},
+			{Name: "z",
+				Code:  []compiler.Instr{{Op: compiler.OpPushConst, Arg: 2}, {Op: compiler.OpRet, Arg: 0}},
+				Debug: make([]core.SrcPos, 2)},
+		},
+		Code: []compiler.Instr{
+			{Op: compiler.OpPushConst, Arg: 0},
+			{Op: compiler.OpReStepLanding, Arg: 3},
+			{Op: compiler.OpCallUser, Arg: 1},
+			{Op: compiler.OpCallDynamic, Arg: 1},
+			{Op: compiler.OpPushConst, Arg: 1},
+		},
+		Debug:        make([]core.SrcPos, 5),
+		LandingWords: map[int]compiler.LandingWord{1: {Name: "z", Pos: core.SrcPos{Row: 1, Col: 9}, Skip: skip}},
+	}
+	impl := core.Boru([]core.Value{core.NewWord("x")})
+	impl.SetCompiled(&compiler.CompiledFnRef{Prog: prog, Unit: unit})
+	prog.Consts[0] = core.NewFunction(core.FnDefInfo{Name: "h", Signatures: []core.Signature{{
+		Params: []core.FnParam{{Name: "x", Type: core.TAtom, Quote: true}}, QuoteArgs: map[int]bool{0: true},
+		BarrierPos: 1, Returns: []*core.Type{core.TAtom}, Impl: impl,
+	}}})
+	return prog
+}
+
+// TestReStepLandingQuoteClaim runs the sealed `/q` claim end to end: the
+// landing ENTERS h's capturing overload over the word z as an atom (at z's
+// own position) and the run resumes past z's call and the residual apply,
+// so z never runs and the statement's later ops follow — `[z 5]`, the
+// interpreter's answer, where the landing used to defer. With no target
+// sealed, or with the overload compiled to no unit of this program, the
+// claim keeps its loud defer.
+func TestReStepLandingQuoteClaim(t *testing.T) {
+	res, err := RunProgram(quoteClaimProg(4, 0), walkReg(t))
+	if err != nil {
+		t.Fatalf("the sealed claim runs: %v", err)
+	}
+	if len(res) != 2 {
+		t.Fatalf("the captured atom and the trailing 5, got %v", res)
+	}
+	if name, aerr := core.AsAtom(res[0]); aerr != nil || name != "z" || res[0].Pos().Col != 9 {
+		t.Errorf("h's result is the word z as an atom at the word's position, got %v (%v)", res[0], res[0].Pos())
+	}
+	if n, _ := core.AsInteger(res[1]); n != 5 {
+		t.Errorf("the run resumes past the apply: the trailing 5, got %v", res[1])
+	}
+	for _, c := range []struct {
+		name       string
+		skip, unit int
+	}{{"no claim target", 0, 0}, {"no unit to enter", 4, 7}} {
+		_, err := RunProgram(quoteClaimProg(c.skip, c.unit), walkReg(t))
+		if err == nil || !strings.Contains(err.Error(), "CAPTURES the word `z`") {
+			t.Errorf("%s: the claim defers loudly, got %v", c.name, err)
+		}
 	}
 }
