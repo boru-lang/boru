@@ -149,6 +149,7 @@ keep the two in sync in the same commit.
 | [NUR225](#nur225) | FIXED 2026-09-26 (templates and XML holes spell their source — the handoff log's entry of that date): canon renders a template string as backtick source (`canonTemplate`: literal text with the template lexer's escapes, each hole `${…}` over its tokens' canon) and an XML literal with holes as its XML (`canonXmlTmpl`: text and attribute text escaped as a plain element's), in both ports — TS keeps a tagged empty hole as `${}`. The original text: Template strings and XML literals with `${}` holes canon in DEBUG form — `interp('v ' ${1} ' w')`, `interp-xml(<a>${1}</a>)` — which no parser accepts (a template re-parses as a syntax error, an XML literal as the word `interp-xml` over a group): 30 of parse.tsv's rows fail the canon fixpoint on it, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
 | [NUR226](#nur226) | FIXED 2026-09-26 (the key canons as its key — the handoff log's entry of that date): a map key renders bare only when it lexes back as the same key (letters, digits, `_ $ - @`) and quoted otherwise (`canonKey`), in every canon map arm, both ports. The original text: A map key that needs quoting canons bare: `{'q k':2}` renders `{q k:2}`, which re-parses as two entries (`{q:q k:2}`) — ADR-015's round-trip broken on the key, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
 | [NUR227](#nur227) | FIXED 2026-09-26 (a comma before the angle — the handoff log's entry of that date): a sequence joins a part whose last token is a bare capitalised name to a part opening `<` with a comma (`joinCanonParts`), so `[:A, <a/>]` re-parses as the typed list it is, both ports. The original text: A typed tag before an XML literal re-lexes as the angle sugar: `<a/>:A` canons `[:A <a/>]`, which re-parses as `[:A<a/>]` — whitespace does not separate `A` from `<`, so the tag and the element fuse into `A<a/>` | the canon fixpoint gate, closing NUR072, 2026-09-26 |
+| [NUR228](#nur228) | FIXED 2026-09-26 (the gradual window declines — the handoff log's entry of that date): the matcher flags a split whose window hangs on a gradual stack operand while a later overload forward-collects past the token the selected one stopped at (`laterCandidateCollectsPast`), and the compile declines with the gradual-split reason — the mirror of the existing split flag. The original text: `def v (whereis "x") v send {a: 1} "nobody"` is `[None]` interpreted (v is None, so `send (Any, String)` takes both forward tokens) and raised signature_error compiled: the check pass matched `send (Any, Pid)` over ONE forward token and the dynamic v, and compiled that window — `{a: 1}` sent to None; `whereis "x" send {a: 1} (self)` declined as a "stack discipline" compiler defect. A wrong answer (a program error the interpreter does not raise), pre-existing (measured on main at 3b5db68) | closing NUR064, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -8667,6 +8668,51 @@ map_literal_flex_member_test.go): the shapes above, nested loops, the
 loop inside and around a fn frame, a callback raising inside the loop, a
 range loop's own iterator name, the `error` handler, the while twin; and
 control.tsv §3's row.
+
+## NUR228 — a native's forward window binds a gradual stack operand the runtime value may not fit {#nur228}
+
+**Status:** FIXED 2026-09-26 (the gradual window declines — the handoff
+log's entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:**
+closing NUR064, probing `send` beside a `receive`.
+
+**Rule:** one dispatch, one operand window, on both lanes — a window the
+runtime value decides is not compiled as one of its outcomes.
+
+**Divergence** (measured on main at 3b5db68 and on the branch head):
+
+```
+def v (whereis "x") v send {a: 1} "nobody"
+  interp:   [None]            — v is None; send (Any, String) takes {a: 1} and "nobody"
+  compiled: signature_error   — send (Any, Pid) took {a: 1} and v: "argument 2: expected Pid, got None"
+whereis "x" send {a: 1} (self)
+  interp:   [None]
+  compiled: compile_failed "stack discipline: result operand of send is not on top"
+```
+
+`send`'s overloads split their operands by type: a Pid beneath is the
+destination after one forward token; anything else stays, and both forward
+tokens go to the String (or Pid-paren) overload. The matcher's scan for
+`send (Any, Pid)` stops at `"nobody"` (not a Pid) and fills the slot from the
+stack — at run time only when the value there IS a Pid, but in the check
+pass whenever it is a dynamic carrier, which matches every slot
+optimistically. The pass compiled that window, one of two the runtime value
+chooses between.
+
+**The fix.** `PlanMatch` notes a stack operand taken on an UNPROVEN match (a
+carrier whose static type does not conform to the slot); when the selected
+candidate took some forward tokens and such an operand, and a LATER
+candidate's own scan collects past the token this one stopped at
+(`laterCandidateCollectsPast`), a compiling pass flags
+`AmbiguousGradualSplit` — the latch the reverse case (the static choice
+forward-collects, the runtime grabs the carrier) already sets — and the
+compile declines with "forward/stack split depends on a gradual operand".
+All-stack matches stay the forward-drift guard's. A window no later
+candidate would widen (`v send {a: 1} 5`), a concrete value beneath
+(`"q" send …`) and a paren that seals the call off still compile and agree.
+Pinned: core `TestNUR228GradualStackWindowIsAmbiguous`,
+`TestNUR228NoLaterClaimIsNoAmbiguity`; lang
+`TestNUR228GradualStackWindowDeclines`,
+`TestNUR228ProvenWindowsStillCompile`.
 
 ## NUR225 — template strings and XML `${}` holes canon in debug form {#nur225}
 

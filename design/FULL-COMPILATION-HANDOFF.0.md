@@ -13322,6 +13322,25 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR228 closed — the gradual window declines (2026-09-26)
+
+**The divergence.** Found probing `send` beside a `receive` (NUR064):
+`def v (whereis "x") v send {a: 1} "nobody"` answers `[None]` interpreted
+and raised signature_error compiled. `send (Any, Pid)`'s scan stops at the
+String and fills the Pid slot from the stack; the check pass's dynamic
+carrier matched it optimistically, so the compiled window was ONE forward
+token plus v — the window the runtime takes only when v is a Pid. Measured
+on main at 3b5db68 too.
+
+**The fix.** `PlanMatch` notes an unproven stack match; with some forward
+tokens taken and a later candidate whose own scan collects past the stop
+token (`laterCandidateCollectsPast`), a compiling pass sets
+`AmbiguousGradualSplit`, the latch the reverse case already used, and the
+program declines loudly. All-stack matches stay the forward-drift guard's.
+Faithfully compiling such a window would take the drift window's island
+generalised to mixed forms, and only a terminal window could absorb its
+variadic result; left for the full-compilation line.
+
 ## NUR065 resolved — one set of guarantees for both classifier spellings (2026-09-26)
 
 **The record.** `boru:state`'s classification role has two spellings in the
