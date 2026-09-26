@@ -644,6 +644,14 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		if err := validateSubtypeNameFor(body.Parent, name); err != nil {
 			return err
 		}
+		// A refinement over a bound the analysis pass does not know (a
+		// computed one, `def T (Integer gte (size s))` — the pass's
+		// carrier) mints a type whose membership the pass cannot decide,
+		// and the compiled lane replays the pass's install, carrier bound
+		// and all: `def v:T 3` bound unchecked (NUR231). Decline.
+		if !IsInertConst(body) {
+			DeclineUnknownRefinement(r, "type "+name)
+		}
 		def := r.Types.MintType(name, body.Parent)
 		installDepScalarUnifier(def, body.Parent, di, name)
 		installTypeBinding(r, name, def, body)

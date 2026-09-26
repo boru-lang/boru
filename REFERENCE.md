@@ -487,7 +487,7 @@ Any
 ├── Scalar
 │   ├── Atom
 │   ├── Boolean                     -- false | true
-│   ├── Bytes                       -- byte string (`0x…` literals)
+│   ├── Bytes                       -- byte string (no literal: `convert Bytes "…"`)
 │   ├── Number
 │   │   ├── Integer                  -- signed int64 (overflow → error)
 │   │   ├── Float                    -- IEEE-754 binary64
@@ -1656,6 +1656,19 @@ mk                                                 # returns 50
 def mkbad fn [[] [Big] [5]]
 mkbad                                              # returns [boru/type_error] return value 1: expected Big got Integer
 ```
+
+The comparison words refine every ordered scalar base — `Integer`,
+`Float`, `Number`, `String`, `Boolean`, `Atom` and `Bytes` (each type
+declares itself one) — and `between lo hi Base` builds the closed
+interval. A bound may be computed: `(Integer gt (size s))`, `(Bytes gte
+(convert Bytes "m"))`. As a VALUE (`x is (Integer gt (size s))`) such a
+refinement is built when the program runs, on both lanes. As a TYPE — a
+named type, a typed `def`, a parameter or return type — over a bound
+known only at run time it does not compile yet: `boru run` stops with a
+`compile_failed` naming the site ("… refines over a computed bound,
+which only the run knows"). `convert Bytes` over a string literal is
+known at compile time, so `def Hi (Bytes gte (convert Bytes "m"))`
+compiles.
 
 The newtype-vs-subset distinction and its cross-language rationale are
 explained in **[Explanation: Function signatures](EXPLANATION.md#function-signatures-and-refinement-types)**

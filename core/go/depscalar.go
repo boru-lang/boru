@@ -150,28 +150,37 @@ func NewDepScalar(kind DepKind, bound Value) Value {
 }
 
 // canonicalBaseType walks t's ancestry from most-specific to root,
-// returning the first well-known scalar base (Integer, Float,
-// Number, String, Boolean, Atom) encountered. Value-tagged subtypes
-// (e.g. Number/Integer/42) strip down to their last named ancestor.
-// Returns nil for types not rooted at a supported scalar base.
+// returning the first node that DECLARES itself a refinement base
+// (DeclareRefinementBase) — core's Integer, Float, Number, String, Boolean
+// and Atom, basic's Bytes. Value-tagged subtypes (e.g. Number/Integer/42)
+// strip down to their last declaring ancestor. Returns nil for types not
+// rooted at a declared base.
 func canonicalBaseType(t *Type) *Type {
 	for d := t; d != nil; d = d.Parent {
-		switch {
-		case d.Equal(TInteger):
-			return TInteger
-		case d.Equal(TFloat):
-			return TFloat
-		case d.Equal(TNumber):
-			return TNumber
-		case d.Equal(TString):
-			return TString
-		case d.Equal(TBoolean):
-			return TBoolean
-		case d.Equal(TAtom):
-			return TAtom
+		if d.tmeta != nil && d.tmeta.RefinementBase != nil {
+			return d.tmeta.RefinementBase
 		}
 	}
 	return nil
+}
+
+// DeclareRefinementBase declares t a base the comparison words refine
+// (NUR009): `t gte bound`, `t lt bound`, `between lo hi t` build a
+// refinement over it, checked through t's Comparer. A type's owner declares
+// it where the type is registered — core the numeric, string, boolean and
+// atom leaves below, basic the Bytes leaf — so no resolver hand-lists them.
+// A nil t (a registration that failed) declares nothing.
+func DeclareRefinementBase(t *Type) {
+	if t == nil {
+		return
+	}
+	t.ensureTMeta().RefinementBase = t
+}
+
+func init() {
+	for _, t := range []*Type{TInteger, TFloat, TNumber, TString, TBoolean, TAtom} {
+		DeclareRefinementBase(t)
+	}
 }
 
 // IsDepScalar reports whether the value carries a DepScalar
@@ -212,6 +221,14 @@ func depScalarCheck(info DepScalarInfo, value Value) bool {
 // cross-type comparisons (e.g. Integer DepScalar vs String value)
 // reject cleanly.
 func depBoundCheck(b *DepBound, lower bool, value Value) bool {
+	// A bound the analysis pass does not know — a computed one, the pass's
+	// carrier — decides nothing: the carrier orders below every value, so a
+	// verdict over it was the lattice's, not the bound's (`def T (Integer lte
+	// (size s))` refused 3 at check time whatever s held). The pass admits,
+	// gradually; the run checks the real bound (NUR231).
+	if !IsConcrete(b.Value) {
+		return true
+	}
 	cmp, err := CompareValues(value, b.Value)
 	if err != nil {
 		return false
@@ -451,9 +468,7 @@ func MakeDepScalarSig(opName string, kind DepKind) Signature {
 			// against its ID so a downstream operand — toCarrier strips the
 			// DepScalarInfo to a bare base carrier, preserving the ID — can
 			// recover the bound via origByID and bake it as a const.
-			if r != nil {
-				r.analysisRecorder().RememberOriginal(dep)
-			}
+			noteRefinementConstruct(r, dep, args[0])
 			return []Value{dep}, nil
 		}, RunInCheck()),
 		Returns: []*Type{TScalar},
@@ -467,7 +482,37 @@ func MakeDepScalarSig(opName string, kind DepKind) Signature {
 	}
 }
 
-func BetweenHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+// DeclineUnknownRefinement declines the compile at a site that would carry a
+// refinement over a bound the analysis pass does not know — a computed one,
+// whose bound is the pass's carrier: the compiled lane would bake the
+// carrier for the bound, which only the run knows (NUR231). A no-op outside
+// an analysis pass (the interpreter's own runs).
+func DeclineUnknownRefinement(r *Registry, site string) {
+	if r != nil && r.analysisActive() {
+		r.analysisRecorder().MarkUncompilable(site + " refines over a computed bound, which only the run knows (NUR231)")
+	}
+}
+
+// noteRefinementConstruct tells the compile pass how a refinement it just
+// built reaches the run: over KNOWN bounds it is a const (RememberOriginal,
+// so a stripped operand recovers it); over a bound the pass does not know —
+// a computed one, `Integer gt (size s)`, whose bound is the pass's carrier —
+// the constructor call is recorded as the call it is, so the run builds the
+// refinement over the real bound (NUR231).
+func noteRefinementConstruct(r *Registry, dep Value, bounds ...Value) {
+	if r == nil {
+		return
+	}
+	for _, b := range bounds {
+		if !IsConcrete(b) {
+			r.analysisRecorder().NoteRuntimeConstruct()
+			return
+		}
+	}
+	r.analysisRecorder().RememberOriginal(dep)
+}
+
+func BetweenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	if IsConcrete(args[2]) {
 		return nil, fmt.Errorf("between: type arg must be a scalar type literal, got concrete %s",
 			args[2].Parent.String())
@@ -488,16 +533,24 @@ func BetweenHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([
 		return nil, fmt.Errorf("between: high bound %s does not match base %s",
 			args[1].Parent.String(), base.String())
 	}
-	cmp, err := CompareValues(args[0], args[1])
-	if err != nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
-		return nil, fmt.Errorf("between: %w", err)
-	}
-	if cmp > 0 {
-		return []Value{NewTypeLiteral(TNever)}, nil
-	}
 	info := DepScalarInfo{
 		Lo: &DepBound{Inclusive: true, Value: args[0]},
 		Hi: &DepBound{Inclusive: true, Value: args[1]},
 	}
-	return []Value{NewValueRaw(base, info)}, nil
+	dep := NewValueRaw(base, info)
+	// An empty interval is Never — decided only over KNOWN bounds: a
+	// computed one is the analysis pass's carrier, which orders below every
+	// value, so `between 1 (size s) Integer` was Never at compile time
+	// whatever s held (NUR231). Over an unknown bound the run decides.
+	if IsConcrete(args[0]) && IsConcrete(args[1]) {
+		cmp, err := CompareValues(args[0], args[1])
+		if err != nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
+			return nil, fmt.Errorf("between: %w", err)
+		}
+		if cmp > 0 {
+			return []Value{NewTypeLiteral(TNever)}, nil
+		}
+	}
+	noteRefinementConstruct(r, dep, args[0], args[1])
+	return []Value{dep}, nil
 }

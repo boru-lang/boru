@@ -125,7 +125,7 @@ func checkBodyReturnConformance(r *core.Registry, name string, declared []*core.
 		// the pattern doubles as the "expected" rendering.
 		if k < len(patterns) && patterns[k] != nil &&
 			!got.Dynamic && got.Parent != nil && !core.IsBareTypeNode(got) && !got.Parent.Equal(core.TNone) {
-			if _, ok := core.Unify(*patterns[k], got); !ok {
+			if _, ok := core.Unify(*patterns[k], got); !ok && !refinementUndecided(*patterns[k], got) {
 				detail, _ := core.ReturnTypeErrorText(name, k+1, patterns[k], got)
 				if !hasCheckDiagnostic(r, "type_error", detail) {
 					r.Check.AddDiagnostic(core.CheckDiagnostic{
@@ -1210,4 +1210,34 @@ func checkFnBodyAtConstruction(r *core.Registry, name string, fnDef core.FnDefIn
 			r.Check.Diagnostics = kept
 		}
 	}
+}
+
+// refinementUndecided reports whether a return pattern's failed Unify is a
+// value-level refinement's — a DepScalar, `[(Integer gt 3)]`, or a union
+// carrying one — over a residual the pass does not know: membership is the
+// VALUE's, which only the run has, and the RET check asks it there. The
+// named spelling (`[Big]`) defers exactly this case already (the scalar-fold
+// gate below), so an inline refinement return refused an abstract Integer at
+// check time that both lanes then returned (NUR232). A residual provably
+// outside the refinement's base, or a compile-time-known scalar, still
+// decides.
+func refinementUndecided(pattern, got core.Value) bool {
+	if ScalarFoldOperand(got) {
+		return false
+	}
+	if pattern.IsDepScalar() {
+		return !residualProvablyDisjoint(got, pattern.Parent)
+	}
+	if core.IsDisjunct(pattern) {
+		di, err := core.AsDisjunct(pattern)
+		if err != nil {
+			return false
+		}
+		for _, alt := range di.Alternatives {
+			if refinementUndecided(alt, got) {
+				return true
+			}
+		}
+	}
+	return false
 }

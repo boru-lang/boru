@@ -547,7 +547,10 @@ const (
 	// with an agreement guard exactly like CompileModuleFold, so a
 	// non-deterministic handler never freezes; an erroring dispatch (the
 	// family-restricted `lt` on cross-family operands) declines the fold and
-	// keeps today's diagnostic path.
+	// keeps today's diagnostic path. One overload outside the family declares
+	// it: `convert Bytes <String>`, the only way to write a Bytes constant,
+	// whose type-literal target folds with it (a declared type slot is
+	// compile-time known) — so a refinement it bounds is known (NUR009).
 	CompileScalarFold
 	// CompileValueDiverges marks a word that diverges VALUE-DEPENDENTLY: it
 	// returns its declared result for most operands but RAISES for a specific
@@ -1833,6 +1836,13 @@ type typeMeta struct {
 	// TypeBody. Stamped once at install; shared through the tmeta
 	// pointer like every other field here.
 	Body *Value
+	// RefinementBase, non-nil, is the node's declaration that the
+	// comparison words refine it (`Integer gte 0`, `String lt "z"`) — the
+	// canonical node itself, so every copy of the type Value reads the one
+	// base back. A type DECLARES its participation, where its owner
+	// registers it (DeclareRefinementBase, NUR009); canonicalBaseType walks
+	// to the nearest declaring ancestor instead of a hand-listed switch.
+	RefinementBase *Type
 }
 
 // ensureTMeta returns v's typeMeta, allocating it if absent. Writers of
@@ -3936,6 +3946,14 @@ func (v Value) String() string {
 	// their leaf type name uniformly across all types, including
 	// types with custom Behaviors. See the Data==nil arm in
 	// kernelFormatDefault.
+	//
+	// A refinement is the exception: it renders in the comparison
+	// vocabulary whatever its base's Formatter, which reads a VALUE of
+	// the base and has no refinement to read — Bytes' printed `Bytes<?>`
+	// for every Bytes refinement (NUR009).
+	if v.IsDepScalar() {
+		return renderDepScalar(v)
+	}
 	if v.Data != nil && v.Parent != nil {
 		for t := v.Parent; t != nil; t = t.Parent {
 			if t.Behavior() == nil || t.Behavior() == DefaultBehavior {

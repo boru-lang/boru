@@ -152,6 +152,8 @@ keep the two in sync in the same commit.
 | [NUR228](#nur228) | FIXED 2026-09-26 (the gradual window declines — the handoff log's entry of that date): the matcher flags a split whose window hangs on a gradual stack operand while a later overload forward-collects past the token the selected one stopped at (`laterCandidateCollectsPast`), and the compile declines with the gradual-split reason — the mirror of the existing split flag. The original text: `def v (whereis "x") v send {a: 1} "nobody"` is `[None]` interpreted (v is None, so `send (Any, String)` takes both forward tokens) and raised signature_error compiled: the check pass matched `send (Any, Pid)` over ONE forward token and the dynamic v, and compiled that window — `{a: 1}` sent to None; `whereis "x" send {a: 1} (self)` declined as a "stack discipline" compiler defect. A wrong answer (a program error the interpreter does not raise), pre-existing (measured on main at 3b5db68) | closing NUR064, 2026-09-26 |
 | [NUR229](#nur229) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): a boru matcher refuses a malformed quoted-string escape before jsonic's lexer reads it, the escape itself named, in both ports. The original text: the two tabnas ports reported a malformed escape in a quoted string differently — `"a\x4"` an invalid ascii escape in Go and an unterminated string in TS, `"a\xZZb"` spanning `"a\xZZ` in Go and `\xZZ` in TS. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
 | [NUR230](#nur230) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): Go's shared escape writer pairs a UTF-16 surrogate split across two `\uXXXX` escapes into one code point, as jsonic does in a quoted string. The original text: in a template, `\ud83d\ude00` read as two U+FFFD in Go and as one code point in TS (whose UTF-16 strings pair the units); both ports read it as one in a quoted string. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
+| [NUR231](#nur231) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): a refinement constructor over a bound the check pass does not know latches a run-time construct and the dispatch records as the call it is, so the run builds the refinement; a refinement bakes only over const bounds, `between` decides no empty interval from an unknown one, a membership check over one decides nothing in the pass, and a TYPE over one (a named install, an inline typed def or signature type) declines the compile loudly. The original text: `3 is (Integer gt (size "abc"))` was false interpreted and true compiled — the check pass built the refinement over its carrier for the computed bound and the recorder baked it; a carrier orders below every value, so a lower bound admitted everything, an upper one refused everything (a false check-time type_error too), `between` over one was Never, and a type over one bound or dispatched unchecked compiled. Pre-existing | closing NUR009, 2026-09-26 |
+| [NUR232](#nur232) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the return-pattern check defers a refinement's value-level membership over an abstract residual not provably outside its base, the named return type's rule. The original text: `def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5` was a check-time type_error ("expected (Integer gt 3), got Integer") that both lanes then returned 5 for; the named twin (`[Big]`) is check-clean. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -176,7 +178,7 @@ keep the two in sync in the same commit.
 | [NUR131](#nur131) | RESOLVED (2026-09-10, the forty-fifth increment). A full-stack SHUFFLE over a produced closure compiled to the closure as DATA where the interpreter re-steps it and applies: `def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]] end 5 (mk 3) 0 pick` answered `[5 fn (Integer) fn (Integer)]` compiled for the interpreter's `[45]`, its `1 roll` twin `[fn (Integer) 5]` for `[15]`, and two more witnesses (`9 (mk 3) 9 2 roll`, `7 (mk 3) 1 pick`) the same way — exit 0, silent, on the DEFAULT lane. Measured on the merge base `d65f25a`, so it PRE-DATED the residual rebuild it was found reviewing. `FoldFullStack` now declines pick/roll when a preserved entry is both event-produced and provably a Function, and the residual rebuild carries the wider possibly-callable screen | verifying a Codex P1 on PR #447, 2026-09-10 |
 | [NUR130](#nur130) | FIXED 2026-09-25 (the condition's own token — the handoff log's entry of that date): A terminal trap's caret is the RECORDED site, the interpreter's is wherever its tape pointer sat: `while [] [1] end 5` raises the identical `runtime_error: while: condition produced no value` on both lanes, at `1:7` (the condition operand) compiled and `1:14` (the trailing `5`) interpreted, and the bare `while [] [1]` is `1:7` compiled against `source position unknown` interpreted. Message, code and exit agree; only the anchor differs, and the compiled one is the better anchor — the interpreter's is a tape artefact of where the loop's move token happened to sit after splicing | the forty-second increment's empty-condition trap, 2026-09-10 |
 | [NUR112](#nur112) | FIXED 2026-09-25 (the plain check's stored member — the handoff log's entry of that date): on a PLAIN check a stored fn value read as a member is the value itself, so the pass applies it over what follows as the run does (`def m {a:size/v}  m.a [1 2 3]` checks [Integer]); the compile pass keeps its dynamic carrier and the shaped method model. The earlier text: NARROWED 2026-09-25 (the extension is irrelevant; the widening is the member read's designed model — the record's resolution line): The checker's residual for a parked native word applied after its name was EXTENDED does not match what runs: `def Pos (refine Integer)  def m {a:size/v}  def size fn [[n:Pos] [Integer] [200]] end  def v:Pos 3  m.a v` is checked `[dynamic(Any) Pos]` — two values, one of them the argument left behind — and actually leaves `[Integer]`. Both ENGINES agree on the answer (3); it is the static model that differs, so no differential can see it — TestCheckTypeSoundness can, and did | writing a corpus row for the parked-native apply gate, 2026-08-29 |
-| [NUR009](#nur009) | Bytes excluded from the DepScalar refinement bases — VERDICT 2026-08-15: WAIT for the ADR-012 `types/go` consolidation to close this through the refinement-base capability; no narrow fix meanwhile | 2026-07-22 uniformity review |
+| [NUR009](#nur009) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the refinement bases are DECLARED — `core.DeclareRefinementBase` stamps a type's capability where its owner registers it (core its six leaves, basic Bytes), and `canonicalBaseType` reads the declaration, hand-listing nothing; the inline-signature resolver slots a refinement at its own base (a Bytes one was a wildcard), a refinement renders as one over Bytes' Formatter, and `convert Bytes <String>` folds over a const so a named Bytes refinement compiles. The original text: Bytes excluded from the DepScalar refinement bases — VERDICT 2026-08-15: WAIT for the ADR-012 `types/go` consolidation to close this through the refinement-base capability; no narrow fix meanwhile | 2026-07-22 uniformity review |
 | [NUR026](#nur026) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): every string form reads every escape alike in both ports — the braced `\u{…}` form and split surrogate pairs are live in a template too — and a malformed `\x` / `\u` is refused alike, naming the escape: a template's literal matcher and a new quoted-string matcher answer to one definition (`escapeFault`). The original text: Escape sets diverge between quoted strings and templates — NARROWED 2026-08-15: the escape VOCABULARY is resolved by fix (templates take the quoted-string set: \b \f \v \xNN \uNNNN, and an unknown escape drops its backslash); what remains is the malformed-input REPORTING difference, which needs an error channel the template lexer seam does not have | 2026-07-22 uniformity review |
 | [NUR072](#nur072) | FIXED 2026-09-26 (canon spells the sugar and the word — the handoff log's entry of that date): canon renders a plain Word bare (ADR-015 settles the bare-word question: `word(foo)` re-parses as the `word` splice over a group, bare `foo` re-parses to the Word), the lambda marker `=>` and its fold group `A => B` without parens, a mini literal `+name'src'` in one canonical delimiter with the lexer's escapes, the type bound `name/t`, and a group modifier after its group (`(1 2) /s`) — in core/go and core/ts alike; the TS `/N` arity is a bigint, so `x/9223372036854775807` round-trips in both ports and left divergent.tsv for parse.tsv; a Go disjunct canon arm (missing, it spelled its members in the debug form) matches TS. A fixpoint gate over the parser corpus runs in both runners with a shrink-only ledger (parser/spec/canon-fixpoint.tsv) — NUR072's kinds all reach their fixpoint; the 33 ledgered rows are NUR225–NUR227. The original text: Three sugar kinds (mini, type-bound, lambda) still canon in DEBUG form after NUR059 — withdrawn there because the renders do not round-trip: SugarInfo does not retain the mini delimiter, and type-bound renders its Items rather than the bound's text; also carries the undecided bare-word question (`word(foo)` vs `foo`, 175 corpus rows) | NUR059's fix, 2026-08-15 |
 | [NUR075](#nur075) | FIXED 2026-09-26 (eq's capability — the handoff log's entry of that date): `eq` is extensible per type on `deq`'s terms — `core.ExactEqualer`, consulted at ExactEqual's terminal `false` exactly where DeepEqualer sits in DeepEqual (so the two reach the same values: the pairs no kernel arm names), and a `behave eq/q` slot with deq's shape (`[[T T] [Boolean]]`) and deq's seam (delegate, decline, re-entry guard). Kernel identity arms are untouched — the capability is additive, as deq's is. The original text: `deq` is extensible per type (`DeepEqualer`), `eq` is not — the one part of the retired NUR031's verdict its fix did not take: the divergences closed by adding kernel arms rather than by routing through `Behavior`, so a type can define its own deep equality but not its own identity | NUR031's fix, 2026-08-16 |
@@ -3619,10 +3621,10 @@ The scalar branch families carry structural leaves: `String` has
 layer (`native_bytes.go`) rather than declared in `builtinDecls`. The
 same reasoning covers it with one caveat: of the two value-level
 substitutes named below, `case` literal coverage does not reach Bytes
-(the domain is infinite) and DepScalar refinement construction is not
-available for it either (it is not a supported refinement base —
-NUR009). The nominal-split route, `refine Bytes`, does work, and is
-what stands in for subtypes here.
+(the domain is infinite). DepScalar refinement construction does —
+Bytes declares itself a refinement base since NUR009 closed
+(`def Hi (Bytes gte (convert Bytes "m"))`) — and so does the
+nominal-split route, `refine Bytes`.
 
 ### Why allowed
 
@@ -3631,9 +3633,9 @@ family to have leaves, and nothing dispatches on their presence. There
 is no useful structural split of Boolean — `True`/`False` subtypes would
 duplicate what value-level machinery already provides uniformly (`case`
 literal coverage per NUR002, and DepScalar refinements: `(Boolean gte
-true)` *is* the true-only subset, since Boolean is one of the supported
-refinement bases — `canonicalBaseType` admits Integer, Float, Number,
-String, Boolean and Atom). Users who want a
+true)` *is* the true-only subset, since Boolean is one of the
+refinement bases — Integer, Float, Number, String, Boolean, Atom and
+Bytes each declare themselves one, `DeclareRefinementBase`). Users who want a
 nominal split can mint it (`refine Boolean`), which participates in
 dispatch by specificity like any refinement.
 
@@ -3650,8 +3652,9 @@ distinctions into the structural layer — the wrong home for them.
 ### Evidence
 
 - `core/go/typetable.go::builtinDecls` — the Scalar branch layout.
-- `core/go/depscalar.go::canonicalBaseType` — Boolean listed among the
-  supported DepScalar bases (`Boolean gte true` constructs).
+- `core/go/depscalar.go` — Boolean declared a refinement base
+  (`DeclareRefinementBase`, read by `canonicalBaseType`; `Boolean gte
+  true` constructs).
 - `lang/spec/case.tsv:75` (true+false cover Boolean) and
   `lang/spec/edge-types-1.tsv:82-85` / `lang/spec/open-words.tsv:26-29`
   (`refine Boolean` mints a nominal split that dispatches) — the
@@ -3728,7 +3731,7 @@ manufacture bugs, not ergonomics.
 
 ## NUR009 — Bytes excluded from the DepScalar refinement bases {#nur009}
 
-**Status:** Pending · **Recorded:** 2026-07-22 · **Surfaced by:** full-repo uniformity review
+**Status:** FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date) · **Recorded:** 2026-07-22 · **Surfaced by:** full-repo uniformity review
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
 
@@ -3775,6 +3778,40 @@ a type DECLARES its refinement-base participation, and hand-listing one
 more leaf in the resolver is the mechanism the remediation replaces.
 The gap is real and stays visible in the meantime — that is what a
 Pending record is for. Stays **Pending** until the consolidation lands.
+
+**The fix** (2026-09-26 — the capability, not the one-line patch the
+verdict refused). The refinement bases are DECLARED, not listed.
+`core.DeclareRefinementBase(t)` stamps the type's `RefinementBase`
+capability (its typeMeta), and `canonicalBaseType` walks a type's ancestry
+to the first node that declared itself — a subtype refines as its
+declaring ancestor, an undeclared type is no base. Each owner declares
+where it registers the type: core its Integer, Float, Number, String,
+Boolean and Atom leaves (`depscalar.go`'s init), basic its Bytes leaf
+(`registerBytesType`). No resolver hand-lists a base — the mechanism the
+verdict said the consolidation replaces — and when ADR-012's `types/go`
+move lands, the declaration moves with the type. What the capability
+needed to be whole:
+
+- the inline-signature resolver (`ResolveSigType`) hand-listed five bases
+  for an inline refinement, and a Bytes one fell to its TAny tail — a
+  wildcard parameter (`[b:(Bytes gt …)]` took any value); a refinement now
+  slots at its own base;
+- Bytes' value Formatter rendered every Bytes refinement `Bytes<?>`, and
+  the compile pass's const pool, keyed on that rendering, merged two of
+  them — `c is (Bytes lt b) c is (Bytes gt a)` answered `[false false]`
+  compiled. `Value.String` renders a refinement before any base Formatter,
+  and a refinement over an identity-payload bound pools by identity;
+- there is no Bytes literal, so every Bytes bound is computed: the compile
+  pass now folds `convert Bytes <String>` over a const string (the overload
+  declares CompileScalarFold, and the fold admits a type literal at a
+  declared type slot), so a named Bytes refinement compiles.
+
+Found on the way: NUR231 (a refinement over a computed bound, in the
+compiled lane) and NUR232 (an inline refinement return, at check time).
+Pinned by core's `nur009_refinement_base_test.go` and lang's
+`nur009_bytes_refinement_test.go` — value use, named type, typed def,
+parameter and return, positive and negative; the rendering; the pool
+collision; and the bounds each base refuses.
 
 ---
 
@@ -8854,6 +8891,87 @@ pairs explicitly).
 `\u` low surrogate into one code point, as jsonic does; a lone surrogate
 is still U+FFFD. Pinned by NUR026's `parse.tsv` rows and the direct
 `processTemplateEscapes` cases.
+
+## NUR231 — a refinement over a computed bound: the compile pass baked a bound it did not know {#nur231}
+
+**Status:** FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** closing NUR009 — every Bytes bound is computed, so pinning
+Bytes refinements on both lanes met it first.
+
+**Rule:** one refinement, one membership question, on both lanes.
+
+**Divergence** (pre-existing; measured before the fix):
+
+```
+3 is (Integer gt (size "abc"))                          interp: false            compiled: true
+7 is (between 1 (size "abcdefghij") Integer)            interp: true             compiled: false
+def T (Integer gte (size "abcd")) def v:T 3 v           interp: type_error       compiled: [3]
+def T (Integer lte (size "abcd")) def v:T 3 v           interp: [3]              compiled + boru check: type_error
+def x:(Integer gt (size "abc")) 2 x                     interp: type_error       compiled: [2]
+def g fn [[n:(Integer gt (size "abc"))] [Any] [n]] g 2  interp: signature_error  compiled: [2]
+```
+
+The comparison words' refinement constructor runs in the check pass
+(RunInCheck), where a computed bound is a carrier; the pass built
+`(Integer gt Integer)` and the recorder baked it as a const, carrier and
+all. A carrier orders below every value (the type-literal-first rule), so
+every verdict over it was the lattice's, not the bound's: a lower bound
+admitted everything, an upper bound refused everything, `between` over one
+was Never, and a type over one checked nothing the run would.
+
+**The fix.**
+
+- *A value is built by the run.* The constructors (`MakeDepScalarSig`'s
+  handler, `BetweenHandler`) note a bound the pass does not know
+  (`NoteRuntimeConstruct`), and the engine's post-handler hook records the
+  dispatch as the call it is (`RecordRuntimeDispatch` — the run-time bind
+  latch's generalisation, its outs registered for later operands). A
+  refinement bakes as a const only over const bounds (`IsInertConst`), and
+  `between` decides an empty interval only over known ones. Value uses —
+  `is`, a residual, a factory's result, type algebra over one — compile
+  and agree.
+- *The pass decides nothing over an unknown bound.* `depBoundCheck`
+  admits (gradually), so `boru check` raises no diagnostic of its own.
+- *A type over one declines.* A named type's install, an inline typed def
+  and an inline signature type are checked against a bound only the run
+  knows, and the compiled lane replays the pass's install and verdict;
+  those sites decline the compile (`DeclineUnknownRefinement`: "… refines
+  over a computed bound, which only the run knows (NUR231)"), and the
+  interpreter's answer stands. Compiling them is owed — a run-time type
+  install and a run-time-checked bind over the run's refinement.
+
+Pinned by core's `TestRefinementConstructorsNoteUnknownBounds`,
+`TestUnknownBoundDecidesNothing`, `TestRefinementConstOnlyOverKnownBounds`
+and `TestUnknownRefinementDeclines`, and lang's
+`TestNUR231ComputedBoundValuesCompile` and
+`TestNUR231ComputedBoundTypesDecline` (with their known-bound twins).
+
+## NUR232 — an inline refinement return refused an abstract residual at check time; the named twin defers it {#nur232}
+
+**Status:** FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** closing NUR009, pinning NUR231's check-clean half.
+
+**Rule:** one return contract, one check, whatever the type's spelling.
+
+**Divergence** (pre-existing):
+
+```
+def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5          boru check: type_error "return value 1: expected (Integer gt 3), got Integer"
+                                                         both lanes: [5]
+def Big (Integer gt 3) def g fn [[n:Integer] [Big] [n]] g 5   boru check: clean
+```
+
+The inline spelling rides the fn's return PATTERN, whose check Unify'd the
+refinement against the abstract residual — which never unifies. The named
+spelling rides the return TYPE, whose check defers an abstract residual to
+the RET and decides only a compile-time-known scalar.
+
+**The fix.** The pattern check defers a failed Unify when the pattern is
+(or a union carries) a refinement and the residual is abstract and not
+provably outside its base (`refinementUndecided`, check_fnbody.go) — the
+named path's rule. A residual provably outside (`[n:String]`) and a failing
+constant (`[2]`) are still flagged. Pinned by lang's
+`TestNUR232InlineRefinementReturnDefers`.
 
 ## NUR228 — a native's forward window binds a gradual stack operand the runtime value may not fit {#nur228}
 

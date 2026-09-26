@@ -13322,6 +13322,28 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR009 closed — Bytes a refinement base, a computed bound the run's (2026-09-26)
+
+**The record.** Bytes, the one ordered scalar leaf the comparison words
+would not refine, held open on the maintainer's verdict: close it through
+the refinement-base CAPABILITY — a type declares its participation — never
+by adding one more leaf to the resolver's list.
+
+**The fix.** `core.DeclareRefinementBase` stamps the capability where each
+owner registers its type (core its six leaves, basic Bytes), and
+`canonicalBaseType` reads the declaration. Making Bytes whole on both lanes
+needed three more: the inline-signature resolver slots a refinement at its
+own base (a Bytes one was a wildcard), a refinement renders as one over
+Bytes' Formatter (every one printed `Bytes<?>`, and the const pool merged
+two by that key), and `convert Bytes <String>` folds over a const, since a
+Bytes bound is never a literal. Pinning it found NUR231 — the check pass
+built a refinement over a computed bound's CARRIER and the compiler baked
+it (`3 is (Integer gt (size "abc"))` true compiled): a constructor over an
+unknown bound now records as a run-time call, a type over one declines the
+compile loudly, and the pass decides no membership over one — and NUR232,
+an inline refinement return refusing an abstract residual at check time
+that the named twin defers. Both CLOSED.
+
 ## NUR026 closed — one escape vocabulary, one malformed-escape report (2026-09-26)
 
 **The record.** Templates took the quoted-string escape vocabulary on

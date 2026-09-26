@@ -24,7 +24,12 @@ func tryFoldScalarConst(r *core.Registry, sig *core.Signature, args []core.Value
 		sig.DispatchHandler() == nil || len(sig.NoEvalArgs) > 0 || len(args) == 0 {
 		return core.Value{}, false
 	}
-	for _, a := range args {
+	for i, a := range args {
+		// A type literal at a declared type slot — `convert Bytes "m"`'s
+		// target — is compile-time known by construction.
+		if sig.TypeArgs[i] && core.IsBareTypeNode(a) {
+			continue
+		}
 		if !check.ScalarFoldOperand(a) {
 			return core.Value{}, false
 		}

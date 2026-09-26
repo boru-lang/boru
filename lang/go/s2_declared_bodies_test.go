@@ -116,7 +116,7 @@ func TestArgsProjectionCompiles(t *testing.T) {
 // TestUnpackUnprovenSourceCompiles — `unpack [names] src` over a source the
 // check pass cannot read (a Map param, a fn's result) binds RUN-TIME names
 // (2026-09-25): the handler notes them (NoteRuntimeBind), the dispatch is
-// emitted as the plain CALL_NATIVE it is (RecordRuntimeBindDispatch), the
+// emitted as the plain CALL_NATIVE it is (RecordRuntimeDispatch), the
 // stub installs record no dyn-scope def and no twin, and every read seats
 // live as a gradual value, so a downstream dispatch poly re-matches
 // (code-bodies.tsv L173). Before: inside a fn the shape declined ("check-

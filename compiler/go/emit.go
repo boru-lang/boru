@@ -929,8 +929,11 @@ type EmitState struct {
 	runtimeStub  map[string]bool
 	runtimeTwins map[int]bool
 	// pendingRuntimeBindCall latches between a binder handler's
-	// NoteRuntimeBind and the dispatch's RecordRuntimeBindDispatch.
+	// NoteRuntimeBind and the dispatch's RecordRuntimeDispatch.
 	pendingRuntimeBindCall bool
+	// pendingRuntimeConstruct latches between a constructor handler's
+	// NoteRuntimeConstruct and the dispatch's RecordRuntimeDispatch (NUR231).
+	pendingRuntimeConstruct bool
 	// armBoundTypeNames are TYPE names whose binding, after adoption, exists
 	// at runtime only through arm-resident type installs — a node minted
 	// per element, whose depth and identity are body-run-dependent — so a
@@ -5601,19 +5604,43 @@ func (es *EmitState) NoteRuntimeBind(name string) {
 	es.dynEnv = true
 }
 
-// RecordRuntimeBindDispatch — the dispatch of a check-mode-run binder word
-// (`unpack`) whose handler bound RUN-TIME names in this very dispatch
-// (NoteRuntimeBind's latch): the check pass's stub installs are not the
-// bind, so the call itself is emitted — a plain 0-result CALL_NATIVE over
-// its operands (the names list, an inert const; the source, a local or an
-// event result) — and the handler binds the names on the run-time registry
-// exactly as the interpreter's does. A no-op when the latch is clear (the
-// ordinary elision of a compile-time word stands); an operand with no
-// compiled home hands the dispatch to RecordCall, whose compile-time-word
-// arm declines it loudly (no decline site of its own — the site census).
-func (es *EmitState) RecordRuntimeBindDispatch(word string, sig *core.Signature, args []core.Value, pos core.SrcPos) {
-	if !es.Active() || !es.pendingRuntimeBindCall {
+// NoteRuntimeConstruct — a check-mode-run constructor built its result over
+// an operand the pass does not know (a refinement over a computed bound,
+// `Integer gt (size s)`: the bound is a carrier, NUR231). The result is no
+// const — baked, it carried the carrier for a bound — so the dispatch
+// records as the call it is (RecordRuntimeDispatch) and the run builds it.
+func (es *EmitState) NoteRuntimeConstruct() {
+	if es.Active() {
+		es.pendingRuntimeConstruct = true
+	}
+}
+
+// RecordRuntimeDispatch — the dispatch of a check-mode-run word whose
+// handler latched a RUN-TIME effect in this very dispatch:
+//
+//   - a binder (`unpack`) that bound RUN-TIME names (NoteRuntimeBind's
+//     latch): the check pass's stub installs are not the bind, so the call
+//     itself is emitted — a plain 0-result CALL_NATIVE over its operands
+//     (the names list, an inert const; the source, a local or an event
+//     result) — and the handler binds the names on the run-time registry
+//     exactly as the interpreter's does;
+//   - a constructor whose value is built over an operand the pass does not
+//     know (NoteRuntimeConstruct's latch, NUR231): the call is emitted with
+//     its outs, which later operands resolve to, so the run builds the
+//     refinement over the real bound.
+//
+// A no-op when no latch is set (the ordinary elision of a compile-time word
+// stands); an operand with no compiled home hands the dispatch to
+// RecordCall, whose compile-time-word arm declines it loudly (no decline
+// site of its own — the site census).
+func (es *EmitState) RecordRuntimeDispatch(word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos) {
+	construct := es.pendingRuntimeConstruct
+	es.pendingRuntimeConstruct = false
+	if !es.Active() || !(es.pendingRuntimeBindCall || construct) {
 		return
+	}
+	if !construct {
+		outs = nil
 	}
 	es.pendingRuntimeBindCall = false
 	ops := make([]EmitOperand, len(args))
@@ -5626,7 +5653,10 @@ func (es *EmitState) RecordRuntimeBindDispatch(word string, sig *core.Signature,
 		ops[i] = op
 	}
 	es.SiteCounts[SiteDynamic]++
-	es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, sig: sig, ops: ops, nout: 0, pos: pos}})
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos}})
+	for i, out := range outs {
+		es.setProducedAt(out, seq, i)
+	}
 }
 
 // closureLatch — see the lastClosure field doc.
@@ -12692,6 +12722,19 @@ func constPoolKey(v core.Value) string {
 	return v.Parent.ID + "\x00" + core.CanonValue(v)
 }
 
+// identPayloadBound reports whether a refinement's bound side carries an
+// identity payload, which the const pool never dedups by canon.
+func identPayloadBound(b *core.DepBound) bool {
+	if b == nil {
+		return false
+	}
+	switch b.Value.Data.(type) {
+	case core.ExtensionPayload, core.XmlElementPayload:
+		return true
+	}
+	return false
+}
+
 func (es *EmitState) intern(v core.Value) int {
 	if _, isFn := v.Data.(core.FnDefInfo); isFn {
 		// A fn value (introspection operand): never pool — CanonValue is not a
@@ -12701,9 +12744,15 @@ func (es *EmitState) intern(v core.Value) int {
 		return len(es.consts) - 1
 	}
 	identPayload := false
-	switch v.Data.(type) {
+	switch d := v.Data.(type) {
 	case core.ExtensionPayload, core.XmlElementPayload:
 		identPayload = true
+	case core.DepScalarInfo:
+		// A refinement over an identity-payload bound (a Bytes bound,
+		// NUR009) pools as its bound would: the bound renders as capped
+		// hex, no dedup key — two refinements rendering alike merged into
+		// one const, and `c is (Bytes lt b)` answered as `(Bytes gt a)`.
+		identPayload = identPayloadBound(d.Lo) || identPayloadBound(d.Hi)
 	}
 	if identPayload || v.Parent.Equal(core.TList) || v.Parent.Equal(core.TMap) ||
 		isTypeBodyPayload(v) || core.IsParenExpr(v) {

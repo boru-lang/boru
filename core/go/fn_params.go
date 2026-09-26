@@ -716,6 +716,18 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	if IsRecordType(v) {
 		return ResolveDefType(r, v)
 	}
+	// An inline refinement (`n:(Integer gt 0)`, `b:(Bytes gt …)`): the slot
+	// is its base — the refinement's Parent, whichever type declared itself a
+	// base (DeclareRefinementBase) — and the refinement rides as the pattern.
+	// The literal arm below hand-lists five bases, and a Bytes refinement fell
+	// to the TAny tail: a wildcard slot (NUR009).
+	if v.IsDepScalar() {
+		if !IsInertConst(v) {
+			DeclineUnknownRefinement(r, "an inline signature type")
+		}
+		pattern := v
+		return v.Parent, &pattern, nil
+	}
 	if v.Data != nil && (v.Parent.ConformsTo(TInteger) ||
 		v.Parent.ConformsTo(TFloat) ||
 		v.Parent.ConformsTo(TBoolean) ||

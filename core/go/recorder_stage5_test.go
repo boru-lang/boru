@@ -116,7 +116,8 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 		t.Fatal("inactive RecordArgsProjection must decline")
 	}
 	e.NoteRuntimeBind("x")
-	e.RecordRuntimeBindDispatch("w", nil, nil, SrcPos{})
+	e.NoteRuntimeConstruct()
+	e.RecordRuntimeDispatch("w", nil, nil, nil, SrcPos{})
 	if e.ContainerReadResult("id") {
 		t.Fatal("inactive ContainerReadResult must decline")
 	}

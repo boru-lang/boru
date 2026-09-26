@@ -283,12 +283,20 @@ type EmitRecorder interface {
 	// (the keep-defs leak's rule) and the program runs under DynEnv, whose
 	// frames unwind the binding as the interpreter's do.
 	NoteRuntimeBind(name string)
-	// RecordRuntimeBindDispatch records the dispatch of a check-mode-run
-	// binder word whose handler noted run-time binds in THIS dispatch
-	// (NoteRuntimeBind's latch): the call is emitted as a plain 0-result
-	// native call so the run performs the bind. A no-op when the latch is
-	// clear — the ordinary elision of a compile-time word stands.
-	RecordRuntimeBindDispatch(word string, sig *Signature, args []Value, pos SrcPos)
+	// NoteRuntimeConstruct records that the check-mode-run constructor
+	// dispatching now built its result over an operand the pass does not
+	// know — a refinement over a computed bound, `Integer gt (size s)`
+	// (NUR231): the result is no const, so the dispatch records as the call
+	// it is and the run builds the value over the real operand.
+	NoteRuntimeConstruct()
+	// RecordRuntimeDispatch records the dispatch of a check-mode-run word
+	// whose handler latched a run-time effect in THIS dispatch: a binder's
+	// run-time binds (NoteRuntimeBind — a plain 0-result native call, so the
+	// run performs the bind) or a constructor's run-time value
+	// (NoteRuntimeConstruct — a native call producing outs, which later
+	// operands resolve to). A no-op when no latch is set — the ordinary
+	// elision of a compile-time word stands.
+	RecordRuntimeDispatch(word string, sig *Signature, args, outs []Value, pos SrcPos)
 	RecordMakeMap(r *Registry, keys []string, vals []Value, implicit bool, out Value, pos SrcPos) bool
 	RecordInterp(parts []InterpPart, holeVals []Value, out Value, pos SrcPos) bool
 	RegisterTrailingApply(fnID string, arity int)
@@ -642,11 +650,12 @@ func (inactiveEmit) RecordDispatchRematchValues(string, []Value, []int, SrcPos) 
 func (inactiveEmit) RecordTypedBind(_ TypedBindSpec, _, out Value, _ SrcPos) (Value, bool) {
 	return out, false
 }
-func (inactiveEmit) RecordMakeList(*Registry, []Value, Value, SrcPos) bool         { return false }
-func (inactiveEmit) RecordMakeListInner(*Registry, []Value, Value, SrcPos) bool    { return false }
-func (inactiveEmit) RecordArgsProjection(*Registry, []Value, Value, SrcPos) bool   { return false }
-func (inactiveEmit) NoteRuntimeBind(string)                                        {}
-func (inactiveEmit) RecordRuntimeBindDispatch(string, *Signature, []Value, SrcPos) {}
+func (inactiveEmit) RecordMakeList(*Registry, []Value, Value, SrcPos) bool              { return false }
+func (inactiveEmit) RecordMakeListInner(*Registry, []Value, Value, SrcPos) bool         { return false }
+func (inactiveEmit) RecordArgsProjection(*Registry, []Value, Value, SrcPos) bool        { return false }
+func (inactiveEmit) NoteRuntimeBind(string)                                             {}
+func (inactiveEmit) NoteRuntimeConstruct()                                              {}
+func (inactiveEmit) RecordRuntimeDispatch(string, *Signature, []Value, []Value, SrcPos) {}
 func (inactiveEmit) RecordMakeMap(*Registry, []string, []Value, bool, Value, SrcPos) bool {
 	return false
 }

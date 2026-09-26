@@ -1307,6 +1307,14 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			}
 		}
 	}
+	// A refinement over a bound the pass does not know — a computed one,
+	// `def x:(Integer gt (size s)) 2`, whose bound is the pass's carrier —
+	// is checked by the run alone: the pass admits gradually, and a compiled
+	// bind would replay the pass's verdict (a concrete body) or carry the
+	// carrier for a bound (a recorded one). Decline (NUR231).
+	if depScalarCons.IsDepScalar() && !core.IsInertConst(depScalarCons) {
+		core.DeclineUnknownRefinement(r, "typed-def `"+name+"`")
+	}
 	if r.Check.IsActive() && depScalarCons.IsDepScalar() && !IsConcrete(body) {
 		if body.Parent.ConformsTo(depScalarCons.Parent) {
 			// An ABSTRACT (carrier) body admits on base conformance only —

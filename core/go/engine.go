@@ -3209,13 +3209,16 @@ func (e *Engine) dynShuffleConsumerAt(idx int) bool {
 	return true
 }
 
-// recordRuntimeBindDispatch emits a check-mode-run binder word that bound
-// RUN-TIME names in this dispatch (`unpack` over a source the pass cannot
-// read — the handler's NoteRuntimeBind) as the call it is; the recorder's
-// latch decides, so every other compile-time word keeps its elision.
-func (e *Engine) recordRuntimeBindDispatch(match *MatchResult) {
+// recordRuntimeDispatch emits a check-mode-run word whose handler latched a
+// RUN-TIME effect in this dispatch as the call it is: a binder that bound
+// run-time names (`unpack` over a source the pass cannot read — the
+// handler's NoteRuntimeBind), or a constructor whose value is built over an
+// operand the pass does not know (`Integer gt (size s)` — NoteRuntimeConstruct,
+// NUR231). The recorder's latch decides, so every other compile-time word
+// keeps its elision.
+func (e *Engine) recordRuntimeDispatch(match *MatchResult, results []Value) {
 	if e.Registry.analysisActive() && match.Sig.RunInCheckMode() {
-		e.Registry.analysisRecorder().RecordRuntimeBindDispatch(match.Name, match.Sig, match.Args, e.currentPos())
+		e.Registry.analysisRecorder().RecordRuntimeDispatch(match.Name, match.Sig, match.Args, results, e.currentPos())
 	}
 }
 
@@ -3576,7 +3579,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	if err != nil {
 		return e.stampErrPos(e.maybeAddFnShapeHint(err))
 	}
-	e.recordRuntimeBindDispatch(match)
+	e.recordRuntimeDispatch(match, results)
 	if e.recorder != nil {
 		e.recordDispatch(match.Name, n, results)
 	}
