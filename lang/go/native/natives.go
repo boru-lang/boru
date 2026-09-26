@@ -99,6 +99,10 @@ var Natives = []NativeFunc{
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(reachHandler),
 				Returns:    []*Type{TReach}, BarrierPos: -1,
+				// S2b's declaration: the NoEvalArgs list holds the lens's
+				// get SEGMENTS — keys the handler reads, never code it runs
+				// (CompileQuoteKey).
+				CompileEffect: CompileQuoteKey,
 			},
 		},
 	},
@@ -118,6 +122,10 @@ var Natives = []NativeFunc{
 				NoEvalArgs: map[int]bool{0: true},
 				Impl:       Go(wordHandler),
 				Returns:    []*Type{TAny}, BarrierPos: -1,
+				// S2b's declaration: the result is the __SP splice marker the
+				// tape re-steps against the live stack — the S2a rule
+				// (CompileResteps).
+				CompileEffect: CompileResteps,
 			},
 		},
 	},

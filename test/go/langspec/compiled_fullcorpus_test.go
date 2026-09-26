@@ -281,6 +281,17 @@ func fallbackVerdict(t testing.TB, key, input string, wasCompiled bool, gotC []a
 				directionFailure(t, "%s: known diagnostic drift (%s)", key, why)
 			}
 		}
+		// A PLAIN (non-Boru) error — a handler's fmt.Errorf — has no Detail
+		// to compare and its taxonomy is "non-boru" on both lanes, so the
+		// code check above passes whatever it says. Its text IS its content:
+		// compare that. Until 2026-09-26 no compiled plain error reached this
+		// point (compiledRunError booked every one as a defect); the first
+		// ones that did carried a drift this caught by hand (`make: …` for
+		// the interpreter's `def b: make: …`, core.RecordTypedDefMake).
+		if asBoruError(errC) == nil && asBoruError(errI) == nil && errC.Error() != errI.Error() {
+			return false, !divergence(t, "compile-or-fallback", key, fmt.Sprintf("(wasCompiled=%v): %s\n  plain error divergence:\n  compiled=%q\n  interpreted=%q",
+				wasCompiled, input, errC.Error(), errI.Error()))
+		}
 		return false, false
 	}
 	if renderAny(gotC) != renderAny(gotI) {

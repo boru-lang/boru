@@ -273,3 +273,23 @@ func TestNur038FnValueSigShapes(t *testing.T) {
 		t.Error("a fallback-only value proves nothing")
 	}
 }
+
+// TestPolyReachBoundCountsBuiltinTypeName — an unbound word that names a
+// builtin type (`Integer`) steps to exactly one value, its type literal, so
+// the reach bound counts it rather than reading it as unboundable
+// (`convert Integer none` recorded no faithful-raise plan otherwise and the
+// runtime no-match bailed, vm:poly-no-match; 2026-09-26). A genuinely
+// unbound word still makes the bound untrustworthy.
+func TestPolyReachBoundCountsBuiltinTypeName(t *testing.T) {
+	r := covRegistry(t, nil)
+	e := NewTop(r)
+	e.Tape = NewTape([]Value{NewInteger(0), NewWord("Integer"), NewEnd()}, StackHeadroom)
+	e.Pointer = 0
+	if n, ok := e.polyReachBound(); !ok || n != 1 {
+		t.Errorf("bound = (%d,%v), want (1,true): a builtin type name is one type literal", n, ok)
+	}
+	e.Tape = NewTape([]Value{NewInteger(0), NewWord("zz-no-such-word"), NewEnd()}, StackHeadroom)
+	if _, ok := e.polyReachBound(); ok {
+		t.Error("an unbound non-type word keeps the bound untrustworthy")
+	}
+}

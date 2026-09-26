@@ -268,7 +268,7 @@ func TestComputedForBodyDeclines(t *testing.T) {
 	// The fourth divergence the review measured — a caught body error
 	// leaving the iterator installed — was the interpreter's own leak,
 	// literal bodies included: NUR206, closed at the merge with the
-	// reverse-order NUR run (its NUR208 unwinds the live loops on the fault
+	// reverse-order NUR run (its NUR251, then NUR208, unwinds the live loops on the fault
 	// path), pinned by TestLoopIndexUnwoundByCaughtError.
 	// A def-bound quoted body is concrete at the check and keeps the native
 	// loop; a literal body always did.
@@ -286,8 +286,8 @@ func TestComputedForBodyDeclines(t *testing.T) {
 // is the outer binding (99) on both lanes, a literal or a computed body
 // alike. The interpreter used to leave the iteration's level installed (0):
 // the raise unwound the spliced body before its move cleanup. It closed at
-// the merge of main's #508 with the reverse-order NUR run, whose NUR208
-// unwinds every live loop on the fault path (Engine.unwindLiveLoops, the
+// the merge of main's #508 with the reverse-order NUR run, whose NUR251
+// (then numbered NUR208) unwinds every live loop on the fault path (Engine.unwindLiveLoops, the
 // break/continue twin). An `each` body raising inside the same `do` always
 // agreed: its callback runs in a body run of its own.
 func TestLoopIndexUnwoundByCaughtError(t *testing.T) {

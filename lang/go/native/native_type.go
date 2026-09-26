@@ -129,6 +129,10 @@ var typeNatives = []NativeFunc{
 			Impl:       Go(enumHandler),
 			Returns:    []*Type{TEnum},
 			ReturnsFn:  enumReturns, BarrierPos: -1,
+			// S2b's declaration: the member list is literal DATA the handler
+			// consumes verbatim (a bare word becomes its atom), never code
+			// it runs — CompileQuoteInert for a NoEvalArgs operand.
+			CompileEffect: CompileQuoteInert,
 		}},
 	},
 	{

@@ -50,14 +50,17 @@ func TestNoMatchWindowIsTheAttemptedOne(t *testing.T) {
 	}
 }
 
-// TestEmitDynamicLeadIsNotRoutedAsData pins NUR170's close as a sound decline:
-// `emit m.up {a:1}` — a container-read fn value at the emit lead — used to be
-// routed as DATA under analysis (`emitlang-auto` over the fn and the map
-// transposed, a no-match at run time where the interpreter runs the emitter).
-// The macro degrades a dynamic lead now; the program declines loudly and the
-// fallback answers as the interpreter.
+// TestEmitDynamicLeadIsNotRoutedAsData pins NUR170's close: `emit m.up
+// {a:1}` — a container-read fn value at the emit lead — used to be routed as
+// DATA under analysis (`emitlang-auto` over the fn and the map transposed, a
+// no-match at run time where the interpreter runs the emitter). The branch
+// first closed it as a sound decline; main's #510 went further, and the
+// compile pass records the module's runtime fn-dispatch over a gradual lead
+// (TestMacroGradualLeadDispatchesAtRunTime), so the program COMPILES and
+// answers as the interpreter. A bound data lead and a kind lead keep the
+// verdict they had.
 func TestEmitDynamicLeadIsNotRoutedAsData(t *testing.T) {
-	requireEngineParity(t, `import "boru:emitlang" end def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}`, false)
+	requireEngineParity(t, `import "boru:emitlang" end def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}`, true)
 	for _, src := range []string{
 		`import "boru:emitlang" end def d {a:1} emit d`,
 		`import "boru:emitlang" end emit json {a:1}`,

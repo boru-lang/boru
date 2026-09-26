@@ -6,8 +6,11 @@ import (
 )
 
 // TestWrapWordsBridgeACompiledClosure pins NUR158's close: the four
-// dispatch-modifier words bridge a compiled closure (a capturing lambda read
-// out of a container) to its fn definition before asserting the payload.
+// dispatch-modifier words wrap a compiled closure (a capturing lambda read
+// out of a container) where they asserted a fn definition's payload. The
+// branch first bridged the closure to its fn definition; main's #510 closed
+// the same record by wrapping the closure itself (wrapCompiledClosure, pinned
+// by TestModifierOverFactoryClosureCompiles), and the merge keeps main's.
 func TestWrapWordsBridgeACompiledClosure(t *testing.T) {
 	const m = "def mk fn [[k:Integer] [Function] [([a:Integer b:Integer] => [(a sub b) add k])]] end def mk2 fn [[] [Map] [{a:(mk 100)}]] end def m (mk2) end "
 	for _, src := range []string{

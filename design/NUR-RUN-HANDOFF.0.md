@@ -9,6 +9,44 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## The merge of main's #510 (2026-09-26)
+
+Main's #510 (S2b declared, runtime defers 51 → 7, real programs 62 of 62,
+sweep failures 13 → 3) conflicted with the run in eleven files.
+
+- **Fixed on both sides.** NUR158 and NUR170 were each closed twice. The
+  merge keeps main's fixes, which go further. The modifier natives wrap a
+  compiled closure itself (`wrapCompiledClosure`), and a gradual macro lead
+  records the module's runtime fn-dispatch, so `emit m.up {a:1}` compiles
+  where the run declined it. The run's tests for both still pass, and
+  `TestEmitDynamicLeadIsNotRoutedAsData` now requires the compile.
+- **Both changes kept.** `core/go/bind_twin_apply.go` carries the run's
+  type-name check and part reservation, and main's re-adoption of a node
+  the check pass retired (class.tsv L98–L101).
+- **Numbers.** Main's new NUR208 keeps its number. The run's NUR208 (a
+  loop's iterator surviving a trapped raise, FIXED) is NUR251 now; the
+  register, this log, the handover and one test comment say so. Main's
+  NUR207 and NUR208 are open records in the index.
+- **Main's tests over the run's fixes.** A predicate's refusal over a
+  concrete candidate is a static check error (NUR141), so the plain-error
+  test's predicate row is a run-time one now. A make field's refusal is a
+  type_error (NUR233), so the typed-def wrap carries the code. fn's
+  0-argument refusal (NUR091) adds two `gen`-chain `def` forms to the S2b
+  census (32 → 34, 58 → 60).
+- **The ledgers, measured on the merged tree.** Unit-suite compile 335
+  (the base's 298, main's +4, the run's +34, less `emit m.up {a:1}`) and
+  bail 34 (main's −7 and the run's −6 overlap in the predicate
+  validate-FAIL). Corpus bail 5 and runtime defers 3 (main's rows less
+  NUR190's). Sweep failures 4, since the run declines `case 2 M.cl`, which
+  main pinned as a divergence. Call-form failures 284 and call-form crashes
+  0. Arity pins: engine.go 30, native_macro.go 5. SWEEP_STATUS.md is
+  regenerated.
+
+**Found at the merge.** Main's NUR207 and NUR208 are silent wrong answers
+on the merged tree: a def-bound gradual fn read at the program root is
+pushed as data, and a paren-placed branch of fn values is applied. They are
+the run's next records.
+
 ## NUR248 closed: one matcher for a type literal at a slot (2026-09-26)
 
 The interpreter disagreed with itself. Every dispatch refuses a bare type
@@ -883,7 +921,8 @@ apply-chain bail.
 **NUR206 closed by the merge.** Main recorded it as the interpreter's loop
 index surviving an error the enclosing `do` catches (`def i 99 end do [for
 3 [raise oops 'x']] error [drop] end i` was 0 interpreted, 99 compiled). The
-run had already fixed that defect as NUR208 — the fault return unwinds the
+run had already fixed that defect as NUR208 (NUR251 since the merge of
+main's #510) — the fault return unwinds the
 live loops — so on the merged tree all three witnesses are 99 on both
 lanes. Main's pin asserted the divergence "so the close is noticed"; it is
 flipped to `TestLoopIndexUnwoundByCaughtError`, with an undefined-name
@@ -1825,7 +1864,7 @@ under the render gate rather than answering under another name
 
 **Measured:** control.tsv, accessor.tsv, fn-locals-scope.tsv and the module families under every langspec gate at their ceilings; the lang unit ledger 285 / 44 unchanged; core, eng, compiler, check, basic, the lang root package, lang/go/test and the modules package green.
 
-**Pins.** lang `TestLoopBodyResidualLiteralResolves` (the shapes and their neighbours as parity rows — the bare and nested literal, the outer binding, the while body, a `do` and a fn around the loop, the do-body twin's shapes and its lowering: a closure assembling the list, no `word(i)` const) and `TestLoopIteratorTornDownOnTrappedRaise` (the iterator after the trap: nested loops, the loop inside and around a frame, a callback raising inside, a range loop's own name, the `error` handler, the while twin), both in map_literal_flex_member_test.go; control.tsv §3's five rows and §7's one. Docs: NUR.md (NUR197 FIXED, NUR208 and NUR209 recorded and FIXED), the handover, this entry.
+**Pins.** lang `TestLoopBodyResidualLiteralResolves` (the shapes and their neighbours as parity rows — the bare and nested literal, the outer binding, the while body, a `do` and a fn around the loop, the do-body twin's shapes and its lowering: a closure assembling the list, no `word(i)` const) and `TestLoopIteratorTornDownOnTrappedRaise` (the iterator after the trap: nested loops, the loop inside and around a frame, a callback raising inside, a range loop's own name, the `error` handler, the while twin), both in map_literal_flex_member_test.go; control.tsv §3's five rows and §7's one. Docs: NUR.md (NUR197 FIXED, NUR208 — NUR251 since the merge of main's #510 — and NUR209 recorded and FIXED), the handover, this entry.
 
 ## NUR201 closed — the frame's error path (2026-09-25)
 

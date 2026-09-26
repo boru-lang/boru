@@ -89,6 +89,10 @@ func init() {
 				Impl:       Go(moduleHandler, RunInCheck()),
 				Returns:    []*Type{TModuleInst},
 				BarrierPos: -1,
+				// S2b's declaration: the body runs as a module on the check
+				// engine; the instance it builds is what the recorder sees
+				// (CompileOwnLowering).
+				CompileEffect: CompileOwnLowering,
 			}},
 		},
 		{
@@ -112,6 +116,8 @@ func init() {
 					Impl:       Go(importRenameHandler, RunInCheck()),
 					Returns:    []*Type{},
 					BarrierPos: -1,
+					// S2b: the list is export NAMES — keys (CompileQuoteKey).
+					CompileEffect: CompileQuoteKey,
 				},
 				{
 					Args:       []*Type{TAtom, TModuleInst},
@@ -131,6 +137,8 @@ func init() {
 					Impl:       Go(importFileRenameHandler, RunInCheck()),
 					Returns:    []*Type{},
 					BarrierPos: -1,
+					// S2b: the list is export NAMES — keys (CompileQuoteKey).
+					CompileEffect: CompileQuoteKey,
 				},
 				// Inline module forms: use /q to capture "module" as a quoted word
 				// instead of executing it as a function.
@@ -141,22 +149,28 @@ func init() {
 					Impl:       Go(importInlineHandler, RunInCheck()),
 					Returns:    []*Type{},
 					BarrierPos: -1,
+					// S2b: the inline module body runs on the check engine
+					// and the binding is lowered, never the body
+					// (CompileOwnLowering) — also on the two forms below.
+					CompileEffect: CompileOwnLowering,
 				},
 				{
-					Args:       []*Type{TList, TAtom, TList},
-					QuoteArgs:  map[int]bool{1: true},
-					NoEvalArgs: map[int]bool{0: true, 2: true},
-					Impl:       Go(importInlineRenameHandler, RunInCheck()),
-					Returns:    []*Type{},
-					BarrierPos: -1,
+					Args:          []*Type{TList, TAtom, TList},
+					QuoteArgs:     map[int]bool{1: true},
+					NoEvalArgs:    map[int]bool{0: true, 2: true},
+					Impl:          Go(importInlineRenameHandler, RunInCheck()),
+					Returns:       []*Type{},
+					BarrierPos:    -1,
+					CompileEffect: CompileOwnLowering,
 				},
 				{
-					Args:       []*Type{TAtom, TAtom, TList},
-					QuoteArgs:  map[int]bool{1: true},
-					NoEvalArgs: map[int]bool{2: true},
-					Impl:       Go(importInlineSingleRenameHandler, RunInCheck()),
-					Returns:    []*Type{},
-					BarrierPos: -1,
+					Args:          []*Type{TAtom, TAtom, TList},
+					QuoteArgs:     map[int]bool{1: true},
+					NoEvalArgs:    map[int]bool{2: true},
+					Impl:          Go(importInlineSingleRenameHandler, RunInCheck()),
+					Returns:       []*Type{},
+					BarrierPos:    -1,
+					CompileEffect: CompileOwnLowering,
 				},
 			},
 		},

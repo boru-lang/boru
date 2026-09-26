@@ -41,18 +41,19 @@
 # `m.f z` and `m get 'f' z`, take the landing's island — the value and the
 # program from the word on run on the interpreter, which captures the word
 # — where the landing deferred.
-bignum.tsv	10	L108, L109, L123–L129, L131: convert's own errors under the compiled runtime (a Float to a BigInteger/BigDecimal, the accuracy options), no defer site
-class.tsv	4	L98–L101: `undef Point` then a read of the instance — "unresolvable type operand Point", no defer site
-convert-ideal.tsv	1	L33: `convert Integer (make Foo {})` — vm:poly-no-match at convert (the canonical signature_error)
-edge-dispatch-3.tsv	2	L54, L55: make's own unknown- and missing-field errors on a refined Record under the compiled runtime, no defer site (L59, a field refusal, raises the interpreter's type_error since NUR233)
+# Forty-four rows left on 2026-09-26, 51 -> 7 (the plain-error disposition,
+# the retired-node replay, the type-name reach). Forty were "<native>'s own
+# error, no defer site" (bignum L108–L131, edge-dispatch-3 L54/L55/L59,
+# edge-scalars-3 L68, flex L69–L72, fnpred, generics L56, module-fmt, -matrix,
+# -net, -query, -struct, record, resource L156, weak-flex): a HANDLER's plain
+# Go error, which the interpreter surfaces untouched and compiledRunError
+# wrapped as a compiler defect. It passes a plain error through now; the VM's
+# own errors all carry VMDefer. class.tsv L98–L101: the type-install twin
+# re-adopts the node the check pass's `undef Point` retired, so OpPushType
+# resolves it (ApplyBindTwin). convert-ideal.tsv L33 and edge-scalars-3.tsv
+# L218: the poly no-match plan's reach bound counts a builtin type-name word
+# as the one value it steps to, so `convert Integer <x>` raises the
+# interpreter's signature_error byte-identically (vm:poly-no-match×2 gone).
 edge-quote-1.tsv	1	L28: `quote [add 1 2] get 0` — "tape-coupled handler result at get", no defer site
 edge-quote-3.tsv	1	L56: `macroexpand (tw2 7) get 1` — "tape-coupled handler result at get", no defer site
-edge-scalars-3.tsv	2	L68: StringUtil.pad's own size guard, no defer site; L218: `convert Integer none` — vm:poly-no-match at convert
-flex.tsv	7	L69–L72: make's own source errors (a FlexMap from a list, …), no defer site; L228, L230, L236: `set` on a flex member — vm:poly-nout-drift (result count 1 for the recorded claim 0)
-module-fmt.tsv	3	L65–L67: Fmt.format-with's own rule errors, no defer site
-module-matrix.tsv	1	L60: MatrixUtil.create's own ragged-row error, no defer site
-module-net.tsv	2	L30, L31: Net.prepare/direct's own missing-spec errors, no defer site
-module-query.tsv	1	L49: Query.from's own unknown-table error, no defer site
-module-struct.tsv	1	L99: StructUtil.setpath's own make error (an unknown field), no defer site (L100, a field refusal, raises the interpreter's type_error since NUR233)
-resource.tsv	1	L156: `def e:Entity {kind:'api'}` — make's own missing-field error, no defer site
-weak-flex.tsv	2	L36, L37: make's own source errors on a weak flex, no defer site
+flex.tsv	3	L228, L230, L236: `set` on a flex member — vm:poly-nout-drift (result count 1 for the recorded claim 0): the compile pass types the member read Any and commits set's first overload (Class, 0 results), the runtime lands on FlexMap (1)

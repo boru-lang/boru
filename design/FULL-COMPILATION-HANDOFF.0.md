@@ -14757,3 +14757,496 @@ default registry (`def`'s 34 keyword forms, `import` ×5, `if` ×3, `fn`,
 `fnsig`, `fnpred`, `for` ×2 each, `while`, `var`, `unpack`, `receive`,
 `reach`, `module`, `macro`, `gen`, `enum`, `word`, `afn`) still carry no
 declaration; the census ceiling stays 59.
+
+## S2b's declarations — the code-body class declared, the census 59 -> 1 (2026-09-26)
+
+**The rule.** For each of the 59 code-body signatures the census left, the
+declaration is the compile fact TRUE of the handler, read from the handler
+and from how the recorder already treats the word — never a flag with a
+semantic effect (`CompileDynBody`, `CompileFallbackBody`, the two
+`CompileRunsBody*` flags are all read by lowering and none was added). Every
+recorder gate that reads a declaration-only flag screens `NoEvalArgs` or
+`RunInCheckMode` first (`quoteOperandInertOK`, `recordPolyCall`'s quoted
+line, `recordCallCompileFailure`'s quoted arm behind its code-body arm), or
+requires a Function-typed slot none of these words has
+(`RecordCallOperands`), so no recorded program changed.
+
+**The new flag, `CompileOwnLowering`** (core `value.go`, the eighteenth;
+aliased in basic and lang/native). A code-body word the recorder never
+lowers as a dispatch over its body — what compiles is what its COMPILE-TIME
+HALF produced, in one of two shapes: a structured ReturnsFn that records
+the word as its own event (`if`'s three- and two-operand forms through
+RecordBranch, `for` ×2 and `while` through RecordLoop — the generic record
+is then elided because its outputs are already produced, not by name), or a
+RunInCheck handler that runs for real on the check engine so the recorder
+lowers its EFFECT (a binding through the binder hooks — `def`'s 32 keyword
+forms whose constructor takes a raw body or the gen chain's params list,
+`import`'s three inline-module forms; a value built at compile time — `fn`
+×2, `afn`, `fnsig` ×2, `fnpred` ×2, `gen`, `macro`, `module`). It is read by
+nothing that changes behaviour: it is the by-name knowledge ("structured-
+lowering words (if / for …)" in check's BodyRefsFnLocalFns, the
+RunInCheckMode screen) written on the signature. The `def` keyword forms
+carry it BESIDE S2a's quoted-operand flag (CompileQuoteKey on the Atom-named
+forms, CompileQuoteInert on the String-named ones), set by the same
+synthesizer rule.
+
+**The existing flags, where they are the fact:**
+
+- `CompileResteps` (S2a's rule, the result re-stepped on the tape): `var`
+  (the def/body/undef splice), `word` (the `__SP` splice marker) and the
+  clause-list `if [c1 b1 … else]` — ifClause's tokens, and IfListReturnsFn
+  records no branch, so unlike the other two `if` forms it has no
+  structured lowering. `word` and the clause-list `if` are the flag's first
+  declarers that do not run in check mode; the flag's comment now says why
+  it is still read nowhere for them.
+- `CompileQuoteKey` for a NoEvalArgs list of NAMES or KEYS: `unpack [a b]
+  m` (the names it binds, as def's quoted name), `import [Orig Renamed] mod`
+  and `import [...] 'file'` (export names), `reach recv [k1 k2]` (the lens's
+  get segments).
+- `CompileQuoteInert` for `enum [red green blue]` — the member list is
+  literal data the handler consumes verbatim.
+
+**Left undeclared: `receive (List)`, and why.** Its handler runs the chosen
+clause body on a sub-engine over the ENCLOSING registry
+(`runClauseBody` → `New(r).Run`). The flag that states that is
+`CompileRunsBodyOnRegistry`, which CHANGES lowering (it replaces the
+inert-scope bake with the module-scope rule), so a declaration-only line
+does not add it. It should be added, with its pins, because **the word
+carries a live miscompile on main** (measured at ae17688, not introduced
+here): the inert-scope test admits a word-list clause body, so a body
+reading a fn param inside a fn bakes a CALL_NATIVE whose sub-engine
+resolves the param against the registry — `def f fn [[n:Integer][Integer]
+[receive [ {never: 1} [ 0 ] after 5 [ n ] ]]] end f 7` answers `undefined
+word: n` compiled for the interpreter's `7`. The flag's module-scope rule
+declines that position, exactly as it closed `Test.cover [n]` inside a fn.
+Also measured and pre-existing, not moved: the clause-list `if [false [1]
+true [2]]` compiles and fails in the VM's tape-coupled-result screen
+(`internal_error`, `[2]` interpreted) — a counted compile defect whose
+declaration (CompileResteps) now names it; a recorder that refused a
+CompileResteps code-body word at the code-body arm would turn it into a
+compile failure, a ledger move this line did not make.
+
+**Measured.** Census `undeclaredHandlerCeiling` 59 -> 1. lang
+`compileDefectCeiling` / `bailDefectCeiling` unchanged (298 / 46); the
+unit suites of basic, compiler, lang (root and native) and aritygate
+green; the filtered langspec gates over control, code-bodies, def-node-
+binding, fn-value, every module-*.tsv, generics*, reach, recursion, macro,
+fnpred, fnsig, fn-triple, unpack and word-splice pass with every per-file
+compile-failure ledger line held. A probe of 27 programs over the declared
+words answered identically before and after the change on both lanes.
+
+**Pins.** lang `s2b_declarations_test.go`:
+`TestS2BDeclarationsByWordAndShape` (every code-body sig per word and
+shape, exact flags; def's 32 by rule; 58 in all),
+`TestS2BReceiveStaysUndeclared` (the negative — moves with the migration),
+`TestS2BOwnLoweringShapes` (over the whole registry: the flag only on a
+code-body sig with a check-mode handler or a ReturnsFn, never beside
+CompileResteps), `TestS2BDeclaredWordsKeepParity` (16 programs, both lanes,
+compiled).
+
+## The runtime-defers ledger — the plain-error disposition, the retired-node replay, the type-name reach (2026-09-26)
+
+**The rows.** `test/go/langspec/runtime_defers.tsv` named 51 corpus rows
+across 19 files that COMPILE and then BAIL. Forty of them were one family:
+"<native>'s own error under the compiled runtime, no defer site". They were
+not bails at all. The walk books a row when the compiled error carries
+`compiledRunError`'s defect note, and `compiledRunError` put that note on
+EVERY non-Boru error, on the theory that a foreign Go error could only be
+the VM's. But a handler's plain `fmt.Errorf` — convert's "cannot convert
+Float to BigInteger", defTypedHandler's "def q: value 5 does not satisfy
+predicate type Even", make's field errors, Fmt.format-with / Net.prepare /
+Query.from / StructUtil.setpath / MatrixUtil.create's own guards — is the
+PROGRAM's result, and the interpreter surfaces it untouched
+(`Engine.stampErrPos` leaves a non-BoruError alone). The compiled lane
+raised the right error and the walk called it a compiler defect.
+
+**The three mechanisms.**
+
+- **The plain-error disposition** (lang `compiledRunError`). A non-Boru
+  error passes through as the program's own. The VM never reports its own
+  failures that way: `vmErrAt`, both panic guards (`vmInternalError`) and,
+  new here, the three entry refusals (`vmEntryError`: a nil program, a nil
+  or out-of-range unit reference, `fmt.Errorf` until now) all carry
+  `VMDefer`, which is the marker the defect arm reads. Forty corpus rows
+  leave. The two disposition pins turned over:
+  `TestCompiledRunErrorClassifies` (a plain error is the program's; the
+  entry refusal is a defect) and `TestForeignErrorIsTheProgramsOwnOnBothLanes`
+  (was `…BailPropagatesAsADefect`: the `zz-boom` plain error on both lanes,
+  the same value, the effect once).
+- **The retired-node replay** (core `applyTwinPush`). `def Point class {…}
+  … undef Point` minted AND retired the node during the check pass. The
+  rollback's snapshot predates the mint, so `readmitRetired` does not bring
+  it back, and the type-install twin re-pushed the binding without
+  re-registering the node. Every `OpPushType` between the two twins then
+  met "unresolvable type operand Point" (class.tsv L98–L101). The twin
+  `Adopt`s the node back (idempotent, canonical pointer); the undef twin
+  retires it again at its own position, as the interpreter's undef does.
+- **The type-name reach** (core `polyReachBound`). The poly no-match
+  plan (`PolyNoMatchSpec`) needs a trustworthy bound on the operands a
+  wider-arity overload could collect. `convert Integer none` failed it
+  because the bound read `word(Integer)` as an UNBOUND word ("undefined_word
+  preempts"). But stepWord's own `ResolveBuiltinTypeName` arm steps an
+  unbound builtin type name to exactly one value, its type literal. The
+  bound counts it now, so convert's three-argument overloads are excluded
+  and the VM raises the interpreter's signature_error (detail, notes,
+  position) instead of bailing at vm:poly-no-match (convert-ideal.tsv L33,
+  edge-scalars-3.tsv L218). Counting it is the conservative direction: a
+  larger bound declines more wider-arity exclusions, never fewer.
+
+**The drift the disposition exposed.** With the plain errors no longer
+booked, their TEXT could be compared, and the walk did not compare it:
+`fallbackVerdict` checks taxonomy ("non-boru" on both lanes) and a Boru
+error's Detail, and a plain error has no Detail. A by-hand pass over the 44
+rows found two that differed: generics.tsv L56 and resource.tsv L156,
+`def b:(Box of [Integer]) {value:'no'}` and `def e:Entity {…}`, raised the
+bare `make: field "value": …` compiled for the interpreter's `def b: make:
+…`. The typed def's construction is recorded as a synthetic `make` event
+(`core.RecordTypedDefMake`), and defTypedHandler's `fmt.Errorf("def %s:
+%w")` wrap lived only on the interpreter's path. The recorder now records
+a per-def COPY of make's signature whose handler wraps a failure the same
+way (`typedDefMakeSig`; the name is a new parameter, both basic callers
+pass it). And `fallbackVerdict` compares a plain error's text, so the next
+such drift fails the gate instead of waiting for a reader.
+
+**Measured.** runtime-defers ledger 51 -> 7 (bignum 10, class 4,
+convert-ideal 1, edge-dispatch-3 3, fnpred 4, generics 1, module-fmt 3,
+module-matrix 1, module-net 2, module-query 1, module-struct 2, record 3,
+resource 1 and weak-flex 2 all deleted; edge-scalars-3 2 -> 0, deleted;
+flex 7 -> 3). langspec `bailDefectCeiling` 51 -> 7, `deferCeiling` 7 -> 5
+(vm:poly-no-match×2 gone). lang `bailDefectCeiling` 46 -> 39
+(TestCompiledIslandErrorRendering's four convert-in-callback programs,
+TestTypedDefBindCompiles' predicate validate-FAIL, the two `zz-boom`
+rows — each asserting full error parity now), lang/go/test
+`refDefectCeiling` 102 -> 96 (TestBehaveUnify_RejectsBadShape's four
+`behave unify` errors; TestTypeShadow_PredicateOverLiteral and
+TestTypeShadow_DepScalar, the retired-node replay). Filtered langspec gates
+over the 19 ledgered files and the typed-def, module, generics, edge and
+user-type families: 0 unledgered divergences, with the plain-error text
+gate on. core, compiler, basic, eng, lang and lang/go/test pass.
+
+**Pins.** lang `runtime_defers_parity_test.go`
+(`TestPlainHandlerErrorIsTheProgramsOwnOnBothLanes`,
+`TestTypedDefMakeErrorKeepsTheDefWrap`, `TestVMEntryRefusalStaysADefect`,
+`TestRetiredTypeNodeReplaysForTheRun` — including the node gone by ID
+after the run on both lanes — and `TestConvertNoMatchRaisesTheInterpretersError`,
+each with its negative); core `TestTypedDefMakeSigWrapsOnlyTheFailure`;
+the two turned-over disposition pins above.
+
+**What is left** (seven rows, three causes):
+
+- flex.tsv L228, L230, L236 — `set b 9 f.a` on a flex member,
+  vm:poly-nout-drift. The COMPILE pass types the member read `f.a` Any
+  (plain Check says FlexMap), so `set` over an Any receiver commits its
+  first overload, `[Atom Any Class]` with 0 results, and the poly record
+  claims 0. The runtime lands on FlexMap and returns the node. The
+  overloads reachable from Any disagree on result count (Class / Store /
+  Micron 0, the flex / Map / List arms 1), so no single claim is sound.
+  Closing it needs either a SOUND typed model of a mutated flex member in
+  the compile pass (a flex member can be any value, including a Store or a
+  class instance, so FlexMap is not a proof) or a variadic-count poly
+  result that only the residual or a drop may consume (the dyn-body
+  backstop's `variadicResult` is the precedent). Not attempted.
+- edge-quote-1.tsv L28 and edge-quote-3.tsv L56 — `quote [add 1 2] get
+  0`: the handler returns a bare Word, which the interpreter re-steps at
+  the pointer (raising add's signature_error at the word's own position
+  inside the quote). The VM's result screen refuses a tape-coupled value
+  ("tape-coupled handler result at get"). Raising faithfully needs a model
+  of that re-step: the Word dispatching against the live stack and the
+  tokens after it, which is the re-step landing's territory, not a screen.
+- fn-value.tsv L317, L318 — NUR190's `/q` capture, booked by choice
+  (vm:landing-quote-claim×2); unchanged.
+
+**The follow-up, the same day: `receive` declared, the census 1 -> 0.**
+`receive (List)` declares `CompileRunsBodyOnRegistry` (lang
+`native_process.go`). The premise the flag's module-scope rule rests on —
+the CHECK pass never runs the body, so the VM's run is the first and the
+replay-hazard screen does not apply — was checked for receive, not assumed:
+the word is neither RunInCheck nor carries a ReturnsFn, so its check-mode
+dispatch returns the declared Any carrier and never touches the clause
+list (`TestS2BReceiveDeclaresRunsBodyOnRegistry` pins both facts beside the
+flag). A body that binds a name read after it is a check-time
+undefined_word or, for a bound name, `bodyRebindsBoundName`'s decline.
+
+The module-scope rule closed three miscompiles measured on main (ae17688),
+each now a loud decline: a clause body reading a fn param inside the fn
+(`… after 5 [ n ] …` inside `f`, `undefined word: n` compiled for 7), a
+top-level loop's iterator (`for 2 [receive [ … after 5 [ i ] ]]`,
+`undefined word: i` for `[0 1]`), and a body rebinding a name read after it
+(`def x 1 end receive [ … after 5 [ def x 2 ] ] x`, an internal
+RESTEP_LANDING underflow for `[2]`).
+
+**The rule alone regressed the generated sweep** — call-form failures 245 ->
+260: every nested call form of the `receive` seeds (`receive [{} [1] after 0
+[0]]` inside a fn, a lambda, a branch arm, a loop, a module body) had
+compiled with parity through the inert-scope bake and now declined. Rather
+than raise the ceiling, the compiler admits a nested position when the
+operand names nothing the program or the registry knows
+(`registryBodyNamesNothingKnown` in compiler `emit.go`, read beside
+`runsBodyOnRegistryAtModuleScope` by `noEvalBodyBakes`): the operand is
+inert-scoped (no computed paren, carrier or interp string; no sentinel; no
+replay hazard) and every Word at any depth — list elements, map values,
+paren tokens — is neither bound in the recorder's registry (every frame
+local is bound there while its scope is recorded) nor a registered word
+(so no `args` / `context`, and no binder: `def` / `var` / `undef` /
+`import` are registered); a Reach or Splice declines. What passes is the
+handler's own keyword (`after`), literals and names neither lane knows (an
+unknown name raises the same undefined_word on both). It applies to
+`Test.cover` too, whose nested pins still decline (each names a param, an
+iterator or a Reach). Sweep back at 245, SWEEP_STATUS.md unchanged.
+
+**Measured.** Census `undeclaredHandlerCeiling` 1 -> 0 (`render` prints
+`none`). lang `compileDefectCeiling` 298 -> 303: five NEW decline pins of
+`TestS2BReceiveBodyOnRegistryLowering` — the three miscompile witnesses and
+two fences of the nested admission (a fn param as a map member, `{a: n}`;
+the registered `args`). No spec file exercises `receive`; the filtered
+langspec over control.tsv and code-bodies.tsv passes (the sweep included),
+and module-test.tsv (Test.cover's rows) passes. Unit suites of compiler,
+lang (root, native, the process tests) and the census green; lint clean.
+
+**Pins.** `s2b_declarations_test.go`: the receive negative became
+`TestS2BReceiveDeclaresRunsBodyOnRegistry` (exact flag + the check-pass
+premise) and `TestS2BReceiveBodyOnRegistryLowering` (six programs compile
+with parity — three top-level, three nested with a nothing-known clause
+list; five decline loudly; one unknown name raises on both lanes).
+
+## The sweep's last cells — fifteen seeds graduate, NUR158 and NUR170 close (2026-09-26)
+
+**The rows.** The generated sweep's thirteen failing seed cells (ten F, three
+C) and six DIVERGED ones. Fifteen of the nineteen compile with parity now;
+the sweep's compile failures go **13 -> 3** and its divergences **6 -> 1**
+(`case` × module-export, NUR154, pinned as before).
+
+**The mechanisms, one per family.**
+
+- **A modifier word over a factory's closure** (`force-arity` /
+  `forward-args` / `usurp` / `stack-args` × factory — NUR158 FIXED). The
+  gradual poly record (`recordGradualWrap`) declined every TYPED Function
+  carrier at these CompileFnHandlerStrict slots, because the VM handed a
+  capturing closure to the native as a `ClosurePayload` its FnDefInfo
+  assertion refused. The runtime answers it now: the four natives wrap a
+  compiled closure too (`wrapCompiledClosure` -> core `UsurpClosure` /
+  `ForceStackClosure` / `ForceForwardClosure` / `ForceArityClosure`, over
+  `usurpOver` / `rebarrierOver` / `forceArityOver` split out of the
+  FnDefInfo constructors). The wrapper reads the closure's signatures
+  through `ClosureAsFnDef` and replaces every Impl with its own re-dispatch,
+  so nothing of the bridge's run-bound invoker survives into it; it stores
+  and re-dispatches the closure VALUE, which eng's `callDynamic` /
+  `callDynMethod` now unwrap to and apply natively (only once the WRAPPER's
+  own signature takes the window — a def-bound `r` over the wrong types is
+  the interpreter's no-match on the wrapper). A def of a usurp /
+  forward-args wrapper carries the closure's shape (compiler
+  `modifierWrappedFnShape`: usurp's params reversed; stack-args and
+  force-arity claim nothing), so the def-bound read declines a written
+  argument the wrapper does not take (NUR194's unfit window) where the
+  flattened dynamic apply parked it.
+- **The replayed lambda call.** The container and factory `· lambda-body`
+  variants BAILED ("CALL_DYNAMIC underflow"): the lambda's frame REPLAYED
+  the wrapper's apply (`dynFrameW`) and RET its declared count, while the
+  check pass's call returned the un-applied residual and the caller applied
+  the lead a second time. A call to such a unit whose seat differs from the
+  unit's returns is a variadic seat now (`eventFlags.replayedCall`), and
+  `resolveDynamicApply` never applies over it: alone it is the program
+  residual as it stands, beside other values the program declines.
+- **A branch of lambdas** (`if` × lambda). `branchResultRenderKnown`: a
+  branch whose every value-producing arm is a capture-free anonymous lambda
+  const or a compiled closure carrying its render is placed data at the
+  residual — the landing (NUR159's `emitBranchLanding`) already parks a
+  0-arg lambda and stands an arg-taking one aside, and the render is the
+  payload's. A named fn arm, and a def-bound branch value (a NAME read
+  dispatches), keep the closure-render decline.
+- **A macro word's gradual leading operand** (`emit` / `mini` × factory,
+  `mini` / `parse` × container, `emit` × container — NUR170 FIXED). A
+  factory's returned emitter / transducer, and a container member the pass
+  knows only as dynamic(Any), either declined on an unrecorded carrier or
+  raised a false "the kind must be a literal name" check error; `emit
+  m.up {a:1}` took the member as the auto form's OPTIONS map (NUR170's
+  "transposed" operands). The compile pass now records a module-side
+  runtime dispatch over the macro's own operands (lang native
+  `recordMacroFnDispatch` / `gradualMacroOperand`; modules
+  `macro_fn_dispatch.go`: `emitlang-fn-dispatch`, `minilang-fn-dispatch`,
+  and `parselang-lead-dispatch` beside the existing fn dispatch), and the
+  native does what the macro does with the value it finds: a fn is the
+  value form (the same contract and error, the fn applied to [subject
+  opts], a mini FILTER fn's partial; a compiled closure bridged for the one
+  dispatch), anything else re-runs the word itself (a kind atom, an options
+  map). The result is the applied fn's own count, so the emit / mini
+  dispatch records as a runtime-variadic REGION (a fixed consumer
+  declines); errors stamp at the macro word (`CurWordPos`), as the
+  interpreter's do. A PRE-EXISTING divergence closed on the way:
+  `parselang-fn-dispatch` raised "not a usable function value" for a
+  capturing factory parser (`parse (mk '!') 'x'`, `x!` interpreted) —
+  `closureFnView` bridges it, completing an empty return contract with the
+  closure value's own.
+- **typeof of a quoted paren** (`codequote` × literal / lambda / factory —
+  bails). `typeof (codequote (1 add 2))` is the __PE lattice node, a bare
+  Word-typed type node the VM's result screen (`tapeCoupled`) took for a
+  live word token; a Word-typed bare node is data now (the payload-less
+  markers keep their screen — pinned by eng's seam7 test).
+- **A `word` splice over a member fn** (`word` × container — bail). The
+  recorder models the spliced fn's re-step at its token (the trailing /
+  leading / mixed apply after the splice), but `SPLICE_DYN` deferred every
+  fn payload. The apply now CLAIMS the spread as one fn operand
+  (`claimSpliceApplies` sets the op's Arg; the lowerer records each
+  splice's pc): under the claim a one-fn payload passes and any other
+  count defers. That also turns a PRE-EXISTING silent miscompile into a
+  loud bail: `def mk fn [[][Any][[1 2]]] end def dbl word (mk) end 5 dbl`
+  compiled `[1 5 2]` (the trailing apply rotated a two-value spread as one)
+  for the interpreter's `[5 1 2]`.
+- **A computed clause list** (`receive` × module-export). `receive` declares
+  CompileDynBody with no CallableSpec; `tryRecordDynBody` admits a
+  Callable-less word's sole NoEvalArgs slot for a NON-concrete list only
+  (the literal list keeps its bake), so the handler parses and runs the
+  runtime clause list under DynEnv, result variadic
+  (`recordDynBodyCall` is the shared tail, split out).
+
+**What is left, each with its cause.** `behave` × container (F): "dynamic
+input at behave" — a gradual member fn a closure could replace at run time,
+and behave installs a fn's BODY TOKENS, which a compiled closure does not
+have. `if` × container (F): the anonymous 0-arg member's landing. Standing
+the arrival model aside was built and measured: the landing parks on both
+lanes, but the dynamic carrier it leaves hides the fn from a later NAME
+read, `apply` or param read that the interpreter dispatches (`def j (m get
+"f")  j` compiled `[fn]` for 42) — reverted, the decline stays, and the
+family is recorded as NUR207 (present on main without any member read:
+`def mk fn [[][Any][([] => [42])]] end def j (mk) end j`). `fnsig` ×
+module-export (C): `def T fnsig <computed list>` mints a type from a
+runtime list; degrading the check handler to a FnUndef carrier was built
+and measured to MISCOMPILE `f/v is T` (false for true) — the type install
+baked the carrier — so it stays a check-reject. `inner` × literal /
+computed stay islanded. **Found and recorded, not fixed:** NUR207 (above)
+and NUR208 — a paren-placed branch of fn values is applied where the
+interpreter places it (`(if c (λ) (λ)) 5`: `[5]` for `[fn (Integer) 5]`)
+and a trailing `apply` over one is lost (`[fn]` for 42) — both silent on
+main at ae17688.
+
+**Measured.** Sweep compile failures 13 -> 3, divergences 6 -> 1, cells
+passing 169 -> 184; call-form failures 245 -> 295 — fifteen seeds graduate
+and bring 210 call forms, 51 decline in existing families (the ceiling's
+comment counts them by reason and by cell), one that declined passes
+(`stack-args` × container · lambda-body), the four container · lambda-body
+bails pass, and no variant that passed before fails now (the status list
+diffed against main's). lang `compileDefectCeiling` 298 -> 296 (the
+reasons diffed against a clean tree: the inverted modifier pins -10, the
+new fences +8); aritygate pins native_macro.go 5 -> 6 and parselang.go
+2 -> 3 (both matching machinery). compiler, check, core, eng (all), lang
+root / native / modules pass; the filtered langspec gates over the
+modifier, control, codequote, word-splice, emit / mini / parse module,
+callback, fn-value, code-body, apply, higher-order, dispatch, quote,
+recursion and case families pass.
+
+**Pins.** lang `sweep_cells_s2b_test.go`
+(`TestModifierOverFactoryClosureCompiles`, `TestBranchOfLambdasCompiles`,
+`TestMacroGradualLeadDispatchesAtRunTime`,
+`TestCodequoteTypeofAndMemberSpliceRun`,
+`TestComputedReceiveClauseListCompiles`, each with its fences);
+`handler_migration_fn_operand_test.go`'s modifier pin INVERTED
+(`TestModifierOverReturnedClosureCompilesWithParity`); native
+`native_valof_strict_test.go` (the declined arm is gone; the closure wrap's
+refusals off the compiled lane); compiler `event_kind_census_test.go`
+(`fnOpRenderKnown`). Docs: NUR.md (NUR158 and NUR170 FIXED; NUR207 and
+NUR208 recorded), the sweep ceilings, `sweepKnownMiscompiles` (NUR170's pin
+retired), SWEEP_STATUS.md refreshed.
+
+## The last real programs — mini-redis, the kg resolution suite and echo_s3 compile: 62 of 62 (2026-09-26)
+
+**Measured.** `TestRealProgramsCompile`: **58 -> 62 of 62** — the ledger is
+empty. Each of the four had one blocker, and none was in the construct the
+ledger named; all three causes were CHECKER models the recorder trusted.
+
+- **The narrowing measured the wrong operand** (check `carrier.go`
+  `slotIsPolymorphic`; mini-redis.boru and echo_redis.boru, "check
+  diagnostics"). mini-redis's HDEL handler reads `def cur (hashes get k)`
+  over an Any store: a def-bound DYNAMIC DISJUNCT (the union of get's
+  reachable returns). `(cur get f)` inside the branch-valued `def had (if …)`
+  narrowed `cur` to the FIRST get overload's receiver slot, Module —
+  narrowDynamicUses asks slotIsPolymorphic whether a sibling overload is
+  reachable, and that test intersected each sibling's slot with
+  `NewCarrier(args[j].Parent)`: for a disjunct the Parent is the bare
+  Disjunct NODE, disjoint from every container type, so no sibling was
+  reachable and the first slot won. The later `cur set (f) None` then
+  declined no_signature (a Module receiver), the best-fit recovery left no
+  value, and `def h2` bound nothing: the false `undefined word: h2` at
+  230:57. The reachability test now intersects the value's BOUND (dynamic
+  stripped) — the very operand narrowDynamicUses intersects. The
+  "branch-valued def" was a red herring: any second read of `cur` after the
+  narrowing showed it; the `def had` line was merely the first `get`.
+- **each over a dynamic collection was a strict Map** (check `carrier.go`
+  `applyGradualContagion`, `reachableUnknownReturnSibling`; the kg
+  resolution suite, "fn call operand of unknown provenance"). Bisected on a
+  scratch copy of kg/: the unseated operand was the MAP LITERAL handed to
+  `KgSchema.mk-entity`, whose `aliases:` member ran to TWO values — the
+  `KgEnt.distinct-sorted` Function, uncalled, and a Map carrier. `each
+  [body] xs` over a dynamic xs matches its `[List Map]` form first; the List
+  form carries only a ReturnsFn, so dynamicReachableReturns abandons the
+  union for a partially-known call (nil), and applyGradualContagion read
+  "fewer than two reachable returns" as the single-return case and kept the
+  committed return STRICT: a Map the runtime List contradicts. The xs:List
+  callee then did not match and parked as data. A dispatch reaching two or
+  more overloads, one without a single declared return, now widens its
+  committed CONTAINER return to dynamic(Any) — the all-unknown case's own
+  answer. The checker's false `expected List, got Map` on every `each` over
+  an Any-typed collection went with it. The inline reductions had compiled
+  because they wrote the fn under test in the SAME registry, where it was
+  recovered as a user fn; the real module's value was a foreign dispatch.
+- **A module native's fn value parked where its word recovers** (core
+  `execFnDefLiteral` → `fnValueNoMatchRecovers`, check `recoveryPolyOwner` /
+  `recoverySpec`, core `windowArityFirstMatch`, eng `polyNoMatchRaise`;
+  echo_s3.boru, "for: body nets multiple values per iteration"). The chunk
+  loop was mini-s3-CLIENT's, not the server's: `Net.send-bytes (slice i hi
+  body) sock` over a `sock:Any` param found no static signature, and a fn
+  VALUE's no-match parks it, so the body netted [fn bytes sock] per
+  iteration and the multi-value arm's parked-fn screen declined. A bare
+  native word in the same position takes checkModeAssumeSig's runtime
+  re-match; the fn value now does too, when the value is a named, unquoted
+  module NATIVE (no code-body / quoted / callable sig) and the candidate
+  window holds an operand of unknown type (strict or gradual Any, a union) —
+  a definite mismatch still parks. Three pieces make it faithful: the poly's
+  owner is the native's home registry (the dispatching registry has no such
+  builtin — tryRecordPoly refused); the runtime no-match raises the fn
+  VALUE's own `uncalled_function` at the interpreter's raise position
+  (PolyNoMatchSpec.Uncalled, `uncalledRaisePos` shared with the raise
+  itself), never a word's signature_error — the no-spec defer's alt would
+  have been one, so a recovery that cannot build the spec does not record;
+  and a multi-arity native is admitted only when its window's first match is
+  PROVED window-arity (every narrower overload shadowed by an earlier
+  window-arity one whose slots contain it, the operands past it concrete
+  and admitted; no wider overload) — mini-s3-client's `Net.recv-until sock
+  crlf {within:…}` is the admitted shape, and a two-operand `recv-until`
+  keeps its decline. The success path was measured over real loopback
+  sockets (both lanes `[5 'hello']`, `[3 'ab']`). The recovery runs on the
+  COMPILE pass only: on the first cut it ran on the plain pass too, where a
+  0-return mutator over a dynamic receiver nets one optimistic value
+  (applyGradualContagion), and `… set mem true  IO.seek 42 0` recovered
+  over that phantom and lost the plain surface's genuine
+  `uncalled_function` — the diag-surface parity gate caught it as a new
+  compile-only class.
+
+**Seen and left.** A bare word REBOUND by `unpack [send-bytes] Net` carries
+the module home too, but its signatures are COPIES (installDef's rebind), so
+tryRecordPoly's pointer-identity guard against the home registry's binding
+still refuses it — "unmatched dispatch recovered at send-bytes", as before.
+The compiled CALL_USER entry guard's no-match carries no source position
+inside a unit (and the argument's, not the word's, at top level) — NUR171's
+family, pre-existing; TestSingleOverloadUserFnOverImpreciseOperandCompiles'
+predicate row reaches it now and asserts code and detail.
+
+**Moved.** lang `compileDefectCeiling` 298 -> 299 (two decline pins — the
+definite mismatch and the narrow `recv-until` window — against the
+predicate-typed row of TestSingleOverloadUserFnOverImpreciseOperandCompiles,
+which compiles with parity now: `size al` over the widened `each` result
+matches `bg` directly and the entry guard runs Big's predicate).
+TestUncalledDispatchTrapDeclinesInexactOperands' dynamic flex row
+(`MathUtil.cbrt (zf get 'n')`) compiles through the fn-value recovery and
+moved to a parity pin. aritygate: `check/go/carrier.go` 13 -> 15,
+`core/go/engine.go` 30 -> 32 (all matching: candidate-arity filters and
+overload-count guards). The filtered langspec gates (control, code-bodies,
+callbacks, fn-value, module-*, each-variants, fold-map-filter, accessor,
+storage, reach) pass at their ceilings.
+
+**Pins.** lang `real_programs_s2b_test.go`
+(`TestNarrowingSkipsPolymorphicDisjunctSlot`,
+`TestEachOverDynamicCollectionIsNotAStrictMap`,
+`TestUncalledDispatchDynamicOperandRematches`,
+`TestModuleNativeFnValueOverAnyRecovers`); `s2b_registry_bodies_test.go`
+and `uncalled_dispatch_trap_test.go` (the two inverted rows);
+`real_program_compile_test.go` (the empty ledger).

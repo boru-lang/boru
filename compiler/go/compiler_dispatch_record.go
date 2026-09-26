@@ -763,9 +763,21 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 // cannot propagate break/continue across the handler boundary.
 func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool {
 	es, _ := r.Check.Recorder().(*EmitState)
-	if es == nil || !es.Active() || sig == nil || sig.Callable == nil ||
-		!sig.CompileEffect.Has(core.CompileDynBody) {
+	if es == nil || !es.Active() || sig == nil || !sig.CompileEffect.Has(core.CompileDynBody) {
 		return false
+	}
+	if sig.Callable == nil {
+		// A CLAUSE-LIST word (`receive`: its one NoEvalArgs slot holds
+		// clauses whose bodies the handler runs in a sub-engine over the
+		// registry) declares CompileDynBody with no CallableSpec: there is no
+		// body closure to compile, so the literal list keeps its own bake,
+		// and only a COMPUTED list — tokens that exist only at run time (a
+		// module fn's returned clause list) — takes this backstop.
+		bp, ok := soleNoEvalSlot(sig, len(args))
+		if !ok || core.IsConcrete(args[bp]) || len(outs) == 0 {
+			return false
+		}
+		return recordDynBodyCall(r, es, word, sig, args, outs, pos, args[bp], true)
 	}
 	// A 0-result dispatch is admitted only for a word that DECLARES a 0-out
 	// body (`for-each`, BodyOut 0: the handler discards every invocation's
@@ -813,6 +825,14 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 			return false
 		}
 	}
+	return recordDynBodyCall(r, es, word, sig, args, outs, pos, body, sig.NoEvalArgs[bp])
+}
+
+// recordDynBodyCall records the dyn-body backstop's CALL_NATIVE (or poly
+// re-match) over resolved operands, marks its result variadic unless it is a
+// fixed value-eval, and arms DynEnv — tryRecordDynBody's shared tail. codeSlot
+// reports that the body position is a NoEvalArgs CODE slot.
+func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos, body core.Value, codeSlot bool) bool {
 	// Every operand must have a compiled home: the body rides as a threaded
 	// runtime value (a param local / event result) or an inert const; other
 	// operands resolve normally. An unresolvable operand leaves the compile failure.
@@ -872,7 +892,7 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// runtime net count / overload is genuinely variable — keeps the marking.
 	// A code-body slot (NoEvalArgs at the body position — walk's hook) is a
 	// CODE body whatever the word's other flags say.
-	fixedValueEval := core.IsConcrete(body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !sig.NoEvalArgs[bp]
+	fixedValueEval := core.IsConcrete(body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
 	if !fixedValueEval {
 		f.variadicResult = true
 	}
@@ -907,6 +927,21 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 		es.dynEnv = true
 	}
 	return true
+}
+
+// soleNoEvalSlot is the one NoEvalArgs position of a signature taking n
+// operands, or ok=false when it has none or several.
+func soleNoEvalSlot(sig *core.Signature, n int) (int, bool) {
+	bp := -1
+	for i := 0; i < n; i++ {
+		if sig.NoEvalArgs[i] {
+			if bp >= 0 {
+				return -1, false
+			}
+			bp = i
+		}
+	}
+	return bp, bp >= 0
 }
 
 // The code-body higher-order words that may compile as Stage-5 interpreter

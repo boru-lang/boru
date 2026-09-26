@@ -52,6 +52,9 @@ var macroNatives = []NativeFunc{
 			// bytecode recording pass) see the expanded stream, never
 			// the raw-form operand span (plan R6 #29).
 			Returns: []*Type{TFunction}, BarrierPos: -1,
+			// S2b's declaration: built on the check engine, so the recorder
+			// sees the expanded uses, never the body (CompileOwnLowering).
+			CompileEffect: CompileOwnLowering,
 		}},
 	},
 	{
@@ -429,6 +432,20 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 	if args[0].Parent.ConformsTo(TFunction) {
 		return miniFnExpand(args[0], args, r)
 	}
+	if gradualMacroOperand(r, args[0]) {
+		// A GRADUAL leading operand (`mini m.d 'ab'` over a container member
+		// the pass knows only as dynamic(Any)): the interpreter dispatches on
+		// what the value IS, so the pass must not raise "the kind must be a
+		// literal name" over the carrier (the sweep's `mini` × container
+		// cell, a false check error until 2026-09-26). It degrades, and the
+		// COMPILE pass records the runtime dispatch, which takes the
+		// interpreter's route for whatever the value turns out to be.
+		macroDegradedAdvisory(r, "mini", "the leading operand is not a concrete value under analysis", args[0].Pos())
+		if out, ok := recordMacroFnDispatch(r, capMiniLangFnDispatch, "minilang-fn-dispatch", args); ok {
+			return []Value{out}, nil
+		}
+		return []Value{NewDynamicCarrier(TAny)}, nil
+	}
 	kind, err := args[0].AsConcreteAtom()
 	if err != nil {
 		return nil, r.BoruErrorHint("mini_error",
@@ -621,6 +638,11 @@ func miniFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 	if !ok {
 		if r.Check.IsActive() && !IsConcrete(fn) {
 			macroDegradedAdvisory(r, "mini", "the mini fn is not a concrete value under analysis", args[0].Pos())
+			// COMPILE pass: record the runtime fn dispatch (a factory's
+			// returned transducer — the sweep's `mini` × factory cell).
+			if out, ok := recordMacroFnDispatch(r, capMiniLangFnDispatch, "minilang-fn-dispatch", args); ok {
+				return []Value{out}, nil
+			}
 			return []Value{NewDynamicCarrier(TAny)}, nil
 		}
 		// A fn-family value whose payload is not an FnDefInfo — defensive:
@@ -770,6 +792,23 @@ func parseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	if args[0].Parent.ConformsTo(TFunction) {
 		return parseFnExpand(args[0], args, r)
 	}
+	if gradualMacroOperand(r, args[0]) {
+		// A GRADUAL leading operand under analysis — a container member read
+		// (`parse m.p 'x'` over `{p: <parser fn>}`), whose value the pass
+		// knows only as dynamic(Any). The interpreter reads the member and
+		// dispatches on what it IS (a fn: the value form; an atom: a kind),
+		// so the pass must not raise "the kind must be a literal name" over
+		// the carrier — that was a false check error (the sweep's `parse` ×
+		// container cell, 2026-09-26). It degrades like the other
+		// not-statically-expandable forms, and the COMPILE pass records the
+		// runtime dispatch, whose handler takes the interpreter's route for
+		// whatever the value turns out to be (parseLeadDispatchHandler).
+		macroDegradedAdvisory(r, "parse", "the leading operand is not a concrete value under analysis", args[0].Pos())
+		if out, ok := recordParseLangDispatch(r, capParseLangLeadDispatch, "parselang-lead-dispatch", args[0], args); ok {
+			return []Value{out}, nil
+		}
+		return []Value{NewDynamicCarrier(TAny)}, nil
+	}
 	kind, err := args[0].AsConcreteAtom()
 	if err != nil {
 		return nil, r.BoruErrorHint("parse_error",
@@ -860,6 +899,20 @@ func parseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 		source, opts, NewEnd(),
 	}
 	return []Value{NewSplice(NewList(toks))}, nil
+}
+
+// gradualMacroOperand reports whether a macro word's leading operand is a
+// GRADUAL carrier under analysis — dynamic, not concrete, of a static type that
+// admits both a function and a kind name — whose runtime value the pass cannot
+// classify. A strict non-fn type (an Integer binding) is not gradual: it
+// raises the literal-name error exactly as the interpreter will.
+func gradualMacroOperand(r *Registry, v Value) bool {
+	if r == nil || !r.Check.IsActive() || IsConcrete(v) || v.Parent == nil {
+		return false
+	}
+	// A dynamic(Any) read, or an Atom-typed carrier (`{p: ini/q}.p` — a kind
+	// name the pass cannot read concretely).
+	return (v.Dynamic && v.Parent.Equal(TAny)) || v.Parent.ConformsTo(TAtom)
 }
 
 // parseSurfaceOperands maps the parse surface [kind|fn, opts?, source] to the
@@ -1052,6 +1105,20 @@ func InstallParseLangFnDispatch(r *Registry, sig *Signature) {
 	_ = r.Capabilities.Set(capParseLangFnDispatch, sig)
 }
 
+// capParseLangLeadDispatch holds parselang-lead-dispatch: the runtime
+// resolver for a GRADUAL leading operand (gradualMacroOperand), which may be
+// a parser fn or a kind name — a non-fn re-runs the word.
+const capParseLangLeadDispatch = "engine.parse.lead-dispatch"
+
+// InstallParseLangLeadDispatch records boru:parselang's lead-dispatch
+// signature (the gradual-lead twin of InstallParseLangFnDispatch).
+func InstallParseLangLeadDispatch(r *Registry, sig *Signature) {
+	if r == nil || sig == nil {
+		return
+	}
+	_ = r.Capabilities.Set(capParseLangLeadDispatch, sig)
+}
+
 // recordParseLangFnDispatch records the ONE runtime call a compiled
 // `parse <fn>` value-form dispatch lowers to when the parser operand is not
 // concrete under analysis: CALL_NATIVE parselang-fn-dispatch(fn, source,
@@ -1062,16 +1129,27 @@ func InstallParseLangFnDispatch(r *Registry, sig *Signature) {
 // Declines (pure check, suspended analysis, no boru:parselang import) leave
 // the caller on the unrecorded dynamic degrade.
 func recordParseLangFnDispatch(r *Registry, fn Value, args []Value) (Value, bool) {
+	return recordParseLangDispatch(r, capParseLangFnDispatch, "parselang-fn-dispatch", fn, args)
+}
+
+// recordParseLangDispatch records one parselang dispatch native (the fn
+// dispatch, or the gradual-lead dispatch) over (fn, source, opts).
+func recordParseLangDispatch(r *Registry, key, name string, fn Value, args []Value) (Value, bool) {
 	rec := r.Check.Recorder()
 	if !r.Check.Compiling || !rec.Active() {
 		return Value{}, false
 	}
-	sig, ok, _ := core.Cap[*Signature](r, capParseLangFnDispatch)
+	sig, ok, _ := core.Cap[*Signature](r, key)
 	if !ok || sig == nil {
 		return Value{}, false
 	}
 	source, opts := parseSurfaceOperands(args)
 	pos := fn.Pos()
+	if key == capParseLangLeadDispatch && r.Check.CurWordPos.Row != 0 {
+		// The gradual-lead dispatch raises what the `parse` WORD raises
+		// (a bad signature, the literal-name error), at the word.
+		pos = r.Check.CurWordPos
+	}
 	if pos.Row == 0 {
 		// A COMPUTED fn value carries no source position — anchor the
 		// recorded event at the source operand, which is written at the
@@ -1079,9 +1157,104 @@ func recordParseLangFnDispatch(r *Registry, fn Value, args []Value) (Value, bool
 		pos = source.Pos()
 	}
 	outs := []Value{NewDynamicCarrier(TAny)}
-	rec.RecordCall("parselang-fn-dispatch", sig,
+	// A GRADUAL leading operand (gradualMacroOperand) rides the dispatch's
+	// single `Any` slot, which every runtime value matches — the handler
+	// classifies it as the interpreter's `parse` does — so it is no unproven
+	// overload choice and records as a plain operand of that slot.
+	if fn.Dynamic && fn.Parent != nil && fn.Parent.Equal(TAny) {
+		fn.Dynamic = false
+	}
+	rec.RecordCall(name, sig,
 		[]Value{fn, source, opts}, outs, pos, true, false)
 	return outs[0], true
+}
+
+// capEmitLangFnDispatch / capMiniLangFnDispatch hold the emitlang- and
+// minilang-fn-dispatch natives (their *FnDefInfo — one signature per surface
+// arity): the runtime resolvers a compiled `emit` / `mini` call dispatches
+// through when its leading operand is not concrete under analysis (a
+// factory's returned emitter / transducer, a container member read).
+// Installed once per registry when the module is built.
+const (
+	capEmitLangFnDispatch = "engine.emit.fn-dispatch"
+	capMiniLangFnDispatch = "engine.mini.fn-dispatch"
+)
+
+// InstallEmitLangFnDispatch records boru:emitlang's fn-dispatch native so the
+// `emit` macro's compile branch can record calls against it.
+func InstallEmitLangFnDispatch(r *Registry, fd *FnDefInfo) {
+	installMacroFnDispatch(r, capEmitLangFnDispatch, fd)
+}
+
+// InstallMiniLangFnDispatch is InstallEmitLangFnDispatch for boru:minilang.
+func InstallMiniLangFnDispatch(r *Registry, fd *FnDefInfo) {
+	installMacroFnDispatch(r, capMiniLangFnDispatch, fd)
+}
+
+func installMacroFnDispatch(r *Registry, key string, fd *FnDefInfo) {
+	if r == nil || fd == nil {
+		return
+	}
+	_ = r.Capabilities.Set(key, fd)
+}
+
+// recordMacroFnDispatch records the ONE runtime call a compiled `emit` /
+// `mini` dispatch lowers to when its leading operand is not concrete under
+// analysis: CALL_NATIVE <word>lang-fn-dispatch over the macro's own operands,
+// in surface order. At run time the native does what the interpreter's macro
+// does with the same operands — a fn is the VALUE form (validated by the same
+// contract, applied to the standard [subject opts] prefix; a mini FILTER fn
+// yields its partial), anything else re-runs the word itself — so the
+// compiled call is the interpreter's dispatch, not a guess at it. Its result
+// count is the applied fn's own, so the out is the variadic-spread carrier:
+// the event records as a runtime-variadic REGION (the program residual
+// absorbs it; a position that needs a static count declines, as for await).
+// Declines (pure check, suspended analysis, the module not imported, an
+// arity the native does not take) leave the caller on its degrade.
+func recordMacroFnDispatch(r *Registry, key, name string, args []Value) (Value, bool) {
+	rec := r.Check.Recorder()
+	if !r.Check.Compiling || !rec.Active() {
+		return Value{}, false
+	}
+	fd, ok, _ := core.Cap[*FnDefInfo](r, key)
+	if !ok || fd == nil {
+		return Value{}, false
+	}
+	var sig *Signature
+	for i := range fd.Signatures {
+		if fd.Signatures[i].TotalArgs() == len(args) {
+			sig = &fd.Signatures[i]
+			break
+		}
+	}
+	if sig == nil {
+		return Value{}, false
+	}
+	ops := append([]Value(nil), args...)
+	// A GRADUAL leading operand rides the dispatch's `Any` slot, which every
+	// runtime value matches — the handler classifies it — so it records as
+	// a plain operand of that slot (recordParseLangFnDispatch's rule).
+	if ops[0].Dynamic && ops[0].Parent != nil && ops[0].Parent.Equal(TAny) {
+		ops[0].Dynamic = false
+	}
+	// The dispatch raises what the macro WORD raises (a bad signature, the
+	// literal-name error), so it is stamped at the word, as the
+	// interpreter's handler error is.
+	pos := r.Check.CurWordPos
+	if pos.Row == 0 {
+		pos = args[len(args)-1].Pos()
+	}
+	outs := []Value{core.NewVariadicCarrier(NewTypeLiteral(TAny))}
+	rec.RecordCall(name, sig, ops, outs, pos, true, false)
+	return outs[0], true
+}
+
+// MiniPartialFromFn is the fn-VALUE form's filter partial (miniFnExpand's
+// MiniLangFnFilterShaped arm) over a fn value's signatures and the expansion
+// tail — exported for boru:minilang's runtime fn-dispatch, which builds the
+// very value the interpreter's expansion builds.
+func MiniPartialFromFn(fnDef FnDefInfo, tail []Value) Value {
+	return miniPartialFromSigs("fn", "", fnDef.Signatures, tail)
 }
 
 // parseKindRegistered reports whether `parse_<kind>` is an export of the
@@ -1113,14 +1286,18 @@ func emitHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 		args[0].Parent.ConformsTo(TFunction) {
 		return emitFnExpand(args[0], args, r)
 	}
-	// A DYNAMIC lead under analysis — a container member read (`emit m.up
-	// {a:1}`), any value the pass cannot type — is an emitter or data only
-	// at run time, where the interpreter's expansion reads the concrete
-	// value. Committing it to the data route recorded `emitlang-auto` over
-	// the fn and the map transposed, a no-match where the interpreter ran
-	// the emitter (NUR170); degrade as the not-concrete Function lead does.
-	if len(args) >= 2 && args[0].Dynamic && r.Check.IsActive() {
-		macroDegradedAdvisory(r, "emit", "the emit lead is a dynamic value under analysis (an emitter or data only at run time)", args[0].Pos())
+	if len(args) >= 2 && gradualMacroOperand(r, args[0]) {
+		// A GRADUAL leading operand (`emit m.up {a:1}` over a container
+		// member the pass knows only as dynamic(Any)). The auto form below
+		// would take it as the OPTIONS map and bake an emit_auto call the
+		// runtime fn value then reaches transposed (NUR170); the interpreter
+		// dispatches on what the value IS. It degrades, and the COMPILE pass
+		// records the runtime dispatch, which takes the interpreter's route
+		// for whatever the value turns out to be (2026-09-26).
+		macroDegradedAdvisory(r, "emit", "the leading operand is not a concrete value under analysis", args[0].Pos())
+		if out, ok := recordMacroFnDispatch(r, capEmitLangFnDispatch, "emitlang-fn-dispatch", args); ok {
+			return []Value{out}, nil
+		}
 		return []Value{NewDynamicCarrier(TString)}, nil
 	}
 	// Try to read the leading operand as a kind name (a /q'd bare word).
@@ -1231,6 +1408,11 @@ func emitFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 	if !ok {
 		if r.Check.IsActive() && !IsConcrete(fn) {
 			macroDegradedAdvisory(r, "emit", "the emitter fn is not a concrete value under analysis", args[0].Pos())
+			// COMPILE pass: record the runtime fn dispatch (a factory's
+			// returned emitter — the sweep's `emit` × factory cell).
+			if out, ok := recordMacroFnDispatch(r, capEmitLangFnDispatch, "emitlang-fn-dispatch", args); ok {
+				return []Value{out}, nil
+			}
 			return []Value{NewDynamicCarrier(TString)}, nil
 		}
 		// A fn-family value whose payload is not an FnDefInfo — defensive:

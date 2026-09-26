@@ -63,12 +63,17 @@ var ControlNatives = []NativeFunc{
 				NoEvalArgs: map[int]bool{0: true, 1: true, 2: true},
 				Impl:       Go(if3Handler),
 				ReturnsFn:  if3ReturnsFn, BarrierPos: -1,
+				// The branch is lowered by the ReturnsFn (RecordBranch), never
+				// as a dispatch over the arm bodies (S2b's declaration).
+				CompileEffect: CompileOwnLowering,
 			},
 			{
 				Args:       []*Type{TAny, TAny},
 				NoEvalArgs: map[int]bool{0: true, 1: true},
 				Impl:       Go(if2Handler),
-				ReturnsFn:  If2ReturnsFn, BarrierPos:
+				// As the three-operand form: RecordBranch lowers it (S2b).
+				CompileEffect: CompileOwnLowering,
+				ReturnsFn:     If2ReturnsFn, BarrierPos:
 
 				// Clause-list form: `if [c1 b1 c2 b2 … else]`. Even elements
 				// are conditions, the following odd element is that clause's
@@ -87,6 +92,12 @@ var ControlNatives = []NativeFunc{
 				NoEvalArgs: map[int]bool{0: true},
 				Impl:       Go(IfListHandler),
 				ReturnsFn:  IfListReturnsFn, BarrierPos: -1,
+				// The handler returns ifClause's tokens — the chosen body
+				// SPLICED for the tape to re-step — and the ReturnsFn records
+				// no branch (it only joins the arms' carriers), so this form
+				// has no structured lowering: CompileResteps, the S2a rule
+				// (S2b's declaration).
+				CompileEffect: CompileResteps,
 			},
 		},
 	},
@@ -149,12 +160,17 @@ var ControlNatives = []NativeFunc{
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(ForCountHandler),
 				ReturnsFn:  forIntegerListReturnsFn, BarrierPos: -1,
+				// The loop is lowered by the ReturnsFn (RecordLoop), never as
+				// a dispatch over the body (S2b's declaration).
+				CompileEffect: CompileOwnLowering,
 			},
 			{
 				Args:       []*Type{TList, TList},
 				NoEvalArgs: map[int]bool{1: true},
 				Impl:       Go(ForRangeHandler),
 				ReturnsFn:  forListListReturnsFn, BarrierPos: -1,
+				// RecordLoop, as the count form (S2b).
+				CompileEffect: CompileOwnLowering,
 			},
 		},
 	},
@@ -173,6 +189,10 @@ var ControlNatives = []NativeFunc{
 			NoEvalArgs: map[int]bool{0: true, 1: true},
 			Impl:       Go(WhileHandler),
 			ReturnsFn:  whileReturnsFn, BarrierPos: -1,
+			// The loop is lowered by the ReturnsFn (RecordLoop, the
+			// "while" loop event), never as a dispatch over the condition
+			// or the body (S2b's declaration).
+			CompileEffect: CompileOwnLowering,
 		}},
 	},
 	// break and continue signal via Registry.FlowCtrl rather than

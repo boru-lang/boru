@@ -36,7 +36,16 @@ const (
 	// on the compiled lane now — the behave rows (the quoted behaviour
 	// name bakes as an inert const), the unpack-over-a-param rows (the
 	// run-time bind), a bare-`args` read and the strict-Any fold rows.
-	refDefectCeiling = 102
+	// 102 -> 96 on 2026-09-26 (the plain-error disposition, the
+	// retired-node replay): six language tests answer on the compiled lane
+	// — TestBehaveUnify_RejectsBadShape's four `behave unify` shape errors
+	// (the handler's plain Go error, which compiledRunError booked as a
+	// defect where the interpreter surfaces it untouched), and
+	// TestTypeShadow_PredicateOverLiteral / TestTypeShadow_DepScalar, a
+	// shadowing type the check pass minted and then retired (`undef Foo`,
+	// `undef Bound`), which the type-install twin now re-adopts for the run
+	// ("unresolvable type operand" before).
+	refDefectCeiling = 96
 )
 
 var refDefects = struct {

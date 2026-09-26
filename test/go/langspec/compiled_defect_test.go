@@ -67,7 +67,24 @@ import (
 // deleted, edge-dispatch-3's and module-struct's lowered). make's OTHER
 // refusals — an unknown or missing field, a source of the wrong shape —
 // are the same class and still bail.
-const bailDefectCeiling = 39
+// 51 -> 7 on 2026-09-26 (the plain-error disposition, the retired-node
+// replay, the type-name reach): forty rows were a handler's plain Go error
+// (convert, make, a predicate type's rejection, the module words' own
+// guards) that compiledRunError booked as a defect while the interpreter
+// surfaced it untouched; class.tsv L98–L101 read a node the check pass's
+// `undef` retired and the type-install twin did not re-adopt; convert-ideal
+// L33 and edge-scalars-3 L218 bailed at vm:poly-no-match for want of a
+// faithful-raise plan. Left: flex.tsv L228/L230/L236 (vm:poly-nout-drift),
+// edge-quote-1 L28 / edge-quote-3 L56 (a tape-coupled Word from get) and
+// fn-value.tsv L317/L318 (NUR190, booked by choice).
+// 39 -> 5 on 2026-09-26 (the merge of main's #510 with the reverse-order
+// NUR run): main's 51 -> 7 above and the NUR run's 51 -> 39 overlap (the
+// plain-error disposition subsumes the fnpred and make-refusal rows the run
+// had already moved), and the run's NUR190 close takes fn-value.tsv
+// L317/L318 off main's seven. Left: flex.tsv L228/L230/L236
+// (vm:poly-nout-drift) and edge-quote-1 L28 / edge-quote-3 L56 (a
+// tape-coupled Word from get).
+const bailDefectCeiling = 5
 
 var bailDefects = struct {
 	mu      sync.Mutex

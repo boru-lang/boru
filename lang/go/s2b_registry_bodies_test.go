@@ -91,9 +91,26 @@ func TestSingleOverloadUserFnOverImpreciseOperandCompiles(t *testing.T) {
 			t.Errorf("%s: compiled=%v %v / %v, want %s", c.body, compiled, gotC, errC, c.want)
 		}
 	}
-	fnValueM2CompileFailure(t, "a predicate-typed param keeps the decline",
-		pre+`def Big (Integer gt 10) def bg fn [[n:Big][Integer][n]] def f fn [[raw:Map][Integer][def al (each [nd] (go raw "aliases" [])) (bg (size al))]] export "K" {f: f/v}] end K.f {aliases:["x"]}`,
-		"unmatched dispatch recovered at bg")
+	// A predicate-typed param over the SAME shape: this row declined
+	// "unmatched dispatch recovered at bg" until 2026-09-26, when `each` over
+	// a dynamic collection stopped committing to a strict Map
+	// (TestEachOverDynamicCollectionIsNotAStrictMap). `size al` is then a
+	// dynamic Integer that MATCHES bg directly — no recovery — and the
+	// CALL_USER entry guard (checkParamContract's SigTypeMatches) runs Big's
+	// predicate over the runtime value: the interpreter's signature_error when
+	// it fails, its answer when it holds. The failing row compares code and
+	// detail, not the rendered caret: the guard's raise inside a unit carries
+	// no source position — NUR171's family, pre-existing (a plain top-level
+	// `bg (h "s")` already carets the argument, not the word, on main).
+	bgSrc := func(bound string) string {
+		return pre + `def Big (Integer gt ` + bound + `) def bg fn [[n:Big][Integer][n]] def f fn [[raw:Map][Integer][def al (each [nd] (go raw "aliases" [])) (bg (size al))]] export "K" {f: f/v}] end K.f {aliases:["x"]}`
+	}
+	requireEngineParity(t, bgSrc("0"), true)
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, bgSrc("10"))
+	if !compiled || codeOf(errC) != "signature_error" || codeOf(errI) != "signature_error" || len(gotC) != len(gotI) ||
+		!strings.Contains(fmt.Sprint(errC), "cannot call `bg`") || !strings.Contains(fmt.Sprint(errI), "cannot call `bg`") {
+		t.Errorf("a failing predicate: compiled=%v C=%v/%v I=%v/%v; want the interpreter's `cannot call bg` on both lanes", compiled, gotC, errC, gotI, errI)
+	}
 	// An UNDER-ARITY call and a QUOTED param are the interpreter's
 	// signature_error, never a recovery (a Codex review of #509): the guard
 	// would bind a partial window, or evaluate what the matcher captures.

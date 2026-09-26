@@ -147,6 +147,9 @@ var DefinitionNatives = []NativeFunc{
 			NoEvalArgs: map[int]bool{0: true},
 			Impl:       Go(VarHandler, RunInCheck()),
 			Returns:    []*Type{TAny}, BarrierPos: -1,
+			// The splice above is the S2a rule's re-stepped result (S2b's
+			// declaration): CompileResteps, the handler contract written down.
+			CompileEffect: CompileResteps,
 		}},
 	},
 	{
@@ -193,6 +196,10 @@ var DefinitionNatives = []NativeFunc{
 				Impl:       Go(FnTripleHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// S2b's declaration: the constructor runs on the check engine
+				// and its fn value's body compiles as a unit at the call —
+				// never a dispatch over the raw body (CompileOwnLowering).
+				CompileEffect: CompileOwnLowering,
 			},
 			{
 				Args:       []*Type{TList},
@@ -200,6 +207,8 @@ var DefinitionNatives = []NativeFunc{
 				Impl:       Go(FnHandler, RunInCheck()),
 				Returns:    []*Type{TFunction},
 				BarrierPos: -1,
+				// As the triple form (S2b).
+				CompileEffect: CompileOwnLowering,
 			},
 			{
 				// The 0-argument spelling is never a construction: `fn` with
@@ -246,6 +255,8 @@ var DefinitionNatives = []NativeFunc{
 			Impl:          Go(AfnHandler, RunInCheck()),
 			Returns:       []*Type{TFunction},
 			BarrierPos:    -1,
+			// As fn (S2b): constructed at compile time, body compiled at the call.
+			CompileEffect: CompileOwnLowering,
 		}},
 	},
 	{
@@ -271,6 +282,8 @@ var DefinitionNatives = []NativeFunc{
 				NoEvalMapArgs: map[int]bool{0: true},
 				Impl:          Go(FnsigPairHandler, RunInCheck()),
 				Returns:       []*Type{TFnUndef}, BarrierPos: -1,
+				// S2b: a type built on the check engine (CompileOwnLowering).
+				CompileEffect: CompileOwnLowering,
 			},
 			{
 				Args:       []*Type{TList},
@@ -282,6 +295,8 @@ var DefinitionNatives = []NativeFunc{
 				// pending gen spec turns the result into a generic
 				// fn-shape schema (see the handler).
 				Returns: []*Type{TFnUndef}, BarrierPos: -1,
+				// S2b: as the pair form.
+				CompileEffect: CompileOwnLowering,
 			},
 		},
 	},
@@ -320,6 +335,8 @@ var DefinitionNatives = []NativeFunc{
 				NoEvalMapArgs: map[int]bool{0: true},
 				Impl:          Go(FnpredPairHandler, RunInCheck()),
 				Returns:       []*Type{TFunction}, BarrierPos: -1,
+				// S2b: a predicate type built on the check engine.
+				CompileEffect: CompileOwnLowering,
 			},
 			{
 				Args:       []*Type{TList},
@@ -329,6 +346,8 @@ var DefinitionNatives = []NativeFunc{
 				// predicate type declared in a body is a REAL type
 				// statically, not an Any carrier.
 				Returns: []*Type{TFunction}, BarrierPos: -1,
+				// S2b: as the pair form.
+				CompileEffect: CompileOwnLowering,
 			},
 		},
 	},
@@ -664,7 +683,8 @@ func synthDefKeywordSigNamed(ctor string, base *Signature, genChain bool, nameTy
 		// flag answers the census, it lowers nothing. A form that carries a
 		// NoEvalArgs position (the gen chain's params list, a constructor
 		// whose base sig takes a raw body) is the census's CODE-BODY class
-		// and owes a different declaration (S2b); it is left undeclared here.
+		// and owes a different declaration: S2b's CompileOwnLowering, set
+		// below beside the same quoted-operand flag.
 	}
 	if len(noEval) == 0 {
 		sig.CompileEffect |= CompileQuoteInert
@@ -674,6 +694,17 @@ func synthDefKeywordSigNamed(ctor string, base *Signature, genChain bool, nameTy
 	}
 	if len(noEval) > 0 {
 		sig.NoEvalArgs = noEval
+		// S2b's declaration for the code-body class: the form runs in check
+		// mode — the constructor (fn, fnsig, the gen chain's tail …) builds
+		// its value on the check engine and the binder hooks lower the
+		// binding — so the body is never lowered as a dispatch
+		// (CompileOwnLowering). The quoted operands keep S2a's answer
+		// beside it: the Atom-named form's NAME is a key, the String-named
+		// form's only quoted operands are the Pattern-pinned keywords.
+		sig.CompileEffect = CompileQuoteInert | CompileOwnLowering
+		if nameQuote {
+			sig.CompileEffect = CompileQuoteKey | CompileOwnLowering
+		}
 	}
 	sig.NoEvalMapArgs = ShiftPosFlags(base.NoEvalMapArgs, offset)
 	if genChain {
@@ -1316,7 +1347,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			// instance has the same provenance an explicit make gives it (a
 			// downstream `b typeof` then compiles). Outside emit mode this is a
 			// no-op and the concrete instance is bound.
-			if carrier, ok := core.RecordTypedDefMake(r, constraint, body, defPos); ok {
+			if carrier, ok := core.RecordTypedDefMake(r, name, constraint, body, defPos); ok {
 				return InstallAndRecordDef(r, name, carrier, defPos)
 			}
 			result, err := core.MakeObject(info, body, r)
@@ -1345,7 +1376,7 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// looks the schema up by name when the constraint carries no body.
 	if resInfo, isRes := ResolveResourceTypeInfo(r, constraint); isRes {
 		if body.Parent.Equal(TMap) {
-			if carrier, ok := core.RecordTypedDefMake(r, constraint, body, defPos); ok {
+			if carrier, ok := core.RecordTypedDefMake(r, name, constraint, body, defPos); ok {
 				return InstallAndRecordDef(r, name, carrier, defPos)
 			}
 			provided, merr := AsMutableMap(body)

@@ -266,11 +266,7 @@ func forceArityHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 	n, _ := args[0].AsConcreteInteger()
 	wrapped, ok := core.ForceArityFunction(args[1], int(n))
 	if !ok {
-		// A compiled closure bridges to its fn definition first (NUR158;
-		// see rebarrierResult).
-		if fnv, bridged := ClosureAsFnDef(reg, args[1]); bridged {
-			wrapped, ok = core.ForceArityFunction(fnv, int(n))
-		}
+		wrapped, ok = wrapCompiledClosure(reg, "force-arity", args[1], int(n))
 	}
 	if !ok {
 		if out, gradual := checkModeGradualFn(reg, args[1]); gradual {
@@ -327,15 +323,7 @@ func forceArityAtomHandler(args []Value, _ map[string]Value, _ []Value, reg *Reg
 func rebarrierResult(wrap func(Value) (Value, bool), v Value, word string, reg *Registry) ([]Value, error) {
 	wrapped, ok := wrap(v)
 	if !ok {
-		// A compiled CLOSURE (a capturing lambda a factory returned, read
-		// out of a container — `m.a/s 10 3`) is a ClosurePayload, not the
-		// FnDefInfo the wrap asserts; the value-path bridge hands back the
-		// fn definition whose dispatch runs the closure, and the wrapper
-		// stores that as it stores any fn (NUR158: `illegal_ref` compiled
-		// where the interpreter wrapped the same value).
-		if fnv, bridged := ClosureAsFnDef(reg, v); bridged {
-			wrapped, ok = wrap(fnv)
-		}
+		wrapped, ok = wrapCompiledClosure(reg, word, v, 0)
 	}
 	if !ok {
 		if out, gradual := checkModeGradualFn(reg, v); gradual {
@@ -580,11 +568,7 @@ func rebindHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]
 func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 	wrapped, ok := core.UsurpFunction(args[0])
 	if !ok {
-		// A compiled closure bridges to its fn definition first (NUR158;
-		// see rebarrierResult).
-		if fnv, bridged := ClosureAsFnDef(reg, args[0]); bridged {
-			wrapped, ok = core.UsurpFunction(fnv)
-		}
+		wrapped, ok = wrapCompiledClosure(reg, "usurp", args[0], 0)
 	}
 	if !ok {
 		if out, gradual := checkModeGradualFn(reg, args[0]); gradual {
@@ -598,6 +582,31 @@ func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 		return nil, fmt.Errorf("%s", detail)
 	}
 	return []Value{wrapped}, nil
+}
+
+// wrapCompiledClosure wraps a COMPILED CLOSURE operand of a dispatch-modifier
+// word (the compiled lane's value for a capturing `fn` / `=>` literal minted at
+// run time — a factory's returned closure): the interpreter wraps the same
+// source fn, so the compiled lane wraps the closure over its bridged shape and
+// stores the closure itself (core's closureShape). Before this the value was a
+// ClosurePayload the FnDefInfo assertion refused with illegal_ref where the
+// interpreter answered (NUR158), which is why recordGradualWrap used to
+// decline every typed Function carrier at these slots. n is force-arity's
+// arity and unread by the others.
+func wrapCompiledClosure(reg *Registry, word string, v Value, n int) (Value, bool) {
+	if reg == nil || !IsCompiledClosure(v) {
+		return Value{}, false
+	}
+	switch word {
+	case "usurp":
+		return core.UsurpClosure(reg, v)
+	case "stack-args":
+		return core.ForceStackClosure(reg, v)
+	case "forward-args":
+		return core.ForceForwardClosure(reg, v)
+	default: // force-arity, the one caller left
+		return core.ForceArityClosure(reg, v, n)
+	}
 }
 
 // recordGradualWrap records a dispatch-modifier word's GRADUAL dispatch (a
@@ -617,25 +626,18 @@ func usurpHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 // The poly record is the ONE seat of these words the recorder's declaration
 // check (RecordCallOperands' CompileFnHandlerStrict arm) never sees — the
 // value-form sigs run in check mode, so RecordCall declines them before the
-// operand walk, and RecordPolyCall reads no declaration. So the declaration
-// is honoured HERE, by the word's own check-mode half: a TYPED Function
-// carrier (a user fn's declared Function result the check pass could not
-// materialise — a returned closure, a branch-selected fn) is declined,
-// because the VM delivers a capturing closure to the poly'd native as a
-// ClosurePayload and the native's FnDefInfo validation raises illegal_ref
-// where the interpreter wraps the real closure (measured 2026-09-18: `def r
-// (usurp (mk 100))  r 10 3` answered illegal_ref against the interpreter's
-// 93). The residual then declines — the strict slot's contract; a capture-free
-// returned fn declines with it (the carrier cannot tell them apart), which is
-// the sound side. Two gradual carriers keep their poly record: the DYNAMIC
-// Function carrier a sibling modifier's own gradual wrap produced (a
-// composed chain `usurp (forward-args (m.s))`, path-modifier.tsv:52-55 —
-// the inner poly's runtime result is always the wrapper FnDefInfo the
-// rebarrier/usurp constructors build, so the outer slot is as safe as the
-// inner), and the dynamic-Any carrier of a `m.a` read (path-modifier.tsv:17):
-// its runtime value is usually a plain fn value, and the same closure
-// delivered THAT way is the residual NUR158 records for the poly seat
-// itself to close.
+// operand walk. Until 2026-09-26 the declaration was honoured HERE: a TYPED
+// Function carrier (a user fn's declared Function result — a factory's
+// returned closure) declined the poly record, because the VM delivered a
+// capturing closure to the poly'd native as a ClosurePayload and the native's
+// FnDefInfo validation raised illegal_ref where the interpreter wrapped it
+// (`def r (usurp (mk 100))  r 10 3`: illegal_ref against 93, NUR158). The
+// natives wrap a compiled closure now (wrapCompiledClosure: the wrapper reads
+// the closure's bridged shape and stores the closure itself, which the VM's
+// dynamic apply runs natively), so every gradual Function carrier records —
+// the typed factory result, a sibling modifier's dynamic wrapper, and the
+// dynamic-Any `m.a` read alike — and the sweep's `force-arity` /
+// `forward-args` / `stack-args` / `usurp` × factory cells compile.
 func recordGradualWrap(reg *Registry, word string, args, outs []Value) {
 	if reg == nil {
 		return
@@ -644,28 +646,8 @@ func recordGradualWrap(reg *Registry, word string, args, outs []Value) {
 	if len(args) > 0 {
 		fnArg := args[len(args)-1]
 		pos = fnArg.Pos()
-		if strictFnSlotWord(reg, word) && fnArg.Parent.ConformsTo(TFunction) && !fnArg.Dynamic {
-			return
-		}
 	}
 	reg.Check.Recorder().RecordPolyCall(word, args, outs, pos, nil, nil)
-}
-
-// strictFnSlotWord reports whether any signature of word declares
-// CompileFnHandlerStrict — the native validates its fn operand as an
-// FnDefInfo, so a compiled closure at the slot must decline rather than lower
-// (the declaration recordGradualWrap honours at the poly seat).
-func strictFnSlotWord(reg *Registry, word string) bool {
-	fd := reg.Lookup(word)
-	if fd == nil {
-		return false
-	}
-	for i := range fd.Signatures {
-		if fd.Signatures[i].CompileEffect.Has(core.CompileFnHandlerStrict) {
-			return true
-		}
-	}
-	return false
 }
 
 // checkModeGradualFn handles a dispatch-modifier word (usurp / stack-args /

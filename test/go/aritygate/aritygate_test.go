@@ -104,7 +104,15 @@ var pinnedAritySites = map[string]int{
 	// guarded CALL_USER never binds a partial window the interpreter's
 	// signature_error refuses; it decides whether the arguments are THERE,
 	// not what the fn does by their count (main's 29 -> 30).
-	"core/go/engine.go":       28,
+	// 28 -> 30 (2026-09-26, the merge of main's #510): main's two sites
+	// (its 30 -> 32, the last real programs, the fn-value recovery) —
+	// narrowOverloadShadowed's window-arity candidate filter
+	// (`s.TotalArgs() != len(window)`), which proves which overload the
+	// interpreter's first match takes over a fixed operand window — the
+	// matcher's own rule — and fnValueNoMatchRecovers' empty-table guard
+	// (`len(fn.Signatures) == 0`, no overload to recover into). No function
+	// behaves differently by its count.
+	"core/go/engine.go":       30,
 	"core/go/region_diag.go":  1,
 	"core/go/collect_plan.go": 8, // 5 -> 8 (NUR228): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
 	"core/go/signature.go":    12,
@@ -141,7 +149,14 @@ var pinnedAritySites = map[string]int{
 	"core/go/spec_fn.go": 2,
 
 	// ── The checker's and VM's mirrors of that same matching.
-	"check/go/carrier.go": 13,
+	// 13 -> 15 on 2026-09-26 (the last real programs):
+	// reachableUnknownReturnSibling's same-arity candidate filter
+	// (`s.TotalArgs() != len(args)`) and its single-overload early out
+	// (`len(fn.Signatures) < 2`) — dynamicReachableReturns' own
+	// reachability rule, read to know whether a dynamic operand reaches an
+	// overload whose return the union cannot name. Matching, not
+	// arity-keyed behaviour.
+	"check/go/carrier.go": 15,
 	// 1 -> 2 (2026-09-24, the written argument's fit, NUR194):
 	// shapedFnReadWindow guards `i-1 < len(shape.Params)` — a BOUNDS check
 	// on the claim's parameter-type slice, which may be shorter than the
@@ -394,7 +409,12 @@ var pinnedAritySites = map[string]int{
 	// local (`len(own) == 0`, the list a fn-shaped value resolves to) — the
 	// same OVERLOAD-LIST presence test as before, which the walker no
 	// longer sees as a selector; no site changed meaning.
-	"lang/go/native/native_macro.go": 4,
+	// 4 -> 5 (2026-09-26, the merge of main's #510; main's 5 -> 6, the
+	// sweep's last cells): recordMacroFnDispatch picks the emit / mini
+	// fn-dispatch native's signature whose arg count is the macro call's
+	// SURFACE operand count — overload selection by the declared
+	// signature, the argument rule, never behaviour by arity.
+	"lang/go/native/native_macro.go": 5,
 	"lang/go/native/native_help.go":  3,
 	// 1 -> 2: the runtime `parse <fn>` dispatch reads whether a registry
 	// binding carries any overloads AT ALL before matching against them
@@ -403,7 +423,13 @@ var pinnedAritySites = map[string]int{
 	// signature TABLE to match — the value's own, or the one its name resolves
 	// to in the registry — never whether the parser may act. That is matching
 	// machinery, the argument rule's own, not a behaviour-by-arity exception.
-	"lang/go/modules/parselang.go": 2,
+	// 2 -> 3 (2026-09-26, the sweep's last cells): the module build installs
+	// parselang-lead-dispatch only when the looked-up native carries exactly
+	// its one registered signature (`len(fn.Signatures) == 1`) — the same
+	// installation guard the fn dispatch beside it has: an OVERLOAD-LIST
+	// presence test on a native the module itself registers, never a
+	// decision about a user fn's shape.
+	"lang/go/modules/parselang.go": 3,
 	"lang/go/modules/net_codec.go": 1,
 	"lang/go/modules/test.go":      1,
 	// StampBodySig binds a handler's run-time inputs to its throwaway

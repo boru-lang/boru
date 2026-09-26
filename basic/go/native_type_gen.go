@@ -33,6 +33,10 @@ var GenNatives = []NativeFunc{
 			Impl:       Go(GenHandler, RunInCheck()),
 			Returns:    []*Type{},
 			BarrierPos: -1,
+			// S2b's declaration: the params list runs on the check engine
+			// and installs the pending spec the next constructor consumes —
+			// an effect, never a dispatch over the list (CompileOwnLowering).
+			CompileEffect: CompileOwnLowering,
 		}},
 	},
 	{

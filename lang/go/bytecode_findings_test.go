@@ -19,8 +19,12 @@ import (
 // internal_error a HANDLER raised — the interpreter raises the identical one
 // running the identical handler, and booking the compiler for a handler's
 // choice of error code would put fifty-odd corpus rows in a ledger meant to
-// name VM bails. Only the VM's OWN internal errors, identified by the two
-// texts it builds them with, and a foreign Go error are compiler DEFECTS.
+// name VM bails. So is a PLAIN Go error: a handler's fmt.Errorf surfaces
+// untouched on the interpreter (stampErrPos leaves a non-BoruError alone),
+// and the compiled lane surfaces the same one (2026-09-26 — it used to be
+// wrapped as a defect, which put the forty-odd "<native>'s own error" rows on
+// the runtime-defers ledger). Only the VM's OWN errors, marked VMDefer, are
+// compiler DEFECTS.
 func TestCompiledRunErrorClassifies(t *testing.T) {
 	a, err := New()
 	if err != nil {
@@ -37,7 +41,8 @@ func TestCompiledRunErrorClassifies(t *testing.T) {
 		{"a recovered VM panic is a defect", vmDeferErr("internal bytecode VM error: index out of range"), true},
 		{"a handler's internal_error is the program's", core.MakeBoruError("internal_error", "convert: cannot convert Float to BigInteger", "", "", ""), false},
 		{"a user `raise internal_error` is the program's", core.MakeBoruError("internal_error", "boom", "", "", ""), false},
-		{"foreign (non-Boru) error is a defect", errors.New("some go error"), true},
+		{"a plain (non-Boru) error is the program's", errors.New("some go error"), false},
+		{"the VM's own entry refusal is a defect", vmDeferErr("bytecode: nil program"), true},
 		{"type_error is the program's result", core.MakeBoruError("type_error", "bad", "", "", ""), false},
 		{"evaluation_limit is the program's result", core.MakeBoruError("evaluation_limit", "too long", "", "", ""), false},
 		{"tape_exhausted is the program's result", core.MakeBoruError("tape_exhausted", "too big", "", "", ""), false},

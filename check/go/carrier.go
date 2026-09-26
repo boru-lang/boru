@@ -869,10 +869,26 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 		// (declared Any / a ReturnsFn that produced a dynamic carrier) stays
 		// dynamic — those arrive here already flagged Dynamic and are untouched.
 		var reachable []*core.Type
+		// unknownSibling: fewer than two reachable returns is NOT the single-
+		// reachable-return case when the union was abandoned because a
+		// reachable overload has no single declared return (a ReturnsFn —
+		// dynamicReachableReturns' partially-known bail). `each [body] xs`
+		// over a dynamic xs reaches both the List form (eachReturnsFn) and
+		// the Map form (Returns Map); matching committed to the Map form, and
+		// keepStrict then held a STRICT Map the runtime List contradicts —
+		// kg/ingest.boru's `KgEnt.distinct-sorted (each […] (get-or raw
+		// "aliases" []))` left the xs:List callee uncalled as data, and the
+		// map literal holding both values had no compiled home ("fn call
+		// operand of unknown provenance", 2026-09-26). The committed return
+		// is then no sound static type at all, so it widens to dynamic(Any)
+		// below — the all-unknown case's own answer.
+		unknownSibling := false
 		if len(out) == 1 {
 			reachable = dynamicReachableReturns(r, word, args)
+			unknownSibling = len(reachable) < 2 && reachableUnknownReturnSibling(r, word, args)
 		}
-		keepStrict := len(out) == 1 && len(reachable) < 2
+		keepStrict := len(out) == 1 && len(reachable) < 2 && !unknownSibling
+		widenToAny := unknownSibling && isConcreteContainerReturn(out[0])
 		for i := range out {
 			out[i].Carrier = true
 			if keepStrict && !out[i].Dynamic && isConcreteContainerReturn(out[i]) {
@@ -902,6 +918,10 @@ func applyGradualContagion(r *core.Registry, word string, args []core.Value, out
 					alts[i] = core.NewTypeLiteral(t)
 				}
 				out[0] = core.NewDynamicCarrierValue(core.NewDisjunct(alts))
+			} else if widenToAny {
+				// Minted fresh, as the union above is (the residual model
+				// relies on the widening's new identity).
+				out[0] = core.NewDynamicCarrier(core.TAny)
 			}
 		} else if len(out) == 0 && (!r.Check.Compiling || tailConsumed) {
 			// The matched overload returns NOTHING (an in-place mutator) but the
@@ -1672,6 +1692,41 @@ func dynamicReachableValueReturns(r *core.Registry, word string, args []core.Val
 	return rets
 }
 
+// reachableUnknownReturnSibling reports whether the dispatch's operands reach
+// two or more same-arity overloads of word (dynamicReachableReturns'
+// reachability rule) and at least one of them declares no single return (a
+// ReturnsFn, a zero- or multi-return sig) — the case dynamicReachableReturns
+// abandons for a partially-known call, where the matched overload's return
+// is only one of the runtime's possible result types.
+func reachableUnknownReturnSibling(r *core.Registry, word string, args []core.Value) bool {
+	fn := r.Lookup(word)
+	if fn == nil || len(fn.Signatures) < 2 {
+		return false
+	}
+	reached, unknown := 0, false
+	for i := range fn.Signatures {
+		s := &fn.Signatures[i]
+		if s.TotalArgs() != len(args) {
+			continue
+		}
+		reach := true
+		for j := range args {
+			if !core.SigTypeMatches(args[j], core.SigArgType(s, j)) {
+				reach = false
+				break
+			}
+		}
+		if !reach {
+			continue
+		}
+		reached++
+		if len(s.Returns) != 1 || s.Returns[0] == nil {
+			unknown = true
+		}
+	}
+	return reached >= 2 && unknown
+}
+
 func dynamicReachableReturns(r *core.Registry, word string, args []core.Value) []*core.Type {
 	fn := r.Lookup(word)
 	if fn == nil || len(fn.Signatures) < 2 {
@@ -1886,8 +1941,21 @@ func slotIsPolymorphic(r *core.Registry, word string, args []core.Value, i int, 
 		for j := range args {
 			if j == i {
 				// The dynamic value at i: reachable unless provably disjoint
-				// from this overload's type there.
-				if core.IsNeverShape(core.TandValues(core.NewCarrier(args[j].Parent), core.NewCarrier(st))) {
+				// from this overload's type there — measured against the
+				// value's BOUND, the same operand narrowDynamicUses
+				// intersects. Its Parent alone is not the bound for a
+				// structured one: a dynamic DISJUNCT (`def cur (hashes get
+				// k)` over an Any store, the union of get's reachable
+				// returns) has Parent Disjunct, a node disjoint from every
+				// container type, so every sibling read as unreachable and
+				// the first overload's slot won — mini-redis's `(cur get f)`
+				// narrowed cur to Module, and the later `cur set (f) None`
+				// declined no_signature, taking the `def h2` it fed with it
+				// (a false undefined_word, 2026-09-26).
+				bound := args[j]
+				bound.Dynamic = false
+				bound.SetDynFrom("")
+				if core.IsNeverShape(core.TandValues(bound, core.NewCarrier(st))) {
 					reach = false
 					break
 				}

@@ -29,6 +29,12 @@ type PolyNoMatchSpec struct {
 	NSigs int
 	// Pos is the word's source position — the interpreter's raise anchor.
 	Pos SrcPos
+	// Uncalled marks the dispatch as a named fn VALUE's (execFnDefLiteral's
+	// no-signature recovery for a module native, Engine.fnValueRecovery):
+	// the interpreter's no-match there raises uncalled_function ("call to
+	// 'w' matched no signature") at Pos, not sigError's signature_error, so
+	// the VM raises that instead. Written / StackTuple are unused for it.
+	Uncalled bool
 }
 
 // FallbackSpan is one interpreter island: a recorded token sequence

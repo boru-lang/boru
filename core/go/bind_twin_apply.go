@@ -102,6 +102,16 @@ func applyTwinPush(r *Registry, tr BindTransition, entry DefEntry) error {
 		if err := TypeNameFree(r, tr.Name); err != nil {
 			return err
 		}
+		// The node must be LIVE in the ID index again, not only bound. The
+		// mint normally survives the rollback (readmitRetired leaves mints
+		// in place), but when the check pass ALSO retired it — `def Point
+		// class {…} … undef Point` — the rollback's snapshot predates the
+		// mint, so nothing re-admits it, and every OpPushType between this
+		// twin and the undef twin met an unresolvable type operand where the
+		// interpreter's `make Point` resolved it (class.tsv L98–L101,
+		// 2026-09-26). Adopt is idempotent and keeps the canonical pointer;
+		// the undef twin retires it again at its own position.
+		r.Types.Adopt(entry.TypeDef)
 		r.Defs.PushType(tr.Name, entry.TypeDef, entry.Body)
 	default:
 		if err := TypeNameFree(r, tr.Name); err != nil {
