@@ -112,7 +112,15 @@ var pinnedAritySites = map[string]int{
 	// matcher's own rule — and fnValueNoMatchRecovers' empty-table guard
 	// (`len(fn.Signatures) == 0`, no overload to recover into). No function
 	// behaves differently by its count.
-	"core/go/engine.go":       30,
+	// 30 -> 32 (2026-09-26, NUR241 closed as a sound decline):
+	// noteWordLedArrival skips a slot past the deferred signature's own
+	// arity (`slot >= fwd.Sig.TotalArgs()`) — whether the window HAS that
+	// slot — and narrowerWindowFits skips a 0-arg signature
+	// (`TotalArgs() == 0`), which takes no window and so cannot be the
+	// narrower one that fits the stack beneath the word. Both ask which
+	// window the matcher's own rule collects, never what a fn does by its
+	// count.
+	"core/go/engine.go":       32,
 	"core/go/region_diag.go":  1,
 	"core/go/collect_plan.go": 8, // 5 -> 8 (NUR228): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
 	"core/go/signature.go":    12,
@@ -146,7 +154,13 @@ var pinnedAritySites = map[string]int{
 	// whether one branch arm's fn can stand for the other's at a call's
 	// record (NUR245) — the shape the call's claim fixes, never behaviour
 	// keyed on a function's parameter count.
-	"core/go/spec_fn.go": 2,
+	// 2 -> 5 (2026-09-26, NUR245's differing shapes): claimCompatibleSigs
+	// walks the same positions (`i < a.TotalArgs()`) to widen each one's
+	// type, and widenedSig copies the declared params only when there are
+	// some (`len(a.Params) > 0`) and re-aligns the legacy Args only when
+	// they are the joined window's own (`len(a.Args) == len(joined)`) —
+	// the widened model's positions, one per slot of the call's window.
+	"core/go/spec_fn.go": 5,
 
 	// ── The checker's and VM's mirrors of that same matching.
 	// 13 -> 15 on 2026-09-26 (the last real programs):

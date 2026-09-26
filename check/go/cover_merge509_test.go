@@ -27,4 +27,13 @@ func TestSoleSigParamsNominalSkipsAnUntypedParam(t *testing.T) {
 	if sig, fn := mk(core.TInteger); !soleSigParamsNominal(sig, fn) {
 		t.Error("an Integer param is nominal")
 	}
+	// A constraint the guarded entry check cannot enforce (a DepScalar
+	// bound, content + Unifier) makes the signature value-sensitive.
+	r := newTestRegistry(t)
+	if err := core.InstallType(r, "Zc509Big", core.NewDepScalar(core.DepGT, core.NewInteger(10))); err != nil {
+		t.Fatalf("depscalar install: %v", err)
+	}
+	if sig, fn := mk(r.LookupTypeName("Zc509Big")); soleSigParamsNominal(sig, fn) {
+		t.Error("a DepScalar-constrained param is not nominal")
+	}
 }
