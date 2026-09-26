@@ -65,3 +65,52 @@ func TestForeignFnValueBareReadRefusalAgrees(t *testing.T) {
 	agreeOnBothLanes(t, mod+`def z fn [[] [Integer] [7]] end `+ap+`ap M.g/v z/v`, "[7]")
 	agreeOnBothLanes(t, `import module [def g fn [[f:Any] [Any] [f]] def run fn [[k:Function x:Function][Any][(k x/v)]] export "M" {g: g/v, run: run/v}] end M.run M.g/v ([] => [42])`, "[42]")
 }
+
+// The rows below reach VM arms that predate PR #505 (main-side lines the
+// merged gate also needs), each through a real program on both lanes.
+
+// TestTrailingClosureMemberNoMatchAgrees pins callDynamic's TRAILING no-match
+// for a compiled fn-value CLOSURE (`5 m.f` over a factory's capturing
+// lambda): the window as written stays — the arg beneath, the fn on top —
+// where the lowering had rotated the fn under its arg for the apply. A
+// window the closure fits applies it.
+func TestTrailingClosureMemberNoMatchAgrees(t *testing.T) {
+	const mk = `def mk fn [[k:Integer][Function][([s:String] => [k])]] end def m {f: (mk 1)} end `
+	agreeOnBothLanes(t, mk+`5 m.f`, "[5 fn (String)]")
+	agreeOnBothLanes(t, mk+`"x" m.f`, "[1]")
+}
+
+// fnUtilMod imports fn-util and a module of three fns for `FnUtil.flip` to
+// wrap: the wrapper's inner is then a module export, whose unit is its own
+// load-time stamp (a DETACHED unit, hosted by dynApplyForeign).
+const fnUtilMod = `import "boru:fn-util" import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] ` +
+	`def dv fn [[a:Integer b:Integer][Integer][a div b]] def inc fn [[n:Integer][Integer][n add 1]] ` +
+	`export "M" {sub2: sub2/v, dv: dv/v, inc: inc/v}] end `
+
+// TestFlippedForeignFnAppliesAgree pins the modifier-wrapper arms of the two
+// dynamic applies over a module fn: the wrapper resolves to what it wraps (a
+// `FnUtil.flip` usurp, the args reversed) and the module fn's detached unit
+// is hosted — the trailing member apply (callDynamic) and the def-read
+// shaped apply (callDynMethod), its answer and its raise alike.
+func TestFlippedForeignFnAppliesAgree(t *testing.T) {
+	agreeOnBothLanes(t, fnUtilMod+`def m {f: (FnUtil.flip M.inc/v)} end 5 m.f`, "[6]")
+	agreeOnBothLanes(t, fnUtilMod+`def fs (FnUtil.flip M.sub2/v) end (fs 3 10)`, "[7]")
+	agreeOnBothLanes(t, fnUtilMod+`def fs (FnUtil.flip M.dv/v) end (fs 5 10)`, "[2]")
+	agreeOnBothLanes(t, fnUtilMod+`def fs (FnUtil.flip M.dv/v) end (fs 0 10)`, "ERROR:division by zero")
+}
+
+// TestDynamicApplyRaisesAgree pins three dynamic applies' error arms against
+// their answering twins: a 0-arg capturing closure under `apply` fires over
+// nothing above the window (callDynApply), a module fn read from a map as a
+// shaped method (callDynMethod over dynApplyForeign), and a member read at a
+// quotation body's tail taking the element beneath it (callDynFrame's lone
+// token) — each raise is the interpreter's own.
+func TestDynamicApplyRaisesAgree(t *testing.T) {
+	agreeOnBothLanes(t, `def mk0 fn [[k:Integer][Function][([] => [k div 0])]] end 5 (mk0 1)/v apply`, "ERROR:division by zero")
+	agreeOnBothLanes(t, `def mk0 fn [[k:Integer][Function][([] => [k])]] end 5 (mk0 1)/v apply`, "[5 1]")
+	const bad = `import module [def bad fn [[n:Integer][Integer][n div 0]] def ok fn [[n:Integer][Integer][n add 1]] export "M" {bad: bad/v, ok: ok/v}] end `
+	agreeOnBothLanes(t, bad+`def m {f: M.bad/v} end m.f 5`, "ERROR:division by zero")
+	agreeOnBothLanes(t, bad+`def m {f: M.ok/v} end m.f 5`, "[6]")
+	agreeOnBothLanes(t, `def bad fn [[n:Integer][Integer][n div 0]] end def ops {inc: bad/v} end each [ops.inc] [1 2]`, "ERROR:division by zero")
+	agreeOnBothLanes(t, `def inc fn [[n:Integer][Integer][n add 1]] end def ops {inc: inc/v} end each [ops.inc] [1 2]`, "[[2 3]]")
+}

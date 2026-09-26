@@ -302,3 +302,152 @@ func TestPolyNoMatchRaiseAnchorsAtAWrittenValue(t *testing.T) {
 		}
 	}
 }
+
+// The tests below reach VM arms that predate PR #505 (main-side lines the
+// merged gate also needs) and that no program reaches with both lanes in
+// agreement; each drives the arm through the VM's own entry.
+
+// TestReStepLandingIslandHonoursTheStepBudget pins the landing's island arm
+// for an appliable value that is neither a closure nor an FnDefInfo — a
+// Function-tagged value with no payload (TestReStepLandingIslandArm's
+// fixture): the island pushes it as the interpreter's stepLiteral does. The
+// island runs under the host's step budget (Registry.StepLimit,
+// lang.Options.Steps) like every interpreter run, so a budget it exhausts
+// raises the interpreter's own evaluation_limit at the landing instead of
+// landing anything.
+func TestReStepLandingIslandHonoursTheStepBudget(t *testing.T) {
+	fnTagged := core.Value{Parent: core.TFunction}
+
+	r := seam7Reg(t)
+	got, ent, err := seam7VC(r).reStepLanding(r, 0, 0, []core.Value{fnTagged}, seam7Dbg, 0, compiler.LandingWord{})
+	if err != nil || ent != nil || len(got) != 1 || !got[0].Parent.Equal(core.TFunction) {
+		t.Fatalf("the island pushes the value: got %v %+v %v", got, ent, err)
+	}
+
+	tight := seam7Reg(t)
+	tight.StepLimit = 1
+	got, ent, err = seam7VC(tight).reStepLanding(tight, 0, 0, []core.Value{fnTagged}, seam7Dbg, 0, compiler.LandingWord{})
+	var be *core.BoruError
+	if got != nil || ent != nil || !errors.As(err, &be) || be.Code != "evaluation_limit" {
+		t.Errorf("an exhausted budget: got %v %+v %v, want the island's evaluation_limit", got, ent, err)
+	}
+}
+
+// TestTrailTopNamelessNoMatchRaises pins noMatchIfSigged's nameless arm
+// (NUR107): a fn value with its own signatures, none of which admits the
+// window, raises the no-match when the head carries no seated name, where a
+// value-delivered head parks the window as data instead. (Every program that
+// reaches this arm today is a top-level `/v` read the lowering does not seat
+// as a delivery, and there the interpreter parks the value or raises
+// uncalled_function: a lane divergence reported with this change.)
+func TestTrailTopNamelessNoMatchRaises(t *testing.T) {
+	r := seam7Reg(t)
+	vc := seam7VC(r)
+	g := core.NewFunction(core.FnDefInfo{Name: "g", Registry: r, Signatures: []core.Signature{{
+		Params: []core.FnParam{{Type: core.TString}}, BarrierPos: 1, Returns: []*core.Type{core.TString},
+		Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+			return []core.Value{a[0]}, nil
+		}),
+	}}})
+
+	got, ent, err := vc.callDynTrailTop(r, 1, []core.Value{core.NewInteger(5), g}, seam7Dbg, 0, compiler.DynApplyHead{})
+	var be *core.BoruError
+	if got != nil || ent != nil || !errors.As(err, &be) || be.Code != "signature_error" || !strings.Contains(be.Detail, "cannot call `g`") {
+		t.Errorf("a nameless head: got %v %+v %v, want the no-match signature_error", got, ent, err)
+	}
+
+	got, ent, err = vc.callDynTrailTop(r, 1, []core.Value{core.NewInteger(5), g}, seam7Dbg, 0, compiler.DynApplyHead{ValueDelivery: true})
+	if err != nil || ent != nil || len(got) != 2 || !got[1].Parent.Equal(core.TFunction) {
+		t.Errorf("a value-delivered head parks the window: got %v %+v %v", got, ent, err)
+	}
+}
+
+// TestPolyRematchEscapedFlowNeedsALoop pins the flow check after a poly
+// re-match (OpCallNativePoly): a handler that ran a body raising a
+// break/continue with no loop of its own leaves the registry's FlowCtrl set,
+// and with no enclosing loop in the compiled run either, the VM raises the
+// loop-less internal error the interpreter's canonical raise is deferred to,
+// never continuing as though nothing escaped; a handler that leaves the flag
+// clear returns its result.
+func TestPolyRematchEscapedFlowNeedsALoop(t *testing.T) {
+	// nout is the recorded result-count claim: one for the answering
+	// handler, none for the escaping one (its body produced nothing).
+	prog := func(nout int) *compiler.Program {
+		return &compiler.Program{
+			Consts:   []core.Value{core.NewInteger(4)},
+			Code:     []compiler.Instr{{Op: compiler.OpPushConst, Arg: 0}, {Op: compiler.OpCallNativePoly, Arg: 0}},
+			Debug:    make([]core.SrcPos, 2),
+			PolyRefs: []compiler.PolyRef{{Word: "zz-flow-poly", Arity: 1, NOut: nout}},
+		}
+	}
+	reg := func(escape bool) *core.Registry {
+		r := seam7Reg(t)
+		r.Register("zz-flow-poly", core.Signature{
+			Args: []*core.Type{core.TInteger}, Returns: []*core.Type{core.TInteger}, BarrierPos: -1,
+			Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, reg *core.Registry) ([]core.Value, error) {
+				if escape {
+					reg.FlowCtrl = core.FlowBreak
+					return nil, nil
+				}
+				return []core.Value{a[0]}, nil
+			}),
+		})
+		if err := r.Err(); err != nil {
+			t.Fatalf("registration: %v", err)
+		}
+		return r
+	}
+
+	res, err := RunProgram(prog(1), reg(false))
+	if err != nil || len(res) != 1 {
+		t.Fatalf("no flow escaped: got %v / %v, want [4]", res, err)
+	}
+	_, err = RunProgram(prog(0), reg(true))
+	wantInternal(t, err, "flow signal with no enclosing loop")
+}
+
+// TestDynApplyForeignStaleRefRestamps pins dynApplyForeign's freshness dance
+// (the §7c JIT re-stamp, InvokeCompiled's twin on the dynamic apply): a
+// detached unit whose dependency was REBOUND since its stamp is re-compiled
+// against the live binding and hosted, answering the live value; a re-stamp
+// that declines (stamping disarmed) leaves the apply to the island, which
+// resolves the live binding the interpreter's way.
+func TestDynApplyForeignStaleRefRestamps(t *testing.T) {
+	r := stampReg(t)
+	r.EnableRuntimeStamping()
+	r.Defs.Push("dep", core.NewInteger(1))
+	fd := BoruBodyFd(core.NewWord("dep"))
+	fd.Name = "reader"
+	ref, ok := compiler.StampDetachedFn(r, fd, core.SrcPos{Row: 1, Col: 1})
+	if !ok {
+		t.Fatalf("initial stamp declined: %+v", r.StampEvents())
+	}
+	reader := core.NewFunction(core.FnDefInfo{Name: "reader", Registry: r, Signatures: []core.Signature{{
+		Impl: core.NewBoruImplCompiled([]core.Value{core.NewWord("dep")}, ref),
+	}}})
+	vc := seam7VC(r)
+	apply := func(want int64, where string) {
+		t.Helper()
+		got, ent, err := vc.callDynamic(r, 0, false, []core.Value{reader}, seam7Dbg, 0)
+		if err != nil || ent != nil || len(got) != 1 {
+			t.Fatalf("%s: got %v %+v %v", where, got, ent, err)
+		}
+		if n, _ := core.AsInteger(got[0]); n != want {
+			t.Errorf("%s: got %v, want %d", where, got[0], want)
+		}
+	}
+
+	apply(1, "fresh: the stamped unit")
+	r.Defs.Pop("dep")
+	r.Defs.Push("dep", core.NewInteger(2))
+	apply(2, "stale: the re-stamped unit reads the live binding")
+	if ref.Restamp == nil || ref.Restamp.Cur == nil {
+		t.Fatal("the stale apply must have re-stamped")
+	}
+
+	ref.Restamp.Tries, ref.Restamp.Cur = 0, nil
+	r.DisableRuntimeStamping()
+	r.Defs.Pop("dep")
+	r.Defs.Push("dep", core.NewInteger(9))
+	apply(9, "a declined re-stamp: the island's live resolution")
+}
