@@ -966,6 +966,12 @@ func (lw *lowerer) spillSeat(ops []EmitOperand, results []int, n int, pos core.S
 	}
 	temp := make(map[int]int, ne) // ops index → spill-temp slot
 	for k := 0; k < ne; k++ {
+		if lw.catchPhantom(lw.vm[len(lw.vm)-1-k].seq) {
+			// A value-less body's latched count may be none (NUR222).
+			return failMsg
+		}
+	}
+	for k := 0; k < ne; k++ {
 		slot := lw.vm[len(lw.vm)-1]
 		oi := -1
 		for _, i := range results {
@@ -2919,6 +2925,12 @@ func (lw *lowerer) seatResidualRebuild(ops []EmitOperand, pos core.SrcPos) bool 
 			return false
 		}
 	}
+	for _, slot := range lw.vm {
+		if lw.catchPhantom(slot.seq) {
+			// A value-less body's latched count may be none (NUR222).
+			return false
+		}
+	}
 	// Spill top-down. A slot already spilled keeps its FIRST temp: two
 	// residual entries naming one call result (the `pick` shape) read the
 	// same local twice.
@@ -3432,6 +3444,13 @@ func (lw *lowerer) opsHaveVariadicResult(ops []EmitOperand) bool {
 	return false
 }
 
+// catchPhantom reports whether the event at seq is a value-less `do` body's
+// catch-latched result (eventFlags.catchPhantom, NUR222): the one Error the
+// latch seats for a caught raise, where a clean run leaves nothing.
+func (lw *lowerer) catchPhantom(seq int) bool {
+	return lw.es != nil && lw.es.eventInfo[seq].catchPhantom
+}
+
 // opsHaveCatchVariadic reports whether any operand names an event the
 // do-catch latch made runtime-variable (eventFlags.catchVariadic).
 func (lw *lowerer) opsHaveCatchVariadic(ops []EmitOperand) bool {
@@ -3734,8 +3753,11 @@ func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 		// to this one. A SINGLE-out variadic (`def ok (do b error [drop
 		// false])` — the dyn-env stored-handler shape) keeps its promotion:
 		// its one store matches the one value BOTH the success and the
-		// caught path deliver.
-		if lw.es != nil && c.nout >= 2 && lw.es.eventInfo[ev.seq].variadicResult {
+		// caught path deliver. A value-less `do` body's is not that: the
+		// latch (catchVariadic) seats the one Error a caught raise leaves,
+		// and the clean run leaves nothing (NUR222: `if [true] [do [1 drop]
+		// 2] [3]` underflowed STORE_LOCAL).
+		if lw.es != nil && ((c.nout >= 2 && lw.es.eventInfo[ev.seq].variadicResult) || lw.catchPhantom(ev.seq)) {
 			return c.word + ": variadic result promoted to frame slots (runtime count differs from the static seat)"
 		}
 		for i := c.nout - 1; i >= 0; i-- {
@@ -3756,6 +3778,11 @@ func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 		// A single-result value-def referenced zero times: the call ran for its
 		// side effects, but the result is discarded — drop it so it is not left
 		// unconsumed on the stack (planValueDefLocals marks only nout==1 events).
+		// A catch-latched count may be none at all (NUR222), and a drop of
+		// it would pop a value beneath.
+		if lw.catchPhantom(ev.seq) {
+			return c.word + ": variadic result promoted to frame slots (runtime count differs from the static seat)"
+		}
 		lw.emit(OpDrop, 0, c.pos)
 		lw.note()
 		return ""

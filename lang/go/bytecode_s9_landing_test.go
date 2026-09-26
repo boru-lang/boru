@@ -216,12 +216,15 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 	// the call site's.
 	mustFailToCompileWithParity(t,
 		`def x (do [(1 add 2) "a" "b"] error [dot code]) x`, "variadic result promoted")
-	mustFailToCompileWithParity(t,
-		`def x (do [(0 div 0) "a" "b"] error [dot code]) x`, "variadic result promoted")
 	// GRADUATED 2026-09-25 (NUR134): an UNCONDITIONAL raise at the region's
 	// own level is no variadic region at all — the do's model is the one
 	// caught Error the runtime yields, so the promoted def seats one value.
 	mustCompileWithParity(t, `def x (do [(raise aa "m") "a" "b"] error [dot code]) x`, "[aa]")
+	// GRADUATED 2026-09-26 (NUR222): a division by a static zero is the same
+	// unconditional raise — its model notes it as `raise` does, so the do
+	// nets the one Error it catches, never the phantom a value-less body's
+	// latch seats.
+	mustCompileWithParity(t, `def x (do [(0 div 0) "a" "b"] error [dot code]) x`, "[arith_error]")
 	mustFailToCompileWithParity(t,
 		`def f fn [[n:Integer][Integer][if (n gt 0) [raise aa "m"] [n]]] def x (do [(f 1) "a" "b"] error [dot code]) x`,
 		"variadic result promoted")

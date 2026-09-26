@@ -965,6 +965,7 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// past this dispatch (L-DO — see catchVariadicFor), keeping its own mark
 	// for the fixed-count consumers (eventFlags.catchVariadic).
 	f.catchVariadic = es.catchVariadicFor(sig)
+	f.catchPhantom = f.catchVariadic && len(outs) == 1
 	es.eventInfo[seq] = f
 	// Carrier-identity de-collision, extended to INTRA-event repeats: the
 	// modeled outs of a dyn-body sub-run may repeat one value — an unrolled

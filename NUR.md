@@ -144,7 +144,7 @@ keep the two in sync in the same commit.
 | [NUR219](#nur219) | A `/q`-capturing fn value landed before a token the compiled lane reads as a VALUE — `def h fn [[x:Atom/q] [Any] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f true` — is the interpreter's `[true]` (the `/q` slot captures the word `true` as an atom) and the compiled lane's `uncalled_function: call to 'h' matched no signature` (the check pass folds `true` to a Boolean const, so the landing sees a candidate and no function word, and raises). A sibling: when the landing's walk does raise `uncalled_function` for a named fn value (`[[x:Atom/q y:Integer]]` under `z`), it points at the landing where the interpreter points at the fn value's own `h/v` token. Present on `main` at 45c3bdb, found 2026-09-26 probing NUR190's neighbours; not fixed. |
 | [NUR220](#nur220) | FIXED on the merged tree (the merge of main's #513, 2026-09-26 — the handoff log's entry of that date), by this branch's NUR217 (2026-09-26): a stored fn value's unit declines a fn argument in a slot it reads bare (`CompiledFn.FnReadRefused`), so the Apply kernel does not enter it and the island answers — `def gg m.g gg z/v` is `[0]` on both lanes; and with the run's NUR078 a bare `z` calls at every slot, so the Function-typed claim this record held open is gone (`m.g z` is the named no-match on both lanes). The original text: A STORED fn value's stamped unit reads a Function-typed param BARE as data where the interpreter dispatches it: `def g fn [[f:Function] [Any] [f]] end def mk fn [[] [Map] [{g: g/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end def gg m.g gg z/v` is `[0]` interpreted and `[fn f]` compiled, SILENT (the direct `g z` is `[0]` on both lanes). It is why NUR190's Function-typed claim keeps its defer: `m.g z` would enter the same unit. Present on `main` at 45c3bdb, found 2026-09-26; not fixed. |
 | [NUR221](#nur221) | FIXED on the merged tree (the merge of main's #513, 2026-09-26 — the handoff log's entry of that date), by this branch's NUR207 (2026-09-26): the program root plans a bare read of a def-bound gradual value as a word, so `def r m.f z r` raises the interpreter's `signature_error: cannot call `r`` on both lanes, at the same position. The original text: A name DEF-BOUND to a `/q`-capturing member fn value, then read as a word with nothing after it — `def h fn [[x:Atom/q] [Any] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end def r m.f z r` — is the interpreter's `signature_error: cannot call `r`` and the compiled lane's `[0 fn h(Atom)]`, SILENT: the read of `r` leaves the fn as data where the interpreter dispatches it and raises. Present on `main` at 45c3bdb, found 2026-09-26 probing NUR190's neighbours; not fixed. |
-| [NUR222](#nur222) | A VALUE-LESS `do` inside a branch fragment — `if [do [1 drop] true] [2] [3]`, `if [true] [do [1 drop] 2] [3]`, the same in a fn body or a loop — compiles and dies at run time (`internal_error: DROP stack underflow` / `STORE_LOCAL stack underflow`) where the interpreter answers `[2]`: the check pass models a non-empty `do` body with an empty residual as the Error a raise would leave, and inside a fragment the lowering drops or stores that value, which the compiled `do` never pushes. Top level and a fn body's straight line are unaffected. Recorded 2026-09-26 (NUR212's follow-up), present on `main` at 45c3bdb; a binding condition holding one declines (core `CheckState.ValuelessDoBodies`) | NUR212's follow-up (2026-09-26) |
+| [NUR222](#nur222) | FIXED 2026-09-26 for the branch fragment as a loud decline (the handoff log's entry of that date; OPEN for the word consumer and the compile): the value-less `do`'s catch-latched phantom is flagged (`eventFlags.catchPhantom`), and a promotion, a dead drop or a spill of it declines, where it compiled and underflowed; a static-zero division is a definite raise now, so its `do` nets the one Error and compiles. A word consuming the phantom (`1 do [1 drop] drop`) still bails. The original text: A VALUE-LESS `do` inside a branch fragment — `if [do [1 drop] true] [2] [3]`, `if [true] [do [1 drop] 2] [3]`, the same in a fn body or a loop — compiles and dies at run time (`internal_error: DROP stack underflow` / `STORE_LOCAL stack underflow`) where the interpreter answers `[2]`: the check pass models a non-empty `do` body with an empty residual as the Error a raise would leave, and inside a fragment the lowering drops or stores that value, which the compiled `do` never pushes. Top level and a fn body's straight line are unaffected. Recorded 2026-09-26 (NUR212's follow-up), present on `main` at 45c3bdb; a binding condition holding one declines (core `CheckState.ValuelessDoBodies`) | NUR212's follow-up (2026-09-26) |
 | [NUR223](#nur223) | FIXED 2026-09-26 by a loud decline (the handoff log's entry of that date; OPEN for the compile): a `while` whose condition binds a name declines the compile (`whileReturnsFn`, NUR212's binding-shape probe around the condition's analysis), so the program is a booked compile defect, not a silent wrong answer; the compile wants the two analyses in one carried scope at a joint fixed point. The original text: A `while` CONDITION that binds a name the BODY reads is read stale on the compiled lane: `def t 0 end while [def t (t add 1) (t lt 3)] [t] end t` is `[1 2 3]` interpreted and `[0 0 3]` compiled, SILENT — the loop's condition and body are analysed as two separate loop bodies, body first, so the body's read resolves the pre-loop binding. Recorded 2026-09-26 (NUR212's follow-up), present on `main` at 45c3bdb; the `if` condition's keep does not touch `while` | NUR212's follow-up (2026-09-26) |
 | [NUR224](#nur224) | FIXED on the merged tree (the merge of main's #513, 2026-09-26 — the handoff log's entry of that date), by this branch's NUR118 (2026-09-25, the same witness): a nested frame's contract error anchors at the CALL, so `def f fn [[][Integer][1 2]] end f` raises at 1:33 on both lanes. The original text: A fn's RETURN-COUNT error carries a different caret on the two lanes: `def f fn [[][Integer][1 2]] end f` raises `type_error: f: expected 1 return value(s), got 2 — [1 2]` on both, at the CALL (1:33) interpreted and at the body's first token (1:23) compiled. Position-only; the message, code and secondary note agree. Recorded 2026-09-26 (NUR212's follow-up, measuring its fn-body rows), present on `main` at 45c3bdb | NUR212's follow-up (2026-09-26) |
 | [NUR225](#nur225) | FIXED 2026-09-26 (templates and XML holes spell their source — the handoff log's entry of that date): canon renders a template string as backtick source (`canonTemplate`: literal text with the template lexer's escapes, each hole `${…}` over its tokens' canon) and an XML literal with holes as its XML (`canonXmlTmpl`: text and attribute text escaped as a plain element's), in both ports — TS keeps a tagged empty hole as `${}`. The original text: Template strings and XML literals with `${}` holes canon in DEBUG form — `interp('v ' ${1} ' w')`, `interp-xml(<a>${1}</a>)` — which no parser accepts (a template re-parses as a syntax error, an XML literal as the word `interp-xml` over a group): 30 of parse.tsv's rows fail the canon fixpoint on it, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
@@ -14543,12 +14543,10 @@ on the way are NUR222–NUR224.
 
 ## NUR222 — a value-less `do` inside a branch fragment dies at run time {#nur222}
 
-**Status:** FIXED on the merged tree (the merge of main's #513,
-2026-09-26 — the handoff log's entry of that date), by this branch's NUR118
-(2026-09-25), whose own witness this is: a nested frame's contract error
-anchors at the CALL — the frame's return address, in the caller's debug
-table — so both lanes raise at 1:33. Main's #513 recorded it pending
-(NUR212's follow-up); present on `main` at 45c3bdb.
+**Status:** FIXED 2026-09-26 for the branch fragment, as a loud decline
+(the handoff log's entry of that date); OPEN for a word consuming the
+phantom (a bail) and for the compile. Recorded 2026-09-26 (NUR212's
+follow-up); present on `main` at 45c3bdb.
 
 ```
 if [do [1 drop] true] [2] [3]
@@ -14570,6 +14568,26 @@ a branch fragment the lowering drops or stores it. A binding `if`
 condition holding one declines (NUR212's follow-up) rather than widen
 this to `if [do [def x 5] true] …`.
 
+
+**The fix, for the fragment (2026-09-26).** The latch's value-less use is
+now its own event flag (`eventFlags.catchPhantom`: a catch-latched call
+with one recorded result, where the multi-value use records its N). A
+fixed seat of the phantom declines: a promotion to a frame slot, a dead
+result's drop, and either spill (`spillSeat`, `seatResidualRebuild`). The
+witnesses answer through the interpreter as booked compile defects; the
+unit ledgers move compile 340 -> 342 and bail 37 -> 36, with the rows
+named. A division by a static zero now notes a definite raise, as `raise`
+does. Its `do` nets exactly the one Error, and a def after it is never
+made: `(do [1 0 div]).code` and `def x (do [(0 div 0) "a" "b"] error [dot
+code]) x` compile with parity. Pinned by lang
+`TestNUR222ValuelessDoSeatedDeclines`.
+
+**Open.** A word that consumes the phantom as its operand still bails:
+`1 do [1 drop] drop` hits a CALL_NATIVE underflow, where the interpreter's
+drop takes the 1. Declining every such consumer also declined a loop that
+always raises, `for 1 [do [for 2 [raise 'x']] drop i]`, which the pass
+cannot prove and which compiled right. The compile wants the latched count
+seated at run time, as the mark window seats a do-catch region.
 ## NUR223 — a `while` condition's binding read stale by the body {#nur223}
 
 **Status:** FIXED 2026-09-26 by a loud decline (the handoff log's entry
@@ -14619,8 +14637,12 @@ recording and rolls a discarded round back.
 
 ## NUR224 — a fn's return-count error points at a different token compiled {#nur224}
 
-**Status:** Pending (recorded 2026-09-26, NUR212's follow-up); present on
-`main` at 45c3bdb.
+**Status:** FIXED on the merged tree (the merge of main's #513,
+2026-09-26 — the handoff log's entry of that date), by this branch's NUR118
+(2026-09-25), whose own witness this is: a nested frame's contract error
+anchors at the CALL — the frame's return address, in the caller's debug
+table — so both lanes raise at 1:33. Main's #513 recorded it pending
+(NUR212's follow-up); present on `main` at 45c3bdb.
 
 ```
 def f fn [[][Integer][1 2]] end f

@@ -210,6 +210,9 @@ func returnsDivMod(detail string) ReturnsFunc {
 			if atUncaughtTopLevel(r) {
 				core.CheckAddUniqueDiagnostic(r, "arith_error", detail, "", args[0].Pos())
 			}
+			// The raise is certain, as `raise`'s is: an enclosing `do` nets
+			// exactly the one Error it catches, never nothing (NUR222).
+			r.Check.NoteDefiniteRaise(r.Defs.Snapshot)
 			return nil // divergence: no residual (raise-like)
 		}
 		return base(args, r)

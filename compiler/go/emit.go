@@ -215,6 +215,11 @@ type eventFlags struct {
 	// MAKE_LIST) cannot take it; the region and dyn-body marks above are
 	// broader and do not imply it.
 	catchVariadic bool
+	// catchPhantom marks the catchVariadic event of a VALUE-LESS body (one
+	// recorded result): the one Error the latch seats for a caught raise,
+	// where a clean run leaves nothing (NUR222) — the latch's multi-value
+	// use records its N. No fixed seat of it holds on the clean run.
+	catchPhantom bool
 	// dynOneResult marks a fn-value apply under a NAMED head, or an
 	// `apply`-word event, whose result a later event consumes as an operand
 	// (planValueDefLocals): its op seats DynApplyHead.OneResult (NUR249), or
@@ -9227,6 +9232,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 		f.variadicResult = true
 		f.callVariadic = true
 		f.catchVariadic = true
+		f.catchPhantom = len(outs) == 1
 		es.eventInfo[seq] = f
 	}
 	// A VARIADIC REGION result (the GROWING direction, NUR067): the word's
@@ -13067,6 +13073,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 		f.variadicResult = true
 		f.callVariadic = true
 		f.catchVariadic = caught
+		f.catchPhantom = caught && len(outs) == 1
 		es.eventInfo[seq] = f
 	}
 	// VARIADIC PROPAGATION through a strip-input dispatch (L-DO part 2):

@@ -9,6 +9,56 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR222's fragment bails made loud declines; a static-zero division is a definite raise (2026-09-26)
+
+**The divergence (main's NUR222).** A value-less `do` body inside a branch
+fragment compiled and died at run time: `if [do [1 drop] true] [2] [3]`
+underflowed DROP, and `if [true] [do [1 drop] 2] [3]` underflowed
+STORE_LOCAL. The interpreter answers `[2]`. The check pass models a
+non-empty body with an empty residual as the one Error a caught raise
+leaves, and latches that count runtime-variable. A clean run leaves
+nothing, so every fixed seat of the value pops something that is not
+there.
+
+**The fix.** The latch's value-less use is now its own event flag
+(`eventFlags.catchPhantom`: a catch-latched call with one recorded result,
+where the latch's multi-value use records N). A fixed seat of the phantom
+declines: a promotion to a frame slot, a dead result's drop, and both
+spills (`spillSeat`, `seatResidualRebuild`). Where the latched count is
+absorbed, it keeps compiling: the program residual (`do [1 drop]`), and an
+arm whose out IS the do.
+
+**A static-zero division is a definite raise.** `returnsDivMod` models it
+as a raise-like empty residual, but noted no raise. It now notes one, as
+`raise` does (`NoteDefiniteRaise`). Its `do` then nets exactly the one
+Error it catches, not the latched phantom, and a def after it is never
+made. `(do [1 0 div]).code` keeps compiling under the new guards, and
+`def x (do [(0 div 0) "a" "b"] error [dot code]) x` now compiles with
+parity: a frontier decline graduates, as NUR134 graduated
+`(raise aa "m")`.
+
+**What was tried and backed out.** Declining every word that consumes the
+phantom as an operand closed `1 do [1 drop] drop`, a pre-existing top-level
+bail. It also declined designed consumers:
+- the `do … error […]` catch form;
+- a fallible multi-value body's clean N;
+- `for 1 [do [for 2 [raise 'x']] drop i]`, whose loop always raises but the
+  pass cannot prove it, and which compiled right.
+
+So a word consuming the phantom still bails. That is NUR222's open part:
+the latched count wants seating at run time, as the mark window does for a
+do-catch region.
+
+**Ledgers.** Unit-suite compile 340 -> 342 and bail 37 -> 36. The rows:
+- the two NUR222 pins, which decline (+2);
+- do_empty_residual_test.go's `[1 2 3] each [ do [ 9 drop ] ]`, which
+  moves from a bail to a decline (+1, and the bail ledger's -1);
+- the graduated S9 row, which now compiles (-1).
+
+**A correction.** The merge of main's #513 wrote NUR224's new status onto
+NUR222's section, because both carried the same "Pending" sentence. Both
+sections now carry their own.
+
 ## NUR210 closed by the root's generalisation, NUR276 found and fixed, NUR223 declined loudly (2026-09-26)
 
 **NUR210's last silent reads.** After a computed `do` body at the root, a
