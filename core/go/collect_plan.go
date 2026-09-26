@@ -262,6 +262,10 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 		// as for partial-boundary sigs.
 
 		allMatch := true
+		// gradualStack notes a stack operand this candidate took on an
+		// UNPROVEN match — a carrier whose static type does not conform to
+		// the slot, so the runtime value may miss it (NUR228, below).
+		gradualStack := false
 		for j := 0; j < remaining; j++ {
 			ri := len(resolvedIdx) - 1 - j
 			stackVal := resolved[ri]
@@ -308,6 +312,9 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 				allMatch = false
 				break
 			}
+			if unprovenStackOperand(stackVal, SigArgType(sig, sigIdx)) {
+				gradualStack = true
+			}
 			positions[sigIdx] = resolvedIdx[ri]
 		}
 		if !allMatch {
@@ -329,6 +336,19 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 			}
 			continue
 		}
+		// The window this candidate claims — fwd tokens, the rest from the
+		// stack — hangs on a stack operand the runtime value may miss, while
+		// a LATER candidate forward-collects past the token this one's scan
+		// stopped at: the interpreter, seeing that value, takes the other
+		// window (`v send {a: 1} "nobody"` sends to "nobody" when v is None
+		// and to v when v is a Pid). No static window is faithful, so the
+		// compile declines — the mirror of noteSplit's case, where the
+		// static choice forward-collects and the runtime one grabs the
+		// carrier (NUR228). An all-stack match (fwd 0) is the forward-drift
+		// guard's (DeclineForwardStackDrift and its drift window).
+		if compiling && gradualWindowAmbiguous(h, fn, si, w, pointer, fwd, gradualStack, checkActive) {
+			reg.noteAmbiguousGradualSplit()
+		}
 		return sig, positions, specAt
 	}
 
@@ -349,4 +369,44 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 	}
 
 	return nil, nil, -1
+}
+
+// laterCandidateCollectsPast reports whether a signature sorted AFTER
+// fn.Signatures[si] would forward-collect more than fwd tokens at this word:
+// its own scan (the kernel's, over its own forward limit) claims the token the
+// selected candidate's scan stopped at. That candidate is the interpreter's
+// dispatch whenever the selected one's gradual stack operand misses its slot
+// at run time, and it binds a different window (NUR228).
+// unprovenStackOperand reports a stack operand matched on no proof — a
+// carrier whose static type does not conform to the slot, so the runtime
+// value may miss it (NUR228).
+func unprovenStackOperand(v Value, slot *Type) bool {
+	return !IsConcrete(v) && !v.Parent.ConformsTo(slot)
+}
+
+// gradualWindowAmbiguous reports a compile-pass window that took fwd forward
+// tokens and hangs on an unproven stack operand while a LATER candidate
+// forward-collects past the token this one's scan stopped at (NUR228).
+func gradualWindowAmbiguous(h CollectHost, fn *FnDefInfo, si int, w WordInfo, pointer, fwd int, gradualStack, checkActive bool) bool {
+	return fwd > 0 && gradualStack && laterCandidateCollectsPast(h, fn, si, w, pointer, fwd, checkActive, true)
+}
+
+func laterCandidateCollectsPast(h CollectHost, fn *FnDefInfo, si int, w WordInfo, pointer, fwd int, checkActive, compiling bool) bool {
+	for k := si + 1; k < len(fn.Signatures); k++ {
+		alt := &fn.Signatures[k]
+		if alt.Fallback || (w.ArgCount >= 0 && alt.TotalArgs() != w.ArgCount) {
+			continue
+		}
+		limit := effectiveForwardLimit(alt, w)
+		if limit <= fwd {
+			continue
+		}
+		// A claim of the stop token by a DISPATCHING word (specAt == fwd — a
+		// function word the plan admits speculatively at an Any slot, its
+		// result to complete the slot) is no wider window of values.
+		if n, specAt := CollectCandidateScan(h, alt, limit, make([]int, alt.TotalArgs()), pointer+1, checkActive, compiling); n > fwd && specAt != fwd {
+			return true
+		}
+	}
+	return false
 }

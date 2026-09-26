@@ -19,8 +19,11 @@ func dynFrameWordsAt(p *compiler.Program, unit, pc int) []compiler.DynFrameWord 
 // pc in the code that holds it (CompiledFn.DynApplyName): only a fn unit
 // carries one — a main-code apply names no frame binding.
 func dynApplyNameAt(p *compiler.Program, unit, pc int) compiler.DynApplyHead {
-	if unit < 0 || p == nil || unit >= len(p.Fns) {
+	if p == nil || unit >= len(p.Fns) {
 		return compiler.DynApplyHead{}
+	}
+	if unit < 0 {
+		return p.DynApplyName[pc]
 	}
 	return p.Fns[unit].DynApplyName[pc]
 }
@@ -79,6 +82,21 @@ func (vc *vmContext) nameStoredClosure(v core.Value, name string) core.Value {
 // for a param exactly as installDef names a def, and a compiled closure
 // there rendered `fn (Any)` for the interpreter's `fn g(Any)`).
 func nameClosureValue(v core.Value, name string) core.Value {
+	// A fn VALUE with its own definition — a factory's non-capturing lambda
+	// baked as a const, a `/v` reference — is renamed as installDef renames
+	// it (`fnDef.Name = name`, unconditionally): a def-bound value that
+	// escapes as data renders under the def's name on both lanes (`def f
+	// (mk 1)  each f/v [1 2 3]` read `fn (String)` for the interpreter's
+	// `fn f(String)`, NUR168). The copy in this slot is renamed; the pooled
+	// const keeps its own payload, as the interpreter's binding copies do.
+	if fd, ok := v.Data.(core.FnDefInfo); ok {
+		if fd.Name == name {
+			return v
+		}
+		fd.Name = name
+		v.Data = fd
+		return v
+	}
 	cl, ok := v.Data.(core.ClosurePayload)
 	if !ok || cl.RetName == name {
 		return v
@@ -95,7 +113,7 @@ func nameClosureValue(v core.Value, name string) core.Value {
 		// renamed FnDefInfo gives (`fn h(Integer)`); no handler is attached,
 		// this value is only ever formatted.
 		if params, ok := closureSigParams(&prog.Fns[cl.Unit]); ok {
-			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: prog.Fns[cl.Unit].Lambda})
+			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: compiler.ClosureIsAnonymous(&prog.Fns[cl.Unit], cl)})
 		}
 	}
 	v.Data = cl
@@ -287,7 +305,7 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 	// the bridged signature, args in signature order: SigMatched, so the
 	// invoker applies the unit positionally (ClosurePayload.SigMatched).
 	body := core.ClosureSigMatched(v)
-	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
+	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl, func(args []core.Value) ([]core.Value, error) {
 		return vc.invokeClosureOn(reg, body, args)
 	})
 	if !ok {
@@ -349,7 +367,7 @@ func closureMatchesArgs(fn *compiler.CompiledFn, args []core.Value) bool {
 // (CompiledFn.Lambda): it is what parks a 0-arg lambda VALUE nothing calls
 // at the pointer (ADR-016's gate), so the value-path bridge parks in the
 // same places the interpreter's own value does.
-func closureFnDef(fn *compiler.CompiledFn, ident core.FnIdentity, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
+func closureFnDef(fn *compiler.CompiledFn, cl core.ClosurePayload, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
 	params, ok := closureSigParams(fn)
 	if !ok {
 		return core.Value{}, false
@@ -359,14 +377,63 @@ func closureFnDef(fn *compiler.CompiledFn, ident core.FnIdentity, invoke func(ar
 	// diagnostic reads (HasForwardSigs — the "group the call in parens"
 	// suggestion); the bridge carries the same value so the two lanes'
 	// diagnostics agree line for line.
-	sig := core.Signature{Params: params, BarrierPos: len(params), Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-		return invoke(append([]core.Value(nil), a...))
-	})}
+	sig := core.Signature{Params: params, BarrierPos: len(params)}
+	// A nil invoke builds a render-only bridge: a no-match diagnostic reads
+	// the signature and never runs it.
+	if invoke != nil {
+		sig.Impl = core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+			return invoke(append([]core.Value(nil), a...))
+		})
+	}
 	core.NormalizeSig(&sig)
 	// The closure's own identity token rides on the bridge, so a bridged
 	// copy is `eq` to the closure and to every other bridge of it — one
 	// function, as the interpreter's copies of the source lambda are
 	// (Codex P1 on PR #444: each bridge minted its own, and `[(mk 3)] each
 	// [dup eq]` answered false for the interpreter's true).
-	return core.NewFunctionIdentified(core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: fn.Lambda}, ident), true
+	return core.NewFunctionIdentified(core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: compiler.ClosureIsAnonymous(fn, cl)}, cl.Ident), true
+}
+
+// callWindowAt is the no-match window of the CALL_USER / TAIL_CALL_USER at
+// pc (NUR234): the code's recorded CallWindows entry read over the call's
+// arguments (args, signature order), the stack beneath them and the
+// caller's frame locals — the window the interpreter's failed dispatch
+// reports. ok is false when the call carries no entry, or an entry the
+// frame cannot satisfy; the contract then reports the arguments.
+func callWindowAt(p *compiler.Program, unit, pc int, args, stack, locals []core.Value) ([]core.Value, bool) {
+	if p == nil {
+		return nil, false
+	}
+	table := p.CallWindows
+	if unit >= 0 {
+		if unit >= len(p.Fns) {
+			return nil, false
+		}
+		table = p.Fns[unit].CallWindows
+	}
+	spec, ok := table[pc]
+	if !ok {
+		return nil, false
+	}
+	win := make([]core.Value, 0, len(spec))
+	for _, o := range spec {
+		var src []core.Value
+		at := o.Idx
+		switch o.Kind {
+		case compiler.WinValue:
+			win = append(win, o.Value)
+			continue
+		case compiler.WinArg:
+			src = args
+		case compiler.WinLocal:
+			src = locals
+		default:
+			src, at = stack, len(stack)-1-o.Idx
+		}
+		if at < 0 || at >= len(src) {
+			return nil, false
+		}
+		win = append(win, src[at])
+	}
+	return win, true
 }

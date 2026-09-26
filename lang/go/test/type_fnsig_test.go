@@ -106,13 +106,13 @@ def p:Predicate (quote positive)
 
 // --- Predicate-as-type: fn that returns None on fail / the unified value on ok ---
 //
-// `def Bbd fn [x:Any Any [if ((x is String) and (x gte "b") and (x lte "d")) [x] [None]]]`
+// `def Bbd fnpred x:Any [if ((x is String) and (x gte "b") and (x lte "d")) [x] [None]]`
 // installs Bbd as a *predicate* type. `def p:Bbd v` calls the predicate
 // with `v`; on a non-None return the def installs with the *returned*
 // value (which may be a transformed version of v); on a None return
 // the def errors and is not installed.
 
-const bbdSource = `def Bbd fn [x:Any Any [if ((x is String) and (x gte "b") and (x lte "d")) [x] [None]]]
+const bbdSource = `def Bbd fnpred x:Any [if ((x is String) and (x gte "b") and (x lte "d")) [x] [None]]
 `
 
 func TestTypeFnPredicate_DefBindWithinRange(t *testing.T) {
@@ -191,7 +191,7 @@ func TestTypeFnPredicate_NotIndependentlyCallable(t *testing.T) {
 // different value (here, the upper-cased form). The def installs
 // with the transformed value, not the original input.
 func TestTypeFnPredicate_TransformsOnSuccess(t *testing.T) {
-	got := runOne(t, `def Up fn [x:Any Any [if (x is String) [x upper] [None]]]
+	got := runOne(t, `def Up fnpred x:Any [if (x is String) [x upper] [None]]
 def shout:Up "hello"
 shout`)
 	if len(got) != 1 || got[0] != "HELLO" {
@@ -201,7 +201,7 @@ shout`)
 
 // A predicate over Integer values (ranged constraint expressed as a fn).
 func TestTypeFnPredicate_IntegerRange(t *testing.T) {
-	got := runOne(t, `def Mid fn [n:Any Any [if ((n is Integer) and (n gte 10) and (n lte 20)) [n] [None]]]
+	got := runOne(t, `def Mid fnpred n:Any [if ((n is Integer) and (n gte 10) and (n lte 20)) [n] [None]]
 def x:Mid 15
 x`)
 	if len(got) != 1 || got[0] != int64(15) {
@@ -215,7 +215,7 @@ func TestTypeFnPredicate_IntegerRangeFail(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 	seedBoru(a)
-	_, err = a.Run(`def Mid fn [n:Any Any [if ((n is Integer) and (n gte 10) and (n lte 20)) [n] [None]]]
+	_, err = a.Run(`def Mid fnpred n:Any [if ((n is Integer) and (n gte 10) and (n lte 20)) [n] [None]]
 def x:Mid 25`)
 	if err == nil {
 		t.Fatal("Mid with 25: expected unify error, got nil")

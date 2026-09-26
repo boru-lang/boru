@@ -1577,7 +1577,9 @@ func comboTypeNames(combo []core.Value) string {
 // one arm reachable for these args — the combination where a static arm
 // commit can diverge from the interpreter's runtime predicate fall-through.
 // DepScalar and Go-member types match self-contained in check mode (no
-// leniency), so they carry no hazard.
+// leniency), so they carry no hazard — unless the refinement's bound is one
+// the pass does not know (a computed one, `def T (Integer gt (size s))`):
+// its check-mode match admits every value (NUR231), the same leniency.
 func FnPredicateOverloadHazard(r *core.Registry, word string, args []core.Value) bool {
 	fn := r.Lookup(word)
 	if fn == nil || len(fn.Signatures) < 2 {
@@ -1596,6 +1598,12 @@ func FnPredicateOverloadHazard(r *core.Registry, word string, args []core.Value)
 				if _, ok := t.Behavior().(*core.PredicateUnifier); ok {
 					hasPred = true
 				}
+				if core.HasUnknownRefinement(core.NewTypeLiteral(t)) {
+					hasPred = true
+				}
+			}
+			if p, ok := core.SigPattern(s, j); ok && core.HasUnknownRefinement(p) {
+				hasPred = true
 			}
 			if !core.SigTypeMatches(args[j], t) {
 				reach = false
@@ -2395,6 +2403,16 @@ const FnAnalysisQuota = 64
 // `continue` bypassed the bind, `break` kept a discarded iteration's
 // value) breaks. A non-proven loop body still analyses identically — it
 // just declines the split (NestedBodyDepth != LoopBodyDepth).
+// isBindName reports whether name is one of a loop's own bind variables.
+func isBindName(bindNames []string, name string) bool {
+	for _, n := range bindNames {
+		if n == name {
+			return true
+		}
+	}
+	return false
+}
+
 func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bindVals []core.Value, provenTrips bool) []core.Value {
 	proven := provenTrips && !BodyHasSentinel(body)
 	// Loop-lowering hook (`for`): when armed, register the loop
@@ -2404,8 +2422,11 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	es := r.Check.Recorder()
 	loopCapture := es.ConsumeLoopArm()
 	if loopCapture {
-		for _, v := range bindVals {
+		for i, v := range bindVals {
 			es.RegisterLocal(v.ID)
+			if i < len(bindNames) {
+				es.NameLocal(v.ID, bindNames[i])
+			}
 		}
 		// Loop-carried def rebinds: a pre-loop `def` the body REBINDS gets a
 		// unit frame slot (NoteLoopCarried per round below), a store at each
@@ -2421,6 +2442,9 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	var installed []string
 	diagBase := len(r.Check.Diagnostics)
 	prev := map[string]core.Value{}
+	// The last two rounds' joined bindings: a module the body binds is
+	// compared across them (declineLoopModuleBinds).
+	var lastJoined, prevJoined map[string]core.Value
 	for round := 0; round < loopAnalysisRounds; round++ {
 		r.Check.TruncateDiagnostics(diagBase)
 		// A speculative undef inside the body generalises an enclosing
@@ -2431,7 +2455,13 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 		// generation is not stable; the next round reads the carrier from
 		// its first token and re-mints nothing, so it settles.
 		specGen := r.Check.SpecUndefGen
+		// The bind names' pre-push depths: the body may push levels of a bind
+		// name above the loop's own (`for 3 [def i 9]`), and the loop's
+		// lexical scope ends with the round — pop to these depths after it,
+		// not one level (NUR204: the index level survived the analysis too).
+		bindDepths := make([]int, len(bindNames))
 		for i, n := range bindNames {
+			bindDepths[i] = r.Defs.Depth(n)
 			r.Defs.Push(n, bindVals[i])
 		}
 		// Checkpoint the recording pools before an armed round: only the FINAL
@@ -2454,7 +2484,9 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 			r.Check.LoopBodyDepth--
 		}
 		for i := len(bindNames) - 1; i >= 0; i-- {
-			r.Defs.Pop(bindNames[i])
+			for r.Defs.Depth(bindNames[i]) > bindDepths[i] {
+				r.Defs.Pop(bindNames[i])
+			}
 		}
 		// Expose the original pre-loop bindings before re-joining.
 		for i := len(installed) - 1; i >= 0; i-- {
@@ -2472,6 +2504,14 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 		sort.Strings(names)
 		for _, k := range names {
 			v := adds[k]
+			// A body def of one of the loop's OWN bind names (its index)
+			// rebinds the iteration's binding and ends with it — the
+			// lexical index scope (NUR204): it is neither joined into the
+			// post-loop binding nor loop-carried (the lowering stores it
+			// into the index slot).
+			if isBindName(bindNames, k) {
+				continue
+			}
 			if pre, ok := r.Defs.Top(k); ok {
 				// An add that is only a NARROWING of the enclosing binding —
 				// narrowDynamicUses preserves the value's ID, so same ID as
@@ -2493,6 +2533,15 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 					// joined ID so the next round's / post-loop reads resolve.
 					es.NoteLoopCarried(k, j, pre)
 				}
+			} else if loopCapture && !proven && loopFreshCarriable(k, v) {
+				// A FRESH name in a loop that may run zero times is bound
+				// after the loop only if the body ran: the post-loop
+				// binding is a carrier with its own identity (no read can
+				// fold the body's value into it), carried in a slot with no
+				// init and read bound-checked (NUR214).
+				j := core.JoinCarriers(v, v)
+				joined[k] = j
+				es.NoteLoopFresh(k, j)
 			} else {
 				joined[k] = v
 			}
@@ -2506,6 +2555,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 			r.Defs.Push(k, jv)
 			installed = append(installed, k)
 		}
+		prevJoined, lastJoined = lastJoined, joined
 		// Stabilised when the body adds no bindings (the common single-round
 		// case) or the joined bindings equal the previous round's. The final
 		// round is the one that stabilises, or the last permitted round.
@@ -2547,10 +2597,67 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	// corpus could not see the gap: like NUR110's branch-arm class, every
 	// loop-body def it holds sits inside a fn body, where FnBodyDepth
 	// suppresses the note; the synthetic while row supplies it.
+	// A module bind the join's one replay cannot stand for is noted with
+	// its placement WITHHELD (the recorder suspended), so the program
+	// declines at the twin regime's full-placement gate (NUR205).
+	resume := func() {}
+	if loopModuleUnplaceable(installed, lastJoined, prevJoined, proven) {
+		resume = es.Suspend()
+	}
 	for _, k := range installed {
 		r.NoteBindTransition(core.BindDef, k, core.SrcPos{})
 	}
+	resume()
 	return stk
+}
+
+// loopFreshCarriable reports whether a fresh name's body value can ride a
+// frame slot: a plain value. A type binding, a fn value or a module keeps
+// its own machinery (their readers read the payload), exactly the classes
+// the branch's condBoundCarrier leaves alone.
+func loopFreshCarriable(name string, v core.Value) bool {
+	return !core.IsCapitalisedName(name) && !core.IsFnValueResidual(v) && !core.IsBareTypeNode(v) &&
+		!core.IsModuleFamilyValue(v) && !(v.Parent != nil && v.Parent.ConformsTo(core.TFunction))
+}
+
+// loopModuleUnplaceable reports whether the loop's body binds a MODULE (an
+// `import` inside the body) that the compiled lane's one replay of the
+// check pass's bind — the join's twin, placed before the loop — does not
+// stand for, where the interpreter imports per iteration (NUR205). Two
+// shapes differ from that replay: a loop that may run ZERO times (the
+// interpreter never binds the name; the replay has already bound it), and
+// a module that is a NEW instance per import — an inline `import module
+// […]` runs its body again each time, so state the body mints (`def acc
+// (flex [])`) is fresh per iteration on the interpreter and shared by every
+// iteration of the compiled loop. A module the loader caches (a `boru:`
+// import) is the same instance every time, so a loop that provably runs
+// keeps its one replay. The last two analysis rounds tell the cases apart:
+// a cached module's namespace shares its export map across them, a re-run
+// inline module's does not.
+func loopModuleUnplaceable(installed []string, last, prev map[string]core.Value, proven bool) bool {
+	for _, k := range installed {
+		v := last[k]
+		if !core.IsModuleFamilyValue(v) {
+			continue
+		}
+		if !proven {
+			return true
+		}
+		if pv, ok := prev[k]; ok && moduleExports(pv) != moduleExports(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// moduleExports is the export map a module namespace value shares with
+// every other namespace of the same loaded module (native.NewModuleNamespace
+// binds the module's own map, not a copy); nil for a value with none.
+func moduleExports(v core.Value) *core.OrderedMap {
+	if mp, ok := v.Data.(core.MapPayload); ok {
+		return mp.M
+	}
+	return nil
 }
 
 // FnAnalysisKey builds the memo key for one fn-body analysis: scope id +
@@ -2722,10 +2829,32 @@ func refineRecursiveSummary(r *core.Registry, key string, diagBase int, result [
 // baseline so any inner fn/afn construction inside the body sees this scope
 // as its enclosing-fn baseline — without it, ComputeCaptures would treat
 // outer params as if they lived at module/global scope and miss the capture.
+// bindFrameValue binds a param or capture of an analysed fn body the way
+// the run's frame binds it (core.InstallFrameBinding) when the value is a
+// concrete fn: the frame install compiles the value's authored signatures
+// into dispatch-ready ones, so a body that CALLS the name matches exactly as
+// the run's does. An inline lambda's authored signature carries no argument
+// types of its own — it dispatches as a value straight from the authored form
+// — and the raw push left `g x` matching nothing, a no_signature the named
+// `/v` spelling of the same fn never drew (NUR089). Every other value — a
+// carrier, a scalar, a container — is the plain push it always was.
+func bindFrameValue(r *core.Registry, name string, v core.Value) {
+	if _, isFn := v.Data.(core.FnDefInfo); isFn && v.Parent != nil && v.Parent.Equal(core.TFunction) {
+		core.InstallFrameBinding(r, name, v)
+		return
+	}
+	r.Defs.Push(name, v)
+}
+
 func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, args []core.Value, captures []core.CapturedBinding, anonymous bool) []core.Value {
 	snapshot := r.Defs.Snapshot()
 	r.PushFnBaseline(snapshot)
 	defer r.PopFnBaseline()
+	// The type-part reservations a body-local `def T` makes come off with
+	// the body's bindings below (core.ForgetTypePartsSince): the analysis
+	// is not a call, and a reservation it left behind made the run's first
+	// call the conflicting one (NUR167).
+	parts := r.TypePartsSnapshot()
 
 	// Expose the params as the per-call args list so a body that reads
 	// `args` / `args.N` resolves them in check mode. The params ARE the
@@ -2740,7 +2869,7 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	// shadow same-named captures — innermost binding wins,
 	// matching runtime dispatch.
 	for _, cb := range captures {
-		r.Defs.Push(cb.Name, cb.Value)
+		bindFrameValue(r, cb.Name, cb.Value)
 	}
 
 	// Bind named parameters as simple defs (carrier-typed).
@@ -2750,7 +2879,7 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	hasUnnamed := false
 	for i, arg := range args {
 		if i < len(paramNames) && paramNames[i] != "" {
-			r.Defs.Push(paramNames[i], arg)
+			bindFrameValue(r, paramNames[i], arg)
 		} else {
 			// An unnamed FN-VALUE param is inert frame DATA under the
 			// arguments-are-inert unification (the interpreter no longer
@@ -2848,7 +2977,23 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 		result = nil
 	}
 	r.Defs.Restore(snapshot)
+	r.ForgetTypePartsSince(parts)
 	return result
+}
+
+// emptyBodyResidual is an EMPTY body's frame: its unnamed args alone, in
+// order. The interpreter pushes them beneath the body and nothing consumes
+// them, so they are the frame's residual, and its return check takes the
+// declared count off them (`def f fn [[Integer] [Integer] []]` returns its
+// argument). nil when every param is named (NUR258).
+func emptyBodyResidual(paramNames []string, args []core.Value) []core.Value {
+	var out []core.Value
+	for i, a := range args {
+		if i >= len(paramNames) || paramNames[i] == "" {
+			out = append(out, a)
+		}
+	}
+	return out
 }
 
 // AnalyseFnBody runs a user-defined fn body through a sub-engine in
@@ -2894,7 +3039,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	r.Check.SpecArmDepth = 0
 	defer func() { r.Check.SpecArmDepth = savedSpecArm }()
 	if len(body) == 0 {
-		return nil
+		return emptyBodyResidual(paramNames, args)
 	}
 	// Record the caller→callee edge for the dynamic-scope undefined-word
 	// rescue. The current top of FnNameStack is the fn whose body is executing
@@ -2938,7 +3083,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	if r.Check.FnInflight == nil {
 		r.Check.FnInflight = map[string]bool{}
 	}
-	if cached, ok := r.Check.FnSummaries[key]; ok {
+	if cached, ok := r.Check.FnSummaries[key]; ok && !r.Check.ForceFnReanalysis {
 		return cached
 	}
 	// Per-fn analysis quota (A9): a polymorphic helper reached with

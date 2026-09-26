@@ -127,6 +127,12 @@ type Options struct {
 	// everything after the script path; nil leaves the slot uninstalled,
 	// which IO.args renders as an empty list.
 	ScriptArgs []string
+	// BaseDir anchors the program's relative imports (`import "./lib.boru"`)
+	// when set. The CLI's `run` and `debug` pass the script's own directory,
+	// so a file means the same wherever the process was started — the rule
+	// `check` and `build` already follow (NUR083); `-e` and the REPL, which
+	// have no file, leave it empty and the process cwd stands.
+	BaseDir string
 	// Env is the environment view surfaced as IO.env. Nil installs none,
 	// and IO.env then reports every name as unset — the runtime never
 	// reads the real process environment unless a host hands it over.
@@ -194,6 +200,9 @@ func New(opts ...Options) (*Boru, error) {
 	}
 	if o.ScriptArgs != nil {
 		native.SetHostScriptArgs(reg, o.ScriptArgs)
+	}
+	if o.BaseDir != "" {
+		reg.BaseDir = o.BaseDir
 	}
 	reg.SetParseFunc(parser.Parse)
 	modules.InstallResolver(reg)
@@ -330,6 +339,7 @@ func (a *Boru) Check(src string) (CheckResult, error) {
 	native.RunPendingFnBodyChecks(a.registry)
 	a.registry.RescueForwardRefDiagnostics()
 	a.registry.Check.EmitUnusedDefDiagnostics()
+	a.registry.Check.EmitLateBindingHints()
 	if err != nil {
 		return CheckResult{Diagnostics: a.registry.Check.Diagnostics}, err
 	}
@@ -466,12 +476,18 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	native.ResetModuleExportGrowth(a.registry)
 	native.ResetCheckFnCarrierBinds(a.registry)
 
+	// The program's own tokens ride on the recording: a top-level
+	// landing's `/q` claim resumes the interpreter in them (NUR190).
+	if es, ok := a.registry.Check.Recorder().(*compiler.EmitState); ok {
+		es.SetRootBody(values)
+	}
 	engine := native.NewTop(a.registry)
 	engine.SetSource(src)
 	residual, runErr := engine.Run(values)
 	native.RunPendingFnBodyChecks(a.registry)
 	a.registry.RescueForwardRefDiagnostics()
 	a.registry.Check.EmitUnusedDefDiagnostics()
+	a.registry.Check.EmitLateBindingHints()
 
 	res := CheckResult{
 		Diagnostics:              a.registry.Check.Diagnostics,
@@ -1229,8 +1245,8 @@ func compileFailureReason(reason string) string {
 // The VM's own errors are identified by BoruError.VMDefer (core.IsVMDefer),
 // the marker vmErrAt and both VM panic guards set. The CODE alone will not
 // do: a native handler may raise internal_error for a failure that is
-// entirely the program's — `convert: cannot convert Float to BigInteger`,
-// `def q: value 0 does not satisfy predicate type Positive` — and so may user
+// entirely the program's — `convert: cannot convert Float to BigInteger` —
+// and so may user
 // code, with a plain `raise internal_error "boom"`. The interpreter raises
 // the identical error in every one of those cases. Marking them as compiler
 // defects would book the compiler for a handler's choice of error code and

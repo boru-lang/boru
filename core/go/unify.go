@@ -126,15 +126,10 @@ func isR(v Value, t *Type, r *Registry) bool {
 	return v.Is(t)
 }
 
-// isPredicateFnValue reports whether v is a function value whose
-// first signature has a single typed parameter — the shape a
-// predicate type has.
 // IsDeclaredPredicateFn reports whether v is a fn value whose author
-// DECLARED it a membership test with `fnpred`. This is the explicit route
-// into the predicate-type branch, and the one that does not consult the
-// parameter count — ADR-016 forbids arity deciding how a function behaves,
-// and isPredicateFnValue below does exactly that. NUR099 tracks retiring
-// the arity route once the corpus has migrated to `fnpred`.
+// DECLARED it a membership test with `fnpred` — the one route into the
+// predicate-type branch (NUR099: the parameter-count route it replaced
+// was ADR-016's arity-keyed exception, and is gone).
 func IsDeclaredPredicateFn(v Value) bool {
 	if v.Parent == nil || !v.Parent.Equal(TFunction) {
 		return false
@@ -155,40 +150,12 @@ func MarkPredicateFn(v Value) Value {
 	return NewValueRaw(v.Parent, info)
 }
 
-// isPredicateFnValue reports whether v LOOKS like a predicate because it
-// takes one parameter.
-//
-// DEPRECATED ROUTE (NUR099, NUR100). Routing on the parameter count is an
-// arity-keyed exception, which ADR-016 forbids outright: it is why the same
-// fn body means a callable function under a lowercase name and a membership
-// test under a capitalised one, and why `def K fn [[a:Any b:Any]…]` binds a
-// type nothing can inhabit instead of being declined. `fnpred` is the
-// replacement (IsDeclaredPredicateFn); this stays only until the corpus has
-// migrated, and is not to be extended.
-func isPredicateFnValue(v Value) bool {
-	if v.Parent == nil {
-		return false
-	}
-	if !v.Parent.Equal(TFunction) {
-		return false
-	}
-	info, ok := v.Data.(FnDefInfo)
-	if !ok {
-		return false
-	}
-	sig, ok := info.FirstOwnSig()
-	if !ok {
-		return false
-	}
-	return len(sig.Params) == 1
-}
-
 // resolvePredicateRef returns the predicate type's lattice NODE when v
 // references a predicate type via name AND the type's Behavior is the
 // predicateUnifier installed by InstallType. The Behavior check is
-// what distinguishes a predicate TYPE from an ordinary 1-arg fn
-// value — without it, every 1-arg fn would look like a predicate and
-// hijack standard unification (e.g. FnUndef variance checks).
+// what distinguishes a predicate TYPE from an ordinary fn value —
+// without it, any fn would look like a predicate and hijack standard
+// unification (e.g. FnUndef variance checks).
 //
 // Returning the node (not the body) lets the unifyInner pre-pass
 // route through the node's own predicateUnifier.Unify, so a predicate
@@ -215,9 +182,9 @@ func resolvePredicateRef(v Value, r *Registry) (*Type, bool) {
 		name = w
 	case IsBareTypeNode(v) && v.ID != "" && v.Name() != "":
 		name = v.Name()
-	case isPredicateFnValue(v):
+	case IsDeclaredPredicateFn(v):
 		// Direct FnDef body — try the FnDef's Name field. Predicate
-		// types installed via `def Pos fn […]` carry Name="Pos" on
+		// types installed via `def Pos fnpred […]` carry Name="Pos" on
 		// their FnDef payload after InstallType wires the binding.
 		if info, ok := v.Data.(FnDefInfo); ok {
 			name = info.Name
@@ -279,7 +246,7 @@ func sameFnConstruction(a, b Value) bool {
 // disjunct is a predicate fn value.
 func disjunctHasPredicate(disj DisjunctInfo) bool {
 	for _, alt := range disj.Alternatives {
-		if isPredicateFnValue(alt) {
+		if IsDeclaredPredicateFn(alt) {
 			return true
 		}
 	}
@@ -331,6 +298,18 @@ func unifyDisjunctR(disj DisjunctInfo, val Value, r *Registry) (Value, *UnifyErr
 // Registry.
 func unifyInner(a, b Value, r *Registry) (Value, *UnifyError) {
 	if r != nil {
+		// Two references to ONE predicate type are the same type: an atom
+		// against an atom naming the same predicate (`[:Pos]` in one fn
+		// shape against `[:Pos]` in another, `fnsig` against `fn`) is a
+		// type comparison, not a membership test of the atom `Pos` against
+		// the predicate `Pos` — which is what the pre-pass ran, and it
+		// failed (NUR157: `((fn [[xs:[:Pos]] [Boolean] [true]]) unify T`
+		// was ~unify-fail under a registry and admitted without one).
+		if da, oka := resolvePredicateRef(a, r); oka {
+			if db, okb := resolvePredicateRef(b, r); okb && da != nil && da == db {
+				return a, nil
+			}
+		}
 		if def, ok := resolvePredicateRef(a, r); ok && b.Data != nil {
 			return unifyResolvedPredicate(def, b, r)
 		}

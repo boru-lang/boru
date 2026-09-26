@@ -43,6 +43,12 @@ type dynEnter struct {
 	// FORWARD — read by the replay window, which may only enter over a
 	// non-empty resolved prefix when the callee cannot reach into it.
 	allForward bool
+	// jump is no frame push at all: the op handed the rest of the body to
+	// the interpreter (a landing's `/q` claim, NUR190), and the run
+	// continues at jumpPC with the island's residual — the unit's RET, or
+	// the program's end.
+	jump   bool
+	jumpPC int
 }
 
 // allForwardSig reports whether every parameter of a matched signature is
@@ -140,6 +146,12 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 	if fn.NParams != len(args) || fn.NCaptures != 0 {
 		return nil
 	}
+	// A fn argument in a slot the stored unit reads bare is the interpreter's
+	// word dispatch, which the unit's slot push cannot run (NUR217): the
+	// island answers.
+	if fn.FnReadRefused(args) {
+		return nil
+	}
 	locals := make([]core.Value, fn.NLocals)
 	copy(locals, args)
 	// Delivery discipline, identical to OpCallUserPoly's: strip the ascribed
@@ -202,10 +214,20 @@ func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout i
 			return nil, false, nil
 		}
 	}
-	if ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) {
+	if ref.Unit < 0 || ref.Unit >= len(ref.Prog.Fns) || ref.Prog.Fns[ref.Unit].FnReadRefused(args) {
 		return nil, false, nil
 	}
-	res, _, err = vc.runForeignUnit(ref, args)
+	// The interpreter dispatches a foreign fn VALUE through the strict seam
+	// (execFnDefLiteral's cross-registry arm, InvokeCallbackStrict), so the
+	// hosted root RET takes the NAMED discipline, and the results answer to
+	// the applied VALUE's declared contract, as the Apply kernel's frame does
+	// (applyRetContract): the unit a module stamps for a value declares none
+	// of its own, so a body leaving the wrong count answered `[5 1]` for
+	// `m.f 5` where the interpreter raises the count error (NUR252).
+	res, _, err = vc.runForeignUnit(ref, args, true)
+	if err == nil {
+		res, err = checkReturnContract(vc.r, applyRetContract(&ref.Prog.Fns[ref.Unit], fd.Name, sig), res, 0, true, core.SrcPos{})
+	}
 	return res, true, err
 }
 

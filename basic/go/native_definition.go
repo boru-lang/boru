@@ -210,6 +210,21 @@ var DefinitionNatives = []NativeFunc{
 				// As the triple form (S2b).
 				CompileEffect: CompileOwnLowering,
 			},
+			{
+				// The 0-argument spelling is never a construction: `fn` with
+				// nothing it can take is a declaration the two forms both
+				// rejected — `def f fn List Any [1]` used to fall to the
+				// synthesized 0-arg fallback and strand its operands silently
+				// (`[1] Any List` left behind, nothing bound, exit 0), where
+				// `fn List [Integer] [size]` only failed loudly by accident,
+				// the body list running as code (NUR091). It raises instead,
+				// naming the rule.
+				Args:          []*Type{},
+				Impl:          Go(FnNoArgsHandler, RunInCheck()),
+				Returns:       []*Type{TFunction},
+				BarrierPos:    -1,
+				CompileEffect: CompileDiverges, // the handler always raises
+			},
 		},
 	},
 	{
@@ -688,6 +703,10 @@ func synthDefKeywordSigNamed(ctor string, base *Signature, genChain bool, nameTy
 		Impl:       Go(defFormRun(ctor, base, offset, genChain), RunInCheck()),
 		Returns:    []*Type{},
 		BarrierPos: -1,
+		// A constructor that always raises (fn's 0-argument refusal,
+		// NUR091) raises the same way through its keyword form: the one
+		// compile fact the base declares that the form inherits.
+		CompileEffect: base.CompileEffect & CompileDiverges,
 		// The handler-contract declaration (design/HANDLER-MIGRATION-LINE.0.md,
 		// the quoted class, S2a). The Atom-name form quotes the NAME of the
 		// registry write — a key the handler reads (CompileQuoteKey, as def's
@@ -703,9 +722,9 @@ func synthDefKeywordSigNamed(ctor string, base *Signature, genChain bool, nameTy
 		// below beside the same quoted-operand flag.
 	}
 	if len(noEval) == 0 {
-		sig.CompileEffect = CompileQuoteInert
+		sig.CompileEffect |= CompileQuoteInert
 		if nameQuote {
-			sig.CompileEffect = CompileQuoteKey
+			sig.CompileEffect = sig.CompileEffect&^CompileQuoteInert | CompileQuoteKey
 		}
 	}
 	if len(noEval) > 0 {
@@ -962,8 +981,14 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 		return nil, fmt.Errorf("def %s: predicate type %s: %w", name, describeType(), err)
 	}
 	if !matched {
-		return nil, fmt.Errorf("def %s: value %s does not satisfy predicate type %s",
-			name, body.String(), describeType())
+		// A type_error, exactly as the typed def's other refusals are (`def
+		// q:T "x"` — does not unify with declared type T): the predicate's
+		// refusal was a PLAIN error, which the interpreter surfaced bare and
+		// the compiled run — raising the same refusal from OpBindTyped —
+		// booked as a compiler defect's internal_error (NUR224).
+		return nil, r.BoruError("type_error",
+			fmt.Sprintf("def %s: value %s does not satisfy predicate type %s",
+				name, body.String(), describeType()), name)
 	}
 
 	// Rewrap with the predicate's *Type so dispatch keys off
@@ -1002,6 +1027,80 @@ func defFnPredicateBind(r *Registry, name, typeName string, constraint, body Val
 		}
 	}, body, out, pos, func() { MarkFnPredicateBindUncompilable(r, name) })
 	return InstallAndRecordDef(r, name, out, pos)
+}
+
+// evalParenAnnotation evaluates a parenthesised typed-def annotation — `def
+// b:(Box of [Integer]) {…}` — inline (def's NoEvalMapArgs keeps the
+// typed-name map raw, so the ParenExpr arrives unevaluated). Generic
+// instantiations are the main client; any expression producing a single
+// type value works. Any other annotation passes through.
+func evalParenAnnotation(r *Registry, name string, constraint Value) (Value, error) {
+	if !IsParenExpr(constraint) {
+		return constraint, nil
+	}
+	toks, _ := AsParenExpr(constraint)
+	body := make([]Value, len(toks))
+	copy(body, toks)
+	out, err := New(r).Run(body)
+	if err != nil {
+		return Value{}, fmt.Errorf("def %s: type annotation: %w", name, err)
+	}
+	if len(out) != 1 {
+		return Value{}, fmt.Errorf("def %s: type annotation must produce one type, got %d values", name, len(out))
+	}
+	return out[0], nil
+}
+
+// defRunMembershipArm is the typed def's arm for a constraint holding a
+// refinement whose bound the analysis pass does not know (NUR231): in a
+// pass, the run decides membership (defRunMembershipBind), described as the
+// interpreter's typed def describes it — a named node by its name, an inline
+// constraint as the run renders it.
+func defRunMembershipArm(r *Registry, name, typeName string, constraint, body Value, describeType func() string, pos SrcPos) (Value, bool) {
+	if !r.Check.IsActive() || !core.HasUnknownRefinement(constraint) {
+		return Value{}, false
+	}
+	describe := typeName
+	if IsBareTypeNode(constraint) {
+		describe = describeType()
+	}
+	return defRunMembershipBind(r, name, constraint, body, describe, pos)
+}
+
+// defRunMembershipBind binds a typed def whose constraint holds a refinement
+// over a bound the analysis pass does not know — a computed one, `def
+// x:(Integer gt (size s)) 2` or `def v:T 3` over such a T, whose bound is
+// the pass's carrier (NUR231). The membership is the run's: the pass admits
+// gradually and records the run's check, OpBindTyped over
+// TypedBindRunMembership, against the named node (which forwards to the
+// node the run installed, core.RunTypeInstall) or, inline, against the
+// constraint the run computed (ConsOperand). It binds what the run binds
+// when the check admits. A bind the compile cannot record declines as the
+// compile-time word it is (NoteRuntimeDependent). ok=false hands a concrete
+// value the constraint refuses whatever the bound — outside its base — to
+// the general arm, whose raise is the run's too.
+func defRunMembershipBind(r *Registry, name string, constraint, body Value, describe string, pos SrcPos) (Value, bool) {
+	bound := body
+	if IsConcrete(body) {
+		unified, ok := UnifyR(body, constraint, r)
+		if !ok {
+			return Value{}, false
+		}
+		bound = unified
+	}
+	spec := core.TypedBindSpec{Kind: core.TypedBindRunMembership, Name: name, Describe: describe}
+	if IsBareTypeNode(constraint) {
+		cons := constraint
+		spec.Cons = &cons
+	} else {
+		spec.ConsOperand = true
+	}
+	es := r.Check.Recorder()
+	if out, ok := es.RecordTypedBindRun(spec, constraint, body, bound, pos); ok {
+		return out, true
+	}
+	es.NoteRuntimeDependent()
+	return bound, true
 }
 
 // MarkFnPredicateBindUncompilable declines compilation when a fn-predicate
@@ -1187,24 +1286,9 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 			constraint = exp[0]
 		}
 	}
-	// A parenthesised annotation — `def b:(Box of [Integer]) {…}` —
-	// evaluates inline (def's NoEvalMapArgs keeps the typed-name map
-	// raw, so the ParenExpr arrives unevaluated). Generic
-	// instantiations are the main client; any expression producing a
-	// single type value works.
-	if IsParenExpr(constraint) {
-		toks, _ := AsParenExpr(constraint)
-		body := make([]Value, len(toks))
-		copy(body, toks)
-		sub := New(r)
-		out, err := sub.Run(body)
-		if err != nil {
-			return nil, fmt.Errorf("def %s: type annotation: %w", name, err)
-		}
-		if len(out) != 1 {
-			return nil, fmt.Errorf("def %s: type annotation must produce one type, got %d values", name, len(out))
-		}
-		constraint = out[0]
+	constraint, perr := evalParenAnnotation(r, name, constraint)
+	if perr != nil {
+		return nil, perr
 	}
 	// A typed-list/map annotation whose CHILD is a paren expression —
 	// `def xs:[:(Pair of [String Integer])] […]` — needs the child
@@ -1347,6 +1431,9 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 				return InstallAndRecordDef(r, name, body, defPos)
 			}
 		}
+	}
+	if bound, ok := defRunMembershipArm(r, name, typeName, constraint, body, describeType, defPos); ok {
+		return InstallAndRecordDef(r, name, bound, defPos)
 	}
 	if r.Check.IsActive() && depScalarCons.IsDepScalar() && !IsConcrete(body) {
 		if body.Parent.ConformsTo(depScalarCons.Parent) {
@@ -1715,6 +1802,20 @@ func FnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 		return failGenErr(r, genSpec, r.BoruError("fn_error", "fn: list length must be a non-zero multiple of 3 (input output body triples); use `fnsig` for the type-only form, or the 3-arg form `fn input output body` for a single triple with a non-list input", "fn"))
 	}
 	return FnConstruct(r, elems, genSpec)
+}
+
+// FnNoArgsHandler — the loud refusal of a `fn` that took nothing (NUR091):
+// neither the spec-list form nor the triple matched what was written after
+// it, and a declaration both forms reject is reported at the declaration,
+// whatever sat in its slots. A bare `List` input is the shape that lands
+// here — the `(tnot List)` rule means a single List-typed param must be
+// written in the spec-list form. A pending gen spec is consumed like every
+// other fn failure.
+func FnNoArgsHandler(_ []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	genSpec := r.TakePendingGen()
+	return failGenErr(r, genSpec, r.BoruErrorHint("signature_error",
+		"fn: expected a spec list or an input/output/body triple after it — a bare List input is rejected by (tnot List); a single List-typed param needs the spec-list form", "fn",
+		"hint: write the triple as a list: fn [[xs:List] [Output] [body]]"))
 }
 
 // FnTripleHandler — the 3-arg single-triple form `fn input output body`.

@@ -740,11 +740,11 @@ def Color enum [red green blue] Color tcmp Enum	1
 def Color enum [red green blue] Enum tcmp Color	-1
 
 # --- Predicate kind (lattice-minted under the input type) ---
-def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] Positive tcmp Positive	0
-def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] def Negative fn [n:Integer Integer [if (n lt 0) [n] [None]]] Negative tcmp Positive	-1	# §6 tcmp row: named predicate types order as TYPES (name lex within the band), not as fn values
-def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] def Negative fn [n:Integer Integer [if (n lt 0) [n] [None]]] Positive tcmp Negative	1
-def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] Positive tcmp Function	-1	# §6 tcmp row: a named predicate type is a SUBTYPE below Function, ordering under its base
-def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] Function tcmp Positive	1
+def Positive fnpred n:Integer [if (n gt 0) [n] [None]] Positive tcmp Positive	0
+def Positive fnpred n:Integer [if (n gt 0) [n] [None]] def Negative fnpred n:Integer [if (n lt 0) [n] [None]] Negative tcmp Positive	-1	# §6 tcmp row: named predicate types order as TYPES (name lex within the band), not as fn values
+def Positive fnpred n:Integer [if (n gt 0) [n] [None]] def Negative fnpred n:Integer [if (n lt 0) [n] [None]] Positive tcmp Negative	1
+def Positive fnpred n:Integer [if (n gt 0) [n] [None]] Positive tcmp Function	-1	# §6 tcmp row: a named predicate type is a SUBTYPE below Function, ordering under its base
+def Positive fnpred n:Integer [if (n gt 0) [n] [None]] Function tcmp Positive	1
 
 # --- Cross-kind user types (Rank bands decide) ---
 def Cat class {x:Integer} def Maybe (String tor None) Cat tcmp Maybe	-1

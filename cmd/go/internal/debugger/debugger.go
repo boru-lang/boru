@@ -15,6 +15,7 @@ package debugger
 import (
 	"bufio"
 	"fmt"
+	core "github.com/boru-lang/boru/core/go"
 	"io"
 	"sort"
 	"strconv"
@@ -90,6 +91,12 @@ type Config struct {
 	// `do` handler will catch. The state at the raise is inspectable;
 	// resuming lets the error proceed.
 	BreakOnError bool
+	// PostMortem arms the post-mortem inspection (§6.1): the session keeps
+	// the fault's bindings from the "fault:" note — fired BEFORE the
+	// error unwinds its frames (Engine.faultReturn, NUR201) — so
+	// PostMortem can show the raise's scope after the run has torn it
+	// down.
+	PostMortem bool
 	// NewRegistry builds a FRESH registry wired like the launch's own
 	// (output, file identity, program args) — the seam `replay` (§6.4)
 	// uses to re-run the program from the start on a clean slate. Nil
@@ -172,6 +179,17 @@ type Session struct {
 	breakOnError bool
 	lastFault    string
 
+	// postMortem arms the fault-scope capture (Config.PostMortem):
+	// faultDefs is the firing registry's def table as it stood at the
+	// LAST raise's fault note — the innermost fire of the note, before
+	// the error's unwind (NUR201) pops the fault's frames — and faultReg
+	// the registry it was taken from; faultNote dedups the note as it
+	// repeats through nested engines, keeping the innermost capture.
+	postMortem bool
+	faultDefs  core.EntriesSnapshot
+	faultReg   *native.Registry
+	faultNote  string
+
 	// pauseHook, when set, is an ALTERNATE front end (the DAP adapter):
 	// each pause calls it — with mu held, blocking the engine — instead
 	// of rendering and prompting; the returned action string goes through
@@ -242,6 +260,7 @@ func New(reg *native.Registry, cfg Config) *Session {
 		srcCache:     make(map[*native.Registry][]string),
 		echo:         cfg.Echo,
 		breakOnError: cfg.BreakOnError,
+		postMortem:   cfg.PostMortem,
 		lineBPs:      make(map[int]bool),
 		wordBPs:      make(map[string]bool),
 		watches:      make(map[string]string),
@@ -427,6 +446,16 @@ func (s *Session) trace(pointer int, stack []native.Value, note string, sub, fre
 		// The engine fires this note at a raise, BEFORE the error unwinds
 		// (Engine.faultReturn). Pause once per raise — the same note
 		// repeats as the error bubbles through nested engines.
+		if s.postMortem && note != s.faultNote {
+			// The raise's scope, kept for PostMortem: the unwind that
+			// follows this note pops the fault's frames (NUR201), and an
+			// uncaught error leaves nothing else to inspect.
+			reg := from
+			if reg == nil {
+				reg = s.reg
+			}
+			s.faultNote, s.faultReg, s.faultDefs = note, reg, reg.Defs.SnapshotEntries()
+		}
 		if !s.breakOnError || note == s.lastFault {
 			return
 		}
@@ -840,8 +869,10 @@ func (s *Session) prompt() stepMode {
 // RunProgram returned an uncaught error (§6.1's post-mortem entry,
 // host-only): the per-step trace fired immediately BEFORE the failing
 // dispatch, so the retained snapshot (curStack/curPointer) is exactly
-// the program state at the raise, and an error return performs no
-// frame unwind, so the registry still holds the fault's bindings.
+// the program state at the raise; the error's unwind popped the fault's
+// frames on its way out (Engine.faultReturn, NUR201), so the bindings
+// captured at the fault note (faultDefs) are restored here — the program
+// has terminated, so the restore is inspection state and nothing else.
 // Every inspection command works; the program has already terminated,
 // so any action command (step/continue/quit) simply ends the session.
 // A detached session gets no post-mortem — the user already left.
@@ -852,6 +883,9 @@ func (s *Session) PostMortem(runErr error) {
 		return
 	}
 	s.dead = true
+	if s.faultReg != nil {
+		s.faultReg.Defs.RestoreEntriesSnapshot(s.faultDefs)
+	}
 	loc := ""
 	if s.curPointer >= 0 && s.curPointer < len(s.curStack) {
 		if row := s.curStack[s.curPointer].Pos().Row; row != 0 {

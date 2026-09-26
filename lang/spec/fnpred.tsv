@@ -49,9 +49,13 @@ def Positive fnpred n:Integer [if (n gt 0) [n] [None]]  def q:Positive 0  q	ERRO
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 4	4	a parameter admits a member
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[n:Even] [Integer] [n]]  f 5	ERROR:signature_error	…and dispatch declines a non-member
 #
-# §5  Same type as the capitalised-fn form it replaces
+# §5  The capitalised-fn form it replaces is refused at the declaration
+#     (NUR099): a fn body is a type only through fnpred, so the case of a
+#     name no longer decides whether a body is a function or a test.
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  def p:Even 4  p	4	fnpred…
-def Even fn n:Integer Boolean [eq 0 (mod 2 n)]  def p:Even 4  p	4	…and the legacy capitalised-fn route agree
+def Even fn n:Integer Boolean [eq 0 (mod 2 n)]  def p:Even 4  p	ERROR:def_error	…and the legacy capitalised-fn spelling is refused at the declaration (NUR099): a fn body is a type only through fnpred
+def K fn [[a:Any b:Any][Any][a]] end  K 1 2	ERROR:def_error	the two-parameter combinator used to bind a type nothing could inhabit, silently — refused at the declaration
+def k fn [[a:Any b:Any][Any][a]] end  k 1 2	1	…and its lower-case spelling is the callable function
 #
 # §6  Negatives — the spec list takes PAIRS, not triples
 #     (both are runtime-only shape errors: the checker cannot statically
@@ -88,3 +92,32 @@ def Positive fnpred n:Integer [if (n gt 0) [n] [None]]  0 is Positive	false	…a
 #     question: a bare node passes the gate as the type it is.
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  "x" is Even	false	the input-type gate rejects without running the body
 def Even fnpred n:Integer [eq 0 (mod 2 n)]  Even is Even	true	a type literal is the type itself, not an inhabitant
+#
+# TWO REFERENCES TO ONE PREDICATE ARE THE SAME TYPE (NUR157, closed 2026-09-25):
+# a `[:Pos]` pattern unifies with a `[:Pos]` pattern under a registry as it
+# does without one; a different predicate still fails, membership is unchanged.
+def Pos fnpred n:Integer [n gt 0] [:Pos] [:Pos] unify	[:fn [[n:Integer][Any][n gt 0]]] true	the same predicate's typed-list patterns unify as the type (NUR157)
+def Pos fnpred n:Integer [n gt 0] def Neg fnpred n:Integer [n lt 0] [:Neg] [:Pos] unify	'~unify-fail' false	…and two different predicates do not
+def Pos fnpred n:Integer [n gt 0] [1 -2] [:Pos] unify	'~unify-fail' false	membership is unchanged
+#
+# §8  Membership is a ONE-VALUE APPLICATION (NUR100, closed 2026-09-26):
+#     the candidate is matched against the predicate's signatures by the one
+#     matcher every call takes, and the signature that takes it runs. No
+#     parameter COUNT admits or refuses a function as a predicate — a
+#     signature that cannot take one value is simply never the one selected,
+#     as for any call — and the WHOLE overload set is consulted, first match
+#     first, where only the first overload used to be read.
+def P fnpred [[n:Integer] [n gt 0] [s:String] [(size s) gt 0]]  def v:P "ab"  v	'ab'	a later overload takes a value the first cannot — the whole set is consulted
+def P fnpred [[n:Integer] [n gt 0] [s:String] [(size s) gt 0]]  def v:P ""  v	ERROR:does not satisfy	…and its body still decides membership
+def P fnpred [[n:Integer] [n gt 0] [s:String] [(size s) gt 0]]  def f fn [[q:P] [Any] [q]]  f "ab"	'ab'	a typed parameter consults the same overloads
+def P fnpred [[n:Integer] [n gt 0] [s:String] [(size s) gt 0]]  def f fn [[q:P] [Any] [q]]  f 0	ERROR:signature_error	…and declines what every overload declines
+def P fnpred [[n:Integer] [n gt 0] [s:String] [(size s) gt 0]]  "ab" is P	true	`is` asks the same question
+def P fnpred [[n:Integer] [n gt 0] [s:String] [(size s) gt 0]]  "" is P	false	…with the same answer
+def K fnpred [[a:Any b:Any] [a]]  def v:K 5  v	ERROR:does not satisfy	no signature takes ONE value, so no value is a member — the use answers membership, never an arity error
+def K fnpred [[a:Any b:Any] [a]]  4 is K	false	…and `is` agrees
+def Z fnpred [[0] [true]]  0 is Z	true	a value PATTERN selects as it does for any call
+def Z fnpred [[0] [true]]  1 is Z	false	…and a value it does not match is not a member, with no body run
+#     An UNNAMED input the body leaves beneath its verdict is call-scoped data
+#     the seam discards on both lanes, exactly as a call's frame does (NUR223).
+def Z fnpred [[Integer] [dup 0 eq]]  0 is Z	true	the verdict is the top of the residual; the unconsumed input is discarded
+def Z fnpred [[Integer] [dup 0 eq]]  1 is Z	false	…and a false verdict stays false

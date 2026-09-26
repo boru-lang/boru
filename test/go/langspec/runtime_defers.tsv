@@ -33,6 +33,14 @@
 # scan over a class member's Any-typed list, run natively through the
 # dyn-body poly re-match the recovery now records (widest satisfiable
 # overload) instead of bailing at the rematch trap.
+# fnpred.tsv left the ledger on 2026-09-25 (NUR141, the check pass runs a
+# PURE predicate over a concrete candidate): L34, L38, L43, L46 — `def
+# q:Even 5` and its twins — are the static check error the run raised, so
+# the program never runs compiled; record.tsv's L178 went the same way.
+# fn-value.tsv left the ledger on 2026-09-26 (NUR190 closed): L317/L318,
+# `m.f z` and `m get 'f' z`, take the landing's island — the value and the
+# program from the word on run on the interpreter, which captures the word
+# — where the landing deferred.
 # Forty-four rows left on 2026-09-26, 51 -> 7 (the plain-error disposition,
 # the retired-node replay, the type-name reach). Forty were "<native>'s own
 # error, no defer site" (bignum L108–L131, edge-dispatch-3 L54/L55/L59,
@@ -56,4 +64,6 @@
 # a flex write into the receiver's shape (FlexMap keys, and a new FlexList
 # element join), so the member read carries the adopted FlexMap bound and
 # `set` commits the overload — and the one result — the runtime lands on.
-fn-value.tsv	2	L317, L318: `m.f z`, `m get 'f' z` — vm:landing-quote-claim, a `/q` slot CAPTURES the following word (NUR190; booked by choice 2026-09-24, the deferral over an over-wide decline)
+# The merge of main's #511 with the reverse-order NUR run (2026-09-26) left
+# no row: main's five above were the run's five, and the one main kept
+# (fn-value.tsv L317/L318, NUR190) the run had closed.

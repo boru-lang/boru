@@ -2,6 +2,7 @@ package native
 
 import (
 	"fmt"
+	"sort"
 	"sync"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
@@ -57,6 +58,11 @@ type serviceState struct {
 	wraps  []Value            // ambient middleware (newest last = outermost)
 	state  Value              // the private state: a flex map, mutated in place
 
+	// slots are each stacked handler's binding slots (its pattern's
+	// `name:Type` fields), aligned with stacks: pattern sig → per-layer
+	// slots, newest last (NUR064).
+	slots map[string][][]recvBind
+
 	// remote, when non-nil, makes this Service an Endpoint: call/send
 	// forward over the wire instead of dispatching locally. `add`ed
 	// handlers stay local (peer-push dispatch is a later phase).
@@ -84,6 +90,7 @@ func NewServiceValue(initial *OrderedMap) Value {
 	s := &serviceState{
 		pm:     newPatrunMatcher(TAny),
 		stacks: map[string][]Value{},
+		slots:  map[string][][]recvBind{},
 		state:  st,
 	}
 	return core.NewExtension(TService, s)
@@ -165,8 +172,12 @@ var serviceNatives = []NativeFunc{
 		Signatures: []Signature{
 			// add {pattern} [handler] svc — register a handler; adding to an
 			// already-registered pattern PUSHES a layering stack (prior).
-			// Returns nothing (statement form, like the Patrun overload).
+			// The pattern is a clause pattern, as a `receive` clause's is:
+			// scalar fields route, `name:Type` fields are binding slots the
+			// handler's run sees by name (NUR064). Returns nothing
+			// (statement form, like the Patrun overload).
 			{Args: []*Type{TMap, TAny, TService}, Impl: Go(serviceAddHandler), Returns: []*Type{},
+				ReturnsFn:  serviceAddCheck,
 				BarrierPos: -1, CompileEffect: CompileStoresFn | CompileFnHandlerStrict},
 		},
 	},
@@ -236,10 +247,17 @@ func serviceAddHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	if err := requireHandlerFn(r, args[1], "add"); err != nil {
 		return nil, err
 	}
-	pat, keys, sig, err := coercePattern(args[0], "add", r)
+	clause, err := splitClausePattern(r, args[0], "add", "patrun_error")
 	if err != nil {
 		return nil, err
 	}
+	pat := clause.route
+	keys := make([]string, 0, len(pat))
+	for k := range pat {
+		keys = append(keys, k)
+	}
+	sort.Strings(keys)
+	sig := patrunSig(keys, pat)
 	// Detached-stamp the handler at its store site so runHandlerChain's
 	// InvokeCallback runs it on the VM: a handler added from an interpreted
 	// context (a module fn's body — the real apps) is otherwise invisible to
@@ -257,9 +275,44 @@ func serviceAddHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 		s.pm.order = append(s.pm.order, sig)
 	}
 	// Same-pattern add PUSHES (layering, newest outermost) — deliberately
-	// different from raw patrun, which overwrites (SERVICES.0.md §1).
+	// different from raw patrun, which overwrites (SERVICES.0.md §1). A
+	// pattern's identity is its routing tags; its slots ride with the layer.
 	s.stacks[sig] = append(s.stacks[sig], handler)
+	s.slots[sig] = append(s.slots[sig], clause.binds)
 	return nil, nil
+}
+
+// serviceAddCheck is `add`'s check-mode half over a Service. The handler's
+// body was analysed where its fn literal was built — before this call names
+// the pattern's binding slots — so its reads of a slot's name reported
+// undefined_word. Those reads are the slot's (the run binds the name around
+// the handler, as a `receive` clause's body sees it), so the pass notes each
+// such token for RescueForwardRefDiagnostics to excuse: that token, not the
+// name (NUR064).
+func serviceAddCheck(args []Value, r *Registry) []Value {
+	// The check pass's unmatched-dispatch recovery calls a candidate's
+	// check half over whatever operands the call had (`'x' add`).
+	if len(args) < 2 {
+		return []Value{}
+	}
+	slots := map[string]bool{}
+	if mp, err := AsMap(args[0]); err == nil && mp != nil && IsConcrete(args[0]) {
+		for _, k := range mp.Keys() {
+			if v, _ := mp.Get(k); IsTypeLiteral(v) {
+				slots[k] = true
+			}
+		}
+	}
+	if fd, ok := FnDefFromValue(args[1]); ok && len(slots) > 0 {
+		for i := range fd.Signatures {
+			core.WalkBodyWords(fd.Signatures[i].Body(), func(w core.WordInfo, tok Value) {
+				if slots[w.Name] {
+					r.Check.NoteSlotBoundRead(w.Name, tok.Pos())
+				}
+			})
+		}
+	}
+	return []Value{}
 }
 
 func serviceWrapHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
@@ -358,15 +411,29 @@ func dispatchService(r *Registry, s *serviceState, req Value) ([]Value, error) {
 		return nil, err
 	}
 	h, found := s.pm.pm.Find(subj)
-	var chain []Value
+	var chain []chainLink
 	// wraps run outermost, newest first.
 	for i := len(s.wraps) - 1; i >= 0; i-- {
-		chain = append(chain, s.wraps[i])
+		chain = append(chain, chainLink{handler: s.wraps[i]})
 	}
+	slotsDecline := false
 	if found && h != nil {
-		stack := s.stacks[*h]
-		for i := len(stack) - 1; i >= 0; i-- {
-			chain = append(chain, stack[i])
+		sig := *h
+		// Routing matched; the handler's binding slots decide whether it
+		// takes the request — a declining one falls back to a slot-free
+		// catch-all, as a `receive` clause's does (NUR064).
+		if _, ok := bindSlots(topSlots(s.slots[sig]), req); !ok {
+			if sig != "" && len(s.stacks[""]) > 0 && len(topSlots(s.slots[""])) == 0 {
+				sig = "" // the `{}` route
+			} else {
+				slotsDecline = true
+			}
+		}
+		if !slotsDecline {
+			stack, slots := s.stacks[sig], s.slots[sig]
+			for i := len(stack) - 1; i >= 0; i-- {
+				chain = append(chain, chainLink{handler: stack[i], slots: slots[i]})
+			}
 		}
 	}
 	state := s.state
@@ -376,6 +443,11 @@ func dispatchService(r *Registry, s *serviceState, req Value) ([]Value, error) {
 		return nil, r.BoruErrorHint("no_match",
 			"call: no handler matches request "+ValToString(req),
 			"call", "register a handler with `add {pattern} [handler] svc` (a catch-all `add {} …` accepts anything)")
+	}
+	if slotsDecline {
+		return nil, r.BoruErrorHint("no_match",
+			"call: request routed to a handler but failed its typed binding slots: "+ValToString(req),
+			"call", "binding slots ({reply: Pid}) require the field present and of the slot type")
 	}
 
 	// Serialize the actual handling: one request at a time (the
@@ -395,15 +467,44 @@ func dispatchService(r *Registry, s *serviceState, req Value) ([]Value, error) {
 	return res, nil
 }
 
+// chainLink is one handler a dispatch runs: a wrap (no slots) or a stacked
+// `add` handler with its pattern's binding slots.
+type chainLink struct {
+	handler Value
+	slots   []recvBind
+}
+
+// topSlots is the newest layer's binding slots — the handler routing reaches
+// first — or none for an empty stack.
+func topSlots(layers [][]recvBind) []recvBind {
+	if len(layers) == 0 {
+		return nil
+	}
+	return layers[len(layers)-1]
+}
+
 // runHandlerChain invokes chain[0] with (req, state) or (req, state,
-// prior) by handler arity; `prior` continues at chain[1:].
-func runHandlerChain(r *Registry, state Value, req Value, chain []Value) ([]Value, error) {
+// prior) by handler arity; `prior` continues at chain[1:]. A stacked
+// handler runs with its binding slots bound from the request it receives —
+// a request `prior` hands on without a slot's field reaches no handler.
+func runHandlerChain(r *Registry, state Value, req Value, chain []chainLink) ([]Value, error) {
 	if len(chain) == 0 {
 		// A layering handler called `prior` past the bottom of the stack.
 		return []Value{NewTypeLiteral(TNone)}, nil
 	}
-	handler := chain[0]
-	rest := chain[1:]
+	binds, ok := bindSlots(chain[0].slots, req)
+	if !ok {
+		return nil, r.BoruErrorHint("no_match",
+			"call: request passed on by prior fails the handler's typed binding slots: "+ValToString(req),
+			"call", "binding slots ({reply: Pid}) require the field present and of the slot type")
+	}
+	return withSlotBindings(r, binds, func() ([]Value, error) {
+		return invokeHandler(r, state, req, chain[0].handler, chain[1:])
+	})
+}
+
+// invokeHandler runs one handler over (req, state) or (req, state, prior).
+func invokeHandler(r *Registry, state Value, req Value, handler Value, rest []chainLink) ([]Value, error) {
 	fnInfo, ok := FnDefFromValue(handler)
 	if !ok {
 		return nil, r.BoruError("service_error", "handler is not a function", "call")
@@ -430,7 +531,7 @@ func runHandlerChain(r *Registry, state Value, req Value, chain []Value) ([]Valu
 // makePriorFn builds the `prior` continuation: a Function value whose Go
 // handler resumes the chain at rest. Passing a (possibly modified)
 // request re-dispatches the remaining layers with it.
-func makePriorFn(r *Registry, state Value, rest []Value) Value {
+func makePriorFn(r *Registry, state Value, rest []chainLink) Value {
 	handler := func(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
 		return runHandlerChain(reg, state, args[0], rest)
 	}

@@ -484,13 +484,19 @@ func TestStage5PredicateInputTypeArms(t *testing.T) {
 	if got := PredicateInputType(Value{Parent: TFunction, Data: ListPayload{}}); got != nil {
 		t.Errorf("non-FnDefInfo payload: got %v", got)
 	}
-	mk := func(pt *Type) Value {
+	undeclared := func(pt *Type) Value {
 		return NewFunction(FnDefInfo{Signatures: []Signature{{
 			Params: []FnParam{{Name: "x", Type: pt}},
 		}}})
 	}
+	mk := func(pt *Type) Value { return MarkPredicateFn(undeclared(pt)) }
 	if got := PredicateInputType(mk(TInteger)); got == nil || !got.Equal(TInteger) {
 		t.Errorf("Integer predicate input = %v, want Integer", got)
+	}
+	// A one-parameter fn the author did not declare a predicate has no
+	// input type: the parameter-count route is gone (NUR099).
+	if got := PredicateInputType(undeclared(TInteger)); got != nil {
+		t.Errorf("undeclared one-parameter fn: got %v", got)
 	}
 	if got := PredicateInputType(mk(nil)); got != nil {
 		t.Errorf("nil param type: got %v", got)

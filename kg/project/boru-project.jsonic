@@ -272,6 +272,16 @@
       metadata: { repository: "boru-lang/boru" }
     }
     {
+      id: "src:nur-run-handoff"
+      kind: "text"
+      locator: "design/NUR-RUN-HANDOFF.0.md"
+      title: "the reverse-order NUR run: its handoff log, split out of the full-compilation handoff"
+      retrieved_at: null
+      content_hash: "nur-run-handoff-2026-09-26"
+      authority: "primary"
+      metadata: { repository: "boru-lang/boru" }
+    }
+    {
       id: "src:session-handover"
       kind: "text"
       locator: "design/SESSION-HANDOVER.0.md"

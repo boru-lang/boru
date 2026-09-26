@@ -248,6 +248,6 @@ func TestIsFnValueOperandCompiles(t *testing.T) {
 	// compiles and answers what the interpreter answers, with no interpreter
 	// entry (design/FULL-COMPILATION.0.md §6.3).
 	fnValueM2Native(t, "predicate fn in the TYPE slot compiles",
-		`def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] 5 is Positive`,
+		`def Positive fnpred n:Integer [if (n gt 0) [n] [None]] 5 is Positive`,
 		"[true]")
 }

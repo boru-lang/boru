@@ -11,7 +11,7 @@ WORD __varundef
   [Scalar/String] barrier=1 runcheck
   [Scalar/Atom] barrier=1 runcheck quote={0}
 WORD add
-  [Node/Map Any Ideal/Service] barrier=3
+  [Node/Map Any Ideal/Service] barrier=3 +returnsfn
   [Node/Map Any Ideal/Patrun] barrier=3 +returnsfn
   [Scalar/Bytes Scalar/Bytes] barrier=2 returns=[Scalar/Bytes]
   [Scalar/String Scalar] barrier=2 +returnsfn
@@ -52,8 +52,8 @@ WORD band
 WORD base
   [Any] barrier=1 +returnsfn
 WORD behave
-  [Scalar/String Type/Function] barrier=2
-  [Scalar/Atom Type/Function] barrier=2 quote={0}
+  [Scalar/String Type/Function] barrier=2 +returnsfn
+  [Scalar/Atom Type/Function] barrier=2 quote={0} +returnsfn
 WORD between
   [Scalar Scalar Scalar] barrier=3 runcheck typearg={2} returns=[Scalar]
 WORD bnot
@@ -151,9 +151,11 @@ WORD def
   [Scalar/Atom Scalar/Atom Node/List Scalar/Atom Node/Map] barrier=5 runcheck noeval={2,4} noevalmap={4} quote={0,1,3}
   [Scalar/Atom Scalar/Atom Any Any Node/List] barrier=5 runcheck noeval={2,3,4} noevalmap={2} quote={0,1}
   [Scalar/String Scalar/Atom Any Node] barrier=4 runcheck quote={1}
+  [Scalar/String Scalar/Atom Node/List Scalar/Atom] barrier=4 runcheck noeval={2} quote={1,3}
   [Scalar/String Scalar/Atom Any Any] barrier=4 runcheck noeval={2,3} noevalmap={2} quote={1}
   [Scalar/String Scalar/Atom Any Any] barrier=4 runcheck noeval={2,3} noevalmap={2} quote={1}
   [Scalar/Atom Scalar/Atom Any Node] barrier=4 runcheck quote={0,1}
+  [Scalar/Atom Scalar/Atom Node/List Scalar/Atom] barrier=4 runcheck noeval={2} quote={0,1,3}
   [Scalar/Atom Scalar/Atom Any Any] barrier=4 runcheck noeval={2,3} noevalmap={2} quote={0,1}
   [Scalar/Atom Scalar/Atom Any Any] barrier=4 runcheck noeval={2,3} noevalmap={2} quote={0,1}
   [Scalar/String Scalar/Atom Any] barrier=3 runcheck noeval={2} quote={1}
@@ -175,7 +177,9 @@ WORD def
   [Scalar/Atom Scalar/Atom Node/List] barrier=3 runcheck noeval={2} quote={0,1}
   [Scalar/Atom Scalar/Atom Node/Map] barrier=3 runcheck quote={0,1}
   [Node/Map Any] barrier=2 runcheck noevalmap={0}
+  [Scalar/String Scalar/Atom] barrier=2 runcheck quote={1}
   [Scalar/String Any] barrier=2 runcheck
+  [Scalar/Atom Scalar/Atom] barrier=2 runcheck quote={0,1}
   [Scalar/Atom Any] barrier=2 runcheck quote={0}
 WORD default
   [Any Type/GenParam] barrier=1 runcheck returns=[Type/GenParam]
@@ -239,6 +243,7 @@ WORD dot
   [Scalar/Atom Node/Xml] barrier=1 quote={0} returns=[Any]
   [Scalar/Atom Node] barrier=1 quote={0} +returnsfn
   [Scalar/Atom Scalar/Micron] barrier=1 quote={0} +returnsfn
+  [Scalar/Atom None] barrier=1 quote={0} returns=[None]
   [Any None] barrier=1 returns=[None]
 WORD dotr
   [Scalar/String Ideal/Module] barrier=1 +returnsfn
@@ -256,6 +261,7 @@ WORD dotr
   [Scalar/Atom Node/Xml] barrier=1 quote={0} +returnsfn
   [Scalar/Atom Node] barrier=1 quote={0} +returnsfn
   [Scalar/Atom Scalar/Micron] barrier=1 quote={0} +returnsfn
+  [Scalar/Atom None] barrier=1 quote={0} +returnsfn
   [Any None] barrier=1 +returnsfn
 WORD drop
   [Any] barrier=0
@@ -323,6 +329,7 @@ WORD flush
 WORD fn
   [Any Any Node/List] barrier=3 runcheck noeval={0,1,2} noevalmap={0} returns=[Type/Function]
   [Node/List] barrier=1 runcheck noeval={0} returns=[Type/Function]
+  [] barrier=0 runcheck returns=[Type/Function]
 WORD fnpred
   [Any Any] barrier=2 runcheck noeval={0,1} noevalmap={0} returns=[Type/Function]
   [Node/List] barrier=1 runcheck noeval={0} returns=[Type/Function]
@@ -377,6 +384,7 @@ WORD get
   [Scalar/Atom Node/Xml] barrier=1 returns=[Any]
   [Scalar/Atom Node] barrier=1 +returnsfn
   [Scalar/Atom Scalar/Micron] barrier=1 +returnsfn
+  [Scalar/Atom None] barrier=1 returns=[None]
   [Any None] barrier=1 returns=[None]
 WORD getpath
   [Ideal/Reach Any] barrier=2 returns=[Any]
@@ -397,6 +405,7 @@ WORD getr
   [Scalar/Atom Node/Xml] barrier=1 +returnsfn
   [Scalar/Atom Node] barrier=1 +returnsfn
   [Scalar/Atom Scalar/Micron] barrier=1 +returnsfn
+  [Scalar/Atom None] barrier=1 +returnsfn
   [Any None] barrier=1 +returnsfn
 WORD gt
   [Scalar Scalar] barrier=2 runcheck typearg={1} returns=[Scalar]

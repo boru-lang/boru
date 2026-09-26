@@ -660,13 +660,24 @@ func miniFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 	if len(args) == 3 {
 		opts = args[2]
 	}
-	tail := []Value{fn, args[1], opts, NewEnd()}
+	tail := []Value{appliedTransducer(fn), args[1], opts, NewEnd()}
 	if MiniLangFnFilterShaped(fnDef) {
 		// No trailing End on the partial splice — see miniPartialFn.
-		partial := miniPartialFromSigs("fn", "", fnDef.Signatures, tail)
+		partial := miniPartialFromSigs("fn", "", fnDef.OwnSigs(), tail)
 		return []Value{NewSplice(NewList([]Value{partial}))}, nil
 	}
 	return []Value{NewSplice(NewList(tail))}, nil
+}
+
+// appliedTransducer is the fn a mini / parse / emit VALUE-form splice runs.
+// The splice APPLIES it, so a `/v` that handed it to the macro word — the
+// way a function is passed now that no slot type takes a bare name or a dot
+// read as a reference (NUR078: `mini M.dbl/v 'ab'`) — was the caller's data
+// intent for the argument slot, spent there; left on, the spliced fn would
+// sit inert as data.
+func appliedTransducer(fn Value) Value {
+	fn.Quoted = false
+	return fn
 }
 
 // miniSubjParam is the synthetic parameter name a mini partial binds
@@ -697,7 +708,7 @@ func miniPartialFn(r *Registry, kind, target string, tail []Value) (Value, bool)
 	if !ok || !MiniLangFnFilterShaped(info) {
 		return Value{}, false
 	}
-	return miniPartialFromSigs(kind, kind, info.Signatures, tail), true
+	return miniPartialFromSigs(kind, kind, info.OwnSigs(), tail), true
 }
 
 // miniPartialFromSigs builds the partially-applied filter Function from the
@@ -832,6 +843,20 @@ func parseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 			// only-used-as-a-parser fn would be falsely flagged unused_def.
 			r.Check.RecordUse(kind)
 			if _, isFn := top.Data.(FnDefInfo); isFn {
+				// A SPECULATIVE family's name (a fn def in a branch arm that
+				// may not run, read past the arms — core.NoteSpecFnDef): the
+				// binding is the arm's, and on the path that skipped it the
+				// interpreter finds none and resolves the atom as a registered
+				// KIND (`parse_unknown_lang`). The expansion bakes the arm's
+				// value, and a dispatch routed live would raise undefined_word;
+				// no op re-resolves a name as a kind at run time, so the
+				// program declines (NUR244 — the inline-literal twin of
+				// NUR109's promoted parser). The expansion READS the binding
+				// as a value, so it declines as a speculative family's `/v`
+				// read does: no live home for the read.
+				if r.Check.SpecFnNames[kind] && r.Check.SpecArmDepth == 0 {
+					r.Check.Recorder().NoteValRead(top.ID, kind)
+				}
 				return parseFnExpand(top, args, r)
 			}
 			if r.Check.IsActive() && !IsConcrete(top) {
@@ -958,10 +983,19 @@ func parseFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 			return []Value{out}, nil
 		}
 	}
-	toks := []Value{fn, source, opts, NewEnd()}
+	toks := []Value{appliedTransducer(fn), source, opts, NewEnd()}
 	return []Value{NewSplice(NewList(toks))}, nil
 }
 
+// The three contracts below read a fn value's OWN signatures (OwnSigs): a
+// value read through `/v`, a module member in place (`M.dbl`, `(M.up)`) or
+// a paren carries the dispatch AGGREGATE, whose synthesized 0-arg fallback
+// signature (Signature.Fallback) is not a declaration — it took every
+// aggregate-bearing spelling to `mini_bad_signature` / `emit_bad_signature`
+// ("every signature must start with the standard prefix", the fallback's
+// empty param list) where the def-bound spelling of the same fn (`def g
+// M.dbl/v`, whose install stores the own signatures) passed: NUR163. The
+// fn is the same fn however it is reached.
 // ParseLangFnSigWhy reports why fnDef cannot serve as a parser (a ParseLang)
 // — every signature must open with the STANDARD parser prefix
 // [source:(String|Any) opts:Map …] and declare exactly ONE return (a parser
@@ -971,7 +1005,7 @@ func parseFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 // `parse` macro's fn-operand form (parseFnExpand), the compiled
 // parselang-fn-dispatch, and the NewParseLangFn value constructor's callers.
 func ParseLangFnSigWhy(fnDef FnDefInfo) string {
-	for _, sig := range fnDef.Signatures {
+	for _, sig := range fnDef.OwnSigs() {
 		if len(sig.Params) < 2 {
 			return "every signature must start [source:String opts:Map …]"
 		}
@@ -994,7 +1028,7 @@ func ParseLangFnSigWhy(fnDef FnDefInfo) string {
 // boru:minilang's MiniLang.register validation (modules/minilang.go), so
 // both surfaces enforce byte-identical requirements.
 func MiniLangFnSigWhy(fnDef FnDefInfo) string {
-	for _, sig := range fnDef.Signatures {
+	for _, sig := range fnDef.OwnSigs() {
 		if len(sig.Params) < 2 ||
 			sig.Params[0].Type == nil || !sig.Params[0].Type.ConformsTo(TString) ||
 			sig.Params[1].Type == nil || !sig.Params[1].Type.ConformsTo(TMap) {
@@ -1010,10 +1044,11 @@ func MiniLangFnSigWhy(fnDef FnDefInfo) string {
 // call. Shared by MiniLang.register's member-type mint decision and the
 // fn-operand form's partial construction.
 func MiniLangFnFilterShaped(fnDef FnDefInfo) bool {
-	if len(fnDef.Signatures) == 0 {
+	own := fnDef.OwnSigs()
+	if len(own) == 0 {
 		return false
 	}
-	for _, sig := range fnDef.Signatures {
+	for _, sig := range own {
 		if len(sig.Params) != 3 {
 			return false
 		}
@@ -1028,7 +1063,7 @@ func MiniLangFnFilterShaped(fnDef FnDefInfo) bool {
 // fn-operand form (emitFnExpand) and the NewEmitLangFn value constructor
 // (modules/langvalue.go builds conforming values by construction).
 func EmitLangFnSigWhy(fnDef FnDefInfo) string {
-	for _, sig := range fnDef.Signatures {
+	for _, sig := range fnDef.OwnSigs() {
 		if len(sig.Params) < 2 {
 			return "every signature must start [value:Any opts:Map …] and return a value"
 		}
@@ -1399,7 +1434,7 @@ func emitFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 		opts = NewMap(NewOrderedMap())
 		data = args[1]
 	}
-	toks := []Value{fn, data, opts, NewEnd()}
+	toks := []Value{appliedTransducer(fn), data, opts, NewEnd()}
 	return []Value{NewSplice(NewList(toks))}, nil
 }
 

@@ -48,15 +48,18 @@ func TestS9LoopCarriedVariadicStore(t *testing.T) { // §9.2a — LANDED
 	// analysis-only binding: compiled 0 vs interp undefined_word), as does an
 	// upstream `continue` (the bind is bypassed: compiled 0 vs undefined_word)
 	// and a downstream `break` (a discarded iteration's spill survived:
-	// compiled [5 5] vs interp [5]).
+	// compiled [5 5] vs interp [5]). Since NUR214 a loop that is not
+	// proven to run CARRIES its fresh `acc` in a bound-checked cell, so the
+	// four decline where the carried store meets the inner loop's variadic
+	// result, before the consumer's own fence.
 	mustFailToCompileWithParity(t,
-		`def m {n:0} for (m get "n") [ def acc (for 2 [5]) ] acc`, "consumes loop results")
+		`def m {n:0} for (m get "n") [ def acc (for 2 [5]) ] acc`, "loop-carried store of a variadic result")
 	mustFailToCompileWithParity(t,
-		`def m {n:1} for (m get "n") [ def acc (for 2 [5]) ] acc`, "consumes loop results")
+		`def m {n:1} for (m get "n") [ def acc (for 2 [5]) ] acc`, "loop-carried store of a variadic result")
 	mustFailToCompileWithParity(t,
-		`for 1 [if true [continue] [] def acc (for 2 [5])] acc`, "consumes loop results")
+		`for 1 [if true [continue] [] def acc (for 2 [5])] acc`, "loop-carried store of a variadic result")
 	mustFailToCompileWithParity(t,
-		`for 3 [def acc (for 2 [5]) break] acc`, "consumes loop results")
+		`for 3 [def acc (for 2 [5]) break] acc`, "loop-carried store of a variadic result")
 }
 
 func TestS9SpliceComputedPayload(t *testing.T) { // §9.2b
@@ -178,18 +181,15 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 	// Under the old residue model the error surfaced from the end-of-run
 	// drain instead — outside every handler — so a program that explicitly
 	// asked to trap its failures was aborted by one anyway.
+	//
+	// GRADUATED 2026-09-25 (NUR134): the do-body unit raises the definite
+	// no-match in place (a unit-scoped trap) and the do's model is the
+	// caught Error, so both rows compile and yield the caught code.
 	for _, src := range []string{
 		s9DocMod + `def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg`,
 		s9DocMod + `def msg (do [(false 5 M.dec) "no-raise"] error [dot code])  msg`,
 	} {
-		a, _ := New()
-		prog, _, _, _ := a.CompileCheck(src)
-		b, _ := New()
-		gotI, errI := b.RunInterp(src)
-		if prog != nil || errI != nil || fmt.Sprint(gotI) != "[uncalled_function]" {
-			t.Errorf("%.50q: want compile failure + the do-catch yielding uncalled_function, got prognil=%v interp %v (%v)",
-				src, prog == nil, gotI, errI)
-		}
+		mustCompileWithParity(t, src, "[uncalled_function]")
 	}
 
 	// Fences (compile failure / runtime defer, parity-faithful): a TWO-split
@@ -218,8 +218,10 @@ func TestS9FrontierDefOverCatchRegion(t *testing.T) { // §9.1 rows 1-2 — NARR
 		`def x (do [(1 add 2) "a" "b"] error [dot code]) x`, "variadic result promoted")
 	mustFailToCompileWithParity(t,
 		`def x (do [(0 div 0) "a" "b"] error [dot code]) x`, "variadic result promoted")
-	mustFailToCompileWithParity(t,
-		`def x (do [(raise aa "m") "a" "b"] error [dot code]) x`, "variadic result promoted")
+	// GRADUATED 2026-09-25 (NUR134): an UNCONDITIONAL raise at the region's
+	// own level is no variadic region at all — the do's model is the one
+	// caught Error the runtime yields, so the promoted def seats one value.
+	mustCompileWithParity(t, `def x (do [(raise aa "m") "a" "b"] error [dot code]) x`, "[aa]")
 	mustFailToCompileWithParity(t,
 		`def f fn [[n:Integer][Integer][if (n gt 0) [raise aa "m"] [n]]] def x (do [(f 1) "a" "b"] error [dot code]) x`,
 		"variadic result promoted")

@@ -185,7 +185,7 @@ func TestEmitBranchLanding(t *testing.T) {
 	if got := tbl[2]; got.Name != "z" || got.Pos.Col != 9 {
 		t.Errorf("the word is seated at the landing's pc: %v", tbl)
 	}
-	lw.seatLandingWord(LandingWord{})
+	lw.seatLandingWord(7, LandingWord{})
 	if len(tbl) != 1 {
 		t.Error("no word, nothing seated")
 	}

@@ -269,23 +269,57 @@ func narrowedSameBinding(r *Registry, k string, v Value) bool {
 // The returned joins describe every name pushed here, for the recorder
 // (core.BranchRecord.Joins); nil when nothing was pushed.
 func InstallJoinedDefs(r *Registry, then, else_ map[string]Value) []BranchJoin {
-	return installJoinedDefs(r, then, else_, false)
+	return installJoinedDefs(r, then, else_, false, armsUndecided)
 }
 
 // InstallTakenArmDefs is InstallJoinedDefs for a CONSTANT-condition branch:
 // the one analysed arm (handed as then or else_) always runs, so the
 // binding it leaves is unconditionally the post-branch one.
 func InstallTakenArmDefs(r *Registry, then, else_ map[string]Value) []BranchJoin {
-	return installJoinedDefs(r, then, else_, true)
+	return installJoinedDefs(r, then, else_, true, armsUndecided)
 }
 
-func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool) []BranchJoin {
+// InstallDecidedJoinedDefs is InstallJoinedDefs for a branch whose condition
+// the model decides but whose arms were both analysed (the skipped one
+// speculatively): elseRuns names the running arm, whose fn a speculative
+// family both arms define takes as its model (specFamilyJoinModel, NUR245).
+func InstallDecidedJoinedDefs(r *Registry, then, else_ map[string]Value, elseRuns bool) []BranchJoin {
+	runs := thenArmRuns
+	if elseRuns {
+		runs = elseArmRuns
+	}
+	return installJoinedDefs(r, then, else_, false, runs)
+}
+
+// armRuns names the arm of a branch that runs, when the model decides it.
+type armRuns uint8
+
+const (
+	armsUndecided armRuns = iota
+	thenArmRuns
+	elseArmRuns
+)
+
+func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, runs armRuns) []BranchJoin {
 	var joins []BranchJoin
 	seen := make(map[string]bool)
 	for k, tv := range then {
 		seen[k] = true
 		if ev, ok := else_[k]; ok {
 			if narrowedSameBinding(r, k, tv) && narrowedSameBinding(r, k, ev) {
+				continue
+			}
+			// A speculative family both arms define routes live: the model
+			// is pushed (NUR245). Undecided, both arms' installs are placed
+			// at their own sites, and — as for a one-arm family — no join is
+			// noted. Decided, the running arm's def is an ordinary install:
+			// its transition is noted as a taken arm's is, so the registry
+			// the routed op reads holds it.
+			if model, ok := specFamilyJoinModel(tv, ev, runs); ok && specFnJoin(r, k) {
+				r.Defs.Push(k, model)
+				if runs != armsUndecided {
+					r.NoteBindTransition(BindDef, k, model.Pos())
+				}
 				continue
 			}
 			j := BranchJoin{Name: k, Joined: joinBranchDef(tv, ev), ThenBinds: true, ElseBinds: true, Taken: taken}

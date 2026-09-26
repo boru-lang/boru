@@ -557,7 +557,7 @@ func closureFnView(r *native.Registry, v native.Value) (native.Value, bool) {
 	}
 	fd, isFn := bv.Data.(native.FnDefInfo)
 	cl, isCl := v.Data.(core.ClosurePayload)
-	if !isFn || !isCl {
+	if !isFn || !isCl { //covergate:allow the bridge answers ok only for a ClosurePayload operand and always hands back an FnDefInfo value (eng closureFnDef), so an ok bridge makes both assertions hold
 		return v, false
 	}
 	rets := cl.RetTypes

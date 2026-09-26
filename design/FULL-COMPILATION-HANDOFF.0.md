@@ -13322,6 +13322,14 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## The reverse-order NUR run's entries (2026-09-25/26) — moved to NUR-RUN-HANDOFF.0.md
+
+The run over the Non-Uniformity Register (PR #505) logged one entry per
+record it closed, newest first — 1,500 lines, which took this log past the
+repository's 1 MB file limit (`scripts/check-no-binaries.sh`). They live in
+[NUR-RUN-HANDOFF.0.md](NUR-RUN-HANDOFF.0.md); "the handoff log's entry of
+that date" in the FIXED rows NUR.md gained in that run names an entry there.
+
 ## The user-call write-back — a carried root def computed by a user fn (2026-09-24)
 
 **The rows.** callbacks.tsv L89 (`def inc fn [[n:Integer][Integer][n add

@@ -457,6 +457,7 @@ var (
 	IsBareTypeNode           = core.IsBareTypeNode
 	IsCapitalisedName        = core.IsCapitalisedName
 	IsConcrete               = core.IsConcrete
+	IsModuleFamilyValue      = core.IsModuleFamilyValue
 	IsSteplessWindow         = core.IsSteplessWindow
 	IsFnValueResidual        = core.IsFnValueResidual
 	IsGenMemoName            = core.IsGenMemoName
@@ -487,6 +488,7 @@ var (
 	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
 	InstallTakenArmDefs      = core.InstallTakenArmDefs
+	InstallDecidedJoinedDefs = core.InstallDecidedJoinedDefs
 	New                      = core.New
 	RunPooled                = core.RunPooled
 	RunPooledTop             = core.RunPooledTop

@@ -163,10 +163,11 @@ func TestRunPredicateArms(t *testing.T) {
 	if _, _, err := r.RunPredicate(core.NewInteger(1), core.NewInteger(5)); err == nil {
 		t.Error("non-fn constraint must error")
 	}
-	// A two-param fn is not a predicate shape.
+	// A two-param fn takes no ONE value, so a one-value application finds
+	// no signature: not a member, and no arity error (NUR100).
 	two := build("fn [[a:Integer b:Integer] [Boolean] [true]]")
-	if _, _, err := r.RunPredicate(two, core.NewInteger(5)); err == nil {
-		t.Error("two-param constraint must error")
+	if _, ok, err := r.RunPredicate(two, core.NewInteger(5)); ok || err != nil {
+		t.Errorf("two-param constraint admits nothing: ok=%v err=%v", ok, err)
 	}
 	// A predicate returning false rejects the candidate.
 	no := build("fn [[x:Integer] [Boolean] [false]]")
@@ -193,10 +194,15 @@ func TestRunPredicateArms(t *testing.T) {
 	if _, _, err := r.RunPredicate(boom, core.NewInteger(5)); err == nil {
 		t.Error("raising predicate must surface its error")
 	}
-	// Check-mode short-circuit: matched without running the body.
+	// Check mode: a CONCRETE candidate runs the (effect-free) body for real,
+	// so the pass's admission agrees with the runtime's (NUR141); a CARRIER
+	// candidate short-circuits to match — the analyser's optimism.
 	done := r.Check.Begin()
-	if _, ok, err := r.RunPredicate(no, core.NewInteger(5)); !ok || err != nil {
-		t.Errorf("check-mode must short-circuit to match: ok=%v err=%v", ok, err)
+	if _, ok, err := r.RunPredicate(no, core.NewInteger(5)); ok || err != nil {
+		t.Errorf("check-mode must run a concrete candidate for real: ok=%v err=%v", ok, err)
+	}
+	if _, ok, err := r.RunPredicate(no, core.NewCarrier(core.TInteger)); !ok || err != nil {
+		t.Errorf("check-mode must admit a carrier candidate: ok=%v err=%v", ok, err)
 	}
 	done()
 }

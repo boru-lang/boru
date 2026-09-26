@@ -64,16 +64,16 @@ func TestNoteWordReadClassifies(t *testing.T) {
 	if len(es.noted) != 2 || es.noted[0] != "g" || es.noted[1] != "x" {
 		t.Errorf("fn-typed and gradual reads are noted, a concrete or quoted one is not: %v", es.noted)
 	}
-	// A pending forward whose next slot expects a Function delivers the
-	// value: nothing to dispatch, nothing noted.
+	// A pending forward whose next slot expects a Function is no exception
+	// (NUR078): the bare read dispatches there too, so it is noted.
 	sig := &Signature{Args: []*Type{TFunction}, BarrierPos: BarrierAllForward}
 	NormalizeSig(sig)
 	fwd := NewForward(ForwardInfo{FuncName: "sort", ExpectedArgs: 1, Sig: sig})
 	e.Tape = NewTape([]Value{fwd, NewWord("g")}, StackHeadroom)
 	e.Pointer = 1
 	e.noteWordRead(NewCarrier(TFunction), "g", SrcPos{})
-	if len(es.noted) != 2 {
-		t.Errorf("a Function-expecting forward takes the value, no note: %v", es.noted)
+	if len(es.noted) != 3 {
+		t.Errorf("a bare read before a Function slot dispatches and is noted: %v", es.noted)
 	}
 }
 
@@ -95,7 +95,7 @@ func TestFailingTupleStopsAtEngineMarkers(t *testing.T) {
 	if got := ReorderForwardCandidates(e.Tape, e.Pointer); len(got) != 1 {
 		t.Errorf("the written tuple stops at the frame marker: %v", got)
 	}
-	if got := e.rematchWritten(); len(got) != 1 {
+	if got := e.rematchWritten(nil); len(got) != 1 {
 		t.Errorf("the check-time twin stops there too: %v", got)
 	}
 	e.Tape = NewTape([]Value{NewWord("g"), dc}, StackHeadroom)

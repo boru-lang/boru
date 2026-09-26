@@ -36,6 +36,11 @@ func (s *stubLensRuntime) InvokeCompiled(_ *Registry, _ *Signature, args []Value
 	return s.res, s.err, s.ran
 }
 
+func (s *stubLensRuntime) InvokeCompiledStrict(_ *Registry, _ *Signature, args []Value) ([]Value, error, bool) {
+	s.args = args
+	return s.res, s.err, s.ran
+}
+
 func (s *stubLensRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) { return v, false }
 func (s *stubLensRuntime) LazyStamp(*Registry, FnDefInfo, *Signature, SrcPos) bool {
 	return false

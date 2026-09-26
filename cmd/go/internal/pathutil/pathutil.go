@@ -10,8 +10,10 @@
 package pathutil
 
 import (
+	"io/fs"
 	"os"
 	"path/filepath"
+	"strings"
 )
 
 // ExpandTilde replaces a leading ~ (alone, or immediately before a path
@@ -48,4 +50,28 @@ func Expand(path string) string {
 		return path
 	}
 	return ExpandTilde(path, home)
+}
+
+// WalkSources walks the tree under root with walk (filepath.WalkDir, or a
+// command's test seam for it), skipping every `.boru/` directory — the
+// build and install cache, never source — and hands add each regular file
+// whose name has suffix. It is the ONE walk the tree-walking subcommands
+// share (fmt, check, test), so the skip rule cannot drift between them
+// (NUR082: `boru test` used to descend into `.boru/`).
+func WalkSources(root string, walk func(string, fs.WalkDirFunc) error, suffix string, add func(string)) error {
+	return walk(root, func(path string, d fs.DirEntry, err error) error {
+		if err != nil {
+			return err
+		}
+		if d.IsDir() {
+			if d.Name() == ".boru" {
+				return filepath.SkipDir
+			}
+			return nil
+		}
+		if strings.HasSuffix(path, suffix) {
+			add(path)
+		}
+		return nil
+	})
 }

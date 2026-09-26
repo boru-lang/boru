@@ -25,7 +25,7 @@ describe('standalone parity probe', () => {
         ['--experimental-strip-types', '--no-warnings', script, input],
         { encoding: 'utf8' },
       )
-      assert.equal(rendered, '[:a [word(a)]]\n[:A {a:1}]\n')
+      assert.equal(rendered, '[:a [a]]\n[:A {a:1}]\n')
     } finally {
       fs.rmSync(dir, { recursive: true, force: true })
     }

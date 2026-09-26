@@ -51,10 +51,10 @@ def P class {x:{y:2}} def p (make P {}) p.x.y	2	a nested container default is re
 
 {}.a	None	missing field via the . sugar
 {a:{}}.a.b	None	ONE missing level is forgiving
-{a:{}}.a.b.c	ERROR:undefined word	…but a dot on the resulting None stops quoting its bare key — `c` evaluates as a word
-None.a	ERROR:undefined word	the . sugar directly on None has no receiver to quote against
+{a:{}}.a.b.c	None	…and so is every further level: the None receiver quotes its bare key too (NUR198), so the chain stays forgiving
+None.a	None	the . sugar directly on None quotes its bare key and propagates None (NUR198)
 None getr 'a'	ERROR:not_found	strict read on None raises (parent is None)
-None dotr x	ERROR:undefined word	dotr on None does not quote the bare key either
+None dotr x	ERROR:not_found	dotr on None quotes the bare key and raises the strict family's not_found (NUR198)
 {a:{b:{c:5}}}.a!.b.c	5	a strict middle segment passes when present
 {a:{}}.a!.z	ERROR:not_found	…and raises exactly at the missing segment
 {a:{b:1}}!.a!.b	1	all-strict chains work

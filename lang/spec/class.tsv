@@ -126,4 +126,6 @@ def T fnsig Integer Integer def C class {op:T} def c (make C {op:(fn [[x:Integer
 def C class {op:(fnsig Integer Integer)} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) c.op 5	6	a NAMED class's ANONYMOUS-fnsig member, provided at make, is callable (NUR095 retired)
 def T fnsig Integer Integer def C class {op:T} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) c.op 5	6	…and through a def-bound instance (the trailing stack-arg spelling is an interpreter-only pin — fnshape_member_interp_test.go)
 def R {op:(fnsig Integer Integer)} def r:R {op:(fn [[x:Integer] [Integer] [x add 9]])} r.op 1	10	a record-shape's fnsig-typed member, provided at bind, is callable
+def T fnsig [[Integer] [Integer Integer]] def C class {op:T} def c (make C {op:(fn [[x:Integer] [Integer Integer] [x x]])}) c.op 10	10 10	a MULTI-return fnsig member is applied and leaves both values — the check pass models the apply too (NUR096 retired)
+def C class {op:(fnsig [[Integer] [Integer Integer]])} def c (make C {op:(fn [[x:Integer] [Integer Integer] [x x]])}) c.op 10	10 10	…and through an ANONYMOUS multi-return fnsig (NUR096 retired)
 def T fnsig Integer Integer def C class {op:T} make C {op:(fn [[x:String] [Integer] [1]])}	ERROR:does not satisfy fn shape	a wrong-shaped fn is declined at make — member typing is enforced

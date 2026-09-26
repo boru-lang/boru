@@ -1,0 +1,50 @@
+package lang
+
+import (
+	"fmt"
+	"strings"
+	"testing"
+)
+
+// TestNUR249ZeroArgCarrierUnderAWindow pins NUR249's close: a fn-typed
+// carrier read by NAME and applied over a paren window, which turns out
+// 0-arg at run time, fires over nothing and leaves its window beside its
+// result on both lanes (NUR176) — n+1 values where the record seats one. In
+// place (a residual, a RET tail) the run is the interpreter's answer; a
+// layout a later event consumes seated the one, a silent wrong answer under
+// a no-contract fn (`[(k 5)]` compiled `[7 [5]]`). A list literal over such
+// applies alone collects the run's count through the region mark (the
+// unit's collect plan, NUR247's close); every other consuming layout's op
+// raises (DynApplyHead.OneResult), booked on the bail ledger rather than
+// declining every named carrier apply — the comparator convention's `(a b
+// comp)` — at compile time. A lead that fits, or a 0-arg one whose run nets
+// exactly one value, answers on both lanes.
+func TestNUR249ZeroArgCarrierUnderAWindow(t *testing.T) {
+	const c = `def c fn [[] [Integer] [7]] end `
+	for _, r := range []struct{ src, want string }{
+		{c + `def h fn [[k:Function] [] [(k 5)]] end h c/v`, "[7 5]"},
+		{`def inc fn [[n:Integer] [Integer] [n add 1]] end def h fn [[k:Function] [] [[(k 5)]]] end h inc/v`, "[[6]]"},
+		{`def n0 fn [[] [] []] end def h fn [[k:Function] [] [[(k 5)]]] end h n0/v`, "[[5]]"},
+		// The collect: the run's count, at run time.
+		{c + `def h fn [[k:Function] [] [[(k 5)]]] end h c/v`, "[[7 5]]"},
+		{c + `def h fn [[k:Function] [Any] [[(k 5) (k 6)]]] end h c/v`, "[[7 5 7 6]]"},
+		{c + `def h fn [[k:Function] [Any] [[(k 5)] size]] end h c/v`, "[2]"},
+		{c + `def h fn [[k:Function] [Any] [[(k 5) (for 2 [i]) (k 6)]]] end h c/v`, "[[7 5 0 1 7 6]]"},
+		{`def h fn [[a:Integer b:Integer comp:Function] [List] [[(a b comp)]]] end h 1 2 ([x:Integer y:Integer] => [x lt y])`, "[[false]]"},
+	} {
+		agreeOnBothLanes(t, r.src, r.want)
+	}
+	// A list inside a branch arm is the arm's fragment, not the unit's scope:
+	// the one-result form stands, and raises on the 0-arg run.
+	for _, r := range []struct{ src, interp string }{
+		{c + `def h fn [[k:Function b:Boolean] [] [if b [[(k 5)]] [0]]] end h c/v true`, "[[7 5]]"},
+	} {
+		gotC, compiled, errC := mustNew(t).RunCompiled(r.src)
+		if !noteCompileDefect(t, r.src, gotC, errC) || !compiled || !strings.Contains(fmt.Sprint(errC), "a 0-arg lead left 2 values") {
+			t.Errorf("%s: want the one-result raise, got %v compiled=%v err=%v", r.src, gotC, compiled, errC)
+		}
+		if gotI, errI := mustNew(t).RunInterp(r.src); errI != nil || fmt.Sprint(gotI) != r.interp {
+			t.Errorf("%s: interp got %v / %v, want %s", r.src, gotI, errI, r.interp)
+		}
+	}
+}

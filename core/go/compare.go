@@ -356,10 +356,10 @@ func ExactEqual(a, b Value) bool {
 	// nodeFamily-normalised comparison would still fail on container
 	// identity (a flex copy is a fresh container), but normalising the
 	// family keeps the dispatch uniform for flex-vs-flex pairs.
-	if nodeFamily(a.Parent).Equal(TList) && nodeFamily(b.Parent).Equal(TList) {
+	if containerFamily(a.Parent).Equal(TList) && containerFamily(b.Parent).Equal(TList) {
 		return a.Parent.Equal(b.Parent) && sameContainer(a.Data, b.Data)
 	}
-	if nodeFamily(a.Parent).Equal(TMap) && nodeFamily(b.Parent).Equal(TMap) {
+	if containerFamily(a.Parent).Equal(TMap) && containerFamily(b.Parent).Equal(TMap) {
 		return a.Parent.Equal(b.Parent) && sameContainer(a.Data, b.Data)
 	}
 	// XML elements: identity like Map/List — `eq` is container identity
@@ -388,6 +388,14 @@ func ExactEqual(a, b Value) bool {
 	// stable reference these value-copied payloads could compare (NUR031
 	// keeps them as an argued remainder).
 	if eq, handled := opaqueIdealExactEqual(a, b); handled {
+		return eq
+	}
+
+	// Last chance before the terminal verdict: a type that installed the
+	// ExactEqualer capability answers for its own values — DeepEqual's
+	// placement exactly, so it can only turn this `false` into a real
+	// answer (NUR075). See exactequal_capability.go.
+	if eq, handled := exactEqualCapability(a, b); handled {
 		return eq
 	}
 
@@ -591,7 +599,7 @@ func DeepEqual(a, b Value) bool {
 	// with cross-leaf pairs (`[1.0] deq [1 :Integer]`). The render-string
 	// fallback survives only for genuine type-level operands (a list
 	// carrier), which carry no value content.
-	if nodeFamily(a.Parent).Equal(TList) && nodeFamily(b.Parent).Equal(TList) {
+	if containerFamily(a.Parent).Equal(TList) && containerFamily(b.Parent).Equal(TList) {
 		aElems, aOk := deqListElems(a)
 		bElems, bOk := deqListElems(b)
 		if !aOk || !bOk {
@@ -613,7 +621,7 @@ func DeepEqual(a, b Value) bool {
 	// lists. The render-string fallback survives only for type-level
 	// operands with no entries to read (a map carrier, a Record/Options
 	// type constructor).
-	if nodeFamily(a.Parent).Equal(TMap) && nodeFamily(b.Parent).Equal(TMap) {
+	if containerFamily(a.Parent).Equal(TMap) && containerFamily(b.Parent).Equal(TMap) {
 		aMap, aOk := deqMapEntries(a)
 		bMap, bOk := deqMapEntries(b)
 		if !aOk || !bOk {

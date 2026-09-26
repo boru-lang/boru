@@ -34,10 +34,10 @@ func TestPredicateSandbox_TypeMutationIsContained(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 	seedBoru(a)
-	src := `def Sneaky fn [x:Any Any [
+	src := `def Sneaky fnpred x:Any [
   def Leaked Integer
   x
-]]
+]
 "hello" is Sneaky
 def n:Leaked 1`
 	_, err = a.Run(src)
@@ -61,10 +61,10 @@ func TestPredicateSandbox_IsAlsoSandboxed(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 	seedBoru(a)
-	_, err = a.Run(`def Sneaky fn [x:Any Any [
+	_, err = a.Run(`def Sneaky fnpred x:Any [
   def LeakedB Integer
   x
-]]
+]
 42 is Sneaky
 def n:LeakedB 1`)
 	if err == nil {
@@ -86,7 +86,7 @@ func TestPredicateCheckMode_TypedBindingAccepted(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 	seedBoru(a)
-	res, err := a.Check(`def Bbd fn [x:Any Any [if (x is String) [x] [None]]]
+	res, err := a.Check(`def Bbd fnpred x:Any [if (x is String) [x] [None]]
 def s:Bbd "hello"
 s`)
 	if err != nil {
@@ -153,7 +153,7 @@ func TestPredicateRuntime_StillErrors(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 	seedBoru(a)
-	_, err = a.Run(`def Bbd fn [x:Any Any [if (x is String) [x] [None]]]
+	_, err = a.Run(`def Bbd fnpred x:Any [if (x is String) [x] [None]]
 def n:Bbd 99`)
 	if err == nil {
 		t.Fatalf("runtime should error: 99 is not a String")

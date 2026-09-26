@@ -54,3 +54,158 @@ func specFamilyAtFnBaseline(r *Registry, name string) bool {
 	base := r.TopFnBaseline()
 	return base != nil && r.Defs.Depth(name) <= base[name]
 }
+
+// specFamilyJoinModel is the binding a join pushes for a speculative fn
+// family BOTH arms define (NUR245). The family's dispatches route with a
+// live lead — the running registry's binding picks the body, and the op
+// enters the unit compiled for that binding's own signature — so the
+// model is only what the pass types the call against and compiles the
+// call site's unit from.
+//
+// Under a DECIDED condition it is the running arm's fn, whatever the other
+// arm declares: the skipped arm never binds. Undecided, it must stand for
+// either arm. Arms that agree on every shape the call's record fixes
+// (SameSigShapes) share the then arm's fn. Arms that agree only on what the
+// routed op's CLAIM fixes — arity, barrier, quoting, patterns and the
+// return count (claimCompatibleSigs) — share a WIDENED model
+// (widenedFamilyModel): each parameter and return type is the two arms'
+// join, so the pass types the call against a slot either arm's value
+// fits, and the routed op's live plan decides the match and raises the
+// interpreter's no-match. A pair that differs on the claim keeps the
+// payload-less join, and its call's standing failure.
+func specFamilyJoinModel(then, else_ Value, runs armRuns) (Value, bool) {
+	a, aFn := then.Data.(FnDefInfo)
+	b, bFn := else_.Data.(FnDefInfo)
+	switch {
+	case !aFn || !bFn:
+		return Value{}, false
+	case runs == elseArmRuns:
+		return else_, true
+	case runs == thenArmRuns || SameSigShapes(a.OwnSigs(), b.OwnSigs()):
+		return then, true
+	}
+	return widenedFamilyModel(then, &a, &b)
+}
+
+// widenedFamilyModel is the then arm's fn with each own signature's
+// parameter and return types joined with the else arm's (CommonAncestorType)
+// and NO declaration site: the routed op locates a unit by the LIVE
+// signature's site (eng: specFnUnit), so the unit a call site compiles from
+// this model — under types neither arm declares, with a return contract
+// neither enforces — is never entered; each arm's own is compiled where it
+// is placed. false when the arms differ on the claim (claimCompatibleSigs).
+func widenedFamilyModel(then Value, a, b *FnDefInfo) (Value, bool) {
+	as, bs := a.OwnSigs(), b.OwnSigs()
+	if !claimCompatibleSigs(as, bs) {
+		return Value{}, false
+	}
+	fd := *a
+	fd.Signatures = make([]Signature, 0, len(a.Signatures))
+	own := 0
+	for i := range a.Signatures {
+		s := a.Signatures[i]
+		if !s.Fallback {
+			s = widenedSig(s, &bs[own])
+			own++
+		}
+		fd.Signatures = append(fd.Signatures, s)
+	}
+	model := then
+	model.Data = fd
+	return model, true
+}
+
+// widenedSig is a with every parameter and return type joined with b's at
+// the same position, and no declaration site. The parameter types are read
+// through SigArgType, whichever of Params and the legacy Args each side
+// stores them in (claimCompatible fixed the arity), and written back to
+// whichever a stores.
+func widenedSig(a Signature, b *Signature) Signature {
+	joined := make([]*Type, a.TotalArgs())
+	for i := range joined {
+		joined[i] = CommonAncestorType(SigArgType(&a, i), SigArgType(b, i))
+	}
+	if len(a.Params) > 0 {
+		ps := append([]FnParam(nil), a.Params...)
+		for i := range ps {
+			ps[i].Type = joined[i]
+		}
+		a.Params = ps
+	}
+	if len(a.Args) == len(joined) {
+		a.Args = joined
+	}
+	a.Returns = joinedTypes(a.Returns, b.Returns)
+	a.Decl = DeclSite{}
+	return a
+}
+
+// joinedTypes joins two equally long type lists position by position.
+func joinedTypes(a, b []*Type) []*Type {
+	out := make([]*Type, len(a))
+	for i := range a {
+		out[i] = CommonAncestorType(a[i], b[i])
+	}
+	return out
+}
+
+// SameSigShapes reports whether two own-signature lists agree, position by
+// position, on every shape sameSigShape compares: the pair a joined family
+// shares one fn for (specFamilyJoinModel). The recorder asks it too — a
+// family placed a second time with a differing shape compiles its first
+// placement's units, which no call site will (NUR245).
+func SameSigShapes(a, b []Signature) bool {
+	same := len(a) == len(b)
+	for i := 0; same && i < len(a); i++ {
+		same = sameSigShape(&a[i], &b[i])
+	}
+	return same
+}
+
+// sameSigShape reports whether two signatures claim the same call: the
+// same arity and barrier, per position the same declared type, pattern and
+// quoting, and the same declared returns with no return pattern on either.
+func sameSigShape(a, b *Signature) bool {
+	same := claimCompatible(a, b) && sameTypes(a.Returns, b.Returns)
+	for i := 0; same && i < a.TotalArgs(); i++ {
+		same = SigArgType(a, i).Equal(SigArgType(b, i))
+	}
+	return same
+}
+
+// claimCompatibleSigs reports whether two own-signature lists agree,
+// position by position, on what the routed op's claim fixes
+// (claimCompatible).
+func claimCompatibleSigs(a, b []Signature) bool {
+	same := len(a) == len(b)
+	for i := 0; same && i < len(a); i++ {
+		same = claimCompatible(&a[i], &b[i])
+	}
+	return same
+}
+
+// claimCompatible reports whether two signatures make the same CLAIM on a
+// call — the same arity and barrier, per position the same pattern,
+// quoting and type-slot marking, and the same return count with no return
+// pattern on either — whatever types they declare: the routed op's live
+// plan must claim the forward and total counts the record did, and its
+// unit must leave the count the call site seats.
+func claimCompatible(a, b *Signature) bool {
+	same := a.TotalArgs() == b.TotalArgs() && a.BarrierPos == b.BarrierPos &&
+		len(a.Returns) == len(b.Returns) && len(a.ReturnPatterns) == 0 && len(b.ReturnPatterns) == 0
+	for i := 0; same && i < a.TotalArgs(); i++ {
+		pa, hasA := SigPattern(a, i)
+		pb, hasB := SigPattern(b, i)
+		same = hasA == hasB && (!hasA || ExactEqual(pa, pb)) && a.QuoteArgs[i] == b.QuoteArgs[i] && a.TypeArgs[i] == b.TypeArgs[i]
+	}
+	return same
+}
+
+// sameTypes reports whether two type lists are equal position by position.
+func sameTypes(a, b []*Type) bool {
+	same := len(a) == len(b)
+	for i := 0; same && i < len(a); i++ {
+		same = a[i].Equal(b[i])
+	}
+	return same
+}

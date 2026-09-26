@@ -206,7 +206,12 @@ func MatchFnSig(fn Value, args []Value) *FnSig {
 		}
 		match := true
 		for j, p := range sig.Params {
-			if !args[j].Parent.ConformsTo(p.Type) {
+			// The matcher's own per-slot rule (stackSlotAdmits): a bare
+			// type node's Parent is its SUPERTYPE, so the ConformsTo this
+			// used to ask refused `Integer` at a `t:Type` slot the
+			// interpreter's dispatch fills, and a type literal at a
+			// concrete slot is refused by the rule, not by accident (NUR248).
+			if !stackSlotAdmits(sig, j, args[j]) {
 				match = false
 				break
 			}

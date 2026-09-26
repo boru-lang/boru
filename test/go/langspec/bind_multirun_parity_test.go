@@ -124,9 +124,16 @@ var parityShapes = []parityShape{
 	// against the top `ZB` and passes against the one below it. Replaying
 	// one captured node would answer that read wrongly, so the bridge
 	// declines and the whole program declines. Graduation = an op that
-	// REBUILDS the type per element instead of replaying one.
+	// REBUILDS the type per element instead of replaying one. Since NUR231
+	// (2026-09-26) the program declines one step earlier, for the same
+	// reason seen from the type: the bound READS the element — a computed
+	// bound only the run knows. NUR231's type half installs such a type at
+	// run time (OpBindTypeRun), but only at the root, so inside the body the
+	// def declines as the compile-time word it is, failing the body's unit,
+	// and the each declines as the code-body word before the bridge is
+	// reached (reclassified in review both times, the parity unchanged).
 	{name: "each-type-def-element-dependent", src: `[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`,
-		probes: []string{"ZB", "e"}, declined: "twin regime:"},
+		probes: []string{"ZB", "e"}, declined: "code-body word each (Stage 2)"},
 
 	// --- The sibling multi-run words, graduated on the same mechanism.
 	// `each` was flagged first because its body population is the simplest

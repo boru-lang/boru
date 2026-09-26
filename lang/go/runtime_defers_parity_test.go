@@ -43,10 +43,18 @@ func hasDefectNote(err error) bool {
 // note. It used to be wrapped and booked as a compiler defect (forty corpus
 // rows: convert's own errors, make's field errors, a predicate type's
 // rejection, the module words' guards).
+//
+// A predicate type's rejection is no plain error on the merged tree (the
+// merge of main's #510 with the reverse-order NUR run): over a CONCRETE
+// candidate the check pass runs the pure predicate and raises statically
+// (NUR141), so `def q:Even 5` never runs compiled, and at run time the
+// refusal is a type_error on both lanes (NUR224). Its row here is the run-time
+// one, a candidate the pass cannot know, whose raise is still the program's
+// own on both lanes.
 func TestPlainHandlerErrorIsTheProgramsOwnOnBothLanes(t *testing.T) {
 	for _, src := range []string{
 		`convert BigInteger 3.14`,
-		`def Even fnpred n:Integer [eq 0 (mod 2 n)]  def q:Even 5  q`,
+		`def Even fnpred n:Integer [eq 0 (mod 2 n)]  def f fn [[x:Integer][Any][def q:Even x q]] end f 5`,
 		`each [convert Integer] ['x' 'y']`,
 	} {
 		_, ran, errC, _, errI := bothLanes(t, src)
@@ -76,7 +84,9 @@ func TestPlainHandlerErrorIsTheProgramsOwnOnBothLanes(t *testing.T) {
 func TestTypedDefMakeErrorKeepsTheDefWrap(t *testing.T) {
 	const box = `def Box gen [T] class {value:T} end `
 	for _, c := range []struct{ src, prefix string }{
-		{box + `def b:(Box of [Integer]) {value:'no'}`, "def b: make: "},
+		// A make FIELD's refusal is a type_error on both lanes (NUR233, the
+		// reverse-order NUR run), so the wrap carries its code.
+		{box + `def b:(Box of [Integer]) {value:'no'}`, "def b: [boru/type_error]: make: "},
 		{`def e:Entity { kind:'api' } e`, "def e: make: "},
 	} {
 		_, ran, errC, _, errI := bothLanes(t, c.src)

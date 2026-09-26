@@ -53,6 +53,18 @@ func UninstallFrameBinding(r *Registry, name string) {
 }
 
 func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...bool) {
+	// A root-level def under the check pass — not a frame binding, not a
+	// def inside a fn body's analysis — is a late-binding site for the
+	// hint (NUR097).
+	// The site is the def-NAME token InstallAndRecordDef staged for the bind
+	// ledger (PendingBindPos) — a fn value carries no position of its own.
+	if !shadow && r != nil && r.Check.IsActive() && len(r.Check.FnNameStack) == 0 {
+		pos := r.Check.PendingBindPos
+		if pos.Row == 0 {
+			pos = body.Pos()
+		}
+		r.Check.NoteRootDefSite(name, pos)
+	}
 	// The rebind notification, seated with the operation rather than with the
 	// `def` word (core/go/rebind_notify.go). `!shadow` is the same test every
 	// twin note below makes: a SHADOWING install is InstallFrameBinding's —
@@ -99,49 +111,15 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// arg-handling (FnSig has no QuoteArgs field). Mirror dot-access
 		// instead: bind the inner native's Signatures verbatim under the
 		// new name so bare-word dispatch behaves exactly like pkg.word.
-		if FnHomeForeign(r, &fnDef) {
-			reg := fnDef.Registry
-			own := fnDef.OwnSigs()
-			// EVERY own sig must be a trivial delegation to the SAME
-			// inner native — a multi-overload wrapper (e.g. IO.write)
-			// carries one delegation FnSig per overload. Requiring only
-			// a single sig here used to drop multi-sig wrappers onto the
-			// body-splice path below, where the wrapper's own UNLOCKED
-			// FnSigs were installed — so a later overlapping `def` could
-			// silently replace a module word instead of raising
-			// locked_signature (the inner native's sigs are locked).
-			innerName := ""
-			allTrivial := len(own) > 0
-			for i := range own {
-				target, ok := trivialDelegationTarget(&own[i])
-				if !ok || (innerName != "" && target != innerName) {
-					allTrivial = false
-					break
-				}
-				innerName = target
+		if rebound, ok := WrapperUnderName(r, name, fnDef); ok {
+			r.Defs.Push(name, rebound)
+			if !shadow {
+				r.NoteBindTransition(BindDef, name, body.Pos())
 			}
-			if allTrivial {
-				if inner := reg.Lookup(innerName); inner != nil && len(inner.Signatures) > 0 {
-					rebound := FnDefInfo{
-						Name:           name,
-						Signatures:     append([]Signature(nil), inner.Signatures...),
-						MaxForwardArgs: inner.MaxForwardArgs,
-						Registry:       reg,
-						// A trivial-delegation rebind is the inner word under
-						// another name — the record's own case — so it inherits
-						// the inner word's identity token (NUR031).
-						ident: inner.ident,
-					}
-					r.Defs.Push(name, NewFunction(rebound))
-					if !shadow {
-						r.NoteBindTransition(BindDef, name, body.Pos())
-					}
-					if !shadow && r.ready && r.OnRegisterHook != nil {
-						r.OnRegisterHook(name)
-					}
-					return
-				}
+			if !shadow && r.ready && r.OnRegisterHook != nil {
+				r.OnRegisterHook(name)
 			}
+			return
 		}
 
 		// Remove any previous DefStack entries whose signatures overlap
@@ -342,6 +320,48 @@ func UninstallDef(r *Registry, name string) {
 	r.NoteBindTransition(BindUndef, name, SrcPos{})
 }
 
+// WrapperUnderName is the module-wrapper rebinding (installDef's own case)
+// as a value: a FOREIGN trivial-delegation wrapper — what `import` produces
+// for each export — bound under name is the INNER native's overloads under
+// that name, exactly as dot-access dispatches it. The compiled frame binds a
+// wrapper for a named param the same way (eng's nameFrameFns), so `(f
+// MathUtil.sqrt/v) 16.0` renders the param's name over the inner overloads
+// on both lanes (NUR123). ok is false for anything else.
+func WrapperUnderName(r *Registry, name string, fnDef FnDefInfo) (Value, bool) {
+	if !FnHomeForeign(r, &fnDef) {
+		return Value{}, false
+	}
+	reg := fnDef.Registry
+	own := fnDef.OwnSigs()
+	innerName := ""
+	allTrivial := len(own) > 0
+	for i := range own {
+		target, ok := trivialDelegationTarget(&own[i])
+		if !ok || (innerName != "" && target != innerName) {
+			allTrivial = false
+			break
+		}
+		innerName = target
+	}
+	if !allTrivial {
+		return Value{}, false
+	}
+	inner := reg.Lookup(innerName)
+	if inner == nil || len(inner.Signatures) == 0 {
+		return Value{}, false
+	}
+	return NewFunction(FnDefInfo{
+		Name:           name,
+		Signatures:     append([]Signature(nil), inner.Signatures...),
+		MaxForwardArgs: inner.MaxForwardArgs,
+		Registry:       reg,
+		// A trivial-delegation rebind is the inner word under another
+		// name — the record's own case — so it inherits the inner word's
+		// identity token (NUR031).
+		ident: inner.ident,
+	}), true
+}
+
 // buildFnBodyHandler produces the dispatch Handler for one boru fn
 // signature. Rather than computing a final result, the handler returns
 // a PAREN-WRAPPED TOKEN SEQUENCE — `( unnamed-args… body DefCleanup __pa
@@ -447,7 +467,9 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			if callReg.AnalysisScopeID() == r.AnalysisScopeID() {
 				target = callReg
 			}
-			return target.CallBoruNamed(&s, args, fnDefCopy.Captured, fnDefCopy.Name)
+			// A named call: the frame's return count on this path too
+			// (NUR191, CallBoruStrict).
+			return target.CallBoruStrict(&s, args, fnDefCopy.Captured, fnDefCopy.Name, SrcPos{})
 		}
 		// Retag typed-container args up front so EVERY access path in the body —
 		// named binding, the args stack (args.N), and unnamed body-token pushes —
@@ -1123,12 +1145,16 @@ func IsTypeBody(v Value) bool {
 	return v.Data != nil && v.Data.IsTypeContent(&v)
 }
 
-// PredicateInputType returns the concrete input type of a
-// predicate-shaped fn body (a Function whose first sig
-// takes exactly one argument with a declared type other than Any).
-// Returns nil if v isn't a predicate type or the input type is Any
-// or unset — those bodies stay parented at TFunction, the
-// pre-existing behavior.
+// PredicateInputType returns the concrete input type of a declared
+// predicate (`fnpred`): the type EVERY overload declares for the value it
+// tests. Returns nil if v isn't a declared predicate, or the input type is
+// Any or unset, or the overloads declare different inputs — those bodies
+// stay parented at TFunction, the pre-existing behavior.
+//
+// Membership consults the whole overload set (RunPredicate's one-value
+// application, NUR100), so an input type read off ONE overload would be a
+// pre-filter refusing a value another overload takes: the type is the
+// overloads' common input or nothing.
 //
 // Used by InstallType to mint user-defined predicate types with the
 // declared input type as their parent so values rewrapped by the
@@ -1147,20 +1173,23 @@ func PredicateInputType(v Value) *Type {
 	if !ok {
 		return nil
 	}
-	sig, ok := info.FirstOwnSig()
-	if !ok || len(sig.Params) == 0 {
+	// Only a DECLARED predicate (`fnpred`) has an input type: the
+	// parameter-count route that inferred one from a fn's shape was ADR-016's
+	// arity-keyed exception and is gone (NUR099).
+	if !info.Predicate {
 		return nil
 	}
-	// The parameter-COUNT test is the DEPRECATED route (NUR099/NUR100):
-	// ADR-016 forbids arity deciding how a function behaves. A `fnpred`
-	// declaration carries the fact explicitly and is believed whatever its
-	// shape; the count is consulted only for a body that never said so.
-	if !info.Predicate && len(sig.Params) != 1 {
-		return nil
-	}
-	t := sig.Params[0].Type
-	if t == nil || t.Equal(TAny) {
-		return nil
+	var t *Type
+	for _, sig := range info.OwnSigs() {
+		params := sig.Params
+		if len(params) == 0 {
+			return nil
+		}
+		in := params[0].Type
+		if in == nil || in.Equal(TAny) || (t != nil && !t.Equal(in)) {
+			return nil
+		}
+		t = in
 	}
 	return t
 }

@@ -554,6 +554,25 @@ func TestW8ExecFnDefSigCapturedRegZeroArg(t *testing.T) {
 	}
 }
 
+func TestW8ExecFnDefSigForeignRegZeroArg(t *testing.T) {
+	// A 0-arg fn whose captured registry is a FOREIGN home runs there
+	// (CallBoru) and its result replaces the fn value alone — the splice's
+	// nullary arm, with no argument cells to remove.
+	r := covRegistry(t, nil)
+	mod := covRegistry(t, nil)
+	sig := &Signature{Returns: []*Type{TInteger}, Impl: Boru([]Value{NewInteger(42)}), BarrierPos: 0}
+	fnv := NewFunction(FnDefInfo{Signatures: []Signature{*sig}, Registry: mod})
+	e := NewTop(r)
+	e.Tape = NewTape([]Value{NewInteger(7), fnv}, StackHeadroom)
+	e.Pointer = 1
+	if err := e.execFnDefSig(1, sig, nil, mod, false); err != nil {
+		t.Fatalf("execFnDefSig foreign 0-arg: %v", err)
+	}
+	if e.Tape.Len() != 2 || !ValuesEqual(e.Tape.At(0), NewInteger(7)) || !ValuesEqual(e.Tape.At(1), NewInteger(42)) || e.Pointer != 1 {
+		t.Errorf("tape %v pointer %d, want [7 42] at 1", e.Tape.Prefix(e.Tape.Len()), e.Pointer)
+	}
+}
+
 func TestW8ExecFnDefSigCapturedRegElseBranch(t *testing.T) {
 	// The captured-registry else branch (fewer resolved than nArgs).
 	r := covRegistry(t, nil)

@@ -118,19 +118,6 @@ func TestNur038FnValueWouldWiden(t *testing.T) {
 	}
 }
 
-func TestNur038SigWantsFunctionAt(t *testing.T) {
-	fnSlot := Signature{Args: []*Type{TFunction, TAny}, BarrierPos: -1}
-	if !sigWantsFunctionAt(&fnSlot, 0) {
-		t.Error("a Function slot wants the fn as data")
-	}
-	if sigWantsFunctionAt(&fnSlot, 1) {
-		t.Error("an Any slot is NOT a Function slot — it stays barred")
-	}
-	if sigWantsFunctionAt(&fnSlot, 2) {
-		t.Error("a position past the sig wants nothing")
-	}
-}
-
 // arrivalGateEngine builds the mid-collection arrival state: a word
 // callee with one collected arg beneath it, its Forward parked, and a
 // reach-tagged 1-arg fn value at the pointer with a claimable token

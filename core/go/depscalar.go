@@ -150,28 +150,37 @@ func NewDepScalar(kind DepKind, bound Value) Value {
 }
 
 // canonicalBaseType walks t's ancestry from most-specific to root,
-// returning the first well-known scalar base (Integer, Float,
-// Number, String, Boolean, Atom) encountered. Value-tagged subtypes
-// (e.g. Number/Integer/42) strip down to their last named ancestor.
-// Returns nil for types not rooted at a supported scalar base.
+// returning the first node that DECLARES itself a refinement base
+// (DeclareRefinementBase) — core's Integer, Float, Number, String, Boolean
+// and Atom, basic's Bytes. Value-tagged subtypes (e.g. Number/Integer/42)
+// strip down to their last declaring ancestor. Returns nil for types not
+// rooted at a declared base.
 func canonicalBaseType(t *Type) *Type {
 	for d := t; d != nil; d = d.Parent {
-		switch {
-		case d.Equal(TInteger):
-			return TInteger
-		case d.Equal(TFloat):
-			return TFloat
-		case d.Equal(TNumber):
-			return TNumber
-		case d.Equal(TString):
-			return TString
-		case d.Equal(TBoolean):
-			return TBoolean
-		case d.Equal(TAtom):
-			return TAtom
+		if d.tmeta != nil && d.tmeta.RefinementBase != nil {
+			return d.tmeta.RefinementBase
 		}
 	}
 	return nil
+}
+
+// DeclareRefinementBase declares t a base the comparison words refine
+// (NUR009): `t gte bound`, `t lt bound`, `between lo hi t` build a
+// refinement over it, checked through t's Comparer. A type's owner declares
+// it where the type is registered — core the numeric, string, boolean and
+// atom leaves below, basic the Bytes leaf — so no resolver hand-lists them.
+// A nil t (a registration that failed) declares nothing.
+func DeclareRefinementBase(t *Type) {
+	if t == nil {
+		return
+	}
+	t.ensureTMeta().RefinementBase = t
+}
+
+func init() {
+	for _, t := range []*Type{TInteger, TFloat, TNumber, TString, TBoolean, TAtom} {
+		DeclareRefinementBase(t)
+	}
 }
 
 // IsDepScalar reports whether the value carries a DepScalar
@@ -193,9 +202,21 @@ func (v Value) AsDepScalar() (DepScalarInfo, error) {
 
 // depScalarCheck returns true if `value` satisfies every populated
 // bound in info. Both Lo and Hi are AND-combined.
+//
+// A bound the analysis pass does not know — a computed one, the pass's
+// carrier — makes the whole refinement the run's, its known side included:
+// the carrier orders below every value, so a verdict over it was the
+// lattice's, not the bound's (`def T (Integer lte (size s))` refused 3 at
+// check time whatever s held), and a verdict the known side gives alone is
+// baked with the placeholder rendered (`(Integer gte 5 lte Integer)`, where
+// the run says `lte 2`). The pass admits, gradually; the run checks the
+// real bounds (NUR231).
 func depScalarCheck(info DepScalarInfo, value Value) bool {
 	if info.Lo == nil && info.Hi == nil {
 		return false
+	}
+	if (info.Lo != nil && !depBoundKnown(info.Lo)) || (info.Hi != nil && !depBoundKnown(info.Hi)) {
+		return true
 	}
 	if info.Lo != nil && !depBoundCheck(info.Lo, true, value) {
 		return false
@@ -334,6 +355,8 @@ func combineDepScalars(a, b DepScalarInfo) (DepScalarInfo, bool) {
 		out.Lo = b.Lo
 	case b.Lo == nil:
 		out.Lo = a.Lo
+	case !depBoundKnown(a.Lo) || !depBoundKnown(b.Lo):
+		out.Lo = unknownBound(a.Lo, b.Lo)
 	default:
 		t, ok := tightenSameSide(a.Lo, b.Lo, true)
 		if !ok {
@@ -347,6 +370,8 @@ func combineDepScalars(a, b DepScalarInfo) (DepScalarInfo, bool) {
 		out.Hi = b.Hi
 	case b.Hi == nil:
 		out.Hi = a.Hi
+	case !depBoundKnown(a.Hi) || !depBoundKnown(b.Hi):
+		out.Hi = unknownBound(a.Hi, b.Hi)
 	default:
 		t, ok := tightenSameSide(a.Hi, b.Hi, false)
 		if !ok {
@@ -354,8 +379,11 @@ func combineDepScalars(a, b DepScalarInfo) (DepScalarInfo, bool) {
 		}
 		out.Hi = t
 	}
-	// Verify the resulting interval is non-empty.
-	if out.Lo != nil && out.Hi != nil {
+	// Verify the resulting interval is non-empty — decided only over KNOWN
+	// bounds: an unknown one is the analysis pass's carrier, which orders
+	// below every value, so `(Integer lt (size s)) tand (Integer gt 5)` was
+	// Never at compile time whatever s held (NUR231).
+	if out.Lo != nil && out.Hi != nil && depBoundKnown(out.Lo) && depBoundKnown(out.Hi) {
 		cmp, err := CompareValues(out.Lo.Value, out.Hi.Value)
 		if err != nil {
 			return DepScalarInfo{}, false
@@ -369,6 +397,21 @@ func combineDepScalars(a, b DepScalarInfo) (DepScalarInfo, bool) {
 		}
 	}
 	return out, true
+}
+
+// depBoundKnown reports whether a bound is a value the analysis pass knows
+// (not its carrier for a computed one, NUR231).
+func depBoundKnown(b *DepBound) bool { return IsConcrete(b.Value) }
+
+// unknownBound picks, of two same-side bounds at least one of which the
+// pass does not know, an unknown one: which is tighter is the run's to
+// decide, and keeping the unknown keeps the result a type the run installs
+// (HasUnknownRefinement) rather than one whose content looks known.
+func unknownBound(a, b *DepBound) *DepBound {
+	if !depBoundKnown(a) {
+		return a
+	}
+	return b
 }
 
 // flipBound returns the opposite-side complement of a single bound: the
@@ -451,9 +494,7 @@ func MakeDepScalarSig(opName string, kind DepKind) Signature {
 			// against its ID so a downstream operand — toCarrier strips the
 			// DepScalarInfo to a bare base carrier, preserving the ID — can
 			// recover the bound via origByID and bake it as a const.
-			if r != nil {
-				r.analysisRecorder().RememberOriginal(dep)
-			}
+			noteRefinementConstruct(r, dep, args[0])
 			return []Value{dep}, nil
 		}, RunInCheck()),
 		Returns: []*Type{TScalar},
@@ -467,7 +508,31 @@ func MakeDepScalarSig(opName string, kind DepKind) Signature {
 	}
 }
 
-func BetweenHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+// noteRefinementConstruct tells the compile pass how a refinement it just
+// built reaches the run: over KNOWN bounds it is a const (RememberOriginal,
+// so a stripped operand recovers it); over a bound the pass does not know —
+// a computed one, `Integer gt (size s)`, whose bound is the pass's carrier —
+// the constructor call is recorded as the call it is, so the run builds the
+// refinement over the real bound (NUR231).
+func noteRefinementConstruct(r *Registry, dep Value, bounds ...Value) {
+	if r == nil {
+		return
+	}
+	for _, b := range bounds {
+		if !IsConcrete(b) {
+			// Only the analysis pass itself latches: a concrete sub-run (a
+			// const-fold probe) records nothing, and a latch it left would be
+			// consumed by the pass's next compile-time word.
+			if r.analysisActive() {
+				r.analysisRecorder().NoteRuntimeConstruct()
+			}
+			return
+		}
+	}
+	r.analysisRecorder().RememberOriginal(dep)
+}
+
+func BetweenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	if IsConcrete(args[2]) {
 		return nil, fmt.Errorf("between: type arg must be a scalar type literal, got concrete %s",
 			args[2].Parent.String())
@@ -488,16 +553,24 @@ func BetweenHandler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([
 		return nil, fmt.Errorf("between: high bound %s does not match base %s",
 			args[1].Parent.String(), base.String())
 	}
-	cmp, err := CompareValues(args[0], args[1])
-	if err != nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
-		return nil, fmt.Errorf("between: %w", err)
-	}
-	if cmp > 0 {
-		return []Value{NewTypeLiteral(TNever)}, nil
-	}
 	info := DepScalarInfo{
 		Lo: &DepBound{Inclusive: true, Value: args[0]},
 		Hi: &DepBound{Inclusive: true, Value: args[1]},
 	}
-	return []Value{NewValueRaw(base, info)}, nil
+	dep := NewValueRaw(base, info)
+	// An empty interval is Never — decided only over KNOWN bounds: a
+	// computed one is the analysis pass's carrier, which orders below every
+	// value, so `between 1 (size s) Integer` was Never at compile time
+	// whatever s held (NUR231). Over an unknown bound the run decides.
+	if IsConcrete(args[0]) && IsConcrete(args[1]) {
+		cmp, err := CompareValues(args[0], args[1])
+		if err != nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)
+			return nil, fmt.Errorf("between: %w", err)
+		}
+		if cmp > 0 {
+			return []Value{NewTypeLiteral(TNever)}, nil
+		}
+	}
+	noteRefinementConstruct(r, dep, args[0], args[1])
+	return []Value{dep}, nil
 }

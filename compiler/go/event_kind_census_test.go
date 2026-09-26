@@ -251,7 +251,7 @@ func wellFormedEvent(kind int) *EmitEvent {
 		// A trap's operands are its REMATCH window, when it has one; a plain
 		// terminal trap carries none. The window is what must be visited, so
 		// that is what a well-formed fixture has.
-		ev.trap = EmitTrap{rematchWord: "w", rematchOps: []EmitOperand{op}, rematchNWritten: 1}
+		ev.trap = EmitTrap{rematchWord: "w", rematchOps: []EmitOperand{op}, rematchWritten: []int{0}}
 	case evStore:
 		ev.store = &emitStore{src: op}
 	case evDynBind:

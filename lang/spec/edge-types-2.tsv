@@ -133,19 +133,19 @@ def P (refine Integer) def M (P tor String) def g fn [[m:M] [Integer] [9]] 42 g	
 #     wrapper, which compile.)
 # ====================================================================
 # the predicate type is symmetric at every boundary, like any subset type
-def Pos (fn [[n:Integer] [Boolean] [n gt 0]]) def g fn [[p:Pos] [Integer] [p add 1]] 5 g	6	param dispatch runs the predicate
-def Pos (fn [[n:Integer] [Boolean] [n gt 0]]) def g fn [[p:Pos] [Integer] [p add 1]] 0 g	ERROR:signature	…and rejects a failing value
+def Pos (fnpred [[n:Integer] [n gt 0]]) def g fn [[p:Pos] [Integer] [p add 1]] 5 g	6	param dispatch runs the predicate
+def Pos (fnpred [[n:Integer] [n gt 0]]) def g fn [[p:Pos] [Integer] [p add 1]] 0 g	ERROR:signature	…and rejects a failing value
 # (dropped) predicate-fn-as-type return precision gap; same disposition
-def Pos (fn [[n:Integer] [Boolean] [n gt 0]]) def mk fn [[] [Pos] [0]] mk	ERROR:return value 1: expected Pos, got Integer	…and rejects a failing one
-def Pos (fn [[n:Integer] [Boolean] [n gt 0]]) def mk fn [[] [Pos] [7]] (mk) typeof	Integer	a predicate-fn member keeps its base tag (subset semantics, no reparent)
-def Pos (fn [[n:Integer] [Boolean] [n gt 0]]) def b:Pos 5 b	5	bind admits a passing literal
-def Pos ([n:Integer] => [n gt 0]) def b:Pos 5 b	5	the lambda spelling builds the same predicate type
-def Even (fn [[n:Integer] [Boolean] [(n mod 2) eq 0]]) def g fn [[e:Even] [Integer] [e]] 4 g	4	an arbitrary computation decides membership at dispatch
-def Even (fn [[n:Integer] [Boolean] [(n mod 2) eq 0]]) def mk fn [[] [Even] [3]] mk	ERROR:return value 1: expected Even, got Integer	…and at the return, both polarities
+def Pos (fnpred [[n:Integer] [n gt 0]]) def mk fn [[] [Pos] [0]] mk	ERROR:return value 1: expected Pos, got Integer	…and rejects a failing one
+def Pos (fnpred [[n:Integer] [n gt 0]]) def mk fn [[] [Pos] [7]] (mk) typeof	Integer	a predicate-fn member keeps its base tag (subset semantics, no reparent)
+def Pos (fnpred [[n:Integer] [n gt 0]]) def b:Pos 5 b	5	bind admits a passing literal
+def Pos ([n:Integer] => [n gt 0]) def b:Pos 5 b	ERROR:def_error	a lambda under a capitalised name is refused at the declaration — a predicate type is declared with fnpred (NUR099)
+def Even (fnpred [[n:Integer] [(n mod 2) eq 0]]) def g fn [[e:Even] [Integer] [e]] 4 g	4	an arbitrary computation decides membership at dispatch
+def Even (fnpred [[n:Integer] [(n mod 2) eq 0]]) def mk fn [[] [Even] [3]] mk	ERROR:return value 1: expected Even, got Integer	…and at the return, both polarities
 # predicate-fn types compose with the algebra
-def Pos (fn [[n:Integer] [Boolean] [n gt 0]]) 5 is (tnot Pos)	false	a member is excluded from the complement
-def Pos (fn [[n:Integer] [Boolean] [n gt 0]]) 0 is (tnot Pos)	true	…a non-member is in it
-def Pos (fn [[n:Integer] [Boolean] [n gt 0]]) Pos teq Pos	true	the predicate type is self-identical
+def Pos (fnpred [[n:Integer] [n gt 0]]) 5 is (tnot Pos)	false	a member is excluded from the complement
+def Pos (fnpred [[n:Integer] [n gt 0]]) 0 is (tnot Pos)	true	…a non-member is in it
+def Pos (fnpred [[n:Integer] [n gt 0]]) Pos teq Pos	true	the predicate type is self-identical
 
 
 # ====================================================================

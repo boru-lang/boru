@@ -402,9 +402,8 @@ func TestRegionHostReachClassificationsSeeARealFn(t *testing.T) {
 		t.Error("a reach-collapsed fn with a forward sig and a following literal must claim it")
 	}
 
-	viable := []core.ViableSig{{Sig: &fnVal.Data.(core.FnDefInfo).Signatures[0], Barrier: 1}}
-	gotHead := h.IsReachCallHead(fnVal, viable, 0, 0)
-	wantHead := core.ReachCallHeadBarrierOn(h.Window(), h.reg, fnVal, viable, 0, 0)
+	gotHead := h.IsReachCallHead(fnVal, 0)
+	wantHead := core.ReachCallHeadBarrierOn(h.Window(), h.reg, fnVal, 0)
 	if gotHead != wantHead {
 		t.Errorf("IsReachCallHead = %v, want core's own answer %v", gotHead, wantHead)
 	}
@@ -415,7 +414,7 @@ func TestRegionHostReachClassificationsSeeARealFn(t *testing.T) {
 	if h.ReachFnWouldClaim(plain, 1) {
 		t.Error("a plain word is not a reach-collapsed fn and claims nothing")
 	}
-	if h.IsReachCallHead(plain, viable, 0, 0) {
+	if h.IsReachCallHead(plain, 0) {
 		t.Error("a plain word is not a reach call head")
 	}
 }

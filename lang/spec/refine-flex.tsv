@@ -6,7 +6,7 @@
 #   1. A bare refine of a FLEX type retags flex handles through typed
 #      def (`def w:S (flex m)`) — check and runtime agree; the tag
 #      survives in-place writes because flex words return the receiver.
-#   2. A fn-bodied capitalised def (`def Sorted ([m:Map] => [pred])`)
+#   2. A declared predicate (`def Sorted (fnpred [[m:Map] [pred]])`)
 #      is a CONTENT-predicate type over containers; params dispatch on
 #      the predicate. (Content types cannot ANCHOR extensions — the
 #      OPEN-WORDS.1 §3.1 nominality rule — classification only.)
@@ -25,5 +25,11 @@ def L (refine FlexList)  def v:L (flex [1 2])  typeof v	L	the list column retags
 #
 # ─────────────────────────────────────────────────────────────────────
 # §2  content-predicate types over containers (classification)
-def Sorted ([m:Map] => [(keys m) deq (sort (keys m))])  def f fn [[m:Sorted] [Integer] [size m]]  f {a:1 b:2}	2	a map satisfying the predicate dispatches the Sorted param
-def Sorted ([m:Map] => [(keys m) deq (sort (keys m))])  def f fn [[m:Sorted] [Integer] [size m]]  f (set a/q 1 (set b/q 2 { }))	ERROR:signature_error	an unsorted map is declined at dispatch (content, not provenance)
+def Sorted (fnpred [[m:Map] [(keys m) deq (sort (keys m))]])  def f fn [[m:Sorted] [Integer] [size m]]  f {a:1 b:2}	2	a map satisfying the predicate dispatches the Sorted param
+def Sorted (fnpred [[m:Map] [(keys m) deq (sort (keys m))]])  def f fn [[m:Sorted] [Integer] [size m]]  f (set a/q 1 (set b/q 2 { }))	ERROR:signature_error	an unsorted map is declined at dispatch (content, not provenance)
+# §3  a refined container is eq to itself (NUR142): eq is identity for the container family — the same store under the same tag — and a refinement is a member of the family
+def S (refine FlexMap)  def w:S (flex {a:1})  w eq w	true	a refined flex map is eq to itself
+def L (refine FlexList)  def v:L (flex [1 2])  v eq v	true	a refined flex list too
+def M (refine Map)  def m:M {a:1}  m eq m	true	and a refined plain map
+def S (refine FlexMap)  def w:S (flex {a:1})  [w] deq [w]	true	deq is structure; the refined member reaches the container arm
+def S (refine FlexMap)  def w:S (flex {a:1})  def u (flex {a:1})  w eq u	false	two stores stay distinct under eq

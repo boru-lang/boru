@@ -36,6 +36,10 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 		{outer + `def m {e: true} end if (m "e" get) ` + arm + ` [] f 1`, "[101]"},
 		{outer + `def m {e: false} end if (m "e" get) ` + arm + ` [] (print "x") 1 f`, "[2]"},
 		{outer + `def m {e: false} end if (m "e" get) ` + arm + ` [def f fn [[x:Integer][Integer][x add 200]] end] f 1`, "[201]"},
+		// A fresh def in BOTH arms (NUR245): the join's model is the then
+		// arm's fn, and each arm's placed install is the live binding.
+		{`def m {e: false} end if (m "e" get) ` + arm + ` [def f fn [[x:Integer][Integer][x add 200]] end] f 1`, "[201]"},
+		{`def m {e: true} end if (m "e" get) ` + arm + ` [def f fn [[x:Integer][Integer][x add 200]] end] f 1`, "[101]"},
 		// An undef or a root redefinition after the arm, on either path.
 		{outer + `def m {e: true} end if (m "e" get) ` + arm + ` [] undef f 9`, "[9]"},
 		{outer + `def m {e: false} end if (m "e" get) ` + arm + ` [] undef f 9`, "[9]"},
@@ -137,7 +141,6 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 	// the closure compile's), a dispatch the op cannot drive (the user-poly
 	// and rematch seats), and a `/v` read of the value. A CAPTURING closure's conditional def is not a const the
 	// placement can bake: it keeps the closure machinery and family L's own
-	// compile failure. A fresh def in BOTH arms keeps the join's older fn-carrier
 	// compile failure.
 	declined := []struct{ src, reason string }{
 		{outer + `for 2 ` + arm + ` f 1`, "fn 'f' redefined inside a conditional body"},
@@ -158,7 +161,6 @@ func TestConditionalFnDefIsSpeculative(t *testing.T) {
 		// compiled operand baked.
 		{`def k 5 end def m {e: false} end if (m "e" get) [undef k] [] if (m "e" get) [def f fn [[x:Integer y:Integer][Integer][x add y]] end] [] f (1 add 1) k`, "forward-slot read of `k` after a placed undef"},
 		{`def m {e: true} end if (m "e" get) ` + arm + ` [] 1 f/v apply`, "value read of the conditionally-defined fn `f`"},
-		{`def m {e: false} end if (m "e" get) ` + arm + ` [def f fn [[x:Integer][Integer][x add 200]] end] f 1`, "def-bound computed fn apply"},
 	}
 	for _, c := range declined {
 		a, err := New()

@@ -77,7 +77,6 @@ const regionOracleReproducedFloor = 47000 // 47110 (2026-09-15, the sixty-second
 // six reproduces, and the class is pinned across requests in
 // lang/go/bytecode_globalbind_test.go.
 var regionOracleFindings = map[string]string{
-	"fnpred.tsv:L50 f@1:80": "a predicate param (n:Even) claimed by the check pass, rejected by the runtime scan; an ERROR row on both lanes",
 	// NUR152's reverse-direction rows: a MAIN-program fn (`pub`, or the `=>`
 	// lambda) applied INSIDE a module fn (`M.run`). Its unit is compiled at
 	// its home (main) from inside `run`'s foreign compile, and its free word

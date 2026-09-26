@@ -151,6 +151,10 @@ func accessorGetrSignatures() []Signature {
 		// Always raises not_found — never produces a value; a receiver the
 		// checker KNOWS is None (a literal, a strict None carrier from a
 		// statically-absent lenient read) flags the same error statically.
+		// The atom row quotes a bare-word key as every other receiver's
+		// does (NUR198's strict twin: `m.b!.c` raises the family's
+		// not_found, not `undefined word: c`).
+		{Args: []*Type{TAtom, TNone}, QuoteArgs: map[int]bool{0: true}, BarrierPos: 1, Impl: Go(getrNoneHandler), ReturnsFn: getrNoneReturns},
 		{Args: []*Type{TAny, TNone}, BarrierPos: 1, Impl: Go(getrNoneHandler), ReturnsFn: getrNoneReturns},
 	}
 }

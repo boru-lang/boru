@@ -136,6 +136,12 @@ func IsSteplessWindow(vs []Value) bool {
 	return true
 }
 
+// depBoundConst reports whether a refinement's bound side is absent or an
+// inert const (NUR231).
+func depBoundConst(b *DepBound) bool {
+	return b == nil || IsInertConst(b.Value)
+}
+
 func IsInertConst(v Value) bool {
 	if v.Carrier || v.Dynamic || IsBareTypeNode(v) {
 		return false
@@ -182,7 +188,10 @@ func IsInertConst(v Value) bool {
 		// The bound is recovered for a stripped operand via origByID
 		// (RememberOriginal at the constructor); type-algebra words
 		// (tcmp/teq/tand/…) then run over the baked predicate at run time.
-		return true
+		// Only a KNOWN bound is self-contained: a computed one (`Integer gt
+		// (size s)`) is the analysis pass's carrier, and a predicate over it
+		// baked a bound that is no value (NUR231).
+		return depBoundConst(d.Lo) && depBoundConst(d.Hi)
 	case RecordTypeInfo, OptionsTypeInfo, ChildTypeInfo, DisjunctInfo, ClassTypeInfo, TableTypeInfo:
 		// STRUCTURAL type bodies (what a bound type name pushes at a
 		// use site — make's operand). Sound as consts when their

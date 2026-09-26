@@ -114,6 +114,13 @@ func runLaunch(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		return 1
 	}
 	path := pathutil.Expand(file)
+	// Relative imports resolve against the script's own directory, as
+	// `check` and `build` anchor them — the pre-flight and the session's
+	// registries alike (NUR083: `run` and `debug` used the process cwd).
+	baseDir := ""
+	if abs, aerr := filepath.Abs(path); aerr == nil {
+		baseDir = filepath.Dir(abs)
+	}
 	data, err := os.ReadFile(path)
 	if err != nil {
 		fmt.Fprintf(stderr, "boru debug: read %s: %s\n", file, err)
@@ -129,7 +136,7 @@ func runLaunch(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	// from yet, and ResolveColor falls back to the process environment.
 	color := lang.ResolveColor(nil, stderr, *colorMode)
 	if !*noCheck && os.Getenv("BORU_NO_CHECK") == "" {
-		if cerr := check.PreflightColor(stderr, source, "", 0, false, color); cerr != nil {
+		if cerr := check.PreflightColorAt(stderr, source, "", 0, false, color, baseDir); cerr != nil {
 			fmt.Fprintf(stderr, "%s\n", cerr)
 			return 1
 		}
@@ -146,6 +153,7 @@ func runLaunch(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		reg := a.NativeRegistry()
 		reg.Output = stdout
 		reg.BaseFile = path
+		reg.BaseDir = baseDir
 		if *script != "" {
 			// Batch mode: commands come from the --script file, so the launch
 			// stdin belongs entirely to the PROGRAM (IO.stdin). Interactive
@@ -205,6 +213,7 @@ func runLaunch(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		Source:       source,
 		Echo:         *script != "",
 		BreakOnError: *breakOnError,
+		PostMortem:   *postMortem,
 		NewRegistry:  newRegistry,
 	})
 	fmt.Fprintf(stdout, "boru debug: %s — type 'help' for commands\n", file)

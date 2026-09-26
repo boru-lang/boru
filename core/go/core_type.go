@@ -351,6 +351,21 @@ func installTypeBinding(r *Registry, name string, def *Type, pushed Value) {
 	r.NoteTypeInstall(name, pushed.Pos())
 }
 
+// isFnBodiedValue reports whether v is a function VALUE — a fn definition
+// or a compiled closure — as opposed to a type literal that merely sits
+// under Function (a module's exported member type, `MiniLang.Re`), which
+// binds as an alias.
+func isFnBodiedValue(v Value) bool {
+	if v.Parent == nil || !v.Parent.Equal(TFunction) {
+		return false
+	}
+	switch v.Data.(type) {
+	case FnDefInfo, ClosurePayload:
+		return true
+	}
+	return false
+}
+
 func InstallType(r *Registry, name string, body Value) error {
 	if !IsTypeBody(body) && !IsLiteralTypeBody(body) {
 		return &BoruError{
@@ -464,7 +479,20 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		info.Type = def
 		installSurfaceUnifier(def, info, name)
 		installTypeBinding(r, name, def, NewValueRaw(def, info))
-	} else if inputT, isPred := PredicateInputType(body), IsDeclaredPredicateFn(body) || isPredicateFnValue(body); inputT != nil || isPred {
+	} else if isFnBodiedValue(body) && !IsDeclaredPredicateFn(body) {
+		// A capitalised name declares a TYPE, and a function is a type only
+		// as a DECLARED predicate (`fnpred`, NUR099): the same fn body used to
+		// mean a callable under a lower-case name and a membership test under
+		// a capitalised one, routed by counting its parameters — ADR-016's
+		// arity-keyed exception — and `def K fn [[a:Any b:Any][Any][a]]`
+		// bound a type nothing could inhabit, accepted silently. Refused
+		// here, at the declaration, on both lanes.
+		return &BoruError{
+			Code:   "def_error",
+			Detail: "def " + name + ": a capitalised name declares a type, and a function is a type only as a declared predicate — write `def " + name + " fnpred …`, or give the function a lower-case name",
+		}
+	} else if IsDeclaredPredicateFn(body) {
+		inputT := PredicateInputType(body)
 		// Predicate type with a concrete input type: mint the *Type
 		// parented at the input rather than at TFunction so values
 		// rewrapped by the typed-bind path inherit input-side
@@ -658,5 +686,21 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 	for _, p := range strings.Split(name, "/") {
 		r.RegisterPart(p)
 	}
+	noteRuntimeTypeInstall(r, name, body)
 	return nil
+}
+
+// noteRuntimeTypeInstall tells the analysis pass that the type it just
+// installed holds a refinement over a bound it does not know — a computed
+// one, `def T (Integer gte (size s))`, whose bound is the pass's carrier
+// (NUR231): replaying this install would bind the placeholder, so the run
+// installs the type itself from the body it computes (OpBindTypeRun), and
+// the node minted here forwards to the run's. A no-op outside a pass.
+func noteRuntimeTypeInstall(r *Registry, name string, body Value) {
+	if !r.analysisActive() || !HasUnknownRefinement(body) {
+		return
+	}
+	if e, ok := r.Defs.TopEntry(name); ok && e.TypeDef != nil {
+		r.analysisRecorder().NoteRuntimeTypeInstall(name, e.TypeDef, body)
+	}
 }

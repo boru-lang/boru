@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-09-22**.
+Last updated: **2026-09-25**.
 
 **Read in this order:** the definition of done below; then
 [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md) (2026-09-17,
@@ -91,7 +91,77 @@ branch-carried def"**; the re-estimate is
    the flex shape is not threaded on the compile pass, the flex family's
    own item), apply-twice's two pending applies (L125), a def-bound
    factory result read back and applied (`def p (mk 1) end 5 p/v apply`,
-   the read's statement window), and NUR176's 0-arg runtime lead. Two
+   the read's statement window); NUR176's 0-arg runtime lead is CLOSED
+   2026-09-25 (the handoff log's "the 0-arg lead's window" entry: the
+   window op hands a name-read lead whose only overloads take no
+   argument to the island in written order, `h z/v` over `[(k inc/v)]`
+   is 8 on both lanes), and so is NUR168 the same day (the handoff log's
+   "the def's name on the value" entry: a def names the fn value it
+   binds whatever its representation — a factory's const lambda renders
+   `fn f(String)` on both lanes — the root write-back adopts its paired
+   dyn-scope install instead of stacking a second entry, and a
+   code-body call of the bound value by its bare word dispatches, where
+   it was an internal error), and NUR167 (the handoff log's "the analysis
+   is not a call" entry: a fn-body analysis's type-part reservations come
+   off with the body's bindings, so a type-minting callback body conflicts
+   on its second call as the interpreter's does, a fn unit re-installs the
+   type per call — `OpBindFnType`, a generic lowering, not a decline —
+   and a root type twin re-checks its name at its own position), and NUR166 (the handoff
+   log's "the value's own frame" entry: a fn value applied by a
+   higher-order word reads its own call args as `args`, through a `do`
+   body inside it too — the token seam brackets a unit that carries a
+   param contract with the value's args), NUR163 (the handoff log's "the
+   value's own signatures" entry: the mini / emit / parse contracts read
+   a fn value's own signatures, so a module member in place, a paren or a
+   `/v` read — all carrying the dispatch aggregate's fallback — pass as
+   the def-bound spelling does) and NUR162 (the handoff log's "the 0-arg
+   apply at a paren's tail" entry: the trailing apply's window trim
+   declines a 0-arg callee instead of recording a signature-less native
+   call the disassembler crashed on; the sweep's crash ceiling is 0),
+   NUR262 (the handoff log's "the marker is no argument" entry: the
+   forward claim probe answers no claim for a reach's `/v` marker, so a
+   module member with an Any first parameter binds through `def`) and
+   NUR261 (the handoff log's "the named value's no-match on the seam"
+   entry: a named fn value's no-match on the callback seam raises
+   uncalled_function as the word does, past step 0 too), and NUR213 (the
+   handoff log's "the marker's intent on the value" entry: the check pass
+   quotes the dynamic member read a `/v` marker qualifies, and the
+   residual layout leaves a quoted lead alone — `m.f/v 5` is data on
+   both lanes), NUR172 (the handoff log's "the attempted window" entry:
+   the interpreter's no-match report describes the window the dispatch
+   attempted, the poly window's own layout) and NUR170 (the handoff
+   log's "the dynamic emit lead" entry: the emit macro degrades a dynamic
+   lead under analysis, a wrong answer turned into a loud decline),
+   NUR158 (the wrap words bridge a compiled closure to its fn
+   definition), NUR157 (two references to one predicate unify as the
+   type), NUR154 (the check pass no longer traps a computed `case` clause
+   list — a sound decline, the sweep and corpus pins retired) and NUR147
+   (the poly seat retries the word's other arities before it defers),
+   NUR142 (the handoff log's "the family of a refinement" entry: a
+   refined container is eq to itself — equality folds a user refinement
+   to its kernel ancestor), NUR146 ("the frame's names": the compiled
+   undefined_word's did-you-mean pool reads the unit's frame-local names
+   through the new `NameLocal` seam and `Program.LocalNames`), NUR135
+   ("the last pop": a minted node is retired when the last live binding
+   holding it pops), NUR118 ("the call's own token": a fn's
+   return-contract error anchors at the call word on both lanes — the
+   recorded call carries the word's position and the RET stamps at the
+   caller's return address; the `(g 5)` fn-value seam anchors at its
+   lead's read), NUR122 ("the read's own token": every fn-value apply
+   witness agrees on both lanes, message and position), NUR130 ("the condition's own token": `while`'s empty-condition
+   raise anchors at the operand interpreted too), NUR080 and NUR114
+   (verified retired on the current tree — the typed def keeps its brand
+   in both orders, the compiled caret is the token's width — with the
+   acceptance pins the records asked for); NUR129 is narrowed (the named
+   witness declines soundly through the check pass's own diagnostic),
+   and NUR141 and NUR134 carry traced notes (the predicate admission is
+   `RunPredicate`'s analysis-mode arm; the module fn value's caught
+   no-match needs a unit-scoped trap) with their rulings still owed. The
+   milestone batch of 2026-09-25 also re-derived the compiled twin of
+   NUR172's attempted window (`rematchWritten` feeds the poly no-match
+   spec and the runtime rematch, whose render bound is an index tuple
+   now) and scoped NUR213's quoting to dynamic and carrier values;
+   NUR150 and NUR151, closed in their own PRs, are marked FIXED. Two
    silent miscompiles the chain's probes found, both CLOSED now: NUR180
    (a trailing paren apply's Any result inside an UNNAMED-param frame,
    consumed by a typed word — `xs each [(2 (mk 1)) mul 10]` was 10 for 30;
@@ -226,14 +296,24 @@ branch-carried def"**; the re-estimate is
    leave the census; NUR197 and NUR198 recorded on the way — a loop
    body's residual literal over the loop variable, and a dotted read
    through a missing member, each the interpreter's undefined_word for
-   the compiled lane's value); the keep-defs body lands the same day
+   the compiled lane's value — both CLOSED 2026-09-25, the handoff log's
+   entries of that date: the loop region evaluates its residual with the
+   iterator bound, and the None receiver's atom row quotes a bare-word
+   key; NUR208 (NUR251 since the merge of main's #510) and NUR209 (NUR256 since the merge of main's #511) found and closed with the first, NUR191 closed
+   the same day — a named module fn call enforces the frame's return
+   count on every path and parks its single returned closure — with
+   NUR260 recorded pending); the keep-defs body lands the same day
    (the handoff log's "NUR199 closed — the keep-defs body" entry: a `do`
    body's defs install as kept dynamic-scope bindings the enclosing frame
    pops, the enclosing loop refreshes its carried slot after the call and
    a leaked name's read seats live; `for 3 [do [def t 5]]  t` was 0 for
    the interpreter's 5 on main — NUR199, closed — and code-bodies L180 /
    L186 compile, 13 -> 11; NUR201, a callee's def outliving a trapped
-   raise on the interpreter only, is recorded against the interpreter);
+   raise on the interpreter only, is recorded against the interpreter —
+   and CLOSED 2026-09-25 by the frame's error path, the handoff log's
+   entry of that name: the interpreter's fault return tears down every
+   fn frame the error leaves open on the tape, so `do [g]  t` is
+   `[error(x) 0]` on both lanes);
    the multi-run keep-defs body closes NUR200 the same day (the handoff
    log's "NUR200 closed" entry: each / fold / scan bodies are keep-defs
    units too, every read of a leaked name seats live — the twin regime's
@@ -278,6 +358,43 @@ branch-carried def"**; the re-estimate is
    meeting the caller's — never seeded, or it commits the name to dynamic
    scope program-wide), a `word`/fn/type/module value bound in an arm, an
    arm def inside a computed `do` body.
+   The reverse-order run's last batch (2026-09-25) closed NUR119,
+   NUR105, NUR092, NUR091, NUR088, NUR084, NUR083, NUR082 and NUR081 (the
+   handoff log's entries of that date, "the param's name on both lanes"
+   down to "one contract for the family"), measured NUR109 and NUR089
+   (still open, dated notes on the records), found NUR096's multi-return
+   rows inert on the PRODUCTION registry (recorded on NUR096, still
+   pending), and left the design-level records with dated review lines
+   (NUR124, 123, 112, 104, 103, 102, 100, 097, 079, 078, 077, 076, 075,
+   074, 072, 065, 064, 063, 060, 026, 009). After the merge with main the
+   run went on down the register: NUR260 (the reach group's survivor),
+   NUR204 (the lexical index scope, both lanes) and NUR203 (the dynamic
+   body's leak) are CLOSED (the handoff log's entries of 2026-09-25), and
+   below them NUR171 (the lens's own token), NUR141 (the predicate runs
+   for real), NUR129 (the reach survivor's iteration) and NUR128 (the
+   export-time analysis); then NUR124 (the value-delivered window parks),
+   NUR123 (the guarded gradual read: the last shape is a loud designed
+   defer), NUR097 (the late-binding hint), NUR077 (the StackForm Apply
+   op, the apply word's double recording declined) and NUR109 (the parser
+   name bound on a branch declines to the interpreter's kind lookup),
+   NUR104 (Allowed: the install-time resolution of inline record fields)
+   and NUR102 (one predicate run per dispatch on both lanes, and the
+   carrier candidate's arm kept reachable), NUR134 (the unit-scoped trap
+   and the caught Error; a def after a raise in a do body no longer leaks),
+   and NUR101 closed on the
+   register (its verdict landed on 2026-08-27, the last shape graduated on
+   2026-09-22); NUR112 is narrowed to Stage 8
+   (the member read's designed widening) and NUR103 resolved by the
+   diagnostic-surface gate (its mini-redis instance ledgered). Main's #507
+   is merged in (the handoff log's "The merge with main's #507" entry: this
+   run's NUR205, NUR206 and NUR207 are NUR211, NUR212 and NUR213 now (NUR261, NUR262 and NUR213 since the merge of main's #512), main
+   keeping NUR205), and main's NUR205 is CLOSED (the module replay's own
+   bind: a module a loop or an arm may not bind as the replay does keeps
+   no twin placement and declines); NUR214, found beside it (a fresh def
+   in a loop that may run zero times bound anyway), is CLOSED (the loop's
+   fresh cell), and NUR215 with it (a fn's dynamic read of a
+   conditionally bound name raises the interpreter's undefined_word);
+   NUR112 is CLOSED too (the plain check applies a stored fn member). NUR099 is CLOSED (a capitalised name over an undeclared fn body is refused with def_error; predicates are declared with `fnpred`, and the arity route is gone). NUR096 is CLOSED (the plain check applies a fn-shape-typed member over its argument window, so `c.op 10` checks as the shape's declared returns). NUR216 was found closing it and is CLOSED too (no residual arm applies a `/v`-quoted value: the class member's `c.op/v 5` is data on both lanes). NUR089 is CLOSED (an analysed body binds a fn-valued param or capture through the run's frame install, so an inline lambda checks exactly like its `/v` twin). NUR079 is CLOSED (a file-module import passes the native path's policy checks with `kind: "file"`, the restrictive profiles admit file modules, refusals are coded, and check / the pre-flight / describe / the LSP analyse under the run's profile). NUR078 is CLOSED (a bare fn name calls at every slot — the four clause-2 sites are gone, a reference is spelled `/v` everywhere, and a reach-read fn is a call head exactly when it would claim the next token; NUR190's Function-typed half dissolved with it). NUR218 is CLOSED (a member `/v` read is delivered as its word twin is — unquoted, stepped past — on both lanes, and a dynamic member at a branch arm is landed on the computed-arm merge). NUR217 is CLOSED (a stored fn value's unit declines a bare read no argument makes data, and lists the gradual params its body consumes, so every seam that runs it hands a call with a fn there to the interpreter's dispatch). NUR219 was found closing it and is CLOSED (a callback body unit lists the same slots, the pushed closure carries its source value, and a fn element in such a slot runs that value on the interpreter). NUR220 is CLOSED (the whole-frame replay parks an anonymous 0-arg lambda it re-steps as a value — a bare name read still fires — and an `apply` over a lone gradual lead declines instead of losing its Applied mark). NUR221 is CLOSED (the gradual apply event admits no lead the interpreter re-steps where it stands). NUR190 is CLOSED (a `/q` claim at the landing takes the landing's island — the value and the body from the word on, on the interpreter — or, inside an arm, a loop or a literal, a capture over the value and the word that skips the word's call and the apply after it). NUR222 was found closing it and is CLOSED (a dyn body's own lead is settled by the body, and the residual arm leaves it). NUR100 is CLOSED (a predicate is a one-value application through the matcher — every overload consulted, no parameter count — and the poly decline keys on a reachable overload that declares a re-step, not on a smaller arity). NUR223 and NUR224 were found closing it and are CLOSED (the callback seam discards an unconsumed unnamed input beneath the answer, as CallBoru does; a predicate's typed-def refusal is a type_error on both lanes, never a compiler-defect internal_error). NUR076 is CLOSED (`behave`'s check-mode half notes a `make` slot for the pass, so a type's own constructor is not schema-validated from the call on; nothing is installed during analysis). NUR075 is CLOSED (`eq` is extensible per type on deq's terms: an `ExactEqualer` at ExactEqual's terminal, installed by `behave eq/q`). NUR074 is RESOLVED (a parameter's name is behaviour — callees see it through the def stack — so canon and deq keep it; the content-addressing note's de-naming step is withdrawn). NUR072 is CLOSED (canon spells a plain word bare, the lambda and its fold, the mini literal, the type bound and a group modifier as source in both ports, TS carries `/N` exactly, and a fixpoint gate over the parser corpus runs in both runners); NUR225, NUR226 and NUR227 were found by that gate and are CLOSED (templates and XML holes spell their source, a key that needs quoting is quoted, a comma keeps a capitalised token from fusing with a `<`) — the fixpoint ledger is empty in both ports. NUR065 is RESOLVED in the design (a `classify:` fn declares `yields:` and returns a class atom, so both classifier spellings get the same closure, payload and diagnostics; `boru:state` is unbuilt). NUR228 was found closing NUR064 and is CLOSED (a native's forward window that hangs on a gradual stack operand, while a later overload would forward-collect past its stop token, declines the compile as an ambiguous gradual split instead of compiling one of the runtime's two windows). NUR064 is CLOSED (a service `add` pattern is read, guarded and bound exactly as a `receive` clause's is — scalar fields route, `name:Type` fields are slots the handler's run sees by name, a declining one falls to a slot-free catch-all or raises no_match — and the checker excuses precisely the handler tokens that read a slot). NUR063 is CLOSED (`boru:scry` ships `words`, `defs`, `modules`, `sig`, `body`, `deps`, `shape` from the one constructor boru:debug's frozen copies use, and `describe` marks each `Debug.*` copy deprecated, naming its `Scry.*` twin and the removal release). NUR060 is CLOSED (the parser parity ledger is empty again: all nine classes fixed in both ports — a bodiless folding `=>`, an empty list child, a `]` on an implicit list, fault precedence, an unclosed member group, a bare modifier and an empty `${}` each have one rule — and moved to parse.tsv). NUR026 is CLOSED (every string form reads every escape alike — braced `\u{…}` and split surrogate pairs included — and a malformed `\x` / `\u` is refused alike, naming the escape); NUR229 and NUR230 were found closing it and are CLOSED (the ports' quoted-string malformed-escape reports, and Go's template surrogate pairs). NUR009 is CLOSED (a type declares itself a refinement base — core its six leaves, basic Bytes — and no resolver lists one; Bytes refinements agree on both lanes, rendering and const pooling included); NUR231 and NUR232 were found closing it and are CLOSED (a refinement over a computed bound is built by the run as a value and declines the compile as a type; an inline refinement return defers an abstract residual as the named twin does). The run's handoff entries moved to design/NUR-RUN-HANDOFF.0.md when the full-compilation handoff log crossed the repository's 1 MB file limit; the run's later entries go there, newest first. NUR231's type half is compiled: a named type over a computed bound is installed by the run from the body it computed (OpBindTypeRun), the node the check pass minted forwards to the run's, a typed def records the run's own membership check, and an overload set over such a type re-matches at run time; an inline parameter or return type over such a bound carries an anonymous node the run forwards the same way; only an inline interval over one (which the run may find empty), a typed container's child and a fn body's per-call type def still decline, through the existing compile-time-word site, and the compile-failure censuses are back to 91. NUR233 was found on the way and is CLOSED (a make field's refusal is a type_error on both lanes, never a compiler-defect internal_error); NUR234 was found on the way and is OPEN, with its fix proposed (a compiled direct call's contract no-match reports every argument where the interpreter reports its attempted window — NUR122's written run, carried to user calls). NUR234 is CLOSED (a compiled user call's param-contract no-match reports the interpreter's attempted window: the pass offers it at the dispatch's first step, and the call's CallWindows entry maps each value to an argument, a scalar, a seated result or a stable local read). Main's #509 is merged; its single-overload recovery no longer binds a bare fn-bound forward word, which NUR078 makes a call. The merged ADR-008 gap the run left (and main's own) is covered by tests, and one false pragma is gone. The coverage agents' probes found fifteen divergences, recorded OPEN as NUR235–NUR243: three silent wrong answers (NUR235–NUR237), the trailing apply that matches nothing (NUR238), two diagnostics (NUR239, NUR240), a walk hook's capture (NUR241), eight compile-then-bail programs (NUR242) and three over-declines (NUR243). The silent wrong answers come first. They are CLOSED: NUR235 (a named fn value's push carries its name, so a nullary one fires at the landing), NUR236 (a spliced consumer's deopt is ordered by the event stream) and NUR237 (a later root def of an S5 loop-split name is registry-visible). NUR243 is CLOSED (a constant branch's value-less taken arm is a 0-value statement, a loop's rebind of a branch-bound name is carried and stays bound-checked, and a parser dispatch declines over its parser operand only). NUR239's anonymous half is fixed (`<fn>`); its binding half is OPEN. NUR244 is recorded OPEN (a skipped arm's inline `fn` parser is used compiled — a silent wrong answer). NUR238 is CLOSED (a value applied as a trailing window it does not fit parks when anonymous and raises uncalled_function when named, as the interpreter's re-step does; the main code seats its apply heads). NUR244 is CLOSED and was wider than parsing: a fn def in an arm that may not run — the arm a decided condition skips, or an else-less if's arm — is a speculative family now, so a call past the merge raises undefined_word where the arm did not run, and a parser name read there declines through the family's value-read site. NUR242's `do` half is fixed (a body that runs to nothing nets 0 or a caught Error, latched runtime-variable; the counting consumers decline); its re-step, method-apply and `fold` programs stay OPEN. NUR240 is CLOSED by NUR238's value-trail no-match (pinned). NUR241 is diagnosed and OPEN: a forward split whose paren the runtime pre-evaluates and the check pass defers (`preferWordSig`), so the fix belongs at the arrival. The merged ADR-008 gate on d493ef4 measured 80248/80250; its last two statements and one stale pragma are covered. NUR246 is recorded OPEN (a parked trailing window leaves n+1 values where the call claims one; a list over it takes the wrong count). NUR245 is recorded OPEN (both arms defining the same fn: the call past the merge does not compile). NUR246 is CLOSED and was a silent wrong answer at top level too: an apply whose lead the window may not fit is a variadic region, which seats in place, collects through the region mark under a lone top-level list, and declines at every other fixed layout; the `apply` word's park is recorded OPEN as NUR247 (its gradual lead proves no window), and a type literal under a value pattern, which matches on one lane only, as NUR248. NUR245's same-shape half is fixed (a speculative family both arms define joins to a model — the running arm's fn when decided, noted so its twin keeps the registry current, the then arm's otherwise, with the other arm's unit compiled where it is placed); arms that disagree on the fn's shape keep the decline. NUR239's binding half is fixed (the VM's 0-arg island dispatches the word the lead was read under, over a frame binding of it, so the frame is named as the interpreter names it); NUR249 is recorded OPEN (a named fn-typed carrier that turns out 0-arg under a window leaves n+1 values — silent under a no-contract fn). NUR249's silent half is fixed: a consumed layout over such an apply raises now (DynApplyHead.OneResult), booked on the bail ledger rather than declining every named carrier apply. NUR247's silent half is fixed the same way (a consumed `apply`-word event takes the word's one-result form), and NUR250 is recorded and its silent half fixed (a bare fn-param read before `apply` is the interpreter's call at the word; it declines through the dynamic lead's existing site). NUR248 is CLOSED: the interpreter's stack-match fallback and the VM's MatchFnSig both ask the matcher's own per-slot rule (stackSlotAdmits), so a type literal is refused at a concrete slot and admitted at a Type slot on both lanes. Main's #510 is merged (the handoff log's entry): main's fixes of NUR158 and NUR170 replace the run's, main's new NUR208 keeps its number and the run's NUR208 becomes NUR251, and every ledger is re-measured on the merged tree with its composition named; main's NUR207 and NUR208 are silent on the merged tree and are the run's next records. NUR207 and NUR208 are FIXED: the program root plans a gradual def read as the fn units do (an island from the read's token or its statement's start where the compiled stack is the interpreter's, the value installed under its name for the island's run, a loud guard elsewhere), and a branch of fn values is placed by its paren and applied by the `apply` word. NUR241 is FIXED as a sound decline: a compiling pass's deferred word-led window that takes an unproven arrival, while a narrower window fits the stack beneath the word, flags the gradual split (NUR228's discipline), so the program declines where it raised a wrong `cannot call append`. NUR252 is FIXED (a module export fn value hosted by the dynamic apply's foreign arm answers to the applied value's declared return contract, where it answered `[5 1]` for the interpreter's count error), and NUR242's count program with it (the shaped method apply raises the interpreter's count error for a single-signature boru fn value instead of bailing); a root def read that leads the residual's dynamic apply deopts only on a no-match (`DeoptSpec.NoMatchOnly`), so the rows it islanded compile natively again. NUR245 is FIXED: a decided condition's join model is the running arm's fn, and undecided arms that differ only in a parameter or return type join to a widened model (each type joined, no declaration site) whose call routes live to each arm's own unit; arms that differ in arity, pattern or return count keep a sound decline. NUR253 is recorded and FIXED: a void branch's phantom None, which the recorder uses to elide the `if` dispatch, is on no run's stack, so the full-stack fold skips it (`if true [def k 1] [] end depth` answered 1) and a no-match report's stack prefix drops it (`runPrefix`). NUR241's latch now requires the narrower window to draw from the stack, so two real programs that a narrower-arity overload tripped compile again. NUR247 and NUR249 are FIXED: a fn unit plans its own region collect, the collect takes a list over a run of adjacent regions, and an `apply`-word event or a named-head apply becomes a region when the plan arms, so a list over such applies counts at run time; other consuming layouts keep the one-result raise. NUR254 is recorded and FIXED: an anonymous value whose pattern meets a carrier at its re-step records the run-decided apply instead of parking statically (`[(n ([0] => [1])) 7]` answered wrong). NUR255 is recorded OPEN: an unnamed-param lambda in a list beside a later element bails at STORE_LOCAL. Main's #511 is merged: this branch's RecordRuntimeDispatch absorbs main's RecordRuntimeBindDispatch, and this branch's NUR209 is renumbered NUR256. NUR257 is recorded OPEN: an anonymous fn value's end-of-pass body check cannot ask the dynamic-scope question; the folded map member answers it optimistically, so main's behave-over-a-member row compiles and a member's typo is still a finding. NUR207's guard over a root read that leads its own dynamic apply bails on a no-match alone now, so the sweep's `def` × container · suffix-def and · splice answer natively; the unreachable `namedFnCountError` (NUR252) is gone. NUR255 is FIXED: the check pass trims an anonymous lambda's unnamed args as the frame's return check does, so `[(0 ([0] => [1])) 7]` answers `[[1 7]]` on both lanes. NUR258 is FIXED: an empty body's residual is its unnamed args, so `def f fn [[Integer] [Integer] []] end [(f 3) 7]` returns its argument compiled as interpreted. NUR259 is FIXED: a literal lambda's call takes no argument anchor, so its count error is one report on both lanes. Main's #512 is merged in (the handoff log's "Main's #512 merged" entry): main's NUR210, NUR211 and NUR212 keep their numbers, and this run's are NUR260, NUR261 and NUR262; the decided `if` arm keeps NUR243's 0-value statement inside main's `ifTakenArmReturns`, and main's fn-value decline there closes a silent wrong answer both sides had, which takes the compile-failure censuses 90 -> 91. Main's NUR211 is CLOSED (the handoff log's "NUR211 closed" entry): a runtime rematch over a window with written operands plans the interpreter's forward-then-stack split (`DispatchSpec.NFwd`), so `3 for (mk)` raises the interpreter's signature_error on both lanes. Main's NUR210 has its silent half CLOSED (the handoff log's "NUR210's silent half closed" entry): a computed `do` body's run is re-stepped over the constants beneath it, or inside the list that collects it, by the prefix island, and a list over a run the island cannot seat declines; its rebinding half (a read after a keep-defs dyn body) stays open and loud.
 
 ## Definition of done (ruled by the maintainer, 2026-09-14)
 

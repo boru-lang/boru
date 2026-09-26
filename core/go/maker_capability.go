@@ -184,14 +184,16 @@ func makeTargetType(reg *Registry, targetVal Value) *Type {
 // `def P class {a:Integer}` with a Maker that ignores its source refuses
 // `make P {bogus:1}` at check while the constructor builds it happily.
 //
-// The question is only answerable when `behave` has already run — the
-// wrapper is installed by executing the program, so a check pass that
-// reaches the `make` before the `behave` still sees no Maker. That
-// ordering dependency is the residue, not something this predicate can
-// close.
+// A `behave make` call is seen too, though the check pass does not run it:
+// its check-mode half notes the type (CheckState.BehaveMakers, NUR076), so a
+// construction AFTER the call skips the validation exactly as a Go-side
+// Maker's does, and one before it validates, as the run's order has it.
 func HasMaker(reg *Registry, targetVal Value) bool {
 	for t := makeTargetType(reg, targetVal); t != nil; t = t.Parent {
 		if _, ok := t.Behavior().(Maker); ok {
+			return true
+		}
+		if reg != nil && reg.Check != nil && reg.Check.BehaveMakers[t] {
 			return true
 		}
 	}

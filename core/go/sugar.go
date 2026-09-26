@@ -185,5 +185,28 @@ func (e *Engine) stepSugar(valIdx int) error {
 		return err
 	}
 	e.Tape.Splice(valIdx, 1, exp...)
+	placeModifierOperand(e.Tape, info.Kind, valIdx+len(exp))
 	return nil
+}
+
+// placeModifierOperand hands a group modifier its operand as DATA. `m.a/u`
+// means "usurp the function m.a" — the modifier words transform a function
+// VALUE — but a dot read of a function CALLS wherever it is written (NUR078,
+// ADR-011 as amended: no slot type turns a read into a reference), so the
+// bare reach after the marker would claim the arguments that follow it. The
+// modifier's spelling IS the data intent, and a user paren is how the
+// language places a value, so the reach is wrapped exactly as `usurp (m.a)`
+// writes it. Only the four function-modifier sugars; a paren group operand
+// (`(expr)/u`) already places its value.
+func placeModifierOperand(tape *Tape, kind SugarKind, at int) {
+	switch kind {
+	case SugarUsurp, SugarStackArgs, SugarForwardArgs, SugarForceArity:
+	default:
+		return
+	}
+	if at >= tape.Len() || !isEvalReach(tape.At(at)) {
+		return
+	}
+	reach := tape.At(at)
+	tape.Set(at, WithPos(NewParenExpr([]Value{reach}), reach))
 }

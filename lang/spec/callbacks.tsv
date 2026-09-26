@@ -143,7 +143,7 @@ def comp2 fn [[f:Function g:Function][Function][([x:Integer] => [(f (g x))])]]  
 #
 # §8  Module-exported callbacks — the export map is a callback table.
 import module [def bump fn [[n:Integer][Integer][n add 1]] export "M" {bump: bump/v}] end each M.bump [1 2 3]	[2 3 4]	a module-exported fn value driven as an each callback
-import module [def inc fn [[n:Integer][Integer][n add 1]] def run fn [[f:Function x:Integer][Integer][(f x)]] export "M" {inc: inc/v, run: run/v}] end M.run M.inc 5	6	one module export passed INTO another as its callback
+import module [def inc fn [[n:Integer][Integer][n add 1]] def run fn [[f:Function x:Integer][Integer][(f x)]] export "M" {inc: inc/v, run: run/v}] end M.run M.inc/v 5	6	one module export passed INTO another as its callback
 import module [def apply2 fn [[f:Function x:Integer][Integer][(f x)]] export "M" {apply2: apply2/v}] end M.apply2 ([n:Integer] => [n mul 4]) 3	12	a caller's lambda crossing the module boundary into a Function parameter
 #
 # §9  CURRIED CHAINS and the boru:fn-util combinators.
@@ -157,3 +157,25 @@ import "boru:fn-util"  def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end
 import "boru:fn-util"  def inc x:Integer => [add 1 x] end def m (FnUtil.memoize inc/v) end (m 4) add (m 4)	10	a memoized callback called twice: the second call is the cache hit
 import "boru:fn-util"  def inc x:Integer => [add 1 x] end def d (FnUtil.memoize inc/v) end each [d] [1 2]	[2 3]	DOES NOT COMPILE: "code-body word each (Stage 2)" — the memoized wrapper driven per element
 def a 99 def api (patrun Function) add {cmd:"x"} (fn [[a:Map][List][[a]]]) api def h (find {cmd:"x"} api) h {z:1}	[{z:1}]	NUR153: a stored `fn`-word handler evaluates its container residual in-frame, against the param, on both engines and through every seam (the `=>` twin is the open NUR153 divergence and stays out of the main corpus)
+#
+# §10  A FN VALUE APPLIED BY A HIGHER-ORDER WORD OPENS ITS OWN FRAME, whose
+#      `args` is the value's own call args (NUR166, closed 2026-09-25: the
+#      compiled callback body read the enclosing frame's list — none at the
+#      top level — so `do [args]` inside it raised `args: not inside a
+#      function` per element). A quotation body runs in the CALLER's frame
+#      and reads the caller's args, on both lanes.
+def g fn [[n:Integer] [Any] [do [args]]] end each g/v [1 2]	[[1] [2]]	a named fn value's body reads its own call args, even through a `do` body
+def g fn [[n:Integer] [Any] [do [args] size]] end each g/v [1 2]	[1 1]	…one arg per call
+def g ([n:Integer] => [do [args]]) end each g/v [1 2]	[[1] [2]]	a lambda value too
+def h fn [[a:Integer] [Any] [do [args]]] end def w fn [[x:Integer] [Any] [each h/v [x 5]]] end w 7	[[7] [5]]	…and inside a fn: the value's frame, not the enclosing fn's
+def w fn [[x:Integer] [Any] [each [do [args]] [x 5]]] end w 7	[[7] [7]]	a QUOTATION body runs in the caller's frame: the enclosing fn's args
+#
+# §11  A NAMED VALUE'S NO-MATCH ON THE SEAM IS THE WORD'S RAISE (NUR261, closed
+#      2026-09-25): a named fn value driving fold whose signature stops
+#      matching past the first step raises uncalled_function, as the word
+#      does; an anonymous lambda's no-match leaves the value as data (NUR155).
+def h fn [[a:Integer b:Integer] [List] [[a b]]] end 0 fold h/v [1 2]	ERROR:uncalled_function	step 0 answers [0 1]; step 1 offers a List to a:Integer and the named value's no-match raises
+def h fn [[a:Integer b:Integer] [Integer] [a add b]] end 0 fold h/v ['x']	ERROR:uncalled_function	…and at step 0 the same
+def h fn [[a:Integer b:Integer] [Integer] [a add b]] end 0 fold h/v [1 2]	3	a matching named value folds
+def g fn [[x:Integer] [Any] [typeof x]] end each g/v [1 'a']	ERROR:uncalled_function	each's named value raises on the element no signature admits
+each ([x:Integer] => [typeof x]) [1 'a']	[Integer fn [[x:Integer][Any][typeof x]]]	an ANONYMOUS lambda's no-match leaves the value as data (NUR155's rule)

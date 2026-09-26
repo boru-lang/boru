@@ -66,6 +66,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.RecordUserCall(0, "w", nil, nil, SrcPos{}, SrcPos{})
 	e.RecordUserPolyCall("w", nil, nil, nil, nil, nil, nil, nil, SrcPos{}, "w", SrcPos{})
 	e.HoldRegion("w", SrcPos{})()
+	e.NoteCallWindow("w", SrcPos{}, nil, false, false)
 	if n, ok := e.RecordDynApply(nil, Value{}, Value{}, SrcPos{}); ok || n != 0 {
 		t.Fatal("inactive RecordDynApply must decline with no consumed args")
 	}
@@ -94,7 +95,10 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.RecordTrapErr(nil, SrcPos{}) {
 		t.Fatal("inactive RecordTrapErr must decline")
 	}
-	if e.RecordDispatchRematchValues("w", nil, 0, 0, SrcPos{}) {
+	if e.RecordUnitTrapErr(nil, SrcPos{}) {
+		t.Fatal("inactive RecordUnitTrapErr must decline")
+	}
+	if e.RecordDispatchRematchValues("w", nil, 0, nil, SrcPos{}) {
 		t.Fatal("inactive RecordDispatchRematchValues must decline")
 	}
 	out := NewInteger(7)
@@ -113,7 +117,16 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 		t.Fatal("inactive RecordArgsProjection must decline")
 	}
 	e.NoteRuntimeBind("x")
-	e.RecordRuntimeBindDispatch("w", nil, nil, SrcPos{})
+	e.NoteRuntimeConstruct()
+	e.RecordRuntimeDispatch("w", nil, nil, nil, SrcPos{})
+	// NUR231's type half: the run-time type install, the run-dependent
+	// compile-time word, the run-time membership bind.
+	e.NoteRuntimeTypeInstall("T", nil, Value{})
+	e.NoteRuntimeSigForward(nil, Value{})
+	e.NoteRuntimeDependent()
+	if got, ok := e.RecordTypedBindRun(TypedBindSpec{}, Value{}, Value{}, out, SrcPos{}); ok || !ValuesEqual(got, out) {
+		t.Fatal("inactive RecordTypedBindRun must pass out through and decline")
+	}
 	e.NoteRuntimeDefDispatch("T")
 	if e.ContainerReadResult("id") {
 		t.Fatal("inactive ContainerReadResult must decline")
@@ -173,6 +186,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if got := e.RegisterLocal("id"); got != -1 {
 		t.Fatalf("inactive RegisterLocal must be -1, got %d", got)
 	}
+	e.NameLocal("id", "n")
 
 	// --- branches / loops.
 	e.ArmBranchCapture()
@@ -206,6 +220,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.BeginLoopCarried()
 	e.EndLoopCarried()
 	e.NoteLoopCarried("n", Value{}, Value{})
+	e.NoteLoopFresh("n", Value{})
 	if e.Checkpoint() != nil {
 		t.Fatal("inactive Checkpoint must be nil")
 	}

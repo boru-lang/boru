@@ -155,21 +155,20 @@ func TestReStepLandingWalk(t *testing.T) {
 	}
 
 	// A `/q` slot captures the word: the walk cannot honour the claim (the
-	// compiled code calls the word) and defers loudly, as the Function-typed
-	// reference does — NUR190's open halves, kept on the runtime-defers
-	// ledger.
+	// compiled code calls the word) and defers loudly — NUR190's open half,
+	// kept on the runtime-defers ledger.
 	quoteFn := core.NewFunction(core.FnDefInfo{Name: "q", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TAtom, Quote: true}}, QuoteArgs: map[int]bool{0: true}, BarrierPos: 1, Returns: []*core.Type{core.TAtom}}}})
 	_, ent, err = vc.reStepLanding(r, 3, 0, []core.Value{quoteFn}, seam7Dbg, 0, z)
 	if err == nil || ent != nil || !strings.Contains(err.Error(), "CAPTURES the word `z`") {
 		t.Errorf("a /q capture defers at the landing (NUR190's open half): got %v %v", ent, err)
 	}
 
-	// A Function-typed slot takes the word's reference: the run bails loudly.
+	// A Function-typed slot takes no bare word (NUR078: the reference is
+	// spelled `/v`, and the landing never walks one): the named no-match.
 	refFn := core.NewFunction(core.FnDefInfo{Name: "g", Signatures: []core.Signature{{Params: []core.FnParam{{Type: core.TFunction}}, BarrierPos: 1, Returns: []*core.Type{core.TInteger}}}})
 	_, ent, err = vc.reStepLanding(r, 3, 0, []core.Value{refFn}, seam7Dbg, 0, z)
-	wantInternal(t, err, "takes the word `z` as its argument")
-	if ent != nil {
-		t.Errorf("the reference claim bails, got an entry %v", ent)
+	if ent != nil || !errors.As(err, &be) || be.Code != "uncalled_function" {
+		t.Errorf("a Function-typed slot raises the named no-match: got %v %v", ent, err)
 	}
 
 	// The wordless landing decides with a value beneath, and over a fn with

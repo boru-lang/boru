@@ -3,7 +3,7 @@
 # =====================================================================
 # Edge cases for the quotation system's FIRST principle: lists are
 # EVALUATED by default ([add 1 2] -> [3]); `quote` opts out and holds
-# the tokens as data ((quote [word(add) 1 2]) in canon); implicit-quote
+# the tokens as data ((quote [add 1 2]) in canon); implicit-quote
 # positions (if branches, for/each/fn bodies) hold code WITHOUT the
 # quote wrapper; `def name [body]` is NOT such a position — it
 # evaluates the node and binds the value. Expected values use the
@@ -14,7 +14,7 @@
 # --- §1 the duality, pinned by size/get -------------------------------
 [add 1 2]	[3]	evaluated by default: one element, the sum
 [add 1 2] size	1	the evaluated list has ONE element
-quote [add 1 2]	(quote [word(add) 1 2])	held: canon renders the quote wrapper + the raw word
+quote [add 1 2]	(quote [add 1 2])	held: canon renders the quote wrapper + the raw word
 quote [add 1 2] size	3	the held list has THREE nodes (word + two operands)
 quote [add 1 2] get 2	2	a literal element reads out as plain data
 quote [add 1 2] typeof	List	a held list is still a real List
@@ -33,7 +33,7 @@ quote [10 sub 3] get 0	10	a numeric head reads out fine — only Word nodes re-f
 [1 [add 2 3] 4]	[1 [5] 4]	inner lists evaluate too (recursively)
 1 [2 [add 3 4] 5] 6	1 [2 [7] 5] 6	nesting inside an open stack: only list interiors evaluate
 [[add 1 2] [add 3 4]]	[[3] [7]]	sibling inner lists evaluate independently
-quote [1 [add 2 3] 4]	(quote [1 [word(add) 2 3] 4])	quote holds the WHOLE tree — inner list stays raw
+quote [1 [add 2 3] 4]	(quote [1 [add 2 3] 4])	quote holds the WHOLE tree — inner list stays raw
 quote [1 [add 2 3] 4] size	3	held outer size counts the inner list as one node
 quote [[add 1 2] [add 3 4]] size	2	two held inner lists, still two nodes
 [[1 2] [3 4]]	[[1 2] [3 4]]	nested plain data unchanged
@@ -64,13 +64,13 @@ def b [add 1 2] b	[3]	def is NOT an implicit-quote position: the list evaluates
 def b [add 1 2] size b	1	…and the binding holds the one-element result
 def b [add 1 2] b get 0	3	…the bound value's one element is the sum
 def q (quote [add 1 2]) q size	3	quote restores the held form under def
-def q (quote [add 1 2]) q	(quote [word(add) 1 2])	a stored held list re-references as the held list
-def q (quote [add 1 2]) [q]	[(quote [word(add) 1 2])]	a held list nests as ONE element when re-collected
+def q (quote [add 1 2]) q	(quote [add 1 2])	a stored held list re-references as the held list
+def q (quote [add 1 2]) [q]	[(quote [add 1 2])]	a held list nests as ONE element when re-collected
 def q (quote [add 1 2]) [q] size	1	…and counts as one
 def q (quote [add 1 2]) q get 2	2	a stored held list indexes like any list
 def q (quote [add 1 2]) typeof q	List	…and types as a plain List
 def xs [1,2,3] quote xs	xs/q	quote of a BOUND name still captures the NAME, not the value
-def h (quote [dup add]) 5 h	5 (quote [word(dup) word(add)])	referencing a stored held list does NOT run it (contrast `def h word [dup add]`)
+def h (quote [dup add]) 5 h	5 (quote [dup add])	referencing a stored held list does NOT run it (contrast `def h word [dup add]`)
 
 # --- §5 do over held code ----------------------------------------------
 quote [add 1 2] do	3	hold, then run: do evaluates the held list

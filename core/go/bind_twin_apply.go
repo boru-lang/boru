@@ -1,5 +1,7 @@
 package core
 
+import "strings"
+
 // ApplyBindTwin — the runtime half of §6.5's rollback-and-replay regime
 // (design/FULL-COMPILATION.0.md; the rollback half is binding_sandbox.go).
 //
@@ -38,9 +40,26 @@ package core
 // whose body twin captures a carrier and is placed before the loop), or
 // nothing. Replaying it would bind the placeholder; the arm that binds the
 // real value is elsewhere by construction.
-func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) {
+//
+// A TYPE twin is written back too when the def's body holds a refinement
+// over a bound the pass did not know (NUR231): the run installs the type
+// itself (OpBindTypeRun, RunTypeInstall) from the body it computed, so the
+// twin re-installs nothing — neither the pass's node nor its name's parts,
+// which that install reserves.
+//
+// THE TYPE NAME is the one thing a twin re-checks rather than replays. The
+// rollback frees the part reservation the pass made for a type binding it
+// rolls back (BindingSandbox.typeParts), so a type twin reserves its name
+// again here, as InstallType did — and validates it first exactly as
+// InstallType's front door does (a live same-named type binding is a
+// redefinition and skips the check): a RUN-time mint of the same name that
+// ran ahead of the twin's position — a fn-body `def T` the interpreter ran
+// through the callback seam — holds the part, and the interpreter's `def`
+// at this position raises on it. That raise is the returned error; every
+// other transition returns nil.
+func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) error {
 	if r == nil {
-		return
+		return nil
 	}
 	switch tr.Kind {
 	case BindUndef:
@@ -58,10 +77,11 @@ func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) {
 		// own Push-mode OpBindGlobal via the carrier-class skip above, so
 		// a computed replacement still nets zero: twin pops, bind pushes.
 		r.Defs.PopEntry(tr.Name)
-		applyTwinPush(r, tr, entry)
+		return applyTwinPush(r, tr, entry)
 	default: // BindDef, BindTypeInstall
-		applyTwinPush(r, tr, entry)
+		return applyTwinPush(r, tr, entry)
 	}
+	return nil
 }
 
 // applyTwinPush re-installs one captured push entry, honouring the
@@ -70,14 +90,18 @@ func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) {
 // a minted type binding re-pushes its node (the mint itself was retained
 // through the rollback — a compile-time product), an adopted alias
 // re-adopts the canonical node.
-func applyTwinPush(r *Registry, tr BindTransition, entry DefEntry) {
-	if entry.TypeDef == nil && (tr.WrittenBack || (!IsConcrete(entry.Body) && !IsBareTypeNode(entry.Body))) {
-		return
+func applyTwinPush(r *Registry, tr BindTransition, entry DefEntry) error {
+	if tr.WrittenBack || (entry.TypeDef == nil && !IsConcrete(entry.Body) && !IsBareTypeNode(entry.Body)) {
+		return nil
 	}
 	switch {
 	case entry.TypeDef == nil:
 		r.Defs.Push(tr.Name, entry.Body)
+		return nil
 	case entry.Minted:
+		if err := TypeNameFree(r, tr.Name); err != nil {
+			return err
+		}
 		// The node must be LIVE in the ID index again, not only bound. The
 		// mint normally survives the rollback (readmitRetired leaves mints
 		// in place), but when the check pass ALSO retired it — `def Point
@@ -90,7 +114,37 @@ func applyTwinPush(r *Registry, tr BindTransition, entry DefEntry) {
 		r.Types.Adopt(entry.TypeDef)
 		r.Defs.PushType(tr.Name, entry.TypeDef, entry.Body)
 	default:
+		if err := TypeNameFree(r, tr.Name); err != nil {
+			return err
+		}
 		r.Defs.PushTypeAdopted(tr.Name, entry.TypeDef, entry.Body)
+	}
+	ReserveTypeParts(r, tr.Name)
+	return nil
+}
+
+// TypeNameFree is the name check a replayed type binding runs before its
+// push — the part-conflict half of validateTypeName, against the parts the
+// run has reserved so far (ApplyBindTwin's doc; a fn unit's per-call bind,
+// eng's OpBindFnType, asks it too). A live same-named type binding is a
+// redefinition and passes, as it does at the front door. The raise carries
+// the front door's own code and detail.
+func TypeNameFree(r *Registry, name string) error {
+	if r.Defs.IsType(name) {
+		return nil
+	}
+	if err := ValidateTypeNameParts(name, r.IsKnownPart); err != nil {
+		return &BoruError{Code: "type_error", Detail: err.Error()}
+	}
+	return nil
+}
+
+// ReserveTypeParts reserves every part of a type binding's name, as
+// InstallTypeBody does after its install — the replay's and the per-call
+// bind's half of the same reservation.
+func ReserveTypeParts(r *Registry, name string) {
+	for _, p := range strings.Split(name, "/") {
+		r.RegisterPart(p)
 	}
 }
 

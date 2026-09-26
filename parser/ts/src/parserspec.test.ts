@@ -54,10 +54,13 @@ import { parse } from './index.ts'
 
 const __dirname = path.dirname(fileURLToPath(import.meta.url))
 const SPEC_DIR = path.resolve(__dirname, '..', '..', 'spec')
-const PARSE_SPEC_ROW_COUNT = 724
-const DIVERGENT_SPEC_ROW_COUNT = 10
+const PARSE_SPEC_ROW_COUNT = 783
+const DIVERGENT_SPEC_ROW_COUNT = 0
 const NESTING_SPEC_ROW_COUNT = 18
 const SHAPE_SPEC_ROW_COUNT = 28
+// canon-fixpoint.tsv: ADR-015's shrink-only ledger of parse.tsv rows that do
+// not yet reach their canon fixpoint (NUR072). The Go runner pins the same.
+const CANON_FIXPOINT_ROW_COUNT = 0
 
 interface SpecRow {
   line: number
@@ -115,7 +118,7 @@ function decodeSpecEscapes(s: string): string {
  */
 function readSpec(name: string): SpecRow[] {
   const text = fs.readFileSync(path.join(SPEC_DIR, name), 'utf8')
-  const wantColumns = name === 'parse.tsv' ? 3 : 4
+  const wantColumns = name === 'parse.tsv' || name === 'canon-fixpoint.tsv' ? 3 : 4
   const rows: SpecRow[] = []
   const seen = new Map<string, number>()
   const lines = text.split('\n')
@@ -153,7 +156,12 @@ function readSpec(name: string): SpecRow[] {
       cols,
     })
   }
-  const wantRows = name === 'parse.tsv' ? PARSE_SPEC_ROW_COUNT : DIVERGENT_SPEC_ROW_COUNT
+  const wantRows =
+    name === 'parse.tsv'
+      ? PARSE_SPEC_ROW_COUNT
+      : name === 'canon-fixpoint.tsv'
+        ? CANON_FIXPOINT_ROW_COUNT
+        : DIVERGENT_SPEC_ROW_COUNT
   assert.equal(rows.length, wantRows, `${name}: exact row-count ratchet`)
   return rows
 }
@@ -567,6 +575,32 @@ describe('parser spec — divergent.tsv (the live parity-debt ledger)', () => {
       )
     })
   }
+})
+
+// ADR-015's fixpoint diagnostic (design/CANON-ROUNDTRIP.0.md §1, §4), the Go
+// runner's TestParserCanonFixpoint over the same ledger: every parse.tsv row
+// that parses must canon to text that, parsed again, canons the same — or be
+// listed on canon-fixpoint.tsv with the record that closes it. A listed row
+// that reaches its fixpoint fails until removed: the ledger only shrinks.
+describe('parser spec — canon fixpoint (ADR-015)', () => {
+  const ledger = new Map(readSpec('canon-fixpoint.tsv').map((r) => [r.src, r.cols[0]!]))
+  const seen = new Set<string>()
+  for (const r of readSpec('parse.tsv')) {
+    const r1 = renderSpec(r.src)
+    if (r1.startsWith('ERR')) continue
+    if (ledger.has(r.src)) seen.add(r.src)
+    it(`${r.line}: ${JSON.stringify(r.src)} reaches its fixpoint or is ledgered`, () => {
+      const r2 = renderSpec(r1)
+      if (ledger.has(r.src)) {
+        assert.notEqual(r2, r1, `reaches its fixpoint now (${ledger.get(r.src)}): remove it from canon-fixpoint.tsv`)
+      } else {
+        assert.equal(r2, r1, 'not a fixpoint, and not on canon-fixpoint.tsv')
+      }
+    })
+  }
+  it('lists only parse.tsv rows that parse', () => {
+    for (const src of ledger.keys()) assert.ok(seen.has(src), `canon-fixpoint.tsv lists ${JSON.stringify(src)}`)
+  })
 })
 
 describe('parser spec — nesting.tsv', () => {

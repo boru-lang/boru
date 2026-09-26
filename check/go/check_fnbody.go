@@ -125,7 +125,7 @@ func checkBodyReturnConformance(r *core.Registry, name string, declared []*core.
 		// the pattern doubles as the "expected" rendering.
 		if k < len(patterns) && patterns[k] != nil &&
 			!got.Dynamic && got.Parent != nil && !core.IsBareTypeNode(got) && !got.Parent.Equal(core.TNone) {
-			if _, ok := core.Unify(*patterns[k], got); !ok {
+			if _, ok := core.Unify(*patterns[k], got); !ok && !refinementUndecided(*patterns[k], got) {
 				detail, _ := core.ReturnTypeErrorText(name, k+1, patterns[k], got)
 				if !hasCheckDiagnostic(r, "type_error", detail) {
 					r.Check.AddDiagnostic(core.CheckDiagnostic{
@@ -308,8 +308,9 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 	// an anonymous lambda's placeholder count (LambdaCountContract), which
 	// stands at run time even though the ANALYSER below infers past it.
 	compileReturns := declaredReturns
+	lambdaReturns := len(s.Returns)
 	if fnDef.Anonymous {
-		compileReturns = LambdaCountContract(len(s.Returns))
+		compileReturns = LambdaCountContract(lambdaReturns)
 		declaredReturns = nil
 		declaredReturnPatterns = nil
 	}
@@ -350,7 +351,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// is the (word, position) the region capture was offered under
 		// (compiler/go/region_record.go) — the word's own position, which is
 		// not args[0]'s, the blame position the call event carries.
-		call := callSite{word: caller.Check.CurCallWord, pos: caller.Check.CurCallPos}
+		call := callSite{word: caller.Check.CurCallWord, pos: caller.Check.CurCallPos, anonymous: fnDef.Anonymous}
 		checkRecordShapeArgs(r, nameCopy, paramPatterns, args)
 		// Generic fns (Phase 5): infer the parameter bindings from the
 		// call's arg carriers and install them around the body
@@ -740,7 +741,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// closure uses it: the snapshot at the top of
 				// BuildFnBodyReturnsFn is what the closure is entitled to read.
 				noteBakedCallTarget(es, r, nameCopy)
-				es.RecordUserCall(fnUnit, call.word, args, nil, pos, call.pos)
+				es.RecordUserCall(fnUnit, call.word, args, nil, callAnchor(call, pos), call.pos)
 				return nil
 			}
 			// A ZERO-declared-return POLY set (COMPILE FAILURE-CLOSURE.0 §6a): every
@@ -776,6 +777,12 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// those N carriers so downstream resolves them to this dispatch — or,
 		// for a construction-scope-capture unit, the fn-VALUE apply fallback
 		// (the anonymous-lambda factory result is exactly this arm's shape).
+		// An anonymous lambda's frame keeps its placeholder count off the top
+		// and drops the unnamed args pushed beneath the body, as its unit's
+		// RET does (trimUnnamedArgs, NUR255).
+		if fnDef.Anonymous {
+			stk = trimUnnamedArgs(stk, lambdaReturns, unnamedParamCount(sigParams))
+		}
 		if fnUnit >= 0 {
 			stk = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, call, args, freshResidual(stk))
 		}
@@ -910,6 +917,27 @@ func noteBakedCallTarget(es core.EmitRecorder, r *core.Registry, name string) {
 }
 
 // recordUserCallOrApply records a compiled-unit dispatch at a ReturnsFunc
+// callAnchor is the source position a recorded user call carries into the
+// CALL_USER instruction's debug entry: the call WORD's, where the
+// interpreter's ReturnCheck marker anchors a return-contract error (`h` in
+// `def h fn [[][Integer][1 2]] end h`, 1:33) — the first argument's only
+// for a call whose word carries none. Before this the entry was the first
+// argument's position, so a 0-argument call's contract error rendered
+// "source position unknown" and a 1-argument call's anchored at the
+// argument (NUR118).
+//
+// An ANONYMOUS lambda's call takes no argument fallback: the interpreter
+// anchors its return check at the fn value's own position, and a lambda
+// built in place has none, so both lanes report no position. The argument's
+// anchor made `[(0 ([0] => [1 2])) 7]` report 1:3 compiled beside the
+// interpreter's unknown position (NUR259).
+func callAnchor(call callSite, arg core.SrcPos) core.SrcPos {
+	if call.pos.Row > 0 || call.anonymous {
+		return call.pos
+	}
+	return arg
+}
+
 // record site: the §4.3 fn-value apply fallback where the call qualifies
 // (the outs slice is then COPIED with the freshened carrier in slot 0),
 // else the ordinary RecordUserCall. Returns the outs to hand downstream.
@@ -934,7 +962,7 @@ func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, 
 		return outs
 	}
 	noteBakedCallTarget(es, r, name)
-	es.RecordUserCall(fnUnit, call.word, args, outs, pos, call.pos)
+	es.RecordUserCall(fnUnit, call.word, args, outs, callAnchor(call, pos), call.pos)
 	return outs
 }
 
@@ -944,6 +972,10 @@ func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, 
 type callSite struct {
 	word string
 	pos  core.SrcPos
+	// anonymous marks a literal lambda's call: the interpreter anchors its
+	// return check at the fn VALUE's own position (execFnDefSig's callPos),
+	// which a lambda built in place does not carry (callAnchor, NUR259).
+	anonymous bool
 }
 
 // recordPendingClosureApply routes the re-step dispatch of a closure this
@@ -1168,6 +1200,33 @@ func checkFnBodyAtConstruction(r *core.Registry, name string, fnDef core.FnDefIn
 			r.Check.Diagnostics = kept
 		}
 	}
+}
+
+// refinementUndecided reports whether a return pattern's failed Unify is a
+// value-level refinement's — a DepScalar, `[(Integer gt 3)]`, or a union
+// carrying one — over a residual the pass does not know: membership is the
+// VALUE's, which only the run has, and the RET check asks it there. The
+// named spelling (`[Big]`) defers exactly this case already (the scalar-fold
+// gate below), so an inline refinement return refused an abstract Integer at
+// check time that both lanes then returned (NUR232). A residual provably
+// outside the refinement's base, or a compile-time-known scalar, still
+// decides.
+func refinementUndecided(pattern, got core.Value) bool {
+	if ScalarFoldOperand(got) {
+		return false
+	}
+	if pattern.IsDepScalar() {
+		return !residualProvablyDisjoint(got, pattern.Parent)
+	}
+	if core.IsDisjunct(pattern) {
+		di, _ := core.AsDisjunct(pattern) // IsDisjunct: the payload is a DisjunctInfo
+		for _, alt := range di.Alternatives {
+			if refinementUndecided(alt, got) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // narrowToDeclaredParam is the RECOVERED call's generalisation of one arg: a

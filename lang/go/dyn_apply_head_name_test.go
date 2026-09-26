@@ -99,45 +99,27 @@ func TestDynApplyHeadNameUnnamed(t *testing.T) {
 	}
 }
 
-// TestDynApplyHeadNameNamelessArm pins the NEGATIVE half of the seat: a head
-// the recorder did not see read bare seats no name, so the op's no-match keeps
-// the nameless builder (RuntimeNoMatch over the applied fn's own name) it
-// always used. Without a row here that arm is unreachable — every other
-// no-match the corpus reaches now carries a name.
-//
-// The witness is a `/v` delivery, and it carries a PRE-EXISTING divergence of
-// its own, unchanged by this increment and byte-identical on the commit before
-// it (NUR124's direction — the compiled lane APPLIES where the interpreter
-// PARKS):
-//
-//	def appv fn [[g:Function][Integer][(g/v 5)]]
-//	appv (z:String => [z])
-//	  interpreted  type_error: appv: expected 1 return value(s), got 2 — [fn g(String) 5]
-//	  compiled     signature_error: cannot call `` — no signature matches …
-//
-// The interpreter leaves the /v-parked fn as DATA inside the paren; the VM's
-// callDynTrailTop strips the stored value's construction-time quote to mirror
-// a READ-substituted arrival and so applies it. That strip is deliberate and
-// documented at its site; what this row pins is that the diagnostic comes
-// from the nameless builder — no head name is SEATED for a `/v` delivery,
-// which is a value delivery and not the word dispatch the interpreter would
-// name. The builder prints the applied fn's OWN name, and since the
-// twenty-sixth increment that name is the frame binding's (`nameFrameFns`:
-// the VM names a fn bound for a named param as the interpreter's frame
-// binding does), so the row reads `cannot call `g“ — through the value,
-// not through a seat — where it read `cannot call ``` before.
+// TestDynApplyHeadNameNamelessArm pins the `/v` DELIVERY inside a paren: a
+// value, not a word read, so no head name is seated and no word dispatch is
+// made. The interpreter applies the parked fn when an overload takes the
+// window (`(g/v 5)` over an Integer g is 5) and otherwise leaves it as DATA
+// beside its window, so the frame's return-count check is what raises — on
+// BOTH lanes since NUR124's fifth witness closed (the VM used to strip the
+// quote and raise `cannot call `g“ through the nameless no-match builder
+// where the interpreter parked).
 func TestDynApplyHeadNameNamelessArm(t *testing.T) {
 	const src = `def appv fn [[g:Function][Integer][(g/v 5)]]  appv (z:String => [z])`
-	_, compiled, errC, _, errI := runBothEngines(t, src)
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 	if !compiled || errC == nil || errI == nil {
 		t.Fatalf("compiled=%v errC=%v errI=%v, want both lanes raising", compiled, errC, errI)
 	}
-	if !strings.Contains(errC.Error(), "cannot call `g`") {
-		t.Errorf("the nameless builder prints the frame-named value:\n%s", errC)
+	requireParity(t, src, gotC, errC, gotI, errI)
+	for _, err := range []error{errC, errI} {
+		if !strings.Contains(err.Error(), "expected 1 return value(s), got 2") {
+			t.Errorf("a /v fn the window does not fit PARKS — the count error is the verdict:\n%s", err)
+		}
 	}
-	if !strings.Contains(errI.Error(), "expected 1 return value(s), got 2") {
-		t.Errorf("the interpreter still PARKS the /v fn — re-measure this record:\n%s", errI)
-	}
+	requireEngineParity(t, `def appv fn [[g:Function][Integer][(g/v 5)]]  appv (z:Integer => [z])`, true)
 }
 
 // TestDynApplyHeadNameWrittenTuple is the row that was a DECLINE through two

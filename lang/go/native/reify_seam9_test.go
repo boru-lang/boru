@@ -50,9 +50,9 @@ func TestW9RawToValueBranches(t *testing.T) {
 
 func TestW9TargetTypeOfPredicate(t *testing.T) {
 	r := seam5Reg(t)
-	// A single-typed-param fn is a predicate constraint whose input type
-	// is the recovery target (258.57,260.3).
-	res, err := seam5Run(r, `fn [[n:Integer] [Boolean] [true]]`)
+	// A declared predicate (fnpred) is a constraint whose input type is the
+	// recovery target (258.57,260.3).
+	res, err := seam5Run(r, `fnpred [[n:Integer] [true]]`)
 	if err != nil || len(res) == 0 {
 		t.Fatalf("build predicate fn: %v / %v", res, err)
 	}

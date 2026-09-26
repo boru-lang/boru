@@ -5,8 +5,11 @@
 // origin." Accepted 2026-08-15, and ruled ABSOLUTE by the maintainer on
 // 2026-08-25 — "everything everywhere every time and always".
 //
-// An absolute rule with no gate is a rule nobody can enforce. NUR100 records
-// two live sites that contradict the ADR; a THIRD was found on 2026-08-28 —
+// An absolute rule with no gate is a rule nobody can enforce. NUR100 recorded
+// two live sites that contradicted the ADR (both closed 2026-09-26: the
+// predicate role keys on a one-value APPLICATION through the matcher, the
+// poly decline on an overload's declared re-step); a THIRD was found on
+// 2026-08-28 —
 // the compiler's ARITY-1 BOUNDARY, which decided that a one-input callback
 // could compile and a two-input one could not — and it was found while fixing
 // something else, not by looking. It had survived unrecorded because it read
@@ -26,8 +29,9 @@
 // machinery — engine.go, signature.go, match.go, carrier.go — reading arities
 // in order to MATCH a signature. That IS the one argument rule; implementing
 // it is not an exception to it. The pins exist so that a CHANGE in the count
-// forces someone to look and say which kind it is. Two entries are known
-// divergences and are marked as such.
+// forces someone to look and say which kind it is. The two entries that
+// were known divergences (NUR100) are closed; their files' remaining pins are
+// the argument rule's own reads.
 //
 // If this test failed because a count ROSE: say which kind the new site is. If
 // it implements the argument rule (matching, dispatch, canon), raise the pin
@@ -87,32 +91,57 @@ var pinnedAritySites = map[string]int{
 	// parenFeedsPendingForward asks whether a parked Forward is still
 	// collecting (`fwd.CollectedArgs < fwd.Sig.TotalArgs()`, the same test
 	// hasPendingForwardCollecting makes). Both decide where a value's
-	// arguments COME FROM, never what a fn may do by its count. 29 -> 30
-	// on 2026-09-26: TryRecordRecoveredUserFn refuses a recovered window
-	// shorter than the sole sig (`len(window) < sig.TotalArgs()`) — the
-	// matcher's own arity rule, mirrored so the guarded CALL_USER never
-	// binds a partial window the interpreter's signature_error refuses; it
-	// decides whether the arguments are THERE, not what the fn does by
-	// their count. 30 -> 32 on 2026-09-26 (the last real programs, the
-	// fn-value recovery): narrowOverloadShadowed's window-arity candidate
-	// filter (`s.TotalArgs() != len(window)`), which proves which overload
-	// the interpreter's first match takes over a fixed operand window — the
+	// arguments COME FROM, never what a fn may do by its count.
+	// 29 -> 27 (2026-09-26, NUR078 closed): the retired clause-2 sites took
+	// their two reads with them — sigWantsFunctionAt's bounds check on the
+	// slot it asked about (`pos >= sig.TotalArgs()`) and
+	// hasPendingForwardExpectingFunction's still-collecting test
+	// (`nextIdx < fwd.Sig.TotalArgs()`). No site was added: a bare fn name
+	// now calls at every slot, so nothing asks which slot is open.
+	// 27 -> 28 (2026-09-26, the merge of main's #509): TryRecordRecoveredUserFn
+	// refuses a recovered window shorter than the sole sig (`len(window) <
+	// sig.TotalArgs()`) — the matcher's own arity rule, mirrored so the
+	// guarded CALL_USER never binds a partial window the interpreter's
+	// signature_error refuses; it decides whether the arguments are THERE,
+	// not what the fn does by their count (main's 29 -> 30).
+	// 28 -> 30 (2026-09-26, the merge of main's #510): main's two sites
+	// (its 30 -> 32, the last real programs, the fn-value recovery) —
+	// narrowOverloadShadowed's window-arity candidate filter
+	// (`s.TotalArgs() != len(window)`), which proves which overload the
+	// interpreter's first match takes over a fixed operand window — the
 	// matcher's own rule — and fnValueNoMatchRecovers' empty-table guard
 	// (`len(fn.Signatures) == 0`, no overload to recover into). No function
 	// behaves differently by its count.
+	// 30 -> 32 (2026-09-26, NUR241 closed as a sound decline):
+	// noteWordLedArrival skips a slot past the deferred signature's own
+	// arity (`slot >= fwd.Sig.TotalArgs()`) — whether the window HAS that
+	// slot — and narrowerWindowFits skips a 0-arg signature
+	// (`TotalArgs() == 0`), which takes no window and so cannot be the
+	// narrower one that fits the stack beneath the word. Both ask which
+	// window the matcher's own rule collects, never what a fn does by its
+	// count.
 	"core/go/engine.go":       32,
 	"core/go/region_diag.go":  1,
-	"core/go/collect_plan.go": 5,
+	"core/go/collect_plan.go": 8, // 5 -> 8 (NUR228): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
 	"core/go/signature.go":    12,
 	"core/go/match.go":        1,
 	"core/go/fnsig.go":        3,
 	"core/go/word_extend.go":  6,
-	"core/go/core_helpers.go": 4,
+	// 4 -> 2 (2026-09-25, NUR099 closed): PredicateInputType lost the
+	// parameter-COUNT route (`!info.Predicate && len(sig.Params) != 1`) —
+	// ADR-016's arity-keyed exception, a fn body read as a membership test
+	// because it took one parameter — and its first-signature guard now
+	// reads the declared predicate's params once. Only `fnpred` declares a
+	// predicate; what remains guards the declared signature's first slot.
+	"core/go/core_helpers.go": 2,
 	"core/go/core_ref.go":     3,
-	"core/go/unify.go":        3,
-	"core/go/deadsig.go":      1,
-	"core/go/canon.go":        1,
-	"core/go/value.go":        1,
+	// 3 -> 2 (2026-09-25, NUR099 closed): isPredicateFnValue — "looks like
+	// a predicate because it takes one parameter", the deprecated route —
+	// is deleted; IsDeclaredPredicateFn reads the `fnpred` mark instead.
+	"core/go/unify.go":   2,
+	"core/go/deadsig.go": 1,
+	"core/go/canon.go":   1,
+	"core/go/value.go":   1,
 	// NoteFnShape rejects a NEGATIVE claim (`FnShape.Arity < 0`) — a shape a
 	// producing word could not build (`partial` over a 0-param fn raises) —
 	// a validity guard on the claim itself, not a decision keyed on a
@@ -120,6 +149,18 @@ var pinnedAritySites = map[string]int{
 	"core/go/check_state.go":  1,
 	"core/go/boru_error.go":   2,
 	"core/go/macro_expand.go": 1,
+	// sameSigShape compares two signatures' arity (`a.TotalArgs() ==
+	// b.TotalArgs()`) and walks their positions (`i < a.TotalArgs()`):
+	// whether one branch arm's fn can stand for the other's at a call's
+	// record (NUR245) — the shape the call's claim fixes, never behaviour
+	// keyed on a function's parameter count.
+	// 2 -> 5 (2026-09-26, NUR245's differing shapes): claimCompatibleSigs
+	// walks the same positions (`i < a.TotalArgs()`) to widen each one's
+	// type, and widenedSig copies the declared params only when there are
+	// some (`len(a.Params) > 0`) and re-aligns the legacy Args only when
+	// they are the joined window's own (`len(a.Args) == len(joined)`) —
+	// the widened model's positions, one per slot of the call's window.
+	"core/go/spec_fn.go": 5,
 
 	// ── The checker's and VM's mirrors of that same matching.
 	// 13 -> 15 on 2026-09-26 (the last real programs):
@@ -138,7 +179,14 @@ var pinnedAritySites = map[string]int{
 	// never what a function of a given arity may do: every arity takes the
 	// same path, and the matching itself is SigTypeMatches, the argument
 	// rule's own arm.
-	"check/go/method_shape.go": 2,
+	// 2 -> 3 (2026-09-25, NUR096 closed): tryFnShapeTypedWindow stands
+	// aside for an ARITY-0 shape (`shape.Arity == 0`). The model it guards
+	// consumes a shape's window by the argument rule; a 0-parameter shape
+	// has no window, and whether a stored 0-arg fn FIRES is the runtime's
+	// anonymous-0-arg park (ADR-016's one kept gate, decided by the stored
+	// fn, not the shape) — so the pass leaves the carrier as it was rather
+	// than guess. It decides nothing by count: it declines to model.
+	"check/go/method_shape.go": 3,
 	// 1 -> 2 (2026-09-25, the strict-Any dyn-body recovery):
 	// widestSatisfiableOverload compares `n > best.TotalArgs()` to pick,
 	// among a word's overloads whose FULL operand window exists at the
@@ -204,7 +252,20 @@ var pinnedAritySites = map[string]int{
 	// mirrored for a Go-implemented fn value handed to a native's body
 	// seam; every arity takes the same path and the match is
 	// tryNativeFnApply's.
-	"eng/go/vm.go": 18,
+	// 18 -> 22 (2026-09-25, the no-match window and the fn-value body's
+	// own args): the closure-invocation seam brackets a fn value's body
+	// with the value's OWN call args, slicing the inputs the unit declared
+	// out of the seam's window (`fn.NArgs <= len(args)`: the argument
+	// rule's own count, NUR166), and polyHasArity asks whether some
+	// non-fallback overload declares exactly the k inputs the poly seat is
+	// retrying at — overload selection by declared signature (NUR147).
+	// Neither decides behaviour by arity.
+	// 22 -> 23 (NUR238): valueTrailNoMatch asks whether a trailing apply's
+	// fn value carries ANY own signature (`len(fd.OwnSigs()) == 0`) before
+	// asking whether the window fits one — a value with no contract to
+	// consult is not the no-match rule's. The count of params never enters;
+	// every arity takes the same path.
+	"eng/go/vm.go": 23,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the
@@ -258,21 +319,24 @@ var pinnedAritySites = map[string]int{
 	// by arity: a modified lead of any arity routes the same way.
 	"compiler/go/region_record.go": 1,
 
-	// ── NUR100 §1, a NAMED DIVERGENCE: RunPredicate decides whether a
-	//    function may act as a predicate at all by counting its parameters.
-	//    "predicate type K: RunPredicate: predicate must take exactly one
-	//    argument" — two functions that both express a membership test are
-	//    admitted or declined on arity alone. No verdict yet: the predicate
-	//    role does need to test ONE value, so removing the gate needs a
-	//    replacement contract, not a deletion.
-	"core/go/registry.go": 3,
+	// ── NUR100 §1, CLOSED 2026-09-26. 3 -> 2: RunPredicate no longer decides
+	//    whether a function may act as a predicate by counting its
+	//    parameters ("predicate must take exactly one argument"). Membership
+	//    is a one-value APPLICATION — the candidate is matched against the
+	//    predicate's signatures by MatchFnSig, the one matcher every call
+	//    takes, and a candidate no signature takes is not a member. What
+	//    remains is the argument rule's own: Register's MaxArgs bound and the
+	//    0-arg courtesy dispatch of a call that collected nothing.
+	"core/go/registry.go": 2,
 
-	// ── NUR100 §2, a NAMED DIVERGENCE: smallerArityOverload declines a poly
-	//    window when the word registers an overload consuming FEWER operands.
-	//    Lower stakes than §1 (compile-coverage conservatism, not an answer
-	//    change — the lane falls back and the results agree), but the same
-	//    shape.
-	"compiler/go/compiler_dispatch_record.go": 2,
+	// ── NUR100 §2, CLOSED 2026-09-26. 2 -> 1: tryRecordPoly's decline no
+	//    longer counts a SMALLER-arity overload (smallerArityOverload, gone);
+	//    it keys on what the count stood in for — a reachable overload that
+	//    DECLARES CompileResteps, a dispatch whose result re-steps on the
+	//    tape, which a poly re-match cannot reproduce at any arity
+	//    (restepOverloadReachable). What remains is the barrier clamp reading
+	//    a signature's forward positions, the argument rule itself.
+	"compiler/go/compiler_dispatch_record.go": 1,
 
 	// ── Compiler: recording and lowering against declared signatures.
 	// 3 -> 4: the `apply` word's two overloads differ in arity — [Function]
@@ -302,7 +366,15 @@ var pinnedAritySites = map[string]int{
 	// the arm as settled or unsettled for the residual arms — the same
 	// rule the interpreter's execFnDefLiteral applies to the value at run
 	// time — never what a fn of a given arity may do.
-	"compiler/go/emit.go": 8,
+	// 8 -> 10 (2026-09-26, NUR246): applyWindowFits compares a produced
+	// closure's claimed param count with the apply's window (`len(s.Params)
+	// != len(sigArgs)`) before matching each position — whether the window
+	// the op binds provably FITS, the argument rule; raisesTrailNoMatch asks
+	// whether a named value carries any own signature (`len(fd.OwnSigs()) >
+	// 0`), valueTrailNoMatch's own guard mirrored so the recorder knows
+	// which values raise their no-match. Neither decides behaviour by a
+	// function's arity.
+	"compiler/go/emit.go": 10,
 	// sameFnDecls compares two fn VALUES for declaration identity — the
 	// same signature list: the same count, then each position's declaration
 	// site (Signature.Decl). It decides whether a unit's recorded def event
@@ -323,7 +395,15 @@ var pinnedAritySites = map[string]int{
 	// signature to match; one that does is a fn VALUE, and every arity of
 	// one takes the same path. Matching machinery, not a decision by arity —
 	// S1b-2 of design/FULL-COMPILATION-REPLAN.0.md.
-	"compiler/go/bytecode.go": 1,
+	// 1 -> 2: ClosureCallsAtLanding (NUR235) asks whether a NAMED fn value
+	// landing where nothing supplies an argument matches at all — the
+	// argument rule over an EMPTY supply. A signature that needs no operand
+	// matches there, so a nullary named value calls, exactly as
+	// MatchSignature admits it over no values; one that needs any fails the
+	// match and stays data, as the interpreter leaves it. The count decides
+	// only whether the match can succeed over nothing, never what a fn of a
+	// given arity may do.
+	"compiler/go/bytecode.go": 2,
 
 	// ── Generics: instantiation matches a declaration's shape.
 	"core/go/generics_unify.go":       1,
@@ -338,11 +418,17 @@ var pinnedAritySites = map[string]int{
 	//    present it (help text, macro expansion, behaviour install, codecs).
 	"lang/go/native/native_behave.go": 8,
 	"lang/go/native/help/help.go":     8,
-	// 5 -> 6 (2026-09-26, the sweep's last cells): recordMacroFnDispatch
-	// picks the emit / mini fn-dispatch native's signature whose arg count
-	// is the macro call's SURFACE operand count — overload selection by the
-	// declared signature, the argument rule, never behaviour by arity.
-	"lang/go/native/native_macro.go": 6,
+	// 5 -> 4 (2026-09-25): the runtime `parse <fn>` dispatch's overload-list
+	// presence test now reads the value's own signature list through a
+	// local (`len(own) == 0`, the list a fn-shaped value resolves to) — the
+	// same OVERLOAD-LIST presence test as before, which the walker no
+	// longer sees as a selector; no site changed meaning.
+	// 4 -> 5 (2026-09-26, the merge of main's #510; main's 5 -> 6, the
+	// sweep's last cells): recordMacroFnDispatch picks the emit / mini
+	// fn-dispatch native's signature whose arg count is the macro call's
+	// SURFACE operand count — overload selection by the declared
+	// signature, the argument rule, never behaviour by arity.
+	"lang/go/native/native_macro.go": 5,
 	"lang/go/native/native_help.go":  3,
 	// 1 -> 2: the runtime `parse <fn>` dispatch reads whether a registry
 	// binding carries any overloads AT ALL before matching against them
@@ -367,9 +453,18 @@ var pinnedAritySites = map[string]int{
 	// aside so CallBoru raises what it raised. Matching machinery, not a
 	// decision by arity.
 	"lang/go/native/body_sig_stamp.go": 1,
-	"lang/go/stackform/walk.go":        1,
-	"basic/go/native_control.go":       1,
-	"basic/go/native_definition.go":    1,
+	// A StackForm replays a RECORDED call: its Arity is how many operands
+	// the recorder saw the call take, the argument rule as it ran, never a
+	// function's parameter count. walk.go's structural equality compares
+	// it for a named Call and (1 -> 2, 2026-09-25, NUR077) for the new
+	// Apply of a fn value; eval.go's Replayable declines an Apply over
+	// more than two recorded operands, which no stack shuffle (swap, rot)
+	// can lift the applied value above — how the replay DELIVERS the
+	// arguments, not what a fn may do by its count.
+	"lang/go/stackform/walk.go":     2,
+	"lang/go/stackform/eval.go":     1,
+	"basic/go/native_control.go":    1,
+	"basic/go/native_definition.go": 1,
 
 	// ── Tooling and fixtures.
 	"tools/piecetool/demethod.go": 1,

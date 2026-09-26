@@ -352,7 +352,7 @@ func TestServiceCoverRunHandlerChainGuards(t *testing.T) {
 
 	// A non-function chain entry is declined (defense-in-depth: add/wrap
 	// validate handlers, but the chain runner must not trust them).
-	if _, err := runHandlerChain(r, state, req, []Value{NewInteger(1)}); err == nil ||
+	if _, err := runHandlerChain(r, state, req, []chainLink{{handler: NewInteger(1)}}); err == nil ||
 		!strings.Contains(err.Error(), "handler is not a function") {
 		t.Fatalf("non-function chain entry must error, got %v", err)
 	}
@@ -370,5 +370,17 @@ call {op:"solo"} svc`)
 	}
 	if len(out) != 1 || !IsNoneShape(out[0]) {
 		t.Errorf("prior past bottom must reply None, got %v", out)
+	}
+}
+
+// topSlots reads the newest layer's binding slots; an empty stack has none
+// (dispatch only asks of a routed pattern, which always has a layer).
+func TestServiceCoverTopSlotsOfAnEmptyStack(t *testing.T) {
+	if got := topSlots(nil); got != nil {
+		t.Errorf("an empty stack has no slots, got %v", got)
+	}
+	layers := [][]recvBind{nil, {{name: "n", t: TInteger}}}
+	if got := topSlots(layers); len(got) != 1 || got[0].name != "n" {
+		t.Errorf("the newest layer's slots, got %v", got)
 	}
 }

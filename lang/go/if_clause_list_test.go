@@ -59,6 +59,11 @@ func TestClauseListIfCompilesWithParity(t *testing.T) {
 		`if [false 1 false 2]`,
 		`if [false [1] 0 [2] '' [3] none [4] [5]]`,
 		`if [true none 1]`,
+		// a decided arm that nets nothing is a 0-value statement (NUR243, the
+		// reverse-order NUR run's; main's #512 declined it before the merge)
+		`if [true []]`,
+		`if [true []] end 5`,
+		`if [true [] false [1]]`,
 		// inside fn bodies
 		`def f fn [[x:Integer][Any][if [[x lt 3] ['small'] [x lt 10] ['mid'] ['big']]]] end f 1 f 5 f 50`,
 		`def f fn [[x:Integer][String][if [[x lt 3] ['small'] [x lt 10] ['mid'] ['big']]]] end f 1 f 5 f 50`,
@@ -136,7 +141,6 @@ func TestClauseListIfDeclinesLoudly(t *testing.T) {
 		{`if [(1 lt 2) [1] [2]]`, uncaptured + "a clause condition that is neither a code body nor a scalar", "[1]"},
 		{`if [{a:1} [1] [2]]`, uncaptured + "a clause condition that is neither a code body nor a scalar", "[1]"},
 		{`def mk fn [[][List][quote [true [1] [2]]]] end if (mk)`, "code-body word if", "[1]"},
-		{`if [true []]`, "if: branch produces no value", "[]"},
 		{`def g fn [[][Integer][5]] end if [true [g/v]]`, "if: the taken arm leaves a fn value", "[fn g]"},
 		{`def g fn [[][Integer][5]] end if [[false] [1] [g/v]]`, "if: the taken arm leaves a fn value", "[fn g]"},
 		{`def g fn [[][Integer][5]] end if [true] [g/v] [1]`, "if: the taken arm leaves a fn value", "[fn g]"},

@@ -70,6 +70,13 @@ const (
 	// 10)`, inline or named). Runtime unifies the value against the
 	// self-contained Constraint; the value keeps its base tag (no reparent).
 	TypedBindDepScalar
+	// TypedBindRunMembership: a constraint whose membership only the run
+	// knows — a type over a refinement whose bound the analysis pass did not
+	// know (NUR231): a named node the run installed (RunTypeInstall forwards
+	// it to the run's type) or, with ConsOperand, the inline constraint the
+	// run computed. Runtime unifies the value against it; the value keeps its
+	// tag (a refinement, union or negation constraint never reparents).
+	TypedBindRunMembership
 )
 
 // TypedBindSpec describes one OpBindTyped: the typed-def name (for the error
@@ -87,4 +94,18 @@ type TypedBindSpec struct {
 	Describe string
 	Def      *Type  // reparent target: TypedBindRefine always; TypedBindPredicate when the interpreter reparents; nil otherwise
 	Cons     *Value // constraint value: TypedBindPredicate (the fn) and TypedBindDepScalar (the DepScalar); nil for TypedBindRefine
+	// ConsOperand: the constraint is not baked — the run computed it, and it
+	// sits on the stack beneath the value (TypedBindRunMembership over an
+	// inline constraint, NUR231). An empty Describe renders the run's
+	// constraint, as defTypedHandler's describeType renders an inline one.
+	ConsOperand bool
+}
+
+// TypeRunInstallSpec describes one OpBindTypeRun (NUR231): the type name the
+// run installs from the body it computed, and the node the analysis pass
+// minted under that name — the node every compiled reference names, by ID or
+// by *Type, which forwards to the run's (RunTypeInstall).
+type TypeRunInstallSpec struct {
+	Name string
+	Node *Type
 }

@@ -23,7 +23,7 @@ import {
 } from "./type.ts";
 import { Decimal } from "./decimal.ts";
 import { urlonHref, type UrlonInfo } from "./value.ts";
-import type { DispatchModInfo, FnDefInfo, SugarInfo, WordInfo, XmlElement } from "./value.ts";
+import type { DispatchModInfo, FnDefInfo, InterpSegment, SugarInfo, WordInfo, XmlElement, XmlTmpl } from "./value.ts";
 import {
   ChildType,
   ErrorInfo,
@@ -198,7 +198,10 @@ export function formatBigDecimal(d: Decimal): string {
 
 /** Canon renders a stack of values as canonical boru source. */
 export function canon(stack: Value[]): string {
-  return stack.map(canonValue).join(" ");
+  // The sequence rule (canonSeqParts): a group-modifier marker is spelled
+  // after its group — core/go's CanonValues (NUR072). A result stack holds
+  // no marker, so an evaluated stack renders exactly as before.
+  return joinCanonParts(canonSeqParts(stack, canonValue));
 }
 
 /** canonValue renders one value as canonical boru source. */
@@ -274,12 +277,12 @@ export function canonValue(v: Value): string {
     const parts = [
       `:${canonTypeTag(ct.child)}`,
       ...ct.elements.map(canonValue),
-      ...ct.entries.map((e) => `${e.key}:${canonChild(e.value)}`),
+      ...ct.entries.map((e) => `${canonKey(e.key)}:${canonChild(e.value)}`),
     ];
-    return `${open}${parts.join(" ")}${close}`;
+    return `${open}${joinCanonParts(parts)}${close}`;
   }
   if (v.vType.matches(TList) && Array.isArray(v.data)) {
-    const body = `[${v.asList().map(canonChild).join(" ")}]`;
+    const body = `[${joinCanonParts(canonSeqParts(v.asList(), canonChild))}]`;
     return v.quoted ? `(quote ${body})` : body;
   }
   if (v.data instanceof OptionsData) {
@@ -287,12 +290,12 @@ export function canonValue(v: Value): string {
     // D1: render in INSERTION order (design/FLEX-ATTRS.1.md §3), matching
     // Go's joinEntries which iterates Keys(). SortedKeys() stays for
     // order-insensitive equality only (coretype.ts valuesEqual).
-    const parts = m.keys().map((k) => `${k}:${canonValue(m.get(k)!)}`);
+    const parts = m.keys().map((k) => `${canonKey(k)}:${canonValue(m.get(k)!)}`);
     return `options{${parts.join(" ")}}`;
   }
   if (v.vType.equal(TMap) && v.data instanceof OrderedMap) {
     const m = v.data;
-    const parts = m.keys().map((k) => `${k}:${canonChild(m.get(k)!)}`);
+    const parts = m.keys().map((k) => `${canonKey(k)}:${canonChild(m.get(k)!)}`);
     return `{${parts.join(" ")}}`;
   }
   // An inspection map renders in insertion order with bare word values
@@ -302,7 +305,7 @@ export function canonValue(v: Value): string {
     const parts = m.keys().map((k) => {
       const val = m.get(k)!;
       const rendered = val.isWord() ? val.asWord().name : canonValue(val);
-      return `${k}:${rendered}`;
+      return `${canonKey(k)}:${rendered}`;
     });
     return `{${parts.join(" ")}}`;
   }
@@ -313,19 +316,14 @@ export function canonValue(v: Value): string {
     return canonReach(v);
   }
   if (v.isWord()) {
-    // A word carries its `/`-modifiers in the payload, and dropping them
-    // made canon say something the source did not (NUR059): both `foo/v`
-    // and `foo/2` rendered `word(foo)`, so re-parsing the canon yielded a
-    // different program.
-    //
-    // Scoped to words that HAVE a modifier. A bare word keeps its existing
-    // `word(foo)` spelling: rendering every word bare is a far larger
-    // change and a different question — `word(foo)` denotes a word VALUE,
-    // while bare `foo` re-parses as a word that will be DISPATCHED — which
-    // this record does not decide.
+    // A word renders as its NAME plus any `/`-modifier suffix — the source
+    // that re-parses to this word value (ADR-015), the Go twin exactly. A
+    // plain word used to keep the `word(foo)` spelling, which re-parses as
+    // the `word` splice over a group and so was never source; bare `foo`
+    // re-parses to this Word, and whether it is later dispatched is
+    // evaluation, which canon does not model (NUR072).
     const w = v.asWord();
-    const mods = canonWordModifiers(w);
-    if (mods !== "") return w.name + mods;
+    return w.name + canonWordModifiers(w);
   }
   if (isSugar(v)) {
     // Sugar markers have a surface spelling of their own; without one they
@@ -340,8 +338,9 @@ export function canonValue(v: Value): string {
   if (v.isParenExpr() && Array.isArray(v.data)) {
     // `(1 add 2)` rather than `paren([1 word(add) 2])` (NUR059). The body
     // renders through canonReachTokens, which keeps words bare — inside a
-    // group they are CODE, not atom data.
-    return "(" + canonReachTokens(v.data as Value[]) + ")";
+    // group they are CODE, not atom data; an arrow fold renders bare
+    // (canonParen, NUR072).
+    return canonParen(v.data as Value[]);
   }
   if (v.isFnDef()) {
     return canonFnDef(v.asFnDef());
@@ -363,7 +362,97 @@ export function canonValue(v: Value): string {
       )
       .join(" tor ");
   }
+  // A template string and an XML literal with `${}` holes render as the
+  // source they came from (NUR225) — the Go twin's canonTemplate /
+  // canonXmlTmpl — where both fell to the debug `interp(…)` /
+  // `interp-xml(…)` forms no parser accepts.
+  if (v.isInterpString() && Array.isArray(v.data)) {
+    return canonTemplate(v.data as InterpSegment[]);
+  }
+  if (v.isXmlInterp()) {
+    return canonXmlTmpl(v.data as XmlTmpl);
+  }
   return v.toString();
+}
+
+// canonTemplate renders a template string as backtick source: literal text
+// with the template's escapes (writeTemplateLit), each hole `${…}` over its
+// tokens' canon. The Go twin exactly.
+function canonTemplate(segments: InterpSegment[]): string {
+  let b = "`";
+  for (const s of segments) {
+    if ("expr" in s) b += "${" + canon(s.expr) + "}";
+    else b += templateLit(s.lit);
+  }
+  return b + "`";
+}
+
+// templateLit escapes template literal text: `\\`, `\``, `\$` before `{`,
+// and the control characters canonString escapes.
+function templateLit(s: string): string {
+  let out = "";
+  for (let i = 0; i < s.length; i++) {
+    const c = s[i]!;
+    if (c === "\\") out += "\\\\";
+    else if (c === "`") out += "\\`";
+    else if (c === "$" && s[i + 1] === "{") out += "\\$";
+    else if (c === "\n") out += "\\n";
+    else if (c === "\t") out += "\\t";
+    else if (c === "\r") out += "\\r";
+    else out += c;
+  }
+  return out;
+}
+
+// canonXmlTmpl renders an XML literal with holes as its source, text and
+// attribute text escaped as a plain element's are. The Go twin exactly.
+function canonXmlTmpl(t: XmlTmpl): string {
+  let b = "<" + t.tag;
+  for (const a of t.attrs) {
+    b += " " + a.name + '="';
+    for (const p of a.segs) {
+      if ("expr" in p) b += "${" + canon(p.expr) + "}";
+      else b += escapeXmlAttr(p.lit);
+    }
+    b += '"';
+  }
+  if (t.children.length === 0) return b + "/>";
+  b += ">";
+  for (const c of t.children) {
+    if ("lit" in c) b += escapeXmlText(c.lit);
+    else if ("expr" in c) b += "${" + canon(c.expr) + "}";
+    else b += canonXmlTmpl(c.elem);
+  }
+  return b + "</" + t.tag + ">";
+}
+
+// canonKey spells a map key bare when it lexes back as the same key —
+// letters, decimal digits, `_`, `$`, `-`, `@` — and quoted otherwise (NUR226).
+// The Go twin's rule (unicode.IsLetter / unicode.IsDigit).
+function canonKey(k: string): string {
+  return /^[\p{L}\p{Nd}_$@-]+$/u.test(k) ? k : canonString(k);
+}
+
+// joinCanonParts joins a sequence's parts with a space, or with a comma
+// where a bare capitalised token precedes a `<` — the angle-sugar gate would
+// fuse them (NUR227). The Go twin exactly.
+function joinCanonParts(parts: string[]): string {
+  let out = "";
+  parts.forEach((p, i) => {
+    if (i > 0) {
+      if (p.startsWith("<") && endsWithCapitalisedToken(parts[i - 1]!)) out += ",";
+      out += " ";
+    }
+    out += p;
+  });
+  return out;
+}
+
+function endsWithCapitalisedToken(p: string): boolean {
+  let i = p.length - 1;
+  while (i >= 0 && !" \t\n[](){}:,;'\"`".includes(p[i]!)) i--;
+  const tok = p.slice(i + 1);
+  return tok !== "" && tok[0]! >= "A" && tok[0]! <= "Z";
 }
 
 // canonChild renders a value that sits INSIDE a composite canon (a map value,
@@ -406,7 +495,7 @@ function canonFnDef(fd: FnDefInfo): string {
         .map((p) => `${p.name}:${p.type.toString()}`)
         .join(" ");
       const returns = s.returns.map((r) => r.toString()).join(" ");
-      const body = s.body.map(canonValue).join(" ");
+      const body = canon(s.body);
       return `[${params}][${returns}][${body}]`;
     })
     .join(" ");
@@ -427,8 +516,7 @@ function canonReachToken(v: Value): string {
     const w = v.asWord();
     return w.name + canonWordModifiers(w);
   }
-  if (v.isParenExpr() && Array.isArray(v.data))
-    return "(" + canonReachTokens(v.data as Value[]) + ")";
+  if (v.isParenExpr() && Array.isArray(v.data)) return canonParen(v.data as Value[]);
   if (isReach(v)) return canonReach(v);
   // The end marker renders as `;` inside a reach, never as `end`. A bare
   // `end` in reach-token position is a WORD — a field name in a segment, an
@@ -440,8 +528,58 @@ function canonReachToken(v: Value): string {
 }
 
 function canonReachTokens(toks: Value[]): string {
-  return toks.map(canonReachToken).join(" ");
+  return joinCanonParts(canonSeqParts(toks, canonReachToken));
 }
+
+// canonParen renders a paren group's tokens as source — the Go twin's rule:
+// a group of exactly `A => B` is the arrow's FOLD and renders without
+// parens (it re-folds into this group wherever it is re-read), every other
+// group keeps them (NUR072).
+function canonParen(toks: Value[]): string {
+  if (isLambdaFold(toks)) return canonReachTokens(toks);
+  return "(" + canonReachTokens(toks) + ")";
+}
+
+function isLambdaFold(toks: Value[]): boolean {
+  if (toks.length !== 3 || !isSugar(toks[1]!)) return false;
+  return asSugar(toks[1]!)?.kind === "lambda";
+}
+
+// canonSeqParts renders a value SEQUENCE — a list's elements, a paren body,
+// a parsed stream — the Go twin's rule: a group-modifier marker (`/u /s /f
+// /N` on a paren or reach group) precedes its group in the stream and is
+// spelled as the standalone modifier token AFTER the group — `(1 2) /s` —
+// which re-parses to the same pair (NUR072).
+function canonSeqParts(vals: Value[], render: (v: Value) => string): string[] {
+  const parts: string[] = [];
+  for (let i = 0; i < vals.length; i++) {
+    const mod = groupModifierText(vals[i]!);
+    if (mod !== null && i + 1 < vals.length) {
+      parts.push(render(vals[i + 1]!) + " /" + mod);
+      i++;
+      continue;
+    }
+    parts.push(render(vals[i]!));
+  }
+  return parts;
+}
+
+function groupModifierText(v: Value): string | null {
+  if (!isSugar(v)) return null;
+  const info = asSugar(v);
+  switch (info?.kind) {
+    case "usurp":
+      return "u";
+    case "stack-args":
+      return "s";
+    case "forward-args":
+      return "f";
+    case "force-arity":
+      return String(info.n ?? 0n);
+  }
+  return null;
+}
+
 
 function canonReach(v: Value): string {
   const info = asReach(v);
@@ -497,7 +635,7 @@ export function valToString(v: Value): string {
 // the Atom arm already renders `name/q`.
 function canonWordModifiers(w: WordInfo): string {
   let out = "";
-  if (w.argCount !== undefined && w.argCount >= 0) out += String(w.argCount);
+  if (w.argCount !== undefined && w.argCount >= 0n) out += String(w.argCount);
   if (w.forceForward) out += "f";
   else if (w.forceStack) out += "s";
   if (w.forceUsurp) out += "u";
@@ -506,20 +644,58 @@ function canonWordModifiers(w: WordInfo): string {
 }
 
 // canonSugar renders a sugar marker back to the surface syntax it came
-// from (NUR059), or null when the kind has no spelling of its own.
-//
-// ONLY the angle form is handled, and the restraint is measured. The
-// modifier kinds are lowered from a `/`-suffix canonWordModifiers already
-// renders on the word itself. The lambda / mini / type-bound spellings
-// were TRIED and withdrawn: a per-row fixpoint check showed `+m'src'`
-// rendering `+m<src>` (SugarInfo does not retain the source delimiter) and
-// `w/t` rendering `[w/q]/t`, which does not parse. A spelling that does
-// not round-trip is worse than the debug form, because it looks like
-// source.
+// from (NUR059, NUR072), or null when the kind has no spelling of its own —
+// the Go twin (core/go canon.go) exactly. The modifier kinds have no
+// spelling of their own: on a word the suffix rides on the word, and on a
+// group the sequence rule (canonSeqParts) spells the marker after it, so a
+// marker rendered alone keeps the fallback. The lambda marker is `=>`; a mini literal renders
+// `+name'src'` in one canonical delimiter with the lexer's escapes
+// (canonMiniSrc) — the delimiter the user wrote is not part of the value;
+// the type bound renders `name/t` from the `[name/q]` list its Items hold.
+// A marker no source can produce keeps the fallback.
 function canonSugar(info: SugarInfo): string | null {
   switch (info.kind) {
     case "angle":
       return info.name + "<" + (info.items ?? []).map(canonTypeTag).join(" ") + ">";
+    case "lambda":
+      return "=>";
+    case "mini": {
+      const name = info.name ?? "";
+      const src = info.src ?? "";
+      if (!/^[a-z][a-z0-9-]*$/.test(name) || /[\n\r]/.test(src)) return null;
+      return "+" + name + "'" + canonMiniSrc(src) + "'";
+    }
+    case "type-bound": {
+      const items = info.items ?? [];
+      if (items.length === 1 && Array.isArray(items[0]!.data)) {
+        const inner = items[0]!.data as Value[];
+        if (inner.length === 1 && inner[0]!.vType.equal(TAtom) && typeof inner[0]!.data === "string") {
+          return inner[0]!.asAtom() + "/t";
+        }
+      }
+      return null;
+    }
   }
   return null;
+}
+
+// canonMiniSrc spells a mini literal's source between the canonical `'`
+// delimiter with the lexer's own escapes — the Go twin's rule exactly: `\'`,
+// `\ ` and `\<tab>` escaped, a backslash doubled wherever the lexer would
+// otherwise read an escape (before `'`, `\`, a space or a tab, or at the
+// end), every other backslash raw.
+function canonMiniSrc(src: string): string {
+  let out = "";
+  for (let i = 0; i < src.length; i++) {
+    const c = src[i]!;
+    if (c === "'" || c === " " || c === "\t") {
+      out += "\\" + c;
+    } else if (c === "\\") {
+      const next = src[i + 1];
+      out += next === undefined || next === "'" || next === "\\" || next === " " || next === "\t" ? "\\\\" : "\\";
+    } else {
+      out += c;
+    }
+  }
+  return out;
 }

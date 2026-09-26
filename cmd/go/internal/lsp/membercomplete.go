@@ -115,7 +115,7 @@ func (s *server) memberItems(src string, recv receiverInfo) []CompletionItem {
 		}
 	}
 	// 2. Static type of the receiver, via truncate-and-check.
-	if a, err := langNew(lang.Options{}); err == nil {
+	if a, err := newCompletionBoru(); err == nil {
 		res, _ := a.Check(src[:recv.dotOffset])
 		typeName := lastStackType(res.Stack)
 		if members := native.MembersOfType(typeName, a.NativeRegistry()); len(members) > 0 {
@@ -320,4 +320,15 @@ func skipString(s string, i int) int {
 		i++
 	}
 	return i
+}
+
+// newCompletionBoru is the instance a completion's truncate-and-check runs
+// on: under the documented environment policy, as the diagnostics' check is
+// (NUR079) — a policy that cannot be resolved offers no completion from it.
+func newCompletionBoru() (*lang.Boru, error) {
+	pol, err := envPolicy()
+	if err != nil {
+		return nil, err
+	}
+	return langNew(lang.Options{Policy: pol})
 }

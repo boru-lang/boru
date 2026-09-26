@@ -62,7 +62,18 @@ func (r *recorder) OnPushLit(v core.Value) {
 }
 
 func (r *recorder) OnCall(name string, arity, returns int) {
-	r.form.Append(Call{Name: name, Arity: arity})
+	if name == "" {
+		// The engine reports a fn VALUE's application with no name
+		// (execFnDefSig's splice): an Apply, not a Call (NUR077).
+		r.form.Append(Apply{Arity: arity})
+		r.skipPushes += returns
+		return
+	}
+	// The `apply` word's Function overload returns the fn VALUE it was
+	// handed, for the engine to re-step — a dispatching result, which the
+	// engine reports as no result at all (recordDispatch). The re-step's
+	// own dispatch records next; mark this one so the pair declines.
+	r.form.Append(Call{Name: name, Arity: arity, ReStep: name == "apply" && returns == 0})
 	r.skipPushes += returns
 }
 

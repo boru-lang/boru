@@ -1,0 +1,17 @@
+# parser/spec/canon-fixpoint.tsv — ADR-015's fixpoint diagnostic, its shrink-only ledger.
+#
+# Both parser runners re-render every parse.tsv row that parses: canon of the
+# parsed stream, parsed again, must canon to the same text (a violation of the
+# fixpoint is always a violation of ADR-015's round-trip contract). A row that
+# does not reach its fixpoint must be listed here, with the record that
+# closes it; a listed row that now reaches it fails the runners until it is
+# removed. The row count is pinned in both runners — the ledger only shrinks.
+#
+# Columns: parse.tsv source (escaped as there) <TAB> record <TAB> why.
+# Landed 2026-09-26 with NUR072, whose own kinds (a plain word, the lambda
+# fold, the mini literal, the type bound, the group modifiers) all reach
+# their fixpoint; every row below is a kind that gate found.
+#
+# EMPTY since 2026-09-26: NUR225 (template strings, XML ${} holes), NUR226 (map
+# keys needing quotes) and NUR227 (a typed tag before an XML literal) closed
+# the 33 rows it landed with. A row added here needs a record that closes it.

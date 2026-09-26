@@ -134,11 +134,6 @@ func TestFrontierSpecInterp(t *testing.T) {
 	}
 }
 
-// docMod is the shared module preamble of the do-catch rows (a value-
-// dependently-raising fn and an always-raising one, reached as M.dec/M.boom).
-// Must match the TSV rows byte-for-byte — the orphan arm catches drift.
-const docMod = `import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end `
-
 // hof* — shared def prefixes of the frontier-hof-audit.tsv rows (the
 // higher-order audit's §1 programs, design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore).
 // Must match the TSV rows byte-for-byte — the orphan arm catches drift.
@@ -216,15 +211,6 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// inline-lowered regions.
 	`context set 'k' 1 end context del 'k' end context set 'k' 2 end def l [(context get 'k')] (l get 0) add 1`: {why: "NUR054: a context read inside an auto-evaluated list has no compiled context layer", failsWith: "no layer to hand out"},
 
-	// Conditional fn-shadow — a MISCOMPILE (variation sweep,
-	// forward-barrier.tsv:73); now a COMPILE FAILURE: a user fn redefined
-	// inside a conditionally-reached body overlap-removes the enclosing
-	// overload in place, so the branch/loop def rollback cannot restore it and
-	// compiled resolution bakes the shadow while the interpreter keeps the
-	// outer fn on the not-taken / zero-iteration path. Declined CondBodyDepth-
-	// gated (eng/go/core_helpers.go). Full graduation = a runtime dispatch
-	// respecting the conditional binding compiles these rows.
-	`def g fn [[x:Any] [Integer] [x add 100]] if false [def g fn [[x:Any] [Integer] [x add 1]]] g 1`: {why: "conditional fn redefinition shadows an outer overload; compiled bake would diverge from the interpreter on the not-taken branch", failsWith: "redefined inside a conditional body"},
 	// The FN-BODY twin (the thirty-first increment): a capturing fn value —
 	// a factory's returned closure — redefining an outer overloading def
 	// from inside a fn body outlives the call on the interpreter (the
@@ -276,8 +262,9 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// frontier-do-catch.tsv, and the check-vs-run divergence recorded in the
 	// design note's §6). The L-DO promotion work below is still what would
 	// graduate the SHAPE; these two rows can no longer witness it.
-	docMod + `def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg`:  {why: "plan Phase 5 (L-DO part 2): variadic region under a def binding — now check-rejected first (failed fn-value dispatch)", failsWith: "check diagnostics"},
-	docMod + `def msg (do [(false 5 M.dec) "no-raise"] error [dot code])  msg`: {why: "plan Phase 5 (L-DO part 2): same shape, no raise at this input — likewise check-rejected first", failsWith: "check diagnostics"},
+	// GRADUATED 2026-09-25 (NUR134): both rows compile — the do-body unit
+	// raises the definite no-match in place and the do's model is the
+	// caught Error — and moved to lang/spec/bytecode-migrated.tsv.
 	// PR #280 review's promotion-gate representative (the variation
 	// differential's prefix-stack find): a BRANCH-VARIANT multi-out do body
 	// (0-or-2 values per arm) is variadic without any raise in sight, and a
@@ -510,7 +497,7 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// Graduation = an op that REBUILDS the type per element (re-evaluating
 	// the expression against that element) rather than re-installing one
 	// captured body.
-	`[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`: {why: "twin placement: a type def inside a multi-run body whose bound READS the element — each element mints a different node, so no one captured body stands for them", failsWith: "no stream placement"},
+	`[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`: {why: "a type def inside a multi-run body whose bound READS the element: the bound is computed, a type only the run can install, and the run-time install (OpBindTypeRun, NUR231's type half, 2026-09-26) is a root-only op — per element it would forward one node to each element's in turn — so the def declines as the compile-time word it is, the body's unit with it, and the each as the code-body word; behind that the twin placement: each element mints a different node, so no one captured body stands for them", failsWith: "code-body word each (Stage 2)"},
 	// (The third shape — `do [def b true  do [1 2 (if b [] [9 9])]]` —
 	// GRADUATED 2026-09-11 (the fifty-seventh increment) and its entry is
 	// deleted. Rows in lang/spec/control.tsv.

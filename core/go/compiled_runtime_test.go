@@ -12,6 +12,9 @@ func TestNoCompiledRuntimeDeclines(t *testing.T) {
 	if res, err, ran := compiledRuntime.InvokeCompiled(nil, nil, nil); res != nil || err != nil || ran {
 		t.Fatalf("no-op InvokeCompiled = %v %v %v", res, err, ran)
 	}
+	if res, err, ran := compiledRuntime.InvokeCompiledStrict(nil, nil, nil); res != nil || err != nil || ran {
+		t.Fatalf("no-op InvokeCompiledStrict = %v %v %v", res, err, ran)
+	}
 	compiledRuntime.StampDetached(nil, FnDefInfo{}, SrcPos{})
 	if compiledRuntime.LazyStamp(nil, FnDefInfo{}, nil, SrcPos{}) {
 		t.Fatal("no-op LazyStamp must report no unit")

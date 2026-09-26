@@ -148,7 +148,7 @@ const fnsigModule = `import module [def sg fn [[][List][[Integer String]]] expor
 // only at run time. The check pass mints NOTHING (binding the carrier would
 // bake a type the run never builds, and `is T` would test the wrong node):
 // the def form binds nothing on the check engine and its dispatch is emitted
-// as the call it is (NoteRuntimeDefDispatch → RecordRuntimeBindDispatch), so
+// as the call it is (NoteRuntimeDefDispatch → RecordRuntimeDispatch), so
 // the compiled run constructs and installs T exactly as the interpreter does.
 // A later read of T is the pass's undefined-word finding, so the program
 // declines rather than compile a guess.

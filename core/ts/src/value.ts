@@ -60,7 +60,7 @@ import {
 export interface WordInfo {
   name: string;
   /** Optional argument-count modifier from /N suffix. Unused in spec subset. */
-  argCount?: number;
+  argCount?: bigint;
   forceStack?: boolean;
   forceForward?: boolean;
   /** Resolve the binding without invoking it (`/v`). */

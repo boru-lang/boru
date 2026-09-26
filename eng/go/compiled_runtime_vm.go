@@ -15,14 +15,27 @@ type vmCompiledRuntime struct{}
 func init() { core.InstallCompiledRuntime(vmCompiledRuntime{}) }
 
 func (vmCompiledRuntime) InvokeCompiled(r *core.Registry, sig *core.Signature, args []core.Value) ([]core.Value, error, bool) {
+	return invokeCompiled(r, sig, args, false)
+}
+
+// InvokeCompiledStrict is InvokeCompiled for a NAMED fn call: the unit's
+// root RET takes the frame's return contract (NUR191, invokeCompiledUnit's
+// named entry).
+func (vmCompiledRuntime) InvokeCompiledStrict(r *core.Registry, sig *core.Signature, args []core.Value) ([]core.Value, error, bool) {
+	return invokeCompiled(r, sig, args, true)
+}
+
+func invokeCompiled(r *core.Registry, sig *core.Signature, args []core.Value, named bool) ([]core.Value, error, bool) {
 	ref := compiler.CompiledRef(sig)
 	if ref != nil && ref.Prog != nil && !ref.DepsFresh(r) {
 		ref = ref.JitRestamp(r)
 	}
-	if ref == nil || ref.Prog == nil {
+	if ref == nil || ref.Prog == nil || ref.RefusesArgs(args) {
+		// No unit — or a fn argument in a slot the unit reads bare, the
+		// interpreter's word dispatch (NUR217): CallBoru answers.
 		return nil, nil, false
 	}
-	res, err, ran := invokeCompiledUnit(r, ref, args)
+	res, err, ran := invokeCompiledUnit(r, ref, args, named)
 	if !ran {
 		return nil, nil, false
 	}
@@ -31,7 +44,41 @@ func (vmCompiledRuntime) InvokeCompiled(r *core.Registry, sig *core.Signature, a
 	// guarded by the effect fence so a callback that had written to the peer
 	// and THEN bailed did not write twice. Nothing retries now: the bail is a
 	// compiler defect and it surfaces, effect or no effect.
+	if err == nil && !named {
+		res = trimUnconsumedUnnamed(sig, res)
+	}
 	return res, err, true
+}
+
+// trimUnconsumedUnnamed is the callback seam's mirror of CallBoru's
+// unnamed-arg DISCARD (core callBoruNamed): residuals beyond the SIGNATURE's
+// declared return count are unconsumed unnamed params sitting at the bottom
+// of the body's region — call-scoped data, trimmed up to the unnamed-param
+// count. A stored fn's unit is compiled count-agnostic (it declares no
+// returns of its own, so its RET hands back the whole residual), which is
+// why the seam, holding the signature, trims here: `fnpred [[Integer]
+// [true]]` answered ONE verdict interpreted and [candidate true] compiled,
+// which the predicate protocol refuses — `0 is Z` was true on one lane and
+// false on the other (NUR223). A NAMED call's root RET already discards
+// through the frame's own contract (checkReturnContract, NUnnamed).
+func trimUnconsumedUnnamed(sig *core.Signature, res []core.Value) []core.Value {
+	unnamed := 0
+	for _, p := range sig.Params {
+		if p.Name == "" {
+			unnamed++
+		}
+	}
+	if len(sig.Returns) == 0 || unnamed == 0 {
+		return res
+	}
+	extra := len(res) - len(sig.Returns)
+	if extra <= 0 {
+		return res
+	}
+	if extra > unnamed {
+		extra = unnamed
+	}
+	return res[extra:]
 }
 
 // ClosureAsFnDef is the VALUE-path twin of closureAsWord (NUR124's payload
@@ -60,7 +107,7 @@ func (vmCompiledRuntime) ClosureAsFnDef(r *core.Registry, v core.Value) (core.Va
 	// signature: SigMatched, so the invoker applies the unit positionally
 	// (ClosurePayload.SigMatched).
 	matched := core.ClosureSigMatched(v)
-	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
+	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl, func(args []core.Value) ([]core.Value, error) {
 		return invoke(r, matched, args)
 	})
 	if !ok {

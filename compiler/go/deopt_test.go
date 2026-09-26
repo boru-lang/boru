@@ -572,6 +572,15 @@ func TestPlanDeoptsStartDeclines(t *testing.T) {
 	if len(rec.deopts) != 0 {
 		t.Errorf("a consumer with no position declines: %+v", rec.deopts)
 	}
+	// A top-level read whose consumer stands INSIDE an earlier token (a
+	// paren before the read): not after the read, inside the body, and at
+	// no top-level token — no statement start to place.
+	es, u, rec, _ = deoptUnit(t, []core.Value{deoptParen(43, deoptTok("typeof", 44)), deoptTok("j", 49)}, 49,
+		EmitEvent{seq: 3, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(44), ops: []EmitOperand{EventOperand(1, 0)}}})
+	es.planDeopts(u, rec)
+	if len(rec.deopts) != 0 {
+		t.Errorf("a consumer nested before the read declines: %+v", rec.deopts)
+	}
 }
 
 // TestEmitDeoptsBeforeStackHome pins the lowerer's deopt over a value

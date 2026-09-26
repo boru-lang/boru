@@ -437,11 +437,28 @@ func spliceAnonCheckResult(e *core.Engine, valIdx, nArgs int, sig *core.FnSig, a
 		paramNames[i] = p.Name
 	}
 	result := AnalyseFnBody(e.Registry, "", paramNames, sig.Body(), args, captures, sig.Returns, true)
+	result = trimUnnamedArgs(result, len(sig.Returns), unnamedParamCount(sig.Params))
 	if len(result) == 0 {
 		result = []core.Value{core.NewCarrier(core.TAny)}
 	}
 	spliceFnCheckTail(e, valIdx, nArgs, result)
 	return nil
+}
+
+// trimUnnamedArgs is the frame return's discipline over an analysed
+// anonymous body's residual (the interpreter's ReturnCheck): the UNNAMED
+// params were pushed beneath the body, and the frame keeps its nret returns
+// off the top, discarding up to unnamed unconsumed args from the bottom. So
+// `(0 ([0] => [1]))` nets the one value 1 on the interpreter, and the call's
+// model must seat one: it seated the pushed 0 beside it, and a list after
+// the call underflowed at run time (NUR255). A residual the unnamed args
+// cannot account for is left as it is, since the interpreter raises its
+// count error there.
+func trimUnnamedArgs(result []core.Value, nret, unnamed int) []core.Value {
+	if extra := len(result) - nret; nret > 0 && extra > 0 && extra <= unnamed {
+		return result[extra:]
+	}
+	return result
 }
 
 // SpliceFnValueCheckResult is the check-mode dispatch for a NON-anonymous
@@ -787,7 +804,7 @@ func checkModeFallbackPositionsFor(e *core.Engine, s *core.Signature, w core.Wor
 		// the last taken forward token, the same walk).
 		rest := checkModeFallbackPositions(e, n)
 		for _, p := range rest[nStack:] {
-			if len(positions) >= n {
+			if len(positions) >= n { //covergate:allow window-size bound: a short window means nStack is the WHOLE stack run, so rest[nStack:] is exactly the plain walk's at most n-nStack tokens, prefixed by the forward run (the two walks share their skip rules) — the appends reach n only on the last entry; guards the spliced window against the walks drifting apart (§engine)
 				break
 			}
 			taken := false
@@ -1391,6 +1408,7 @@ func installCheckBraid() {
 	core.CheckBraid.DeclineForwardStackDrift = DeclineForwardStackDrift
 	core.CheckBraid.DeclineStrandedMemberFn = declineStrandedMemberFn
 	core.CheckBraid.ShareCheckState = shareCheckState
+	core.CheckBraid.ShareCheckStateFrom = shareCheckStateFrom
 	core.CheckBraid.SpliceAnonCheckResult = spliceAnonCheckResult
 	core.CheckBraid.SpliceCheckResults = spliceCheckResults
 	core.CheckBraid.SpliceFnValueCheckResult = SpliceFnValueCheckResult
@@ -1426,11 +1444,15 @@ func init() { installAnalysisImpl() }
 
 // noteStrandedTypeCall reports §5.1's silent wrong answer: a capitalised
 // name bound to a FUNCTION body is a TYPE, so writing it in call position
-// never calls. `def I x:Integer => [add 1 x] end I 5` prints `I 5` and
+// never calls. `def I fnpred x:Integer [add 1 x] end I 5` prints `I 5` and
 // exits 0 — the minted lattice node is placed, the 5 is never consumed,
 // and nothing anywhere says so. The combinator literature is all capitals
 // (S, K, I, B, C, W, Y), so a reader transcribing it lands here first
 // (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.1, recommendation 2).
+// Since NUR099 the undeclared spelling (`def I x:Integer => [add 1 x]`, a
+// plain `fn` body under a capitalised name) is refused at the declaration
+// with def_error, so the one fn-bodied type node left to strand is a
+// DECLARED predicate written as a call.
 //
 // The gate is deliberately narrow, because this is a hint and a false one
 // costs more than a missed one. It fires on a bare lattice node whose
@@ -1496,8 +1518,8 @@ func noteStrandedTypeCall(e *core.Engine, residual []core.Value) {
 			Col:  v.Pos().Col,
 			Src:  v.Pos().Src,
 			Notes: []string{
-				"a def whose name is capitalised and whose body is a fn mints a TYPE " +
-					"(`4 is " + name + "` is the intended use); the fn body survives only as that type's content",
+				"a capitalised def binds a TYPE, and a fnpred body is that type's membership test " +
+					"(`4 is " + name + "` is the intended use), never a function to call",
 			},
 			// No Replacement: the fix is a COORDINATED rename — the
 			// declaration and every reference — and this diagnostic points at

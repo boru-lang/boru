@@ -60,9 +60,9 @@ func TestDoBodyDefLeaksToTheEnclosingScope(t *testing.T) {
 		`def t 0 end for 2 [do [def t (t add 1)] t] end`,
 		`def xs (flex []) end for 3 [do [def xs (xs append i)]] end xs`,
 		// Leak then raise: the def the body made before the raise stays
-		// bound, the error trapped by `do` (the interpreter's raise skips
-		// the frame's cleanup; a CALLEE's own def under the same raise is
-		// NUR201, below).
+		// bound, the error trapped by `do` — a `do` body is not a frame,
+		// so its defs are the caller's own (a CALLEE's def under the same
+		// raise is torn down with its frame: NUR201, below).
 		`def t 0 end do [def t 5 raise 'x'] end t`,
 		`def t 0 end do [def t 5 raise 'x'] error [drop 1] end t`,
 		// The MULTI-RUN bodies (each, fold, scan, var): the leak per
@@ -149,24 +149,66 @@ func TestEachBodyDefInLoopResolves(t *testing.T) {
 	}
 }
 
-// TestCalleeDefSurvivesTrappedRaisePending pins NUR201 as it stands: a fn
-// body's def followed by a raise the caller traps — `def g fn
-// [[][Integer][def t 9 raise 'x']]  do [g]  t` — leaves the def BOUND on
-// the interpreter (a raise skips the frame's def-cleanup tail, so the
-// callee's `t` leaks: `[error(x) 9]`), where the compiled lane's frame
-// installs nothing the trap could keep and the read answers the root
-// binding (`[error(x) 0]`). Present on main before the keep-defs body
-// (3768c46); the same shape with the def in the `do` body itself is
-// NUR199's leak-then-raise row above, which agrees. Closing it must update
-// this pin.
-func TestCalleeDefSurvivesTrappedRaisePending(t *testing.T) {
-	src := `def t 0 end def g fn [[][Integer][def t 9 raise 'x']] end do [g] end t`
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if errI != nil || fmt.Sprint(gotI) != "[error(x) 9]" {
-		t.Errorf("%q: the interpreter keeps the callee's def past the trapped raise: %v / %v", src, gotI, errI)
+// TestCalleeDefTornDownOnTrappedRaise pins NUR201's close: a fn body's def
+// followed by a raise the caller traps — `def g fn [[][Integer][def t 9
+// raise 'x']]  do [g]  t` — left the def BOUND on the interpreter (the
+// raise abandoned the tape with the frame's def-cleanup tail unstepped, so
+// the callee's `t` leaked: `[error(x) 9]`), where the compiled lane's
+// frame unwinds with the error and the read answers the root binding
+// (`[error(x) 0]`). The interpreter's fault return now tears down every
+// frame the error leaves open on the tape (core Engine.faultReturn), so
+// both lanes answer `[error(x) 0]`: the callee's locals, params and args
+// list are gone when the trap resumes. The rows are the shape and its
+// neighbours — a param of the leaked name, nested callee frames, the raise
+// inside a paren group, a callback body, a residual container and a native
+// error in place of the raise, a lambda value and an applied fn value, the
+// trap inside a fn frame, a loop, and an `error` handler. A `do` body's OWN
+// def under the same raise still leaks on both lanes (NUR199's row above):
+// a `do` body is not a frame.
+func TestCalleeDefTornDownOnTrappedRaise(t *testing.T) {
+	const g = `def t 0 end def g fn [[][Integer][def t 9 raise 'x']] end `
+	for _, src := range []string{
+		g + `do [g] end t`,
+		g + `do [g] end do [t]`,
+		g + `do [(g)] end t`,
+		g + `do [g/v apply] end t`,
+		g + `do [g] error [drop 1] end t`,
+		g + `def f fn [[][Integer][do [g] drop t]] end f`,
+		g + `[1 2] each [do [g] drop] t`,
+		g + `for 2 [do [g] drop] t`,
+		`def t 0 end def g fn [[t:Integer][Integer][raise 'x']] end do [g 9] end t`,
+		`def t 0 end def h fn [[][Integer][def t 7 g]] end def g fn [[][Integer][def t 9 raise 'x']] end do [h] end t`,
+		`def t 0 end def g fn [[][Integer][def t 9 [1] each [raise 'x'] 1]] end do [g] end t`,
+		`def t 0 end def g fn [[][Integer][def t 9 (1 div 0)]] end do [g] end t`,
+		`def t 0 end def g fn [[][Map][def t 9 {a: (raise 'x')}]] end do [g] end t`,
+		`def t 0 end def g ([] => [def t 9 raise 'x']) end do [g] end t`,
+	} {
+		requireEngineParity(t, src, true)
 	}
-	if errC != nil || !compiled || fmt.Sprint(gotC) != "[error(x) 0]" {
-		t.Errorf("%q: NUR201's compiled value %v / %v (compiled=%v), pinned as [error(x) 0] — closing the divergence must update this pin", src, gotC, errC, compiled)
+	// The interpreter's answer on its own: the callee's def is gone when
+	// the trap resumes, and so are its param and its args list — the frame
+	// beneath the raise (`f`) still reads its own.
+	for _, c := range []struct{ src, want string }{
+		{g + `do [g] end t`, "[error(x) 0]"},
+		{`def t 0 end def g fn [[t:Integer][Integer][raise 'x']] end do [g 9] end t`, "[error(x) 0]"},
+		{`def g fn [[n:Integer][Integer][raise 'x']] end def f fn [[a:Integer][Integer][do [g a] drop args size]] end f 1`, "[1]"},
+		{`def g fn [[n:Integer][Integer][raise 'x']] end def f fn [[a:Integer][Integer][do [g 5] drop a]] end f 1`, "[1]"},
+		{`def g fn [[n:Integer][Integer][def u n raise 'x']] end do [g 5] end u`, "ERROR:undefined_word"},
+	} {
+		d, err := New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		got, errI := d.RunInterp(c.src)
+		if strings.HasPrefix(c.want, "ERROR:") {
+			if errI == nil || !strings.Contains(errI.Error(), strings.TrimPrefix(c.want, "ERROR:")) {
+				t.Errorf("%q: interpreter = %v / %v, want %s", c.src, got, errI, c.want)
+			}
+			continue
+		}
+		if errI != nil || fmt.Sprint(got) != c.want {
+			t.Errorf("%q: interpreter = %v / %v, want %s", c.src, got, errI, c.want)
+		}
 	}
 }
 
@@ -234,28 +276,25 @@ func TestKeepDefsTokenBodyOverGradualListCompiles(t *testing.T) {
 	}
 }
 
-// TestDynamicKeepDefsBodyLeakInFnPending pins NUR203 as it stands: a
-// keep-defs word over a DYNAMIC body (a List param, a def-bound quoted
-// list) inside a fn — `def f fn [[b:List xs:List][Integer][def t 0 each b
-// xs drop t]]  f (quote [def t (t add 1) t]) [1 2 3]` — leaks the body's
-// def per element on the interpreter (3), and the compiled lane's later
-// read of `t` in the fn answers the pre-call value (0): the run-time
-// stamped body installs the leak in the registry (NUR202's close), but the
-// compile pass cannot know which names a body it never sees will rebind, so
-// the fn's later read keeps its compile-time home instead of seating live
-// (NoteKeepDefsLeak names only a compiled unit's defs). The same shape at
-// the root agrees (a root read is live). Closing it must update this pin.
-func TestDynamicKeepDefsBodyLeakInFnPending(t *testing.T) {
+// TestDynamicKeepDefsBodyLeaksToTheFn pins NUR203's close: a keep-defs
+// word over a DYNAMIC body (a List param, a def-bound quoted list) inside a
+// fn leaks the body's defs into the fn's frame, and the fn's LATER reads
+// see them on both lanes — the pass cannot know which names the body
+// rebinds, so every name the unit value-defs before the dispatch seats
+// live at its later reads (noteDynKeepDefsLeak), where the body's
+// per-element install put the value. Both lanes answer 3; the compiled
+// lane used to read the pre-call 0.
+func TestDynamicKeepDefsBodyLeaksToTheFn(t *testing.T) {
 	for _, src := range []string{
 		`def f fn [[b:List xs:List][Integer][def t 0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]`,
 		`def f fn [[b:List xs:List][Integer][def t 0 fold b xs 0 drop t]] end f (quote [def t (t add 1) add]) [1 2 3]`,
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 		if errI != nil || fmt.Sprint(gotI) != "[3]" {
-			t.Errorf("%q: the interpreter leaks the dynamic body's def into the fn's frame: %v / %v", src, gotI, errI)
+			t.Errorf("%q: interpreted %v / %v, want [3]", src, gotI, errI)
 		}
-		if errC != nil || !compiled || fmt.Sprint(gotC) != "[0]" {
-			t.Errorf("%q: NUR203's compiled value %v / %v (compiled=%v), pinned as [0] — closing the divergence must update this pin", src, gotC, errC, compiled)
+		if errC != nil || !compiled || fmt.Sprint(gotC) != "[3]" {
+			t.Errorf("%q: compiled %v / %v (compiled=%v), want [3]", src, gotC, errC, compiled)
 		}
 	}
 }

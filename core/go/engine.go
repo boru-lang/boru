@@ -362,14 +362,81 @@ func (e *Engine) SetSource(src string) {
 // faultReturn fires the trace one final time — with a "fault: <err>"
 // note and step -1 — before Run surfaces err, so a debug host can pause
 // AT the raise with the tape and pointer still live (pause-before-
-// unwind, design/BORU-DEBUGGER.0.md §6.1). Every Run-loop error return
-// routes through it; a nil trace makes it a pass-through, so the
-// non-debug error path is unchanged.
+// unwind, design/BORU-DEBUGGER.0.md §6.1), and then tears down every fn
+// frame the error leaves OPEN on this tape. Every Run-loop error return
+// routes through it; a nil trace makes the trace half a pass-through.
+//
+// The unwind is the frame's error-path contract: the error abandons the
+// tape, so a spliced frame whose open paren has stepped but whose cleanup
+// tail (`__DC __pa undef…`, fn_frame.go) has not — the callee that raised,
+// and every caller frame still open beneath it — would otherwise keep
+// its per-call state on the registry: the body-local defs, the Args list
+// and FnBaseline, the captures and params. A `do` trapping the error
+// upstream then resumed with the callee's bindings leaked into the
+// caller's scope — `def t 0  def g fn [[][Integer][def t 9 raise 'x']]  do
+// [g]  t` read 9 where the compiled lane, whose frame unwinds with the
+// error, reads 0 (NUR201) — and the args stack a level too deep. The
+// frames unwind innermost-first, exactly as a break/continue discarding
+// the region unwinds them (unwindLiveFrames), and as CallBoru's sub-run
+// tears its own frame down inline on the same error; a frame that raised
+// while evaluating its residual in-frame (stepDefCleanup) is one such
+// live frame, so its tail replays here once, not at the marker as well.
 func (e *Engine) faultReturn(err error) error {
 	if e.trace != nil {
 		e.trace(-1, e.Pointer, e.Tape.Snapshot(), "fault: "+err.Error())
 	}
+	e.unwindLiveLoops()
+	e.unwindLiveFrames(0, e.Tape.Len())
 	return err
+}
+
+// unwindLiveLoops uninstalls the iterator of every `for` loop the error
+// leaves OPEN on the tape — its mark stepped, its move not yet reached —
+// as handleLoopBreak uninstalls it when a break discards the region: the
+// binding the loop installed for its body (`i`) is the loop's, and the
+// error abandons the loop with the frame. Left installed, it shadowed the
+// enclosing binding after a trapped raise — `def i 9  do [for 2 [raise
+// 'x']]  i` read 0 on the interpreter where the compiled lane, whose loop
+// keeps `i` in a frame slot, reads 9 (NUR201's loop twin, found closing
+// NUR197). Loops unwind BEFORE the frames (faultReturn): a loop inside a
+// live frame installed its iterator after the frame's entry snapshot, so
+// the frame's truncation would pop it too — popping it here first leaves
+// that truncation nothing to pop for the name, and a loop enclosing a
+// live frame keeps its iterator beneath the frame's snapshot, where only
+// this walk reaches it. A while loop installs no iterator of its own.
+func (e *Engine) unwindLiveLoops() {
+	for i := e.Pointer; i < e.Tape.Len(); i++ {
+		if !IsMove(e.Tape.At(i)) {
+			continue
+		}
+		info, _ := AsMove(e.Tape.At(i))
+		if info.Cont == nil || info.Cont.WhileCond != nil || info.Cont.IterName == "" || !e.marks[info.To] {
+			continue
+		}
+		popIterLevels(info.Cont, true)
+	}
+}
+
+// popIterLevels restores a counted loop's index name to its entry depth
+// (ForCont.IterDepth): the levels a body `def` of the index pushed above
+// it (`for 3 [def i 9]`) are the iteration's own and end with it, and when
+// the loop is DONE the index level goes too, so the pre-loop binding shows
+// after the loop as it does when the body never rebinds — the index level
+// used to survive the loop bound to the last index, 2 for `def i 0  for 3
+// [def i 9]  i` (NUR204). A continuation with no recorded depth pops one
+// level, as before.
+func popIterLevels(cont *ForCont, done bool) {
+	if cont.IterDepth <= 0 {
+		UninstallDef(cont.Registry, cont.IterName)
+		return
+	}
+	floor := cont.IterDepth
+	if done {
+		floor--
+	}
+	for cont.Registry.Defs.Depth(cont.IterName) > floor {
+		UninstallDef(cont.Registry, cont.IterName)
+	}
 }
 
 // effectiveSource returns the source text for error reporting.
@@ -415,7 +482,7 @@ func isEngineMarker(v Value) bool {
 // the same shape and yields the concrete twins of these values. Used by
 // the runtime-rematch record to prove its operand window IS the tuple the
 // interpreter's error renders.
-func (e *Engine) rematchWritten() []Value {
+func (e *Engine) rematchWritten(fn *FnDefInfo) []Value {
 	var written []Value
 	for i := e.Pointer + 1; i < e.Tape.Len() && len(written) < 4; i++ {
 		v := e.Tape.At(i)
@@ -427,20 +494,40 @@ func (e *Engine) rematchWritten() []Value {
 		}
 		written = append(written, v)
 	}
-	if len(written) > 0 {
-		return written
-	}
-	stack := e.Tape.Prefix(e.Pointer)
-	for i := len(stack) - 1; i >= 0 && len(written) < 4; i-- {
-		v := stack[i]
-		if IsOpenParen(v) || IsForward(v) || IsWord(v) || IsEnd(v) ||
-			v.Parent.ConformsTo(TMark) || v.Parent.ConformsTo(TMove) ||
-			v.Parent.ConformsTo(TInternal) {
-			break
+	// The rest is the runtime report's own derivation (attemptedWindow) over
+	// the carrier-aware forward tuple: a bare word a `/q` slot would capture,
+	// then the stack prefix beneath up to the smallest overload's arity —
+	// the tuple sigError renders, so the spec's rebuild re-renders it
+	// (NUR172; `(x add 1)` over a gradual x reports both operands on both
+	// lanes). The Atom the bare-word rule mints carries no value ID, so a
+	// tuple that needs it declines the spec (mapTupleToWindow) and the
+	// runtime keeps its best-effort report.
+	return attemptedWindowOver(e.Tape, e.Pointer, fn, written, e.runPrefix())
+}
+
+// runPrefix is the stack prefix beneath the pointer a no-match report
+// renders (ReorderCandidates), as the RUN holds it: a compiling pass's tape
+// also holds each 0-output statement guard's phantom None (the result a
+// both-arms-void `if` registers so the recorder can elide its dispatch — the
+// recorder's zeroOut result), which is on no run's stack, and a report over
+// it listed a None the interpreter's never does (`if true [def k 1] [] end
+// "x" f` — "the arguments were 'x' and None"). Off a recording pass the
+// recorder marks nothing and the prefix is the tape's.
+func (e *Engine) runPrefix() []Value {
+	prefix := ReorderCandidates(e.Tape.Prefix(e.Pointer))
+	es := e.Registry.analysisRecorder()
+	for i, v := range prefix {
+		if es.ZeroOutProduced(v.ID) {
+			kept := append([]Value(nil), prefix[:i]...)
+			for _, w := range prefix[i+1:] {
+				if !es.ZeroOutProduced(w.ID) {
+					kept = append(kept, w)
+				}
+			}
+			return kept
 		}
-		written = append(written, v)
 	}
-	return written
+	return prefix
 }
 
 // polyNoMatchProbe snapshots, at a FAILED dispatch's tape state, the pieces
@@ -484,7 +571,7 @@ func (e *Engine) PolyNoMatchProbe(name string, pos SrcPos) polyNoMatchProbe {
 		return p
 	}
 	p.ok = true
-	p.written = e.rematchWritten()
+	p.written = e.rematchWritten(e.Registry.Lookup(name))
 	p.stackVals = ReorderCandidates(e.Tape.Prefix(e.Pointer))
 	p.reach, p.reachOK = e.polyReachBound()
 	return p
@@ -616,7 +703,23 @@ func (p polyNoMatchProbe) Spec(fn *FnDefInfo, window []Value) *PolyNoMatchSpec {
 	if !ok {
 		return nil
 	}
-	return &PolyNoMatchSpec{Written: written, StackTuple: stackTuple, NSigs: len(fn.Signatures), Pos: p.pos}
+	// A word the source never wrote — the `dot` a lens expands to under
+	// `apply` (`5 $.name apply`) — has no position of its own, and the
+	// pooled runtime window has none either, so the raise rendered
+	// "source position unknown". The interpreter anchors such a raise at
+	// the first candidate that carries a position (its `5` at 1:1); the
+	// record-time window still has those positions, so the spec takes the
+	// same anchor (NUR171).
+	pos := p.pos
+	if pos.Row == 0 {
+		for _, i := range written {
+			if i >= 0 && i < len(window) && window[i].Pos().Row > 0 {
+				pos = window[i].Pos()
+				break
+			}
+		}
+	}
+	return &PolyNoMatchSpec{Written: written, StackTuple: stackTuple, NSigs: len(fn.Signatures), Pos: pos}
 }
 
 // Uncalled reports whether the probe is a fn VALUE's recovery
@@ -827,10 +930,7 @@ func (e *Engine) sigError(name string, fn *FnDefInfo, pos SrcPos) *BoruError {
 	// The failing tuple in assignment order: unclaimed forward tokens
 	// (source order) when present, else the stack prefix (top-first) —
 	// the same two views the swap probe reads.
-	written := ReorderForwardCandidates(e.Tape, e.Pointer)
-	if len(written) == 0 {
-		written = ReorderCandidates(e.Tape.Prefix(e.Pointer))
-	}
+	written := attemptedWindowOver(e.Tape, e.Pointer, fn, ReorderForwardCandidates(e.Tape, e.Pointer), e.runPrefix())
 	// Reorder probe: when the actual argument types match some declared
 	// signature under a PERMUTATION, the arguments are almost certainly
 	// swapped — say so, with the declared parameter order, and suppress
@@ -849,6 +949,106 @@ func (e *Engine) sigError(name string, fn *FnDefInfo, pos SrcPos) *BoruError {
 // (diag_msg.go) — the SAME builder the compiled VM's runtime guards
 // call, so an interpreter and a compiled no-signature error are
 // byte-identical over the same failing tuple.
+// attemptedWindowOver is the operand window a failed dispatch of fn at
+// pointer ATTEMPTED, for the no-match report: the forward candidates written after
+// the word — a bare word right after it counted as the Atom a `/q` slot of
+// some overload would capture — and, when those are fewer than the smallest
+// overload's arity, the stack prefix beneath, in signature order. The report
+// used to describe only what the collection managed to FILL (the forward
+// candidates, else the stack prefix), so `5 $.name apply` — a lens's `dot`
+// over the 5 with `name` written after it — reported "the argument was 5 …
+// takes 2 arguments, but 1 was supplied" where the compiled lane's poly
+// window reported the two values the source wrote and the type failure on
+// the second: NUR172. The same window, both lanes. written is the forward
+// tuple already collected — the runtime's concrete candidates, or the check
+// pass's carrier-aware ones (rematchWritten), so the two derive one window —
+// and prefix the stack prefix beneath as the run holds it (runPrefix).
+func attemptedWindowOver(tape *Tape, pointer int, fn *FnDefInfo, written, prefix []Value) []Value {
+	if len(written) == 0 && pointer+1 < tape.Len() && fn != nil {
+		if w, err := AsWord(tape.At(pointer + 1)); err == nil && !w.ForceVal {
+			for i := range fn.Signatures {
+				s := &fn.Signatures[i]
+				if !s.Fallback && s.QuoteArgs != nil && s.QuoteArgs[0] {
+					atom := NewAtom(w.Name)
+					atom.pos = tape.At(pointer + 1).pos
+					written = append(written, atom)
+					break
+				}
+			}
+		}
+	}
+	if len(written) == 0 {
+		return prefix
+	}
+	if fn != nil {
+		minArity := -1
+		for i := range fn.Signatures {
+			s := &fn.Signatures[i]
+			if s.Fallback {
+				continue
+			}
+			if n := s.TotalArgs(); minArity < 0 || n < minArity {
+				minArity = n
+			}
+		}
+		for _, v := range prefix {
+			if len(written) >= minArity {
+				break
+			}
+			written = append(written, v)
+		}
+	}
+	return written
+}
+
+// noteCallWindow offers the recorder, at a user fn's dispatch, the window
+// this dispatch's RUNTIME twin reports when its match fails: sigError's
+// attempted window, over the check pass's tape (rematchWritten — a gradual
+// operand stands where the runtime value will). The compiled call's
+// param-contract no-match renders the same tuple (NUR234): a bare word read
+// after the word ends the written run and is never an argument there, and
+// the stack beneath the call fills the window to the smallest arity.
+//
+// The runtime fails at the dispatch's FIRST step: its plan sees every
+// operand but a speculative slot's, which arrives only after a forward
+// collection. So the window is taken there, and a dispatch that goes on to
+// collect forward marks it deferred — its force-stack re-step, the step the
+// pass records the call at, keeps the first step's offer. A speculative plan
+// can fail at that re-step instead, over a window no first step shows: it
+// offers no window, and the record keeps its argument tuple.
+func (e *Engine) noteCallWindow(w WordInfo, fn *FnDefInfo, sig *Signature, positions []int, specAt int, pos SrcPos) {
+	es := e.Registry.Check.Recorder()
+	if !es.Active() || !fnHasBoruSig(fn) {
+		return
+	}
+	deferred := false
+	for _, p := range positions {
+		if sig != nil && p > e.Pointer {
+			deferred = true
+			break
+		}
+	}
+	var win []Value
+	if specAt < 0 {
+		win = e.rematchWritten(fn)
+		if win == nil {
+			win = []Value{}
+		}
+	}
+	es.NoteCallWindow(w.Name, pos, win, deferred, w.ForceStack)
+}
+
+// fnHasBoruSig reports whether any of fn's signatures runs a boru body — a
+// user fn, whose compiled call guards its param contract.
+func fnHasBoruSig(fn *FnDefInfo) bool {
+	for i := range fn.Signatures {
+		if _, ok := fn.Signatures[i].Impl.(*BoruImpl); ok {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) noMatchError(name string, fn *FnDefInfo, written []Value, pos SrcPos, reorder string) *BoruError {
 	return NoMatchDiag(e.effectiveSource(), name, fn, written, pos, reorder)
 }
@@ -2049,8 +2249,8 @@ func (e *Engine) DefTop(name string) (Value, bool) {
 
 func (e *Engine) IsFnWordBarrier(tok Value) bool { return e.fnWordBarrierAt(tok) }
 
-func (e *Engine) IsReachCallHead(tok Value, viable []ViableSig, pos, i int) bool {
-	return e.reachCallHeadBarrier(tok, viable, pos, i)
+func (e *Engine) IsReachCallHead(tok Value, i int) bool {
+	return e.reachCallHeadBarrier(tok, i)
 }
 
 func (e *Engine) LookupWord(name string) *FnDefInfo { return e.Registry.Lookup(name) }
@@ -2557,14 +2757,13 @@ func (e *Engine) deliverValRead(v, val Value) error {
 // one (an `x:Any` param, a Dynamic value) whose static type admits a fn. The
 // runtime rule this mirrors is stepWord's own: a bound FnDefInfo is not
 // substituted, it "goes through normal Lookup" — a word dispatch under the
-// binding name — EXCEPT when a pending forward expects a Function, where
-// the value is delivered as data (the branch above the binding cases). A
-// concrete or non-fn-admitting carrier is a plain value substitution on
-// both engines and notes nothing.
+// binding name, whatever slot a pending forward has open (NUR078: no slot
+// type turns a bare name into a reference). A concrete or non-fn-admitting
+// carrier is a plain value substitution on both engines and notes nothing.
 // pos is the READ's position (the word token's), which is where the
 // interpreter anchors the dispatch's errors (`cannot call `g“).
 func (e *Engine) noteWordRead(v Value, name string, pos SrcPos) {
-	if v.Quoted || e.hasPendingForwardExpectingFunction() {
+	if v.Quoted {
 		return
 	}
 	if IsFnTypedCarrier(v) || (v.Dynamic && SigTypeMatches(v, TFunction)) {
@@ -2652,30 +2851,12 @@ func (e *Engine) stepWord(val Value) error {
 		return e.stepLiteral()
 	}
 
-	// If a pending forward expects TFunction, resolve this word to a
-	// function reference value rather than executing it. The word must
-	// have an FnDefInfo entry in DefStacks.
-	if e.hasPendingForwardExpectingFunction() {
-		// Wrap the aggregate dispatch view so the reference carries every
-		// overload of the name (across stacked defs), not just the topmost
-		// entry's own sigs.
-		if fnDef := e.Registry.Lookup(w.Name); fnDef != nil {
-			// Resolving a name INTO a Function slot is a use of that def, for
-			// the same reason ResolveRef records one (core_ref.go:31-35): the
-			// name is consumed as a value rather than called, so nothing else
-			// on this path marks it. Without the note, `boru check` reports
-			// `unused_def` for every fn handed bare to a callback API — the
-			// canonical `Sort.quick mycmp xs` idiom — which is a false positive
-			// on the single most common way a library takes a function.
-			//
-			// Noted only on a SUCCESSFUL Lookup, so a genuinely unused def
-			// still warns: the fall-through below is a non-fn word.
-			e.Registry.noteAnalysisUse(w.Name)
-			e.Tape.Set(e.Pointer, NewFunction(*fnDef))
-			return e.stepLiteral()
-		}
-		// Not a def fn — fall through to normal execution.
-	}
+	// There is NO reference intercept for a Function-typed slot (NUR078,
+	// ADR-011 as amended 2026-08-17 and re-affirmed 2026-08-26): a bare name
+	// bound to a function CALLS, whatever slot a pending forward has open —
+	// the slot type never decides what a token means. Passing a function as
+	// an argument is explicit: `h zero/v` (stepWordVal above, which records
+	// the def's use as ResolveRef does).
 
 	// Named user-defined types take priority over DefStacks: type
 	// bindings stack independently from def bindings, and a shadow-
@@ -2787,6 +2968,16 @@ func (e *Engine) stepWord(val Value) error {
 			// NoteDefRead is a no-op outside a pass, but the bare call still
 			// evaluated top.ID unconditionally on the run-mode hot path.
 			if e.Registry.analysisActive() {
+				// A bare read of a binding that may hold a fn is the WORD
+				// dispatch whatever the bound value's quote — the run routes
+				// a bound FnDefInfo through Lookup — so the pass's stand-in
+				// for such a binding is read, not substituted as the quoted
+				// data it was where it was bound: `def g (m.f/v) end g 4` is
+				// 5 (NUR218; the marker drop quotes the member carrier,
+				// NUR213, and a def binds what the paren left).
+				if top.Quoted && (IsFnTypedCarrier(top) || (top.Dynamic && SigTypeMatches(top, TFunction))) {
+					top.Quoted = false
+				}
 				e.Registry.analysisRecorder().NoteDefRead(top.ID, w.Name)
 				e.Registry.analysisRecorder().NoteLocalRead(top.ID, val.Pos())
 				e.noteWordRead(top, w.Name, val.Pos())
@@ -3022,6 +3213,10 @@ func (e *Engine) stepWord(val Value) error {
 		return e.sigError(w.Name, fn, val.Pos())
 	}
 
+	if e.Registry.analysisActive() {
+		e.noteCallWindow(w, fn, sig, positions, specAt, val.Pos())
+	}
+
 	if sig == nil {
 		// In check mode, a missing signature is a soft diagnostic
 		// rather than a hard error: pick the first-ranked candidate,
@@ -3207,8 +3402,24 @@ func (e *Engine) dynShuffleConsumerAt(idx int) bool {
 	return true
 }
 
+// recordRuntimeDispatch emits a check-mode-run word whose handler latched a
+// RUN-TIME effect in this dispatch as the call it is: a binder that bound
+// run-time names (`unpack` over a source the pass cannot read — the
+// handler's NoteRuntimeBind), or a constructor whose value is built over an
+// operand the pass does not know (`Integer gt (size s)` — NoteRuntimeConstruct,
+// NUR231). The recorder's latch decides, so every other compile-time word
+// keeps its elision.
+func (e *Engine) recordRuntimeDispatch(match *MatchResult, results []Value) {
+	if e.Registry.analysisActive() && match.Sig.RunInCheckMode() {
+		e.Registry.analysisRecorder().RecordRuntimeDispatch(match.Name, match.Sig, match.Args, results, e.currentPos())
+	}
+}
+
 // execMatch executes a matched signature, splicing args and results.
 func (e *Engine) execMatch(match *MatchResult) error {
+	// A dispatch commit may move a predicate's basis: forget the memoised
+	// verdicts (RunPredicate, NUR102).
+	e.Registry.ClearPredMemo()
 	// Per-export module policy gate (NUR045): every named- and value-
 	// dispatch route funnels its matched signature through here — the
 	// direct wrapper call (`TimeUtil.sleep 800`), the module-preamble
@@ -3561,13 +3772,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	if err != nil {
 		return e.stampErrPos(e.maybeAddFnShapeHint(err))
 	}
-	// A check-mode-run binder word that bound RUN-TIME names in this
-	// dispatch (`unpack` over a source the pass cannot read — the handler's
-	// NoteRuntimeBind) is emitted as the call it is; the recorder's latch
-	// decides, so every other compile-time word keeps its elision.
-	if e.Registry.analysisActive() && match.Sig.RunInCheckMode() {
-		e.Registry.analysisRecorder().RecordRuntimeBindDispatch(match.Name, match.Sig, match.Args, e.currentPos())
-	}
+	e.recordRuntimeDispatch(match, results)
 	if e.recorder != nil {
 		e.recordDispatch(match.Name, n, results)
 	}
@@ -3604,6 +3809,20 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	// re-stepped elsewhere — retrieved from a map, unwrapped from a paren.
 	if match.Sig.ParkResult() {
 		e.Pointer += len(results)
+	}
+	// A user fn's single returned closure delivered as a HANDLER RESULT —
+	// the foreign-registry arm of buildFnBodyHandler, a module fn dispatched
+	// from an outer engine, runs the body through the CallBoru seam and hands
+	// its residual back here, where the same-registry call splices a frame
+	// — is PARKED as the frame's return is (fnReturnPark: a fn frame's
+	// Function return is a delivery, not a fresh use). Re-stepped here it
+	// dispatched over the values beneath the call: `3 M.d1 10` over a
+	// factory-shaped module fn was 13 for the main registry's `[3 fn
+	// (Integer)]` (NUR191). A frame splice never arrives as one value (its
+	// results open with the frame's paren), so the test is the frame path's
+	// own, over the one survivor.
+	if match.Sig.FnFrame() != nil && len(results) == 1 && FnValueDispatchesAtPointer(results[0]) {
+		e.Pointer++
 	}
 	return nil
 }
@@ -3927,12 +4146,100 @@ func (e *Engine) insertForward(w WordInfo, sig *Signature, forwardNeeded, stackA
 		// will DISPATCH rather than arrive (see ForwardInfo docs).
 		Speculative:   specAt >= 0,
 		SpeculativeAt: max(specAt, 0),
+		// The deferred word-led plan (ForwardInfo.WordLed): a Word next
+		// on the tape and no name capture at the first slot is exactly
+		// the case PlanMatch defers every candidate for.
+		WordLed: e.Pointer+1 < e.Tape.Len() && IsWord(e.Tape.At(e.Pointer+1)) && (sig.QuoteArgs == nil || !sig.QuoteArgs[0]),
 	})
 
 	e.Tape.Insert(e.Pointer+1, fwd)
 
 	e.Pointer += 2
 	return nil
+}
+
+// noteWordLedArrival latches the gradual-split ambiguity (NUR241) when a
+// compile pass's DEFERRED word-led window (ForwardInfo.WordLed) takes an
+// arriving value its slot cannot prove — a paren's gradual result — while a
+// window collecting fewer forward tokens also fits the stack beneath the
+// word. The interpreter's planner evaluates such a paren before it commits
+// a window and prunes to the narrower one when the value misses the slot:
+// `acc "x" append acc (m.path) append` appends "x" to acc where the pass
+// committed acc into m.path's slot. No static window is faithful, so the
+// compile declines, NUR228's discipline. A proven arrival, and a window
+// that is not word-led (`1 2 add (m.v)`), plan as before, as does the
+// word-led token's OWN arrival (slot 0): that is the gradual first operand
+// of every `f x`, the naive latch the record rules out. Only an operand the
+// plan took PAST the word asks.
+func (e *Engine) noteWordLedArrival(fwd *ForwardInfo, valIdx, funcIdx int) {
+	if !e.Registry.analysisActive() || !e.Registry.analysisCompiling() {
+		return
+	}
+	slot := fwd.CollectedArgs
+	if slot == 0 || slot >= fwd.Sig.TotalArgs() || !unprovenStackOperand(e.Tape.At(valIdx), SigArgType(fwd.Sig, slot)) {
+		return
+	}
+	if e.narrowerWindowFits(fwd, funcIdx) {
+		e.Registry.noteAmbiguousGradualSplit()
+	}
+}
+
+// narrowerWindowFits reports whether a window collecting fewer forward
+// tokens than fwd's plan fits one of the word's signatures — the planner
+// re-plans over all of them: its first k slots the values already
+// collected (k at most fwd.CollectedArgs), every later slot from the stack
+// beneath them, top first — the windows the interpreter's planner prunes
+// to. A Fallback or 0-arg signature plans no window (PlanMatch defers both
+// to its fallback section), so neither is one: a boru fn's synthesized
+// fallback fits any stack and would flag every word-led call.
+func (e *Engine) narrowerWindowFits(fwd *ForwardInfo, funcIdx int) bool {
+	sigs := []Signature{*fwd.Sig}
+	if fd := e.Registry.Lookup(fwd.FuncName); fd != nil {
+		sigs = fd.Signatures
+	}
+	base := funcIdx - fwd.CollectedArgs
+	for si := range sigs {
+		if sigs[si].Fallback || sigs[si].TotalArgs() == 0 {
+			continue
+		}
+		if windowFitsBelow(e.Tape, &sigs[si], base, fwd.CollectedArgs) {
+			return true
+		}
+	}
+	return false
+}
+
+// windowFitsBelow reports whether sig fits a window whose first k slots are
+// the values at base.. (k at most collected, and within sig's forward
+// limit) and whose later slots — at least one — come from the stack
+// beneath base, top first. A window of the collected values alone is a
+// narrower-ARITY overload over the forward operands (`slice from (add 1
+// upto) data` beside slice's two-operand form, mini-s3.boru), which leaves
+// the arriving operand stranded after the call: not the stack-style reading
+// NUR241's planner prunes to.
+func windowFitsBelow(win *Tape, sig *Signature, base, collected int) bool {
+	n := sig.TotalArgs()
+	limit := sig.BarrierPos
+	if limit < 0 || limit > n {
+		limit = n
+	}
+	below := resolvedIndicesBeforeInto(win, base, make([]int, 0, n), n)
+	for k := 0; k <= collected && k <= limit && k < n; k++ {
+		if len(below) < n-k {
+			continue
+		}
+		fits := true
+		for i := 0; i < k && fits; i++ {
+			fits = SigArgMatches(sig, i, win.At(base+i))
+		}
+		for j := 0; j < n-k && fits; j++ {
+			fits = SigArgMatches(sig, k+j, win.At(below[len(below)-1-j]))
+		}
+		if fits {
+			return true
+		}
+	}
+	return false
 }
 
 // stepLiteral handles a resolved (non-word, non-forward) value at the pointer.
@@ -4097,6 +4404,27 @@ func (e *Engine) stepLiteral() error {
 		// never consumed it) — e.g. `(1 add 2)/s`. The modifier is a no-op on
 		// a non-function result: drop the marker.
 		if IsDispatchMod(e.Tape.At(valIdx)) {
+			// Under analysis the preceding value may be a Function-typed
+			// CARRIER (a member read the pass models — `m.f/v 5`), which
+			// execFnDefLiteral's peek never reaches (fnDefAtPointer fails
+			// on a carrier) while at run time the concrete value takes that
+			// peek and stays data. Quote the carrier as the peek would, or
+			// the pass's residual carries an unquoted fn lead beside the 5
+			// and the residual layout applies it (resolveDynamicApply):
+			// `6` compiled for the interpreter's `fn (Integer) 5` (NUR213).
+			if valIdx > 0 {
+				if prev := e.Tape.At(valIdx - 1); !prev.Quoted && (prev.Dynamic || prev.Carrier) {
+					prev.Quoted = true
+					e.Tape.Set(valIdx-1, prev)
+					// And note the delivery as the peek notes the concrete
+					// value's (NUR218): a code body whose top is this read
+					// takes no replay — `[1 2 3] each [m.f/v]` is three fn
+					// values on both lanes.
+					if e.Registry.analysisActive() {
+						e.Registry.analysisRecorder().NoteValRead(prev.ID, "")
+					}
+				}
+			}
 			e.Tape.Remove(valIdx)
 			return nil
 		}
@@ -4186,6 +4514,9 @@ func (e *Engine) stepLiteral() error {
 		return e.implicitEnd(fwdIdx)
 	case ArrivalImplicitEnd:
 		return e.implicitEnd(fwdIdx)
+	}
+	if fwd.WordLed {
+		e.noteWordLedArrival(&fwd, valIdx, funcIdx)
 	}
 
 	// Remove the value from its current position.
@@ -4800,10 +5131,20 @@ func lowerReach(info ReachInfo) []Value {
 		anchor = info.Receiver[0]
 	}
 	for _, seg := range info.Segments {
+		// The dispatch word takes the receiver's position; a receiver
+		// without one — the lens unit's synthesized `__reach_recv`
+		// (compiledLensSig), whose compiled no-match raise then read
+		// "source position unknown" where the interpreter's expansion
+		// underlines the receiver (NUR171) — takes the segment's own key
+		// token, so the raise is positioned on both lanes.
+		segAnchor := anchor
+		if segAnchor.Pos().Row == 0 && seg.KeyLit.Pos().Row != 0 {
+			segAnchor = seg.KeyLit
+		}
 		if seg.Getr {
-			out = append(out, WithPos(NewWord("dotr"), anchor))
+			out = append(out, WithPos(NewWord("dotr"), segAnchor))
 		} else {
-			out = append(out, WithPos(NewWord("dot"), anchor))
+			out = append(out, WithPos(NewWord("dot"), segAnchor))
 		}
 		if seg.Computed {
 			out = append(out, NewParenExpr(seg.KeyExpr))
@@ -5269,7 +5610,43 @@ func (e *Engine) constFoldContainerVal(items []Value) (Value, bool) {
 	if !ok || !ConstFoldAgrees(one, two) {
 		return Value{}, false
 	}
+	// The fold ran with the check pass OFF (a concrete sub-run), so a fn
+	// value it built was queued by nobody — a lambda written as a map
+	// member (`{k:([x:Any] => [nosuchw 1])}`) went unanalysed where its
+	// list-literal twin, which never folds, was analysed (NUR105's last
+	// position). The body is still WRITTEN in this program: queue it as
+	// construction would have.
+	noteFoldedFnBodies(e.Registry, one)
 	return one, true
+}
+
+// noteFoldedFnBodies queues every fn value inside a folded constant for the
+// end-of-pass body check (NoteFnBodyPending), walking lists and maps the way
+// containsCapturingFn does. Each entry is marked Folded (PendingFnBody).
+func noteFoldedFnBodies(r *Registry, v Value) {
+	if fd, ok := v.Data.(FnDefInfo); ok {
+		noteFnBodyPending(r, r, fd, true)
+		return
+	}
+	if !IsConcrete(v) {
+		return
+	}
+	if v.Parent.ConformsTo(TMap) {
+		if m, err := AsMap(v); err == nil && m != nil {
+			for _, k := range m.Keys() {
+				val, _ := m.Get(k)
+				noteFoldedFnBodies(r, val)
+			}
+		}
+		return
+	}
+	if v.Parent.ConformsTo(TList) {
+		if lst, err := AsList(v); err == nil && !lst.IsNil() {
+			for i := 0; i < lst.Len(); i++ {
+				noteFoldedFnBodies(r, lst.Get(i))
+			}
+		}
+	}
 }
 
 // the function. If the FnDef carries a captured Registry (closure from a
@@ -5437,13 +5814,25 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// A `/v` or `/q` modifier on a paren / dotted-path result is emitted by
 	// the parser as a Word/__DM marker right after the group (/u /s /f /N
 	// are the usurp / stack-args / forward-args / force-arity words). Peek
-	// and consume it: it leaves the function inert (data).
+	// and consume it: the function is DELIVERED, not dispatched — pushed and
+	// stepped past, unquoted, exactly as stepWordVal delivers `inc/v`
+	// (NUR218). A member read `m.f/v` is the same value as its word twin:
+	// quoted, it rode into a paren's survivor, a callback slot and a branch
+	// result as DATA where `inc/v` is the fn (`each (m.f/v) [1 2 3]` stepped
+	// it per element as data; `(m.f/v 5)` stayed `fn 5` for `(inc/v 5)`'s
+	// 6). Position keeps it inert, as it keeps the word twin: nothing
+	// re-steps a value behind the pointer but a rewind, and a rewind over a
+	// fn value is the language's apply.
 	if valIdx+1 < e.Tape.Len() {
 		if _, ok := AsDispatchMod(e.Tape.At(valIdx + 1)); ok {
 			e.Tape.Remove(valIdx + 1)
-			v := e.Tape.At(valIdx)
-			v.Quoted = true
-			e.Tape.Set(valIdx, v)
+			// The value spelling is noted as stepWordVal notes it: the
+			// residual lowering must know the delivery is INERT where it
+			// sits (placedValRead) — a named fn at a frame's tail is
+			// returned, not the zero-argument call NUR186 declines.
+			if e.Registry != nil && e.Registry.analysisActive() {
+				e.Registry.analysisRecorder().NoteValRead(e.Tape.At(valIdx).ID, "")
+			}
 			e.Pointer++
 			return nil
 		}
@@ -5839,7 +6228,18 @@ func (e *Engine) recordDispatch(name string, arity int, results []Value) {
 		e.recorder.OnCall(name, arity, 0)
 		return
 	}
-	e.recorder.OnCall(name, arity, len(results))
+	// A result that DISPATCHES when re-encountered (an unquoted fn value —
+	// `afn`'s, `get`'s or `dot`'s) never fires OnPushLit, so crediting it
+	// leaves an unspendable skip that swallows the next real literal: the
+	// argument of the application that follows it (NUR077; the same rule
+	// stepCloseParen's survivor accounting applies).
+	n := 0
+	for _, v := range results {
+		if !FnValueDispatchesAtPointer(v) {
+			n++
+		}
+	}
+	e.recorder.OnCall(name, arity, n)
 }
 
 // fnValueNoMatchRecovers reports whether a fn value's no-match at the pointer
@@ -5958,6 +6358,17 @@ func (e *Engine) upcomingArgs(valIdx int) []Value {
 // ExecFnDefSigStackMatch is the legacy pure-stack dispatch path for
 // boru-defined functions whose signatures carry named params. Used as a
 // fallback when matchSignature's aggregate match returns nothing.
+// stackSlotAdmits is the stack match's per-position type test: the
+// matcher's own rule (SigArgMatches), including its refusal of a bare type
+// literal at a concrete-payload slot (rejectsTypeLiteral). Asking
+// SigTypeMatches alone let an anonymous fn value re-stepped at a paren's
+// close take `Integer` for an Integer param, where every other dispatch —
+// a named call, a def-bound lambda, the VM's apply — refuses it (NUR248).
+func stackSlotAdmits(sig *Signature, j int, v Value) bool {
+	isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[j]
+	return SigArgMatches(sig, j, v) && (isTypeArg || !rejectsTypeLiteral(v, SigArgType(sig, j)))
+}
+
 func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []Value) error {
 	resolvedIdx := e.ResolvedIndicesBefore(len(resolved))
 	checkMode := e.Registry != nil && e.Registry.analysisMode() && fnDef.Anonymous
@@ -6007,7 +6418,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 		if hasNamed {
 			for j, p := range sig.Params {
 				ri := len(resolved) - 1 - j
-				if !SigTypeMatches(resolved[ri], p.Type) {
+				if !stackSlotAdmits(sig, j, resolved[ri]) {
 					match = false
 					break
 				}
@@ -6045,7 +6456,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 		} else {
 			candidate := resolved[len(resolved)-nArgs:]
 			for j, p := range sig.Params {
-				if !SigTypeMatches(candidate[j], p.Type) {
+				if !stackSlotAdmits(sig, j, candidate[j]) {
 					match = false
 					break
 				}
@@ -6080,6 +6491,16 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 				}
 				return e.execFnDefSig(valIdx, sig, args, fnDef.Registry, fnDef.Anonymous)
 			}
+		}
+	}
+
+	// An anonymous value whose refusal is UNDECIDED — a pattern over a
+	// carrier the run may bind to the pattern's literal — is not parked on
+	// a compiling pass: the run applies it where the value meets the
+	// pattern (NUR254).
+	if checkMode && !fnDef.Macro && e.Registry.analysisCompiling() && e.Registry.analysisRecorder().Active() {
+		if n := undecidedPatternWindow(ownSigs, resolved); n > 0 && e.recordUndecidedApply(valIdx, n, resolvedIdx) {
+			return nil
 		}
 	}
 
@@ -6126,6 +6547,20 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 				fv := e.Tape.At(valIdx)
 				fv.FailedDispatch = true
 				e.Tape.Set(valIdx, fv)
+				// A DEFINITE failure — every value the match examined is the
+				// value the runtime examines — raises at run time whatever the
+				// region: the enclosing `do` body models it (NUR134), and below
+				// the uncaught top level the compiled body unit raises it in
+				// place (a unit-scoped trap) instead of lowering the wreckage.
+				definite := uncalledDispatchDefinite(candidates) && !fv.Carrier && !fv.Dynamic
+				if definite {
+					e.Registry.Check.NoteDefiniteRaise(e.Registry.Defs.Snapshot)
+				}
+				if definite && e.Registry.analysisCompiling() && !e.Registry.analysisAtUncaughtTopLevel() {
+					e.Registry.analysisRecorder().RecordUnitTrapErr(
+						makeBoruErrorAt("uncalled_function", detail, fnDef.Name,
+							e.effectiveSource(), hint, pos), pos)
+				}
 				if e.Registry.analysisAtUncaughtTopLevel() {
 					// The old note here read: "NOT a RuntimeMirror — a mirror
 					// promises the program still compiles and raises the identical
@@ -6169,6 +6604,81 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 
 	e.Pointer++
 	return nil
+}
+
+// undecidedPatternWindow is the arity of the first own signature whose
+// refusal of the stack's top values is UNDECIDED (NUR254): every slot admits
+// its value by type, every pattern over a concrete value admits it, and some
+// pattern holds a non-concrete value — a carrier the run may bind to the
+// pattern's literal (`(n ([0] => [1]))` over an Integer param). The window is
+// read as ExecFnDefSigStackMatch reads it: top-first for named params, in
+// stack order for unnamed ones. 0 when every refusal is definite.
+func undecidedPatternWindow(ownSigs []Signature, resolved []Value) int {
+	for i := range ownSigs {
+		sig := &ownSigs[i]
+		n := len(sig.Params)
+		if n == 0 || len(resolved) < n {
+			continue
+		}
+		named := false
+		for _, p := range sig.Params {
+			named = named || p.Name != ""
+		}
+		undecided, ok := false, true
+		for j, p := range sig.Params {
+			v := resolved[len(resolved)-n+j]
+			if named {
+				v = resolved[len(resolved)-1-j]
+			}
+			switch {
+			case !stackSlotAdmits(sig, j, v):
+				ok = false
+			case p.Pattern == nil:
+			case !IsConcrete(v):
+				undecided = true
+			default:
+				_, ok = Unify(v, *p.Pattern)
+			}
+			if !ok {
+				break
+			}
+		}
+		if ok && undecided {
+			return n
+		}
+	}
+	return 0
+}
+
+// recordUndecidedApply records an anonymous fn value's UNDECIDED apply over
+// the top n stack values (undecidedPatternWindow) as the trailing dynamic
+// apply the run decides — recordParenTrailingFnApply's event: applied where
+// the run's value meets the pattern, parked beside its window where it does
+// not, a variadic region under NUR246's rules — and collapses the window and
+// the value to its result. A window the recorder cannot seat flags the
+// gradual split instead, so the program declines (NUR228's discipline)
+// rather than bake the park the check pass would otherwise leave.
+func (e *Engine) recordUndecidedApply(valIdx, n int, resolvedIdx []int) bool {
+	fnv := e.Tape.At(valIdx)
+	argIdxs := resolvedIdx[len(resolvedIdx)-n:]
+	argVals := make([]Value, 0, n)
+	for _, i := range argIdxs {
+		argVals = append(argVals, e.Tape.At(i))
+	}
+	out := NewCarrier(TAny)
+	out.ID = GenerateID(IDPrefixForType(TAny))
+	out.pos = fnv.pos
+	consumed, ok := e.Registry.analysisRecorder().RecordDynApply(argVals, fnv, out, fnv.Pos())
+	if !ok {
+		e.Registry.noteAmbiguousGradualSplit()
+		return false
+	}
+	e.Tape.Set(valIdx, out)
+	for j := len(argIdxs) - 1; j >= len(argIdxs)-consumed; j-- {
+		e.Tape.Remove(argIdxs[j])
+	}
+	e.Pointer = valIdx - consumed + 1
+	return true
 }
 
 // uncalledRaisePos is where a named fn value's no-match raises
@@ -6427,7 +6937,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 			// Check mode ANALYSES the body — always the interpreter path
 			// (running a stamped unit here would execute real side effects
 			// during static analysis).
-			result, err = capturedReg.CallBoruNamed(sig, args, captures, fnLabel)
+			result, err = capturedReg.CallBoruStrict(sig, args, captures, fnLabel, e.currentPos())
 		} else {
 			// Runtime: a module fn stamped at load (StampFnValueInPlace,
 			// RunModuleBody) runs its unit on the VM — the module
@@ -6437,11 +6947,23 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 			// to the old direct call. This retires the per-call interpreter
 			// hop for module-export application (the mini-redis client loop:
 			// `MiniRedis.cmd` per iteration).
-			result, err = InvokeCallback(capturedReg, sig, args, captures)
+			result, err = InvokeCallbackStrict(capturedReg, sig, args, captures, fnLabel, e.currentPos())
 		}
 		restoreCheck()
 		if err != nil {
 			return err
+		}
+		// A user fn's single returned closure is PARKED where it lands (the
+		// frame path's fnReturnPark: a fn frame's Function return is a
+		// delivery, not a fresh use), on this path too — the splice below
+		// re-presents the results to the main loop from the first argument's
+		// index, and a returned fn value stepped there dispatched over the
+		// values beneath: `3 M.d1 10` over a factory-shaped module fn was 13
+		// for the main registry's `[3 fn (Integer)]` (NUR191). One survivor
+		// that would dispatch at the pointer is stepped past.
+		park := 0
+		if len(result) == 1 && FnValueDispatchesAtPointer(result[0]) {
+			park = 1
 		}
 		// Splice: remove consumed args + FnDef, insert results.
 		if len(indices) == nArgs && nArgs > 0 {
@@ -6459,16 +6981,17 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 				}
 			}
 			e.Tape.Splice(dst, valIdx+1-dst, result...)
-			e.Pointer = firstArgIdx
-		} else if nArgs == 0 { //covergate:allow execFnDefSig cross-registry 0-arg splice arm; see 5015.20 entry (§kernel)
+			e.Pointer = firstArgIdx + park
+		} else if nArgs == 0 {
 			e.Tape.Splice(valIdx, 1, result...)
+			e.Pointer += park
 		} else { //covergate:allow execFnDefSig cross-registry forward-fallback splice arm; see 5015.20 entry (§kernel)
 			argStart := valIdx - nArgs
 			if argStart < 0 { //covergate:allow execFnDefSig cross-registry forward-fallback splice arm; see 5015.20 entry (§kernel)
 				argStart = 0
 			}
 			e.Tape.Splice(argStart, valIdx+1-argStart, result...) //covergate:allow execFnDefSig cross-registry forward-fallback splice arm; see 5015.20 entry (§kernel)
-			e.Pointer = argStart
+			e.Pointer = argStart + park
 		}
 		return nil
 	}
@@ -6742,6 +7265,21 @@ func (e *Engine) tagReachCollapsedFn(idx, closeIdx int, wasReachGroup bool) {
 	if fd, isFn := v.Data.(FnDefInfo); isFn && fd.NamedDef() && !v.Quoted {
 		v.ReachGroup = true
 		e.Tape.Set(idx, v)
+	}
+	// Under the check pass the survivor may be a CARRIER — fn-typed, the
+	// declared return of a call the group made (`M.ff` over a module fn
+	// returning `[Function]`), or DYNAMIC, a member read the pass cannot
+	// type (`m.f` over `{f: g/v}`). The collapse re-steps it just the same,
+	// so the compiler must not read the call's result as placed data
+	// (callResultPlaced, NUR260), and a loop body that leaves one is the
+	// interpreter's per-iteration re-step (RecordLoop, NUR129): record it
+	// (CheckState.ReachSurvivorFnIDs).
+	if e.Registry != nil && e.Registry.analysisActive() && !v.Quoted && v.ID != "" && (IsFnTypedCarrier(v) || v.Dynamic) {
+		cs := e.Registry.Check
+		if cs.ReachSurvivorFnIDs == nil {
+			cs.ReachSurvivorFnIDs = map[string]bool{}
+		}
+		cs.ReachSurvivorFnIDs[v.ID] = true
 	}
 }
 
@@ -7168,37 +7706,24 @@ func (e *Engine) expandScanSugar(tok Value, pos, scanIdx int, viable []ViableSig
 // (`usurp (m dot a)` — the higher-order consumer wants the fn itself;
 // Any slots stay barred: Any also admits a fn value, but as a swallowed
 // call head, which is the misfire the barrier exists for).
-func (e *Engine) reachCallHeadBarrier(tok Value, viable []ViableSig, pos, scanIdx int) bool {
-	return ReachCallHeadBarrierOn(e.Tape, e.Registry, tok, viable, pos, scanIdx)
+func (e *Engine) reachCallHeadBarrier(tok Value, scanIdx int) bool {
+	return ReachCallHeadBarrierOn(e.Tape, e.Registry, tok, scanIdx)
 }
 
 // ReachCallHeadBarrierOn is the fn-word barrier's VALUE twin (NUR038) over an
 // explicit window and registry, so the interpreter and the VM's region
 // adapter share one answer rather than two that agree until they do not.
-func ReachCallHeadBarrierOn(win CollectWindow, reg *Registry, tok Value, viable []ViableSig, pos, scanIdx int) bool {
+//
+// No slot type exempts the value (NUR078): a Function-typed slot used to
+// admit a reach-collapsed fn as its own operand (the retired
+// sigWantsFunctionAt), which let a dot read spell a reference where a bare
+// word calls. A dot read of a function is a call wherever it is written;
+// the reference is `m.f/v`.
+func ReachCallHeadBarrierOn(win CollectWindow, reg *Registry, tok Value, scanIdx int) bool {
 	if !tok.ReachGroup || tok.Quoted || !isFnDefValue(tok) {
 		return false
 	}
-	for _, vs := range viable {
-		if pos < vs.Barrier && sigWantsFunctionAt(vs.Sig, pos) {
-			return false // the fn is this overload's own Function operand
-		}
-	}
 	return ReachFnWouldClaimOn(win, reg, tok, scanIdx+1)
-}
-
-// sigWantsFunctionAt reports whether sig position pos declares a
-// Function-conforming operand slot — a slot for which a reach-collapsed
-// fn value is DATA (a higher-order word's Function param), exempt from
-// the NUR038 call-head barrier. An Any slot is NOT a Function slot: Any
-// also admits a fn value, but as a swallowed call head, which is exactly
-// the misfire the barrier exists for.
-func sigWantsFunctionAt(sig *Signature, pos int) bool {
-	if pos >= sig.TotalArgs() {
-		return false
-	}
-	st := SigArgType(sig, pos)
-	return st != nil && st.ConformsTo(TFunction)
 }
 
 // Probe classifications returned by forwardClaimProbe.
@@ -7244,6 +7769,14 @@ func ForwardClaimProbeOn(win CollectWindow, reg *Registry, idx int) (Value, int)
 		return Value{}, probeNone
 	case IsOpenParen(v) || IsParenExpr(v) || IsReach(v) || IsInterpString(v) || IsXmlInterp(v):
 		return Value{}, probeOptimistic
+	case IsDispatchMod(v):
+		// A dispatch-modifier marker (`/v` / `/q` after a paren or a dotted
+		// path — the parser's Word/__DM) qualifies the value BEFORE it and
+		// is never an argument: it fell to the literal arm below, where an
+		// `Any` parameter matched it, so a `/v`-marked module member with
+		// an Any first parameter read as a call head that would claim its
+		// own marker and `def g M.up1/v` collected nothing (NUR262).
+		return Value{}, probeNone
 	case IsWord(v):
 		wi, werr := AsWord(v)
 		if werr != nil { //covergate:allow AsWord cannot fail after an IsWord guard — the payload IS a WordInfo (§engine)
@@ -7545,6 +8078,7 @@ func (e *Engine) stepEnd() error {
 	// Statement boundary: void-group records do not blame failures
 	// across statements (ERRORS.8.md §3).
 	e.voidGroups = e.voidGroups[:0]
+	e.Registry.ClearPredMemo()
 	endIdx := e.Pointer
 	// The recorder learns where the boundary fell (NUR187): the residual's
 	// apply arms never carry a fn value's collection across it.
@@ -7662,14 +8196,12 @@ func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 				ev, err = e.autoEvalList(v, true)
 			}
 			if err != nil {
-				// The error unwinds the run, so the frame's remaining
-				// parked tail (__pa, the undef pairs) never steps —
-				// replay its registry effects before propagating,
-				// exactly as CallBoru's inline cleanup runs on a body
-				// error. Otherwise a do-error trap upstream would
-				// resume with the callee's params/args/locals still
-				// bound in the caller's scope.
-				e.unwindFrameTailOnError(info, markerIdx)
+				// The error unwinds the run, and the frame's remaining
+				// parked tail (__pa, the undef pairs) never steps: the
+				// run's fault return replays it — this frame is still
+				// open on the tape — so a do-error trap upstream resumes
+				// without the callee's params/args/locals bound in the
+				// caller's scope (faultReturn).
 				return err
 			}
 			ev.Eval = false
@@ -7701,43 +8233,6 @@ func truncateFrameDefs(info DefCleanupInfo) {
 		for reg.Defs.Depth(name) > prevLen {
 			UninstallDef(reg, name)
 		}
-	}
-}
-
-// unwindFrameTailOnError replays the frame tail's registry effects when
-// the in-frame residual evaluation raises: the truncation this marker
-// owns, then — best-effort, only when the canonical parked tail is
-// actually next on the tape — the __pa Args/baseline pop and the undef
-// pairs, exactly the operations the parked tokens would have performed
-// had the error not discarded them. Mirrors probeTailCall's forward walk.
-func (e *Engine) unwindFrameTailOnError(info DefCleanupInfo, markerIdx int) {
-	if !info.SkipCleanup {
-		truncateFrameDefs(info)
-	}
-	i := markerIdx + 1
-	if i >= e.Tape.Len() {
-		return
-	}
-	if w, err := AsWord(e.Tape.At(i)); err != nil || w.Name != "__pa" {
-		// A bare marker outside a canonical frame tail (a sweep re-run,
-		// a synthetic tape) — nothing further to replay.
-		return
-	}
-	if err := PopFrameArgs(e.Registry); err != nil {
-		return
-	}
-	i++
-	for i+1 < e.Tape.Len() {
-		u, err := AsWord(e.Tape.At(i))
-		if err != nil || u.Name != "undef" || !u.ForceForward {
-			break
-		}
-		nm, err := AsWord(e.Tape.At(i + 1))
-		if err != nil {
-			break
-		}
-		UninstallFrameBinding(e.Registry, nm.Name)
-		i += 2
 	}
 }
 
@@ -7831,8 +8326,8 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 	}
 
 	// Collect resolved values between mark and move (this iteration's output).
-	for j := markIdx + 1; j < moveIdx; j++ {
-		cont.Results = append(cont.Results, e.Tape.At(j))
+	if err := e.collectLoopRegion(cont, markIdx, moveIdx); err != nil {
+		return err
 	}
 
 	// Advance iterator.
@@ -7843,8 +8338,11 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 		(cont.Step < 0 && cont.Current > cont.End)
 
 	if moreIterations {
-		// Update iterator: uninstall old value, install new one.
-		// This keeps the DefStacks depth at 1 throughout the loop.
+		// Update iterator: pop the levels the body pushed above the index
+		// (its lexical scope ends with the iteration, NUR204), then
+		// uninstall the old value and install the new one — the index
+		// level's depth is the loop's throughout.
+		popIterLevels(cont, false)
 		UninstallDef(cont.Registry, cont.IterName)
 		InstallDef(cont.Registry, cont.IterName, NewInteger(cont.Current))
 
@@ -7879,13 +8377,41 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 		return nil
 	}
 
-	// Done — uninstall iterator, splice in accumulated results.
-	UninstallDef(cont.Registry, cont.IterName)
+	// Done — the index level and any body level above it go (NUR204), then
+	// splice in the accumulated results.
+	popIterLevels(cont, true)
 	delete(e.marks, info.To)
 	e.Tape.Splice(markIdx, moveIdx-markIdx+1, cont.Results...)
 	e.Pointer = markIdx
 	if e.trace != nil {
 		e.traceNote = "for done"
+	}
+	return nil
+}
+
+// collectLoopRegion appends the values a loop's body region left between
+// its mark and its move — this iteration's output — to the continuation's
+// results. A pending residual container among them — a list or map literal
+// the body left unevaluated, `for 2 [[(i add 1)] i]` — evaluates HERE, with
+// the iterator still bound, as the fn frame's DefCleanup evaluates its
+// body's residual in-frame (ResidualEvalsInFrame): the loop region is the
+// literal's frame. Left pending, it evaluated at the end of the run, after
+// the loop had unbound `i` — the interpreter's `undefined word: i`, or an
+// OUTER `i`'s value, where the compiled lane assembled a value per
+// iteration with the loop's own (NUR197). Everything else — a typed
+// container's inert shape included — is collected as it stands and
+// resolved where every other value resolves, the end-of-run sweep.
+func (e *Engine) collectLoopRegion(cont *ForCont, markIdx, moveIdx int) error {
+	for j := markIdx + 1; j < moveIdx; j++ {
+		v := e.Tape.At(j)
+		if isPendingResidualContainer(v) {
+			ev, err := e.autoEvalResidual(v)
+			if err != nil {
+				return err
+			}
+			v = ev
+		}
+		cont.Results = append(cont.Results, v)
 	}
 	return nil
 }
@@ -7903,8 +8429,8 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 	cont := info.Cont
 
 	if cont.WhileInBody {
-		for j := markIdx + 1; j < moveIdx; j++ {
-			cont.Results = append(cont.Results, e.Tape.At(j))
+		if err := e.collectLoopRegion(cont, markIdx, moveIdx); err != nil {
+			return err
 		}
 		cont.WhileInBody = false
 		e.spliceWhileRegion(markIdx, moveIdx, info, cont.WhileCond, "while cond")
@@ -7919,6 +8445,14 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 		delete(e.marks, info.To)
 		e.Tape.Splice(markIdx, moveIdx-markIdx+1)
 		e.Pointer = markIdx
+		// Anchored at the CONDITION operand — the thing that is wrong, and
+		// where the compiled lane's terminal trap anchors (whileloop.go
+		// records it at args[0].Pos()) — not at the pointer, which after the
+		// splice sits wherever the tape happens to (`while [] [1] end 5`
+		// underlined the 5; `while [] [1]` had no position at all; NUR130).
+		if p := cont.CondPos; p.Row > 0 {
+			return makeBoruErrorAt("runtime_error", "while: condition produced no value", "while", e.effectiveSource(), "", p)
+		}
 		return e.runtimeError("runtime_error", "while: condition produced no value", "while", "")
 	}
 	if CoerceBoolean(condResult) {
@@ -8085,8 +8619,9 @@ func (e *Engine) handleLoopBreak() bool {
 				// would otherwise leak the per-call stacks (fn_frame.go).
 				e.unwindLiveFrames(markIdx, i)
 
-				// Uninstall iterator, splice in accumulated results.
-				UninstallDef(info.Cont.Registry, info.Cont.IterName)
+				// Uninstall the iterator (and any body level above it,
+				// NUR204), splice in accumulated results.
+				popIterLevels(info.Cont, true)
 				delete(e.marks, info.To)
 				e.Tape.Splice(markIdx, i-markIdx+1, info.Cont.Results...)
 				e.Pointer = markIdx
@@ -9418,26 +9953,6 @@ func (e *Engine) hasPendingForwardFormArg() bool {
 	return false
 }
 
-// hasPendingForwardExpectingFunction checks if there is a pending forward
-// whose next expected argument is TFunction.
-func (e *Engine) hasPendingForwardExpectingFunction() bool {
-	for i := e.Pointer - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
-			break
-		}
-		if IsForward(e.Tape.At(i)) {
-			fwd, _ := AsForward(e.Tape.At(i))
-			// Forward args fill from sigArgs[0].
-			nextIdx := fwd.CollectedArgs
-			if nextIdx < fwd.Sig.TotalArgs() {
-				return SigArgType(fwd.Sig, nextIdx).Equal(TFunction)
-			}
-			break
-		}
-	}
-	return false
-}
-
 // MatchSignature is the Engine's seat on PlanMatch (collect_plan.go): the
 // plan-level matcher over this engine's tape, at its pointer, with the
 // check-mode facts the registry holds. The three per-dispatch facts are
@@ -9549,9 +10064,43 @@ func (e *Engine) TryRecordRecoveredUserFn(sig *Signature, fn *FnDefInfo, args []
 	if len(window) < sig.TotalArgs() {
 		return false
 	}
+	// A bare name bound to a function in the forward window CALLS at the
+	// interpreter's dispatch (NUR078): it is the boundary the matcher stops
+	// at, never an operand, so the window the recovery would bind is not the
+	// one the interpreter has — `h g` over a `g:Function` param raises
+	// signature_error there, and the guarded call answered h over g.
+	if nStack >= 0 && nStack <= len(positions) {
+		for k, p := range positions[nStack:] {
+			if e.forwardFnCall(p, k, sig) {
+				return false
+			}
+		}
+	}
 	recovered := sig.ReturnsFn(window, e.Registry)
 	CheckBraid.SpliceCheckResults(e, positions, recovered)
 	return true
+}
+
+// forwardFnCall reports whether the tape token at p, the forward operand a
+// recovery would bind at sig position idx, is a bare word the interpreter
+// DISPATCHES there — the planner's own fn-binding rule (collect_kernel.go):
+// a name bound to a function, a function carrier under the pass, or a
+// dynamic binding at a function-typed slot calls wherever it is written,
+// unless read `/v` (NUR078).
+func (e *Engine) forwardFnCall(p, idx int, sig *Signature) bool {
+	w, err := AsWord(e.Tape.At(p))
+	if err != nil || w.ForceVal {
+		return false
+	}
+	top, ok := e.Registry.Defs.Top(w.Name)
+	if !ok {
+		return false
+	}
+	if _, isFn := top.Data.(FnDefInfo); isFn || IsFnTypedCarrier(top) {
+		return true
+	}
+	et := SigArgType(sig, idx)
+	return top.Dynamic && et != nil && (et.ConformsTo(TFunction) || TypeIsFnShape(et))
 }
 
 // concreteArgsMatch reports whether every NON-Any-carrier operand still MATCHES
@@ -9776,40 +10325,29 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// Not statically definite — but every position is a runtime-stable
 		// value or a provenance-carrying carrier: record the runtime
 		// rematch (OpDispatchRematch), under three byte-identity guards.
-		// (1) The written tuple sigError renders (the carrier-aware twin
-		// of its forward-else-stack derivation) must be a CONTIGUOUS
-		// SLICE of the window, proven by ID identity — its offset+length
-		// ride as the spec's render bound (WrittenOff/NWritten), so a
-		// wider match view than the raise view (the local-add shape's
-		// match probed 3 positions where the error renders the single
-		// stack value at offset 0; the each shape's body operand sits at
-		// offset 1 after the region carrier) re-runs the match over the
-		// full window while rendering over the bounded slice. An empty
-		// tuple, or one absent from the window, cannot be rebuilt
-		// faithfully and declines. (2)+(3) The
+		// (1) The written tuple sigError renders — the attempted window,
+		// its carrier-aware twin (rematchWritten) — must be exactly window
+		// values, proven by ID identity, each at a distinct index; the
+		// indices ride as the spec's render tuple (DispatchSpec.Written), so
+		// a wider match view than the raise view (the local-add shape's
+		// match probed 3 positions where the error renders the single stack
+		// value at offset 0; the each shape's body operand sits at offset 1
+		// after the region carrier) re-runs the match over the full window
+		// while rendering over the tuple. A MIXED tuple — the forward
+		// operand and the stack value beneath it (`[1 2] each [dup mul]`
+		// under a variadic lead, `(x add 1)` over a gradual x) — is not a
+		// contiguous slice of the window (the window lists the stack run
+		// first), which is why the bound is an index tuple and not an
+		// offset (NUR172). An empty tuple, or one absent from the window,
+		// cannot be rebuilt faithfully and declines. (2)+(3) The
 		// two TAPE-state diagnostic layers the runtime rebuild has no
 		// access to — the tape reorder probe and the fn-shape
 		// typed-binding hint — must not apply; runtimeNoMatch rebuilds
 		// the value-based reorderHintFor itself. Declines leave the
 		// caller's compile failure.
-		written := e.rematchWritten()
-		if len(written) == 0 || len(written) > len(vals) {
-			return false
-		}
-		off := -1
-		for o := 0; o+len(written) <= len(vals) && off < 0; o++ {
-			match := true
-			for i := range written {
-				if written[i].ID != vals[o+i].ID {
-					match = false
-					break
-				}
-			}
-			if match {
-				off = o
-			}
-		}
-		if off < 0 {
+		written := e.rematchWritten(fn)
+		idx, ok := rematchRenderTuple(written, vals)
+		if !ok {
 			return false
 		}
 		if e.voidArgErrorFor(w.Name, pos) != nil {
@@ -9818,7 +10356,16 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		if e.reorderHint(w.Name, fn) != "" || e.IsFnShapeTypedBindingContext() {
 			return false
 		}
-		return es.RecordDispatchRematchValues(w.Name, vals, off, len(written), pos)
+		// The window lists the stack run first, then the operands written
+		// after the word (checkModeFallbackPositions); the rematch needs the
+		// split to plan the match as the interpreter does (NUR211).
+		nFwd := 0
+		for _, p := range window {
+			if p > e.Pointer {
+				nFwd++
+			}
+		}
+		return es.RecordDispatchRematchValues(w.Name, vals, nFwd, idx, pos)
 	}
 	// Serialise the FULL interpreter error into the trap so the compiled
 	// OpTrap raises byte-identical to the interpreter (Detail + spans +
@@ -9829,6 +10376,35 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		return es.RecordTrapErr(verr, pos)
 	}
 	return es.RecordTrapErr(e.sigError(w.Name, fn, pos), pos)
+}
+
+// rematchRenderTuple resolves the attempted written tuple to distinct
+// window indices — the render tuple a runtime rematch rebuilds it from. A
+// value is located by ID identity (the RecordDispatchRematchValues gate);
+// two values without an ID pair as equal, which is what the offset scan
+// this replaces compared. An empty tuple, or a value the window does not
+// hold, declines.
+func rematchRenderTuple(written, window []Value) ([]int, bool) {
+	if len(written) == 0 {
+		return nil, false
+	}
+	idx := make([]int, len(written))
+	used := make([]bool, len(window))
+	for i, v := range written {
+		found := -1
+		for j := range window {
+			if !used[j] && window[j].ID == v.ID {
+				found = j
+				break
+			}
+		}
+		if found < 0 {
+			return nil, false
+		}
+		used[found] = true
+		idx[i] = found
+	}
+	return idx, true
 }
 
 // argTypeSummary renders the operand types of a failed dispatch for the

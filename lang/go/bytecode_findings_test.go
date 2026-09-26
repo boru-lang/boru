@@ -566,7 +566,7 @@ func TestVariadicElseIfLowers(t *testing.T) {
 // the handler inspects, instead of declining "function value reaches word". A
 // fn-INVOKING use must stay declined (the VM cannot re-step a fn body).
 func TestFnValueIntrospectionLowers(t *testing.T) {
-	const setup = `def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] `
+	const setup = `def Positive fnpred n:Integer [if (n gt 0) [n] [None]] `
 	for _, c := range []struct {
 		src  string
 		want string
@@ -611,7 +611,7 @@ func TestFnValueIntrospectionLowers(t *testing.T) {
 	// was that the callback seam interpreted the body — fixed in
 	// eng/go/vm_foreign_unit.go, after which these rows compile with no
 	// interpreter entry at all (design/FULL-COMPILATION.0.md §6.3).
-	const inv = `def Positive fn [n:Integer Integer [if (n gt 0) [n] [None]]] 5 is Positive`
+	const inv = `def Positive fnpred n:Integer [if (n gt 0) [n] [None]] 5 is Positive`
 	c, _ := New()
 	gotInv, compiled, errInv := c.RunCompiled(inv)
 	if noteCompileDefect(t, inv, gotInv, errInv) {
@@ -4522,9 +4522,9 @@ func TestTypedDefBindCompiles(t *testing.T) {
 		src  string
 	}{
 		{"predicate validate-pass stores and reads back (multi-read forces the frame local)",
-			`def Positive fn [[n:Integer] [Boolean] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x (v add v)]] f 5`},
+			`def Positive fnpred [[n:Integer] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x (v add v)]] f 5`},
 		{"predicate reparent: typeof renders the predicate type",
-			`def Positive fn [[n:Integer] [Boolean] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x v]] typeof (f 5)`},
+			`def Positive fnpred [[n:Integer] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x v]] typeof (f 5)`},
 		{"newtype reparent: typeof renders the newtype in compiled mode (the §B divergence)",
 			`def Flag (refine Boolean) def mk fn [[b:Boolean] [Flag] [def v:Flag b v]] typeof (mk true)`},
 		{"sig-dispatch on the reparented local",
@@ -4571,7 +4571,7 @@ func TestTypedDefBindCompiles(t *testing.T) {
 		src  string
 	}{
 		{"predicate validate-FAIL",
-			`def Positive fn [[n:Integer] [Boolean] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x v]] f 0`},
+			`def Positive fnpred [[n:Integer] [n gt 0]] def f fn [[x:Integer] [Integer] [def v:Positive x v]] f 0`},
 		{"inline DepScalar validate-FAIL",
 			`def f fn [[x:Integer] [Integer] [def v:(Integer gt 10) x v]] f 5`},
 		{"newtype validate-FAIL on a laundered gradual value",

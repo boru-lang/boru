@@ -100,9 +100,9 @@ func (h *seamHost) IsFnWordBarrier(tok core.Value) bool {
 	return core.FnWordBarrierOn(h.reg, tok)
 }
 
-func (h *seamHost) IsReachCallHead(tok core.Value, viable []core.ViableSig, pos, i int) bool {
+func (h *seamHost) IsReachCallHead(tok core.Value, i int) bool {
 	h.note("IsReachCallHead")
-	return core.ReachCallHeadBarrierOn(h.win, h.reg, tok, viable, pos, i)
+	return core.ReachCallHeadBarrierOn(h.win, h.reg, tok, i)
 }
 
 func (h *seamHost) StaticForwardType(tok core.Value) (core.Value, core.FwdKind) {

@@ -10,13 +10,7 @@
 # divergence class from the 2026-08-09 probe sweep (55 divergences across
 # 2,587 sources); see parser/spec/README.md §"The current debt" and
 # NUR.md §NUR060, which stays open until this ledger is empty again.
-[1 =>	[(1 sugar(lambda) 1)]	[1]	trailing `=>` with no body: the Go arrowfold still folds (the input doubles as the body); the TS fold drops the paren group from the value stream entirely. A DATA-class divergence — Go matches the fold-always arrowfold grammar. (Go column re-rendered 2026-08-15: NUR059 gave the paren group a source form, so the Go side spells `(1 …)` rather than `paren([1 …])`; the DIVERGENCE is unchanged — TS still drops the group.)
-if . `${x}` =>	if.(interp(${word(x)}) sugar(lambda) interp(${word(x)}))	if.interp(${word(x)})	the same trailing-arrow fold loss, inside a dotchain segment: Go folds the interp into a lambda group, TS keeps only the bare interp.
-? ? :	word(?) word(?)	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	a trailing bare colon: Go accepts and drops the empty implicit pair, TS refuses the whole source — an accept/reject split.
-def x 2 => ,	ERR [boru/syntax_error]: empty list element: remove the leading/repeated comma (write `none` for an explicit empty value)	word(def) word(x) 2	`=>` then `,`: Go refuses the empty element, TS accepts and silently drops both trailing tokens — an accept/reject split in the opposite direction from the bare-colon row.
-y 0 ] Map	ERR [boru/syntax_error]: unexpected `Map` — nothing valid can appear here	ERR [boru/syntax_error]: unexpected `` — nothing valid can appear here	after an unmatched `]`, Go names the offending token in the recovery diagnostic; TS reports an empty token. Same code, divergent detail and location.
-.. (	ERR [boru/syntax_error]: `.` member access has no receiver	ERR [boru/syntax_error]: unmatched opening parenthesis	error-precedence: Go reports the receiverless `.`, TS the unmatched `(` — the two walks meet the faults in a different order.
-/s 1e400 ( #c	ERR empty word	ERR [boru/syntax_error]: unmatched opening parenthesis	Go refuses the bare `/s` modifier first (`empty word`); TS reports the unmatched `(`. Error-precedence divergence with a non-BoruError Go render.
-quote . ( =	ERR unsupported value type parser.unclosedParen	ERR unsupported value type UnclosedParen	both ports leak an internal marker type name into the message (`parser.unclosedParen` vs `UnclosedParen`) — neither render is a stable user-facing diagnostic.
-`${}	interp('')	interp(${})	an empty `${}` inside an UNTERMINATED backtick template: Go folds the empty interpolation to an empty literal, TS keeps the `${}` hole — a value-level fold divergence where both ports accept. Found by a truncation mutant of parse.tsv's `${}`-in-template row.
-x/9223372036854775807	x/9223372036854775807	x/9223372036854776000	NUR059 surfaced this: the `/N` arity is exact int64 in Go and a JS number in TS, so a magnitude above 2^53 is ROUNDED at parse and the TS canon renders a value outside the accepted int64 range — it cannot be re-parsed as a modifier. The loss is in the TS PAYLOAD, not the renderer, which only made it visible; fixing it means carrying the arity exactly in parser/ts (NUR072). Found by Codex review on PR #372.
+#
+# EMPTY (2026-09-26): every class the 2026-08-09 sweep found is fixed in
+# both ports and its row moved to parse.tsv (NUR060, resolved). A new
+# divergence lands here as a measured row until it is fixed.

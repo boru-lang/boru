@@ -30,7 +30,7 @@ func runErr(t *testing.T, src string) error {
 }
 
 func TestErrorMessage_PredicateNamesType(t *testing.T) {
-	err := runErr(t, `def Bbd fn [x:Any Any [if ((x is String) and (x gte "b") and (x lte "d")) [x] [None]]]
+	err := runErr(t, `def Bbd fnpred x:Any [if ((x is String) and (x gte "b") and (x lte "d")) [x] [None]]
 def n:Bbd "e"`)
 	msg := err.Error()
 	if !strings.Contains(msg, "Bbd") {

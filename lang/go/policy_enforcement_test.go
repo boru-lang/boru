@@ -144,8 +144,10 @@ func TestModulesScopeUninstall(t *testing.T) {
 	if err == nil {
 		t.Fatal("expected import to be refused")
 	}
-	if !strings.Contains(err.Error(), "modules disabled") {
-		t.Errorf("expected 'modules disabled' error, got: %v", err)
+	// The refusal is CODED (NUR079): an uninstalled modules scope is
+	// capability_not_installed, blaming the scope's install flag.
+	if !strings.Contains(err.Error(), "capability_not_installed") || !strings.Contains(err.Error(), "modules.install=false") {
+		t.Errorf("expected a coded modules.install=false refusal, got: %v", err)
 	}
 }
 

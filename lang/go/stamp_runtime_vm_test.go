@@ -550,14 +550,22 @@ func TestModuleFnStampedAtLoadAndRerouted(t *testing.T) {
 	if refOf(inner(plain, "helper")) != nil {
 		t.Fatalf("an unarmed load must not stamp module fns")
 	}
+	// The decliner's body leaves its parked closure and the 3 as two
+	// values under a one-return contract, so a named call of it raises the
+	// frame's count error on both — the CallBoru seam enforces the frame's
+	// return count for a named fn since NUR191 (it answered 16 before,
+	// re-stepping the parked closure over the 3 on the caller's tape).
 	for _, probe := range []string{`M.helper 41`, `M.fact 5`, `M.decliner 7`} {
 		gotA, errA := armed.RunInterp(probe)
 		gotP, errP := plain.RunInterp(probe)
-		if errA != nil || errP != nil {
-			t.Fatalf("%s: errs armed=%v plain=%v", probe, errA, errP)
+		if (errA == nil) != (errP == nil) || fmt.Sprint(errA) != fmt.Sprint(errP) {
+			t.Fatalf("%s: errs armed=%v plain=%v (must agree)", probe, errA, errP)
 		}
 		if fmt.Sprint(gotA) != fmt.Sprint(gotP) {
 			t.Fatalf("%s: armed=%v plain=%v (must agree)", probe, gotA, gotP)
 		}
+	}
+	if _, err := plain.RunInterp(`M.decliner 7`); codeOf(err) != "type_error" {
+		t.Fatalf("M.decliner 7: the named call raises the frame's count error, got %v", err)
 	}
 }

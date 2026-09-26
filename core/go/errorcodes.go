@@ -177,7 +177,7 @@ var kernelErrorCodes = []string{
 	"fn_body_error",
 	"for_error", "forward_strands_operand", "gen_without_constructor", "illegal_key", "illegal_ref",
 	"incomparable", "index_out_of_range", "integer_overflow", "internal_error",
-	"invalid_word_name", "locked_signature", "macro_error", "macroexpand_error",
+	"invalid_word_name", "late_binding", "locked_signature", "macro_error", "macroexpand_error",
 	"micron_name", "missing_returns", "mixed_form_call", "no_signature",
 	"no_value_error", "partial_dispatch", "record_shape_mismatch", "redundant_guard",
 	"reserved_word", "runtime_error", "signature_error", "speculative_forward_commit", "step_budget_exceeded",

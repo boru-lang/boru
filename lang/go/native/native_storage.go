@@ -470,7 +470,14 @@ func accessorGetSignatures() []Signature {
 		// read. Field type resolved from the Resource schema (getResourceReturns).
 		{Args: []*Type{TAtom, TResource}, QuoteArgs: map[int]bool{0: true}, BarrierPos: 1, Impl: Go(getObjectHandler), ReturnsFn: getResourceReturns},
 		{Args: []*Type{TString, TResource}, BarrierPos: 1, Impl: Go(getObjectHandler), ReturnsFn: getResourceReturns},
-		// [Key | None] — chained-read propagation
+		// [Key | None] — chained-read propagation: a read through a missing
+		// member stays None (`{a:1}.b.c`), so the atom row carries QuoteArgs
+		// like every other receiver's — without it a BARE-WORD key over a
+		// run-time None was never collected, and the word stepped on its
+		// own as `undefined word: c` (NUR198: the interpreter's raise for
+		// the compiled lane's None; the string and materialised-atom keys
+		// always propagated).
+		{Args: []*Type{TAtom, TNone}, QuoteArgs: map[int]bool{0: true}, BarrierPos: 1, Impl: Go(getNoneHandler), Returns: []*Type{TNone}},
 		{Args: []*Type{TAny, TNone}, BarrierPos: 1, Impl: Go(getNoneHandler), Returns: []*Type{TNone}},
 		// [Key | Store] — check-mode-aware ReturnsFn picks up a
 		// typed carrier from a previously-set key.
@@ -1563,6 +1570,16 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 		isClosureBearingWrapper(val) {
 		return []Value{CloneValue(val)}
 	}
+	// On a PLAIN check (no compile pass recording) a stored fn value is read
+	// as itself, so the pass dispatches it over what follows exactly as the
+	// run does — `def m {a:size/v}  m.a [1 2 3]` leaves one Integer, not the
+	// member and its argument (NUR112). The compile pass keeps the dynamic
+	// carrier below: its arrival is claimed through the shaped method model.
+	if r != nil && !r.Check.Recorder().Armed() && val.Parent.ConformsTo(TFunction) {
+		if _, ok := val.Data.(FnDefInfo); ok {
+			return []Value{CloneValue(val)}
+		}
+	}
 	if val.Parent.ConformsTo(TFunction) ||
 		IsReach(val) || IsSplice(val) {
 		// Shaped-instance-method annotation (Stage M2c, eng/method_shape.go):
@@ -1765,7 +1782,18 @@ func getObjectReturns(args []Value, r *Registry) []Value {
 	if ft == nil || ft.ConformsTo(TFunction) {
 		return dyn
 	}
-	return []Value{NewCarrier(ft)}
+	out := NewCarrier(ft)
+	// An ANONYMOUS fn-shape field (`{op:(fnsig Integer Integer)}`) types its
+	// carrier by the bare FunctionSignature node, which has lost the shape:
+	// note the declared signature by the carrier's id, so the plain check's
+	// shape window models the member's apply as a named shape's is (NUR096).
+	// A plain check only — the compile pass keeps its own member models.
+	if info, ok := fv.Data.(FnUndefInfo); ok && !r.Check.Recorder().Armed() {
+		if s, claim := check.FnShapeOfSpec(info); claim {
+			r.Check.NoteFnShape(out, s)
+		}
+	}
+	return []Value{out}
 }
 
 // getResourceReturns is getObjectReturns for the Resource/Entity

@@ -299,9 +299,22 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		// trap keeps the events before it, drops the case dispatch (which would
 		// otherwise island), and aborts exactly where the interpreter does. A
 		// nested case (RecordTrap declines, frames/units != 1) keeps the island.
-		r.Check.Recorder().RecordTrap("case_error",
-			"case: clause list must be a concrete list of match/block pairs (optional trailing default)",
-			"case", "", args[0].Pos())
+		//
+		// Only a CONCRETE non-list earns the trap. A clause operand the pass
+		// holds as a carrier or a dynamic value — a fn's returned list,
+		// `case 1 (mk 0)` over `def mk fn [[n:Integer] [List] [quote [1
+		// 'one' 'many']]]` — is a list or not at RUN time, where the
+		// interpreter reads the concrete value and answers `'one'`; the
+		// trap raised the error the interpreter never raises (NUR154). The
+		// dispatch's own gate declines the computed clause list instead
+		// (a NoEvalArgs body that is not inert data), so the program falls
+		// back and answers as the interpreter does. A KNOWN non-list — a
+		// scalar, a bare type node (`case 1 Integer`) — is the trap.
+		if !clauses.Dynamic && !clauses.Carrier {
+			r.Check.Recorder().RecordTrap("case_error",
+				"case: clause list must be a concrete list of match/block pairs (optional trailing default)",
+				"case", "", args[0].Pos())
+		}
 		return dynAny
 	}
 	lst, _ := AsList(clauses)

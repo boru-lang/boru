@@ -307,17 +307,4 @@ func TestS7PendingForwardPredicatesFullyCollected(t *testing.T) {
 	if e.hasPendingForwardFormArg() {
 		t.Error("fully-collected forward → no pending form slot")
 	}
-	if e.hasPendingForwardExpectingFunction() {
-		t.Error("fully-collected forward → no pending function slot")
-	}
-}
-
-func TestS7PendingForwardExpectingFunctionTrue(t *testing.T) {
-	// Next slot is a Function type → true (the positive arm).
-	sig := &Signature{Params: []FnParam{{Type: TFunction}}, BarrierPos: -1}
-	fwd := NewForward(ForwardInfo{Sig: sig, CollectedArgs: 0, FuncIndex: 0})
-	e := engWithTape(t, []Value{fwd, NewInteger(0)}, 1)
-	if !e.hasPendingForwardExpectingFunction() {
-		t.Error("a Function next-slot should be detected")
-	}
 }

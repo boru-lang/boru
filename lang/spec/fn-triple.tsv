@@ -70,11 +70,8 @@ def z fn 0 [String] ['zero']  z 1	ERROR:signature_error	literal value pattern re
 # §4  negatives — the (tnot List) input rule, the List body rule, type enforcement
 def f fn [x:Integer] [Integer] [x mul 2]  f 5	ERROR:fn_error	a LIST input selects the spec-list form, which requires triples
 def f fn List [Integer] [size]	ERROR:signature_error	a bare List type literal input is rejected by (tnot List) — a single List-typed param needs the spec-list form
-# NUR091 (the SAME (tnot List) rejection strands SILENTLY when the output
-# slot is a bare type: `fn List Any [1]` binds nothing and exits 0) is
-# recorded in NUR.md with its transcripts rather than pinned here. A row
-# for it displaced a seed from the variation sample and emptied an
-# unrelated varyCompileFailureLedger bucket — see NUR092.
+def f fn List Any [1] end 7	ERROR:signature_error	NUR091: the same rejection is LOUD whatever the output slot — `fn` that took nothing raises at the declaration instead of stranding its operands
+fn List Any [1]	ERROR:signature_error	NUR091: the bare statement raises the same way
 def z fn 0 [Integer] 1  z 0	ERROR:signature_error	a non-list body does not fill the List-typed body slot
 def f fn x:Integer [Integer]  def g 5  g	ERROR:signature_error	a truncated triple fails loudly — the List body slot declines the following statement's values
 def bad fn x:Integer [String] [x]  bad 5	ERROR:type_error	declared output type is enforced on return

@@ -79,38 +79,37 @@ func TestApplyShapesBareFnWordArgDeclines(t *testing.T) {
 	}
 }
 
-// TestApplyShapesZeroArgLeadIsLoud pins NUR176: a 0-ARG runtime lead under
-// the one-arg window. The interpreter dispatches it with no args and leaves
-// the argument as residual — so a fn-valued argument then APPLIES to the
-// lead's result (`(k inc/v)` with k = `[] -> 7` answers 8), and a literal
-// argument fails the frame's return count (type_error) — where the compiled
-// window no-matches (signature_error). The bar this test holds is that the
-// compiled lane is LOUD on every member of the family: it never answers a
-// value of its own. The interpreter's answers are asserted too, so a moved
-// oracle re-opens the record rather than passing silently.
-func TestApplyShapesZeroArgLeadIsLoud(t *testing.T) {
-	for _, tc := range []struct {
-		src       string
-		wantI     string // the interpreter's value, or "" for an error
-		wantICode string
-	}{
-		{`def z fn [[] [Integer] [7]] end def inc fn [[n:Integer] [Integer] [n add 1]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h z/v`, "[8]", ""},
-		{`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer] [(k 5)]] end h z/v`, "[]", "type_error"},
-		{`def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function] [Integer] [(k ([] => [9]))]] end h app/v`, "[]", "type_error"},
+// TestApplyShapesZeroArgLeadResolves pins NUR176's close: a 0-arg runtime
+// lead under the one-arg leading window `(k x)` — and under a trailing
+// window `(1 2 c)` — fires over NOTHING on the interpreter, which then steps
+// the tokens written after the lead on their own (a fn value dispatching
+// over the result, a literal landing beside it) while the values written
+// before it stay beneath. The window op used to raise the no-match a
+// 1-arg window owes a fn that takes none (`signature_error`); it hands such
+// a lead to the island in the window's written order now, a name-read lead
+// marked applied so an anonymous 0-arg value dispatches as the word did.
+func TestApplyShapesZeroArgLeadResolves(t *testing.T) {
+	for _, src := range []string{
+		`def z fn [[] [Integer] [7]] end def inc fn [[n:Integer] [Integer] [n add 1]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h z/v`,
+		`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer] [(k 5)]] end h z/v`,
+		`def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function] [Integer] [(k ([] => [9]))]] end h app/v`,
+		`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer Integer] [(k 5)]] end h z/v`,
+		`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer Integer Integer] [(1 2 k)]] end h z/v`,
+		`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer Integer] [(1 k 5)]] end h z/v`,
+		`def z fn [[] [Integer] [7]] end def dbl fn [[n:Integer] [Integer] [n mul 2]] end def h fn [[k:Function] [Integer] [(k dbl/v)]] end h z/v`,
+		`def app fn [[g:Function] [Integer Integer] [(g 3)]] end def h fn [[k:Function] [Integer Integer] [(k ([] => [9]))]] end h app/v`,
 	} {
-		gotI, errI := mustNew(t).RunInterp(tc.src)
-		if fmt.Sprint(gotI) != tc.wantI || codeOf(errI) != tc.wantICode {
-			t.Errorf("%s: interpreter oracle moved: got %v err=[%s], want %s err=[%s] — re-derive NUR176", tc.src, gotI, codeOf(errI), tc.wantI, tc.wantICode)
-		}
-		gotC, compiled, errC := mustNew(t).RunCompiled(tc.src)
-		if noteCompileDefect(t, tc.src, gotC, errC) {
-			continue // a loud decline satisfies the bar
-		}
-		if !compiled {
-			t.Fatalf("%s: did not run compiled (%v)", tc.src, errC)
-		}
-		if codeOf(errC) != "signature_error" || len(gotC) != 0 {
-			t.Errorf("%s: compiled got %v err=[%s], want a loud signature_error — a 0-arg lead must never answer a value of its own", tc.src, gotC, codeOf(errC))
+		requireSameVerdict(t, src)
+	}
+	for _, c := range []struct{ src, want string }{
+		{`def z fn [[] [Integer] [7]] end def inc fn [[n:Integer] [Integer] [n add 1]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h z/v`, "[8]"},
+		{`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer Integer] [(k 5)]] end h z/v`, "[7 5]"},
+		{`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer Integer Integer] [(1 2 k)]] end h z/v`, "[1 2 7]"},
+		{`def app fn [[g:Function] [Integer Integer] [(g 3)]] end def h fn [[k:Function] [Integer Integer] [(k ([] => [9]))]] end h app/v`, "[9 3]"},
+	} {
+		got, err := mustNew(t).RunInterp(c.src)
+		if err != nil || fmt.Sprint(got) != c.want {
+			t.Errorf("%s: interpreter = %v / %v, want %s", c.src, got, err, c.want)
 		}
 	}
 }

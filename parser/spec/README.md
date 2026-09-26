@@ -208,36 +208,51 @@ first line: code, detail, row, column, offending source, full source, hint,
 notes, and help suggestions. This catches diagnostic parity drift even when
 the two user-facing first lines still compare equal in `parse.tsv`.
 
+### `canon-fixpoint.tsv` — ADR-015's fixpoint ledger
+
+ADR-015 says `canon` renders source that re-parses to the same value, and
+design/CANON-ROUNDTRIP.0.md §1 keeps the textual FIXPOINT as its diagnostic:
+a renderer that fails it is always wrong. Both runners apply it to every
+`parse.tsv` row that parses — the canon of the parsed stream, parsed again,
+must canon to the same text — and a row that does not must be listed here
+with the record that closes it. A listed row that reaches its fixpoint fails
+both runners until it is removed; the row count is pinned in both, so the
+ledger only shrinks. It landed with NUR072 (2026-09-26), whose own kinds — a
+plain word, the lambda fold, the mini literal, the type bound, the group
+modifiers — all reach their fixpoint; the rows it lists are the kinds that
+gate found (NUR225–NUR227), all closed the same day — the ledger is empty.
+
 ## The current debt
 
-**Corpus parity is exact; open-input parity is not.** Every row of
-`parse.tsv`, `lex.tsv`, `nesting.tsv`, and `shape.tsv` renders identically
-in both ports. But the corpus is not the language: a 2,587-source
-parity-probe sweep (token soup over the surface alphabet plus truncation
-mutants of `parse.tsv` rows, `scripts/parity-probe.sh`) measured **55
-divergences (~2.1%)** on inputs outside the corpus, and follow-up probing
-found one further class the sweep's seed missed. The ledger carries one
-representative row per class found so far — the class list is what
-probing has MEASURED, not a proof of exhaustion; new probe-found classes
-get new rows:
+**None measured: corpus parity is exact, and the ledger is empty again
+(NUR060, resolved 2026-09-26).** Every row of `parse.tsv`, `lex.tsv`,
+`nesting.tsv`, and `shape.tsv` renders identically in both ports. A
+2,587-source parity-probe sweep (token soup over the surface alphabet plus
+truncation mutants of `parse.tsv` rows, `scripts/parity-probe.sh`) had
+measured **55 divergences (~2.1%)** on inputs outside the corpus, in nine
+classes; each is fixed in BOTH ports and its row moved to `parse.tsv`
+(§"NUR060: the parity-debt ledger, resolved"), with neighbours:
 
-- **trailing `=>` fold loss** (2 rows): Go's arrowfold folds a bodyless
-  trailing arrow (the input doubles as the body); TS drops the group from
-  the value stream — a DATA-class divergence, also visible inside a
-  dotchain segment.
-- **accept/reject splits** (2 rows): a trailing bare `:` (Go accepts,
-  TS refuses) and `=> ,` (Go refuses, TS accepts and silently drops
-  tokens).
-- **post-`]` recovery detail** (1 row): Go names the offending token after
-  an unmatched `]`; TS reports an empty token.
-- **error precedence** (2 rows): receiverless-`.` vs unmatched-`(`, and
-  bare-`/s` vs unmatched-`(` — the two walks meet the faults in a
-  different order.
-- **internal type-name leak** (1 row): `unsupported value type
-  parser.unclosedParen` vs `UnclosedParen` — neither render is stable.
-- **empty-`${}` fold in an unterminated template** (1 row): both ports
-  accept `` `${} `` but Go folds the empty interpolation to `interp('')`
-  while TS keeps the `interp(${})` hole — a value-level fold divergence.
+- **a bodiless `=>` where the arrow folds** — Go doubled the input as the
+  body, TS dropped the arrow: both now refuse it on the arrow
+  (`` `=>` has no body ``). A bare `x =>` that does not fold is unchanged.
+- **a typed list child with no value** (`[:]`, `? :`) — Go's tabnas port
+  cannot tell an empty child from none, so Go dropped it: both now refuse
+  it as an empty element, like `{:}`.
+- **a `]` on a list no `[` opened** (`1 2 ] 3`) — both now refuse it on the
+  `]`, as `0 ]` already was.
+- **error precedence** (`. (`, `/s (`) — TS threw for an empty unclosed
+  group before its converter ran; both now report the first fault in
+  source order.
+- **a type-name leak** (`a.(`) — both report the unmatched paren.
+- **a bare `/` modifier** — a syntax_error in both, no longer a plain
+  `empty word`.
+- **an empty `${}`** — the empty hole consumed its `}` so the template
+  broke after it; both now continue past it, and it contributes nothing.
+
+The class list is what probing MEASURED, not a proof of exhaustion: a new
+probe-found divergence lands in `divergent.tsv` as a measured row until it
+is fixed.
 
 Fifty probe-agreed sources from the same sweep were promoted into
 `parse.tsv` (the `§probe-2026-08-09` section) so the corpus covers the

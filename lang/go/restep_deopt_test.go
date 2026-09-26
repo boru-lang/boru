@@ -144,7 +144,9 @@ func TestReStepDeoptOpenShapes(t *testing.T) {
 	// the interpreter's `uncalled_function` over a candidate and an empty
 	// frame — the optimistic model is gone from that shape.
 	rows := []struct{ src, interp, compiled string }{
-		{rsG + `  def f fn [[h:Function][Any][[5 h/v] get 1 drop 7]]  f g/v`, "uncalled_function", "[7]"},
+		// CLOSED 2026-09-25 (NUR124): the static index read of a fn-typed
+		// element no longer folds, so its re-step note stands.
+		{rsG + `  def f fn [[h:Function][Any][[5 h/v] get 1 drop 7]]  f g/v`, "uncalled_function", ""},
 		{rsG + `  def m {f: g/v}  m get "f" drop 7`, "uncalled_function", ""},
 	}
 	for _, c := range rows {

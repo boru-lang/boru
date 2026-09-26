@@ -189,6 +189,14 @@ type ClosureRetSpec struct {
 	// the Function value by stampResultPos, so carrying it here is what makes
 	// the compiled diagnostic point at the same token the interpreter's does.
 	Pos core.SrcPos
+	// Source is the callback fn VALUE itself (ClosurePayload.Source): the
+	// VM steps it on the interpreter for an invocation whose input lands in
+	// a slot the unit reads bare (CompiledFn.FnReadParams, NUR219).
+	Source *core.Value
+	// Named marks a push of a NAMED fn value (ClosurePayload.Named,
+	// namedFnValueSpec): the unit is shared with anonymous values over the
+	// same body, so the anonymity rides on the push (NUR235).
+	Named bool
 }
 
 // RegionDesc is one G-lane region: what dispatches, and the slots it may

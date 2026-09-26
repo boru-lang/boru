@@ -33,6 +33,14 @@ func unifyNegation(neg NegationInfo, val Value, r *Registry) (Value, *UnifyError
 	// negation, DepScalar bounds — so a refined inner like (Integer gt
 	// 0) is checked pointwise against the value.
 	if IsConcrete(val) {
+		// The complement of a refinement over a bound the analysis pass
+		// does not know: the refinement admits every value (depBoundCheck),
+		// so its complement would refuse every value, and neither verdict
+		// is the bound's. The pass admits, gradually; the run decides
+		// (NUR231).
+		if HasUnknownRefinement(neg.Inner) {
+			return val, nil
+		}
 		if _, err := unifyInner(neg.Inner, val, r); err != nil {
 			return val, nil
 		}

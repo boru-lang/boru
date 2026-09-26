@@ -108,10 +108,9 @@ func TestLowerTrapVariadicRegionNotOnTop(t *testing.T) {
 	lw := &lowerer{es: es, p: &Program{}, code: &cf.Code, debug: &cf.Debug,
 		sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{7: true}, promoted: map[int]int{}}
 	ev := EmitEvent{kind: evTrap, trap: EmitTrap{
-		rematchWord:       "w",
-		rematchOps:        []EmitOperand{EventOperand(7, 0), ConstOperand(0)},
-		rematchWrittenOff: 1,
-		rematchNWritten:   1,
+		rematchWord:    "w",
+		rematchOps:     []EmitOperand{EventOperand(7, 0), ConstOperand(0)},
+		rematchWritten: []int{1},
 	}}
 	if reason := lw.lowerTrap(&ev); reason == "" ||
 		reason != "stack discipline: variadic rematch region is not on top" {

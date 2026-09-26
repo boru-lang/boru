@@ -48,6 +48,25 @@ import (
 // 54 -> 51 on 2026-09-25 (the strict-Any dyn-body recovery): fold-map-filter.tsv
 // L246–L248 run natively where they bailed at the rematch trap
 // (runtime_defers.tsv's fold-map-filter line deleted).
+// 51 -> 46 on 2026-09-25 (NUR141, the merge with the reverse-order NUR run):
+// fnpred.tsv L34, L38, L43, L46 and record.tsv L178 — `def q:Even 5`, a
+// predicate type's own rejection — are the static check error the run
+// raised, now that the check pass runs a PURE predicate over a concrete
+// candidate; the programs never run compiled (runtime_defers.tsv's fnpred
+// line deleted, record.tsv's lowered to 2).
+// 46 -> 44 on 2026-09-26 (NUR190 closed): fn-value.tsv:L317/L318 — the `/q`
+// slot that CAPTURES the following word — no longer bail at the landing's
+// walk: the landing hands the capture to the interpreter's island (or its
+// skip) and the rows answer natively (runtime_defers.tsv's fn-value line
+// deleted).
+// 44 -> 39 on 2026-09-26 (NUR233, found compiling NUR231's type half): a
+// make field's refusal is a type_error on both lanes, no longer a plain
+// error the compiled run books as a defect — edge-dispatch-3.tsv L59,
+// generics.tsv L56, module-struct.tsv L100 and record.tsv L97/L98 answer
+// the interpreter's error (runtime_defers.tsv's generics and record lines
+// deleted, edge-dispatch-3's and module-struct's lowered). make's OTHER
+// refusals — an unknown or missing field, a source of the wrong shape —
+// are the same class and still bail.
 // 51 -> 7 on 2026-09-26 (the plain-error disposition, the retired-node
 // replay, the type-name reach): forty rows were a handler's plain Go error
 // (convert, make, a predicate type's rejection, the module words' own
@@ -58,13 +77,26 @@ import (
 // faithful-raise plan. Left: flex.tsv L228/L230/L236 (vm:poly-nout-drift),
 // edge-quote-1 L28 / edge-quote-3 L56 (a tape-coupled Word from get) and
 // fn-value.tsv L317/L318 (NUR190, booked by choice).
+// 39 -> 5 on 2026-09-26 (the merge of main's #510 with the reverse-order
+// NUR run): main's 51 -> 7 above and the NUR run's 51 -> 39 overlap (the
+// plain-error disposition subsumes the fnpred and make-refusal rows the run
+// had already moved), and the run's NUR190 close takes fn-value.tsv
+// L317/L318 off main's seven. Left: flex.tsv L228/L230/L236
+// (vm:poly-nout-drift) and edge-quote-1 L28 / edge-quote-3 L56 (a
+// tape-coupled Word from get).
+
 // 7 -> 2 on 2026-09-26 (the re-stepped word node, the flex write shapes):
 // edge-quote-1 L28 / edge-quote-3 L56 compile the interpreter's re-step of a
 // word node read out of a list (the read emits nothing, the word's own
 // dispatch records — here add's no-match trap), and flex.tsv L228/L230/L236
 // commit the FlexMap `set` through the member's recorded write shape. Left:
 // fn-value.tsv L317/L318 (NUR190, booked by choice).
-const bailDefectCeiling = 2
+// 5 -> 0 on 2026-09-26 (the merge of main's #511 with the reverse-order
+// NUR run, measured on the merged tree): main's 7 -> 2 above closes exactly
+// the run's five (edge-quote-1 L28 / edge-quote-3 L56, flex.tsv
+// L228/L230/L236), and the two main left (fn-value.tsv L317/L318) the run
+// had already closed with NUR190. Left: none.
+const bailDefectCeiling = 0
 
 var bailDefects = struct {
 	mu      sync.Mutex

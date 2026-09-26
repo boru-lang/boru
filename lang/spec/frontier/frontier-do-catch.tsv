@@ -13,15 +13,16 @@
 # yields the code as a value. It used to surface from the end-of-run residue
 # drain, outside every handler. The COMPILE status is unchanged: still a sound
 # compile failure, which is what this ledger tracks.
-import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg	uncalled_function/q
-import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end def msg (do [(false 5 M.dec) "no-raise"] error [dot code])  msg	uncalled_function/q
+# GRADUATED 2026-09-25 (NUR134): the two def-msg rows compile — the do-body
+# unit raises the definite no-match in place (a unit-scoped trap) and the do's
+# model is the caught Error — and moved to lang/spec/bytecode-migrated.tsv.
 # DISCOVERY (2026-07-13): the next row COMPILES natively today — parse has a
 # pure ReturnsFn dry-pass, so with a CONSTANT argument the checker proves the
 # call cannot raise at this input and soundly seats the exact arity. It stays
 # here unledgered as a green pin (the must-COMPILE arm guards it); the Go
 # test's fallback-list comment (bytecode_do_catch_test.go) predates this.
 import "boru:struct-util"  def g StructUtil.parse/v  do [(g "x") 2] error [dot code]	'x' 2
-import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end do [M 3] error [dot code]	{dec:fn [[bad:Boolean x:Any][Any][word(if) word(bad) [word(raise) word(bad_input) 'boom'] [word(x)]]] boom:fn [[x:Any][Any][word(raise) word(bad_input) 'always']]} 3
+import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end do [M 3] error [dot code]	{dec:fn [[bad:Boolean x:Any][Any][if bad [raise bad_input 'boom'] [x]]] boom:fn [[x:Any][Any][raise bad_input 'always']]} 3
 # PR #280 review (2026-07-20): a BRANCH-VARIANT multi-out region — the body
 # nets 0 or 2 values by arm, no raise involved — is variadic for the same
 # reason the fallible rows are: its runtime count differs from any static

@@ -83,7 +83,10 @@ func UninstallType(r *Registry, name string) bool {
 	// existing canonical node (`def Foo Integer` binds the Integer node
 	// itself — InstallType's alias arm), so retiring it here would delete a
 	// builtin's or another binding's identity from the ID index.
-	if entry.TypeDef != nil && entry.Minted {
+	// …and only when no other live binding still holds the node: the same
+	// minted node pushed twice under one name (a twin's replay of one
+	// captured entry) is retired by the last pop, not the first (NUR135).
+	if entry.TypeDef != nil && entry.Minted && !r.Defs.HoldsType(entry.TypeDef) {
 		r.Types.Retire(entry.TypeDef)
 	}
 	// A capitalised undef pops through PopEntry, not UninstallDef, so it needs

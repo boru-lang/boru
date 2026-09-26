@@ -191,7 +191,9 @@ func TestQuotedFnValueIsData(t *testing.T) {
 }
 
 func TestFnValueDispatchModLeavesInert(t *testing.T) {
-	// A Word/__DM marker right after the fn value marks it inert data.
+	// A Word/__DM marker right after the fn value DELIVERS it: pushed and
+	// stepped past, unquoted — the value its word twin `f/v` is (NUR218) —
+	// so it is inert where it sits and the 5 beside it stays data.
 	r := covRegistry(t, nil)
 	fnv := anonFnVal(
 		[]FnParam{{Name: "a", Type: TInteger}},
@@ -204,8 +206,8 @@ func TestFnValueDispatchModLeavesInert(t *testing.T) {
 	if err != nil {
 		t.Fatalf("dispatch mod: %v", err)
 	}
-	if len(out) != 2 || !out[0].Parent.Equal(TFunction) || !out[0].Quoted {
-		t.Errorf("dispatch mod did not leave fn inert: %s", renderAll(out))
+	if len(out) != 2 || !out[0].Parent.Equal(TFunction) || out[0].Quoted {
+		t.Errorf("dispatch mod did not deliver the fn inert and unquoted: %s (quoted=%v)", renderAll(out), len(out) > 0 && out[0].Quoted)
 	}
 }
 

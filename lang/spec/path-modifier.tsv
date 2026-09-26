@@ -64,7 +64,7 @@ def sf fn [[m:Map] [Map] [m]] def wa fn [[s:Map act:Function] [Map] [act s]] wa 
 def sf fn [[m:Map] [Map] [m]] def wa fn [[s:Map act:Function] [Map] [act s]] def mm {run: sf/v} wa {x:1} mm.run	{x:1}	map-stored reference via dot (already worked) is unchanged
 def sf fn [[m:Map] [Map] [m]] def wa fn [[s:Map act:Function] [Map] [act s]] sf/v {x:1} wa	{x:1}	stack form (already worked) is unchanged
 def sf fn [[m:Map] [Map] [m]] def wa fn [[s:Map act:Function] [Map] [act s]] def hr (sf/v) wa {x:1} hr/v	{x:1}	a def-bound reference passes as hr/v (bare hr is a call, per the model)
-def sf fn [[m:Map] [Map] [m]] def wa fn [[s:Map act:Function] [Map] [act s]] wa {x:1} sf	{x:1}	a bare fn name before a Function-TYPED slot resolves as a reference — the slot declares the intent (the planner's designed TFunction intercept, un-broken by the ADR-011 collapse); before a non-Function slot a bare fn word remains a call/barrier
+def sf fn [[m:Map] [Map] [m]] def wa fn [[s:Map act:Function] [Map] [act s]] wa {x:1} sf	ERROR:cannot call `wa`	a bare fn name before a Function-TYPED slot CALLS like any other (NUR078 — ADR-011 as amended: the slot type never decides what a token means), so `wa` receives the call's result; the reference is sf/v, the rows above
 #
 # A RAISING handler on the parked-native fast path keeps its position. That
 # path replaced an island, and the island got the caret for free — its nested

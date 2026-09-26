@@ -548,6 +548,14 @@ type ClosurePayload struct {
 	RetPatterns []*Value
 	RetDecl     DeclSite
 	RetName     string
+	// Source is the callback fn VALUE a callback body unit was compiled from
+	// — the lambda or `g/v` a higher-order word was handed — carried on the
+	// value for the one invocation the unit cannot run: an input landing in
+	// a param slot the body reads bare (the unit's FnReadParams), which the
+	// interpreter dispatches as a word when it holds a fn and the unit
+	// pushes as a slot. The VM hands that invocation to the interpreter's
+	// own step of Source (NUR219). Nil for every other closure.
+	Source *Value
 	// RetTrim marks a closure handed through the fn-VALUE seam
 	// (InvokeCallbackBody): the handler would hand a FnDefInfo to
 	// InvokeCallbackFn, whose CallBoru path checks the declared TYPES over
@@ -580,6 +588,12 @@ type ClosurePayload struct {
 	// diagnostic agrees in value and taxonomy but loses the position, which
 	// the full-corpus parity gate compares.
 	RetPos SrcPos
+	// Named marks a closure pushed from a NAMED fn value — a `fn` literal;
+	// only `afn` / `=>` make one anonymous. The unit is shared with
+	// anonymous values over the same body, so the push carries it
+	// (compiler ClosureRetSpec.Named): a name always calls, so a nullary
+	// named value fires where an anonymous one parks (NUR235).
+	Named bool
 }
 
 // NewStoreShapeCarrier mints an abstract store-shaped carrier: a

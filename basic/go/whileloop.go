@@ -33,6 +33,7 @@ func RunWhileLoop(r *Registry, cond, body Value) ([]Value, error) {
 		Registry:  r,
 		Body:      bodyCopy,
 		WhileCond: condCopy,
+		CondPos:   cond.Pos(),
 	}
 
 	// First region: the condition. Its move fires stepMoveWhile with

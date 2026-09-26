@@ -116,7 +116,7 @@ func TestArgsProjectionCompiles(t *testing.T) {
 // TestUnpackUnprovenSourceCompiles — `unpack [names] src` over a source the
 // check pass cannot read (a Map param, a fn's result) binds RUN-TIME names
 // (2026-09-25): the handler notes them (NoteRuntimeBind), the dispatch is
-// emitted as the plain CALL_NATIVE it is (RecordRuntimeBindDispatch), the
+// emitted as the plain CALL_NATIVE it is (RecordRuntimeDispatch), the
 // stub installs record no dyn-scope def and no twin, and every read seats
 // live as a gradual value, so a downstream dispatch poly re-matches
 // (code-bodies.tsv L173). Before: inside a fn the shape declined ("check-
@@ -287,7 +287,7 @@ func TestComputedForBodyHostedAtProgramEnd(t *testing.T) {
 // caller's stack beneath the loop, a residual is seated around the loop's
 // values, the body's defs and undefs leak into the enclosing scope for a
 // later read, and a caught body error leaves the iterator installed (the
-// last is the interpreter's own leak, NUR206, below).
+// last was the interpreter's own leak, NUR206, closed below).
 func TestComputedForBodyDeclines(t *testing.T) {
 	const beneath = "for: a computed body is hosted only over an empty stack"
 	const last = "for: a computed body is hosted only as the program's last statement"
@@ -314,6 +314,11 @@ func TestComputedForBodyDeclines(t *testing.T) {
 	} {
 		requireLoudDecline(t, c.src, c.reason, c.want)
 	}
+	// The fourth divergence the review measured — a caught body error
+	// leaving the iterator installed — was the interpreter's own leak,
+	// literal bodies included: NUR206, closed at the merge with the
+	// reverse-order NUR run (its NUR251, then NUR208, unwinds the live loops on the fault
+	// path), pinned by TestLoopIndexUnwoundByCaughtError.
 	// A def-bound quoted body is concrete at the check and keeps the native
 	// loop; a literal body always did.
 	for _, src := range []string{
@@ -324,27 +329,34 @@ func TestComputedForBodyDeclines(t *testing.T) {
 	}
 }
 
-// TestLoopIndexSurvivesCaughtErrorPending pins NUR206 as it stands: a `for`
-// loop's index level survives an error the enclosing `do` catches on the
-// interpreter (the raise unwinds the spliced body before its move cleanup),
-// so a later read of the same name is the iteration's value (0) where the
-// compiled lane reads the outer binding (99). Present on main at 9e02915,
-// a literal or a computed body alike; an `each` body agrees on both lanes.
-// The direction is the interpreter's error unwind; closing it must update
-// this pin.
-func TestLoopIndexSurvivesCaughtErrorPending(t *testing.T) {
+// TestLoopIndexUnwoundByCaughtError pins NUR206's close: a `for` loop's
+// index level is uninstalled when an error the enclosing `do` catches
+// abandons the loop, so a later read of the same name — or the handler's —
+// is the outer binding (99) on both lanes, a literal or a computed body
+// alike. The interpreter used to leave the iteration's level installed (0):
+// the raise unwound the spliced body before its move cleanup. It closed at
+// the merge of main's #508 with the reverse-order NUR run, whose NUR251
+// (then numbered NUR208) unwinds every live loop on the fault path (Engine.unwindLiveLoops, the
+// break/continue twin). An `each` body raising inside the same `do` always
+// agreed: its callback runs in a body run of its own.
+func TestLoopIndexUnwoundByCaughtError(t *testing.T) {
 	for _, src := range []string{
 		`def i 99 end do [for 3 [raise oops 'x']] error [drop] end i`,
 		`def i 99 end do [for 3 [raise oops 'x']] error [i]`,
 		`def i 99 end def mk fn [[][List][quote [raise oops 'x']]] end do [for 3 (mk)] error [drop] end i`,
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-		if errI != nil || fmt.Sprint(gotI) != "[0]" {
-			t.Errorf("%q: the interpreter's leaked index: want [0], got %v / %v", src, gotI, errI)
+		if errI != nil || fmt.Sprint(gotI) != "[99]" {
+			t.Errorf("%q: the interpreter must unwind the loop's index: want [99], got %v / %v", src, gotI, errI)
 		}
 		if !compiled || errC != nil || fmt.Sprint(gotC) != "[99]" {
-			t.Errorf("%q: NUR206 as it stands: the compiled lane reads the outer binding [99], got compiled=%v %v / %v", src, compiled, gotC, errC)
+			t.Errorf("%q: the compiled lane reads the outer binding [99], got compiled=%v %v / %v", src, compiled, gotC, errC)
 		}
+	}
+	// Negative: with no outer binding the name is gone after the caught
+	// error — the interpreter's undefined_word, not the iteration's value.
+	if got, err := mustNew(t).RunInterp(`do [for 3 [raise oops 'x']] error [drop] end i`); err == nil || codeOf(err) != "undefined_word" {
+		t.Errorf("no outer binding: the index must not survive the caught error, got %v / %v", got, err)
 	}
 	requireEngineParity(t, `def i 99 end do [[1 2] each [raise oops 'x']] error [i]`, true)
 }

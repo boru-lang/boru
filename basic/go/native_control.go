@@ -377,10 +377,31 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 	// this body is not a program error — raise CaughtBodyDepth so those
 	// emitters (CheckAddUniqueDiagnostic, emitIndexOOB) stay silent here.
 	r.Check.CaughtBodyDepth++
+	// A body that raises UNCONDITIONALLY at its own level — a module
+	// export's definite no-match, `(true 5 M.dec)` (NUR134) — leaves the
+	// failed call's wreckage in the analysed residual, and the wreckage
+	// escaped the bracket: re-stepped on the enclosing tape, it dispatched
+	// again outside the caught region and was reported as an uncaught
+	// program error. At run time `do` catches the raise and yields ONE
+	// Error value; model exactly that.
+	r.Check.PushRaiseWatch()
 	// Leak fidelity: do-body defs stay bound in the enclosing scope, exactly
 	// as the runtime leaves them (RunCarrierBodyKeepDefs doc).
 	stk := RunCarrierBodyKeepDefs(r, body)
+	raised, snap := r.Check.PopRaiseWatch()
 	r.Check.CaughtBodyDepth--
+	if raised {
+		// The defs the body makes AFTER the raise never happen: `do [raise
+		// bad_input "boom" def x 1] … x` is undefined_word (or the earlier
+		// binding) on the interpreter, and the keep-defs model leaked x = 1
+		// into the enclosing scope, which the compiled lane then folded.
+		for _, k := range r.Defs.Names() {
+			if r.Defs.Depth(k) > snap[k] {
+				r.Defs.Truncate(k, snap[k])
+			}
+		}
+		return []Value{NewCarrier(TError)}
+	}
 	// A def-bound COMPUTED fn read inside the body stands in the residual
 	// as its CARRIER (the side table's; the body's check-time run notes no
 	// read), where the interpreter's word dispatch calls it — over the
@@ -412,7 +433,18 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 		// wrongly admit `do [] convert Map` at check time (Error → Map) while
 		// the runtime leaves `convert` no argument. Distinguish the two by the
 		// body's token count.
+		//
+		// A body with no DEFINITE raise (that returned above) that ran to
+		// nothing may equally have CONSUMED its own values — `do [3 drop]`,
+		// `do [args drop]` — and then `do` nets nothing at run time: the
+		// count is 0 or (caught) 1, runtime-VARIABLE, so the compile pass
+		// latches it like a fallible multi-value body's (SetCatchVariadic,
+		// below) rather than seat the one Error a no-raise run never makes
+		// (NUR242: a promoted seat underflowed, STORE_LOCAL).
 		if bl, err := AsList(body); err == nil && !bl.IsNil() && bl.Len() > 0 {
+			if r.Check.Compiling {
+				r.Check.Recorder().SetCatchVariadic(true)
+			}
 			return []Value{NewCarrier(TError)}
 		}
 		return nil
@@ -728,19 +760,16 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	var thenStk []Value
 	var thenDefs map[string]Value
 	var thenValue *Value
-	// Both arms of a condition the model cannot decide are bracketed
-	// (EnterSpecArm): a fn def inside one is speculative (core.NoteSpecFnDef,
-	// the seventieth increment). A LITERAL condition takes no bracket — the
-	// model knows which arm runs, and its join is exact for both.
-	_, condKnown := LiteralCondValue(args[0])
-	if IsConcrete(args[0]) && args[0].Parent.Equal(TBoolean) {
-		condKnown = true // a def-bound or folded Boolean: the model has it
-	}
+	// An arm that may not run is bracketed (EnterSpecArm): a fn def inside
+	// one is speculative (core.NoteSpecFnDef, the seventieth increment). Only
+	// the arm a DECIDED condition takes goes unbracketed — its defs are the
+	// post-branch bindings exactly (armsKnownToRun).
+	thenRuns, elseRuns := armsKnownToRun(args[0])
 	if thenIsBody {
 		restoreThen := ApplyGuardNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(thenRuns)()
 			thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
 		}()
 		thenStk = es.Recorder().ArmTailApply(thenStk)
@@ -757,7 +786,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreThen := ApplyGuardNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(thenRuns)()
 			thenStk, thenDefs = RunCarrierBodyWithDefs(r, body)
 		}()
 		thenStk = es.Recorder().ArmTailApply(thenStk)
@@ -782,7 +811,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreElse := ApplyComplementNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(elseRuns)()
 			elseStk, elseDefs = RunCarrierBodyWithDefs(r, args[2])
 		}()
 		elseStk = es.Recorder().ArmTailApply(elseStk)
@@ -793,7 +822,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreElse := ApplyComplementNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(elseRuns)()
 			elseStk, elseDefs = RunCarrierBodyWithDefs(r, body)
 		}()
 		elseStk = es.Recorder().ArmTailApply(elseStk)
@@ -804,7 +833,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		elseValue = &v
 		elseStk = []Value{v}
 	}
-	joins := InstallJoinedDefs(r, thenDefs, elseDefs)
+	joins := installArmJoins(r, args[0], thenDefs, elseDefs)
 	joined := JoinCarrierStacks(thenStk, elseStk)
 	if len(joined) == 0 {
 		// BOTH arms produce 0 values (empty `[]`, a 0-value word, or a
@@ -854,8 +883,8 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 // (`if [true] … …`, lit the literal) and the clause-list `if`'s statically
 // decided clause (ifClauseRecord — a scalar condition, or the lone else,
 // always lit=true). The arm is a code body; the narrowing the condition
-// licenses is installed around it. An arm that nets no value declines: a
-// ConstCond branch lowers a single-result arm only.
+// licenses is installed around it. An arm that nets no value records a
+// 0-value statement (NUR243); one that leaves a fn value declines.
 func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool, pos SrcPos) []Value {
 	es := r.Check
 	var stk []Value
@@ -877,24 +906,34 @@ func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool, pos SrcPos) []Val
 		joins = InstallTakenArmDefs(r, nil, defs)
 	}
 	frag := recorderState(es).TakeFragment()
-	// Two arms decline. One that nets no value: a ConstCond branch lowers a
-	// single-result arm only. One that leaves a FN VALUE (`if [true] [g/v]
-	// [1]`): the handler splices the arm as a paren, whose fn result stays
-	// a placed value on the interpreter (`fn g`), but handed back from here
-	// it is re-stepped by the check engine, which records the call — 5,
-	// and `10 if [true] [g/v] [1]` applied g to the 10 beneath. A live
-	// miscompile until 2026-09-26; the general path's join never hands back
-	// a bare fn value.
-	if len(stk) == 0 || IsFnValueResidual(stk[len(stk)-1]) {
-		reason := "if: branch produces no value (Stage 2 lowers single-result branches)"
-		if len(stk) > 0 {
-			reason = "if: the taken arm leaves a fn value (the interpreter places it; the compile model would re-step it)"
+	taken := lit
+	if len(stk) == 0 {
+		// The taken arm leaves no value (`if [true] [def x 1] [2]`, NUR243):
+		// a 0-value STATEMENT, recorded like the both-arms-zero branch —
+		// RecordBranch marks it zeroOut, and the registered result is a
+		// phantom None the residual reconciliation skips. A plain check has
+		// no event to strip, so the if nets 0 there, as the run does.
+		out := NewCarrier(TNone)
+		recorderState(es).RecordBranch(BranchRecord{
+			ConstCond: &taken, HasElse: true,
+			Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,
+		})
+		if !es.Recorder().Active() {
+			return nil
 		}
-		es.Recorder().MarkUncompilable(reason)
+		return []Value{out}
+	}
+	// An arm that leaves a FN VALUE (`if [true] [g/v] [1]`) declines: the
+	// handler splices the arm as a paren, whose fn result stays a placed
+	// value on the interpreter (`fn g`), but handed back from here it is
+	// re-stepped by the check engine, which records the call — 5, and `10 if
+	// [true] [g/v] [1]` applied g to the 10 beneath. A live miscompile until
+	// 2026-09-26; the general path's join never hands back a bare fn value.
+	if IsFnValueResidual(stk[len(stk)-1]) {
+		es.Recorder().MarkUncompilable("if: the taken arm leaves a fn value (the interpreter places it; the compile model would re-step it)")
 		return nil
 	}
 	out := stk[len(stk)-1]
-	taken := lit
 	recorderState(es).RecordBranch(BranchRecord{
 		ConstCond: &taken, HasElse: true,
 		Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,
@@ -1079,6 +1118,57 @@ func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
 	return frag, stk
 }
 
+// installArmJoins is InstallJoinedDefs for an `if` whose arms were both
+// analysed, with the one bind its join cannot replay withheld: a MODULE an
+// arm binds (an `import` inside it) on a path that may skip the arm — either
+// arm of a condition the model cannot decide, or the arm a concrete Boolean
+// does not take. The join's twin replays the check pass's bind at the
+// branch's position whichever arm runs, so the compiled program would bind
+// a name the interpreter leaves unbound (`undefined_word`); noted with the
+// recorder suspended, the twin keeps no placement and the program declines
+// at the twin regime's full-placement gate (NUR205). The arm a decided
+// condition takes runs every time, so its one replay stands.
+// armsKnownToRun reports which arm of a branch the model knows RUNS: the
+// taken arm of a DECIDED condition — a literal, or a def-bound or folded
+// concrete Boolean — whose defs are the post-branch bindings exactly. Every
+// other arm may not run, so a fn def in it is bound at run time only if it
+// does — speculative, as an undecided arm's is. The arm a decided condition
+// skips is the NEVER case of that (NUR244: left unbracketed, the join kept
+// its fn value and a read past the merge called it, `if false [def f fn
+// […]] [] end 3 f` answering the fn's result for undefined_word).
+func armsKnownToRun(cond Value) (thenRuns, elseRuns bool) {
+	if lit, ok := LiteralCondValue(cond); ok {
+		return lit, !lit
+	}
+	if b, ok := cond.Data.(BoolPayload); ok && cond.Parent.Equal(TBoolean) {
+		return b.B, !b.B
+	}
+	return false, false
+}
+
+func installArmJoins(r *Registry, cond Value, thenDefs, elseDefs map[string]Value) []BranchJoin {
+	decided, taken := false, false
+	if IsConcrete(cond) && cond.Parent != nil && cond.Parent.Equal(TBoolean) {
+		if b, err := AsBoolean(cond); err == nil {
+			decided, taken = true, b
+		}
+	}
+	withhold := false
+	for _, v := range thenDefs {
+		withhold = withhold || (IsModuleFamilyValue(v) && !(decided && taken))
+	}
+	for _, v := range elseDefs {
+		withhold = withhold || (IsModuleFamilyValue(v) && !(decided && !taken))
+	}
+	if withhold {
+		defer r.Check.Recorder().Suspend()()
+	}
+	if decided {
+		return InstallDecidedJoinedDefs(r, thenDefs, elseDefs, !taken)
+	}
+	return InstallJoinedDefs(r, thenDefs, elseDefs)
+}
+
 func If2ReturnsFn(args []Value, r *Registry) []Value {
 	pos := branchRecordPos(r, args[0])
 	es := r.Check
@@ -1091,16 +1181,26 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 			return out
 		}
 	}
-	if lit, ok := LiteralCondValue(args[0]); ok && !lit { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
+	if lit, ok := LiteralCondValue(args[0]); ok && !lit {
 		EmitUnreachableBranch(r, false, "then")
 	}
 	condFrag, condStk := analyseCondFragment(r, args[0])
 	restore := ApplyGuardNarrowing(r, args[0])
 	es.Recorder().ArmBranchCapture()
-	thenStk, thenDefs := RunCarrierBodyWithDefs(r, args[1])
+	// The arm runs only when the condition holds: bracketed unless the model
+	// decides it true, like if3's arms (NUR244 — unbracketed, a fn def in
+	// the arm was the join's own value, called past the merge on the path
+	// that skipped it).
+	thenRuns, _ := armsKnownToRun(args[0])
+	var thenStk []Value
+	var thenDefs map[string]Value
+	func() {
+		defer r.EnterSpecArm(thenRuns)()
+		thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
+	}()
 	thenFrag := recorderState(es).TakeFragment()
 	restore()
-	joins := InstallJoinedDefs(r, thenDefs, nil)
+	joins := installArmJoins(r, args[0], thenDefs, nil)
 	var out Value
 	zeroGuard := len(thenStk) == 0
 	if zeroGuard {

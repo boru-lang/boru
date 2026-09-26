@@ -25,7 +25,7 @@ func TestS2BDeclarationsByWordAndShape(t *testing.T) {
 	own, resteps, dyn := core.CompileOwnLowering, core.CompileResteps, core.CompileDynBody
 	key, inert := core.CompileQuoteKey, core.CompileQuoteInert
 	// word -> shape -> the EXACT CompileEffect every NoEvalArgs sig of that
-	// shape carries. def's keyword forms are checked by rule below (32
+	// shape carries. def's keyword forms are checked by rule below (34
 	// forms, synthesized from the constructors' tables).
 	want := map[string]map[string]core.CompileEffect{
 		// Structured ReturnsFn lowering (RecordBranch / RecordLoop). Two
@@ -109,12 +109,16 @@ func TestS2BDeclarationsByWordAndShape(t *testing.T) {
 			t.Errorf("def %s: CompileEffect %v, want exactly %v", s2aShape(sig), sig.CompileEffect, wantDef)
 		}
 	}
-	if defForms != 32 {
-		t.Errorf("def: %d code-body keyword forms, want 32 (the census's S2b worklist)", defForms)
+	// 32 -> 34 at the merge of main's #510 with the reverse-order NUR run:
+	// fn's 0-argument refusal (NUR091, a base signature that always raises)
+	// synthesizes the gen chain's `def name gen [T] fn` in both its
+	// Atom-named and String-named spellings, code-body forms like the rest.
+	if defForms != 34 {
+		t.Errorf("def: %d code-body keyword forms, want 34 (the census's S2b worklist)", defForms)
 	}
-	// 26 named above + def's 32 = the 58 signatures S2b declared.
-	if seen+defForms != 58 {
-		t.Errorf("pinned %d code-body signatures, want 58", seen+defForms)
+	// 26 named above + def's 34 = the 60 signatures S2b declares.
+	if seen+defForms != 60 {
+		t.Errorf("pinned %d code-body signatures, want 60", seen+defForms)
 	}
 }
 

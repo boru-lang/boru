@@ -55,9 +55,29 @@ func (PushLit) opMarker() {}
 type Call struct {
 	Name  string
 	Arity int
+	// ReStep marks the `apply` WORD's dispatch of a fn value: the handler
+	// hands the value back and the engine re-steps it, so the fn's own
+	// dispatch is recorded as the NEXT op too — the same application
+	// twice (NUR077's "Hole 2"). The form is faithful to what the engine
+	// did and cannot be replayed as written; Replayable declines it.
+	ReStep bool
 }
 
 func (Call) opMarker() {}
+
+// Apply applies the function VALUE the stack holds beneath `Arity`
+// arguments — a fn read out of a container, an inline lambda, a param —
+// consuming the value as the interpreter's application does (NUR077: a
+// `Call` re-invokes by NAME and consumes no receiver, so it could never
+// stand for an application). Recorded where the engine applies a fn value
+// (execFnDefSig's splice); replayed through the `apply` word over the
+// value brought to the top — Eval supports arities 0, 1 and 2 (the stack
+// rotations the vocabulary has), and Replayable declines a wider one.
+type Apply struct {
+	Arity int
+}
+
+func (Apply) opMarker() {}
 
 // Quote pushes a quoted sub-program as a list-shaped value. The
 // Body is the StackForm of the inner tokens (recursively Compiled).

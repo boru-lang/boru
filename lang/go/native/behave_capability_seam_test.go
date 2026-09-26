@@ -18,9 +18,10 @@ import (
 // capabilities, so the delegate arms have something to delegate to.
 type bsPrev struct{ core.TypeBehavior }
 
-func (bsPrev) Truthy(core.Value) (bool, error)               { return true, nil }
-func (bsPrev) DeepEqualValues(a, b core.Value) (bool, error) { return true, nil }
-func (bsPrev) Size(core.Value) int                           { return 7 }
+func (bsPrev) Truthy(core.Value) (bool, error)                { return true, nil }
+func (bsPrev) DeepEqualValues(a, b core.Value) (bool, error)  { return true, nil }
+func (bsPrev) ExactEqualValues(a, b core.Value) (bool, error) { return true, nil }
+func (bsPrev) Size(core.Value) int                            { return 7 }
 
 // bsBare is a previous-Behavior stub implementing NONE of them.
 type bsBare struct{ core.TypeBehavior }
@@ -121,6 +122,40 @@ func TestBehaveDeqSeam(t *testing.T) {
 	if _, err := u.DeepEqualValues(a, b); err == nil ||
 		!strings.Contains(err.Error(), "no registry") {
 		t.Errorf("nil-registry arm: err = %v", err)
+	}
+}
+
+// TestBehaveEqSeam is deq's seam test for the reference half (NUR075): the
+// eq slot delegates, declines, guards re-entry and reads its verdict exactly
+// as the deq slot does.
+func TestBehaveEqSeam(t *testing.T) {
+	a, b := NewInteger(1), NewInteger(2)
+
+	u := bsWrapper(t, bsPrev{core.DefaultBehavior})
+	if got, err := u.ExactEqualValues(a, b); err != nil || !got {
+		t.Errorf("delegate arm: got %v, %v; want true, nil", got, err)
+	}
+
+	u = bsWrapper(t, bsBare{core.DefaultBehavior})
+	if _, err := u.ExactEqualValues(a, b); err != core.ErrNoExactEqualer {
+		t.Errorf("decline arm: err = %v, want ErrNoExactEqualer", err)
+	}
+
+	u.eqBody = []Value{NewBoolean(true)}
+	u.inEq = true
+	if _, err := u.ExactEqualValues(a, b); err != core.ErrNoExactEqualer {
+		t.Errorf("re-entrancy arm: err = %v, want ErrNoExactEqualer", err)
+	}
+	u.inEq = false
+
+	if got, err := u.ExactEqualValues(a, b); err != nil || !got {
+		t.Errorf("body arm: got %v, %v; want true, nil", got, err)
+	}
+
+	u.eqBody = []Value{NewInteger(1)}
+	if _, err := u.ExactEqualValues(a, b); err == nil ||
+		!strings.Contains(err.Error(), "behave eq") || !strings.Contains(err.Error(), "must return Boolean") {
+		t.Errorf("wrong-result arm: err = %v", err)
 	}
 }
 
