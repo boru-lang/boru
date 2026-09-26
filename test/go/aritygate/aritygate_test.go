@@ -225,7 +225,12 @@ var pinnedAritySites = map[string]int{
 	// non-fallback overload declares exactly the k inputs the poly seat is
 	// retrying at — overload selection by declared signature (NUR147).
 	// Neither decides behaviour by arity.
-	"eng/go/vm.go": 22,
+	// 22 -> 23 (NUR238): valueTrailNoMatch asks whether a trailing apply's
+	// fn value carries ANY own signature (`len(fd.OwnSigs()) == 0`) before
+	// asking whether the window fits one — a value with no contract to
+	// consult is not the no-match rule's. The count of params never enters;
+	// every arity takes the same path.
+	"eng/go/vm.go": 23,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the
@@ -347,7 +352,15 @@ var pinnedAritySites = map[string]int{
 	// signature to match; one that does is a fn VALUE, and every arity of
 	// one takes the same path. Matching machinery, not a decision by arity —
 	// S1b-2 of design/FULL-COMPILATION-REPLAN.0.md.
-	"compiler/go/bytecode.go": 1,
+	// 1 -> 2: ClosureCallsAtLanding (NUR235) asks whether a NAMED fn value
+	// landing where nothing supplies an argument matches at all — the
+	// argument rule over an EMPTY supply. A signature that needs no operand
+	// matches there, so a nullary named value calls, exactly as
+	// MatchSignature admits it over no values; one that needs any fails the
+	// match and stays data, as the interpreter leaves it. The count decides
+	// only whether the match can succeed over nothing, never what a fn of a
+	// given arity may do.
+	"compiler/go/bytecode.go": 2,
 
 	// ── Generics: instantiation matches a declaration's shape.
 	"core/go/generics_unify.go":       1,

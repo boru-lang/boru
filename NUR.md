@@ -159,7 +159,7 @@ keep the two in sync in the same commit.
 | [NUR235](#nur235) | FIXED 2026-09-26 (a named fn value's push carries its name — the handoff log's entry of that date): a member read of a nullary fn value from a `fn` literal fires on both lanes; the closure's unit is shared with anonymous values over the same body, so the name rides on the push. The original text: a fn-body-local fn def bound into a returned map: the member read returns the fn compiled, calls it interpreted — `def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g` answers `[fn g]` compiled, `[5]` interpreted. A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR236](#nur236) | FIXED 2026-09-26 (a spliced consumer is ordered by the stream — the handoff log's entry of that date): a gradual def read consumed by a spliced word's expansion carries its deopt, so a read that holds a fn at run time dispatches it on both lanes. The original text: a word splice over a def-bound gradual read of a fn: `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}` answers `[Function]` compiled (typeof over the fn value) and `[Integer]` interpreted (`j` calls the fn). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR237](#nur237) | FIXED 2026-09-26 (an S5 name's later root defs are registry-visible — the handoff log's entry of that date): a taken branch arm's rebind of a name an S5 loop bind bound is seen after the merge on both lanes. The original text: a def rebound in a taken branch after a loop-result def reads the pre-branch value compiled: `def x (for 2 [5]) def c true if c [def x 1] [] end x` answers `[5 5]` compiled, `[5 1]` interpreted (both arms binding x too; a read of x before the branch makes the lanes agree). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
-| [NUR238](#nur238) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a paren-bounded trailing apply that matches nothing: the interpreter parks an anonymous value as data and raises `uncalled_function` for a named fn; the compiled apply raises `signature_error` at the top level (`(5 ([s:String] => [s]))` is `[5 fn (String)]` interpreted) and leaves a named fn's window as residue inside a fn (`(5 f/v)` over a `g/v` argument: a count error compiled) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR238](#nur238) | FIXED 2026-09-26 (a trailing value is re-stepped as the interpreter re-steps it — the handoff log's entry of that date): a value applied as a trailing window it does not fit parks when anonymous and raises uncalled_function when named, at the top level and in a fn. The original text: a paren-bounded trailing apply that matches nothing: the interpreter parks an anonymous value as data and raises `uncalled_function` for a named fn; the compiled apply raises `signature_error` at the top level (`(5 ([s:String] => [s]))` is `[5 fn (String)]` interpreted) and leaves a named fn's window as residue inside a fn (`(5 f/v)` over a `g/v` argument: a count error compiled) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR239](#nur239) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): an applied fn value's return-contract error names the fn's definition compiled and the binding it was called under interpreted: `(k 5)` over `h z/v` says `z:` compiled, `k:` interpreted; an anonymous class-field fn says `` compiled, `<fn>` interpreted (`each h.cb [1 2 3]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR240](#nur240) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a trapped unmatched module-member call inside a branch arm raises `signature_error` compiled and `uncalled_function` interpreted — a value-level divergence where the code is caught (`do [if true [(true 5 M.dec)] [1] …] error [dot code]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR241](#nur241) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a capturing callback run by `walk`: `acc (tag) append acc (m.path) append` in a factory's lambda raises `signature_error: cannot call append` compiled (the arguments `[]` and `''`) where the interpreter answers `['x' '' 'x' 'a' 'x' 'b']` | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
@@ -9274,8 +9274,9 @@ splice installs it). Pinned: lang `TestNUR237LoopSplitRebindInABranch`
 
 ## NUR238 — a paren-bounded trailing apply that matches nothing {#nur238}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+**Status:** FIXED 2026-09-26 (a trailing value is re-stepped as the
+interpreter re-steps it — the handoff log's entry of that date) ·
+**Recorded:** 2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
 — the eng coverage agent (vm.go's nameless trail-top raise).
 
 **Rule:** one failed dispatch, one outcome, on both lanes.
@@ -9300,6 +9301,20 @@ def g fn [[s:String] [String] [s]] end def h fn [[f:Function] [Any] [(5 f/v)]] e
 At the top level no delivery head is recorded (`seatDynApplyName` records
 nothing for the main code), so the op takes its nameless raise; inside a
 fn the named window parks.
+
+
+**The fix.** A trailing window whose value is not a bare read — a `/v`
+delivery, a literal or a produced fn, written after its arguments — is the
+interpreter's re-step of the value (`execFnDefLiteral`), so its no-match
+follows that rule (`valueTrailNoMatch`). An anonymous value parks as data,
+and a named one raises `uncalled_function`. A bare read under a frame
+binding keeps the word dispatch's `signature_error` (NUR107), and a
+delivered value written before its arguments keeps its park.
+
+The main code now seats its apply heads (`Program.DynApplyName`), so the op
+knows how a window was written. A nameless head is seated for its order
+too. Pinned: lang `TestNUR238TrailingValueNoMatch` (eight rows); eng
+`TestTrailTopValueNoMatch`.
 
 ## NUR239 — an applied fn value's return-contract error names the fn, not the binding {#nur239}
 

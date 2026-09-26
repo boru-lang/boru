@@ -271,3 +271,15 @@ func TestClosureCallsAtLanding(t *testing.T) {
 		t.Error("anonymous: a lambda unit's closure without a name")
 	}
 }
+
+// TestCallWindowOpEmptyIdentity pins the record's refusal of a window value
+// with no identity that is neither an argument nor a scalar: nothing names
+// where the run holds it.
+func TestCallWindowOpEmptyIdentity(t *testing.T) {
+	es := NewEmitState()
+	c := core.NewCarrier(core.TAny)
+	c.ID = ""
+	if _, ok := es.callWindowOp(c, false, nil); ok {
+		t.Fatal("a carrier with no identity has no home")
+	}
+}

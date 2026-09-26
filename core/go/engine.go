@@ -6565,7 +6565,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 			}
 			e.Tape.Splice(dst, valIdx+1-dst, result...)
 			e.Pointer = firstArgIdx + park
-		} else if nArgs == 0 { //covergate:allow execFnDefSig cross-registry 0-arg splice arm; see 5015.20 entry (§kernel)
+		} else if nArgs == 0 {
 			e.Tape.Splice(valIdx, 1, result...)
 			e.Pointer += park
 		} else { //covergate:allow execFnDefSig cross-registry forward-fallback splice arm; see 5015.20 entry (§kernel)

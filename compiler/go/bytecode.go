@@ -1339,6 +1339,10 @@ type Program struct {
 	// LandingWords is the main code's twin of CompiledFn.LandingWords (see
 	// there).
 	LandingWords map[int]LandingWord
+	// DynApplyName is the main code's twin of CompiledFn.DynApplyName: a
+	// main-code apply names no frame binding, but its window's written order
+	// decides a value's no-match (NUR238).
+	DynApplyName map[int]DynApplyHead
 	// CallWindows is the main code's twin of CompiledFn.CallWindows (see
 	// there).
 	CallWindows map[int][]CallWindowOperand

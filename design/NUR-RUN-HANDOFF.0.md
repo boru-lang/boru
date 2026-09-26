@@ -9,6 +9,29 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR238 closed; the merged ADR-008 gate's last blocks (2026-09-26)
+
+**NUR238.** A value applied as a trailing window it does not fit now
+follows the interpreter's re-step of the value. An anonymous value parks
+as data, and a named one raises `uncalled_function`, at the top level
+(which now seats its apply heads, `Program.DynApplyName`) and in a fn
+alike. A bare read under a frame binding keeps NUR107's `signature_error`.
+
+**The merged gate at 852a10a** measured 80176/80191, down from 148
+uncovered statements at the start:
+- **Main's #509** left 7 blocks: `runsBodyOnRegistryAtModuleScope`'s
+  effect re-test, which is deleted (its only caller switches on the
+  effect); `bodyRebindsBoundName`'s arms; `soleSigParamsNominal`'s
+  untyped slot; `lowerLoop`'s unpromoted event start.
+- **Older main code** that newly showed up after the merge left 4 blocks:
+  `RecordLoop`'s range operand check and `valueRefsName`'s paren arm.
+- **This run** left 3 blocks: NoteLoopFresh's guard, an unplaceable
+  signature forward, and a window value with no identity.
+- **A stale pragma**: core/go/engine.go's cross-registry 0-arg splice arm,
+  now reached. The pragma is removed.
+
+All are covered by unit tests.
+
 ## NUR243 closed; NUR239's anonymous half; NUR244 recorded (2026-09-26)
 
 **NUR243.** Three valid programs compile now:

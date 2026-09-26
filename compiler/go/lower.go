@@ -1330,13 +1330,15 @@ func (lw *lowerer) emitBranchLanding(ev *EmitEvent) {
 
 // seatDynApplyName records a trailing fn-value apply's head binding name at
 // the pc of the OpCallDynTrailTop / OpCallDynTrailKeepQ about to be emitted
-// (CompiledFn.DynApplyName), so the op's no-match diagnostic can name and
-// point at the read the interpreter dispatches. An apply with no bare-read
-// head, and the main code (no frame to bind), record nothing.
+// (CompiledFn.DynApplyName, Program.DynApplyName for the main code), so the
+// op's no-match diagnostic can name and point at the read the interpreter
+// dispatches, and a value's no-match knows how its window was written.
 func (lw *lowerer) seatDynApplyName(w DynApplyHead) {
-	// A nameless head is seated only as a `/v` delivery, for the park and
-	// the written order its parked residual keeps (DynApplyHead).
-	if lw.dynApplyName == nil || (w.Name == "" && !w.ValueDelivery) {
+	// A nameless head is seated for its window's written order and
+	// delivery (DynApplyHead): the park, and whether a value the window
+	// does not fit is re-stepped as a trailing apply (NUR238). One with
+	// neither records nothing — a trailing value apply is the zero head.
+	if lw.dynApplyName == nil || (w.Name == "" && !w.ValueDelivery && !w.Leading && !w.WrittenFirst) {
 		return
 	}
 	if *lw.dynApplyName == nil {

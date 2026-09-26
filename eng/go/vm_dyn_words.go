@@ -19,8 +19,11 @@ func dynFrameWordsAt(p *compiler.Program, unit, pc int) []compiler.DynFrameWord 
 // pc in the code that holds it (CompiledFn.DynApplyName): only a fn unit
 // carries one — a main-code apply names no frame binding.
 func dynApplyNameAt(p *compiler.Program, unit, pc int) compiler.DynApplyHead {
-	if unit < 0 || p == nil || unit >= len(p.Fns) {
+	if p == nil || unit >= len(p.Fns) {
 		return compiler.DynApplyHead{}
+	}
+	if unit < 0 {
+		return p.DynApplyName[pc]
 	}
 	return p.Fns[unit].DynApplyName[pc]
 }

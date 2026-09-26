@@ -12720,10 +12720,10 @@ func (es *EmitState) noEvalBodyBakes(sig *core.Signature, args []core.Value) boo
 // spec` is a check-time undefined_word), so the VM's run of the body is the
 // FIRST run, an `import` inside it a first load, exactly as under the
 // interpreter.
+//
+// The caller asks only for a word declaring CompileRunsBodyOnRegistry
+// (noEvalBodyBakes' switch), so the effect is not tested again here.
 func (es *EmitState) runsBodyOnRegistryAtModuleScope(sig *core.Signature, args []core.Value) bool {
-	if !sig.CompileEffect.Has(core.CompileRunsBodyOnRegistry) {
-		return false
-	}
 	if len(es.units) != 1 || es.reg == nil || es.reg.Check.FnBodyDepth != 0 || es.reg.Check.NestedBodyDepth != 0 {
 		// The TOP-LEVEL STATEMENT position only: no unit open, no fn body
 		// and no nested (branch / loop) body under analysis. There every
@@ -14420,7 +14420,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		LiveLeadNames:   maps.Clone(es.liveLeadNames),
 		LiveReadNames:   maps.Clone(es.liveReadNames),
 		CondBoundNames:  maps.Clone(es.condBoundNames)}
-	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, callWindows: &p.CallWindows, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
+	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, callWindows: &p.CallWindows, dynApplyName: &p.DynApplyName, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
 	// single-consume stack discipline holds. Count the residual references,

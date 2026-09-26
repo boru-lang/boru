@@ -85,3 +85,60 @@ func TestFnHasBoruSig(t *testing.T) {
 		t.Fatalf("native %v, user %v", fnHasBoruSig(native), fnHasBoruSig(user))
 	}
 }
+
+// callWindowEmit is the inactive recorder plus the call-window offer: it
+// keeps what noteCallWindow hands it.
+type callWindowEmit struct {
+	EmitRecorder
+	word     string
+	window   []Value
+	deferred bool
+	restep   bool
+	calls    int
+}
+
+func (c *callWindowEmit) Active() bool { return true }
+func (c *callWindowEmit) NoteCallWindow(word string, _ SrcPos, window []Value, deferred, restep bool) {
+	c.word, c.window, c.deferred, c.restep = word, window, deferred, restep
+	c.calls++
+}
+
+// TestNoteCallWindowOffer pins what a user fn's dispatch offers the
+// recorder (NUR234): the attempted window over the tape — present but EMPTY
+// when nothing is written and nothing sits beneath (a nil window means "no
+// offer", so the empty one must stay non-nil) — no window for a speculative
+// plan, and the deferred flag when a matched position lies past the word (a
+// forward collection re-steps the call).
+func TestNoteCallWindowOffer(t *testing.T) {
+	fn := &FnDefInfo{Name: "h", Signatures: []Signature{{Fallback: true}, {
+		Params: []FnParam{{Name: "k", Type: TInteger}},
+		Impl:   Boru([]Value{NewInteger(1)}),
+	}}}
+	sig := &fn.Signatures[1]
+	w := WordInfo{Name: "h", ForceStack: true}
+	run := func(tape []Value, pointer int, sig *Signature, positions []int, specAt int) *callWindowEmit {
+		es := &callWindowEmit{EmitRecorder: TheInactiveEmit}
+		e := hazardEngine(t, es)
+		e.Tape = NewTape(tape, StackHeadroom)
+		e.Pointer = pointer
+		e.noteCallWindow(w, fn, sig, positions, specAt, SrcPos{})
+		return es
+	}
+
+	es := run([]Value{NewWord("h")}, 0, sig, nil, -1)
+	if es.calls != 1 || es.word != "h" || es.window == nil || len(es.window) != 0 || es.deferred || !es.restep {
+		t.Errorf("an empty attempted window is offered non-nil: %+v", es)
+	}
+	es = run([]Value{NewWord("h"), NewInteger(3)}, 0, sig, []int{1}, -1)
+	if !es.deferred || len(es.window) != 1 || !ValuesEqual(es.window[0], NewInteger(3)) {
+		t.Errorf("a position past the word defers the offer over the written run: %+v", es)
+	}
+	es = run([]Value{NewInteger(2), NewWord("h")}, 1, sig, []int{0}, 0)
+	if es.deferred || es.window != nil {
+		t.Errorf("a speculative plan offers no window, a stack position does not defer: %+v", es)
+	}
+	es = run([]Value{NewWord("h"), NewInteger(3)}, 0, nil, []int{1}, -1)
+	if es.deferred {
+		t.Errorf("no matched signature never defers: %+v", es)
+	}
+}

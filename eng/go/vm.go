@@ -1800,8 +1800,13 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 		}
 		return append(stack[:base], results...), nil, nil
 	}
-	if delivered && core.MatchFnSig(fnVal, args) == nil {
-		return parkedWindow(stack, base, top, head), nil, nil // a /v-delivered fn the window does not fit stays data
+	if delivered && (head.Leading || head.WrittenFirst) && core.MatchFnSig(fnVal, args) == nil {
+		return parkedWindow(stack, base, top, head), nil, nil // a /v-delivered fn written before the window stays data
+	}
+	if parked, err := valueTrailNoMatch(reg, fnVal, args, head, curDebug, pc); err != nil {
+		return nil, nil, err
+	} else if parked {
+		return stack, nil, nil
 	}
 	if err := noMatchIfSigged(reg, fnVal, args, curDebug, pc, reg, head); err != nil {
 		return nil, nil, err
@@ -1831,6 +1836,28 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 		return nil, nil, err
 	}
 	return append(stack[:base], results...), nil, nil
+}
+
+// valueTrailNoMatch is the no-match of a VALUE applied as a TRAILING window
+// — a `/v` delivery, a literal, a produced fn: no bare read the interpreter
+// dispatches as a word, and written after its arguments (NUR238). The
+// interpreter re-steps the value over the window (execFnDefLiteral): an
+// anonymous value that matches nothing is DATA (ADR-016's gate — the window
+// stays as written, parked true), and a named one raises uncalled_function.
+// A value with no own signature to consult, one the window fits, a bare
+// read (head.Name) and a window written the other way are not this rule's.
+func valueTrailNoMatch(reg *core.Registry, fnVal core.Value, args []core.Value, head compiler.DynApplyHead, curDebug []core.SrcPos, pc int) (bool, error) {
+	if head.Name != "" || head.Leading || head.WrittenFirst {
+		return false, nil
+	}
+	fd, ok := fnVal.Data.(core.FnDefInfo)
+	if !ok || len(fd.OwnSigs()) == 0 || core.IsDelegationFnDef(fd) || core.MatchFnSig(fnVal, args) != nil {
+		return false, nil
+	}
+	if (fd.Anonymous && !fd.Applied) || fd.Macro {
+		return true, nil
+	}
+	return false, stampAt(uncalledFunctionError(reg, fd), curDebug, pc, reg)
 }
 
 // parkedWindow is the residual a value-delivered fn the window does not fit

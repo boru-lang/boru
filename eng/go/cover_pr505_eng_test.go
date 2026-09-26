@@ -333,32 +333,49 @@ func TestReStepLandingIslandHonoursTheStepBudget(t *testing.T) {
 	}
 }
 
-// TestTrailTopNamelessNoMatchRaises pins noMatchIfSigged's nameless arm
-// (NUR107): a fn value with its own signatures, none of which admits the
-// window, raises the no-match when the head carries no seated name, where a
-// value-delivered head parks the window as data instead. (Every program that
-// reaches this arm today is a top-level `/v` read the lowering does not seat
-// as a delivery, and there the interpreter parks the value or raises
-// uncalled_function: a lane divergence reported with this change.)
-func TestTrailTopNamelessNoMatchRaises(t *testing.T) {
+// TestTrailTopValueNoMatch pins a VALUE's no-match at the trailing-top
+// apply (NUR238): a fn value with own signatures none of which admits the
+// window is re-stepped as the interpreter's execFnDefLiteral re-steps it —
+// a named one raises uncalled_function whether or not a `/v` delivered it,
+// an anonymous one parks the window as data — while a window written the
+// other way keeps its rules: a delivered one parks, and one that was not
+// delivered reaches noMatchIfSigged's nameless no-match (NUR107).
+func TestTrailTopValueNoMatch(t *testing.T) {
 	r := seam7Reg(t)
 	vc := seam7VC(r)
-	g := core.NewFunction(core.FnDefInfo{Name: "g", Registry: r, Signatures: []core.Signature{{
-		Params: []core.FnParam{{Type: core.TString}}, BarrierPos: 1, Returns: []*core.Type{core.TString},
-		Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-			return []core.Value{a[0]}, nil
-		}),
-	}}})
-
-	got, ent, err := vc.callDynTrailTop(r, 1, []core.Value{core.NewInteger(5), g}, seam7Dbg, 0, compiler.DynApplyHead{})
-	var be *core.BoruError
-	if got != nil || ent != nil || !errors.As(err, &be) || be.Code != "signature_error" || !strings.Contains(be.Detail, "cannot call `g`") {
-		t.Errorf("a nameless head: got %v %+v %v, want the no-match signature_error", got, ent, err)
+	mk := func(anonymous bool) core.Value {
+		return core.NewFunction(core.FnDefInfo{Name: "g", Anonymous: anonymous, Registry: r, Signatures: []core.Signature{{
+			Params: []core.FnParam{{Type: core.TString}}, BarrierPos: 1, Returns: []*core.Type{core.TString},
+			Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+				return []core.Value{a[0]}, nil
+			}),
+		}}})
 	}
-
-	got, ent, err = vc.callDynTrailTop(r, 1, []core.Value{core.NewInteger(5), g}, seam7Dbg, 0, compiler.DynApplyHead{ValueDelivery: true})
-	if err != nil || ent != nil || len(got) != 2 || !got[1].Parent.Equal(core.TFunction) {
-		t.Errorf("a value-delivered head parks the window: got %v %+v %v", got, ent, err)
+	g, lam := mk(false), mk(true)
+	code := func(err error) string {
+		var be *core.BoruError
+		if errors.As(err, &be) {
+			return be.Code
+		}
+		return ""
+	}
+	for _, head := range []compiler.DynApplyHead{{}, {ValueDelivery: true}} {
+		got, ent, err := vc.callDynTrailTop(r, 1, []core.Value{core.NewInteger(5), g}, seam7Dbg, 0, head)
+		if got != nil || ent != nil || code(err) != "uncalled_function" {
+			t.Errorf("%+v: a named value: got %v %+v %v, want uncalled_function", head, got, ent, err)
+		}
+		got, ent, err = vc.callDynTrailTop(r, 1, []core.Value{core.NewInteger(5), lam}, seam7Dbg, 0, head)
+		if err != nil || ent != nil || len(got) != 2 || !got[1].Parent.Equal(core.TFunction) {
+			t.Errorf("%+v: an anonymous value parks: got %v %+v %v", head, got, ent, err)
+		}
+	}
+	got, ent, err := vc.callDynTrailTop(r, 1, []core.Value{core.NewInteger(5), g}, seam7Dbg, 0, compiler.DynApplyHead{ValueDelivery: true, WrittenFirst: true})
+	if err != nil || ent != nil || len(got) != 2 {
+		t.Errorf("a delivered value written first parks: got %v %+v %v", got, ent, err)
+	}
+	got, ent, err = vc.callDynTrailTop(r, 1, []core.Value{core.NewInteger(5), g}, seam7Dbg, 0, compiler.DynApplyHead{Leading: true})
+	if got != nil || ent != nil || code(err) != "signature_error" {
+		t.Errorf("a leading window's value: got %v %+v %v, want the nameless no-match", got, ent, err)
 	}
 }
 
