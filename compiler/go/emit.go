@@ -6891,34 +6891,12 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			// `(a:Any => [b:Any => [a/v]]) p/v apply` hands the projection
 			// to the pair), and the op's window binds it the same way — so
 			// the window takes every value beneath, fn-valued or not.
-			var applyChain []applyStep
-			if pend := u.pendingApply; len(pend) > 0 {
-				if dynTrail == 0 && len(pend) == 1 && len(bodyStk) >= 2 &&
-					bodyStk[len(bodyStk)-1].ID == pend[0].id {
-					dynTrail = len(bodyStk) - 1
-					// applyHandler unquotes: a /v-parked fn value still
-					// applies (OpCallDynApplyTop), unlike the paren case.
-					rec.dynTrailApply = true
-					rec.dynTrailPos = pend[0].pos
-				}
-				// A CHAIN of applies over inert operands (`x f/v apply f/v
-				// apply`, 2026-09-25): every step's window is the whole
-				// residual beneath its fn, as applyHandler re-steps; the
-				// steps lower interleaved with their pushes
-				// (emitBodyTailApply), each but the last committed to one
-				// result.
-				if dynTrail == 0 && !rec.closure && len(pend) >= 2 {
-					if applyChain = applyChainSteps(pend, bodyStk, ops); applyChain != nil {
-						dynTrail = len(bodyStk) - 1
-						rec.dynTrailApply = true
-						rec.dynTrailPos = pend[len(pend)-1].pos
-					}
-				}
-				if dynTrail == 0 {
-					es.MarkUncompilable("fn " + name + ": apply of a dynamic fn value not at the body tail (Stage 3)")
-					return
-				}
+			applyChain, dynTrailApplied, applyOK := pendingApplyTail(rec, u.pendingApply, bodyStk, ops, dynTrail)
+			if !applyOK {
+				es.MarkUncompilable("fn " + name + ": apply of a dynamic fn value not at the body tail (Stage 3)")
+				return
 			}
+			dynTrail = dynTrailApplied
 			// A DECLARED fn must leave exactly len(returns) RUNTIME values; a
 			// different count (measured over real operands, phantom guards
 			// excluded) is a return-COUNT mismatch. For a genuine USER fn that is
@@ -10796,6 +10774,39 @@ func (es *EmitState) MayBeFn(id string) bool {
 	}
 	pr, ok := es.producedBy[id]
 	return ok && es.eventInfo[pr.seq].mayBeFn
+}
+
+// pendingApplyTail seats the unit's pending `apply` words at the body tail
+// (StartFnCompile's finish): one pending apply over the whole residual is
+// the single tail apply, a CHAIN of applies over inert operands (`x f/v
+// apply f/v apply`, 2026-09-25) lowers step by step (emitBodyTailApply),
+// each but the last committed to one result — every step's window is the
+// whole residual beneath its fn, as applyHandler re-steps. It returns the
+// chain (nil for a single apply), the tail arity and false when a pending
+// apply is left that no tail shape seats (a mid-body apply, an apply into
+// a branch join), which declines the unit. With nothing pending it returns
+// the arity it was given.
+func pendingApplyTail(rec *fnUnitRec, pend []pendingApply, bodyStk []core.Value, ops []EmitOperand, dynTrail int) ([]applyStep, int, bool) {
+	if len(pend) == 0 {
+		return nil, dynTrail, true
+	}
+	if dynTrail == 0 && len(pend) == 1 && len(bodyStk) >= 2 &&
+		bodyStk[len(bodyStk)-1].ID == pend[0].id {
+		dynTrail = len(bodyStk) - 1
+		// applyHandler unquotes: a /v-parked fn value still applies
+		// (OpCallDynApplyTop), unlike the paren case.
+		rec.dynTrailApply = true
+		rec.dynTrailPos = pend[0].pos
+	}
+	var chain []applyStep
+	if dynTrail == 0 && !rec.closure && len(pend) >= 2 {
+		if chain = applyChainSteps(pend, bodyStk, ops); chain != nil {
+			dynTrail = len(bodyStk) - 1
+			rec.dynTrailApply = true
+			rec.dynTrailPos = pend[len(pend)-1].pos
+		}
+	}
+	return chain, dynTrail, dynTrail != 0
 }
 
 // branchArmMayBeFn reports whether a branch arm's VALUE may be a fn at run
