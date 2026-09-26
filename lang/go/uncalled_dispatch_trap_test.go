@@ -108,8 +108,9 @@ func TestUncalledDispatchTrapDeclinesInexactOperands(t *testing.T) {
 	for _, src := range []string{
 		// A raw WORD token stands for whatever the binding holds at run time.
 		`import "boru:math-util"  def zs 'x' end MathUtil.cbrt zs`,
-		// A DYNAMIC flex read has a static tag, not a value.
-		`import "boru:math-util"  def zf (flex {n:'x'}) end MathUtil.cbrt (zf get 'n')`,
+		// (A DYNAMIC flex read — `MathUtil.cbrt (zf get 'n')` — moved to
+		// TestUncalledDispatchDynamicOperandRematches on 2026-09-26: the
+		// fn value's recovery re-matches it at run time now, no trap.)
 	} {
 		t.Run(src, func(t *testing.T) {
 			a, err := New()

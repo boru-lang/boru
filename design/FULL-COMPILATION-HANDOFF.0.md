@@ -15138,3 +15138,107 @@ refusals off the compiled lane); compiler `event_kind_census_test.go`
 (`fnOpRenderKnown`). Docs: NUR.md (NUR158 and NUR170 FIXED; NUR207 and
 NUR208 recorded), the sweep ceilings, `sweepKnownMiscompiles` (NUR170's pin
 retired), SWEEP_STATUS.md refreshed.
+
+## The last real programs — mini-redis, the kg resolution suite and echo_s3 compile: 62 of 62 (2026-09-26)
+
+**Measured.** `TestRealProgramsCompile`: **58 -> 62 of 62** — the ledger is
+empty. Each of the four had one blocker, and none was in the construct the
+ledger named; all three causes were CHECKER models the recorder trusted.
+
+- **The narrowing measured the wrong operand** (check `carrier.go`
+  `slotIsPolymorphic`; mini-redis.boru and echo_redis.boru, "check
+  diagnostics"). mini-redis's HDEL handler reads `def cur (hashes get k)`
+  over an Any store: a def-bound DYNAMIC DISJUNCT (the union of get's
+  reachable returns). `(cur get f)` inside the branch-valued `def had (if …)`
+  narrowed `cur` to the FIRST get overload's receiver slot, Module —
+  narrowDynamicUses asks slotIsPolymorphic whether a sibling overload is
+  reachable, and that test intersected each sibling's slot with
+  `NewCarrier(args[j].Parent)`: for a disjunct the Parent is the bare
+  Disjunct NODE, disjoint from every container type, so no sibling was
+  reachable and the first slot won. The later `cur set (f) None` then
+  declined no_signature (a Module receiver), the best-fit recovery left no
+  value, and `def h2` bound nothing: the false `undefined word: h2` at
+  230:57. The reachability test now intersects the value's BOUND (dynamic
+  stripped) — the very operand narrowDynamicUses intersects. The
+  "branch-valued def" was a red herring: any second read of `cur` after the
+  narrowing showed it; the `def had` line was merely the first `get`.
+- **each over a dynamic collection was a strict Map** (check `carrier.go`
+  `applyGradualContagion`, `reachableUnknownReturnSibling`; the kg
+  resolution suite, "fn call operand of unknown provenance"). Bisected on a
+  scratch copy of kg/: the unseated operand was the MAP LITERAL handed to
+  `KgSchema.mk-entity`, whose `aliases:` member ran to TWO values — the
+  `KgEnt.distinct-sorted` Function, uncalled, and a Map carrier. `each
+  [body] xs` over a dynamic xs matches its `[List Map]` form first; the List
+  form carries only a ReturnsFn, so dynamicReachableReturns abandons the
+  union for a partially-known call (nil), and applyGradualContagion read
+  "fewer than two reachable returns" as the single-return case and kept the
+  committed return STRICT: a Map the runtime List contradicts. The xs:List
+  callee then did not match and parked as data. A dispatch reaching two or
+  more overloads, one without a single declared return, now widens its
+  committed CONTAINER return to dynamic(Any) — the all-unknown case's own
+  answer. The checker's false `expected List, got Map` on every `each` over
+  an Any-typed collection went with it. The inline reductions had compiled
+  because they wrote the fn under test in the SAME registry, where it was
+  recovered as a user fn; the real module's value was a foreign dispatch.
+- **A module native's fn value parked where its word recovers** (core
+  `execFnDefLiteral` → `fnValueNoMatchRecovers`, check `recoveryPolyOwner` /
+  `recoverySpec`, core `windowArityFirstMatch`, eng `polyNoMatchRaise`;
+  echo_s3.boru, "for: body nets multiple values per iteration"). The chunk
+  loop was mini-s3-CLIENT's, not the server's: `Net.send-bytes (slice i hi
+  body) sock` over a `sock:Any` param found no static signature, and a fn
+  VALUE's no-match parks it, so the body netted [fn bytes sock] per
+  iteration and the multi-value arm's parked-fn screen declined. A bare
+  native word in the same position takes checkModeAssumeSig's runtime
+  re-match; the fn value now does too, when the value is a named, unquoted
+  module NATIVE (no code-body / quoted / callable sig) and the candidate
+  window holds an operand of unknown type (strict or gradual Any, a union) —
+  a definite mismatch still parks. Three pieces make it faithful: the poly's
+  owner is the native's home registry (the dispatching registry has no such
+  builtin — tryRecordPoly refused); the runtime no-match raises the fn
+  VALUE's own `uncalled_function` at the interpreter's raise position
+  (PolyNoMatchSpec.Uncalled, `uncalledRaisePos` shared with the raise
+  itself), never a word's signature_error — the no-spec defer's alt would
+  have been one, so a recovery that cannot build the spec does not record;
+  and a multi-arity native is admitted only when its window's first match is
+  PROVED window-arity (every narrower overload shadowed by an earlier
+  window-arity one whose slots contain it, the operands past it concrete
+  and admitted; no wider overload) — mini-s3-client's `Net.recv-until sock
+  crlf {within:…}` is the admitted shape, and a two-operand `recv-until`
+  keeps its decline. The success path was measured over real loopback
+  sockets (both lanes `[5 'hello']`, `[3 'ab']`). The recovery runs on the
+  COMPILE pass only: on the first cut it ran on the plain pass too, where a
+  0-return mutator over a dynamic receiver nets one optimistic value
+  (applyGradualContagion), and `… set mem true  IO.seek 42 0` recovered
+  over that phantom and lost the plain surface's genuine
+  `uncalled_function` — the diag-surface parity gate caught it as a new
+  compile-only class.
+
+**Seen and left.** A bare word REBOUND by `unpack [send-bytes] Net` carries
+the module home too, but its signatures are COPIES (installDef's rebind), so
+tryRecordPoly's pointer-identity guard against the home registry's binding
+still refuses it — "unmatched dispatch recovered at send-bytes", as before.
+The compiled CALL_USER entry guard's no-match carries no source position
+inside a unit (and the argument's, not the word's, at top level) — NUR171's
+family, pre-existing; TestSingleOverloadUserFnOverImpreciseOperandCompiles'
+predicate row reaches it now and asserts code and detail.
+
+**Moved.** lang `compileDefectCeiling` 298 -> 299 (two decline pins — the
+definite mismatch and the narrow `recv-until` window — against the
+predicate-typed row of TestSingleOverloadUserFnOverImpreciseOperandCompiles,
+which compiles with parity now: `size al` over the widened `each` result
+matches `bg` directly and the entry guard runs Big's predicate).
+TestUncalledDispatchTrapDeclinesInexactOperands' dynamic flex row
+(`MathUtil.cbrt (zf get 'n')`) compiles through the fn-value recovery and
+moved to a parity pin. aritygate: `check/go/carrier.go` 13 -> 15,
+`core/go/engine.go` 30 -> 32 (all matching: candidate-arity filters and
+overload-count guards). The filtered langspec gates (control, code-bodies,
+callbacks, fn-value, module-*, each-variants, fold-map-filter, accessor,
+storage, reach) pass at their ceilings.
+
+**Pins.** lang `real_programs_s2b_test.go`
+(`TestNarrowingSkipsPolymorphicDisjunctSlot`,
+`TestEachOverDynamicCollectionIsNotAStrictMap`,
+`TestUncalledDispatchDynamicOperandRematches`,
+`TestModuleNativeFnValueOverAnyRecovers`); `s2b_registry_bodies_test.go`
+and `uncalled_dispatch_trap_test.go` (the two inverted rows);
+`real_program_compile_test.go` (the empty ledger).

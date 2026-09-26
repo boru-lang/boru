@@ -1490,14 +1490,21 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 // arm), built for the landing: the same code, detail and hint; the position
 // is stamped from the op's debug entry (the noted landing's token).
 func uncalledFunctionError(reg *core.Registry, fnDef core.FnDefInfo) error {
-	detail := "call to '" + fnDef.Name + "' matched no signature"
+	return uncalledFunctionErrorAt(reg, fnDef.Name, core.SrcPos{})
+}
+
+// uncalledFunctionErrorAt is uncalledFunctionError at an explicit position —
+// the recorded raise anchor of a poly re-match's fn-value no-match
+// (PolyNoMatchSpec.Uncalled).
+func uncalledFunctionErrorAt(reg *core.Registry, name string, pos core.SrcPos) *core.BoruError {
+	detail := "call to '" + name + "' matched no signature"
 	hint := "hint: check the call's argument types and arity — or use " +
-		fnDef.Name + "/v to push the function as a value deliberately"
+		name + "/v to push the function as a value deliberately"
 	src := ""
 	if reg != nil {
 		src = reg.Source
 	}
-	return core.MakeBoruErrorAt("uncalled_function", detail, fnDef.Name, src, hint, core.SrcPos{})
+	return core.MakeBoruErrorAt("uncalled_function", detail, name, src, hint, pos)
 }
 
 // landingResults seats one applied landing's results over the value it

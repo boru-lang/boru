@@ -93,8 +93,14 @@ var pinnedAritySites = map[string]int{
 	// matcher's own arity rule, mirrored so the guarded CALL_USER never
 	// binds a partial window the interpreter's signature_error refuses; it
 	// decides whether the arguments are THERE, not what the fn does by
-	// their count.
-	"core/go/engine.go":       30,
+	// their count. 30 -> 32 on 2026-09-26 (the last real programs, the
+	// fn-value recovery): narrowOverloadShadowed's window-arity candidate
+	// filter (`s.TotalArgs() != len(window)`), which proves which overload
+	// the interpreter's first match takes over a fixed operand window — the
+	// matcher's own rule — and fnValueNoMatchRecovers' empty-table guard
+	// (`len(fn.Signatures) == 0`, no overload to recover into). No function
+	// behaves differently by its count.
+	"core/go/engine.go":       32,
 	"core/go/region_diag.go":  1,
 	"core/go/collect_plan.go": 5,
 	"core/go/signature.go":    12,
@@ -116,7 +122,14 @@ var pinnedAritySites = map[string]int{
 	"core/go/macro_expand.go": 1,
 
 	// ── The checker's and VM's mirrors of that same matching.
-	"check/go/carrier.go": 13,
+	// 13 -> 15 on 2026-09-26 (the last real programs):
+	// reachableUnknownReturnSibling's same-arity candidate filter
+	// (`s.TotalArgs() != len(args)`) and its single-overload early out
+	// (`len(fn.Signatures) < 2`) — dynamicReachableReturns' own
+	// reachability rule, read to know whether a dynamic operand reaches an
+	// overload whose return the union cannot name. Matching, not
+	// arity-keyed behaviour.
+	"check/go/carrier.go": 15,
 	// 1 -> 2 (2026-09-24, the written argument's fit, NUR194):
 	// shapedFnReadWindow guards `i-1 < len(shape.Params)` — a BOUNDS check
 	// on the claim's parameter-type slice, which may be shorter than the
