@@ -221,10 +221,14 @@ func TestEmitIslandReport(t *testing.T) {
 }
 
 func TestEmitUncompilableWithSiteCounts(t *testing.T) {
-	// A computed-START range fails to compile (FOR_SETUP const-bakes
-	// start/step; only a computed END lowers) but still tallies dispatch sites.
+	// A `for` over a COMPUTED body fails to compile ("for: body not
+	// captured" — the interpreter's inline splice, which no body activation
+	// models; code-bodies.tsv L141) but still tallies dispatch sites. The
+	// fixture used to be a computed-START range, which compiles natively
+	// since 2026-09-26 (the planner promotes the start's producer to a frame
+	// local and FOR_SETUP re-pushes it).
 	var stdout, stderr bytes.Buffer
-	if err := Emit(&stdout, &stderr, "for [(1 add 2), 5] [i]"); err != nil {
+	if err := Emit(&stdout, &stderr, "def mk fn [[][List][quote [i]]] end for 3 (mk)"); err != nil {
 		t.Fatalf("Emit: %v", err)
 	}
 	out := stdout.String()
