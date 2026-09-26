@@ -57,6 +57,14 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 	// NoEvalArgs code slot re-runs its tokens the same way). See
 	// recordCodeBodyClosureRead.
 	if rec, isEmit := r.Check.Recorder().(*EmitState); isEmit {
+		rec.flushGradualRead()
+		// The fold's escape fence: `if` is RecordBranch's to judge, `typeof`
+		// only names its type, and `apply` dispatches the folded lambda
+		// itself — not a call result carrying it, which the apply word
+		// re-steps over the frame.
+		if word != "if" && word != "typeof" && rec.anyFolded(args) && !(word == "apply" && !rec.anyFoldedCarrier(args)) {
+			rec.foldedEscape("`" + word + "`")
+		}
 		if rec.recordCodeBodyClosureRead(args) {
 			return
 		}
@@ -166,6 +174,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 	if !tryFoldReStepWord(r, word, args, out) &&
 		!check.TryRecordMethodApply(r, word, args, out, pos) &&
 		!tryFoldStaticIndex(r, word, args, out) &&
+		!tryFoldParkedMemberFn(r, word, args, out) &&
 		!tryFoldModuleConst(r, word, sig, args, out) &&
 		!tryRecordDeferredList(r, sig, out) &&
 		!tryRecordClosure(r, word, sig, args, out, pos) &&
@@ -253,6 +262,56 @@ func tryFoldStaticIndex(r *core.Registry, word string, args, outs []core.Value) 
 		return false
 	}
 	outs[0] = elem
+	return true
+}
+
+// tryFoldParkedMemberFn folds a get / dot read of a PARKING member — see
+// parkedMemberFn — over a concrete container and a concrete key to the
+// member value itself, emitting nothing (NUR207): the read is the lambda
+// literal on both passes, the map twin of tryFoldStaticIndex's list fold.
+// Every value landing parks such a member as data on the interpreter, so the
+// read's own step is inert, and every later reader that DISPATCHES a lambda
+// (a NAME read of a def of it, `apply`, a param read) finds the fn the
+// dynamic(Any) read carrier hid. The receiver and key operands are left
+// unconsumed for the simulation to drop, exactly as the list fold leaves
+// them.
+func tryFoldParkedMemberFn(r *core.Registry, word string, args, outs []core.Value) bool {
+	es, _ := r.Check.Recorder().(*EmitState)
+	if es == nil || !es.Active() || !core.IsGetWord(word) || len(args) != 2 || len(outs) != 1 {
+		return false
+	}
+	member, ok := readFnMemberValue(args)
+	if !ok || !parkedMemberFn(member) {
+		return false
+	}
+	// No operand check: a capture-free non-macro fn value is an inert const
+	// (core.IsInertConst's FnDefInfo arm), so its consumer interns it. The
+	// folded value takes its own identity, so the escape fence
+	// (foldedEscape) can follow it.
+	member.ID = core.GenerateID(core.IDPrefixForType(member.Parent))
+	es.noteFolded(member)
+	outs[0] = member
+	return true
+}
+
+// parkedMemberFn reports a fn value every VALUE landing parks as data: an
+// anonymous (lambda or nameless `fn`), capture-free, unapplied, non-macro
+// fn whose every signature is a real zero-argument one — the interpreter's
+// anonymous park (execFnDefLiteral), read through the one predicate that
+// states it (core.FnValueOnlyZeroArgSigs).
+func parkedMemberFn(v core.Value) bool {
+	fd, ok := v.Data.(core.FnDefInfo)
+	if !ok || v.Quoted || v.Carrier || !fd.Anonymous || fd.Applied || fd.Macro || len(fd.Captured) != 0 ||
+		!core.FnValueOnlyZeroArgSigs(fd) {
+		return false
+	}
+	// A fallback overload makes the landing's aggregate view unmodelled
+	// (core.FnValueZeroArg's own rule).
+	for i := range fd.Signatures {
+		if fd.Signatures[i].Fallback {
+			return false
+		}
+	}
 	return true
 }
 
@@ -831,7 +890,13 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 			return false
 		}
 	}
-	return recordDynBodyCall(r, es, word, sig, args, outs, pos, body, sig.NoEvalArgs[bp])
+	if !recordDynBodyCall(r, es, word, sig, args, outs, pos, body, sig.NoEvalArgs[bp]) {
+		return false
+	}
+	if keepsComputedDefs(sig.Callable, body) && !es.bodyProvenFn(body) && !es.bodyBindsNothing(r, body) {
+		es.runKeptDefs(word)
+	}
+	return true
 }
 
 // recordDynBodyCall records the dyn-body backstop's CALL_NATIVE (or poly
@@ -896,6 +961,24 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	fixedValueEval := core.IsConcrete(body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
 	if !fixedValueEval {
 		f.variadicResult = true
+	}
+	// A COMPUTED whole-residual body (`do (mk)`, `do b`) leaves 0-or-MORE
+	// values where the check pass models one dynamic(Any) out: record the
+	// run as a variadic REGION (NUR067's growing direction), so every rule a
+	// region obeys applies — a consumer of a fixed count declines, a value
+	// beneath it seats through the mark or declines, never after the run
+	// (NUR210: `9 do (mk)` over `[1 2]` seated the 9 above the 1). The run
+	// may leave a callable the interpreter re-steps unless its tokens are
+	// proven plain data (dynRegionMayBeFn's seat rule). A run proven to be
+	// ONE plain value is no region: it seats exactly as the one value the
+	// check pass models. A region that may leave a callable is demoted to a
+	// runtime-checked single value where a fixed seat consumes it
+	// (dyn_body_one.go), rather than declined.
+	if !fixedValueEval && sig.Callable != nil && sig.Callable.BodyOut == core.BodyOutResidual && !core.IsConcrete(body) && len(outs) == 1 {
+		if n, plain := es.bodyPlainCount(body); !plain || n != 1 {
+			f.variadicRegion = true
+			f.regionMayBeFn = regionValsMayBeCallable(outs) && !plain
+		}
 	}
 	// The dyn-body backstop already marks every code-body result variadic
 	// above; consume the ReturnsFn's catch-variadic latch so it cannot leak

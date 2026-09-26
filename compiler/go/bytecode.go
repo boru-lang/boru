@@ -753,6 +753,10 @@ type PolyRef struct {
 	// whole run to the interpreter. Nil (the record-time gates declined, or an
 	// older/foreign record site) keeps the sound defer.
 	NoMatch *core.PolyNoMatchSpec
+	// DynBodyOne is SigRef.DynBodyOne for a poly re-match of a computed `do`
+	// body (a gradual operand): exactly one non-re-stepping result, or the
+	// loud defer.
+	DynBodyOne bool
 }
 
 // UserPolyRef names one runtime-dispatched multi-overload USER-FN call: the
@@ -1042,6 +1046,12 @@ type SigRef struct {
 	// as the program's last statement over an empty residual, where the
 	// island's run and the interpreter's inline splice cannot be told apart.
 	HostSplice bool
+	// DynBodyOne marks the CALL_NATIVE of a COMPUTED `do` body whose run a
+	// single-value seat consumes (eventFlags.dynBodyOne, dyn_body_one.go):
+	// the VM seats the handler's results only when they are exactly ONE
+	// value the interpreter's tape would not re-step, and otherwise defers
+	// loudly at this call (vm:dyn-body-one).
+	DynBodyOne bool
 }
 
 // TypeRef names one type operand: the canonical type ID (resolved
@@ -1724,6 +1734,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			if s.HostSplice {
 				guard = " [hosted splice]"
 			}
+			if s.DynBodyOne {
+				guard = " [one value, checked]"
+			}
 			fmt.Fprintf(sb, " s%-3d ; %s (%s)%s", in.Arg, s.Word, strings.Join(names, ", "), guard)
 		case OpJmp, OpJmpIfFalse, OpForNext:
 			fmt.Fprintf(sb, " -> %04d", in.Arg)
@@ -1742,7 +1755,11 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			fmt.Fprintf(sb, " f%-3d ; closure %s/%d", in.Arg, p.Fns[in.Arg].Name, p.Fns[in.Arg].NParams)
 		case OpCallNativePoly:
 			pr := p.PolyRefs[in.Arg]
-			fmt.Fprintf(sb, " p%-3d ; %s/%d (poly)", in.Arg, pr.Word, pr.Arity)
+			one := ""
+			if pr.DynBodyOne {
+				one = " [one value, checked]"
+			}
+			fmt.Fprintf(sb, " p%-3d ; %s/%d (poly)%s", in.Arg, pr.Word, pr.Arity, one)
 		case OpCallUserPoly:
 			up := p.UserPolys[in.Arg]
 			fmt.Fprintf(sb, " u%-3d ; %s/%d (user poly, %d arms)", in.Arg, up.Word, up.Arity, len(up.Units))

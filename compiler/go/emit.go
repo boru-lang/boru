@@ -170,6 +170,12 @@ type eventFlags struct {
 	// only-0-arg is settled by the merge's guarded landing (emitBranchLanding
 	// fires a named one, parks a lambda) and reads as data past it (NUR159).
 	mayBeFnArgs bool
+	// armLeavesFn marks a BRANCH event an arm of which may leave a fn VALUE
+	// the merge's landing does not fire — a lambda it parks, an arg-taking
+	// fn, a fn carrier — written as the arm's value or left by its body. A
+	// def of that result binds a fn the interpreter dispatches when the name
+	// is read (NUR207), where the lowering substitutes the value.
+	armLeavesFn bool
 	// applyLoop marks a LOOP event whose body runs a per-iteration dynamic
 	// apply (setLoopBodyApply). Its variadic value region may sit in a fn-body
 	// residual under an inert tail: the RET then takes the RetReplay trim
@@ -248,6 +254,21 @@ type eventFlags struct {
 	// carry the mark (callVariadicRegion) — no latch to leak onto a later
 	// dispatch.
 	variadicRegion bool
+	// dynBodyOne marks a COMPUTED `do` body's run (a dyn-body region that
+	// may leave a callable — dynRegionMayBeFn) DEMOTED to one fixed value
+	// under a RUNTIME COUNT CHECK because a single-value seat consumes it:
+	// a call operand (`(do b) add 1`, `do b error […]`, `[9 do (mk)]`), a
+	// promoted value-def (`def ok (do b)`), a dead result. The region rules
+	// decline every such seat, and the mini-s3 handler shape — `def ok (do
+	// b error [drop false])` in a fn body — is one (TestStampDynEnvLateArmDrift).
+	// The call carries SigRef/PolyRef.DynBodyOne: the VM seats the run only
+	// when it left EXACTLY ONE value the interpreter would not re-step (no
+	// fn value, class, word, splice, reach, mark or move), which is the one
+	// case the fixed seat and the interpreter's tape agree on; any other run
+	// is a designed defer (vm:dyn-body-one), loud and the compiled lane's
+	// own. Set by demoteDynRegion (dyn_body_one.go); variadicRegion and
+	// regionMayBeFn are cleared with it, so every region rule stands down.
+	dynBodyOne bool
 	// splitBound marks a variadic loop region whose FIRST value an S5 split
 	// bind consumed (SplitLoopRegionBind → RecordDynBind): the remaining
 	// regionN-1 values are the statically-counted rest. Inside a LOOP BODY
@@ -954,6 +975,63 @@ type EmitState struct {
 	// MarkUncompilable site (the failure-site census counts that layer,
 	// and its count only falls).
 	armReadCompileFailure string
+	// fnLeavingBinds holds the value IDs a def bound that the pass reads as
+	// data while they may hold a fn at run time (noteFnLeavingBind, NUR207):
+	// a branch result an arm of which leaves a fn, or a gradual carrier
+	// proven to hold one that no shape claim models. A later read of such a
+	// binding latches armReadCompileFailure (noteMayBeFnRead).
+	fnLeavingBinds map[string]bool
+	// gradualClaims holds the value IDs whose FnShapes claim a def wrote over
+	// a carrier NOT typed Function (noteClosureShapeBind's gradual arm,
+	// NUR207). The claim is the def-read model's alone: every other reader
+	// of the shape table skips it, so a read the model does not claim keeps
+	// exactly the path it had before the claim existed.
+	gradualClaims map[string]bool
+	// foldedMembers holds the identities tryFoldParkedMemberFn gave the
+	// member values it folded a read to (NUR207's escape fence).
+	foldedMembers map[string]bool
+	// foldedBodies holds the body token arrays of the member fns
+	// tryFoldParkedMemberFn folded to: every copy of such a fn — a def's
+	// renamed install read by `/v` (whose signatures the install
+	// re-normalises), an element read back out of a container — shares the
+	// body's backing array (PendingClosureApply's match), so the fence knows
+	// it whatever identity it carries.
+	foldedBodies map[*core.Value]bool
+	// pendingGradualRead is the value ID of a def-bound read of a GRADUAL
+	// claim (gradualClaims) the check pass substituted and has not yet
+	// shown to the def-read model — the model asks DefReadName in the same
+	// step, or never (flushGradualRead).
+	pendingGradualRead string
+	// pendingFoldedFire is a folded read the def-read model looked at and
+	// has not yet dispatched (RecordDynMethod clears it; flushGradualRead
+	// declines it).
+	pendingFoldedFire string
+	// keptDefsWord / keptDefsLevel are the KEPT-DEFS LATCH (kept_defs.go,
+	// NUR210): armed when a keep-defs word (`do`, `each`: a CallableSpec
+	// BodyOnceKeepsDefs / BodyMultiRunKeepsDefs) runs a COMPUTED code body —
+	// tokens that exist only at run time, whose defs and undefs the
+	// interpreter keeps in the enclosing scope while the check model, which
+	// never saw them, keeps the bindings from before. While armed, every
+	// observer of a binding recorded after it (a def read, a user fn call, a
+	// fn-value apply) poisons armReadCompileFailure. keptDefsLevel is the
+	// unit depth (len(units)) it was armed at, 0 when disarmed; a unit's
+	// finish hands a latch armed inside it to the unit (runsKeptDefs) and
+	// disarms it, so the latch re-arms where that unit RUNS — after a call of
+	// it — never at its analysis.
+	keptDefsWord  string
+	keptDefsLevel int
+	// keptDefsUnitWord is the word of the first unit that runs a kept-defs
+	// body (fnUnitRec.runsKeptDefs); non-empty, any event that may invoke
+	// such a unit indirectly re-arms the latch (keptDefsInvoker).
+	keptDefsUnitWord string
+	// keptDefsFresh maps a name a def bound AFTER the kept-defs latch armed,
+	// at the latch's own unit depth, to the ID of the value it bound
+	// (kept_defs.go, noteKeptDefsFreshBind): a read of exactly that binding
+	// is no stale observer — the def ran after the computed body, so the
+	// interpreter's binding is the one the model holds. Cleared whenever
+	// the latch arms, re-arms or disarms, and at every event that may run
+	// code the model did not see.
+	keptDefsFresh map[string]string
 	// storedGradualDepth marks a DETACHED stamp compile (StampDetachedFn
 	// sets it on the fork's private EmitState). While non-zero,
 	// buildFnBodyReturnsFn generalises an Any arg into an Any param as a
@@ -1746,6 +1824,17 @@ type fnUnitRec struct {
 	numLoc    int
 	pos       core.SrcPos
 	finished  bool
+	// runsKeptDefs names the keep-defs word whose COMPUTED body this unit
+	// runs, directly or through a unit it calls (kept_defs.go, NUR210): a
+	// run of the unit may define or undefine any name, so the kept-defs
+	// latch re-arms wherever the unit runs. "" for every other unit.
+	runsKeptDefs string
+	// calledOpen marks a unit a CALL_USER reached while it was still being
+	// recorded (recursion), and openCallObserver the first binding observer
+	// recorded after such a call: whether the call ran a kept-defs body is
+	// known only at the unit's finish, which then poisons for it.
+	calledOpen       bool
+	openCallObserver string
 	// inShape is the closure input convention recorded for a closure body unit
 	// (ClosureInValue by default; ClosureInKeyVal for a map-iteration lambda).
 	// Copied into CompiledFn.InShape at lowering. Zero (value) for user fns.
@@ -1779,6 +1868,9 @@ type fnUnitRec struct {
 	// the split's bookkeeping half, and each admission must bring its own
 	// probe evidence (the Stage-G discipline).
 	lambdaUnit bool
+	// returnsFolded marks a named fn unit whose result is a folded member
+	// value (tryFoldParkedMemberFn): its call results are folded too.
+	returnsFolded bool
 	// lambdaDeopt marks a lambda unit whose deopt points were planned from
 	// its OWN frame (planDeopts' lambdaNamesSelfBound route, not
 	// seedParentDeopt): emitDynParamBinds then binds its captures as well as
@@ -2811,6 +2903,7 @@ func (es *EmitState) appendEvent(ev EmitEvent) int {
 	}
 	es.seq++
 	ev.seq = es.seq
+	es.keptDefsEvent(&ev)
 	es.frames[n] = append(es.frames[n], ev)
 	return ev.seq
 }
@@ -3174,6 +3267,9 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	lit, ok := es.Materialise(v)
 	if !ok {
 		return es.dynScopeRescue(v)
+	}
+	if es.foldedInside(lit) {
+		es.foldedEscape("a container literal")
 	}
 	// At MODULE scope a NoEvalArgs body that is inert except for InterpStrings
 	// (InterpBodyInert) bakes as code-as-data and is re-interpreted against the
@@ -4608,6 +4704,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	if !es.Active() {
 		return
 	}
+	es.flushGradualRead()
 	bThen, bEls, bCondFrag := asFragment(b.Then), asFragment(b.Els), asFragment(b.CondFrag)
 	// Strip 0-output statement guards' phantom (None) results from the arm
 	// residuals BEFORE any counting. A nested both-arms-void `if` (the welford
@@ -4837,6 +4934,12 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 		f.mayBeFnArgs = mayBeFnArgs
 		es.eventInfo[seq] = f
 	}
+	if es.armsLeaveFn(b) {
+		f := es.eventInfo[seq]
+		f.armLeavesFn = true
+		es.eventInfo[seq] = f
+	}
+	es.carryFoldedTaint(b)
 	if !zeroOut && es.branchVariadicResult(b) {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
@@ -6523,6 +6626,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 		return -1, nil, false
 	}
 	if u, hit := es.fnUnits[key]; hit && !es.unitStale(u) {
+		es.keptDefsHandedOn(es.fnRecs[u], len(es.units))
 		return u, nil, true
 	}
 	// A miss, or a STALE hit: the memoised unit baked a binding this call
@@ -6907,6 +7011,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 		}
 		rec.numLoc = u.numLocals
 		rec.finished = true
+		es.finishKeptDefs(rec)
 		es.units = es.units[:len(es.units)-1]
 		es.unitNames = es.unitNames[:len(es.unitNames)-1]
 		es.openUnitRecs = es.openUnitRecs[:len(es.openUnitRecs)-1]
@@ -6980,11 +7085,32 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 		return
 	}
 	rec := es.fnRecs[unit]
+	es.flushGradualRead()
+	if es.anyFolded(args) {
+		es.foldedEscape("a call of `" + word + "`")
+	}
+	if rec.returnsFolded {
+		for _, o := range outs {
+			if o.ID != "" {
+				es.noteFolded(o)
+			}
+		}
+	}
 	ops := make([]EmitOperand, len(args), len(args)+len(rec.caps))
 	for i, a := range args {
 		op, ok := es.resolveOperand(a)
+		why := "fn call operand of unknown provenance"
+		// A fn value the pass holds as a GRADUAL carrier (gradualHoldsFn)
+		// handed to a parameter not typed Function: the callee's body is
+		// analysed over the gradual carrier, reads the param as data, and
+		// the interpreter dispatches the bare read of a param bound to a fn
+		// (NUR207) — `def g fn [[h:Any][Any][h]] end g (mk)` over an
+		// `Any`-returning factory.
+		if ok && es.gradualHoldsFn(a) && !(i < len(rec.paramTypes) && rec.paramTypes[i] != nil && rec.paramTypes[i].ConformsTo(core.TFunction)) {
+			ok, why = false, "a fn value the pass holds as a gradual carrier is handed to a parameter not typed Function (NUR207)"
+		}
 		if !ok {
-			es.MarkUncompilable("fn call operand of unknown provenance")
+			es.MarkUncompilable(why)
 			return
 		}
 		ops[i] = op
@@ -7114,6 +7240,15 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 // blame position. The completed descriptor rides the event and lands in
 // Program.Regions at lowerUserPolyCall. Inert: nothing reads the table yet.
 func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, sigIdx, units []int, impls []core.SigImpl, sigs []core.Signature, args, outs []core.Value, pos core.SrcPos, callWord string, wordPos core.SrcPos) {
+	es.flushGradualRead()
+	for _, u := range units {
+		if u >= 0 && u < len(es.fnRecs) && es.fnRecs[u].returnsFolded {
+			es.foldedEscape("a call of `" + word + "`")
+		}
+	}
+	if es.anyFolded(args) {
+		es.foldedEscape("a call of `" + word + "`")
+	}
 	if !es.Active() {
 		return
 	}
@@ -8450,6 +8585,25 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 		es.lastUserPoly = nil
 		return true
 	}
+	// `apply` over a GRADUAL lead alone — a carrier not typed Function whose
+	// bound admits one (gradualFnCarrier) or that the pass proves holds one
+	// (gradualHoldsFn) — whose identity result carries a STRUCTURED
+	// producer's id (a user call's `Any` result, a branch's merge): the
+	// registered-output arm
+	// below would elide the dispatch silently, so nothing applied a fn and
+	// nothing raised over data (`(mk) apply` answered the fn for the
+	// interpreter's 42, and `5` for its signature_error — NUR207). It is
+	// the pending apply the fn-typed carrier registers: the unit's finish
+	// or Finalize lowers it as OpCallDynApplyTop, which applies a fn at run
+	// time and raises apply's own no-match over anything else, or declines.
+	if word == "apply" && len(args) == 1 && len(outs) == 1 && len(es.units) > 0 && !core.IsFnTypedCarrier(args[0]) &&
+		(gradualFnCarrier(args[0]) || es.gradualHoldsFn(args[0])) {
+		if pr, ok := es.producedBy[outs[0].ID]; ok && !es.eventInfo[pr.seq].generic {
+			u := es.units[len(es.units)-1]
+			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos})
+			return true
+		}
+	}
 	// `apply` over a closure this pass PRODUCED (an OpPushClosure out op —
 	// `99 (kk 7) apply`, the twenty-eighth increment): the word hands the
 	// value back and the check engine re-steps it over the values beneath,
@@ -9320,6 +9474,9 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	if !es.Active() {
 		return false
 	}
+	if fn.ID != "" && fn.ID == es.pendingFoldedFire {
+		es.pendingFoldedFire = ""
+	}
 	fnOp, ok := es.resolveOperand(fn)
 	if !ok {
 		return false
@@ -9795,6 +9952,13 @@ func (es *EmitState) NoteDefRead(id, name string) {
 		return
 	}
 	es.noteMayBeFnRead(id, name)
+	if es.gradualClaims[id] {
+		es.flushGradualRead()
+		es.pendingGradualRead = id
+	}
+	if !es.keptDefsFreshRead(id, name) {
+		es.noteKeptDefsObserver("the read of `" + name + "`")
+	}
 	if es.defReads == nil {
 		es.defReads = map[string]string{}
 	}
@@ -9813,7 +9977,54 @@ func (es *EmitState) NoteDefRead(id, name string) {
 // DefReadName answers NoteDefRead for the read model (core.EmitRecorder).
 func (es *EmitState) DefReadName(id string) (string, bool) {
 	name, ok := es.defReads[id]
+	// A GRADUAL claim answers only for the read the check pass is stepping
+	// right now (pendingGradualRead): a value that merely carries the read's
+	// identity — a body's result re-stepped where the read is long past, a
+	// value a stack word handed back — is data's to land, not a name's to
+	// dispatch (NUR207).
+	if ok && es.gradualClaims[id] {
+		if es.pendingGradualRead != id {
+			return "", false
+		}
+		es.pendingGradualRead = ""
+		// A read of a FOLDED member's carrier (a call result the fold's value
+		// rode out of a fn) must be the model's to dispatch: standing aside to
+		// the paths it had is the parity no program with the member ever had.
+		// Inside a fn or closure unit the model's apply reads the binding
+		// through the unit's dynamic scope, a path no folded read was ever
+		// measured on: decline there.
+		if es.foldedMembers[id] {
+			if len(es.openUnitRecs) > 0 {
+				es.foldedEscape("a def-bound read inside a fn or code body")
+			}
+			es.pendingFoldedFire = id
+		}
+	}
 	return name, ok
+}
+
+// flushGradualRead declines a def-bound read of a GRADUAL claim the
+// def-read model never saw (pendingGradualRead still set when the pass
+// records its next dispatch, bind or container, or finishes): a pending
+// word collected it as a value — `def k j`, `j eq j`, `typeof j` — or a
+// `/v` read took it, where the interpreter's function-word barrier raises
+// or its install renames the fn. The lowering would carry the value as
+// data (NUR216).
+func (es *EmitState) flushGradualRead() {
+	if es.pendingFoldedFire != "" {
+		es.pendingFoldedFire = ""
+		es.foldedEscape("a def-bound read the model stood aside for")
+	}
+	id := es.pendingGradualRead
+	if id == "" {
+		return
+	}
+	es.pendingGradualRead = ""
+	if es.trapAt != 0 || es.armReadCompileFailure != "" {
+		return
+	}
+	es.armReadCompileFailure = "read of `" + es.defReads[id] + "`, a def-bound fn value the pass holds as a gradual carrier, " +
+		"is collected where the interpreter dispatches the name as a word (NUR216)"
 }
 
 // residualReadStable reports whether a def-read value's binding is UNCHANGED
@@ -9983,6 +10194,12 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	if !es.Active() || name == "" || core.IsCapitalisedName(name) {
 		return
 	}
+	es.flushGradualRead()
+	if es.foldedInside(v) {
+		es.foldedEscape("a container literal")
+	}
+
+	es.noteKeptDefsFreshBind(name, v.ID)
 	// A def of a name a PLACED speculative undef generalised, inside a
 	// rolled-back region of this unit, cannot be placed after the undef
 	// (defAfterSpecUndef) — decline before recording anything for it.
@@ -10003,6 +10220,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	}
 	es.valBindEpoch[name]++
 	es.noteClosureShapeBind(v)
+	es.noteFnLeavingBind(v)
 	if name[0] == '_' || name[0] == '$' {
 		// The historical skip for these names is a keep-installs-era economy:
 		// under the default regime the check pass's install IS the kept
@@ -10485,6 +10703,68 @@ func (es *EmitState) mayBeFnArgsOf(id string) bool {
 	return ok && es.eventInfo[pr.seq].mayBeFnArgs
 }
 
+// armsLeaveFn reports whether a branch arm may leave a fn value its
+// landing does not fire (eventFlags.armLeavesFn): an arm VALUE, or a value
+// an arm BODY leaves, that is a fn other than a named only-0-arg one (the
+// merge's guarded landing fires that, on both lanes) — a gradual carrier
+// included when its producer provably nets a closure (a user fn's `Any`
+// return over the lambda its unit builds).
+func (es *EmitState) armsLeaveFn(b core.BranchRecord) bool {
+	leaves := func(v core.Value) bool {
+		if v.Carrier && !core.IsFnTypedCarrier(v) {
+			return es.gradualHoldsFn(v)
+		}
+		if !core.IsFnValueResidual(v) {
+			return false
+		}
+		fd, ok := v.Data.(core.FnDefInfo)
+		return !ok || v.Carrier || !fd.NamedDef() || fd.Macro || !core.FnValueOnlyZeroArgSigs(fd)
+	}
+	for _, p := range []*core.Value{b.ThenValue, b.ElsValue} {
+		if p != nil && leaves(*p) {
+			return true
+		}
+	}
+	for _, v := range append(append([]core.Value(nil), b.ThenStk...), b.ElsStk...) {
+		if leaves(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// gradualHoldsFn reports a carrier NOT typed Function (a strict or dynamic
+// Any, a branch's disjunct merge) the pass can prove may hold a fn value at
+// run time: a user fn's result whose
+// unit returns a closure it builds (a declared `Any` return over a lambda),
+// or a branch result an arm of which leaves a fn (armLeavesFn). The pass
+// reads such a carrier as data wherever its type does not say Function.
+func (es *EmitState) gradualHoldsFn(v core.Value) bool {
+	if v.ID == "" || !v.Carrier || v.Quoted || core.IsFnTypedCarrier(v) {
+		return false
+	}
+	if _, fn := es.producerReturnedClosureArity(v.ID); fn {
+		return true
+	}
+	pr, ok := es.producedBy[v.ID]
+	return ok && es.eventLeavesFn(pr.seq, 0)
+}
+
+// eventLeavesFn reports whether the event seq nets a value an arm of a
+// branch may leave as a fn (armLeavesFn) — the branch itself, or a user
+// call whose unit returns such a branch's result (`def mk fn [[][Any][(if c
+// m.f [2])]]`).
+func (es *EmitState) eventLeavesFn(seq, depth int) bool {
+	if es.eventInfo[seq].armLeavesFn {
+		return true
+	}
+	if depth > 8 {
+		return false
+	}
+	op, ok := es.producerReturnedOutOpSeq(seq)
+	return ok && op.kind == opEvent && op.resIdx == 0 && es.eventLeavesFn(op.idx, depth+1)
+}
+
 // noteMayBeFnRead poisons the placement gate for a READ of a def bound to a
 // branch result with an arg-taking fn arm (`def x (if true inc/v [2]) x 5`):
 // the interpreter installs the fn under the name and dispatches the bare
@@ -10493,11 +10773,181 @@ func (es *EmitState) mayBeFnArgsOf(id string) bool {
 // lowering substitutes the branch's own value for every read. The read
 // declines through the arm-read seam, as an arm-bound read does (NUR159).
 func (es *EmitState) noteMayBeFnRead(id, name string) {
-	if !es.mayBeFnArgsOf(id) || es.trapAt != 0 || es.armReadCompileFailure != "" {
+	if es == nil || es.trapAt != 0 || es.armReadCompileFailure != "" {
 		return
 	}
-	es.armReadCompileFailure = "read of `" + name + "`, bound to a branch result whose fn arm takes arguments: " +
-		"the interpreter dispatches the name as a word over the live stack, which the value substitution cannot seat (NUR159)"
+	if es.mayBeFnArgsOf(id) {
+		es.armReadCompileFailure = "read of `" + name + "`, bound to a branch result whose fn arm takes arguments: " +
+			"the interpreter dispatches the name as a word over the live stack, which the value substitution cannot seat (NUR159)"
+		return
+	}
+	if es.fnLeavingBinds[id] {
+		es.armReadCompileFailure = "read of `" + name + "`, bound to a branch result an arm of which leaves a fn value: " +
+			"the interpreter installs the fn under the name and dispatches the read as a word, which the value substitution cannot seat (NUR207)"
+	}
+}
+
+// carryFoldedTaint is the escape fence at a branch: a folded member as the
+// CONDITION is not the fold's (foldedEscape); as an arm value, or left by an
+// arm body, it makes the merge's result a folded value too, so the fence
+// follows it past the branch.
+func (es *EmitState) carryFoldedTaint(b core.BranchRecord) {
+	if es.anyFolded([]core.Value{b.Cond}) || es.anyFolded(b.CondStk) {
+		es.foldedEscape("an `if` condition")
+		return
+	}
+	arms := append(append([]core.Value(nil), b.ThenStk...), b.ElsStk...)
+	for _, p := range []*core.Value{b.ThenValue, b.ElsValue} {
+		if p != nil {
+			arms = append(arms, *p)
+		}
+	}
+	if b.Out.ID != "" && es.anyFolded(arms) {
+		es.noteFolded(b.Out)
+	}
+}
+
+// anyFolded reports whether any of vals is a member value
+// tryFoldParkedMemberFn folded a read to (foldedMembers).
+func (es *EmitState) anyFolded(vals []core.Value) bool {
+	for _, v := range vals {
+		if es.isFolded(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// anyFoldedCarrier reports whether a folded value among vals is a CARRIER
+// (a call result or a merge carrying the member) rather than the member
+// value itself.
+func (es *EmitState) anyFoldedCarrier(vals []core.Value) bool {
+	for _, v := range vals {
+		if v.Carrier && es.isFolded(v) {
+			return true
+		}
+	}
+	return false
+}
+
+// isFolded reports whether v is a folded member value: by identity (the
+// fold's own value, a branch merge that carries it) or by its signature
+// table (any copy of the member fn shares its body — foldedBodies).
+func (es *EmitState) isFolded(v core.Value) bool {
+	if v.ID != "" && es.foldedMembers[v.ID] {
+		return true
+	}
+	fd, ok := v.Data.(core.FnDefInfo)
+	if !ok {
+		return false
+	}
+	for _, sig := range fd.OwnSigs() {
+		if b := sig.Body(); len(b) > 0 && es.foldedBodies[&b[0]] {
+			return true
+		}
+	}
+	return false
+}
+
+// noteFolded records a member value the fold hands on (foldedMembers,
+// foldedBodies).
+func (es *EmitState) noteFolded(v core.Value) {
+	if es.foldedMembers == nil {
+		es.foldedMembers = map[string]bool{}
+		es.foldedBodies = map[*core.Value]bool{}
+	}
+	es.foldedMembers[v.ID] = true
+	if fd, ok := v.Data.(core.FnDefInfo); ok {
+		for _, sig := range fd.OwnSigs() {
+			if b := sig.Body(); len(b) > 0 {
+				es.foldedBodies[&b[0]] = true
+			}
+		}
+	}
+}
+
+// foldedInside reports whether a folded member value (foldedMembers) is an
+// ELEMENT of v at any depth — a list or map literal the check pass built
+// over the fold's value, inert and so baked whole with no assembly event to
+// fence. The folded value AS v is its consumer's own operand.
+func (es *EmitState) foldedInside(v core.Value) bool {
+	if len(es.foldedMembers) == 0 {
+		return false
+	}
+	var inside func(v core.Value, depth int) bool
+	inside = func(v core.Value, depth int) bool {
+		if depth > 0 && es.isFolded(v) {
+			return true
+		}
+		switch d := v.Data.(type) {
+		case core.ListPayload:
+			for _, e := range d.Elems {
+				if inside(e, depth+1) {
+					return true
+				}
+			}
+		case core.MapPayload:
+			if d.M == nil {
+				return false
+			}
+			for _, k := range d.M.Keys() {
+				if mv, _ := d.M.Get(k); inside(mv, depth+1) {
+					return true
+				}
+			}
+		}
+		return false
+	}
+	return inside(v, 0)
+}
+
+// foldedEscape latches the placement-gate poison when a FOLDED member value
+// (tryFoldParkedMemberFn) reaches a consumer the fold is not measured
+// against. The fold makes a parking member read the lambda literal it holds,
+// and a lambda literal handed to a user fn, a store, a shuffle or a
+// container can come back as a gradual carrier whose def-bound read is data
+// (NUR207's family, NUR216–NUR218) — a program the member's 0-arg landing
+// used to decline must not compile into that. What stays: a def of it, a
+// branch arm (its merge carries the taint, carryFoldedTaint), `apply`,
+// `typeof` and the residual.
+func (es *EmitState) foldedEscape(where string) {
+	if es.trapAt != 0 || es.armReadCompileFailure != "" {
+		return
+	}
+	es.armReadCompileFailure = "a container member read folded to its parking lambda reaches " + where +
+		", where the fold's parity with the interpreter is not established (NUR207)"
+}
+
+// noteFnLeavingBind marks a def's value the pass reads as data while it may
+// hold a fn at run time (fnLeavingBinds): a branch result an arm of which
+// leaves one (armLeavesFn — a FUNCTION-typed call result whose unit returns
+// such a branch keeps the fn-carrier paths it had), or a gradual carrier
+// proven to hold one (gradualHoldsFn) that no shape claim models.
+func (es *EmitState) noteFnLeavingBind(v core.Value) {
+	if v.ID == "" {
+		return
+	}
+	pr, ok := es.producedBy[v.ID]
+	leaves := (ok && es.eventInfo[pr.seq].armLeavesFn) || (v.Carrier && es.isFolded(v) && !es.gradualClaims[v.ID])
+	if !leaves && es.gradualHoldsFn(v) {
+		_, claimed := es.claimedShape(v.ID)
+		leaves = !claimed
+	}
+	if !leaves {
+		return
+	}
+	if es.fnLeavingBinds == nil {
+		es.fnLeavingBinds = map[string]bool{}
+	}
+	es.fnLeavingBinds[v.ID] = true
+}
+
+// claimedShape answers the def-read model's claim for id (CheckState.FnShapes).
+func (es *EmitState) claimedShape(id string) (core.FnShape, bool) {
+	if es.reg == nil {
+		return core.FnShape{}, false
+	}
+	return es.reg.Check.FnShapeOf(id)
 }
 
 // mayBeFnUnsettled reports whether v is a branch result with an ARG-TAKING
@@ -10908,7 +11358,7 @@ func isGetFamilyWord(w string) bool {
 // claim is a statement of construction like the two arms below, and the
 // def-bound wrapper's apply classifies like a compiled factory's closure.
 func (es *EmitState) producerReturnedClosureArity(id string) (int, bool) {
-	if es.reg != nil {
+	if es.reg != nil && !es.gradualClaims[id] {
 		if n, ok := es.reg.Check.FnShapeArity(id); ok {
 			return n, true
 		}
@@ -11247,15 +11697,58 @@ func (es *EmitState) closureOpShape(op EmitOperand, depth int) (core.FnShape, bo
 // closure lowered as `h 2 3`, compiled 12 for the interpreter's
 // signature_error). A producing word's own claim stands.
 func (es *EmitState) noteClosureShapeBind(v core.Value) {
-	if es.reg == nil || v.ID == "" || !core.IsFnTypedCarrier(v) {
+	if es.reg == nil || v.ID == "" || !(core.IsFnTypedCarrier(v) || gradualFnCarrier(v)) {
 		return
 	}
 	if _, claimed := es.reg.Check.FnShapeOf(v.ID); claimed {
 		return
 	}
-	if s, ok := es.producerReturnedClosureShape(v.ID); ok {
-		es.reg.Check.NoteFnShape(v, s)
+	s, ok := es.producerReturnedClosureShape(v.ID)
+	if !ok {
+		if m, member := es.MemberFnReadValue(v.ID); member {
+			s, ok = memberLambdaShape(m)
+		}
 	}
+	if !ok {
+		return
+	}
+	es.reg.Check.NoteFnShape(v, s)
+	if !core.IsFnTypedCarrier(v) {
+		if es.gradualClaims == nil {
+			es.gradualClaims = map[string]bool{}
+		}
+		es.gradualClaims[v.ID] = true
+	}
+}
+
+// memberLambdaShape is the shape of a PINPOINTED container member a def
+// binds (MemberFnReadValue — a concrete container and key, so the runtime
+// read yields exactly this value): a capture-free anonymous lambda with one
+// signature of plain typed params.
+func memberLambdaShape(m core.Value) (core.FnShape, bool) {
+	fd, ok := m.Data.(core.FnDefInfo)
+	if !ok || m.Quoted || fd.Macro || len(fd.Captured) != 0 {
+		return core.FnShape{}, false
+	}
+	params, ok := lambdaOwnParams(fd)
+	if !ok {
+		return core.FnShape{}, false
+	}
+	types := make([]*core.Type, len(params))
+	for i, p := range params {
+		if p.Pattern != nil || p.Optional || p.Quote {
+			return core.FnShape{}, false
+		}
+		types[i] = p.Type
+	}
+	return core.FnShape{Arity: len(params), Params: types}, true
+}
+
+// gradualFnCarrier reports a GRADUAL carrier whose bound admits a fn value
+// (a strict or dynamic Any, a union reaching Function) — the carrier a user
+// fn's declared `Any` return mints over the closure its unit returns.
+func gradualFnCarrier(v core.Value) bool {
+	return v.Carrier && !v.Quoted && core.SigTypeMatches(v, core.TFunction)
 }
 
 // appendResidualSeqs collects the producing-event seqs a residual's
@@ -11409,7 +11902,17 @@ func constLambdaParams(consts []core.Value, idx int) ([]core.FnParam, bool) {
 		return nil, false
 	}
 	fd, ok := consts[idx].Data.(core.FnDefInfo)
-	if !ok || fd.Name != "" || fd.Module != "" {
+	if !ok {
+		return nil, false
+	}
+	return lambdaOwnParams(fd)
+}
+
+// lambdaOwnParams is the params of an unnamed, non-module fn value with ONE
+// own signature carrying a body — the lambda a claim can describe
+// (constLambdaParams, memberLambdaShape).
+func lambdaOwnParams(fd core.FnDefInfo) ([]core.FnParam, bool) {
+	if fd.Name != "" || fd.Module != "" {
 		return nil, false
 	}
 	own := 0
@@ -11448,6 +11951,10 @@ func makeListRange(es *EmitState, args []core.Value) bool {
 func (es *EmitState) RecordMakeList(r *core.Registry, ins []core.Value, out core.Value, pos core.SrcPos) bool {
 	if !es.Active() {
 		return false
+	}
+	es.flushGradualRead()
+	if es.anyFolded(ins) {
+		es.foldedEscape("a list literal")
 	}
 	// Only the TOP-LEVEL frame. A list inside a fn body / higher-order closure /
 	// branch arm (a nested fragment) is RE-EVALUATED per call or iteration, often
@@ -11653,6 +12160,10 @@ func (es *EmitState) RecordMakeListInner(r *core.Registry, ins []core.Value, out
 func (es *EmitState) RecordMakeMap(r *core.Registry, keys []string, vals []core.Value, implicit bool, out core.Value, pos core.SrcPos) bool {
 	if !es.Active() || len(keys) != len(vals) || len(keys) == 0 {
 		return false
+	}
+	es.flushGradualRead()
+	if es.anyFolded(vals) {
+		es.foldedEscape("a map literal")
 	}
 	// ops are in value order (vals[0] pairs with keys[0]); OpMakeMap reads the
 	// popped run deepest-first as value 0, so reverse like RecordMakeList:
@@ -13857,12 +14368,16 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if es == nil {
 		return nil, "no emit state", false
 	}
+	es.flushGradualRead()
 	if reason, blocked := es.finalizeBlocked(); blocked {
 		return nil, reason, false
 	}
 	if reason, ok := es.hostedSpliceAdmitted(residual); !ok {
 		return nil, reason, false
 	}
+	// A computed `do` body's run consumed by a single-value seat takes one
+	// runtime-checked value before any scope is planned (dyn_body_one.go).
+	es.demoteConsumedDynRegions()
 	twinExempt := es.truncateAtTrap()
 	if es.trapAt != 0 {
 		residual = nil
@@ -14631,6 +15146,9 @@ func (es *EmitState) NoteValRead(id, name string) {
 	if !es.Active() || id == "" {
 		return
 	}
+	if es.foldedMembers[id] {
+		es.foldedEscape("a `/v` read of `" + name + "`")
+	}
 	es.noteMayBeFnRead(id, name)
 	es.aliasValRead(id, name)
 	if es.valReadNoted == nil {
@@ -14832,6 +15350,17 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 	// compiled to [9 fn] against the interpreter's [10]. The replay accounting
 	// below is a plain-unit concern and still skips a closure.
 	rec.outOpsVals = vals
+	// The fold's escape fence at a unit's RETURN: a named fn's call result
+	// carries the folded member on (RecordUserCall taints it); a code body's
+	// or a lambda's result reaches a native or an apply the fence cannot
+	// follow, so it declines.
+	if es.anyFolded(vals) {
+		if rec.closure {
+			es.foldedEscape("a code body's or a lambda's result")
+		} else {
+			rec.returnsFolded = true
+		}
+	}
 	// A branch result with an UNSETTLED arg-taking fn arm in a unit's
 	// residual is re-stepped by the interpreter inside the frame — over the
 	// frame's own values beneath it (`def g fn [[m:Integer][Any][m if true

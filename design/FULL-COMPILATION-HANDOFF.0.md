@@ -15593,3 +15593,280 @@ asserting its twins replay in the pass's order;
 `TestClauseListIfDeclinesLoudly`: the remaining declines); compiler
 `cond_keep_test.go`; core `carrier_body_test.go`
 (`TestRunCarrierCondBodyKeepDefsKeeps`); basic `cond_binding_test.go`.
+## NUR207 and the sweep's last cell — `if` × container compiles (2026-09-26)
+
+**The cell.** `def m {f: ([] => [1])} end if true m.f [2]` declined at
+the member's 0-arg landing because standing the landing aside left a
+dynamic(Any) carrier that hid the fn from every later reader the
+interpreter dispatches — a NAME read of a def of it (`def j (m get "f")
+j`, 42), `apply`, a param read. That is NUR207 (a def-bound fn value
+arriving through a gradual carrier is read as data), and fixing it is what
+graduates the cell.
+
+**The fold** (compiler `tryFoldParkedMemberFn`). A get / dot read over a
+concrete container and key of a PARKING member — anonymous, capture-free,
+unapplied, non-macro, every signature a real 0-arg one (the interpreter's
+anonymous park, `core.FnValueOnlyZeroArgSigs`) — is the member value
+itself: the lambda literal on both passes, emitting nothing. It is the map
+twin of `tryFoldStaticIndex`'s list fold, which has always done this for
+`l.0`. It is FENCED (`foldedEscape`, on the placement-gate poison — no
+new compile-failure site): the folded value may reach a def of it, a
+branch arm (the merge carries the taint, `carryFoldedTaint`), `apply` of
+the member itself, `typeof`, a named fn's return (its call results carry
+the taint, `returnsFolded`) and the residual; reaching any other consumer
+— a native operand (`set`, `eq`, a shuffle), a user fn argument, a list or
+map literal, a baked container, a `/v` read of its def, an `if`
+condition, a code body's or lambda's result, or a def-bound read the model
+stands aside for or that sits in a unit — declines, as the member's 0-arg
+landing did on main. The fence's first cut let thirteen programs that
+declined on main compile to wrong answers because their `l.0` twins
+diverged on main; a loud decline must never become a silent wrong answer,
+so the twin argument was dropped and the fence put in. Copies of the fn
+are known by the body's backing array (`foldedBodies`), since a def's
+install re-normalises the signatures but shares the body.
+
+**NUR207 itself.** Both witnesses and the classes around them:
+
+- *Gradual claims* (compiler `noteClosureShapeBind`, `memberLambdaShape`,
+  `lambdaOwnParams`; check `tryShapedFnReadArrival`). A def of a carrier
+  not typed Function claims a shape when the pass proves one — an
+  `Any`-returning factory's closure, a pinpointed member lambda — so the
+  read model dispatches the name over its whole window (witness 1: 42).
+  The claim is the model's alone (`gradualClaims`: other shape readers skip
+  it), answers only the read being stepped (`pendingGradualRead`), and a
+  read the model never sees — collected by a pending word: `def k j`,
+  `typeof j`, `j eq j` — declines (`flushGradualRead`; NUR216's collected
+  reads, which compiled wrong on main for the `Any` factory).
+  It declines only what the program-level paths got wrong: the bare read
+  with nothing beneath, a written token the parameter does not take
+  (witness 2: `cannot call r`), a function word the forward phase stops
+  at. Everywhere else — values beneath in the frame, a computed token, a
+  read in a fn, closure or nested body — it stands aside to the paths it
+  had (`10 3 r` keeps its trailing-window island; the unit replay keeps
+  body reads).
+- *Branch def-reads* (compiler `armLeavesFn`, `noteFnLeavingBind`,
+  `noteMayBeFnRead`). A def of a branch result an arm of which may leave a
+  fn the merge's landing does not fire declines at the read, riding the
+  existing arm-read poison (NUR159's): `def g (if true ([] => [42]) [2])
+  end g` answered `[fn]` for 42 on main, and its `g/v` `fn` for `fn g`.
+  Keyed on the BOUND value, so a Function-declared factory whose unit
+  returns such a branch keeps the fn-carrier paths (TestFnValueSeam's
+  `each f` row was the witness).
+- *`apply` over a gradual lead* (compiler `recordCallElided`). The
+  registered-output arm elided it silently: `(mk) apply` answered the fn
+  for 42 and `5` for the interpreter's signature_error over data. It is the
+  pending apply now (OpCallDynApplyTop), or the program declines.
+- *A proven fn at an `Any` parameter* (compiler `RecordUserCall`, at the
+  existing operand-provenance site). `gradualHoldsFn` / `eventLeavesFn`
+  prove a carrier holds a fn by its producer; handed to a parameter not
+  typed Function it declines (`g (mk)` answered `[fn h]` for 42).
+
+**Found and recorded, not fixed** (all present on main at 45c3bdb):
+NUR216 — a claimed def-bound fn read where the read model does not reach
+(`typeof j`, `j eq j`, `def k j`, `print j`: the interpreter's barrier
+raises; `j/v` renders `fn j`; reads in code / fn bodies bail); NUR217 — a
+fn laundered through a producer the pass cannot see into (a flex store, a
+`do` body's result, a factory of a factory, a `set` result, a branch BODY
+arm over an `Any` result); NUR218 — a pinpointed arg-taking member lambda
+at an `Any` parameter, read bare in the callee.
+
+**Measured.** The acceptance bar, over the 14 fn sources × 72 reading
+contexts against main (1002 programs; RunCompiled vs RunInterp, value and
+error code): 504 match the interpreter, 454 decline, 44 were already a
+divergence on main with the same wrong answer, 0 otherwise — no program
+that declined on main compiles to a divergence and no divergence changed
+its wrong answer. Three side batteries (container launderings, arg-taking
+members, error / flex round trips; 490, 80 and 100 programs) hold the same
+bar with 0 violations. Sweep compile failures 1 -> 0
+(`sweepFailureCeiling`), call-form failures 304 -> 302
+(`sweepVariantFailureCeiling`): the graduated seed passes eleven of its
+fourteen call forms and three decline (do-body, do-catch, each-body — the
+fence), and `def` × container's if-then, if-else, for-body, each-body and
+module-body pass where they declined; no variant that passed before fails
+(SWEEP_STATUS.md diffed). lang `compileDefectCeiling` stays at main's 301 (reasons
+diffed against main: -2 0-arg landing pins, now parity pins; +1 witness
+2's booked decline; +1 the fence's pin, a folded member stored into a
+flex); `bailDefectCeiling` 39 unchanged. The compile-failure
+site census stays 91 (the new declines ride existing sites: the arrival
+model's, the arm-read poison — the fence and the unseen-read decline
+included — and RecordUserCall's operand site). aritygate
+pins unchanged (the fold reads the park through
+`core.FnValueOnlyZeroArgSigs`, the claim through `lambdaOwnParams`).
+The full langspec corpus passes with every gate at its ceiling (no
+interp-entry, engine-entry, runtime-defer, compile-failure or diagnostic-
+parity ceiling moved); its one red line on the first run was
+TestVariationDifferential's 30-second hang budget on five module-sift
+variants while four corpus runs shared the machine — rerun alone (whole
+test, and filtered to module-sift.tsv) it passes. The test/go suites, lang
+root / native / modules, cmd, compiler, check and eng pass; `make
+cover-gate-core` 100%, `cover-gate-check` at main's 83 uncovered (every
+new statement covered), `cover-gate-compiler` 73.5% over its 62% floor.
+
+**Pins.** lang `sweep_nur207_test.go` (`TestParkedMemberReadIsTheLambda`,
+`TestGradualFnCarrierNameReads` with witness 2's decline);
+`sweep_cells_s2b_test.go` (the container pin inverted);
+`word_read_dispatch_test.go` (the top-level `def j (m get "f") j` row
+inverted); compiler `nur207_gradual_fn_test.go`, `nur207_fence_test.go`
+(the fence's sites, the taint through a branch and a call, the gradual
+read accounting); check
+`fn_read_arrival_gradual_test.go`. Docs: NUR.md (NUR207 fixed for its
+witnesses; NUR216–NUR218 recorded), the sweep ceilings, SWEEP_STATUS.md.
+## NUR210 and NUR211 — a computed `do` body is a region, a kept-defs run fences the reads after it, a rematch that would match declines (2026-09-26)
+
+**NUR210, the placement half.** The dyn-body backstop recorded a computed
+`do` body (`do (mk)`, `do b`) as a CALL_NATIVE with ONE dynamic(Any) out
+marked variadicResult — which no seating rule read as a count. A value
+beneath it was pushed after the run (`9 do (mk)` over `[1 2]` was `[1 9 2]`
+for `[9 1 2]`, silent), the residual's fn-value arms applied the run as one
+value (`CALL_DYNAMIC underflow` over an empty run), and fixed consumers
+took it at a count of one (`[9 do (mk)]` compiled `[1 [9 2]]`, `9 do (mk)
+drop` `[1 9]`, `do (mk) add 9` over `[]` a CALL_NATIVE_POLY underflow).
+`recordDynBodyCall` now records a computed whole-residual body
+(BodyOutResidual) as a variadic REGION, NUR067's growing direction, so the
+region rules apply: a value beneath it declines ("call result above a
+literal" — the mark cannot open before the factory call the run consumes),
+a fixed-count consumer declines ("consumes loop results"), the apply arms
+stand aside. The run may leave a CALLABLE the interpreter re-steps over
+what follows it (`do (mk) 5` over `[g/v]` is 6 — the old trailing apply
+got that one right by accident and the region seat would have left `fn g
+5`), so a run whose tokens are not proven plain data seats only as the
+residual's LAST entries (lower.go `dynRegionNotLast`, in seatResults for
+the program residual and a fn RET alike); a factory's const `quote [1 2]`
+is proven data and keeps `do (mk) 9` and `do (mk) end x` compiling.
+
+**NUR210, the rebinding half — the kept-defs latch** (compiler
+kept_defs.go, kept_defs_scan.go). A keep-defs word — `do`, and the
+BodyMultiRunKeepsDefs `each`/`fold`/`scan`/… whose computed List bodies
+leak the same way (`[1 2] each (mk) end x` over `[def x 5 1]` answered 99
+for 5, silent, found on the way) — over a computed body arms a latch where
+the body RUNS. At the program's top level that is for good; inside a unit
+the latch is handed to the unit at its finish (`runsKeptDefs`) and re-armed
+after whatever invokes it: a CALL_USER of it, the native a code-body
+closure is handed to (a closure's finish and memo hit re-arm at once), and
+— once any unit runs such a body — any event that may apply a fn value
+indirectly. A recursive call that reached the unit while open is decided at
+its finish. While armed, the FIRST observer of a binding — a def read
+(NoteDefRead), a user fn call, a fn-value apply — poisons
+`armReadCompileFailure`, the arm-read seam's Finalize decline: no new
+MarkUncompilable site. A body the recorder can PROVE binds nothing does not
+arm it: a factory call's const quoted list, read directly or through a
+promoted value-def, whose tokens pass the binder scan (no def / var /
+unpack at the body's own level, no undef / behave / usurp anywhere, no
+check-mode native, no unresolved name at the top level, no reach, splice,
+interpolation or closure, and the same of every user fn and bound value it
+names — a user fn's own `def` is its frame's). The runtime-token-body rows
+(`each (mk) [1] … each (mk) [1]` over `[add k]`, `[inc]`, `[c size]`, the
+break / continue rows) keep compiling through that proof; a proven fn
+callback (`for-each m.f xs` over a const map's lambda) never arms. The
+latch also closes NUR203 (the fn's later `t` read after `each b xs` over a
+List param): its pending pin became `TestDynamicKeepDefsBodyLeakDeclines`.
+
+**NUR211.** `3 for (mk)`: the interpreter binds the forward `(mk)` into
+for's count slot and raises signature_error; the check pass mirrors the
+failure and recovered it to OpDispatchRematch, whose VM match runs
+`MatchSignature` over the whole window with no forward/stack split —
+`(Integer, List)` matches `[3, [i]]`, so the rematch deferred as an
+internal error. `TryRecordUnmatchedDispatchTrap` (core) now runs the
+rematch's own match over the window's static values first
+(`rematchWindowMatches`): a window it accepts is accepted at run time too,
+so the record declines and the caller's existing `unmatched dispatch
+recovered at for` stands. Trapping the interpreter's error instead needs a
+value-independence proof the recovery does not carry.
+
+**Seen and left.** NUR213 (new, pending): a computed `do` run that leaves
+a fn value is re-stepped by the interpreter and seated as data compiled —
+`do (mk)` over `[g/v]` with a 0-arg g is 7 for `fn g`, `[5 g/v]` 6 for
+`[5 fn g(Integer)]`, the fn-unit form `f (quote [g/v])` the same; present
+on main. The region's `regionMayBeFn` declines every shape with anything
+seated around the run; the run alone still seats as data. Declining it
+outright would cost the List-param rows (code-bodies L148).
+
+**Measured.** No ceiling moved. The per-file compile-failure ledger stays EMPTY (the
+full langspec corpus passes: every row that compiled before still
+compiles — the declines are shapes no corpus row writes); lang
+`compileDefectCeiling` 301 and `bailDefectCeiling` 39 unchanged (the new
+pins assert their declines through CompileCheck and are not booked); the
+compile-failure site census stays 91 (both halves decline through existing
+seats: the region rules' lowering reasons, the arm-read seam, the rematch
+caller's existing site); the sweep's matrix is unchanged. Full corpus,
+test/go suites, cmd/go, lang (. native modules), core / check / compiler /
+basic / eng unit suites pass; `make cover-gate-core` 100%; every new
+compiler statement is covered by its own suite or the lang suites.
+
+**Pins.** lang `computed_body_region_test.go`
+(`TestComputedDoBodyRegionDeclines`, `TestComputedDoBodyRegionCompiles`,
+`TestStackCountComputedForBodyDeclines`), `keep_defs_leak_test.go`
+(`TestDynamicKeepDefsBodyLeakDeclines`); compiler `kept_defs_test.go`
+(the latch, the hand-off, the invoker, the binder scan, the token proof,
+`eventRunLast`); core `TestS5BTrapCarrierWindowMatchDeclines`.
+
+## NUR210's follow-up — a single-value seat takes one runtime-checked value (2026-09-26)
+
+**Why.** The NUR210 landing above recorded a computed `do` run as a
+variadic REGION, and a region declines at every fixed-count consumer. That
+took out shapes that compiled correctly whenever the body left exactly one
+value — the mini-s3 handler `def ok (do b error [drop false])  if ok [1]
+[0]` in a fn body declined "consumes loop results", `def ok (do b)` in a fn
+"variadic region promoted to a frame slot" — so lang/go/test
+`TestStampDynEnvLateArmDrift`'s units stopped stamping and the landing was
+reverted (0bfc2fe). It is back, with the seat fixed.
+
+**What.** Three changes on top of the landing (NUR.md NUR210, "The
+follow-up"):
+
+- *One proven plain value is no region.* `recordDynBodyCall` asks
+  `bodyPlainCount`: a factory's const `quote [5]` seats as the one value
+  the check pass models (`9 do (mk)`, `[9 do (mk)]` compile with parity).
+  Any other proven plain count keeps the region and its declines.
+- *A single-value seat demotes the region to one runtime-checked value*
+  (compiler dyn_body_one.go). Only a region that may leave a callable
+  (`dynRegionMayBeFn` — an unproven body) is demoted: by Finalize's
+  pre-pass wherever an event CONSUMES it (a call's or user call's operand,
+  a fallback input, a store / def source, a branch condition or value
+  arm, a loop bound or carried seed, a rematch window — not a fragment's
+  out), and by the lowering where it is promoted or dead (`dynBodyOneAt`).
+  The call carries SigRef/PolyRef.DynBodyOne; the VM (eng
+  vm_dyn_body_one.go) seats the handler's results only when they are
+  exactly one value the interpreter's tape would not re-step, and defers
+  loudly otherwise (`vm:dyn-body-one` — 0 or 2+ values, a fn value, class,
+  reach or modifier). A run seated as a residual's entries keeps the
+  region rules.
+- *The kept-defs latch lets a fresh read through* (kept_defs.go
+  `noteKeptDefsFreshBind` / `keptDefsFreshRead`): a def made after the run
+  at the latch's own depth binds a value the body never saw; a read of
+  exactly that binding (same value ID) is not an observer. The fresh set
+  clears whenever the latch arms, re-arms or disarms and at every user call
+  or fn-value apply. Without it the handler shape's `if ok` declined
+  through the latch once the region no longer did.
+
+**Measured against the parent** (0bfc2fe = main + NUR190 + NUR212), over a
+generated sweep of 1024 computed-`do` programs (eight bodies — one value,
+two, none, a 1-arg and a 0-arg fn value, a binding body, a string, a name —
+across 21 consumer / residual contexts, each as a proven factory, an
+unproven factory and a List param under no contract and under `[Any]`, plus
+22 loop / branch / fresh-read contexts over two forms): no program the
+parent answered correctly answers wrongly, and there is no new silent
+divergence — the ten left are NUR213's residual shapes, identical on the
+parent. Against 1cafe3f the follow-up moves 294 declines to parity and
+226 to the loud defer, and nothing the other way. Parent MATCHes that now
+decline are the landing's own residual and latch declines (a run with
+entries above it or a literal beneath it, a read of a binding from before
+the run); parent MATCHes that now defer are runs of the wrong count for
+their seat (`(do b) add 1` over `[5 6]`, where the parent's fixed seat
+happened to line up) or a fn value at a single-value seat, which the tape
+parks or fires by context.
+
+**Ceilings.** None moves: lang `compileDefectCeiling` 301 and
+`bailDefectCeiling` 38 (the new tests assert through CompileCheck /
+their own defer helper and are not booked), the compile-failure site census
+91 (the demotion adds no MarkUncompilable site), runtime_defers.tsv empty
+and the corpus-wide runtime-defer gate at 0 (no corpus row reaches
+`vm:dyn-body-one`), the compile-failure ledger empty (all nine langspec
+shards pass).
+
+**Pins.** lang `computed_body_region_test.go`
+(`TestComputedDoBodyCheckedOneCompiles`, `TestComputedDoBodyCheckedOneDefers`,
+`TestKeptDefsFreshReadStaysNarrow`, and the landing's witnesses — the proven
+`9 do (mk)` over `quote [5]` moved to the compiling list); lang/go/test
+`TestStampDynEnvLateArmDrift` / `TestStampDynEnvDriftParity`; compiler
+`dyn_body_one_test.go`; eng `TestCheckDynBodyOne`.

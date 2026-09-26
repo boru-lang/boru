@@ -1493,6 +1493,28 @@ func TestS5BTrapCarrierRematchRecords(t *testing.T) {
 	}
 }
 
+func TestS5BTrapCarrierWindowMatchDeclines(t *testing.T) {
+	// NUR211: a window the rematch's own flexible match already accepts
+	// over the static values would only ever defer at run time ("matched
+	// where the static model failed") — the record declines instead, and
+	// the caller's compile failure stands. The window here is the
+	// interpreter's forward-first failure seen whole: both slots fill.
+	carrier := NewCarrier(TInteger)
+	fn := &FnDefInfo{Name: "trapw", Signatures: []Signature{
+		{Args: []*Type{TInteger, TInteger}, BarrierPos: 2},
+	}}
+	e, es := trapEngine(t, []Value{NewWord("hd"), carrier, NewInteger(5)}, 0, []int{1, 2})
+	if e.TryRecordUnmatchedDispatchTrap(WordInfo{Name: "trapw"}, fn, SrcPos{Row: 1}) {
+		t.Fatalf("a window the rematch would match must decline (rematches=%d traps=%+v)", es.rematches, es.trapErrs)
+	}
+	if es.rematches != 0 {
+		t.Errorf("RecordDispatchRematchValues calls = %d, want 0", es.rematches)
+	}
+	if !rematchWindowMatches(fn, []Value{carrier, NewInteger(5)}) || rematchWindowMatches(trapFn(), []Value{carrier, NewInteger(5)}) {
+		t.Error("rematchWindowMatches: want a match over (Integer, Integer) and none over (String, Integer)")
+	}
+}
+
 func TestS5BTrapCarrierWrittenTooWide(t *testing.T) {
 	// A written tuple wider than the window cannot be rebuilt
 	// (line 8722).
