@@ -1617,7 +1617,12 @@ func widestSatisfiableOverload(e *core.Engine, fn *core.FnDefInfo, w core.WordIn
 // NOMINAL — no type carrying a value-sensitive constraint the guarded
 // CALL_USER's nominal entry check could not enforce.
 func soleSigParamsNominal(sig *core.Signature, fn *core.FnDefInfo) bool {
-	if !core.SingleOverloadRecoverable(sig, fn) {
+	if !core.SingleOverloadRecoverable(sig, fn) || fn.Gen != nil {
+		// A GENERIC fn (`def unbox gen [T] fn [[b:T] …]`) has no nominal
+		// param to guard — T is bound per call by the generic lane, whose
+		// evaluating host is not built (generics-fn.tsv L54 compiled through
+		// this recovery and ran the call on the interpreter, an interp-entry
+		// census row); it keeps the decline.
 		return false
 	}
 	for _, t := range sig.ArgTypes() {

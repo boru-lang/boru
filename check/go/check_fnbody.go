@@ -465,7 +465,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					// A RECOVERED call's arg narrows to the DECLARED param type
 					// (narrowToDeclaredParam: the Any, Disjunct and imprecise-tag
 					// arms, one entry-guard contract).
-					if nc, ok := narrowToDeclaredParam(sigParams[i].Type, a); ok {
+					if nc, ok := narrowToDeclaredParam(sigParams[i].Type, a, genSpec != nil); ok {
 						genArgs[i] = nc
 						continue
 					}
@@ -1198,7 +1198,12 @@ func checkFnBodyAtConstruction(r *core.Registry, name string, fnDef core.FnDefIn
 //     (measured 2026-09-26, the nominal single-overload recovery's first
 //     shape). A CONSTRAINED param (a predicate / refinement) keeps the
 //     carrier: the nominal guard could not enforce it.
-func narrowToDeclaredParam(pt *core.Type, a core.Value) (core.Value, bool) {
+//
+// generic is the fn's genericity: the imprecise arm is skipped for a
+// GENERIC fn, whose param type is a type variable the generic lane binds per
+// call — narrowing to it compiled generics-fn.tsv L54's `unbox` body and ran
+// the call on the interpreter's generic host (an interp-entry census row).
+func narrowToDeclaredParam(pt *core.Type, a core.Value, generic bool) (core.Value, bool) {
 	if pt == nil || pt.Equal(core.TAny) || core.IsBareTypeNode(a) {
 		return core.Value{}, false
 	}
@@ -1209,7 +1214,7 @@ func narrowToDeclaredParam(pt *core.Type, a core.Value) (core.Value, bool) {
 		nc := core.NewCarrier(pt)
 		nc.Dynamic = a.Dynamic
 		return nc, true
-	case a.Carrier && a.Parent != nil && !core.HasConstraintUnify(pt) && !a.Parent.ConformsTo(pt):
+	case !generic && a.Carrier && a.Parent != nil && !core.HasConstraintUnify(pt) && !a.Parent.ConformsTo(pt):
 		nc := core.NewCarrier(pt)
 		nc.Dynamic = a.Dynamic
 		return nc, true

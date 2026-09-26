@@ -29,14 +29,22 @@ func TestCoverSuiteBodyBakesAtModuleScope(t *testing.T) {
 	if !strings.Contains(dis, "CALL_NATIVE") || strings.Contains(dis, "FALLBACK") {
 		t.Errorf("the suite body must bake as a plain CALL_NATIVE:\n%s", dis)
 	}
-	// Any nested position declines loudly, with parity through the fallback.
+	// Any nested position declines loudly, with parity through the fallback —
+	// and so does a body that could CHANGE a binding the program reads after
+	// it (a def or undef of a name bound at the dispatch: the check pass
+	// never runs the body, so the later read would bake the pre-body
+	// binding; a Codex review of #509). A def of a FRESH name stays fine.
 	for _, src := range []string{
 		`import "boru:test" end def f fn [[n:Integer][Integer][Test.cover [n] n]] end f 3`,
 		`import "boru:test" end for 2 [Test.cover [ def spec {a:i} end Test.test "t" [spec.a i Assert.equal] ]] end Test.fail-count`,
 		`import "boru:test" end if true [Test.cover [ Test.test "t" [1 1 Assert.equal] ]] [] end Test.fail-count`,
+		`import "boru:test" end def x 1 end Test.cover [def x 2] end x`,
+		`import "boru:test" end def x 1 end Test.cover [undef x] end x`,
 	} {
 		fnValueM2CompileFailure(t, "nested Test.cover: "+src, src, "code-body word test-cover")
 	}
+	// A re-import inside the body binds the SAME loaded module: no rebind.
+	requireEngineParity(t, `import "boru:test" import "boru:cli" end def a Cli end Test.cover [import "boru:cli"] end (a eq Cli)`, true)
 }
 
 // TestLoopRangeEventStartCompiles — a counted loop whose range START or STEP
@@ -86,4 +94,24 @@ func TestSingleOverloadUserFnOverImpreciseOperandCompiles(t *testing.T) {
 	fnValueM2CompileFailure(t, "a predicate-typed param keeps the decline",
 		pre+`def Big (Integer gt 10) def bg fn [[n:Big][Integer][n]] def f fn [[raw:Map][Integer][def al (each [nd] (go raw "aliases" [])) (bg (size al))]] export "K" {f: f/v}] end K.f {aliases:["x"]}`,
 		"unmatched dispatch recovered at bg")
+	// An UNDER-ARITY call and a QUOTED param are the interpreter's
+	// signature_error, never a recovery (a Codex review of #509): the guard
+	// would bind a partial window, or evaluate what the matcher captures.
+	fnValueM2CompileFailure(t, "an under-arity call keeps the decline",
+		pre+`def ds2 fn [[xs:List n:Integer][List][xs]] def f fn [[raw:Map][List][def al (each [nd] (go raw "aliases" [])) al ds2]] export "K" {f: f/v}] end K.f {aliases:["x"]}`,
+		"unmatched dispatch recovered at ds2")
+	fnValueM2CompileFailure(t, "a quoted param keeps the decline",
+		pre+`def dq fn [[xs:List/q][List][[1]]] def f fn [[raw:Map][List][def al (each [nd] (go raw "aliases" [])) (dq al)]] export "K" {f: f/v}] end K.f {aliases:["x"]}`,
+		"unmatched dispatch recovered at dq")
+	// A GENERIC fn is excluded from the recovery and from the imprecise-tag
+	// narrowing (its param is a type variable the generic lane binds per
+	// call): generics-fn.tsv L54 compiled through them for one push and ran
+	// the call on the interpreter's generic host, an interp-entry census
+	// row. It compiles natively through the established arms — a plain
+	// user-call unit, no generic dispatch — and both lanes agree.
+	gsrc := `def Box gen [T] class {value:T} def unbox gen [T] fn [[b:T] [Any] [b dot value]] end [(make (Box of [Integer]) {value:1})] each [unbox]`
+	requireEngineParity(t, gsrc, true)
+	if dis := compileDisasm(t, gsrc); strings.Contains(dis, "GENERIC") || strings.Contains(dis, "FALLBACK") || !strings.Contains(dis, "CALL_USER") {
+		t.Errorf("the generic fn's call must be a plain compiled user call:\n%s", dis)
+	}
 }

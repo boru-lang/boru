@@ -9314,6 +9314,16 @@ func SingleOverloadRecoverable(sig *Signature, fn *FnDefInfo) bool {
 	if _, isDelegation := trivialDelegationTarget(sole); isDelegation {
 		return false
 	}
+	// A param with DISPATCH SEMANTICS beyond its type — an implicit-quote
+	// slot (`xs:List/q` captures the following word unevaluated), a code
+	// body (NoEvalArgs) or a body-executing CallableSpec — is not what the
+	// guarded CALL_USER's nominal entry check enforces: the value the VM
+	// hands it is the evaluated operand, where the interpreter's matcher
+	// refuses or captures. Such a sig is not recoverable (a Codex review of
+	// #509).
+	if len(sole.QuoteArgs) > 0 || len(sole.NoEvalArgs) > 0 || sole.Callable != nil {
+		return false
+	}
 	return len(sole.Body()) > 0
 }
 
@@ -9321,7 +9331,15 @@ func (e *Engine) TryRecordRecoveredUserFn(sig *Signature, fn *FnDefInfo, args []
 	if !SingleOverloadRecoverable(sig, fn) {
 		return false
 	}
-	recovered := sig.ReturnsFn(SigOrderArgs(args, nStack), e.Registry)
+	window := SigOrderArgs(args, nStack)
+	// An UNDER-ARITY call (`al ds` against a sole `(List Integer)` sig) is
+	// the interpreter's signature_error, never a recoverable dispatch: the
+	// guarded CALL_USER would bind the partial window and run the body (a
+	// Codex review of #509).
+	if len(window) < sig.TotalArgs() {
+		return false
+	}
+	recovered := sig.ReturnsFn(window, e.Registry)
 	CheckBraid.SpliceCheckResults(e, positions, recovered)
 	return true
 }

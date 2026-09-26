@@ -11788,8 +11788,9 @@ func bindNameToken(v core.Value) string {
 // body (`Test.cover [n]` inside a fn, `[… i …]` inside a top-level loop) that
 // the handler's sub-engine then resolves against the registry, where the
 // VM's frame local is invisible — a false undefined_word, present on main
-// (NUR207). An isolated-frame word (CompileRunsBodyIsolated) bakes
-// unconditionally; every other word bakes an inert-scoped body.
+// at 3b5db68 and closed here (the nested positions decline). An
+// isolated-frame word (CompileRunsBodyIsolated) bakes unconditionally;
+// every other word bakes an inert-scoped body.
 func (es *EmitState) noEvalBodyBakes(sig *core.Signature, args []core.Value) bool {
 	switch {
 	case sig.CompileEffect.Has(core.CompileRunsBodyIsolated):
@@ -11832,11 +11833,52 @@ func (es *EmitState) runsBodyOnRegistryAtModuleScope(sig *core.Signature, args [
 		if !sig.NoEvalArgs[i] {
 			continue
 		}
-		if !core.IsConcrete(args[i]) || check.BodyHasSentinel(args[i]) {
+		if !core.IsConcrete(args[i]) || check.BodyHasSentinel(args[i]) || es.bodyRebindsBoundName(args[i]) {
 			return false
 		}
 	}
 	return true
+}
+
+// bodyRebindsBoundName reports whether a registry-run body could CHANGE a
+// binding the compiled program reads after it: a def / var / undef, at any
+// depth, of a name bound at the dispatch (`def x 1  Test.cover [def x 2]  x`
+// — the check pass never runs the body, so the later read would bake the
+// pre-body binding where the interpreter reads 2; an `undef x` makes it
+// undefined there), or of a COMPUTED name the walk cannot resolve. A def of
+// a FRESH name is fine: a read of it after the body is a check-time
+// undefined_word, a loud decline. (A Codex review of #509.)
+func (es *EmitState) bodyRebindsBoundName(v core.Value) bool {
+	var toks []core.Value
+	switch d := v.Data.(type) {
+	case core.ListPayload:
+		toks = d.Elems
+	case core.ParenExprPayload:
+		toks = d.Toks
+	default:
+		return false
+	}
+	for i, t := range toks {
+		if w, ok := t.Data.(core.WordInfo); ok {
+			switch w.Name {
+			case "def", "var", "undef", "__varundef":
+				if i+1 >= len(toks) {
+					return true
+				}
+				name := bindNameToken(toks[i+1])
+				if name == "" {
+					return true
+				}
+				if _, bound := es.reg.Defs.Top(name); bound {
+					return true
+				}
+			}
+		}
+		if es.bodyRebindsBoundName(t) {
+			return true
+		}
+	}
+	return false
 }
 
 // noEvalBodiesInertScoped is noEvalBodiesInert plus a MODULE-SCOPE allowance for

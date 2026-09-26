@@ -14705,6 +14705,23 @@ import resolves. Real programs: **35 -> 58 of 62 compile**.
   List the interpreter sorted), so genArgs now narrows a non-conforming
   imprecise carrier to the nominal param as the Any and Disjunct arms do.
 
+**The review's four holes, closed the same day** (a Codex review of
+#509). The registry-run body could CHANGE a binding the program reads after
+it (`def x 1  Test.cover [def x 2]  x`: the check pass never runs the body,
+so the later read baked 1 for the interpreter's 2; `undef x` likewise) —
+`bodyRebindsBoundName` declines a def / var / undef of a name bound at the
+dispatch, or of a computed name; a def of a fresh name stays fine (a read
+after it is a check-time undefined_word), and a re-import binds the same
+loaded module. The nominal recovery admitted an UNDER-ARITY call (`al ds`
+against `(List Integer)`) and a QUOTED param (`xs:List/q`), both the
+interpreter's signature_error — `TryRecordRecoveredUserFn` refuses a
+window shorter than the sig and `SingleOverloadRecoverable` a sig with
+QuoteArgs, NoEvalArgs or a CallableSpec (both arms, the old Any one too).
+And the imprecise-tag narrowing compiled a GENERIC fn's body against its
+type variable (generics-fn.tsv L54's `unbox`), which then ran on the
+interpreter's generic host — an interp-entry census row; a generic fn is
+excluded from the recovery and from that narrowing.
+
 **Measured.** Real programs 58 / 62 (from 35). The four left, each
 ledgered with its cause: mini-redis.boru and echo_redis.boru (a checker
 false positive — after `def had (if …)` over a def-bound Any, the next
