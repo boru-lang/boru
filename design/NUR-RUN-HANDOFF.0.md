@@ -9,6 +9,17 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR248 closed: one matcher for a type literal at a slot (2026-09-26)
+
+The interpreter disagreed with itself. Every dispatch refuses a bare type
+literal at a concrete-payload slot (`rejectsTypeLiteral`), except an
+anonymous lambda re-stepped at a paren's close. That case fell to
+`ExecFnDefSigStackMatch`, whose test was `SigTypeMatches` alone. The VM's
+`MatchFnSig` had the mirror defect: it tested the node's Parent, its
+SUPERTYPE, and so refused `Integer` at a `t:Type` slot. Both ask
+`stackSlotAdmits` now (`SigArgMatches` plus the refusal outside a type-arg
+slot). Core's own suite covers it.
+
 ## The silent halves of NUR249, NUR247 and NUR250 (2026-09-26)
 
 A named fn-typed carrier applied over a paren window can turn out 0-arg at

@@ -169,7 +169,7 @@ keep the two in sync in the same commit.
 | [NUR245](#nur245) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix — arms that agree on the fn's shape FIXED 2026-09-26, the handoff log's entry of that date): both arms of a branch define the same fn and a call past the merge failed to compile: `if false [def f fn [[a:Integer] [Any] [7]]] [def f fn [[a:Integer] [Any] [8]]] end 3 f` is `[8]` interpreted and was `compile_failed: unconsumed fn-value carrier in residual (closure render)` compiled, for a decided and an undecided condition alike. Arms that agree on the fn's shape compile now; arms that disagree (a `[a:Integer]` fn against a `[a:String]` one) keep the payload-less join and its decline. A compile defect | closing NUR244, 2026-09-26 |
 | [NUR246](#nur246) | FIXED 2026-09-26 (a window that may park is a variadic region — the handoff log's entry of that date): a paren-bounded fn-value apply whose lead the window does not fit PARKS on both lanes (an anonymous or `/v`-delivered value that matches nothing is data — the window and the value, n+1), where the compiled event claimed its one result, so a fixed layout seated the wrong count. Wider than recorded: at top level a SILENT wrong answer — `def lam ([s:String] => [s]) end [(5 lam/v)]` compiled `[5 [fn lam(String)]]` for `[[5 fn lam(String)]]`, and a map value, an interpolation and a reordered residual (`1 (5 lam/v) 3` compiled `[5 1 fn lam(String) 3]`) the same; in a fn frame a return-count raise | closing the merged ADR-008 gate on d493ef4, 2026-09-26 |
 | [NUR247](#nur247) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix — the SILENT half fixed 2026-09-26: a consumed `apply`-word event takes the word's one-result form and raises): the `apply` WORD's event parks as NUR246's trailing window does — `def h fn [[f:Any] [List] [[(5 f/v apply)]]] end h ([s:String] => [s])` is `[[5 fn f(String)]]` interpreted and raises `h: expected 1 return value(s), got 2` compiled — but its lead is gradual by construction, so NUR246's mark (a window that does not provably fit) would decline every Church-encoding and CPS program of `bytecode-migrated.tsv` (14 rows). Compiled fails where the interpreter answers | closing NUR246, 2026-09-26 |
-| [NUR248](#nur248) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a TYPE LITERAL applied under a lambda's VALUE PATTERN matches on the interpreter and parks on the VM: `(Integer ([0] => [1]))` is `[1]` interpreted and `[Integer fn (Integer)]` compiled — the VM's `core.MatchFnSig` unifies the literal against the pattern and fails where the interpreter's dispatch admits it. Silent (pre-existing) | covering NUR246's fit proof, 2026-09-26 |
+| [NUR248](#nur248) | FIXED 2026-09-26 (one matcher decides a type literal at a slot — the handoff log's entry of that date): a TYPE LITERAL applied under a lambda's slot matched on one lane only — `(Integer ([0] => [1]))` was `[1]` interpreted and `[Integer fn (Integer)]` compiled, and `(Integer ([t:Type] => [t]))` the reverse. The interpreter's stack-match fallback asked SigTypeMatches without the type-literal refusal every other dispatch applies; the VM's `MatchFnSig` asked the node's Parent, its SUPERTYPE. Silent (pre-existing) | covering NUR246's fit proof, 2026-09-26 |
 | [NUR249](#nur249) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix — the SILENT half fixed 2026-09-26: a consumed layout raises now, booked on the bail ledger): a fn-typed CARRIER read by name and applied over a paren window (`(k 5)` over a `k:Function` param) that turns out 0-arg at run time fires over nothing and leaves the window beside its result (NUR176's arm) — n+1 values where the compiled event claims one — so a fixed layout takes the wrong count: `def c fn [[] [Integer] [7]] end def h fn [[k:Function] [] [[(k 5)]]] end h c/v` is `[[7 5]]` interpreted and `[7 [5]]` compiled. Silent under a no-contract fn (pre-existing); a declared return raises the count error instead | closing NUR239's binding half, 2026-09-26 |
 | [NUR250](#nur250) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix — the SILENT half fixed 2026-09-26: such a lead declines the compile now): a BARE read of a fn-typed param before the `apply` word is a CALL on the interpreter (NUR078) — `f` fires at the word and `apply` meets its result — while the compiled lane hands the value to `apply`: `def h fn [[f:Function] [Any] [(5 f apply)]] end h ([s:Integer] => [s add 1])` raises `cannot call apply` interpreted and answers `[6]` compiled; over a `[s:String]` lambda the interpreter raises `cannot call f` and the compiled lane answers `[5 fn f(String)]`. Silent (pre-existing) | closing NUR247's silent half, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
@@ -9637,9 +9637,9 @@ exact count, which is the run-time mark NUR247 wants too.
 
 ## NUR248 — a type literal under a lambda's value pattern matches on one lane only {#nur248}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** covering NUR246's fit proof
-(`applyWindowFits`).
+**Status:** FIXED 2026-09-26 (one matcher decides a type literal at a slot
+— the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** covering NUR246's fit proof (`applyWindowFits`).
 
 **Rule:** one matcher — a window the interpreter's dispatch admits, the
 VM's dynamic apply admits, and the reverse.
@@ -9662,6 +9662,27 @@ asks `core.MatchFnSig`, which unifies the literal against the pattern
 (`valueTrailNoMatch`). Which reading is right is part of the question — a
 type literal is not the value 0, so the interpreter's admission may be
 the defect — but the two lanes must agree either way.
+
+**The fix (2026-09-26).** The interpreter disagreed with ITSELF. A named
+call (`f Integer`), the stack form (`Integer f`), a def-bound lambda
+(`(Integer g)`) and every word dispatch refuse a bare type literal at a
+concrete-payload slot. That is `rejectsTypeLiteral`, the matcher's rule
+since `addq Integer 1` stopped computing `addq 0 1`. Only an anonymous
+lambda re-stepped at a paren's close took it. `MatchSignature` refused, and
+the value fell to `ExecFnDefSigStackMatch`, whose per-position test was
+`SigTypeMatches` alone. So the compiled park was the uniform answer.
+
+The VM had the mirror defect. `MatchFnSig` tested `args[j].Parent.ConformsTo`,
+and a type node's Parent is its SUPERTYPE (`Integer`'s is `Number`). So it
+refused `Integer` at a `t:Type` slot the interpreter fills:
+`(Integer ([t:Type] => [t]))` was `[Integer]` interpreted and parked
+compiled.
+
+Both now ask one rule, `stackSlotAdmits`: the matcher's `SigArgMatches` plus
+its `rejectsTypeLiteral` refusal outside a type-arg slot. Pinned on both
+lanes by `TestNUR248TypeLiteralAtASlot`: refused at a concrete slot and
+under a pattern, admitted at a Type and an Any slot, a value keeping its
+match.
 
 ## NUR247 — the `apply` word's park leaves more values than its event claims {#nur247}
 

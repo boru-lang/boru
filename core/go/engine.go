@@ -6044,6 +6044,17 @@ func (e *Engine) upcomingArgs(valIdx int) []Value {
 // ExecFnDefSigStackMatch is the legacy pure-stack dispatch path for
 // boru-defined functions whose signatures carry named params. Used as a
 // fallback when matchSignature's aggregate match returns nothing.
+// stackSlotAdmits is the stack match's per-position type test: the
+// matcher's own rule (SigArgMatches), including its refusal of a bare type
+// literal at a concrete-payload slot (rejectsTypeLiteral). Asking
+// SigTypeMatches alone let an anonymous fn value re-stepped at a paren's
+// close take `Integer` for an Integer param, where every other dispatch —
+// a named call, a def-bound lambda, the VM's apply — refuses it (NUR248).
+func stackSlotAdmits(sig *Signature, j int, v Value) bool {
+	isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[j]
+	return SigArgMatches(sig, j, v) && (isTypeArg || !rejectsTypeLiteral(v, SigArgType(sig, j)))
+}
+
 func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []Value) error {
 	resolvedIdx := e.ResolvedIndicesBefore(len(resolved))
 	checkMode := e.Registry != nil && e.Registry.analysisMode() && fnDef.Anonymous
@@ -6093,7 +6104,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 		if hasNamed {
 			for j, p := range sig.Params {
 				ri := len(resolved) - 1 - j
-				if !SigTypeMatches(resolved[ri], p.Type) {
+				if !stackSlotAdmits(sig, j, resolved[ri]) {
 					match = false
 					break
 				}
@@ -6131,7 +6142,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 		} else {
 			candidate := resolved[len(resolved)-nArgs:]
 			for j, p := range sig.Params {
-				if !SigTypeMatches(candidate[j], p.Type) {
+				if !stackSlotAdmits(sig, j, candidate[j]) {
 					match = false
 					break
 				}
