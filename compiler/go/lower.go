@@ -54,6 +54,12 @@ func (lw *lowerer) lowerLoop(ev *EmitEvent) string {
 		lw.pushOperand(lp.step, lp.pos)
 		lw.pushOperand(lp.end, lp.pos)
 	}
+	if lp.start.kind == opEvent || lp.step.kind == opEvent {
+		// An event-sourced start/step the planner did not promote (a
+		// variadic or multi-value producer): its value sits on the sim at
+		// its producer, not re-pushable here.
+		return "for: computed range start/step (Stage 2 follow-on)"
+	}
 	lw.pushOperand(lp.start, lp.pos)
 	lw.emit(OpForSetup, lp.iterSlot, lp.pos)
 	lw.vm = lw.vm[:len(lw.vm)-3] // start, end, step consumed
@@ -1841,7 +1847,9 @@ func RewritePromotedRefs(ev *EmitEvent, promoted map[int]int) {
 			promoteOperand(&ev.br.carried[i].init, promoted)
 		}
 	case evLoop:
+		promoteOperand(&ev.loop.start, promoted)
 		promoteOperand(&ev.loop.end, promoted)
+		promoteOperand(&ev.loop.step, promoted)
 		for i := range ev.loop.carried {
 			promoteOperand(&ev.loop.carried[i].init, promoted)
 		}
@@ -2193,6 +2201,16 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 		merged := make(map[int]bool, len(forceOrder)+len(brSrc))
 		maps.Copy(merged, forceOrder)
 		maps.Copy(merged, brSrc)
+		forceOrder = merged
+	}
+	// A counted loop's EVENT-produced range start or step (`def a (…) def b
+	// (…) for [a b] […]`) is re-pushed at FOR_SETUP, under the end — the same
+	// store-once / re-push-per-use promotion; lowerLoop keeps the failure for
+	// one that stayed an event (2026-09-26, utils/cut.boru's cut-pick-rng).
+	if rgSrc := collectLoopRangeSources(events); len(rgSrc) > 0 {
+		merged := make(map[int]bool, len(forceOrder)+len(rgSrc))
+		maps.Copy(merged, forceOrder)
+		maps.Copy(merged, rgSrc)
 		forceOrder = merged
 	}
 	// A producer consumed MID-BODY as an operand of a later event needs a frame
@@ -3071,6 +3089,25 @@ func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[st
 // event-sourced branch-carried seed (emitBranch.carried) in events and every
 // fragment nested in them — the promotion set that makes each seed a
 // re-pushable local by the time lowerBranch stores it.
+// collectLoopRangeSources is collectBranchCarriedSources' twin for a counted
+// loop's range: the producers of an event-sourced START or STEP operand (the
+// end is seated from the sim top by lowerLoop and needs no slot).
+func collectLoopRangeSources(events []EmitEvent) map[int]bool {
+	all, _, _ := collectPromotableEvents(events)
+	out := map[int]bool{}
+	for _, ev := range all {
+		if ev.kind != evLoop || ev.loop == nil {
+			continue
+		}
+		for _, op := range []EmitOperand{ev.loop.start, ev.loop.step} {
+			if op.kind == opEvent && op.resIdx == 0 {
+				out[op.idx] = true
+			}
+		}
+	}
+	return out
+}
+
 func collectBranchCarriedSources(events []EmitEvent) map[int]bool {
 	all, _, _ := collectPromotableEvents(events)
 	out := map[int]bool{}

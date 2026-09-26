@@ -98,7 +98,13 @@ var pinnedAritySites = map[string]int{
 	// hasPendingForwardExpectingFunction's still-collecting test
 	// (`nextIdx < fwd.Sig.TotalArgs()`). No site was added: a bare fn name
 	// now calls at every slot, so nothing asks which slot is open.
-	"core/go/engine.go":       27,
+	// 27 -> 28 (2026-09-26, the merge of main's #509): TryRecordRecoveredUserFn
+	// refuses a recovered window shorter than the sole sig (`len(window) <
+	// sig.TotalArgs()`) — the matcher's own arity rule, mirrored so the
+	// guarded CALL_USER never binds a partial window the interpreter's
+	// signature_error refuses; it decides whether the arguments are THERE,
+	// not what the fn does by their count (main's 29 -> 30).
+	"core/go/engine.go":       28,
 	"core/go/region_diag.go":  1,
 	"core/go/collect_plan.go": 8, // 5 -> 8 (NUR228): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
 	"core/go/signature.go":    12,

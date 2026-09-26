@@ -462,37 +462,10 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 						genArgs[i] = tc // D2 Part A: preserve {:T} element type into the body carrier
 						continue
 					}
-					// A RECOVERED call: an Any arg flowed into a CONCRETELY-typed
-					// param (matchSignature couldn't statically commit, so dispatch
-					// recovered — tryRecordRecoveredUserFn). Compile the body against
-					// the DECLARED param type, not strict-Any: the body's words then
-					// dispatch against the real type (e.g. `convert Float` over an
-					// Integer param inside a chain whose source was an Options `get`),
-					// instead of declining "unmatched dispatch" on strict-Any. Sound by
-					// the param contract — SetUnitParamTypes installs a CALL_USER guard
-					// that raises == the interpreter when a runtime arg misses the
-					// declared type, so assuming it here can only narrow, never admit a
-					// value the interpreter would reject.
-					if pt := sigParams[i].Type; pt != nil && !pt.Equal(core.TAny) &&
-						a.Parent != nil && a.Parent.Equal(core.TAny) && !core.IsBareTypeNode(a) {
-						genArgs[i] = core.NewCarrier(pt)
-						continue
-					}
-					// A DISJUNCT carrier — the checker's abstraction of an
-					// unresolved overload's returns (a recovered `slice` over a
-					// dynamic input yields Bytes|List|String) — narrows to a typed
-					// param by the same contract: the entry guard raises exactly
-					// where the interpreter's dispatch would, so the body compiles
-					// against the declared type instead of a payload-stripped
-					// Disjunct carrier no sig accepts (mini-s3: s3-handle-get's
-					// `part` into s3-send-resp's `body:Bytes`, whose chunk loop
-					// then dispatched `slice` over a Disjunct and declined
-					// "for: body nets multiple values"). The dynamic flag is
-					// preserved: a gradual disjunct keeps matching optimistically.
-					if pt := sigParams[i].Type; pt != nil && !pt.Equal(core.TAny) &&
-						a.Carrier && core.IsDisjunct(a) {
-						nc := core.NewCarrier(pt)
-						nc.Dynamic = a.Dynamic
+					// A RECOVERED call's arg narrows to the DECLARED param type
+					// (narrowToDeclaredParam: the Any, Disjunct and imprecise-tag
+					// arms, one entry-guard contract).
+					if nc, ok := narrowToDeclaredParam(sigParams[i].Type, a, genSpec != nil); ok {
 						genArgs[i] = nc
 						continue
 					}
@@ -1237,4 +1210,56 @@ func refinementUndecided(pattern, got core.Value) bool {
 		}
 	}
 	return false
+}
+
+// narrowToDeclaredParam is the RECOVERED call's generalisation of one arg: a
+// carrier that could not statically commit to the CONCRETELY-typed param pt
+// (matchSignature failed, dispatch recovered — tryRecordRecoveredUserFn)
+// compiles the body against the DECLARED param type, not its own tag. Sound
+// by the param contract: SetUnitParamTypes installs a CALL_USER guard that
+// raises == the interpreter when a runtime arg misses the declared type, so
+// assuming it here can only narrow, never admit a value the interpreter
+// would reject. Three arms, one rule:
+//
+//   - a strict-Any carrier (an Options `get`'s result into an Integer param;
+//     the body's `convert Float` then dispatches against the real type
+//     instead of declining "unmatched dispatch" on strict-Any);
+//   - a DISJUNCT carrier — the checker's abstraction of an unresolved
+//     overload's returns (a recovered `slice` over a dynamic input yields
+//     Bytes|List|String) — instead of a payload-stripped Disjunct no sig
+//     accepts (mini-s3: s3-handle-get's `part` into s3-send-resp's
+//     `body:Bytes`, whose chunk loop then declined "for: body nets multiple
+//     values"); the dynamic flag is preserved, a gradual disjunct keeps
+//     matching optimistically;
+//   - an IMPRECISE carrier — a scalar or container tag a poly re-match's
+//     join or a multi-branch narrowing settled on (`ds (each [nd]
+//     gradual)`: the each result's tag is not the List it is at run time)
+//     — whose static tag does NOT conform to a NOMINAL param. Left as its
+//     own tag the body bound `sort xs` to the Map overload and raised
+//     `sort: AsMap: not a map payload` over the List the interpreter sorted
+//     (measured 2026-09-26, the nominal single-overload recovery's first
+//     shape). A CONSTRAINED param (a predicate / refinement) keeps the
+//     carrier: the nominal guard could not enforce it.
+//
+// generic is the fn's genericity: the imprecise arm is skipped for a
+// GENERIC fn, whose param type is a type variable the generic lane binds per
+// call — narrowing to it compiled generics-fn.tsv L54's `unbox` body and ran
+// the call on the interpreter's generic host (an interp-entry census row).
+func narrowToDeclaredParam(pt *core.Type, a core.Value, generic bool) (core.Value, bool) {
+	if pt == nil || pt.Equal(core.TAny) || core.IsBareTypeNode(a) {
+		return core.Value{}, false
+	}
+	switch {
+	case a.Parent != nil && a.Parent.Equal(core.TAny):
+		return core.NewCarrier(pt), true
+	case a.Carrier && core.IsDisjunct(a):
+		nc := core.NewCarrier(pt)
+		nc.Dynamic = a.Dynamic
+		return nc, true
+	case !generic && a.Carrier && a.Parent != nil && !core.HasConstraintUnify(pt) && !a.Parent.ConformsTo(pt):
+		nc := core.NewCarrier(pt)
+		nc.Dynamic = a.Dynamic
+		return nc, true
+	}
+	return core.Value{}, false
 }

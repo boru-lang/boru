@@ -242,23 +242,24 @@ const (
 
 	// Compile-effect classifications (core.CompileEffect) for the bytecode
 	// recorder — declared on a Signature instead of a name-keyed eng table.
-	CompileDefault          = core.CompileDefault
-	CompileReadsFn          = core.CompileReadsFn
-	CompileStoresFn         = core.CompileStoresFn
-	CompileModuleFold       = core.CompileModuleFold
-	CompileIslandPure       = core.CompileIslandPure
-	CompileScalarFold       = core.CompileScalarFold
-	CompileFallbackBody     = core.CompileFallbackBody
-	CompileQuoteInert       = core.CompileQuoteInert
-	CompileQuoteKey         = core.CompileQuoteKey
-	CompileDiverges         = core.CompileDiverges
-	CompileValueDiverges    = core.CompileValueDiverges
-	CompileStoresBody       = core.CompileStoresBody
-	CompileStoresBodyList   = core.CompileStoresBodyList
-	CompileFnHandlerStrict  = core.CompileFnHandlerStrict
-	CompileResteps          = core.CompileResteps
-	CompileRunsBodyIsolated = core.CompileRunsBodyIsolated
-	CompileDynBody          = core.CompileDynBody
+	CompileDefault            = core.CompileDefault
+	CompileReadsFn            = core.CompileReadsFn
+	CompileStoresFn           = core.CompileStoresFn
+	CompileModuleFold         = core.CompileModuleFold
+	CompileIslandPure         = core.CompileIslandPure
+	CompileScalarFold         = core.CompileScalarFold
+	CompileFallbackBody       = core.CompileFallbackBody
+	CompileQuoteInert         = core.CompileQuoteInert
+	CompileQuoteKey           = core.CompileQuoteKey
+	CompileDiverges           = core.CompileDiverges
+	CompileValueDiverges      = core.CompileValueDiverges
+	CompileStoresBody         = core.CompileStoresBody
+	CompileStoresBodyList     = core.CompileStoresBodyList
+	CompileFnHandlerStrict    = core.CompileFnHandlerStrict
+	CompileResteps            = core.CompileResteps
+	CompileRunsBodyIsolated   = core.CompileRunsBodyIsolated
+	CompileRunsBodyOnRegistry = core.CompileRunsBodyOnRegistry
+	CompileDynBody            = core.CompileDynBody
 
 	// CallableSpec.BodyOut's whole-residual sentinel (core.BodyOutResidual):
 	// the driving handler returns the body's entire residual (`do`).
