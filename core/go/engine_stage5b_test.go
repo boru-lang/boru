@@ -521,16 +521,17 @@ func TestS5BReachCallHeadBarrier(t *testing.T) {
 	tok := NewFunction(fd)
 	tok.ReachGroup = true
 
-	// A Function-conforming viable slot exempts the fn (line 6206).
-	fnSlot := []ViableSig{{Sig: &Signature{Args: []*Type{TFunction}}, Barrier: 1}}
+	// The claim test decides, whatever slot is open (NUR078 retired the
+	// Function-slot exemption): a claiming fn is a call head.
 	e.Tape = NewTape([]Value{tok, NewInteger(5)}, StackHeadroom)
-	if e.reachCallHeadBarrier(tok, fnSlot, 0, 0) {
-		t.Error("a Function slot takes the fn as data, no barrier")
-	}
-
-	// No exemption: the claim test decides (line 6210).
-	if !e.reachCallHeadBarrier(tok, nil, 0, 0) {
+	if !e.reachCallHeadBarrier(tok, 0) {
 		t.Error("a claiming fn must be a call-head barrier")
+	}
+	// A /v-quoted fn is data, never a call head.
+	quoted := tok
+	quoted.Quoted = true
+	if e.reachCallHeadBarrier(quoted, 0) {
+		t.Error("a quoted fn is data, no barrier")
 	}
 }
 

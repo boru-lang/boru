@@ -638,13 +638,24 @@ func miniFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 	if len(args) == 3 {
 		opts = args[2]
 	}
-	tail := []Value{fn, args[1], opts, NewEnd()}
+	tail := []Value{appliedTransducer(fn), args[1], opts, NewEnd()}
 	if MiniLangFnFilterShaped(fnDef) {
 		// No trailing End on the partial splice — see miniPartialFn.
 		partial := miniPartialFromSigs("fn", "", fnDef.OwnSigs(), tail)
 		return []Value{NewSplice(NewList([]Value{partial}))}, nil
 	}
 	return []Value{NewSplice(NewList(tail))}, nil
+}
+
+// appliedTransducer is the fn a mini / parse / emit VALUE-form splice runs.
+// The splice APPLIES it, so a `/v` that handed it to the macro word — the
+// way a function is passed now that no slot type takes a bare name or a dot
+// read as a reference (NUR078: `mini M.dbl/v 'ab'`) — was the caller's data
+// intent for the argument slot, spent there; left on, the spliced fn would
+// sit inert as data.
+func appliedTransducer(fn Value) Value {
+	fn.Quoted = false
+	return fn
 }
 
 // miniSubjParam is the synthetic parameter name a mini partial binds
@@ -905,7 +916,7 @@ func parseFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 			return []Value{out}, nil
 		}
 	}
-	toks := []Value{fn, source, opts, NewEnd()}
+	toks := []Value{appliedTransducer(fn), source, opts, NewEnd()}
 	return []Value{NewSplice(NewList(toks))}, nil
 }
 
@@ -1227,7 +1238,7 @@ func emitFnExpand(fn Value, args []Value, r *Registry) ([]Value, error) {
 		opts = NewMap(NewOrderedMap())
 		data = args[1]
 	}
-	toks := []Value{fn, data, opts, NewEnd()}
+	toks := []Value{appliedTransducer(fn), data, opts, NewEnd()}
 	return []Value{NewSplice(NewList(toks))}, nil
 }
 

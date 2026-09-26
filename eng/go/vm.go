@@ -1492,11 +1492,13 @@ func (vc *vmContext) landingFire(reg *core.Registry, v core.Value, fnDef core.Fn
 //     the residual apply keeps its answer — the word's call is already
 //     compiled after the landing and cannot be skipped, so the capture is
 //     the open half of NUR190 (fn-value.tsv's `m.f z` passes because z's
-//     result is its own atom);
-//   - a Function-typed slot takes the word's REFERENCE: the same skip is
-//     missing, and the run bails loudly rather than raising a false
-//     `uncalled_function` as the wordless landing did (`m.g z` is 7
-//     interpreted).
+//     result is its own atom), and the run bails loudly.
+//
+// That is every claim the plan can make on a function word. A typed slot —
+// a Function-typed one included — takes a bare fn name by `/v` alone
+// (NUR078; the landing never walks a `/v` word, whose value the residual
+// arms collect — `m.g z/v` is 7 on both lanes), so `m.g z` is the named
+// no-match above, where it used to take the word's REFERENCE and bail.
 func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.FnDefInfo, lword compiler.LandingWord, stack []core.Value, top int, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
 	own := fnDef
 	own.Signatures = fnDef.OwnSigs()
@@ -1534,17 +1536,16 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 			return stack, nil, nil
 		}
 		return vc.landingFire(reg, v, fnDef, stack, top, curDebug, pc)
-	case sig.QuoteArgs != nil && sig.QuoteArgs[0]:
-		// A `/q` slot CAPTURES the word as an atom (`m.q z` is `[z]`
-		// interpreted): the compiled code calls the word after the landing
-		// and the residual arm applies the value over its result, so the
-		// walk cannot honour the claim — it defers, loudly, the same
-		// containment as the Function-typed reference below, and the
-		// corpus keeps both on the runtime-defers ledger (NUR190's open
-		// halves; the maintainer's call, 2026-09-24).
-		return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-quote-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step CAPTURES the word `"+lword.Name+"` (a `/q` slot) where the compiled code calls the word; the compiled runtime cannot execute it")
 	}
-	return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step takes the word `"+lword.Name+"` as its argument (a Function-typed slot) where the compiled code calls the word; the compiled runtime cannot execute it")
+	// What is left is a `/q` slot CAPTURING the word as an atom (`m.q z` is
+	// `[z]` interpreted) — the one slot the plan's word arm claims a
+	// function word through, beside the speculative Any claim above: the
+	// compiled code calls the word after the landing and the residual arm
+	// applies the value over its result, so the walk cannot honour the
+	// claim — it defers, loudly, and the corpus keeps it on the
+	// runtime-defers ledger (NUR190's open half; the maintainer's call,
+	// 2026-09-24).
+	return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-quote-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step CAPTURES the word `"+lword.Name+"` (a `/q` slot) where the compiled code calls the word; the compiled runtime cannot execute it")
 }
 
 // uncalledFunctionError is the interpreter's own no-match raise for a named

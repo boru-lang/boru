@@ -168,7 +168,7 @@ func TestSpecfixGuardProbes(t *testing.T) {
 		{input: "def tt Integer inspect tt",
 			want: "{name:'tt' type:'Type' struct:'Integer' kind:literal}"},
 		{input: "inspect nosig", want: "{name:'nosig' kind:native signatures:[]}"},
-		{input: "bakefnq nosig", wantErr: "bakefnq: argument must be a fn"},
+		{input: "bakefnq nosig/v", wantErr: "bakefnq: argument must be a fn"},
 
 		// fnsig / do — the remaining reachable guard arms.
 		{input: "fnsig [x y]", wantErr: `invalid type "x"`},

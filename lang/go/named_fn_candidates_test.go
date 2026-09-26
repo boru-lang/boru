@@ -221,13 +221,15 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 		`def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
 	// The landing's overload walk (the same day) settles the typed slot, the
 	// Any-typed claim and the anonymous park (TestNamedFnCandidatesWalk); the
-	// `/q` capture and a Function-typed slot's reference BAIL loudly at the
-	// landing (`m.q z` is `[z]` interpreted and used to compile `[42 0]`,
-	// the residual apply over the word's result; `m.g z` is 7 interpreted,
-	// where the wordless landing raised a false uncalled_function) — the
-	// word's call is compiled after the landing and cannot be skipped, and
-	// the maintainer chose the deferral kept on the runtime-defers ledger
-	// (2026-09-24) over a compile-time decline.
+	// `/q` capture BAILS loudly at the landing (`m.q z` is `[z]` interpreted
+	// and used to compile `[42 0]`, the residual apply over the word's
+	// result) — the word's call is compiled after the landing and cannot be
+	// skipped, and the maintainer chose the deferral kept on the
+	// runtime-defers ledger (2026-09-24) over a compile-time decline. The
+	// Function-typed half is gone with NUR078: a bare `z` CALLS at every
+	// slot, so `m.g z` is the named no-match on both lanes (it was 7
+	// interpreted and bailed compiled), and the reference is `m.g z/v` — a
+	// value the residual arms collect, 7 on both lanes.
 	const nfR = `def g fn [[f:Function] [Integer] [7]] end def q fn [[] [Integer] [42]] end def q fn [[x:Atom/q] [Atom] [x]] end ` +
 		`def mk fn [[] [Map] [{g: g/v q: q/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end `
 	rows := []struct {
@@ -238,7 +240,7 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 		{nfQ + `m.f z`, "[z]", "", "CAPTURES the word `z`", true},
 		{nfQ + `7 m.f y`, "[7 y]", "", "dynamic value precedes residual args", false},
 		{nfR + `m.q z`, "[z]", "", "CAPTURES the word `z`", true},
-		{nfR + `m.g z`, "[7]", "", "takes the word `z` as its argument", true},
+		{nfR + `m.g z/v`, "[7]", "[7]", "", false},
 	}
 	for _, c := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
@@ -259,6 +261,13 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 		if !compiled || errC != nil || fmt.Sprint(gotC) != c.compiled {
 			t.Errorf("%q: compiled (measured, open): want %s, got %v err=%v", c.src, c.compiled, gotC, errC)
 		}
+	}
+	// The bare word before the Function-typed slot calls: z's 0 is no
+	// Function, so g's named no-match raises on both lanes, compiled.
+	src := nfR + `m.g z`
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if !compiled || codeOf(errI) != "uncalled_function" || codeOf(errC) != codeOf(errI) || detailOf(errC) != detailOf(errI) || len(gotC) != 0 || len(gotI) != 0 {
+		t.Errorf("%q: compiled=%v %v [%s] %s, interp %v [%s] %s", src, compiled, gotC, codeOf(errC), detailOf(errC), gotI, codeOf(errI), detailOf(errI))
 	}
 }
 

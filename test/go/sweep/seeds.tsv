@@ -105,7 +105,7 @@ filter	lambda	filter ([p:Any] => [p.value gt 1]) [1 2 3]
 filter	named-fn	def big fn [[p:Any][Boolean][p.value gt 1]] end filter big/v [1 2 3]
 filter	factory	def mk fn [[][Function][([p:Any] => [p.value gt 1])]] end filter (mk) [1 2 3]
 filter	container	def m {f: ([p:Any] => [p.value gt 1])} end filter m.f [1 2 3]
-filter	module-export	import module [def big fn [[p:Any][Boolean][p.value gt 1]] export "M" {big: big/v}] end filter M.big [1 2 3]
+filter	module-export	import module [def big fn [[p:Any][Boolean][p.value gt 1]] export "M" {big: big/v}] end filter M.big/v [1 2 3]
 filter	computed	def b (quote [gt 1]) end filter b [1 2 3]
 fn	literal	def f (fn [[n:Integer][Integer][n add 1]]) end f 5
 fn	lambda	def f (fn [[n:Integer][Integer] ([n:Integer] => [n add 1])]) end f 5	n/a
@@ -154,14 +154,14 @@ force-arity	lambda	force-arity 2 ([a:Integer b:Integer] => [a sub b]) 1 2
 force-arity	named-fn	def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end force-arity 2 (sub2/v) 1 2
 force-arity	factory	def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end force-arity 2 (mk) 1 2
 force-arity	container	def m {s: ([a:Integer b:Integer] => [a sub b])} end force-arity 2 (m.s) 1 2
-force-arity	module-export	import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] export "M" {sub2: sub2/v}] end force-arity 2 M.sub2 1 2
+force-arity	module-export	import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] export "M" {sub2: sub2/v}] end force-arity 2 (M.sub2/v) 1 2
 force-arity	computed	def b (quote [sub]) end force-arity 2 b 1 2	n/a
 forward-args	literal	forward-args sub 10 3
 forward-args	lambda	forward-args ([a:Integer b:Integer] => [a sub b]) 10 3
 forward-args	named-fn	def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end forward-args (sub2/v) 10 3
 forward-args	factory	def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end forward-args (mk) 10 3
 forward-args	container	def m {s: ([a:Integer b:Integer] => [a sub b])} end forward-args (m.s) 10 3
-forward-args	module-export	import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] export "M" {sub2: sub2/v}] end forward-args M.sub2 10 3
+forward-args	module-export	import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] export "M" {sub2: sub2/v}] end forward-args (M.sub2/v) 10 3
 forward-args	computed	def b (quote [sub]) end forward-args b 10 3	n/a
 gen	literal	def Box gen [T] class {v:T} end (Box of [Integer]) teq (Box of [Integer])
 gen	lambda	def Box gen ([] => [1]) class {v:T} end 1	n/a
@@ -284,7 +284,7 @@ usurp	lambda	usurp ([a:Integer b:Integer] => [a sub b]) 10 3
 usurp	named-fn	def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] end usurp (sub2/v) 10 3
 usurp	factory	def mk fn [[][Function][([a:Integer b:Integer] => [a sub b])]] end usurp (mk) 10 3
 usurp	container	def m {s: ([a:Integer b:Integer] => [a sub b])} end usurp (m.s) 10 3
-usurp	module-export	import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] export "M" {sub2: sub2/v}] end usurp M.sub2 10 3
+usurp	module-export	import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] export "M" {sub2: sub2/v}] end usurp (M.sub2/v) 10 3
 usurp	computed	def b (quote [sub]) end usurp b 10 3	n/a
 valof	literal	def n 5 end valof n
 var	literal	var [[[a 1] [b 2]] a add b]

@@ -112,7 +112,7 @@ keep the two in sync in the same commit.
 | [NUR187](#nur187) | FIXED 2026-09-23 (the branch result's re-step — the handoff log's entry of that date), found the same day: the residual's fn-value apply arms carried a value's collection across a STATEMENT BOUNDARY — `def m {f: inc/v} 7 m.f ; 3` islanded the window to `[7 4]` for the interpreter's `[8 3]`, `m.f ; 5` applied the member to the next statement's 5 (6 for `[fn inc 5]`) — silent, present on `main`. The pass notes every boundary's position (`NoteStatementEnd`) and no arm applies a value over an entry written past a boundary that follows it (`crossesBoundary`); an interior value past a boundary declines | probing NUR159's neighbours, 2026-09-23 |
 | [NUR188](#nur188) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: a native poly that collected a container MEMBER's fn value written BEFORE the word handed the word the fn where the interpreter re-steps the member first — `def m {f: M.inc} 7 m.f typeof` was `[7 Function]` for the interpreter's Integer, `m.f typeof` Function for its `uncalled_function` raise — silent, present on `main`. The poly declines a member read written before the word (`polyCallDeclineReason`); a read written after it (`typeof m.f`) stays its operand | probing NUR186's neighbours, 2026-09-23 |
 | [NUR189](#nur189) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: the residual's TRAILING arms applied a paren-PLACED member fn value — `def m {f: M.inc} 7 (m.f)` was 8 for the interpreter's `[7 fn inc]`, `1 7 (m.f)` `[1 8]` for `[1 7 fn]` — silent, present on `main`. The trailing, trailing-window and mixed arms ask the park (`placedNotReStepped`) as the lead arm always did | probing NUR186's neighbours, 2026-09-23 |
-| [NUR190](#nur190) | CONTAINED 2026-09-24 (NUR190's open halves deferred — the handoff log's entry of that date; the maintainer's call): the `/q` capture and the Function-typed reference DEFER loudly at the landing's walk (`vm:landing-quote-claim`, `vm:landing-claim`) and the corpus keeps them on the runtime-defers ledger (runtime_defers.tsv: fn-value.tsv L317/L318). PARTLY FIXED 2026-09-23 (the landing's overload walk): a DYNAMIC fn value under a FUNCTION word is re-stepped by the interpreter over that word, and the compiled landing stood aside for any arg-taking overload (NUR175) while the residual apply took the word's RESULT — `m.f z` (h with a nullary and a unary overload, z a 0-arg fn) was 1 for `[42 0]`, `m.f typeof` Function for Integer, `m.l z` (an anonymous unary) 1 for `[fn lam(Integer) 0]`, `m.a z` (an Any-typed slot) a false `uncalled_function` for the strict barrier's stranded `signature_error`. The landing walks the run-time fn's overloads over the word with the interpreter's own plan (the word rides in the bytecode, `LandingWords`), and those four are closed. The `/q` capture (`m.q z` was `[42 0]` for `[z]`, `m.f y` `[42 42]` for `[y]`, silent; fn-value.tsv's L317/L318 passed by coincidence) and the Function-typed reference (`m.g z`, 7 interpreted) need the word's compiled call skipped, which the lowering cannot do, and no static model tells a `/q` slot from a typed slot's barrier — so a compile-time decline would be over-wide, and the deferral at the walk is precise. |
+| [NUR190](#nur190) | CONTAINED 2026-09-24 (NUR190's open halves deferred — the handoff log's entry of that date; the maintainer's call; the Function-typed half dissolved with NUR078, 2026-09-26 — `m.g z` is the named no-match on both lanes, `m.g z/v` is 7 on both): the `/q` capture and the Function-typed reference DEFER loudly at the landing's walk (`vm:landing-quote-claim`, `vm:landing-claim`) and the corpus keeps them on the runtime-defers ledger (runtime_defers.tsv: fn-value.tsv L317/L318). PARTLY FIXED 2026-09-23 (the landing's overload walk): a DYNAMIC fn value under a FUNCTION word is re-stepped by the interpreter over that word, and the compiled landing stood aside for any arg-taking overload (NUR175) while the residual apply took the word's RESULT — `m.f z` (h with a nullary and a unary overload, z a 0-arg fn) was 1 for `[42 0]`, `m.f typeof` Function for Integer, `m.l z` (an anonymous unary) 1 for `[fn lam(Integer) 0]`, `m.a z` (an Any-typed slot) a false `uncalled_function` for the strict barrier's stranded `signature_error`. The landing walks the run-time fn's overloads over the word with the interpreter's own plan (the word rides in the bytecode, `LandingWords`), and those four are closed. The `/q` capture (`m.q z` was `[42 0]` for `[z]`, `m.f y` `[42 42]` for `[y]`, silent; fn-value.tsv's L317/L318 passed by coincidence) and the Function-typed reference (`m.g z`, 7 interpreted) need the word's compiled call skipped, which the lowering cannot do, and no static model tells a `/q` slot from a typed slot's barrier — so a compile-time decline would be over-wide, and the deferral at the walk is precise. |
 | [NUR191](#nur191) | FIXED 2026-09-25 (the module fn's return contract — the handoff log's entry of that date): a named fn call through the CallBoru seam enforces the frame's return COUNT before the types (`CallBoruStrict` / `NamedFnReturnCount`, on execFnDefLiteral's cross-registry arm and buildFnBodyHandler's foreign-registry arm; the callback seams keep the count trimmed), and a user fn's single returned closure delivered as a handler result is PARKED where it lands as the frame's return is (execMatch, after the splice) — `M.d1 10` over `[(mk x) 3]` raises the frame's count error on both lanes and `3 M.d1 10` over a factory is `[3 fn (Integer)]` everywhere. NUR210 found on the way, recorded pending: a module fn returning a NAMED fn value, read through its reach group with a value beneath (`5 M.ff`), which the interpreter re-steps. The original text: A MODULE fn's body re-steps a parked closure over the token after it where a main-registry fn body parks it, and the compiled module fn parks: `import module [def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] def d1 (fn [[x:Integer][Integer][(mk x) 3]]) export "M" {d1: d1/v}] M.d1 10` is 13 interpreted (CallBoru's deferred residual sweep re-steps the parked closure over the 3) and `type_error: d1: expected 1 return value(s), got 2 — [fn (Integer) 3]` compiled — the answer the same body gives in the main registry on BOTH lanes (`def d1 (fn […]) d1 10`). A curried chain (`TestModuleFnStampedAtLoadAndRerouted`'s decliner) the same: 16 interpreted, the count error compiled. Recorded 2026-09-23, present on `main` (c268afb); an error-versus-value divergence, not silent. |
 | [NUR192](#nur192) | FIXED 2026-09-24 (the frame's closure bind — the handoff log's entry of that date), found the same day: a fn-body-LOCAL computed fn def read by a native's raw code body — `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def g fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3]` was `[[6 7 8]]` interpreted and `undefined_word: a5` compiled, `each [a5 add 1] xs` the same — because the frame's dynamic-scope bind installed nothing for a closure value (`installDef`'s carrier guard). The VM's bind pushes the closure as the top-level write-back does and the frame's trail pops it; the tail read compiles natively, the raw-body read islands to the pushed closure. Found on the way and DECLINED loudly: a fn body's computed fn def SHADOWING an enclosing frame's computed fn of the same name outlives the call in the interpreter (its install drops the overlapping outer closure at the same depth, so the def-cleanup pops nothing), which the compiled push-and-pop cannot model — `def a5 (mk 1) … g [1 2 3] each [a5] [1 2 3]` is `[[6 7 8] [6 7 8]]` interpreted, and was `[[2 3 4] [2 3 4]]` compiled on main. The `do [a5 7]` row moved to NUR193. |
 | [NUR193](#nur193) | FIXED 2026-09-24 (the do body's read — the handoff log's entry of that date), found the same day: a def-bound computed fn read inside a `do` body — `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def a5 (mk 5) end 7 do [a5]` was `[12]` compiled for the interpreter's `[7 error(cannot call `a5` …)]` (the check pass modelled the do's result as the fn carrier and the program residual applied it over the 7; the island stepped the def-bound compiled closure as anonymous DATA and parked it over the empty frame where the interpreter's fn definition raises), `do [a5 7]` a `CALL_DYNAMIC underflow`. A closure a compiled program binds by `def` is now bridged into the word dispatch under its name (core `lookupUncachedBridged`, `dispatchesAsWord`; the aggregate never cached) and `do`'s result model takes the computed-body hatch when the body leaves such a carrier. The written operand the contract does not take is NUR194. |
@@ -137,6 +137,8 @@ keep the two in sync in the same commit.
 | [NUR214](#nur214) | FIXED 2026-09-25 (the loop's fresh cell — the handoff log's entry of that date): a fresh name a loop body binds, in a loop not proven to run, is carried in the unit's cell with NO init (NoteLoopFresh) — each body def stores into it, its install a per-iteration dyn-scope bind — and the post-loop binding is a carrier aliased to the cell and read BOUND-CHECKED, so a zero-trip read raises `undefined_word` on both lanes and a loop that ran reads its last binding; a dynamic read of the name from a fn after a zero-trip loop is the interpreter's `undefined_word` too (NUR215, closed with it). The original text: A FRESH `def` inside a loop that may run ZERO times binds anyway on the compiled lane: `def n (0 add 0) end for n [def x 5] x` answers `5` compiled and raises `undefined_word` interpreted; `for n [def x (n add 5)] x` answers an empty stack compiled (the unset slot) for the same raise, and `while` and a fn body (`f 0`) do the same. NUR110's loop twin: NUR110 measured only a STATIC `for 0`, which the pass prunes, and closed the branch with a bound-checked slot the loop never got. | closing NUR205, 2026-09-25 |
 | [NUR215](#nur215) | FIXED 2026-09-25 (the conditionally bound name's miss — the handoff log's entry of that date): the Program names every bound-checked cell's name (CondBoundNames: an arm's def with no pre binding, NUR110; a fresh def in a loop that may run zero times, NUR214), so a fn's dynamic read of one that misses raises the interpreter's `undefined_word` at the read, as a speculative undef's name does. The original text: a fn that reads such a name DYNAMICALLY on the path that skipped its binding — `def c (1 gt 2) end if c [def k 5] [] def g fn [[][Any][k]] end g`, `def n (0 add 0) end for n [def x 5] def g fn [[][Any][x]] end g` — bailed compiled (`internal_error`: dynamic-scope read miss) where the interpreter raises `undefined_word`; loud on both lanes, the error's code non-uniform. | closing NUR214, 2026-09-25 |
 | [NUR216](#nur216) | FIXED 2026-09-25 (the quoted lead is data on every arm — the handoff log's entry of that date): no residual arm applies a value a `/v` marker quoted — the fn-typed carrier lead arm and the verbatim window islands now ask what the dynamic lead arm already asked (NUR213) — so a CLASS member's `c.op/v 5` is `fn (Integer) 5` on both lanes, and the window spellings `3 c.op/v 2` / `3 4 c.op/v` compile and agree; the map twins `3 m.f/v 2` / `3 4 m.f/v` decline at the existing residual limit ("call result above a literal") and answer by fallback. The original text: a `/v`-marked CLASS member read with arguments beside it was applied compiled and data interpreted — `def T fnsig Integer Integer def C class {op:T} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) c.op/v 5` answered `6` compiled for the interpreter's `fn (Integer) 5`, `3 c.op/v 2` `[3 3]` for `[3 fn (Integer) 2]`, `3 4 c.op/v` `[3 5]` for `[3 4 fn (Integer)]`, and NUR213's map member in the two window spellings the same way. Silent, pre-existing (measured with NUR096's change stashed) | closing NUR096, 2026-09-25 |
+| [NUR217](#nur217) | A member-read fn applied over a fn argument whose body reads a GRADUAL param bare: `def g fn [[f:Any] [Any] [f]] def m {g: g/v} m.g ([] => [42])` is 42 interpreted (the bare read of a frame binding holding a fn dispatches it — NUR123's rule) and `fn f` compiled — the unit the dynamic apply runs was compiled for an `Any` param and keeps the slot push NUR123 left a gradual read; `m.g (z/v)` the same (0 for `fn f`). Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR078, 2026-09-26 |
+| [NUR218](#nur218) | A `/v`-quoted MEMBER read is not the value its word twin is: inside a paren, as a def's value, or as a code body's result the quote rides on — `each (m.f/v) [1 2 3]` is `[fn fn fn]` interpreted and `[2 3 4]` compiled (`each (inc/v) [1 2 3]` is `[2 3 4]` on both), `fold (m.f/v) …`, `if true (m.f/v) [2]` and `(m.f/v 5)` the same way; `def g (m.f/v) end g 4` is 5 interpreted and `[fn 4]` compiled, `[1 2 3] each [m.f/v]` `[fn fn fn]` interpreted and `[2 3 4]` compiled. Silent both ways, pre-existing (measured on the committed head, 2026-09-26) | closing NUR078, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -172,7 +174,7 @@ keep the two in sync in the same commit.
 | [NUR065](#nur065) | Two spellings of the classifier role get different static guarantees: `classes:` is alphabet-closed and diagnosed, `classify:` is neither — VERDICT 2026-08-15: defer to the state-machine design line (its open question #7) | `design/STATE-MACHINES.0.md` §3.6 (flagged for NUR by the PR #352 review, Codex P1) |
 | [NUR074](#nur074) | `canon` renders a function's PARAMETER names, so alpha-equivalent functions render — and digest — differently; NUR031's planned fix (render the anonymous fn literal) does not reach this | `design/legacy/unison-hash-identity-probe.0.ignore` P4 (flagged for NUR by the PR #376 review, Codex P1) |
 | [NUR077](#nur077) | FIXED 2026-09-25 (the Apply op — the handoff log's entry of that date): `StackForm`'s op vocabulary can CALL a word by name but cannot APPLY a function value, so an inline lambda or a fn read out of a container has no faithful representation — `Call{Name, Arity}` re-invokes by name and does not consume a receiver. `Eval` now refuses those forms (`ErrUnnamedApply`) rather than replaying them to a different answer — VERDICT 2026-08-17: resolve by fix, a NEW dedicated Apply Op (arity-carrying, consumes the value, seamed at `execFnDefLiteral`; `DoEval` stays reserved), after the three prerequisite recorder/gate defects are fixed | the `OnCall` frame-skeleton over-count fix, 2026-08-16 |
-| [NUR078](#nur078) | A bare fn name before a `Function`-typed slot still resolves as a reference, against amended ADR-011 — the engine's TFunction intercept implements the exception the 2026-08-17 amendment struck (`h zero` ≡ `h zero/r` when the slot is `Function`-typed; a call/barrier before any other slot) — VERDICT 2026-08-17: resolve by fix, open-work item B (all four sites retire together, re-opening the NUR038 call-head question in the implementing PR) | the ADR-011 amendment, 2026-08-17 (flagged by the PR #381 review, Codex P1) |
+| [NUR078](#nur078) | FIXED 2026-09-26 (NUR078 closed — a bare fn name calls at every slot — the handoff log's entry of that date): A bare fn name before a `Function`-typed slot still resolves as a reference, against amended ADR-011 — the engine's TFunction intercept implements the exception the 2026-08-17 amendment struck (`h zero` ≡ `h zero/r` when the slot is `Function`-typed; a call/barrier before any other slot) — VERDICT 2026-08-17: resolve by fix, open-work item B (all four sites retire together, re-opening the NUR038 call-head question in the implementing PR) | the ADR-011 amendment, 2026-08-17 (flagged by the PR #381 review, Codex P1) |
 | [NUR079](#nur079) | FIXED 2026-09-26 (NUR079 closed — one policy for a program and its modules — the handoff log's entry of that date): Gated words inside an imported file-module body escape the policy that governs the same call at top level — the module sub-registry inherited every capability seam except policy, so gates resolving `HostPolicy(r)` read nil as allow — VERDICT: resolve by fix in two halves; half (i) landed 2026-08-18 (the body now carries the parent's policy), half (ii) open | the Roc comparison study, 2026-08-18 |
 | [NUR080](#nur080) | FIXED — verified 2026-09-25 (the brand in both orders — the handoff log's entry of that date): A typed def over an Integer literal loses its newtype brand under the compiler, and the bare literal gains one — VERDICT: resolve by fix | the Roc comparison study, 2026-08-18 |
 | [NUR081](#nur081) | FIXED 2026-09-25 (one contract for the family — the handoff log's entry of that date): `Test.skip` is documented as a drop-in for `Test.check-prop`, but the two disagree on argument validity: `check-prop` now rejects `runs < 1` / `max-shrinks < 0` while `skip` accepts them silently | the Quint follow-up Wave 1, 2026-08-18 |
@@ -5462,11 +5464,45 @@ wrongness.
 
 ## NUR078 — A bare fn name before a `Function`-typed slot still resolves as a reference, against amended ADR-011 {#nur078}
 
-**Status:** Pending · **Recorded:** 2026-08-17 · **Surfaced by:** the
+**Status:** FIXED 2026-09-26 · **Recorded:** 2026-08-17 · **Surfaced by:** the
 2026-08-17 ADR-011 amendment (clause 2 of the 2026-08-16 `/r` ruling);
 flagged for this register by the PR #381 review (Codex P1)
 
-**Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
+**The fix (open-work item B, 2026-09-26).** All four sites retired
+together. `stepWord`'s TFunction intercept (A) and
+`hasPendingForwardExpectingFunction` (B) are deleted, so a bare name bound to
+a fn goes through the word dispatch at every slot; the plan's word arm claims
+a fn binding BY VALUE only when the name is written `/v` — a `Function`-typed
+slot included — and treats the check pass's stand-ins the same way (a
+fn-typed carrier, and a dynamic binding at a Function-typed slot, which fills
+it only by holding a fn), so the compiled lane cannot collect by value what
+the interpreter calls. `sigWantsFunctionAt` (C) and the ReachGroup arrival's
+`ConformsTo(TFunction)` exemption (D) are deleted, which re-opened the NUR038
+call-head question as the verdict said: it is answered by the one rule that
+was already there — a reach-read fn that WOULD CLAIM the next token is a call
+head, a claim-less one an operand, whatever the collecting slot's type — so
+`each M.inc [1 2 3]` still passes the reference (`inc` cannot claim a list)
+while `filter M.big [1 2 3]` calls. The `/v` spelling had to work everywhere
+the bare one used to: a reach's `/v` marker is consumed by the forward scan
+(it is never an argument — `mini M.dbl/v 'ab'` counted it as mini's String),
+the reference is DELIVERED unquoted as `inc/v` is (a quoted delivery was a
+value the interpreter's token seam stepped as data while the compiled lane
+applied it: `[1 2 3] each M.inc/v`, `if true m.f/v [2]`), the modifier sugar
+wraps a reach in a paren so `m.a/u` modifies the value, `mini` / `emit` /
+`parse` apply a transducer however it was quoted, and a `/v` word after a
+landed value is a collected value, not a function word (`m.g z/v` is 7 on
+both lanes; it raised a false `uncalled_function` compiled). The
+`unused_def` use-recording lives on the `/v` read (ResolveRef), where the
+explicit spelling already recorded it. Every `h zero` call site in the tree
+became `h zero/v`: `path-modifier.tsv:67` is rewritten to the call it now is
+(`ERROR:cannot call `wa``), the sweep's four module-export seeds, and the spec
+and unit rows that passed a callback bare. NUR190's Function-typed half
+dissolves with it (`m.g z` is the named no-match on both lanes; the VM
+landing's `vm:landing-claim` arm is gone). Pinned: lang
+`TestNUR078BareFnNameCalls`, `TestFunctionSlotArgIsNotUnused`,
+`TestNamedFnCandidatesOpenShapes`, `TestWordReadDispatchParity` /
+`…FailsToCompile`; eng `TestReStepLandingWalk`; core
+`TestS7PendingForward*` retired with site B.
 
 **Rule:** ADR-011 as amended — a bare name bound to a function CALLS,
 universally; passing a function as an argument requires `/r`. The former
@@ -8391,6 +8427,64 @@ loop inside and around a fn frame, a callback raising inside the loop, a
 range loop's own iterator name, the `error` handler, the while twin; and
 control.tsv §3's row.
 
+## NUR218 — a `/v`-quoted member read is not the value its word twin is {#nur218}
+
+**Status:** Pending · **Recorded:** 2026-09-26 · **Surfaced by:** closing
+NUR078, probing the `/v` spelling a member read now needs at every slot.
+
+**Rule:** `/v` yields the binding's VALUE, whatever reads it (ADR-011 as
+renamed 2026-08-19): a member read `m.f/v` is the same value as `inc/v`
+when `m.f` holds `inc`, and ends up wherever the word twin's value ends up.
+
+**Divergence** (measured on the committed head, `def inc fn [[n:Integer]
+[Integer] [n add 1]] def m {f: inc/v}`, `s2` a two-param adder, `one` a
+0-arg fn under the same member):
+
+```
+each (m.f/v) [1 2 3]      interp: [fn fn fn]   compiled: [2 3 4]   word twin: [2 3 4] both
+fold (m.f/v) [1 2 3] 0    interp: fn s2        compiled: 6         word twin: 6 both
+if true (m.f/v) [2]       interp: fn one       compiled: 1         word twin: 1 both
+(m.f/v 5)                 interp: fn 5         compiled: 6         word twin: 6 both
+def g (m.f/v) end g 4     interp: 5            compiled: fn 4      word twin: 5 both
+[1 2 3] each [m.f/v]      interp: [fn fn fn]   compiled: [2 3 4]   word twin: [fn fn fn] both
+```
+
+The interpreter's value is QUOTED where the word twin's is not:
+execFnDefLiteral's peek consumes the marker and quotes the member value at
+the pointer, where `stepWordVal` delivers `inc/v` unquoted and steps past
+it, so the quote rides into a paren's survivor, a callback slot (the token
+seam steps a quoted fn as data) and a code body's result. The compiled lane
+models neither spelling's value consistently — it applies the member value
+where the interpreter's quote keeps it data, and reads a def of the quoted
+carrier as data where the run binds (and a bare read of the binding calls).
+Silent both ways. NUR078 fixed the forward-collected spelling (`each
+M.inc/v [1 2 3]`, `[1 2 3] each m.f/v`, `if true m.f/v [2]` — CollectArrival
+delivers the reference unquoted); the paren, def and body spellings are this
+record.
+
+## NUR217 — a member-read fn applied over a fn argument reads its gradual param as a slot {#nur217}
+
+**Status:** Pending · **Recorded:** 2026-09-26 · **Surfaced by:** closing
+NUR078 (`m.g z/v` stopped raising and reached the apply).
+
+**Rule:** NUR123 — a bare read of a frame binding that holds a fn is a WORD
+dispatch on the interpreter, whatever the param's declared type.
+
+**Divergence** (measured on the committed head):
+
+```
+def g fn [[f:Any] [Any] [f]] end def m {g: g/v} end m.g ([] => [42])            interp: 42   compiled: fn f
+def g fn [[f:Any] [Any] [f]] end def z fn [[] [Integer] [0]] end
+def m {g: g/v} end m.g (z/v)                                                   interp: 0    compiled: fn f
+```
+
+`g z/v` (the direct call) is 0 on both lanes: the pass re-runs the body
+under the argument's RUNTIME type (a Function carrier), so NUR123's replay
+seats the read. The member read's apply is DYNAMIC — the unit runs over
+whatever the value receives, compiled for the declared `Any` param, whose
+bare read keeps the slot push NUR123 left a gradual read ("a gradual one
+keeps the slot push it always had"). Silent, pre-existing.
+
 ## NUR216 — a `/v`-marked class member read with arguments beside it is applied compiled, data interpreted {#nur216}
 
 **Status:** FIXED 2026-09-25 (the quoted lead is data on every arm — the
@@ -9493,7 +9587,11 @@ main-registry twins; edge-modules-2.tsv §12 carries the rows.
 handoff log's entry of that date), the maintainer's call: the `/q`
 capture and the Function-typed reference DEFER loudly at the landing's
 walk and the corpus keeps them on the runtime-defers ledger
-(runtime_defers.tsv). PARTLY FIXED 2026-09-23 (the landing's overload
+(runtime_defers.tsv). The Function-typed half is GONE with NUR078
+(2026-09-26): a bare `z` calls at every slot, so `m.g z` is the named
+no-match on both lanes, and the reference `m.g z/v` is a collected value
+the residual arms apply (7 on both lanes); the landing's `vm:landing-claim`
+arm was retired as unreachable. The `/q` capture stays contained. PARTLY FIXED 2026-09-23 (the landing's overload
 walk — the handoff log's entry of that date). RECORDED and pinned
 pending earlier the same day (the named fn value's candidates), found
 when that increment's word-after rule turned fn-value.tsv's L317/L318

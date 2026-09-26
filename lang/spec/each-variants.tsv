@@ -81,8 +81,8 @@ def n 3 end each ([x:Integer] => [x mul n]) [1 2]	[3 6]	the capture rides the cl
 def k 5 end def addk x:Integer => [x add k] end each addk/v [1 2]	[6 7]	a def-bound closure reached through /v
 def cfg {scale:3} end each ([x:Integer] => [x mul (cfg.scale)]) [1 2]	[3 6]	the capture is a MAP FIELD read
 def cfg {scale:3} end each [mul (cfg.scale)] [1 2]	[3 6]	…and a code body captures it just as well
-def n 2 end def f ([x:Integer] => [x mul n]) end each f [1 2]	[2 4]	captured before any shadow
-def n 2 end def f ([x:Integer] => [x mul n]) end def n 10 end each f [1 2]	[10 20]	a later shadow push changes what the SAME closure computes
+def n 2 end def f ([x:Integer] => [x mul n]) end each f/v [1 2]	[2 4]	captured before any shadow
+def n 2 end def f ([x:Integer] => [x mul n]) end def n 10 end each f/v [1 2]	[10 20]	a later shadow push changes what the SAME closure computes
 def xs [1 2 3] end each ([x:Integer] => [0 fold [add] xs add x]) xs	[7 8 9]	the callback captures the very list being walked
 #
 # §8  NESTED each
@@ -195,7 +195,7 @@ def m {f: (fn [[x:Integer][Integer][x mul 3]])} end each (m.f) [1 2]	[3 6]	…th
 def handler ([x:Integer] => [x add 1]) end def hs {h: handler/v} end each (hs.h) [1 2]	[2 3]	…and with the lambda bound first, then stored [DOES NOT COMPILE: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
 def tbl {d:([a:Integer] => [mul 2 a])} end def k 'd' end each (tbl get k) [1 2]	[2 4]	callback chosen by a DYNAMIC KEY [DOES NOT COMPILE: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
 def apply-all fn [[f:Function xs:List][List][each f/v xs]] end apply-all ([x:Integer] => [x mul 2]) [1 2 3]	[2 4 6]	the callback arrives as a fn PARAMETER [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
-def apply-all fn [[f:Function xs:List][List][each f xs]] end apply-all ([x:Integer] => [x mul 2]) [1 2 3]	[2 4 6]	…same, spelled without /v [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
+def f ([x:Integer] => [x mul 2]) end each f [1 2 3]	ERROR:cannot call `each`	…spelled without /v the bare name CALLS (NUR078: a bare name bound to a function calls whatever slot is open), so `each` gets no callback — the reference is f/v, the rows above
 def mk fn [[n:Integer][Function][([x:Integer] => [x mul n])]] end each (mk 3) [1 2]	[3 6]	a callback built by a FACTORY fn [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
 def make-scaler fn [[k:Integer][Function][([x:Integer] => [x mul k])]] end each (make-scaler 5) [1 2]	[5 10]	…the scaler-factory spelling [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
 def dispatch fn [[name:String][Function][if (name eq 'dbl') [([x:Integer] => [x mul 2])] [([x:Integer] => [x add 1])]]] end each (dispatch 'dbl') [1 2]	[2 4]	a callback selected by a BRANCH inside a factory [DOES NOT COMPILE: function-valued operand at each (Stage 3)]

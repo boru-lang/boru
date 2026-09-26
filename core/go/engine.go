@@ -2060,8 +2060,8 @@ func (e *Engine) DefTop(name string) (Value, bool) {
 
 func (e *Engine) IsFnWordBarrier(tok Value) bool { return e.fnWordBarrierAt(tok) }
 
-func (e *Engine) IsReachCallHead(tok Value, viable []ViableSig, pos, i int) bool {
-	return e.reachCallHeadBarrier(tok, viable, pos, i)
+func (e *Engine) IsReachCallHead(tok Value, i int) bool {
+	return e.reachCallHeadBarrier(tok, i)
 }
 
 func (e *Engine) LookupWord(name string) *FnDefInfo { return e.Registry.Lookup(name) }
@@ -2568,14 +2568,13 @@ func (e *Engine) deliverValRead(v, val Value) error {
 // one (an `x:Any` param, a Dynamic value) whose static type admits a fn. The
 // runtime rule this mirrors is stepWord's own: a bound FnDefInfo is not
 // substituted, it "goes through normal Lookup" — a word dispatch under the
-// binding name — EXCEPT when a pending forward expects a Function, where
-// the value is delivered as data (the branch above the binding cases). A
-// concrete or non-fn-admitting carrier is a plain value substitution on
-// both engines and notes nothing.
+// binding name, whatever slot a pending forward has open (NUR078: no slot
+// type turns a bare name into a reference). A concrete or non-fn-admitting
+// carrier is a plain value substitution on both engines and notes nothing.
 // pos is the READ's position (the word token's), which is where the
 // interpreter anchors the dispatch's errors (`cannot call `g“).
 func (e *Engine) noteWordRead(v Value, name string, pos SrcPos) {
-	if v.Quoted || e.hasPendingForwardExpectingFunction() {
+	if v.Quoted {
 		return
 	}
 	if IsFnTypedCarrier(v) || (v.Dynamic && SigTypeMatches(v, TFunction)) {
@@ -2663,30 +2662,12 @@ func (e *Engine) stepWord(val Value) error {
 		return e.stepLiteral()
 	}
 
-	// If a pending forward expects TFunction, resolve this word to a
-	// function reference value rather than executing it. The word must
-	// have an FnDefInfo entry in DefStacks.
-	if e.hasPendingForwardExpectingFunction() {
-		// Wrap the aggregate dispatch view so the reference carries every
-		// overload of the name (across stacked defs), not just the topmost
-		// entry's own sigs.
-		if fnDef := e.Registry.Lookup(w.Name); fnDef != nil {
-			// Resolving a name INTO a Function slot is a use of that def, for
-			// the same reason ResolveRef records one (core_ref.go:31-35): the
-			// name is consumed as a value rather than called, so nothing else
-			// on this path marks it. Without the note, `boru check` reports
-			// `unused_def` for every fn handed bare to a callback API — the
-			// canonical `Sort.quick mycmp xs` idiom — which is a false positive
-			// on the single most common way a library takes a function.
-			//
-			// Noted only on a SUCCESSFUL Lookup, so a genuinely unused def
-			// still warns: the fall-through below is a non-fn word.
-			e.Registry.noteAnalysisUse(w.Name)
-			e.Tape.Set(e.Pointer, NewFunction(*fnDef))
-			return e.stepLiteral()
-		}
-		// Not a def fn — fall through to normal execution.
-	}
+	// There is NO reference intercept for a Function-typed slot (NUR078,
+	// ADR-011 as amended 2026-08-17 and re-affirmed 2026-08-26): a bare name
+	// bound to a function CALLS, whatever slot a pending forward has open —
+	// the slot type never decides what a token means. Passing a function as
+	// an argument is explicit: `h zero/v` (stepWordVal above, which records
+	// the def's use as ResolveRef does).
 
 	// Named user-defined types take priority over DefStacks: type
 	// bindings stack independently from def bindings, and a shadow-
@@ -7224,37 +7205,24 @@ func (e *Engine) expandScanSugar(tok Value, pos, scanIdx int, viable []ViableSig
 // (`usurp (m dot a)` — the higher-order consumer wants the fn itself;
 // Any slots stay barred: Any also admits a fn value, but as a swallowed
 // call head, which is the misfire the barrier exists for).
-func (e *Engine) reachCallHeadBarrier(tok Value, viable []ViableSig, pos, scanIdx int) bool {
-	return ReachCallHeadBarrierOn(e.Tape, e.Registry, tok, viable, pos, scanIdx)
+func (e *Engine) reachCallHeadBarrier(tok Value, scanIdx int) bool {
+	return ReachCallHeadBarrierOn(e.Tape, e.Registry, tok, scanIdx)
 }
 
 // ReachCallHeadBarrierOn is the fn-word barrier's VALUE twin (NUR038) over an
 // explicit window and registry, so the interpreter and the VM's region
 // adapter share one answer rather than two that agree until they do not.
-func ReachCallHeadBarrierOn(win CollectWindow, reg *Registry, tok Value, viable []ViableSig, pos, scanIdx int) bool {
+//
+// No slot type exempts the value (NUR078): a Function-typed slot used to
+// admit a reach-collapsed fn as its own operand (the retired
+// sigWantsFunctionAt), which let a dot read spell a reference where a bare
+// word calls. A dot read of a function is a call wherever it is written;
+// the reference is `m.f/v`.
+func ReachCallHeadBarrierOn(win CollectWindow, reg *Registry, tok Value, scanIdx int) bool {
 	if !tok.ReachGroup || tok.Quoted || !isFnDefValue(tok) {
 		return false
 	}
-	for _, vs := range viable {
-		if pos < vs.Barrier && sigWantsFunctionAt(vs.Sig, pos) {
-			return false // the fn is this overload's own Function operand
-		}
-	}
 	return ReachFnWouldClaimOn(win, reg, tok, scanIdx+1)
-}
-
-// sigWantsFunctionAt reports whether sig position pos declares a
-// Function-conforming operand slot — a slot for which a reach-collapsed
-// fn value is DATA (a higher-order word's Function param), exempt from
-// the NUR038 call-head barrier. An Any slot is NOT a Function slot: Any
-// also admits a fn value, but as a swallowed call head, which is exactly
-// the misfire the barrier exists for.
-func sigWantsFunctionAt(sig *Signature, pos int) bool {
-	if pos >= sig.TotalArgs() {
-		return false
-	}
-	st := SigArgType(sig, pos)
-	return st != nil && st.ConformsTo(TFunction)
 }
 
 // Probe classifications returned by forwardClaimProbe.
@@ -9477,26 +9445,6 @@ func (e *Engine) hasPendingForwardFormArg() bool {
 			nextIdx := fwd.CollectedArgs
 			if nextIdx < fwd.Sig.TotalArgs() {
 				return fwd.Sig.FormArgs != nil && fwd.Sig.FormArgs[nextIdx]
-			}
-			break
-		}
-	}
-	return false
-}
-
-// hasPendingForwardExpectingFunction checks if there is a pending forward
-// whose next expected argument is TFunction.
-func (e *Engine) hasPendingForwardExpectingFunction() bool {
-	for i := e.Pointer - 1; i >= 0; i-- {
-		if IsOpenParen(e.Tape.At(i)) {
-			break
-		}
-		if IsForward(e.Tape.At(i)) {
-			fwd, _ := AsForward(e.Tape.At(i))
-			// Forward args fill from sigArgs[0].
-			nextIdx := fwd.CollectedArgs
-			if nextIdx < fwd.Sig.TotalArgs() {
-				return SigArgType(fwd.Sig, nextIdx).Equal(TFunction)
 			}
 			break
 		}

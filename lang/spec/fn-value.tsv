@@ -252,7 +252,7 @@ def flitp fn [[1] [1] [dup drop]] end 99	99	a literal PARAM pattern widens to it
 #     changes how a function behaves). The compiled lane re-steps the read as
 #     the WORD (CompiledFn.DynFrameWords) — graduated 2026-09-05 from
 #     frontier-fnparam-deref.tsv.
-def nought fn [[] [Integer] [7]] def grab fn [[f:Function] [Any] [f]] typeof (grab nought)	Integer	arity-0 Function param read bare: the bare name is a call, so it APPLIES (7 -> Integer) on both lanes
+def nought fn [[] [Integer] [7]] def grab fn [[f:Function] [Any] [f]] typeof (grab nought/v)	Integer	arity-0 Function param read bare: the bare name is a call, so it APPLIES (7 -> Integer) on both lanes
 def dbl fn [[n:Integer] [Integer] [n mul 2]] def hold fn [[c:Function] [Any] [c]] typeof (hold dbl)	ERROR:no signature matches	arity-1 Function param read bare with no argument: the call RAISES on both lanes
 # §8  a member read the pass knows only by its CONTAINER'S TYPE still
 #     dispatches (NUR173). `m.f` lowers to the reach group `( m dot f )`,

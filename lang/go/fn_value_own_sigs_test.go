@@ -6,9 +6,9 @@ import (
 )
 
 // TestMiniLanguageValueIsTheFn pins NUR163's close. A fn value is the same
-// fn however it is reached: through the module member in place (`M.dbl`),
-// through a paren (`(M.dbl)`), through `/v`, or through a local def of the
-// member. The mini / emit / parse contracts read the value's OWN signatures
+// fn however it is reached: through the module member in place (`M.dbl/v` —
+// a bare member read that would claim the next token CALLS, NUR078), through
+// a paren (`(M.dbl)`), through `/v`, or through a local def of the member. The mini / emit / parse contracts read the value's OWN signatures
 // now (FnDefInfo.OwnSigs): a value read through `/v` or a member carries the
 // dispatch aggregate, whose synthesized 0-arg fallback signature is not a
 // declaration — it failed every aggregate-bearing spelling on the prefix
@@ -18,26 +18,26 @@ func TestMiniLanguageValueIsTheFn(t *testing.T) {
 	const modE = `import "boru:emitlang" import module [ def up fn [[value:Any opts:Map] [String] ['UP']] export "M" {up: up/v} ] end `
 	const modP = `import "boru:parselang" import module [ def p fn [[source:String opts:Map] [Any] [source]] export "M" {p: p/v} ] end `
 	for _, src := range []string{
-		modM + "mini M.dbl 'ab'",
+		modM + "mini M.dbl/v 'ab'",
 		modM + "mini (M.dbl) 'ab'",
 		modM + "def g M.dbl/v end mini g 'ab'",
 		`import "boru:minilang" def dbl fn [[src:String opts:Map] [String] [src add src]] end mini (dbl/v) 'ab'`,
 		`import "boru:minilang" def dbl fn [[src:String opts:Map] [String] [src add src]] end mini dbl 'ab'`,
 		`import "boru:minilang" def f3 fn [[src:String opts:Map subject:Any] [Any] [subject]] end 'zz' mini (f3/v) 'ab'`,
-		modE + "emit M.up {a:1}",
+		modE + "emit M.up/v {a:1}",
 		modE + "emit (M.up) {a:1}",
 		modE + "def g (M.up) end emit g {a:1}",
-		modP + "parse M.p 'xy'",
+		modP + "parse M.p/v 'xy'",
 		`import "boru:parselang" def p fn [[source:String opts:Map] [Any] [source]] end parse (p/v) 'xy'`,
 	} {
 		requireSameVerdict(t, src)
 	}
 	for _, c := range []struct{ src, want string }{
-		{modM + "mini M.dbl 'ab'", "[abab]"},
+		{modM + "mini M.dbl/v 'ab'", "[abab]"},
 		{modM + "mini (M.dbl) 'ab'", "[abab]"},
 		{`import "boru:minilang" def dbl fn [[src:String opts:Map] [String] [src add src]] end mini (dbl/v) 'ab'`, "[abab]"},
-		{modE + "emit M.up {a:1}", "[UP]"},
-		{modP + "parse M.p 'xy'", "[xy]"},
+		{modE + "emit M.up/v {a:1}", "[UP]"},
+		{modP + "parse M.p/v 'xy'", "[xy]"},
 	} {
 		got, err := mustNew(t).RunInterp(c.src)
 		if err != nil || fmt.Sprint(got) != c.want {

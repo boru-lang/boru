@@ -124,7 +124,7 @@ type CollectHost interface {
 	// IsReachCallHead reports whether a reach-collapsed named fn at i is a
 	// CALL head rather than an operand — the fn-word barrier's value twin
 	// (NUR038).
-	IsReachCallHead(tok Value, viable []ViableSig, pos, i int) bool
+	IsReachCallHead(tok Value, i int) bool
 	// StaticForwardType classifies a token by what it presents to signature
 	// matching WITHOUT evaluation.
 	StaticForwardType(tok Value) (Value, FwdKind)
@@ -326,12 +326,26 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 			// A tagged reach-collapsed named fn that WOULD CLAIM its
 			// next token is a CALL head — the group resolved a callee,
 			// not an operand: stop the scan (the fn-word barrier's
-			// value twin, NUR038). A claim-less one is an operand, and
-			// so is one filling a FUNCTION slot of the collecting word
-			// (`usurp (m dot a)` — the higher-order consumer wants the
-			// fn itself; Any slots stay barred).
+			// value twin, NUR038). A claim-less one is an operand; a
+			// FUNCTION slot of the collecting word no longer exempts
+			// one (NUR078 — the reference is spelled `m.f/v`).
 			res := win.At(scanIdx)
-			if h.IsReachCallHead(res, viable, pos, scanIdx) {
+			// A `/v` / `/q` marker right after the group qualifies the
+			// group's VALUE — the parser emits `m.f/v` as the reach then
+			// the marker — and is never an argument of its own: apply it
+			// here, as the arrival gate and execFnDefLiteral's peek do, so
+			// the next position scans the token after it. A dot read of a
+			// function is passed exactly that way now that no slot type
+			// takes one as a reference (NUR078: `mini M.dbl/v 'ab'`
+			// counted the marker as mini's String argument).
+			if scanIdx+1 < win.Len() {
+				if _, marked := AsDispatchMod(win.At(scanIdx + 1)); marked {
+					win.Remove(scanIdx + 1)
+					res.Quoted = true
+					win.Set(scanIdx, res)
+				}
+			}
+			if h.IsReachCallHead(res, scanIdx) {
 				break
 			}
 			pruneResolvedPatterns(pos, res)
@@ -478,9 +492,9 @@ func CollectForward(h CollectHost, fn *FnDefInfo, w WordInfo, start int) error {
 		// A tagged reach-collapsed named fn already in the window (a
 		// re-plan after the arrival gate closed a statement) that WOULD
 		// CLAIM its next token is a CALL head — the fn-word barrier's
-		// value twin (NUR038): stop. A claim-less one is an operand, and
-		// so is one filling a FUNCTION slot of the collecting word.
-		if h.IsReachCallHead(tok, viable, pos, scanIdx) {
+		// value twin (NUR038): stop. A claim-less one is an operand; no
+		// slot type exempts one (NUR078).
+		if h.IsReachCallHead(tok, scanIdx) {
 			break
 		}
 
@@ -624,7 +638,26 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 				}
 				gradualAny := checkActive && !compiling &&
 					top.Parent != nil && top.Parent.Equal(TAny)
-				if SigArgMatches(sig, fwd, top) || expectedType.Equal(TAny) || gradualAny {
+				// A BARE name bound to a function CALLS (NUR078, ADR-011
+				// as amended): it never arrives as its own value, so its
+				// binding claims a slot BY VALUE only when the name is
+				// written `/v` — the reference it then denotes. Bare, it
+				// is admitted only speculatively at an Any slot (below);
+				// at any other slot, a Function-typed one included, it is
+				// the function-word boundary further down.
+				//
+				// Under the check pass the binding may be a CARRIER of a
+				// function — a `g:Function` param, a factory's declared
+				// `[Function]` return — where the interpreter holds the
+				// FnDefInfo that dispatches; and a DYNAMIC binding fills a
+				// Function-typed slot only by holding a function, i.e. only
+				// when it dispatches. Both are the fn binding here, or the
+				// compiled lane collects by value what the interpreter calls.
+				_, isFnPayload := top.Data.(FnDefInfo)
+				isFnBinding := isFnPayload || IsFnTypedCarrier(top) ||
+					(top.Dynamic && (expectedType.ConformsTo(TFunction) || TypeIsFnShape(expectedType)))
+				byValue := SigArgMatches(sig, fwd, top) && (!isFnBinding || ww.ForceVal)
+				if byValue || expectedType.Equal(TAny) || gradualAny {
 					// A dispatching binding (FnDefInfo) planned as an
 					// operand is SPECULATIVE: at runtime this token
 					// dispatches rather than arriving as a value
@@ -632,12 +665,9 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 					// that — fn runs and its result completes def).
 					// Record the first such slot so the parked
 					// ForwardInfo carries the plan's stop condition.
-					// A slot that specifically expects a Function
-					// gets the word as a resolved REFERENCE at
-					// collection time (stepWord's TFunction
-					// intercept) — consistent, not speculative.
-					if _, isFn := top.Data.(FnDefInfo); isFn &&
-						specAt == -1 && !expectedType.Equal(TFunction) {
+					// A `/v` reference at a Function-typed slot arrives
+					// as the value — consistent, not speculative.
+					if isFnPayload && specAt == -1 && !expectedType.Equal(TFunction) {
 						specAt = fwd
 					}
 					positions[fwd] = scanIdx
@@ -723,7 +753,6 @@ func CollectCandidateScan(h CollectHost, sig *Signature, forwardLimit int, posit
 		// operand (a branch arm, a reference) and scans on, as
 		// does one filling this sig's own Function slot.
 		if tok.ReachGroup && !tok.Quoted && isFnDefValue(tok) &&
-			!sigWantsFunctionAt(sig, fwd) &&
 			h.ReachFnWouldClaim(tok, scanIdx+1) {
 			break
 		}
@@ -870,32 +899,47 @@ func CollectArrival(h CollectHost, fwd ForwardInfo, valIdx int) ArrivalVerdict {
 	// the open window swallows the next statement whole. The call-vs-data
 	// decision mirrors execFnDefLiteral's own: a reach-read fn with NOTHING
 	// to claim stays data (`typeof IO.stdin`, `def sqrt MathUtil.sqrt` — the
-	// pinned reference idioms). A slot that SPECIFICALLY expects a Function
-	// always admits (the designed reference intercept, e.g. `each`);
-	// explicit data intent spells `/v` — either already Quoted, or the
+	// pinned reference idioms). No slot type admits it regardless — a
+	// Function-typed slot used to (NUR078 retired that, with the bare-word
+	// intercept it mirrored); explicit data intent spells `/v` — either
+	// already Quoted, or the
 	// group's trailing Word/__DM marker consumed here exactly as
 	// execFnDefLiteral's peek does (`def g M.w/v`: the fn arrives
 	// mid-collection before that peek can run); user-written reference
 	// expressions ((inc/v), (usurp sub2)) carry no tag.
-	if matches && val.ReachGroup && !val.Quoted &&
-		!SigArgType(fwd.Sig, nextIdx).ConformsTo(TFunction) {
+	if matches && val.ReachGroup && !val.Quoted {
 		marked := false
 		if valIdx+1 < win.Len() {
 			if _, ok := AsDispatchMod(win.At(valIdx + 1)); ok {
 				win.Remove(valIdx + 1)
-				val.Quoted = true
-				win.Set(valIdx, val)
 				marked = true
 			}
 		}
 		switch {
 		case marked:
-			// `/v` data intent — collected as the reference.
+			// `/v` data intent — collected as the reference, delivered
+			// below as a `/v` word read delivers it.
+			val.Quoted = true
 		case fnValueHasZeroArgSig(val):
 			return ArrivalDispatchFn
 		case h.ReachFnWouldClaim(val, valIdx+1):
 			return ArrivalBarrierClose
 		}
+	}
+	// A reach-collapsed fn its `/v` marker QUOTED — here, in the forward
+	// scan's pre-evaluation, or at the peek that pushed it as data — is
+	// COLLECTED as the reference, and a reference is delivered UNQUOTED
+	// and untagged, exactly as stepWordVal delivers `inc/v`: the quote is
+	// the marker's word to the POINTER (do not dispatch this here), not to
+	// the word the value fills. Delivered quoted, the word it filled held a
+	// value the interpreter's token seam steps as DATA while the compiled
+	// lane applies it — `[1 2 3] each M.inc/v` was `[fn fn fn]` against
+	// `[2 3 4]`, `each (m.f/v) [1 2 3]` and `if true m.f/v [2]` the same
+	// (NUR078's `/v` spelling).
+	if matches && val.ReachGroup && val.Quoted && isFnDefValue(val) {
+		val.Quoted = false
+		val.ReachGroup = false
+		win.Set(valIdx, val)
 	}
 	if !matches {
 		return ArrivalImplicitEnd

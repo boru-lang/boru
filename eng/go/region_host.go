@@ -198,8 +198,8 @@ func (h *regionHost) IsFnWordBarrier(tok core.Value) bool {
 	return core.FnWordBarrierOn(h.reg, tok)
 }
 
-func (h *regionHost) IsReachCallHead(tok core.Value, viable []core.ViableSig, pos, i int) bool {
-	return core.ReachCallHeadBarrierOn(h.win, h.reg, tok, viable, pos, i)
+func (h *regionHost) IsReachCallHead(tok core.Value, i int) bool {
+	return core.ReachCallHeadBarrierOn(h.win, h.reg, tok, i)
 }
 
 func (h *regionHost) StaticForwardType(tok core.Value) (core.Value, core.FwdKind) {

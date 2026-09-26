@@ -88,19 +88,34 @@ var pinnedAritySites = map[string]int{
 	// collecting (`fwd.CollectedArgs < fwd.Sig.TotalArgs()`, the same test
 	// hasPendingForwardCollecting makes). Both decide where a value's
 	// arguments COME FROM, never what a fn may do by its count.
-	"core/go/engine.go":       29,
+	// 29 -> 27 (2026-09-26, NUR078 closed): the retired clause-2 sites took
+	// their two reads with them — sigWantsFunctionAt's bounds check on the
+	// slot it asked about (`pos >= sig.TotalArgs()`) and
+	// hasPendingForwardExpectingFunction's still-collecting test
+	// (`nextIdx < fwd.Sig.TotalArgs()`). No site was added: a bare fn name
+	// now calls at every slot, so nothing asks which slot is open.
+	"core/go/engine.go":       27,
 	"core/go/region_diag.go":  1,
 	"core/go/collect_plan.go": 5,
 	"core/go/signature.go":    12,
 	"core/go/match.go":        1,
 	"core/go/fnsig.go":        3,
 	"core/go/word_extend.go":  6,
-	"core/go/core_helpers.go": 4,
+	// 4 -> 2 (2026-09-25, NUR099 closed): PredicateInputType lost the
+	// parameter-COUNT route (`!info.Predicate && len(sig.Params) != 1`) —
+	// ADR-016's arity-keyed exception, a fn body read as a membership test
+	// because it took one parameter — and its first-signature guard now
+	// reads the declared predicate's params once. Only `fnpred` declares a
+	// predicate; what remains guards the declared signature's first slot.
+	"core/go/core_helpers.go": 2,
 	"core/go/core_ref.go":     3,
-	"core/go/unify.go":        3,
-	"core/go/deadsig.go":      1,
-	"core/go/canon.go":        1,
-	"core/go/value.go":        1,
+	// 3 -> 2 (2026-09-25, NUR099 closed): isPredicateFnValue — "looks like
+	// a predicate because it takes one parameter", the deprecated route —
+	// is deleted; IsDeclaredPredicateFn reads the `fnpred` mark instead.
+	"core/go/unify.go":   2,
+	"core/go/deadsig.go": 1,
+	"core/go/canon.go":   1,
+	"core/go/value.go":   1,
 	// NoteFnShape rejects a NEGATIVE claim (`FnShape.Arity < 0`) — a shape a
 	// producing word could not build (`partial` over a 0-param fn raises) —
 	// a validity guard on the claim itself, not a decision keyed on a
@@ -119,7 +134,14 @@ var pinnedAritySites = map[string]int{
 	// never what a function of a given arity may do: every arity takes the
 	// same path, and the matching itself is SigTypeMatches, the argument
 	// rule's own arm.
-	"check/go/method_shape.go": 2,
+	// 2 -> 3 (2026-09-25, NUR096 closed): tryFnShapeTypedWindow stands
+	// aside for an ARITY-0 shape (`shape.Arity == 0`). The model it guards
+	// consumes a shape's window by the argument rule; a 0-parameter shape
+	// has no window, and whether a stored 0-arg fn FIRES is the runtime's
+	// anonymous-0-arg park (ADR-016's one kept gate, decided by the stored
+	// fn, not the shape) — so the pass leaves the carrier as it was rather
+	// than guess. It decides nothing by count: it declines to model.
+	"check/go/method_shape.go": 3,
 	// 1 -> 2 (2026-09-25, the strict-Any dyn-body recovery):
 	// widestSatisfiableOverload compares `n > best.TotalArgs()` to pick,
 	// among a word's overloads whose FULL operand window exists at the

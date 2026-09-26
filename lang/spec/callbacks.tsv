@@ -143,7 +143,7 @@ def comp2 fn [[f:Function g:Function][Function][([x:Integer] => [(f (g x))])]]  
 #
 # §8  Module-exported callbacks — the export map is a callback table.
 import module [def bump fn [[n:Integer][Integer][n add 1]] export "M" {bump: bump/v}] end each M.bump [1 2 3]	[2 3 4]	a module-exported fn value driven as an each callback
-import module [def inc fn [[n:Integer][Integer][n add 1]] def run fn [[f:Function x:Integer][Integer][(f x)]] export "M" {inc: inc/v, run: run/v}] end M.run M.inc 5	6	one module export passed INTO another as its callback
+import module [def inc fn [[n:Integer][Integer][n add 1]] def run fn [[f:Function x:Integer][Integer][(f x)]] export "M" {inc: inc/v, run: run/v}] end M.run M.inc/v 5	6	one module export passed INTO another as its callback
 import module [def apply2 fn [[f:Function x:Integer][Integer][(f x)]] export "M" {apply2: apply2/v}] end M.apply2 ([n:Integer] => [n mul 4]) 3	12	a caller's lambda crossing the module boundary into a Function parameter
 #
 # §9  CURRIED CHAINS and the boru:fn-util combinators.

@@ -232,8 +232,8 @@ func TestHigherOrderBattery(t *testing.T) {
 		// An empty body passes each element through (the element IS the
 		// residual top of the invoked body).
 		{input: "eachq [] [1 2]", want: "[1 2]"},
-		{input: "def f (fn [[x:Integer] [Integer] [x mulq 2]]) eachq f [1 2 3]", want: "[2 4 6]"},
-		{input: "def f (fn [[s:String] [String] [s concatq '!']]) eachq f ['a' 'b']", want: "['a!' 'b!']"},
+		{input: "def f (fn [[x:Integer] [Integer] [x mulq 2]]) eachq f/v [1 2 3]", want: "[2 4 6]"},
+		{input: "def f (fn [[s:String] [String] [s concatq '!']]) eachq f/v ['a' 'b']", want: "['a!' 'b!']"},
 		{input: "eachq [drop] [1]", wantErr: "body produced no result"},
 		// Nested: the outer body is itself a higher-order call.
 		{input: "eachq [[1 addq] swap eachq] [[1 2] [3]]", wantErr: "no signature matches"},
@@ -393,7 +393,7 @@ func TestFallbackIslandBattery(t *testing.T) {
 func TestBakingBattery(t *testing.T) {
 	runBattery(t, []batteryRow{
 		{input: "bakefnq (fn [[x:Integer] [Integer] [x addq 1]])", want: "8"},
-		{input: "def f (fn [[x:Integer] [Integer] [x mulq 2]]) bakefnq f", want: "14"},
+		{input: "def f (fn [[x:Integer] [Integer] [x mulq 2]]) bakefnq f/v", want: "14"},
 		{input: "bakebodyq [1 addq 2]", want: "3"},
 		{input: "bakebodyq [10 20]", want: "10 20"},
 		{input: "def n 4 bakebodyq [n addq 1]", want: "5"},

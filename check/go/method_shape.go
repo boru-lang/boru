@@ -934,6 +934,14 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 // a literal (`true`, a type name, an undefined name's atom) is collected too.
 func landingNextForWord(e *core.Engine, tv core.Value) core.LandingNext {
 	ww, _ := core.AsWord(tv)
+	// A `/v` word denotes its binding's VALUE — a fn binding's reference —
+	// and the forward phase collects it like any value-bound word (NUR078:
+	// the modifier, never the slot type, makes a fn name a reference): `m.g
+	// z/v` is g over z's reference, 7 interpreted. Read as a function word,
+	// the landing walked a BARE `z` and raised `uncalled_function`.
+	if ww.ForceVal {
+		return core.LandingNextValue
+	}
 	if top, ok := e.DefTop(ww.Name); ok {
 		if _, isFn := top.Data.(core.FnDefInfo); !isFn {
 			return core.LandingNextValue

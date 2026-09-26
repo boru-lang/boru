@@ -48,7 +48,7 @@ import module [def looper fn [[Function] [Integer] [def acc 0 for 5 [(args.0 1) 
 # value keeps its scope, naming it loses it") was the defect.
 import module [def secret fn [[n:Integer] [Integer] [n add 1]] def pub fn [[n:Integer] [Integer] [secret n]] export "A" {pub: pub/v}] end def secret fn [[n:Integer] [Integer] [n mul 100]] A.pub 5	6	APPLYING an export resolves its free `secret` in the DEFINING module (500 = the caller's)
 import module [def secret fn [[n:Integer] [Integer] [n add 1]] def pub fn [[n:Integer] [Integer] [secret n]] export "A" {pub: pub/v}] end def g A.pub def secret fn [[n:Integer] [Integer] [n mul 100]] g 5	6	BINDING an export to a name keeps its scope too — `def g A.pub` must answer exactly as `A.pub`
-import module [def secret fn [[n:Integer] [Integer] [n add 1]] def pub fn [[n:Integer] [Integer] [secret n]] export "A" {pub: pub/v}] end def secret fn [[n:Integer] [Integer] [n mul 100]] def apply1 fn [[f:Function n:Integer] [Integer] [f n]] apply1 A.pub 5	6	a named `f:Function` PARAMETER — the commonest way a library takes a callback — keeps the argument's scope
+import module [def secret fn [[n:Integer] [Integer] [n add 1]] def pub fn [[n:Integer] [Integer] [secret n]] export "A" {pub: pub/v}] end def secret fn [[n:Integer] [Integer] [n mul 100]] def apply1 fn [[f:Function n:Integer] [Integer] [f n]] apply1 A.pub/v 5	6	a named `f:Function` PARAMETER — the commonest way a library takes a callback — keeps the argument's scope
 # The NATIVE callback seam (filter's Function form) GRADUATED here 2026-08-27
 # (Stage 3). It was the one row of this section the compiler could not model:
 # the closure lowering declined a foreign fn value and the call ISLANDED. The

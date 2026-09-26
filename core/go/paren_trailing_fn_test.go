@@ -153,13 +153,13 @@ func TestNoteWordReadMarksFnCarrier(t *testing.T) {
 	if len(e.Registry.Check.WordReadFnIDs) != 0 {
 		t.Errorf("a quoted, ID-less, concrete or non-fn read records nothing: %v", e.Registry.Check.WordReadFnIDs)
 	}
-	// A pending forward expecting a Function takes the value as data on
-	// both engines: no note, no mark.
+	// A pending forward expecting a Function is no exception (NUR078): the
+	// bare read dispatches on both engines, so it is marked like any other.
 	sig := &Signature{Args: []*Type{TFunction}, BarrierPos: 1}
 	fwd := NewForward(ForwardInfo{FuncName: "each", ExpectedArgs: 1, Sig: sig})
 	e = newEngine(fwd)
 	e.noteWordRead(carrier, "g", SrcPos{})
-	if len(e.Registry.Check.WordReadFnIDs) != 0 {
-		t.Errorf("a Function-expecting forward's arrival records nothing: %v", e.Registry.Check.WordReadFnIDs)
+	if !e.Registry.Check.WordReadFnIDs["fnc-r"] {
+		t.Errorf("a bare read before a Function slot is marked: %v", e.Registry.Check.WordReadFnIDs)
 	}
 }

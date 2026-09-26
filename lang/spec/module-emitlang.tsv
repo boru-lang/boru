@@ -99,6 +99,6 @@ import "boru:emitlang"  emit (Function) {a:1}	ERROR:uncalled_function	the Functi
 #
 # §fnv  THE VALUE IS THE SAME FN HOWEVER IT IS REACHED (NUR163, closed
 #       2026-09-25): the contract reads the value's own signatures.
-import "boru:emitlang"  import module [ def up fn [[value:Any opts:Map] [String] ['UP']] export "M" {up: up/v} ] end emit M.up {a:1}	'UP'	a module member read in place is an emitter
+import "boru:emitlang"  import module [ def up fn [[value:Any opts:Map] [String] ['UP']] export "M" {up: up/v} ] end emit M.up/v {a:1}	'UP'	a module member read in place is an emitter
 import "boru:emitlang"  import module [ def up fn [[value:Any opts:Map] [String] ['UP']] export "M" {up: up/v} ] end emit (M.up) {a:1}	'UP'	…and through a paren
 import "boru:emitlang"  import module [ def up fn [[value:Any opts:Map] [String] ['UP']] export "M" {up: up/v} ] end def g (M.up) end emit g {a:1}	'UP'	…and through a local def — the spelling that always worked

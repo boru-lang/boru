@@ -132,5 +132,5 @@ def zzvfn fn [[] [] [import "boru:parselang"  import "boru:string-util"  def cal
 #
 # §10  THE VALUE IS THE SAME FN HOWEVER IT IS REACHED (NUR163, closed
 #      2026-09-25): the contract reads the value's own signatures.
-import "boru:parselang"  import module [ def p fn [[source:String opts:Map] [Any] [source]] export "M" {p: p/v} ] end parse M.p 'xy'	'xy'	a module member read in place is a parser
+import "boru:parselang"  import module [ def p fn [[source:String opts:Map] [Any] [source]] export "M" {p: p/v} ] end parse M.p/v 'xy'	'xy'	a module member read in place is a parser
 import "boru:parselang"  def p fn [[source:String opts:Map] [Any] [source]] end parse (p/v) 'xy'	'xy'	a `/v` value (the aggregate, fallback and all) is a parser

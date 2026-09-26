@@ -13322,6 +13322,64 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR078 closed — a bare fn name calls at every slot (2026-09-26)
+
+**The divergence.** ADR-011's clause-2 amendment (2026-08-17, re-affirmed
+2026-08-26) struck the exception "a bare fn name before a `Function`-typed
+slot resolves as a reference"; the engine still implemented it in four
+sites (FN-VALUE-OPEN-WORK.0 §3.2): stepWord's TFunction intercept (A),
+`hasPendingForwardExpectingFunction` (B), `sigWantsFunctionAt` (C) and the
+ReachGroup arrival's `ConformsTo(TFunction)` exemption (D). `h zero`
+answered `h zero/v`'s 42 while the same name before an `Any` slot was a
+call/barrier error — the slot type, not the modifier, decided.
+
+**The fix.** A–D are deleted together. The plan's word arm
+(`CollectCandidateScan`) claims a fn binding BY VALUE only for a `/v` word;
+the check pass's stand-ins count as fn bindings too — a fn-typed carrier (a
+factory's result, a `g:Function` param) and a dynamic binding at a
+Function-typed slot — or the compiled lane collected by value what the
+interpreter calls (`def f (mk 10) end each f [1 2 3]` answered `[[11 12
+13]]` compiled for the interpreter's `signature_error`; it declines now).
+With C and D gone the NUR038 call-head question has one answer: a
+reach-read fn that WOULD CLAIM the next token is a call head, a claim-less
+one an operand, at any slot (`ReachCallHeadBarrierOn` lost its viable-sig
+arguments). The `/v` spelling had to reach every place the bare one did:
+the forward scan's pre-evaluation consumes a reach's `/v` marker (it was
+counted as an argument — `mini M.dbl/v 'ab'` took the marker for mini's
+String); `CollectArrival` delivers a marker-quoted reach value UNQUOTED and
+untagged, as `stepWordVal` delivers `inc/v` (quoted, the interpreter's token
+seam stepped it as data while the compiled lane applied it — `[1 2 3] each
+M.inc/v`, `if true m.f/v [2]`); `placeModifierOperand` wraps a reach after
+`/u /s /f /N` sugar in a paren so the modifier takes the value (`m.a/u`);
+`appliedTransducer` un-quotes mini / emit / parse transducers; and
+`landingNextForWord` reads a `/v` word after a landed value as a collected
+value (`m.g z/v` raised a false `uncalled_function` compiled; 7 on both
+lanes now). The VM landing's Function-typed claim arm (`vm:landing-claim`)
+is unreachable and gone, which dissolves NUR190's Function-typed half:
+`m.g z` is the named no-match on both lanes. `unused_def` needed no move —
+the `/v` read's ResolveRef records the use. Migrated: `path-modifier.tsv:67`
+(now `ERROR:cannot call `wa``), the sweep's four module-export seeds
+(`filter` / `force-arity` / `forward-args` / `usurp` × module-export — the
+sweep holds at 234 call-form declines, 0 invalid seeds), and every spec and
+unit row that passed a callback bare. The arity gate's engine.go pin drops
+29 -> 27 with B and C.
+
+**Found on the way, not fixed here.** (1) A `/v`-quoted member read inside
+a PAREN keeps its quote to the consumer: `each (m.f/v) [1 2 3]` and `fold
+(m.f/v) …` step it as data interpreted and apply it compiled, `def g
+(m.f/v) end g 4` is 5 interpreted and `[fn 4]` compiled — pre-existing
+(measured on the committed head), NUR218. (2) A member-read fn applied
+over a fn argument whose body reads a GRADUAL param bare: `def g fn [[f:Any]
+[Any] [f]] def m {g: g/v} m.g ([] => [42])` is 42 interpreted and `fn f`
+compiled — pre-existing, NUR217.
+
+**Pins.** lang `TestNUR078BareFnNameCalls` (the `/v` spellings at every
+slot, both lanes; the bare spellings raise, and a carrier-bound bare name
+declines or raises, never answers), `TestFunctionSlotArgIsNotUnused`
+(re-homed), `TestNamedFnCandidatesOpenShapes` (`m.g z` / `m.g z/v`),
+`TestWordReadDispatchParity` / `…FailsToCompile`; eng
+`TestReStepLandingWalk`.
+
 ## NUR079 closed — one policy for a program and its modules (2026-09-26)
 
 **The divergence.** Half (i) (2026-08-18) put the importer's policy on a
