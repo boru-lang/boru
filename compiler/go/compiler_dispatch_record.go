@@ -163,7 +163,8 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 			"program runs on the interpreter")
 		return
 	}
-	if !check.TryRecordMethodApply(r, word, args, out, pos) &&
+	if !tryFoldReStepWord(r, word, args, out) &&
+		!check.TryRecordMethodApply(r, word, args, out, pos) &&
 		!tryFoldStaticIndex(r, word, args, out) &&
 		!tryFoldModuleConst(r, word, sig, args, out) &&
 		!tryRecordDeferredList(r, sig, out) &&
@@ -181,6 +182,36 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 			r.Check.Recorder().DynInputsProven(sig, args)
 		r.Check.Recorder().RecordCall(word, sig, args, out, pos, forceDynOut, quoteInertOK)
 	}
+}
+
+// tryFoldReStepWord folds a `get` / `getr` read whose check-mode result is a
+// LIVE WORD token — a quoted list's word node read at a static index over a
+// compile-time-known list (`quote [add 1 2] get 0`, a macroexpand
+// expansion's `get 1`; the ReturnsFn hands the token back verbatim, see
+// lang's getIntKeyReturns). The interpreter re-steps that token at the
+// pointer, and so does the check pass: the call it makes records on its own
+// (the `add` over the forward tokens, or the trap its no-match bakes). The
+// read itself therefore emits NOTHING — recording it would push the token as
+// DATA at run time, which the VM's screen rejects as a tape-coupled handler
+// result (the two edge-quote rows' runtime defer). The operands need no
+// retraction: a const receiver / key is never materialised unless consumed,
+// and a produced one is left unconsumed for the sim to drop, exactly as
+// tryFoldStaticIndex leaves it.
+//
+// Only a CONCRETE list receiver and a concrete Integer key qualify, so the
+// token is exactly the element the runtime handler returns; anything else
+// keeps its recording (and a runtime token stays the VM's loud defer).
+func tryFoldReStepWord(r *core.Registry, word string, args, outs []core.Value) bool {
+	es := r.Check.Recorder()
+	if !es.Active() || (!core.IsGetWord(word) && !core.IsGetrWord(word)) || len(args) != 2 || len(outs) != 1 {
+		return false
+	}
+	if !core.IsWord(outs[0]) || core.IsBareTypeNode(outs[0]) {
+		return false
+	}
+	key, recv := args[0], args[1]
+	return core.IsConcrete(recv) && recv.Parent.ConformsTo(core.TList) &&
+		core.IsConcrete(key) && key.Parent.ConformsTo(core.TInteger)
 }
 
 // tryFoldStaticIndex folds a `get` / `getr` over a CONCRETE list with a STATIC,
