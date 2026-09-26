@@ -234,21 +234,28 @@ func TestKeepDefsTokenBodyOverGradualListCompiles(t *testing.T) {
 	}
 }
 
-// TestDynamicKeepDefsBodyLeakDeclines pins NUR203's close: a keep-defs
-// word over a DYNAMIC body (a List param) inside a fn — `def f fn [[b:List
-// xs:List][Integer][def t 0 each b xs drop t]]  f (quote [def t (t add 1)
-// t]) [1 2 3]` — leaks the body's def per element on the interpreter (3),
-// and the compile pass cannot know which names a body it never sees will
-// rebind. The compiled lane answered the pre-call 0 until 2026-09-26; the
-// kept-defs latch (compiler kept_defs.go, NUR210) now declines the later
-// read of `t` loudly instead. The same shape at the root agrees (a root read
-// is live).
-func TestDynamicKeepDefsBodyLeakDeclines(t *testing.T) {
-	const reason = "a computed body keeps its defs and undefs in the enclosing scope, and the read of `t` after it"
+// TestDynamicKeepDefsBodyLeakInFnPending pins NUR203 as it stands: a
+// keep-defs word over a DYNAMIC body (a List param, a def-bound quoted
+// list) inside a fn — `def f fn [[b:List xs:List][Integer][def t 0 each b
+// xs drop t]]  f (quote [def t (t add 1) t]) [1 2 3]` — leaks the body's
+// def per element on the interpreter (3), and the compiled lane's later
+// read of `t` in the fn answers the pre-call value (0): the run-time
+// stamped body installs the leak in the registry (NUR202's close), but the
+// compile pass cannot know which names a body it never sees will rebind, so
+// the fn's later read keeps its compile-time home instead of seating live
+// (NoteKeepDefsLeak names only a compiled unit's defs). The same shape at
+// the root agrees (a root read is live). Closing it must update this pin.
+func TestDynamicKeepDefsBodyLeakInFnPending(t *testing.T) {
 	for _, src := range []string{
 		`def f fn [[b:List xs:List][Integer][def t 0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]`,
 		`def f fn [[b:List xs:List][Integer][def t 0 fold b xs 0 drop t]] end f (quote [def t (t add 1) add]) [1 2 3]`,
 	} {
-		requireLoudDecline(t, src, reason, "[3]")
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if errI != nil || fmt.Sprint(gotI) != "[3]" {
+			t.Errorf("%q: the interpreter leaks the dynamic body's def into the fn's frame: %v / %v", src, gotI, errI)
+		}
+		if errC != nil || !compiled || fmt.Sprint(gotC) != "[0]" {
+			t.Errorf("%q: NUR203's compiled value %v / %v (compiled=%v), pinned as [0] — closing the divergence must update this pin", src, gotC, errC, compiled)
+		}
 	}
 }

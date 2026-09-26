@@ -9818,9 +9818,6 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		if e.reorderHint(w.Name, fn) != "" || e.IsFnShapeTypedBindingContext() {
 			return false
 		}
-		if rematchWindowMatches(fn, vals) {
-			return false
-		}
 		return es.RecordDispatchRematchValues(w.Name, vals, off, len(written), pos)
 	}
 	// Serialise the FULL interpreter error into the trap so the compiled
@@ -9832,22 +9829,6 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		return es.RecordTrapErr(verr, pos)
 	}
 	return es.RecordTrapErr(e.sigError(w.Name, fn, pos), pos)
-}
-
-// rematchWindowMatches reports whether the runtime rematch's OWN match — the
-// VM's dispatchRematch runs MatchSignature over the whole window, flexibly,
-// with no forward / stack split — already succeeds over the window's static
-// values. The interpreter's dispatch failed under the forward-first binding
-// (the check pass mirrors it and failed with it), but a window the flexible
-// match accepts statically is accepted at run time too: a strict carrier's
-// runtime value conforms to its static tag. Such a rematch could only ever
-// answer "matched where the static model failed", an internal error for the
-// interpreter's signature_error (NUR211: `3 for (mk)` — the forward `(mk)`
-// fills for's count slot, where the flexible match seats it as the body).
-// The record declines instead, and the caller's compile failure stands.
-func rematchWindowMatches(fn *FnDefInfo, vals []Value) bool {
-	mr := MatchSignature(fn.Signatures, vals, WordInfo{ArgCount: -1})
-	return mr != nil && mr.Sig != nil && !mr.Sig.Fallback
 }
 
 // argTypeSummary renders the operand types of a failed dispatch for the

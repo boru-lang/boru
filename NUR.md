@@ -125,7 +125,7 @@ keep the two in sync in the same commit.
 | [NUR200](#nur200) | FIXED 2026-09-24 (the multi-run keep-defs body — the handoff log's entry of that date), found the same day: a multi-run body's unpaired value defs install through the kept OpBindDynScope (a loop fragment, a fn body), the enclosing loop refreshes its carried slot after the call, and every read of a leaked name seats live — the last element's install, or the interpreter's undefined_word at zero iterations; the twin regime's read fence is retired for value names. `def t 0  for 3 [[1] each [def t 5] drop]  t` is 5 on both lanes; code-bodies.tsv L183/L190 and module-composition L92 compile (the mutated flex read back seats live too). The original text: An `each` body's def of a name the enclosing `for` loop CARRIES — `def t 0 end for 3 [[1] each [def t 5] drop] end t` — is the interpreter's 5 (the body leaks its def per element) and the compiled lane's 0: no arm-resident twin is adopted inside a loop fragment (the bridge's root fence), so nothing installs the binding at run time and the carried slot keeps the pre-loop value; NUR199's multi-run twin. Present on main at 3768c46; found while closing NUR199. Fence: `TestEachBodyDefInLoopResolves`. | found while closing NUR199 (2026-09-24) |
 | [NUR201](#nur201) | A callee's def before a raise the caller TRAPS — `def g fn [[][Integer][def t 9 raise 'x']] end do [g] end t` — is the interpreter's `[error(x) 9]` (a raise skips the frame's def-cleanup tail, so the callee's binding leaks) and the compiled lane's `[error(x) 0]` (the frame installs nothing a trap could keep; an installed one is unwound with the frame on the error path). The interpreter's is the questionable rule. Present on main at 3768c46; found while closing NUR199. Fence: `TestCalleeDefSurvivesTrappedRaisePending`. |
 | [NUR202](#nur202) | FIXED 2026-09-24 (the keep-defs token body — the handoff log's entry of that date), found the same day: the closure unit compiles (the unapplied-fn gate exempts a unit's own untouched inputs — an argument enters the frame resolved and is never stepped), and the run-time stamp of a token body is a keep-defs unit whose kept installs the host hands to the enclosing context's trail, its own defs left out of the stamp's dependency snapshot; `def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]]  f [1 2 3]` is [[1 2 3]] on both lanes and code-bodies.tsv L189 compiles. The original text: A keep-defs token body over a GRADUAL list inside a fn — `def f fn [[xs:List][List][def t 0 each [def t (t add 1) t] xs]] end f [1 2 3]` — is the interpreter's `[[1 2 3]]` (eachHandler drives InvokeBody per element on the shared registry, so the def leaks to the next element) and the compiled lane's `[[1 1 1]]`: the body lowers as a CONST the native runs (PUSH_CONST_FRESH, the S1a dynamic-callback path) and that run reads 0 at every element. Over a literal list the body is a closure unit and agrees; the Integer-returning twin (code-bodies.tsv L189) declines loudly. Present on main at 3768c46. Fence: `TestKeepDefsConstBodyOverGradualListPending`. |
-| [NUR203](#nur203) | FIXED 2026-09-26 (declined by NUR210's kept-defs latch — the handoff log's entry of that date): the fn's later read of `t` is an observer after a computed keep-defs body, and the program fails to compile loudly (`TestDynamicKeepDefsBodyLeakDeclines`). Was: a keep-defs word over a DYNAMIC body inside a fn — `def f fn [[b:List xs:List][Integer][def t 0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]` — is the interpreter's 3 (the body leaks its def per element into the fn's frame) and the compiled lane's 0: the run-time stamp installs the leak (NUR202's close), but the compile pass never sees the body's tokens, so the fn's later read of `t` keeps its compile-time home instead of seating live. The root twin agrees. Present on main at 3768c46. Fence: `TestDynamicKeepDefsBodyLeakInFnPending`. |
+| [NUR203](#nur203) | A keep-defs word over a DYNAMIC body inside a fn — `def f fn [[b:List xs:List][Integer][def t 0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]` — is the interpreter's 3 (the body leaks its def per element into the fn's frame) and the compiled lane's 0: the run-time stamp installs the leak (NUR202's close), but the compile pass never sees the body's tokens, so the fn's later read of `t` keeps its compile-time home instead of seating live. The root twin agrees. Present on main at 3768c46. Fence: `TestDynamicKeepDefsBodyLeakInFnPending`. |
 | [NUR204](#nur204) | A body def of the for loop's OWN index — `def i 0 end for 3 [def i 9] end i` — is the interpreter's 2 (the loop leaves its index level bound past the loop: the last index; 0 inside a nested loop, whose outer cleanup pops it) and was the compiled lane's 9 on main (the loop carried the def and wrote the body's value back), for a native or a user-call value alike, inside a fn and through an arm too; neither is the pre-loop 0 a lexical loop scope would give. The compiled lane DECLINES the shape loudly now (the for's index name rides RecordLoop into the loop event). Present on main at 3768c46; found while landing the user-call write-back. Fence: `TestForIndexDefInBodyPending`. |
 | [NUR208](#nur208) | A paren-placed BRANCH whose arms are both fn values is applied by the compiled lane where the interpreter places it, and not applied where the interpreter's `apply` word dispatches it: `def c true end (if c ([x:Integer] => [x]) ([x:Integer] => [0])) 5` is the interpreter's `[fn (Integer) 5]` and the compiled lane's `[5]`; `def c true end (if c ([] => [42]) ([] => [2])) apply` is `42` interpreted and `[fn]` compiled. Silent, default lane, present on main at ae17688 (measured on a clean tree) — the residual's lead arm reads the branch event's `mayBeFn` flag and applies over the entry after it with no placement test, and the `apply` word's record over a branch result is elided | probing the neighbours of the sweep's `if` × lambda cell (2026-09-26) |
 | [NUR219](#nur219) | A `/q`-capturing fn value landed before a token the compiled lane reads as a VALUE — `def h fn [[x:Atom/q] [Any] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f true` — is the interpreter's `[true]` (the `/q` slot captures the word `true` as an atom) and the compiled lane's `uncalled_function: call to 'h' matched no signature` (the check pass folds `true` to a Boolean const, so the landing sees a candidate and no function word, and raises). A sibling: when the landing's walk does raise `uncalled_function` for a named fn value (`[[x:Atom/q y:Integer]]` under `z`), it points at the landing where the interpreter points at the fn value's own `h/v` token. Present on `main` at 45c3bdb, found 2026-09-26 probing NUR190's neighbours; not fixed. |
@@ -135,9 +135,8 @@ keep the two in sync in the same commit.
 | [NUR223](#nur223) | A `while` CONDITION that binds a name the BODY reads is read stale on the compiled lane: `def t 0 end while [def t (t add 1) (t lt 3)] [t] end t` is `[1 2 3]` interpreted and `[0 0 3]` compiled, SILENT — the loop's condition and body are analysed as two separate loop bodies, body first, so the body's read resolves the pre-loop binding. Recorded 2026-09-26 (NUR212's follow-up), present on `main` at 45c3bdb; the `if` condition's keep does not touch `while` | NUR212's follow-up (2026-09-26) |
 | [NUR222](#nur222) | A VALUE-LESS `do` inside a branch fragment — `if [do [1 drop] true] [2] [3]`, `if [true] [do [1 drop] 2] [3]`, the same in a fn body or a loop — compiles and dies at run time (`internal_error: DROP stack underflow` / `STORE_LOCAL stack underflow`) where the interpreter answers `[2]`: the check pass models a non-empty `do` body with an empty residual as the Error a raise would leave, and inside a fragment the lowering drops or stores that value, which the compiled `do` never pushes. Top level and a fn body's straight line are unaffected. Recorded 2026-09-26 (NUR212's follow-up), present on `main` at 45c3bdb; a binding condition holding one declines (core `CheckState.ValuelessDoBodies`) | NUR212's follow-up (2026-09-26) |
 | [NUR212](#nur212) | FIXED 2026-09-26 — first by a loud decline (PR #512's review follow-up), then COMPILED (the follow-up of the same date): found by Codex on PR #512 and present on `main` at b4fad6c: a code-body `if` CONDITION that binds a name — `def x 1 end if [def x 5 true] [2] [3] end x` — answered [2 1] compiled for the interpreter's [2 5]; the condition fragment rolled its binding back, where the interpreter runs the condition inline and keeps it. The condition now runs as a KEPT body (core `RunCarrierCondBodyKeepDefs`): its binding stands for the arms and after the `if`, its bind twin sits inside the condition fragment, the join's twins move after the branch, carried slots seed after the condition, and an arm's nested condition def stores into the arm's carried cell. if2, if3, the clause-list if and `case`'s desugared code-body scrutinee compile with parity (lang `TestConditionBindingCompilesWithParity`); a binding condition over a residual the lowering does not share (NUR222's value-less `do`, extra values) and a binding scrutinee on a non-desugared `case` still decline | PR #512's review (2026-09-26) |
-| [NUR213](#nur213) | A COMPUTED `do` body that leaves a FN VALUE — `def g fn [[][Integer][7]] end def mk fn [[][List][quote [g/v]]] end do (mk)` — is the interpreter's `7` (the handler's results land on the tape and the interpreter RE-STEPS the fn value, over the values beneath it and the tokens after it) and the compiled lane's `fn g`: the VM seats the run's values as data. `[5 g/v]` is 6 for `[5 fn g(Integer)]`, `(1 add 8) do (mk)` over `[g/v]` 10 for `[9 fn g(Integer)]`, and the fn-unit forms (`def f fn [[b:List][Any][do b]] end f (quote [g/v])`) the same — silent, default lane, present on main at 45c3bdb. NUR210's close records the run as a region that may leave a callable (`regionMayBeFn`) and declines every shape with anything seated around it, but a run alone or last in a residual still seats its values as data | NUR210's close (2026-09-26), probing the computed `do` body's fn-valued results |
-| [NUR211](#nur211) | FIXED 2026-09-26 (declined — the handoff log's entry of that date): the runtime rematch's own flexible match (`MatchSignature` over the whole window, no forward/stack split) is run over the window's STATIC values at record time, and a window it already accepts is never recorded (core `rematchWindowMatches`) — such a rematch could only ever defer — so the program fails to compile loudly with the caller's existing `unmatched dispatch recovered at for`. Was: a STACK-FORM count over a computed `for` body — `def mk fn [[][List][quote [i]]] end 3 for (mk)`, `(1 add 2) for (mk)` — is the interpreter's `signature_error` (`cannot call `for``: the forward body fills the count slot) and the compiled lane's `internal_error: DISPATCH_REMATCH at for matched at run time where the static model failed`. The check pass recovers the unmatched dispatch to a rematch the runtime cannot execute; the error CODE diverges though both lanes fail. Present on main at b4fad6c with `for`'s declaration as it stood (measured with the 2026-09-26 CompileDynBody reverted) | the clause-list `if` / hosted splice work (2026-09-26), probing the hosted splice's positions |
-| [NUR210](#nur210) | FIXED 2026-09-26 (declined where it cannot compile — the handoff log's entry of that date): a computed whole-residual body is recorded as a variadic REGION (compiler `recordDynBodyCall`), so a value beneath it, a fixed-count consumer and a callable-bearing run with anything after it decline; a keep-defs word over a computed body arms the KEPT-DEFS LATCH (compiler kept_defs.go), and the first later observer of a binding (a def read, a user fn call, a fn-value apply) declines through the arm-read seam unless the body's tokens are proven binding-free. Was: a COMPUTED `do` body (the dyn-body backstop) diverges on two shapes: a value BENEATH the `do` is seated after the body's values — `def mk fn [[][List][quote [1 2]]] end 9 do (mk)` is `[9 1 2]` interpreted and `[1 9 2]` compiled, SILENT — and a body that rebinds a program binding read after it — `def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x` — is `5` interpreted and `internal_error: CALL_DYNAMIC underflow` compiled (its `undef x` twin: `undefined_word` against the same internal error). Present on main at b4fad6c; the four shapes the review of #508 measured against the withdrawn per-iteration `for` host, in `do`'s form | the clause-list `if` / hosted splice work (2026-09-26), measuring the `do` analogues of the hosted splice's declines |
+| [NUR211](#nur211) | A STACK-FORM count over a computed `for` body — `def mk fn [[][List][quote [i]]] end 3 for (mk)`, `(1 add 2) for (mk)` — is the interpreter's `signature_error` (`cannot call `for``: the forward body fills the count slot) and the compiled lane's `internal_error: DISPATCH_REMATCH at for matched at run time where the static model failed`. The check pass recovers the unmatched dispatch to a rematch the runtime cannot execute; the error CODE diverges though both lanes fail. Present on main at b4fad6c with `for`'s declaration as it stood (measured with the 2026-09-26 CompileDynBody reverted) | the clause-list `if` / hosted splice work (2026-09-26), probing the hosted splice's positions |
+| [NUR210](#nur210) | A COMPUTED `do` body (the dyn-body backstop) diverges on two shapes: a value BENEATH the `do` is seated after the body's values — `def mk fn [[][List][quote [1 2]]] end 9 do (mk)` is `[9 1 2]` interpreted and `[1 9 2]` compiled, SILENT — and a body that rebinds a program binding read after it — `def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x` — is `5` interpreted and `internal_error: CALL_DYNAMIC underflow` compiled (its `undef x` twin: `undefined_word` against the same internal error). Present on main at b4fad6c; the four shapes the review of #508 measured against the withdrawn per-iteration `for` host, in `do`'s form | the clause-list `if` / hosted splice work (2026-09-26), measuring the `do` analogues of the hosted splice's declines |
 | [NUR209](#nur209) | FIXED 2026-09-26 (the `behave` × container and `fnsig` × module-export cells — the handoff log's entry of that date), found the same day: a CompileFnHandlerStrict store slot (behave, the fn-util combinators, service `add`) validates an interpreter FnDefInfo, and a factory's CAPTURING closure reached it as a compiled ClosurePayload — `behave canon/q (mk 'K')` raised `behave canon: fn arg has invalid payload` and `FnUtil.compose (mk 1) (mk 2)` a type_error where the interpreter answered; and behave's stored body, run later against the registry, resolved its names without the dynamic-scope mirror (`def g fn [[][String] [def k 'K' canon (make Temp 5)]] def k 'Z'  behave canon/q (fn [[t:Temp][String][k]])  g` answered 'Z' for 'K'). The strict slot admits only an operand proven to arrive as a fn value, and behave arms DynEnv when its stored body names something | the `behave` × container cell (2026-09-26) |
 | [NUR207](#nur207) | A name DEF-BOUND to a fn value that arrives through a dynamic or `Any`-typed carrier is a WORD dispatch on the interpreter and data on the compiled lane: `def mk fn [[][Any][([] => [42])]] end def j (mk) end j` is `42` interpreted and `[fn]` compiled; `def m {s: ([a:Integer b:Integer] => [a sub b])} end def r (m.s) end r 'x' 3` raises the interpreter's `cannot call r` and answers `[fn (Integer, Integer) x 3]` compiled (the value parks where the name would raise). Silent, default lane, present on main at ae17688. The def-read model claims a window only for a carrier with a claimed shape (NUR194); a gradual carrier's read is plain data | the generated sweep's last cells (2026-09-26), measuring why the `if` × container read could not stand aside |
 | [NUR206](#nur206) | A `for` loop's INDEX SURVIVES an error the enclosing `do` catches on the interpreter, for the rest of the program, where the compiled lane reads the outer binding: `def i 99 end do [for 3 [raise oops 'x']] error [drop] end i` is the interpreter's `0` (the raise unwinds the spliced body before its move cleanup, so the loop's index level stays installed over the outer `i`) and the compiled lane's `99`; the same with the handler reading `i`, and with a computed body (`for 3 (mk)` over `[raise oops 'x']`). Silent, default lane, present on main at 9e02915 — the compiled `do` body traps or islands the loop and the handler reads `i` from its compiled slot. The direction is the interpreter: an error unwind out of a spliced loop body should run the frame's cleanup as break/continue's `unwindLiveFrames` does, not leave the index bound. Pinned `TestLoopIndexSurvivesCaughtErrorPending` (lang) | the Codex review of #508 (2026-09-25), measuring the withdrawn hosted for body; the literal-body twin found on the follow-up |
@@ -7541,11 +7540,8 @@ loop's own accounting decides what survives; measured neither way yet.
 
 ## NUR203 — a dynamic keep-defs body's leak is invisible to the fn's later reads {#nur203}
 
-**Status:** FIXED 2026-09-26 by a loud decline (NUR210's kept-defs latch,
-compiler kept_defs.go: a read after a keep-defs word ran a computed body
-declines through the arm-read seam; the pin is now
-`TestDynamicKeepDefsBodyLeakDeclines`). Recorded 2026-09-24, found while
-closing NUR202 — the handoff log's "the keep-defs token body" entry. Present on main before
+**Status:** Pending (recorded 2026-09-24, found while closing NUR202 — the
+handoff log's "the keep-defs token body" entry). Present on main before
 that change (measured on a clean worktree at 3768c46: the same wrong
 value, for the opposite reason — the run-time body's def never reached the
 registry at all).
@@ -9883,8 +9879,7 @@ itself, both closed before merge.
 
 ## NUR210 — a computed `do` body: a value beneath it re-seated, a rebinding it leaks unmodelled {#nur210}
 
-**Status:** FIXED 2026-09-26 by loud declines where the shape cannot
-compile (the handoff log's entry of that date). Recorded 2026-09-26.
+**Status:** Pending (recorded 2026-09-26).
 **Found:** measuring the `do` analogues of the hosted splice's declines
 (the 2026-09-26 handoff entry), on `main` at b4fad6c.
 
@@ -9919,50 +9914,9 @@ before the call (the region-prefix mark), or the site declined; a
 keep-defs dyn body followed by a compiled read of any name it could bind
 must read live or decline.
 
-**The fix.** Two halves, neither a new MarkUncompilable site.
-
-- *The run is a region.* `recordDynBodyCall` records a computed
-  whole-residual body (`do`'s, CallableSpec BodyOutResidual) as a
-  variadic REGION — the check pass models one dynamic(Any) out where the
-  run leaves 0-or-more values — so every region rule applies: a value
-  beneath it seats through the mark or declines ("call result above a
-  literal"), a fixed-count consumer declines (`[9 do (mk)]`, `9 do (mk)
-  drop`, `do (mk) add 9`, which raised CALL_NATIVE_POLY underflow over an
-  empty run), and the fn-value apply arms no longer read the run as one
-  value (the CALL_DYNAMIC underflow). The run may leave a CALLABLE the
-  interpreter re-steps over what follows it (`do (mk) 5` over `[g/v]` is
-  6), so unless its tokens are proven plain data (a factory's const
-  `quote [1 2]`) it seats only as the residual's LAST entries (lower.go
-  `dynRegionNotLast`; the program residual otherwise admits a region with
-  inert values above it).
-- *The kept-defs latch* (compiler kept_defs.go / kept_defs_scan.go). A
-  keep-defs word (`do`, and `each`/`fold`/`scan`/… — BodyMultiRunKeepsDefs
-  — whose computed List bodies leak the same way) over a computed body
-  arms a latch where the body RUNS: at the program's top level for good;
-  inside a unit, handed to the unit at its finish and re-armed after
-  whatever invokes it (a CALL_USER of it, the native a code-body closure
-  is handed to, any possible indirect invocation once such a unit
-  exists). While armed, the first observer of a binding — a def read, a
-  user fn call, a fn-value apply — poisons `armReadCompileFailure`, the
-  arm-read seam's Finalize decline. A body the recorder can PROVE binds
-  nothing does not arm it: a factory call returning a const quoted list,
-  read directly or through a promoted value-def, whose tokens pass a
-  binder scan (no def/undef/var/unpack at its top level, no undef /
-  behave / usurp anywhere, no check-mode native, no unresolved name, no
-  reach or splice, and the same of every user fn or bound value it
-  names); a proven fn callback keeps nothing either. The same latch closes
-  NUR203.
-
-Pinned by lang `computed_body_region_test.go`
-(`TestComputedDoBodyRegionDeclines`, `TestComputedDoBodyRegionCompiles`),
-`keep_defs_leak_test.go` (`TestDynamicKeepDefsBodyLeakDeclines`) and
-compiler `kept_defs_test.go`. A run that may leave a callable seated ALONE
-(or last) is still data on the compiled lane: NUR213.
-
 ## NUR211 — a stack-form count over a computed `for` body: a rematch the runtime cannot run {#nur211}
 
-**Status:** FIXED 2026-09-26 by a loud decline (the handoff log's entry of
-that date). Recorded 2026-09-26.
+**Status:** Pending (recorded 2026-09-26).
 **Found:** probing the hosted splice's positions (the 2026-09-26 handoff
 entry); present on `main` at b4fad6c with `for`'s declaration as it stood.
 
@@ -9987,22 +9941,6 @@ different codes.
 **The direction.** The recovery should decline a code-body word whose
 unmatched window it cannot model, or trap the interpreter's own
 signature_error.
-
-**The fix.** The VM's rematch runs `MatchSignature` over the WHOLE window
-flexibly, with no forward/stack split; the interpreter's dispatch — and
-the check pass mirroring it — bound the forward `(mk)` first, into the
-count slot, and failed. `TryRecordUnmatchedDispatchTrap` (core engine.go)
-now runs the rematch's own match over the window's static values before
-recording it (`rematchWindowMatches`): a window it already accepts is
-accepted at run time too (a strict carrier's runtime value conforms to its
-static tag), so the rematch could only ever answer "matched where the
-static model failed". The record declines and the caller's existing
-`unmatched dispatch recovered at for` stands — a loud compile failure, no
-new site. Trapping the interpreter's signature_error instead needs a proof
-that the failure is value-independent, which the recovery does not carry
-(the rich diagnostic renders the concrete list). Pinned by lang
-`TestStackCountComputedForBodyDeclines` and core
-`TestS5BTrapCarrierWindowMatchDeclines`.
 
 ## NUR212 — a binding made by an `if` condition, rolled back on the compiled lane {#nur212}
 
@@ -10205,48 +10143,3 @@ def f fn [[][Integer][1 2]] end f
 Position only: the code, the message and the secondary note (the
 declaration at 1:13) agree. Any fn body that nets the wrong count shows
 it.
-## NUR213 — a computed `do` body's fn-valued result: re-stepped interpreted, data compiled {#nur213}
-
-**Status:** Pending (recorded 2026-09-26).
-**Found:** closing NUR210, probing the computed `do` body's fn-valued
-results; present on `main` at 45c3bdb.
-
-**The witnesses.**
-
-```
-def g fn [[][Integer][7]] end def mk fn [[][List][quote [g/v]]] end do (mk)
-  interpreted   [7]
-  compiled      [fn g]
-
-def g fn [[n:Integer][Integer][n add 1]] end def mk fn [[][List][quote [5 g/v]]] end do (mk)
-  interpreted   [6]
-  compiled      [5 fn g(Integer)]
-
-def g fn [[n:Integer][Integer][n add 1]] end def mk fn [[][List][quote [g/v]]] end (1 add 8) do (mk)
-  interpreted   [10]
-  compiled      [9 fn g(Integer)]
-
-def g fn [[][Integer][7]] end def f fn [[b:List][Any][do b]] end f (quote [g/v])
-  interpreted   [7]
-  compiled      [fn g]
-```
-
-**Where it sits.** `DoListHandler` returns the body run's residual, and
-the interpreter places a handler's results on its tape and RE-STEPS them:
-a fn value among them dispatches over the values beneath it and the tokens
-after it (a 0-arg one fires alone). The dyn-body backstop's CALL_NATIVE
-pushes the same values as DATA. The concrete body never diverges — the
-check pass runs its tokens and models the re-step — and NUR210's close
-records a computed run as a region that may leave a callable
-(`regionMayBeFn`), declining every shape with a value seated around it or
-after it; a run ALONE (or the last entries of a residual) still seats as
-data.
-
-**The direction.** Re-step at run time: after a dyn-body `do` dispatch
-whose run may leave a callable, the VM must land each fn value it
-returns the way the interpreter's tape does — the landing ops
-(OpReStepLanding, the deopt islands) cover one value on top, not a run
-with values beneath — or decline the region unless its tokens are proven
-free of fn values (declining it outright costs the code-bodies rows whose
-bodies are List params, e.g. L148).
-
