@@ -9,7 +9,7 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
-## NUR210's rebinding half closed, with NUR266 and NUR267 found and closed (2026-09-26)
+## NUR210's rebinding half for a bare read closed, with NUR266 and NUR267 found and closed (2026-09-26)
 
 **The divergence (NUR210's rebinding half).** A computed `do` body at the
 root runs in the root's scope, so a later read of a name sees its defs and
@@ -43,6 +43,14 @@ undefs. `def x 99 end do (mk) end x` over `[def x 5]` bailed compiled
   `[99]`: the stamp had lost the unbind.
 
 Only the three together answer every witness.
+
+**What stays open (silent, pre-existing — NUR210 stays OPEN).** The live
+read covers a bare root read. Any other read still bakes the value the check
+pass held before the body, over `[def x 5 7]`: `do (mk) end [x]` is `[7
+[99]]` for `[7 [5]]`, and so are a map member and a `def` forward operand.
+The list literal seats the live read and then folds itself to a constant.
+The sound cut is to generalise root values in place after such a body, as a
+placed speculative undef does.
 
 **What stays open (loud).** These are NUR266's open half:
 - `x do (mk) end x` declines. It answered `[5 6]` silently before; the run
