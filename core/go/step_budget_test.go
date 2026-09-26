@@ -44,3 +44,14 @@ func TestStepBudget(t *testing.T) {
 		t.Errorf("the restored engine runs freely: %v", err)
 	}
 }
+
+// TestIsGenMemoName pins the instantiation memo's name predicate: the key
+// genMemoKey builds is a memo name, a program's own binding is not.
+func TestIsGenMemoName(t *testing.T) {
+	if !IsGenMemoName(genMemoKey("T_1", "Integer")) {
+		t.Error("an instantiation memo key is a memo name")
+	}
+	if IsGenMemoName("x") || IsGenMemoName("Box") {
+		t.Error("a program binding is not a memo name")
+	}
+}

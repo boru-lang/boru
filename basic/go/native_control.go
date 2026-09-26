@@ -1039,6 +1039,19 @@ func reduceStaticArm(r *Registry, cond, arm Value, isThen bool) []Value {
 // so it rides RunCarrierCondBody — the CondBodyDepth-exempt body run: an
 // in-place fn redefinition in a condition is not path-dependent and stays
 // compilable, exactly like its paren-`do` condition twin.
+// condBindsName reports whether a condition body's added bindings include a
+// name the program can observe — anything but a generic instantiation's
+// hidden memo (`case b [(Box of [Integer]) …]` interns one; re-instantiating
+// yields the same node, so the rolled-back memo changes no answer).
+func condBindsName(adds map[string]Value) bool {
+	for k := range adds {
+		if !IsGenMemoName(k) {
+			return true
+		}
+	}
+	return false
+}
+
 func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
 	es := r.Check.Recorder()
 	if !es.Armed() || !IsConcrete(cond) || !cond.Parent.ConformsTo(TList) {
@@ -1047,7 +1060,7 @@ func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
 	es.ArmBranchCapture()
 	stk, adds := RunCarrierCondBody(r, cond)
 	frag := es.TakeFragment()
-	if len(adds) > 0 {
+	if condBindsName(adds) {
 		// A condition body that BINDS a name (`if [def x 5 true] …`): the
 		// interpreter runs the condition inline, once, so the binding stays
 		// visible to the taken arm and to everything after the `if`; the
