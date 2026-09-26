@@ -9453,7 +9453,14 @@ which bailed at MAKE_LIST) and a fn residual's fixed-width replay window
 re-step landings over a `/q` param, the two shaped method applies, and
 `fold` over a class member, whose runtime no-match has no record-time
 probe (the dispatch succeeded optimistically over a gradual operand, so
-no `PolyNoMatchSpec` exists).
+no `PolyNoMatchSpec` exists). Threading the interpreter's probe from
+`execMatch` (the check-mode native dispatch, `analysisCarrierResults`) to
+the dyn-body record would not settle `fold`. It has a 2-arg overload
+beside the 3-arg one, and `polyNoMatchProbe.Spec` declines whenever a
+narrower-arity overload exists, because its runtime match could dispatch
+where the raise claims none can. A mixed-arity word needs the VM to
+rebuild the interpreter's full diagnostic, not the spec's arity-screened
+one.
 
 **Divergence** (measured at 5c0d6b1; each an internal_error compiled with
 the "please report it" note):
