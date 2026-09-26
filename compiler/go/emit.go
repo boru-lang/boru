@@ -1016,6 +1016,9 @@ type EmitState struct {
 	// and eng's own compile-then-run tests, had no rollback, so the replay
 	// stacked a second install on the pass's kept one).
 	bindSnap core.BindingSandbox
+	// rootBody is the program's own tokens (SetRootBody), the body a
+	// top-level landing's `/q` claim resumes the interpreter in (NUR190).
+	rootBody []core.Value
 	// SiteCounts tallies dispatches per site class while recording is
 	// active (counting stops once the program is marked
 	// uncompilable, with the rest of the recording).
@@ -1873,6 +1876,10 @@ type deoptPoint struct {
 	// (NUR123's last shape): loud, where it used to be a silent wrong
 	// answer. No island, no prefix, no names.
 	bail bool
+	// landing marks a LANDING point (NUR190): the island the landing's `/q`
+	// claim hands the rest of the body to, from the word's token (token)
+	// on. It shares the unit's island environment with the other points.
+	landing bool
 }
 
 // plainLambda reports a lambda VALUE unit (tryReturnedClosure's `fnval`
@@ -7113,6 +7120,17 @@ func (es *EmitState) SetUnitParamTypes(unit int, paramTypes []*core.Type, paramP
 
 // SetUnitBody seats a fn unit's source body tokens (EmitRecorder): the
 // stream a per-read deopt hands to the interpreter (planDeopts, NUR123).
+// SetRootBody seats the PROGRAM's own tokens (a copy), the body a top-level
+// landing's `/q` claim hands to the interpreter from the word on (NUR190,
+// LandingWord.Deopt). A host that compiles without seating them keeps the
+// loud defer at such a claim.
+func (es *EmitState) SetRootBody(body []core.Value) {
+	if es == nil {
+		return
+	}
+	es.rootBody = append([]core.Value(nil), body...)
+}
+
 func (es *EmitState) SetUnitBody(unit int, body []core.Value) {
 	if unit < 0 || unit >= len(es.fnRecs) {
 		return
@@ -8675,6 +8693,31 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 func (es *EmitState) residualHasVariadicRegion(residual []core.Value) bool {
 	for _, v := range residual {
 		if pr, ok := es.producedBy[v.ID]; ok && es.eventInfo[pr.seq].variadicRegion {
+			return true
+		}
+	}
+	return false
+}
+
+// dynBodySettledLead reports a residual lead a DYN BODY settled itself: a
+// dynamic or fn value one dyn-body dispatch (`do` over a body the closure
+// path declined) left with another of its own results above it. The
+// handler runs the body with the interpreter's semantics — its re-steps
+// included — so a window wholly inside the body's residual was applied
+// there (`do [m.f 5]` is 6: the body's member read claimed the 5), where
+// the model left the member unapplied over its argument; the residual
+// arm's apply over that window re-applied it and underflowed at run time
+// (NUR222). A dyn-body result with nothing of its own above it is a lead
+// the root's apply may take (`do [m.f/v] 5` is 6: the interpreter
+// re-steps the returned fn over the later 5).
+func (es *EmitState) dynBodySettledLead(residual []core.Value) bool {
+	for i := 0; i+1 < len(residual); i++ {
+		v := residual[i]
+		pr, ok := es.producedBy[v.ID]
+		if !ok || !es.eventInfo[pr.seq].dynBodyResult || !(v.Dynamic || core.IsFnValueResidual(v)) {
+			continue
+		}
+		if nx, ok := es.producedBy[residual[i+1].ID]; ok && nx.seq == pr.seq {
 			return true
 		}
 	}
@@ -13223,7 +13266,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// lead — it is a count. Asked of one, the scan answered yes for the
 	// zero-netting handler's 0-or-1 run and declined a program that has no
 	// fn value in it at all.
-	if es.residualHasVariadicRegion(residual) {
+	if es.residualHasVariadicRegion(residual) || es.dynBodySettledLead(residual) {
 		return residual, 0, ""
 	}
 	// A fn-value lead a later dispatch collected past, ANYWHERE in the
@@ -14005,7 +14048,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		LiveLeadNames:   maps.Clone(es.liveLeadNames),
 		LiveReadNames:   maps.Clone(es.liveReadNames),
 		CondBoundNames:  maps.Clone(es.condBoundNames)}
-	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}}
+	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
 	// single-consume stack discipline holds. Count the residual references,
@@ -14397,6 +14440,9 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if !twinsFullyPlaced(lw.p, twinExempt) {
 		return nil, "twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it", false
 	}
+	// A top-level landing island (NUR190) continues at the program's end:
+	// its residual is the program's.
+	stampLandingRet(lw.p.LandingWords, len(lw.p.Code))
 	return lw.p, "", true
 }
 
@@ -15082,6 +15128,7 @@ func seatUnitDeopts(flw *lowerer, rec *fnUnitRec, cf *CompiledFn, diverged bool)
 	flw.deoptNames = rec.deoptNames
 	flw.deoptTable = &cf.Deopts
 	cf.Body = rec.body
+	flw.landingBody = rec.body
 	// The interpreter's frame holds the unit's UNNAMED params on its stack
 	// bottom (named ones are bindings); an island resuming mid-body seats
 	// the ones this unit has not pushed yet beneath its region
@@ -15100,6 +15147,14 @@ func seatUnitDeopts(flw *lowerer, rec *fnUnitRec, cf *CompiledFn, diverged bool)
 // re-step after its event (NUR124), a push-tested point at its slot, any
 // other before its statement's first root op.
 func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
+	if d.landing {
+		// Seated where the landing is emitted (seatLandingWord).
+		if flw.landingDeopts == nil {
+			flw.landingDeopts = map[int]deoptPoint{}
+		}
+		flw.landingDeopts[d.seq] = d
+		return
+	}
 	if d.restep {
 		// Tested right after the event's op, over the results it left
 		// (emitReStepAfter, NUR124).
@@ -15142,9 +15197,24 @@ func stampDeoptRet(cf *CompiledFn, retPC int) {
 	for i := range cf.Deopts {
 		cf.Deopts[i].RetPC = retPC
 	}
-	if len(cf.Deopts) > 0 {
+	if len(cf.Deopts) > 0 || stampLandingRet(cf.LandingWords, retPC) {
 		cf.RetReplay = true
 	}
+}
+
+// stampLandingRet seats retPC — where the run continues with a landing
+// island's residual (NUR190) — on every landing word that carries a deopt,
+// and reports whether any did.
+func stampLandingRet(words map[int]LandingWord, retPC int) bool {
+	seated := false
+	for pc, w := range words {
+		if w.Deopt {
+			w.RetPC = retPC
+			words[pc] = w
+			seated = true
+		}
+	}
+	return seated
 }
 
 // planDeopts computes the unit's per-read deopt points (NUR123): a bare
@@ -15165,6 +15235,7 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	es.planKeepDefs(rec)
 	if len(rec.body) > 0 {
 		es.planReStepDeopts(u, rec)
+		es.planLandingDeopts(rec)
 	}
 	if len(rec.body) == 0 || (len(rec.wordReadNames) == 0 && len(rec.deopts) == 0) {
 		es.planDeoptsEnv(u, rec)
@@ -15346,6 +15417,50 @@ func (es *EmitState) planReStepDeopts(u *emitUnit, rec *fnUnitRec) {
 		}
 		rec.deopts = append(rec.deopts, d)
 	}
+}
+
+// planLandingDeopts plans the unit's LANDING points (NUR190): a landing the
+// check pass noted with a function word after it and nothing beneath
+// (landingWalkArmed) may meet a `/q` slot that CAPTURES the word, which the
+// compiled code cannot express — the word's call and the residual arm's
+// apply are already lowered after it. The point is the island the VM hands
+// the claim to: the value, then the body from the word on (landingIsland),
+// over the frame region beneath (empty — nothing is beneath). No deferred
+// operand can be pending beneath an empty region, and every token after the
+// landing is the island's to re-run. A word that is in no token of this
+// body or its user parens (it sits in a nested code body) plans nothing,
+// and the claim still defers loudly.
+func (es *EmitState) planLandingDeopts(rec *fnUnitRec) {
+	for i := range rec.frag.events {
+		ev := &rec.frag.events[i]
+		if _, noted := es.landingAfter[ev.seq]; !noted || !es.landingWalkArmed(ev.seq) {
+			continue
+		}
+		w := es.landingWord[ev.seq]
+		tok := landingTopToken(rec.body, w.Pos)
+		if tok < 0 {
+			continue
+		}
+		rec.deopts = append(rec.deopts, deoptPoint{seq: ev.seq, slot: -1, name: w.Name, pos: w.Pos, start: w.Pos, token: tok, landing: true})
+	}
+}
+
+// landingTopToken is the index of the body token that IS the token at p or
+// a user paren holding it (at any depth), or -1 — the island's first
+// top-level token, from which its names are collected.
+func landingTopToken(body []core.Value, p core.SrcPos) int {
+	for i := range body {
+		if _, _, ok := landingIsland(body[i:i+1], p); ok {
+			return i
+		}
+	}
+	return -1
+}
+
+// landingWalkArmed reports whether the landing of event seq walks a
+// following function word with nothing beneath (landingArg's walk bit).
+func (es *EmitState) landingWalkArmed(seq int) bool {
+	return !es.landingBeneath[seq] && es.landingNext[seq] == core.LandingNextWord && es.landingWord[seq].Name != ""
 }
 
 // lambdaNamesSelfBound reports whether a LAMBDA / stored-ref unit can serve

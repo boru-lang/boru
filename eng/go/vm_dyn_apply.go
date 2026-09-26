@@ -43,6 +43,12 @@ type dynEnter struct {
 	// FORWARD — read by the replay window, which may only enter over a
 	// non-empty resolved prefix when the callee cannot reach into it.
 	allForward bool
+	// jump is no frame push at all: the op handed the rest of the body to
+	// the interpreter (a landing's `/q` claim, NUR190), and the run
+	// continues at jumpPC with the island's residual — the unit's RET, or
+	// the program's end.
+	jump   bool
+	jumpPC int
 }
 
 // allForwardSig reports whether every parameter of a matched signature is

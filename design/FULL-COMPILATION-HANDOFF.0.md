@@ -13322,6 +13322,52 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR190 closed — the landing's island and skip take the `/q` capture (2026-09-26)
+
+**The divergence (the contained half).** A dynamic fn value under a
+function word its `/q` slot claims: the interpreter captures the word as an
+atom and never runs it; the compiled code calls the word after the landing
+and the residual arm applies the value over its result, so the landing's
+walk deferred loudly (`vm:landing-quote-claim`, fn-value.tsv L317/L318 on
+the runtime-defers ledger — the maintainer's containment of 2026-09-24).
+
+**The fix.** Two answers, by placement. Where the word is in the body at
+the landing's own depth (the program — whose tokens now ride on the
+recording, `SetRootBody` — a user paren, a fn or closure body in an island
+environment, `planLandingDeopts`), the landing carries an ISLAND
+(`LandingWord.Deopt`/`Opens`/`Island`, built by `landingIsland`): the value
+and the body from the word on go to the interpreter over the (empty) frame
+region, and the run continues at the unit's RET or the program's end
+(`landingDeopt`, a `dynEnter` jump). Elsewhere — a branch arm, a loop body,
+a literal's member — every compiling landing is followed at once by the
+word's single call and the paren apply over it, so the landing carries a
+SKIP past both (`seatLandingSkip`, `LandingWord.SkipTo`), and the capture
+runs over the value and the word alone (`landingSkip`). A blanket decline
+of island-less walks was measured first and dropped: 125 corpus rows
+(member reads under `eq` and friends inside fn bodies) would have declined.
+
+**Ledgers.** fn-value.tsv L317/L318 left runtime_defers.tsv (the defer
+census 7 -> 5) and run one landing island each (engine entries 183 -> 185,
+interp-entry rows 36 -> 38, `vm:island-resolved` 7 -> 9); the lang bail line
+40 -> 37.
+
+**Pins.** lang `TestNamedFnCandidatesOpenShapes` (every placement).
+
+## NUR222 closed — a dyn body settles its own lead (2026-09-26)
+
+**The divergence.** `do [m.f 5]` over a factory's map was 6 interpreted and
+`CALL_DYNAMIC underflow` compiled: the dyn body (tryRecordDynBody) ran the
+body with the interpreter's semantics and left [6], but the model's [fn, 5]
+residual had the program's residual arm apply the lead again. Loud,
+pre-existing.
+
+**The fix.** `dynBodySettledLead`: a residual lead with another result of
+the same dyn-body dispatch above it stands aside in resolveDynamicApply —
+the window was the body's; a lone dyn-body lead over a later token keeps the
+apply (`do [m.f/v] 5` is 6).
+
+**Pins.** lang `TestNUR222DynBodySettlesItsOwnLead`.
+
 ## NUR221 closed — a landed lead is no apply-event lead (2026-09-26)
 
 **The divergence.** The gradual apply event (`recordGradualApplyEvent` →

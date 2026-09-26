@@ -1459,6 +1459,32 @@ type DynFrameWord struct {
 type LandingWord struct {
 	Name string
 	Pos  core.SrcPos
+	// Deopt marks a landing whose walk may meet a `/q` slot CAPTURING the
+	// word (NUR190): the interpreter's re-step takes the word as an atom and
+	// never runs it, where the compiled code calls it and the residual arm
+	// applies the value over its result. On that claim the VM hands the
+	// interpreter Opens fresh user parens, the value, then Island — the
+	// word's token and the rest of the body, each of those parens closed
+	// where its items end (landingIsland) — over the frame region beneath,
+	// and continues at RetPC with the island's residual: the unit's RET, or
+	// the program's end (Root, whose defs outlive the island as a top-level
+	// def does). Set only where the word is in the body at the landing's
+	// own depth.
+	Deopt  bool
+	Root   bool
+	Opens  int
+	Island []core.Value
+	RetPC  int
+	// SkipTo is the other answer to a `/q` claim, where no island can be
+	// rebuilt (a landing inside a branch arm, a loop body, a literal's
+	// member): the word's compiled call is followed at once by the paren
+	// apply that consumes the value and the word's result, so on the claim
+	// the VM captures on the interpreter over the value and the word alone,
+	// seats the SkipOut results the apply claims, and continues at SkipTo —
+	// past the word's call and the apply, which answer a model the claim
+	// voided. 0 means no skip.
+	SkipTo  int
+	SkipOut int
 }
 
 // DynApplyHead is one entry of CompiledFn.DynApplyName: the binding NAME the

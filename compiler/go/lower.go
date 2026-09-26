@@ -757,6 +757,18 @@ type lowerer struct {
 	// (Program.LandingWords / CompiledFn.LandingWords), keyed by the
 	// target's own pc — see seatLandingWord.
 	landingWords *map[int]LandingWord
+	// landingBody is the body a landing's `/q` claim resumes (NUR190): the
+	// program's tokens for the root lowerer (landingRoot), a deopt unit's
+	// Body for a unit's; landingDeopts are a unit's planned LANDING points
+	// (planLandingDeopts), keyed by the landed event. See seatLandingWord.
+	landingBody   []core.Value
+	landingRoot   bool
+	landingDeopts map[int]deoptPoint
+	// landingSkips are the walked landings with no island, keyed by the
+	// landed event, holding the landing op's pc: the paren apply that
+	// consumes the value right after the word's call seats their skip
+	// (seatLandingSkip).
+	landingSkips map[int]int
 	// storeNames is the emission target's def-name table for promoted
 	// stores of produced fn values (Program.StoreNames / CompiledFn.StoreNames),
 	// keyed by the target's own pc — see seatStoreName.
@@ -1150,22 +1162,132 @@ func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) {
 	if c.nout != 1 {
 		return
 	}
-	lw.seatLandingWord(lw.es.landingWordAt(ev.seq))
+	lw.seatLandingWord(ev.seq, lw.es.landingWordAt(ev.seq))
 	lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos)
 }
 
 // seatLandingWord records the function word noted after a landing at the pc
 // of the OpReStepLanding about to be emitted (LandingWords), so the VM's
 // landing can walk the run-time fn's overloads over it (NUR190). A landing
-// with no word after it records nothing.
-func (lw *lowerer) seatLandingWord(w LandingWord) {
+// with no word after it records nothing. A walked landing at the body's own
+// depth whose word is a token of the body also carries the DEOPT its `/q`
+// claim takes (landingDeoptToken): the island from the word on.
+func (lw *lowerer) seatLandingWord(seq int, w LandingWord) {
 	if lw.landingWords == nil || w.Name == "" {
 		return
+	}
+	if opens, island, ok := lw.landingDeoptIsland(seq, w); ok {
+		w.Deopt, w.Root, w.Opens, w.Island, w.RetPC = true, lw.landingRoot, opens, island, -1
+	} else if lw.es.landingWalkArmed(seq) {
+		if lw.landingSkips == nil {
+			lw.landingSkips = map[int]int{}
+		}
+		lw.landingSkips[seq] = len(*lw.code)
 	}
 	if *lw.landingWords == nil {
 		*lw.landingWords = map[int]LandingWord{}
 	}
 	(*lw.landingWords)[len(*lw.code)] = w
+}
+
+// seatLandingSkip gives a walked landing with no island its SKIP (NUR190,
+// LandingWord.SkipTo): when the paren apply about to be emitted takes the
+// landed value as its lead and one argument, and every op since the
+// landing is that argument's call — the word's, alone, with at most the
+// SWAP that lays the lead beneath it — a `/q` claim at the landing can
+// capture on the interpreter over the value and the word and continue past
+// the apply, whose result count it must then match. Any other layout keeps
+// the landing's loud defer.
+func (lw *lowerer) seatLandingSkip(c *emitCall) {
+	if len(lw.landingSkips) == 0 || c.dynMethod == nil || c.dynMethod.NArgs != 1 || len(c.ops) != 2 || c.ops[0].kind != opEvent {
+		return
+	}
+	at, pending := lw.landingSkips[c.ops[0].idx]
+	if !pending || lw.landingWords == nil || *lw.landingWords == nil {
+		return
+	}
+	delete(lw.landingSkips, c.ops[0].idx)
+	calls := 0
+	for pc := at + 1; pc < len(*lw.code); pc++ {
+		switch op := (*lw.code)[pc].Op; {
+		case op == OpSwap:
+		case isWordCallOp(op):
+			calls++
+		default:
+			return
+		}
+	}
+	w, ok := (*lw.landingWords)[at]
+	if !ok || calls != 1 {
+		return
+	}
+	w.SkipTo, w.SkipOut = len(*lw.code)+1, c.dynMethod.NOut
+	(*lw.landingWords)[at] = w
+}
+
+// isWordCallOp reports an op that dispatches a word by itself — the one op
+// a function word written after a landed value lowers to.
+func isWordCallOp(op Opcode) bool {
+	switch op {
+	case OpCallUser, OpCallUserPoly, OpCallNative, OpCallNativePoly:
+		return true
+	}
+	return false
+}
+
+// landingDeoptIsland is the island a walked landing's `/q` claim resumes
+// the interpreter with (landingIsland over the lowerer's body), or !ok when
+// the claim has none: the landing sits inside a nested fragment (a branch
+// arm, a loop body, whose enclosing word an island rebuilt from the body
+// would lose), the walk is not armed, the lowerer has no body (a unit
+// outside a deopt environment keeps its names in slots the island cannot
+// read), the word is no token of the body or its user parens, or a unit's
+// unnamed params are still to be seated beneath (the landing hands the
+// island the stack alone). A unit's point is the one planLandingDeopts
+// planned with its island environment.
+func (lw *lowerer) landingDeoptIsland(seq int, w LandingWord) (int, []core.Value, bool) {
+	if lw.depth > 0 || len(lw.landingBody) == 0 || !lw.es.landingWalkArmed(seq) {
+		return 0, nil, false
+	}
+	if !lw.landingRoot {
+		if _, planned := lw.landingDeopts[seq]; !planned {
+			return 0, nil, false
+		}
+		if prefix, ok := lw.deoptPrefix(); !ok || len(prefix) > 0 {
+			return 0, nil, false
+		}
+	}
+	return landingIsland(lw.landingBody, w.Pos)
+}
+
+// landingIsland rebuilds, from a body's tokens, what follows a landed value
+// on the interpreter's tape when the value's word is at wordPos: the word's
+// own token and every token after it, with each user paren the word sits
+// inside CLOSED where its items end — opens is how many such parens the
+// island must re-open before the value (`(m.f y) 5` is `( v y ) 5` from
+// the value on: one paren, the tail `y ) 5`). Items of an enclosing paren
+// BEFORE the value already ran in compiled code and are not repeated —
+// the landing walks only with nothing beneath it, so they left nothing on
+// the stack. ok is false when no token (or paren item) is at wordPos.
+func landingIsland(toks []core.Value, wordPos core.SrcPos) (int, []core.Value, bool) {
+	if wordPos.Row == 0 {
+		return 0, nil, false
+	}
+	for i, t := range toks {
+		if items, err := core.AsParenExpr(t); err == nil && !t.Quoted {
+			if opens, inner, ok := landingIsland(items, wordPos); ok {
+				tail := make([]core.Value, 0, len(inner)+1+len(toks)-i-1)
+				tail = append(tail, inner...)
+				tail = append(tail, core.NewCloseParen())
+				return opens + 1, append(tail, toks[i+1:]...), true
+			}
+			continue
+		}
+		if q := t.Pos(); q.Row == wordPos.Row && q.Col == wordPos.Col {
+			return 0, toks[i:], true
+		}
+	}
+	return 0, nil, false
 }
 
 // emitBranchLanding is emitLandingAfter for a BRANCH event: the landing the
@@ -1183,7 +1305,7 @@ func (lw *lowerer) emitBranchLanding(ev *EmitEvent) {
 		return
 	}
 	delete(lw.es.landingAfter, ev.seq)
-	lw.seatLandingWord(lw.es.landingWordAt(ev.seq))
+	lw.seatLandingWord(ev.seq, lw.es.landingWordAt(ev.seq))
 	lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos)
 }
 
@@ -3304,6 +3426,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// stack). The spec rides in DynMethods like a trap/map spec.
 		di := len(lw.p.DynMethods)
 		lw.p.DynMethods = append(lw.p.DynMethods, *c.dynMethod)
+		lw.seatLandingSkip(c)
 		lw.emit(OpCallDynMethod, di, c.pos)
 	} else if c.makeList {
 		// Assemble the n laid-out operands into a list (a computed list literal,

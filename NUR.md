@@ -112,7 +112,7 @@ keep the two in sync in the same commit.
 | [NUR187](#nur187) | FIXED 2026-09-23 (the branch result's re-step — the handoff log's entry of that date), found the same day: the residual's fn-value apply arms carried a value's collection across a STATEMENT BOUNDARY — `def m {f: inc/v} 7 m.f ; 3` islanded the window to `[7 4]` for the interpreter's `[8 3]`, `m.f ; 5` applied the member to the next statement's 5 (6 for `[fn inc 5]`) — silent, present on `main`. The pass notes every boundary's position (`NoteStatementEnd`) and no arm applies a value over an entry written past a boundary that follows it (`crossesBoundary`); an interior value past a boundary declines | probing NUR159's neighbours, 2026-09-23 |
 | [NUR188](#nur188) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: a native poly that collected a container MEMBER's fn value written BEFORE the word handed the word the fn where the interpreter re-steps the member first — `def m {f: M.inc} 7 m.f typeof` was `[7 Function]` for the interpreter's Integer, `m.f typeof` Function for its `uncalled_function` raise — silent, present on `main`. The poly declines a member read written before the word (`polyCallDeclineReason`); a read written after it (`typeof m.f`) stays its operand | probing NUR186's neighbours, 2026-09-23 |
 | [NUR189](#nur189) | FIXED 2026-09-23 (the named fn value's candidates — the handoff log's entry of that date), found the same day: the residual's TRAILING arms applied a paren-PLACED member fn value — `def m {f: M.inc} 7 (m.f)` was 8 for the interpreter's `[7 fn inc]`, `1 7 (m.f)` `[1 8]` for `[1 7 fn]` — silent, present on `main`. The trailing, trailing-window and mixed arms ask the park (`placedNotReStepped`) as the lead arm always did | probing NUR186's neighbours, 2026-09-23 |
-| [NUR190](#nur190) | CONTAINED 2026-09-24 (NUR190's open halves deferred — the handoff log's entry of that date; the maintainer's call; the Function-typed half dissolved with NUR078, 2026-09-26 — `m.g z` is the named no-match on both lanes, `m.g z/v` is 7 on both): the `/q` capture and the Function-typed reference DEFER loudly at the landing's walk (`vm:landing-quote-claim`, `vm:landing-claim`) and the corpus keeps them on the runtime-defers ledger (runtime_defers.tsv: fn-value.tsv L317/L318). PARTLY FIXED 2026-09-23 (the landing's overload walk): a DYNAMIC fn value under a FUNCTION word is re-stepped by the interpreter over that word, and the compiled landing stood aside for any arg-taking overload (NUR175) while the residual apply took the word's RESULT — `m.f z` (h with a nullary and a unary overload, z a 0-arg fn) was 1 for `[42 0]`, `m.f typeof` Function for Integer, `m.l z` (an anonymous unary) 1 for `[fn lam(Integer) 0]`, `m.a z` (an Any-typed slot) a false `uncalled_function` for the strict barrier's stranded `signature_error`. The landing walks the run-time fn's overloads over the word with the interpreter's own plan (the word rides in the bytecode, `LandingWords`), and those four are closed. The `/q` capture (`m.q z` was `[42 0]` for `[z]`, `m.f y` `[42 42]` for `[y]`, silent; fn-value.tsv's L317/L318 passed by coincidence) and the Function-typed reference (`m.g z`, 7 interpreted) need the word's compiled call skipped, which the lowering cannot do, and no static model tells a `/q` slot from a typed slot's barrier — so a compile-time decline would be over-wide, and the deferral at the walk is precise. |
+| [NUR190](#nur190) | FIXED 2026-09-26 (the landing's island — the handoff log's entry of that date): a `/q` claim at the landing's walk is exact on the VM — where the word is in the body at the landing's own depth (the program, a user paren, a fn or closure body) the value and the body from the word on go to the interpreter and the run continues at the unit's RET or the program's end; inside a branch arm, a loop body or a literal's member the word's call is followed at once by the paren apply over it, and the capture runs over the value and the word alone, skipping both; fn-value.tsv L317/L318 left the runtime-defers ledger. Found on the way and fixed: NUR222 (a dyn body's settled lead re-applied by the residual arm). Before: CONTAINED 2026-09-24 (NUR190's open halves deferred — the handoff log's entry of that date; the maintainer's call; the Function-typed half dissolved with NUR078, 2026-09-26 — `m.g z` is the named no-match on both lanes, `m.g z/v` is 7 on both): the `/q` capture and the Function-typed reference DEFER loudly at the landing's walk (`vm:landing-quote-claim`, `vm:landing-claim`) and the corpus keeps them on the runtime-defers ledger (runtime_defers.tsv: fn-value.tsv L317/L318). PARTLY FIXED 2026-09-23 (the landing's overload walk): a DYNAMIC fn value under a FUNCTION word is re-stepped by the interpreter over that word, and the compiled landing stood aside for any arg-taking overload (NUR175) while the residual apply took the word's RESULT — `m.f z` (h with a nullary and a unary overload, z a 0-arg fn) was 1 for `[42 0]`, `m.f typeof` Function for Integer, `m.l z` (an anonymous unary) 1 for `[fn lam(Integer) 0]`, `m.a z` (an Any-typed slot) a false `uncalled_function` for the strict barrier's stranded `signature_error`. The landing walks the run-time fn's overloads over the word with the interpreter's own plan (the word rides in the bytecode, `LandingWords`), and those four are closed. The `/q` capture (`m.q z` was `[42 0]` for `[z]`, `m.f y` `[42 42]` for `[y]`, silent; fn-value.tsv's L317/L318 passed by coincidence) and the Function-typed reference (`m.g z`, 7 interpreted) need the word's compiled call skipped, which the lowering cannot do, and no static model tells a `/q` slot from a typed slot's barrier — so a compile-time decline would be over-wide, and the deferral at the walk is precise. |
 | [NUR191](#nur191) | FIXED 2026-09-25 (the module fn's return contract — the handoff log's entry of that date): a named fn call through the CallBoru seam enforces the frame's return COUNT before the types (`CallBoruStrict` / `NamedFnReturnCount`, on execFnDefLiteral's cross-registry arm and buildFnBodyHandler's foreign-registry arm; the callback seams keep the count trimmed), and a user fn's single returned closure delivered as a handler result is PARKED where it lands as the frame's return is (execMatch, after the splice) — `M.d1 10` over `[(mk x) 3]` raises the frame's count error on both lanes and `3 M.d1 10` over a factory is `[3 fn (Integer)]` everywhere. NUR210 found on the way, recorded pending: a module fn returning a NAMED fn value, read through its reach group with a value beneath (`5 M.ff`), which the interpreter re-steps. The original text: A MODULE fn's body re-steps a parked closure over the token after it where a main-registry fn body parks it, and the compiled module fn parks: `import module [def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] def d1 (fn [[x:Integer][Integer][(mk x) 3]]) export "M" {d1: d1/v}] M.d1 10` is 13 interpreted (CallBoru's deferred residual sweep re-steps the parked closure over the 3) and `type_error: d1: expected 1 return value(s), got 2 — [fn (Integer) 3]` compiled — the answer the same body gives in the main registry on BOTH lanes (`def d1 (fn […]) d1 10`). A curried chain (`TestModuleFnStampedAtLoadAndRerouted`'s decliner) the same: 16 interpreted, the count error compiled. Recorded 2026-09-23, present on `main` (c268afb); an error-versus-value divergence, not silent. |
 | [NUR192](#nur192) | FIXED 2026-09-24 (the frame's closure bind — the handoff log's entry of that date), found the same day: a fn-body-LOCAL computed fn def read by a native's raw code body — `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def g fn [[xs:List][List][def a5 (mk 5)  each [a5] xs]] end g [1 2 3]` was `[[6 7 8]]` interpreted and `undefined_word: a5` compiled, `each [a5 add 1] xs` the same — because the frame's dynamic-scope bind installed nothing for a closure value (`installDef`'s carrier guard). The VM's bind pushes the closure as the top-level write-back does and the frame's trail pops it; the tail read compiles natively, the raw-body read islands to the pushed closure. Found on the way and DECLINED loudly: a fn body's computed fn def SHADOWING an enclosing frame's computed fn of the same name outlives the call in the interpreter (its install drops the overlapping outer closure at the same depth, so the def-cleanup pops nothing), which the compiled push-and-pop cannot model — `def a5 (mk 1) … g [1 2 3] each [a5] [1 2 3]` is `[[6 7 8] [6 7 8]]` interpreted, and was `[[2 3 4] [2 3 4]]` compiled on main. The `do [a5 7]` row moved to NUR193. |
 | [NUR193](#nur193) | FIXED 2026-09-24 (the do body's read — the handoff log's entry of that date), found the same day: a def-bound computed fn read inside a `do` body — `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def a5 (mk 5) end 7 do [a5]` was `[12]` compiled for the interpreter's `[7 error(cannot call `a5` …)]` (the check pass modelled the do's result as the fn carrier and the program residual applied it over the 7; the island stepped the def-bound compiled closure as anonymous DATA and parked it over the empty frame where the interpreter's fn definition raises), `do [a5 7]` a `CALL_DYNAMIC underflow`. A closure a compiled program binds by `def` is now bridged into the word dispatch under its name (core `lookupUncachedBridged`, `dispatchesAsWord`; the aggregate never cached) and `do`'s result model takes the computed-body hatch when the body leaves such a carrier. The written operand the contract does not take is NUR194. |
@@ -143,6 +143,7 @@ keep the two in sync in the same commit.
 | [NUR219](#nur219) | FIXED 2026-09-26 (the callback body's word read — the handoff log's entry of that date): a callback BODY unit (each$body, fold$body, … compiled from a fn value or a lambda at a higher-order word's slot) lists the params it reads bare where it pushes the slot (CompiledFn.FnReadParams — the stored unit's list, NUR217), the pushed closure carries the callback value it was compiled from (ClosureRetSpec.Source → ClosurePayload.Source), and the VM's token seam hands an invocation with a fn in such a slot to the interpreter's own run of that value — stepped over the inputs on the TOKEN seam, matched and called on the fn-VALUE seam — with the closure's runtime captures; data elements run the unit. The original text: A fn value or lambda handed to a higher-order word reads its gradual param bare: `def g fn [[f:Any] [Any] [f]]  each g/v [([] => [1]) 7]` is [1 7] interpreted and [fn f 7] compiled; `each ([x:Any] => [x]) …`, `x typeof`, a gradual list param, a paren `(f)` and the map-iteration fold's accumulator (`fold ([a:Any kv:Any] => [a]) {x: 1} ([] => [5])`, 5 against `fn a`) the same way. Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR217, 2026-09-26 |
 | [NUR220](#nur220) | FIXED 2026-09-26 (the anonymous park at the dynamic apply — the handoff log's entry of that date): the whole-frame replay reads the interpreter's ANONYMOUS-0-ARG PARK over its lead (replayLeadParks — a lambda or macro value whose only signatures take nothing is data unless `apply` marked it), as the landing already did; a lead the body read bare BY NAME is the binding's word dispatch and still fires. An `apply` over a LONE gradual lead declines where the registered-output arm elided its identity result silently, dropping the Applied mark. The original text: A map-each lambda's member read of a 0-arg lambda: `def m {x: ([] => [5])}  each ([kv:Any] => [kv.v]) m` is `{x:fn}` interpreted and `{x:5}` compiled — the whole-frame replay entered the lambda's stamped unit over an empty window; `kv get "v"` the same. Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR219, 2026-09-26 |
 | [NUR221](#nur221) | FIXED 2026-09-26 (a landed lead is no apply-event lead — the handoff log's entry of that date): the gradual apply event (OpCallDynApplyOne) applies its lead to the one value beneath, which is the interpreter's answer only for an INERT lead; a lead whose producer carries a re-step landing (a bare member read, not `/v`, not a user paren's placed result) takes the dynamic-lead decline instead. The original text: `def m {x: inc/v}  each ([kv:Any] => [3 kv.v apply]) m` raises apply's no-match interpreted (the member claims the 3 at its own step, and apply meets the 4) and answered `{x:4}` compiled. Silent, pre-existing (measured on the committed head, 2026-09-26) | closing NUR220, 2026-09-26 |
+| [NUR222](#nur222) | FIXED 2026-09-26 (the dyn body's settled lead — the handoff log's entry of that date): a dynamic lead whose argument is another result of the same DYN-BODY dispatch (`do` over a body the closure path declined) is the body's to settle — its handler runs the body with the interpreter's semantics — and the program's residual arm leaves it; a dyn-body result with nothing of its own above it stays the lead the interpreter re-steps over a later token. The original text: `def m {f: inc/v}` from a factory, `do [m.f 5]` is 6 interpreted and `CALL_DYNAMIC underflow` compiled (an internal error): the model left the member over its 5, the residual arm applied it again over a region the body had already settled; `7 do [m.f 5]` and the `/q` twin `do [m.f y]` the same. Loud, pre-existing (measured on the committed head, 2026-09-26) | closing NUR190, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -8431,6 +8432,42 @@ loop inside and around a fn frame, a callback raising inside the loop, a
 range loop's own iterator name, the `error` handler, the while twin; and
 control.tsv §3's row.
 
+## NUR222 — a dyn body's settled lead is applied again by the program's residual arm {#nur222}
+
+**Status:** FIXED 2026-09-26 (the dyn body's settled lead — the handoff
+log's entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:**
+closing NUR190, probing the `/q` capture inside a `do` body.
+
+**Rule:** a code body's residual is the body's own: the interpreter re-steps
+a value inside the body where it lands, and what the body leaves is data to
+the program around it until a later token re-steps it.
+
+**Divergence** (measured on the committed head):
+
+```
+def inc fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{f: inc/v}]] end def m (mk) end
+do [m.f 5]       interp: 6        compiled: CALL_DYNAMIC underflow (internal error)
+7 do [m.f 5]     interp: 7 6      compiled: the same
+```
+
+A `do` whose body the closure path declined runs as a DYN BODY
+(tryRecordDynBody): the handler runs the body with the interpreter's
+semantics, and the result is marked variadic — its count is the body's own.
+The check pass modelled the member read inside as a lead left over its
+argument ([fn, 5]), and the program's residual arm (resolveDynamicApply)
+planned the fn-value apply over that window — a second application of a
+lead the body had already applied, over a region holding one value where
+the op expected two. Loud, pre-existing.
+
+**The fix.** A residual lead produced by a dyn-body dispatch with another
+of that dispatch's own results above it (`dynBodySettledLead`) is the
+body's window, settled at run time: the residual arms stand aside and the
+region seats as the body's residual. A dyn-body result with nothing of its
+own above it is still the lead the interpreter re-steps over a LATER token
+— `do [m.f/v] 5` and `5 do [m.f/v]` are 6 on both lanes, and keep the
+apply. Pinned: lang `TestNUR222DynBodySettlesItsOwnLead` (eight rows, the
+settled and the re-stepped).
+
 ## NUR221 — a gradual apply event's lead the interpreter re-steps where it stands {#nur221}
 
 **Status:** FIXED 2026-09-26 (a landed lead is no apply-event lead — the
@@ -9766,8 +9803,9 @@ main-registry twins; edge-modules-2.tsv §12 carries the rows.
 
 ## NUR190 — a dynamic fn value under a function word its `/q` or Any-typed overload claims {#nur190}
 
-**Status:** CONTAINED 2026-09-24 (NUR190's open halves deferred — the
-handoff log's entry of that date), the maintainer's call: the `/q`
+**Status:** FIXED 2026-09-26 (the landing's island — the handoff log's
+entry of that date). Before: CONTAINED 2026-09-24 (NUR190's open halves
+deferred — the handoff log's entry of that date), the maintainer's call: the `/q`
 capture and the Function-typed reference DEFER loudly at the landing's
 walk and the corpus keeps them on the runtime-defers ledger
 (runtime_defers.tsv). The Function-typed half is GONE with NUR078
@@ -9781,6 +9819,31 @@ when that increment's word-after rule turned fn-value.tsv's L317/L318
 (`m.f z`, `m get 'f' z`) into `[fn h(Atom) z]`: the rows pass on `main`
 and here by COINCIDENCE. Present on `main` (a worktree at 90d557b),
 silent, default lane, exit 0.
+
+**The fix (2026-09-26).** The `/q` claim needs the word's compiled call
+skipped and every op after it re-planned, and the landing now does both.
+Where the word is in the body at the landing's own depth — a token of the
+program, of a user paren (re-opened), of a fn or closure body in an island
+environment — the landing carries an ISLAND (`LandingWord.Deopt`,
+`landingIsland`): on the claim the VM hands the interpreter the value and
+the body from the word on, over the frame region beneath (empty — the walk
+runs only then), and continues at the unit's RET or the program's end with
+the island's residual (`landingDeopt`; the program's tokens ride on the
+recording, `SetRootBody`). Inside a branch arm, a loop body or a literal's
+member no body can be rebuilt, but every such landing that compiles is
+followed at once by the word's single call and the paren apply that
+consumes the value and its result: the landing carries a SKIP past both
+(`LandingWord.SkipTo`, `seatLandingSkip`), and on the claim the capture
+runs over the value and the word alone and seats the results the apply
+claimed (`landingSkip`; a different count defers). Every placement probed
+agrees and compiles — `m.f y` `[y]`, `(m.f y)`, `((m.f y) 3)`, `if true
+[(m.f y)] [0]`, `for 1 [(m.f y) drop]`, `[(m.f y)]`, `{a: (m.f y)}`, a fn
+body, a callback body — and fn-value.tsv L317/L318 left the runtime-defers
+ledger (the defer census 7 -> 5; the two rows run one landing island each,
+engine entries 183 -> 185, interp-entry rows 36 -> 38). Probing the class
+found NUR222 (a dyn body's settled lead re-applied at the program's
+residual), fixed with it. Pinned: lang `TestNamedFnCandidatesOpenShapes`
+(fifteen rows, every placement), the lang ledger's bail line 40 -> 37.
 
 **The deferral (the contained half, 2026-09-24).** The walk's `/q` arm
 stood aside and the residual apply took the word's RESULT (`m.q z` was

@@ -37,6 +37,10 @@
 # PURE predicate over a concrete candidate): L34, L38, L43, L46 — `def
 # q:Even 5` and its twins — are the static check error the run raised, so
 # the program never runs compiled; record.tsv's L178 went the same way.
+# fn-value.tsv left the ledger on 2026-09-26 (NUR190 closed): L317/L318,
+# `m.f z` and `m get 'f' z`, take the landing's island — the value and the
+# program from the word on run on the interpreter, which captures the word
+# — where the landing deferred.
 bignum.tsv	10	L108, L109, L123–L129, L131: convert's own errors under the compiled runtime (a Float to a BigInteger/BigDecimal, the accuracy options), no defer site
 class.tsv	4	L98–L101: `undef Point` then a read of the instance — "unresolvable type operand Point", no defer site
 convert-ideal.tsv	1	L33: `convert Integer (make Foo {})` — vm:poly-no-match at convert (the canonical signature_error)
@@ -45,7 +49,6 @@ edge-quote-1.tsv	1	L28: `quote [add 1 2] get 0` — "tape-coupled handler result
 edge-quote-3.tsv	1	L56: `macroexpand (tw2 7) get 1` — "tape-coupled handler result at get", no defer site
 edge-scalars-3.tsv	2	L68: StringUtil.pad's own size guard, no defer site; L218: `convert Integer none` — vm:poly-no-match at convert
 flex.tsv	7	L69–L72: make's own source errors (a FlexMap from a list, …), no defer site; L228, L230, L236: `set` on a flex member — vm:poly-nout-drift (result count 1 for the recorded claim 0)
-fn-value.tsv	2	L317, L318: `m.f z`, `m get 'f' z` — vm:landing-quote-claim, a `/q` slot CAPTURES the following word (NUR190; booked by choice 2026-09-24, the deferral over an over-wide decline)
 generics.tsv	1	L56: `def b:(Box of [Integer]) {value:'no'}` — make's own field error, no defer site
 module-fmt.tsv	3	L65–L67: Fmt.format-with's own rule errors, no defer site
 module-matrix.tsv	1	L60: MatrixUtil.create's own ragged-row error, no defer site

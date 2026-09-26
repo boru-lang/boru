@@ -205,42 +205,56 @@ func TestNamedFnCandidatesWalk(t *testing.T) {
 	}
 }
 
-// TestNamedFnCandidatesOpenShapes pins NUR190's `/q` and Function-typed
-// halves as the maintainer settled them (2026-09-24): a DYNAMIC fn value
+// TestNamedFnCandidatesOpenShapes pins NUR190's close: a DYNAMIC fn value
 // under a FUNCTION word whose arg-taking overload claims the word. The
-// interpreter's `/q` slot captures the word (`y` never runs); the landing's
-// walk cannot honour the claim (the compiled code calls the word) and
-// DEFERS loudly, kept on the runtime-defers ledger — where it used to stand
-// aside and the lead arm applied the fn over the word's result (`[42 42]`
-// for `[y]`, silent; fn-value.tsv's `m.f z` passed by coincidence, z's
-// result being its own atom). The mixed twin declines soundly since the
-// islands read the word as a crossing (NUR187).
+// interpreter's `/q` slot captures the word (`y` never runs). The landing's
+// walk used to DEFER loudly there (the maintainer's containment,
+// 2026-09-24): the compiled code calls the word and the residual arm applies
+// the fn over its result (`[42 42]` for `[y]` before that, silent;
+// fn-value.tsv's `m.f z` passed by coincidence, z's result being its own
+// atom). The claim is exact now: the landing hands the value and the body
+// from the word on to the interpreter (its island) where the word is in the
+// body at the landing's depth, and elsewhere captures over the value and
+// the word and skips the word's call and the paren apply after it. The
+// mixed twin declines soundly since the islands read the word as a
+// crossing (NUR187).
 func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 	const nfQ = `def z fn [[] [Atom] [(quote z)]] end def y fn [[] [Integer] [42]] end ` +
 		`def h fn [[] [Integer] [42]] end def h fn [[x:Atom/q] [Atom] [x]] end ` +
 		`def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
-	// The landing's overload walk (the same day) settles the typed slot, the
-	// Any-typed claim and the anonymous park (TestNamedFnCandidatesWalk); the
-	// `/q` capture BAILS loudly at the landing (`m.q z` is `[z]` interpreted
-	// and used to compile `[42 0]`, the residual apply over the word's
-	// result) — the word's call is compiled after the landing and cannot be
-	// skipped, and the maintainer chose the deferral kept on the
-	// runtime-defers ledger (2026-09-24) over a compile-time decline. The
-	// Function-typed half is gone with NUR078: a bare `z` CALLS at every
-	// slot, so `m.g z` is the named no-match on both lanes (it was 7
-	// interpreted and bailed compiled), and the reference is `m.g z/v` — a
-	// value the residual arms collect, 7 on both lanes.
+	// The landing's overload walk settles the typed slot, the Any-typed
+	// claim and the anonymous park (TestNamedFnCandidatesWalk); the `/q`
+	// capture takes the landing's island (`m.q z` is `[z]` on both lanes —
+	// it bailed, and before that compiled `[42 0]`, the residual apply over
+	// the word's result). The Function-typed half is gone with NUR078: a
+	// bare `z` CALLS at every slot, so `m.g z` is the named no-match on both
+	// lanes (it was 7 interpreted and bailed compiled), and the reference is
+	// `m.g z/v` — a value the residual arms collect, 7 on both lanes.
 	const nfR = `def g fn [[f:Function] [Integer] [7]] end def q fn [[] [Integer] [42]] end def q fn [[x:Atom/q] [Atom] [x]] end ` +
 		`def mk fn [[] [Map] [{g: g/v q: q/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end `
 	rows := []struct {
 		src, interp, compiled, reason string
 		bail                          bool
 	}{
-		{nfQ + `m.f y`, "[y]", "", "CAPTURES the word `y`", true},
-		{nfQ + `m.f z`, "[z]", "", "CAPTURES the word `z`", true},
+		{nfQ + `m.f y`, "[y]", "[y]", "", false},
+		{nfQ + `m.f z`, "[z]", "[z]", "", false},
 		{nfQ + `7 m.f y`, "[7 y]", "", "dynamic value precedes residual args", false},
-		{nfR + `m.q z`, "[z]", "", "CAPTURES the word `z`", true},
+		{nfR + `m.q z`, "[z]", "[z]", "", false},
 		{nfR + `m.g z/v`, "[7]", "[7]", "", false},
+		// Every placement the capture can take: a user paren (the island
+		// re-opens it), a following statement, a branch arm, a loop body and
+		// a literal's member (the skip past the word's call and the apply),
+		// and a fn body (the unit's island).
+		{nfQ + `(m.f y)`, "[y]", "[y]", "", false},
+		{nfQ + `((m.f y) 3)`, "[y 3]", "[y 3]", "", false},
+		{nfQ + `m.f y def w 3 w`, "[y 3]", "[y 3]", "", false},
+		{nfQ + `if true [(m.f y)] [0]`, "[y]", "[y]", "", false},
+		{nfQ + `for 1 [(m.f y) drop]`, "[]", "[]", "", false},
+		{nfQ + `[(m.f y)]`, "[[y]]", "[[y]]", "", false},
+		{nfQ + `{a: (m.f y)}`, "[{a:y}]", "[{a:y}]", "", false},
+		{nfQ + `def g fn [[] [Any] [(m.f y)]] end g`, "[y]", "[y]", "", false},
+		{nfQ + `def g fn [[b:Boolean] [Any] [if b [(m.f y)] [0]]] end g true`, "[y]", "[y]", "", false},
+		{nfQ + `each ([k:Any] => [m.f y]) [1]`, "[[y]]", "[[y]]", "", false},
 	}
 	for _, c := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)

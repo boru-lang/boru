@@ -476,6 +476,11 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	native.ResetModuleExportGrowth(a.registry)
 	native.ResetCheckFnCarrierBinds(a.registry)
 
+	// The program's own tokens ride on the recording: a top-level
+	// landing's `/q` claim resumes the interpreter in them (NUR190).
+	if es, ok := a.registry.Check.Recorder().(*compiler.EmitState); ok {
+		es.SetRootBody(values)
+	}
 	engine := native.NewTop(a.registry)
 	engine.SetSource(src)
 	residual, runErr := engine.Run(values)

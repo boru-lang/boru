@@ -1582,13 +1582,77 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 	}
 	// What is left is a `/q` slot CAPTURING the word as an atom (`m.q z` is
 	// `[z]` interpreted) — the one slot the plan's word arm claims a
-	// function word through, beside the speculative Any claim above: the
+	// function word through, beside the speculative Any claim above. The
 	// compiled code calls the word after the landing and the residual arm
-	// applies the value over its result, so the walk cannot honour the
-	// claim — it defers, loudly, and the corpus keeps it on the
-	// runtime-defers ledger (NUR190's open half; the maintainer's call,
-	// 2026-09-24).
+	// applies the value over its result, so no op after this one can honour
+	// the claim: the landing's DEOPT does (NUR190) — the value and the body
+	// from the word on go to the interpreter, which captures the word
+	// exactly as its own re-step does. A landing with no island (the word
+	// sits in a nested fragment, or the unit has no island environment)
+	// defers loudly, as it always has.
+	if lword.Deopt {
+		// The walk runs only over an empty frame region (top == frameBase):
+		// the island's prefix is empty and its residual replaces the value.
+		return vc.landingDeopt(reg, v, lword, top, stack, top, curDebug, pc)
+	}
+	if lword.SkipTo > 0 {
+		return vc.landingSkip(reg, v, lword, stack, top, curDebug, pc)
+	}
 	return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-quote-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step CAPTURES the word `"+lword.Name+"` (a `/q` slot) where the compiled code calls the word; the compiled runtime cannot execute it")
+}
+
+// landingSkip answers a landing's `/q` claim where no island can be rebuilt
+// (NUR190, LandingWord.SkipTo): the capture runs on the interpreter over the
+// value and the word alone — the interpreter's own re-step, which takes the
+// word as an atom and never runs it — and its results take the place of
+// the word's call and the paren apply after it, whose claimed count they
+// must match (a count the apply did not claim defers, loudly, as the
+// landing always did).
+func (vc *vmContext) landingSkip(reg *core.Registry, v core.Value, lword compiler.LandingWord, stack []core.Value, top int, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	results, err := vc.islandRun(reg, []core.Value{v, core.WithPosAt(core.NewWord(lword.Name), lword.Pos)})
+	if err != nil {
+		return nil, nil, stampAt(err, curDebug, pc, reg)
+	}
+	if len(results) != lword.SkipOut {
+		return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-skip-count", fmt.Sprintf("RESTEP_LANDING: the `/q` capture of `%s` left %d value(s) where the apply after it claims %d; the compiled runtime cannot execute it", lword.Name, len(results), lword.SkipOut))
+	}
+	return append(stack[:top], results...), &dynEnter{jump: true, jumpPC: lword.SkipTo}, nil
+}
+
+// landingDeopt runs a landing's `/q` claim on the interpreter (NUR190): the
+// user parens the word sits in re-opened, the landed value, then the body
+// from the word on (LandingWord.Island) — the word the value captures, and
+// everything after it, which the compiled code lowered on the model that
+// the word runs — over the frame region beneath
+// the value as the resolved prefix (the walk runs only with nothing beneath
+// it in the model, so the region holds only what the frame kept). The
+// island's residual replaces the frame region and the run continues at
+// lword.RetPC: the unit's RET (its runtime-variable discipline, RetReplay),
+// or the program's end. A unit's island tears its own defs down, as the
+// frame's cleanup would; a top-level one's outlive it, as a top-level def
+// does.
+func (vc *vmContext) landingDeopt(reg *core.Registry, v core.Value, lword compiler.LandingWord, frameBase int, stack []core.Value, top int, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	if len(lword.Island) == 0 || lword.RetPC < 0 || top < frameBase {
+		return nil, nil, vmErrAt(curDebug, pc, "RESTEP_LANDING bad deopt entry")
+	}
+	prefix := append([]core.Value(nil), stack[frameBase:top]...)
+	tokens := make([]core.Value, 0, lword.Opens+1+len(lword.Island))
+	for i := 0; i < lword.Opens; i++ {
+		tokens = append(tokens, core.NewOpenParen())
+	}
+	tokens = append(append(tokens, v), lword.Island...)
+	snapshot := reg.Defs.Snapshot()
+	results, err := runIslandResolved(reg, prefix, tokens)
+	if !lword.Root {
+		core.TruncateFrameDefs(reg, snapshot)
+	}
+	if err != nil {
+		return nil, nil, stampAt(err, curDebug, pc, reg)
+	}
+	if err := vc.screenResults(results, "landing island result", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (the island's results are interpreter residuals, tape-coupled only on a compiler bug) (§compiler)
+		return nil, nil, err
+	}
+	return append(stack[:frameBase], results...), &dynEnter{jump: true, jumpPC: lword.RetPC}, nil
 }
 
 // uncalledFunctionError is the interpreter's own no-match raise for a named
@@ -3557,6 +3621,11 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, err
 			}
 			stack = ns
+			if ent != nil && ent.jump {
+				// A landing island took the rest of the body (NUR190).
+				pc = ent.jumpPC - 1
+				break
+			}
 			if ent != nil {
 				// The Apply kernel's frame push, modelled on OpCallUserPoly
 				// (the other site that learns its unit at RUN time): re-check
