@@ -67,3 +67,9 @@
 # The merge of main's #511 with the reverse-order NUR run (2026-09-26) left
 # no row: main's five above were the run's five, and the one main kept
 # (fn-value.tsv L317/L318, NUR190) the run had closed.
+# The merge of main's #513 (2026-09-26) keeps it empty: main's own 2 -> 0
+# there (NUR190's `/q` claim: L317/L318 run through the landing's sealed
+# claim target, LandingWord.Skip, entering the fn's `/q` overload over the
+# word as an atom) closed the two rows the run had closed with the landing's
+# island, and the merged landing tries main's claim first. A line comes back
+# only with the rows that moved it, named.

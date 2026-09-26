@@ -67,6 +67,22 @@ func RunCarrierCondBody(r *Registry, body Value) ([]Value, map[string]Value) {
 	return stk, adds
 }
 
+// RunCarrierCondBodyKeepDefs is RunCarrierCondBody WITHOUT the def rollback
+// (NUR212): an `if` condition or a `case` code-body scrutinee runs
+// unconditionally, exactly once, BEFORE the branch decision — the
+// interpreter runs it inline (a Mark/Move over the tape) — so every binding
+// it makes is REAL on both engines and stands for the arms and for
+// everything after the construct. The run therefore keeps its defs like
+// `do`'s (RunCarrierBodyKeepDefs), and its installs are ledgered like any
+// straight-line install, but it takes the branch-capture guard, not the
+// keep-defs one: the body records into the condition FRAGMENT the lowering
+// runs inline, so each install's bind twin is placed inside that fragment at
+// its own site rather than adopted after a closure call.
+func RunCarrierCondBodyKeepDefs(r *Registry, body Value) []Value {
+	stk, _ := runCarrierBodyDefsAdds(r, body, true, true)
+	return stk
+}
+
 func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Value, map[string]Value) {
 	if body.Data == nil {
 		return nil, nil
@@ -94,10 +110,16 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 	// recorder can bracket the run's bind twins for do-body adoption; every
 	// other body (branch / loop / quotation — conditional or multi-run)
 	// takes the plain guard, which inside a keep run marks its twins as a
-	// tainted sub-range no adoption may place.
-	if keep {
+	// tainted sub-range no adoption may place. A kept CONDITION run (condFrag
+	// — RunCarrierCondBodyKeepDefs) records into the branch's condition
+	// fragment instead: its guard consumes the capture arm and marks that
+	// fragment unconditional.
+	switch {
+	case keep && condFrag:
+		defer r.Check.Recorder().CondBodyGuard()()
+	case keep:
 		defer r.Check.Recorder().KeepDefsBodyGuard(r, body.ID)()
-	} else {
+	default:
 		defer r.Check.Recorder().BodyAnalysisGuard()()
 	}
 
@@ -123,8 +145,10 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 	// A keep=false body's def growth is TRUNCATED below, so every install
 	// inside it is SPECULATIVE and the bind ledger must not record it — the
 	// binding the pass actually leaves is whatever InstallJoinedDefs puts
-	// back, or nothing. Wider than raiseCond on purpose: a condition
-	// fragment is truncated too, even though it is not conditional.
+	// back, or nothing. Wider than raiseCond on purpose: a rolled-back
+	// scrutinee run (RunCarrierCondBody) is truncated too, even though it is
+	// not conditional. A KEPT condition (RunCarrierCondBodyKeepDefs) is not
+	// truncated, so its installs are real and ledgered.
 	if !keep {
 		r.Check.RolledBackBodyDepth++
 		defer func() { r.Check.RolledBackBodyDepth-- }()

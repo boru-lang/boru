@@ -89,6 +89,62 @@ func TestRunCarrierBodyKeepDefsLeaks(t *testing.T) {
 	}
 }
 
+// TestRunCarrierCondBodyKeepDefsKeeps pins the KEPT condition run (NUR212):
+// an `if` condition runs unconditionally, once, before the branch decision,
+// so the binding it makes stands after the run — unlike RunCarrierCondBody,
+// which rolls it back — and, not being truncated, the run does not raise
+// RolledBackBodyDepth (its installs ledger like any straight-line one) nor
+// CondBodyDepth (it is not conditional).
+func TestRunCarrierCondBodyKeepDefsKeeps(t *testing.T) {
+	r := bodyProbeReg(t)
+	defer r.Check.Begin()()
+
+	var sawRolled, sawCond, sawNested int
+	r.RegisterNativeFunc(NativeFunc{
+		Name: "cdepths",
+		Signatures: []Signature{{
+			Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+				sawRolled, sawCond, sawNested = reg.Check.RolledBackBodyDepth, reg.Check.CondBodyDepth, reg.Check.NestedBodyDepth
+				return nil, nil
+			}, RunInCheck()),
+			Returns: []*Type{}, BarrierPos: -1,
+		}},
+	})
+	if err := r.Err(); err != nil {
+		t.Fatalf("registration: %v", err)
+	}
+
+	stk := RunCarrierCondBodyKeepDefs(r, NewList([]Value{NewInteger(9), NewWord("cbind"), NewWord("cdepths"), NewBoolean(true)}))
+	if len(stk) != 1 {
+		t.Fatalf("residual = %v, want the one condition value", stk)
+	}
+	v, ok := r.Defs.Top("cbound")
+	if !ok {
+		t.Fatal("a kept condition run must leave its binding installed")
+	}
+	if n, err := AsInteger(v); err != nil || n != 9 {
+		t.Errorf("kept binding = %v (%v), want 9", v, err)
+	}
+	if sawRolled != 0 || sawCond != 0 || sawNested != 1 {
+		t.Errorf("depths inside the kept condition: rolled=%d cond=%d nested=%d, want 0/0/1",
+			sawRolled, sawCond, sawNested)
+	}
+
+	// The negative twin: the rolled-back condition run (the `case`
+	// scrutinee's count run) reports the binding and removes it.
+	r.Defs.Truncate("cbound", 0)
+	_, adds := RunCarrierCondBody(r, NewList([]Value{NewInteger(4), NewWord("cbind"), NewWord("cdepths"), NewBoolean(true)}))
+	if _, still := r.Defs.Top("cbound"); still {
+		t.Error("a rolled-back condition run must not leave its binding installed")
+	}
+	if _, reported := adds["cbound"]; !reported {
+		t.Errorf("adds = %v, want the rolled-back binding reported", adds)
+	}
+	if sawRolled != 1 || sawCond != 0 {
+		t.Errorf("depths inside the rolled-back condition: rolled=%d cond=%d, want 1/0", sawRolled, sawCond)
+	}
+}
+
 func TestRunCarrierCondBodyIsCondDepthExempt(t *testing.T) {
 	r := bodyProbeReg(t)
 	defer r.Check.Begin()()

@@ -49,6 +49,10 @@ func TestGatecarrier2584PayloadlessBodyFailedToCompile(t *testing.T) {
 			if stk != nil || adds != nil {
 				t.Errorf("RunCarrierCondBody: got (%v, %v), want (nil, nil)", stk, adds)
 			}
+			// keep=true, condFrag=true
+			if stk = RunCarrierCondBodyKeepDefs(r, body); stk != nil {
+				t.Errorf("RunCarrierCondBodyKeepDefs: got %v, want nil", stk)
+			}
 			// keep=true
 			if stk = RunCarrierBodyKeepDefs(r, body); stk != nil {
 				t.Errorf("RunCarrierBodyKeepDefs: got %v, want nil", stk)

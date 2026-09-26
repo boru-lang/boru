@@ -96,6 +96,11 @@ import (
 // the run's five (edge-quote-1 L28 / edge-quote-3 L56, flex.tsv
 // L228/L230/L236), and the two main left (fn-value.tsv L317/L318) the run
 // had already closed with NUR190. Left: none.
+// 0 -> 0 on 2026-09-26 (the merge of main's #513): main's own 2 -> 0 there
+// (NUR190's `/q` claim — the landing enters the fn's `/q` overload over the
+// word as an atom where the lowering sealed its claim target,
+// LandingWord.Skip) moved the same two rows (fn-value.tsv L317/L318) the
+// run had closed; the merged landing tries main's claim first. Left: none.
 const bailDefectCeiling = 0
 
 var bailDefects = struct {

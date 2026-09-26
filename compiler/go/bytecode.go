@@ -1572,6 +1572,17 @@ type LandingWord struct {
 	// voided. 0 means no skip.
 	SkipTo  int
 	SkipOut int
+	// Skip is the pc the landing resumes at when the interpreter's re-step
+	// CAPTURES the word itself through a `/q` slot (NUR190): past the word's
+	// compiled call and the residual apply the lowering laid over that
+	// call's result, which the claim means never run. Set only where the
+	// lowering proves that layout (sealLandingSkip): the landing op, then the
+	// word's argument-free one-result call, then OpCallDynamic applying the
+	// landed value over it. The VM tries it FIRST — it enters the fn's own
+	// unit over the atom and stays compiled — and falls to Deopt, then
+	// SkipTo, where it is 0 or the overload has no unit of this program; with
+	// none of the three the claim defers.
+	Skip int
 }
 
 // CallWindowKind names where one CallWindowOperand's value lives when the

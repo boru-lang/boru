@@ -169,7 +169,7 @@ func TestLandingSkipClaimsTheCaptureCount(t *testing.T) {
 	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
 	w := compiler.LandingWord{Name: "z", Pos: core.SrcPos{Row: 1, Col: 9}, SkipTo: 4, SkipOut: 2}
 
-	got, ent, err := vc.landingSkip(r, v, w, []core.Value{core.NewInteger(1), v}, 1, seam7Dbg, 0)
+	got, ent, err := vc.landingSkipCapture(r, v, w, []core.Value{core.NewInteger(1), v}, 1, seam7Dbg, 0)
 	if err != nil || ent == nil || !ent.jump || ent.jumpPC != 4 || len(got) != 3 {
 		t.Fatalf("a met claim: got %v %+v %v, want [1 z z] and the jump to 4", got, ent, err)
 	}
@@ -178,7 +178,7 @@ func TestLandingSkipClaimsTheCaptureCount(t *testing.T) {
 	}
 
 	w.SkipOut = 1
-	got, ent, err = vc.landingSkip(r, v, w, []core.Value{v}, 0, seam7Dbg, 0)
+	got, ent, err = vc.landingSkipCapture(r, v, w, []core.Value{v}, 0, seam7Dbg, 0)
 	if got != nil || ent != nil {
 		t.Errorf("a drifted claim must not land anything, got %v %+v", got, ent)
 	}

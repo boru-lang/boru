@@ -9,6 +9,70 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## The merge of main's #513: NUR190's two closes composed, NUR274 found and fixed (2026-09-26)
+
+**What main brought.** Main's #513 closed NUR190's `/q` claim its own way,
+kept a binding `if` condition's defs (NUR212's follow-up), and recorded
+NUR219–NUR224. Fourteen files conflicted. On a merge main keeps its
+numbers, so this branch's NUR219–NUR224 were renumbered to NUR268–NUR273 in
+a commit ahead of the merge: the records, their index rows (each noting the
+old number), every reference, and the three test files named for them.
+
+**NUR190, closed twice.** This branch's close hands a claimed landing to
+the interpreter: an island where the word is in the body at the landing's
+depth, and a skip past the word's call and the paren apply elsewhere.
+Main's close seals the landing's claim target where the word's
+argument-free call and the residual `OpCallDynamic /1` follow it at once
+(`LandingWord.Skip`), then enters the fn's `/q` overload over the word as
+an atom and stays compiled. The two layouts barely overlap: main seals the
+residual apply, and this branch's skip rides the paren apply (the shaped
+method op). The merged landing tries main's claim FIRST, then the island,
+then the skip, and defers only with none of the three.
+- Main expected `m.f typeof` and `m.f y 5` to defer. They take the island
+  and answer `[typeof]` and `[y 5]` on both lanes, and are parity rows now.
+- Main's `m.g z` row expected the interpreter's 7. With this branch's
+  NUR078 a bare `z` calls at every slot, so it is the named no-match on
+  both lanes. That was already pinned here; main's row is dropped.
+- Main's run-loop field `landingSkip` and this branch's method of the same
+  name cannot share a struct, so the method is `landingSkipCapture`.
+
+**NUR274 (found and fixed).** Main's return-contract row for the claim
+failed on the merged tree on its caret alone. The interpreter anchors a fn
+value's contract error at the value it re-stepped: for a member read, the
+value's own `h/v` token (1:66). The compiled frame blamed the residual
+apply's op (1:128). The same held for every Apply-kernel entry over a
+member read (`m.f 5`, `5 m.f`, `(m.f 5)`, `m get 'f' 5`: 1:95 for 1:69),
+and main answered them all at the value.
+- **Why.** This branch's NUR118 moved a nested frame's contract error to
+  the CALL. That is right for a named call, and for a name read, whose op's
+  debug entry is the read. Over a member read it blamed the op.
+- **The fix.** The Apply kernel hands the frame the applied value's
+  position (`dynEnter.at` → `vmFrame.retAt`), unless the op carries a
+  named head (`applyAnchor`).
+- **Parity held and gained.** The name reads keep theirs: `ap m.f`'s
+  `(g 5)` (1:125), `def g h/v end g 5` (1:109) and `h/v apply 5` (1:95).
+  Measured shape by shape against the merged tree and main.
+
+**NUR275 (recorded, open).** A root def-bound member value applied by name
+(`def g m.f end g 5`) raises under the name at the read interpreted (`g:`
+at 1:109) and under the value at its token compiled (`h:` at 1:69). Main
+answers exactly the same, and so did this branch, at 1:99. It is fenced by
+`TestRootDefBoundMemberFnContractPending`.
+
+**Main's new records on the merged tree.**
+- NUR220, NUR221 and NUR224 answer as the interpreter does through this
+  branch's earlier closes: NUR217's decline of a stored unit's bare fn read,
+  NUR207's root read, and NUR118's call anchor, whose witness NUR224 is.
+  They are marked FIXED and pinned by
+  `TestMain513RecordsClosedOnTheMergedTree`.
+- NUR219 (loud), NUR222 (loud) and NUR223 (silent) stay open.
+
+**Both sides kept.** The value-less `do` both latches its runtime-variable
+count (this branch's NUR242 `do` half) and counts for main's binding
+condition (`ValuelessDoBodies`). The reset list and the lifecycle
+classification carry both `RaiseWatches` and `ValuelessDoBodies`. The
+`seatLandingWord` argument order is main's.
+
 ## NUR210's rebinding half for a bare read closed, with NUR266 and NUR267 found and closed (2026-09-26)
 
 **The divergence (NUR210's rebinding half).** A computed `do` body at the

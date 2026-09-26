@@ -212,9 +212,12 @@ func TestNamedFnCandidatesWalk(t *testing.T) {
 // 2026-09-24): the compiled code calls the word and the residual arm applies
 // the fn over its result (`[42 42]` for `[y]` before that, silent;
 // fn-value.tsv's `m.f z` passed by coincidence, z's result being its own
-// atom). The claim is exact now: the landing hands the value and the body
-// from the word on to the interpreter (its island) where the word is in the
-// body at the landing's depth, and elsewhere captures over the value and
+// atom). The claim is exact now, by what the lowering laid out: where the
+// word's call and the residual apply follow the landing at once
+// (LandingWord.Skip) the landing enters the fn over the atom and resumes
+// past both, compiled; where the word is in the body at the landing's depth
+// the landing hands the value and the body from the word on to the
+// interpreter (its island); and elsewhere it captures over the value and
 // the word and skips the word's call and the paren apply after it. The
 // mixed twin declines soundly since the islands read the word as a
 // crossing (NUR187).
@@ -232,6 +235,7 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 	// `m.g z/v` — a value the residual arms collect, 7 on both lanes.
 	const nfR = `def g fn [[f:Function] [Integer] [7]] end def q fn [[] [Integer] [42]] end def q fn [[x:Atom/q] [Atom] [x]] end ` +
 		`def mk fn [[] [Map] [{g: g/v q: q/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end `
+	const nfA = `def h fn [[x:Atom/q] [Any] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end `
 	rows := []struct {
 		src, interp, compiled, reason string
 		bail                          bool
@@ -255,6 +259,10 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 		{nfQ + `def g fn [[] [Any] [(m.f y)]] end g`, "[y]", "[y]", "", false},
 		{nfQ + `def g fn [[b:Boolean] [Any] [if b [(m.f y)] [0]]] end g true`, "[y]", "[y]", "", false},
 		{nfQ + `each ([k:Any] => [m.f y]) [1]`, "[[y]]", "[[y]]", "", false},
+		{nfQ + `m get 'f' z`, "[z]", "[z]", "", false},
+		{nfA + `m.f z`, "[z]", "[z]", "", false},
+		{nfA + `m.f typeof`, "[typeof]", "[typeof]", "", false},
+		{nfQ + `m.f y 5`, "[y 5]", "[y 5]", "", false},
 	}
 	for _, c := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
@@ -273,7 +281,7 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 			continue
 		}
 		if !compiled || errC != nil || fmt.Sprint(gotC) != c.compiled {
-			t.Errorf("%q: compiled (measured, open): want %s, got %v err=%v", c.src, c.compiled, gotC, errC)
+			t.Errorf("%q: compiled: want %s, got %v err=%v", c.src, c.compiled, gotC, errC)
 		}
 	}
 	// The bare word before the Function-typed slot calls: z's 0 is no
@@ -282,6 +290,23 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 	if !compiled || codeOf(errI) != "uncalled_function" || codeOf(errC) != codeOf(errI) || detailOf(errC) != detailOf(errI) || len(gotC) != 0 || len(gotI) != 0 {
 		t.Errorf("%q: compiled=%v %v [%s] %s, interp %v [%s] %s", src, compiled, gotC, codeOf(errC), detailOf(errC), gotI, codeOf(errI), detailOf(errI))
+	}
+	// The claim's effects are the fn's own, in the interpreter's order: the
+	// captured word never runs (a word that raises would raise), a body that
+	// raises raises the interpreter's error, the declared return contract
+	// holds, and a multi-result body leaves every result.
+	for _, src := range []string{
+		nfA + `def w fn [[] [Integer] [raise "ran"]] end m.f w`,
+		`def h fn [[x:Atom/q] [Any] [raise "boom"]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end m.f z`,
+		`def h fn [[x:Atom/q] [Integer] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end m.f z`,
+		`def h fn [[x:Atom/q] [Any Any] [x x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end m.f z`,
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if !compiled {
+			t.Errorf("%q: not compiled: %v", src, errC)
+			continue
+		}
+		requireParity(t, src, gotC, errC, gotI, errI)
 	}
 }
 

@@ -49,6 +49,26 @@ type dynEnter struct {
 	// the program's end.
 	jump   bool
 	jumpPC int
+	// at is the applied VALUE's own position, where the interpreter's return
+	// check anchors the entered frame's contract error (execFnDefSig's
+	// callPos: the value at the pointer); zero when the value carries none,
+	// and the RET anchors at the call (NUR118).
+	at core.SrcPos
+}
+
+// applyAnchor is where an entered frame's contract error anchors (vmFrame.retAt):
+// the interpreter's return check anchors at the fn value it re-stepped at the
+// pointer (execFnDefSig's callPos), which is the value's own position — a
+// member read hands the stored value on unmoved — except where a NAME read put
+// it there, which re-positions it to the read's token. A named head (the
+// op's DynApplyHead) is that read, and the op's own debug entry already holds
+// its position, so the RET's call anchor stands (NUR118); so does a value that
+// carries no position.
+func applyAnchor(ent *dynEnter, head compiler.DynApplyHead) core.SrcPos {
+	if head.Name != "" {
+		return core.SrcPos{}
+	}
+	return ent.at
 }
 
 // allForwardSig reports whether every parameter of a matched signature is
@@ -135,6 +155,14 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 	if sig == nil {
 		return nil
 	}
+	return vc.dynApplyEnterSig(fd, sig, args, fnVal.Pos())
+}
+
+// dynApplyEnterSig is dynApplyEnter past the match: enter fd's overload sig —
+// one the caller already selected by the interpreter's rule — over args, or
+// nil when that overload has no in-program unit of the matching shape. at is
+// the applied value's position (dynEnter.at).
+func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, args []core.Value, at core.SrcPos) *dynEnter {
 	ref := compiler.CompiledRef(sig)
 	if ref == nil || ref.Prog != vc.p || ref.Unit < 0 || ref.Unit >= len(vc.p.Fns) {
 		return nil
@@ -164,7 +192,7 @@ func (vc *vmContext) dynApplyEnter(fnVal core.Value, args []core.Value) *dynEnte
 			locals[i].Quoted = true
 		}
 	}
-	return &dynEnter{unit: ref.Unit, locals: locals, retFn: applyRetContract(fn, fd.Name, sig), allForward: allForwardSig(sig)}
+	return &dynEnter{unit: ref.Unit, locals: locals, retFn: applyRetContract(fn, fd.Name, sig), allForward: allForwardSig(sig), at: at}
 }
 
 // dynApplyForeign applies a fn VALUE whose matched overload carries a

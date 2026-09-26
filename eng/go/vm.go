@@ -88,6 +88,11 @@ type vmFrame struct {
 	// value's contract. Nil on every ordinary CALL_USER frame, where the unit
 	// IS the contract.
 	retFn *compiler.CompiledFn
+	// retAt is where this frame's contract error anchors when set: the
+	// applied fn VALUE's own position (dynEnter.at), as the interpreter's
+	// return check anchors a value's frame. Zero on every other frame, which
+	// anchors at the call (NUR118).
+	retAt core.SrcPos
 	// argsBase is the r.Args depth at call entry (DynEnv programs only —
 	// the frame pushed its args list; RET / flow unwind truncate back).
 	argsBase int
@@ -124,6 +129,12 @@ type vmContext struct {
 	// and runVMEntry's exit restore truncates to it on EVERY path (error
 	// unwind included), so a failed run never leaks args entries.
 	argsFloor int
+	// landingSkip is a landing's CLAIM jump (NUR190): set by landingQuoteClaim when
+	// the re-step claimed the word after the landed value, and read — then
+	// cleared — by the run loop right after the op, which resumes at that pc
+	// (past the word's call and the residual apply) instead of the next one.
+	// 0 means no jump.
+	landingSkip int
 	// gateReg/gateWC/gateMC cache the engine policy's checkers per
 	// registry — the VM twins of the interpreter's policyGateWord /
 	// policyGateModuleCall consult them at every named / module-export
@@ -1582,11 +1593,17 @@ func (vc *vmContext) landingFire(reg *core.Registry, v core.Value, fnDef core.Fn
 //     aside for the mixed overload, NUR175, and the residual apply answered
 //     1) and PARKS an anonymous or macro value, as the wordless landing
 //     does (ADR-016's anonymous-0-arg park);
-//   - a `/q` slot CAPTURES the word: the value stands aside as before and
-//     the residual apply keeps its answer — the word's call is already
-//     compiled after the landing and cannot be skipped, so the capture is
-//     the open half of NUR190 (fn-value.tsv's `m.f z` passes because z's
-//     result is its own atom), and the run bails loudly.
+//   - a `/q` slot CAPTURES the word, which never runs, and the claim is
+//     honoured by what the lowering laid out: where it sealed the claim's
+//     target (LandingWord.Skip — the word's call and the residual apply
+//     right after the landing) the fn is ENTERED over the atom and the run
+//     resumes past both, compiled (`m.f z` is `[z]`, fn-value.tsv's
+//     L317/L318); where the word is in the body at the landing's own depth
+//     the value and the body from the word on run on the interpreter (the
+//     landing's island, LandingWord.Deopt); inside a branch arm, a loop body
+//     or a literal's member the capture runs over the value and the word
+//     alone and skips the word's call and the paren apply after it
+//     (LandingWord.SkipTo); elsewhere the run defers loudly.
 //
 // That is every claim the plan can make on a function word. A typed slot —
 // a Function-typed one included — takes a bare fn name by `/v` alone
@@ -1635,31 +1652,36 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 	// `[z]` interpreted) — the one slot the plan's word arm claims a
 	// function word through, beside the speculative Any claim above. The
 	// compiled code calls the word after the landing and the residual arm
-	// applies the value over its result, so no op after this one can honour
-	// the claim: the landing's DEOPT does (NUR190) — the value and the body
+	// applies the value over its result, so the claim is honoured by what
+	// the lowering laid out (NUR190), in order: the sealed claim target,
+	// which enters the fn over the atom and stays compiled
+	// (landingQuoteClaim); the landing's DEOPT, where the value and the body
 	// from the word on go to the interpreter, which captures the word
-	// exactly as its own re-step does. A landing with no island (the word
-	// sits in a nested fragment, or the unit has no island environment)
-	// defers loudly, as it always has.
+	// exactly as its own re-step does; the skip past the word's call and the
+	// paren apply (landingSkipCapture). A landing with none of them defers
+	// loudly, as it always has.
+	if ent := vc.landingQuoteClaim(v, fnDef, sig, lword); ent != nil {
+		return stack[:top], ent, nil
+	}
 	if lword.Deopt {
 		// The walk runs only over an empty frame region (top == frameBase):
 		// the island's prefix is empty and its residual replaces the value.
 		return vc.landingDeopt(reg, v, lword, top, stack, top, curDebug, pc)
 	}
 	if lword.SkipTo > 0 {
-		return vc.landingSkip(reg, v, lword, stack, top, curDebug, pc)
+		return vc.landingSkipCapture(reg, v, lword, stack, top, curDebug, pc)
 	}
 	return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-quote-claim", "RESTEP_LANDING at "+fnDef.Name+": the re-step CAPTURES the word `"+lword.Name+"` (a `/q` slot) where the compiled code calls the word; the compiled runtime cannot execute it")
 }
 
-// landingSkip answers a landing's `/q` claim where no island can be rebuilt
-// (NUR190, LandingWord.SkipTo): the capture runs on the interpreter over the
-// value and the word alone — the interpreter's own re-step, which takes the
-// word as an atom and never runs it — and its results take the place of
-// the word's call and the paren apply after it, whose claimed count they
-// must match (a count the apply did not claim defers, loudly, as the
+// landingSkipCapture answers a landing's `/q` claim where no island can be
+// rebuilt (NUR190, LandingWord.SkipTo): the capture runs on the interpreter
+// over the value and the word alone — the interpreter's own re-step, which
+// takes the word as an atom and never runs it — and its results take the
+// place of the word's call and the paren apply after it, whose claimed count
+// they must match (a count the apply did not claim defers, loudly, as the
 // landing always did).
-func (vc *vmContext) landingSkip(reg *core.Registry, v core.Value, lword compiler.LandingWord, stack []core.Value, top int, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+func (vc *vmContext) landingSkipCapture(reg *core.Registry, v core.Value, lword compiler.LandingWord, stack []core.Value, top int, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
 	results, err := vc.islandRun(reg, []core.Value{v, core.WithPosAt(core.NewWord(lword.Name), lword.Pos)})
 	if err != nil {
 		return nil, nil, stampAt(err, curDebug, pc, reg)
@@ -1704,6 +1726,25 @@ func (vc *vmContext) landingDeopt(reg *core.Registry, v core.Value, lword compil
 		return nil, nil, err
 	}
 	return append(stack[:frameBase], results...), &dynEnter{jump: true, jumpPC: lword.RetPC}, nil
+}
+
+// landingQuoteClaim enters the landed fn over the word its re-step CAPTURED
+// — the plan's own `/q` overload, sig, over the word as an atom at the word's
+// position (the interpreter's arrival converts it so, CollectArrival) — and
+// arms the run loop's jump past the word's call and the residual apply
+// (LandingWord.Skip, sealed by the lowering only where the three ops are
+// contiguous). nil — the caller falls to the landing's island or skip, and
+// with neither defers — when no target was sealed or the overload has no
+// unit of this program to enter (dynApplyEnterSig's rule).
+func (vc *vmContext) landingQuoteClaim(v core.Value, fnDef core.FnDefInfo, sig *core.Signature, lword compiler.LandingWord) *dynEnter {
+	if lword.Skip <= 0 {
+		return nil
+	}
+	ent := vc.dynApplyEnterSig(fnDef, sig, []core.Value{core.WithPosAt(core.NewAtom(lword.Name), lword.Pos)}, v.Pos())
+	if ent != nil {
+		vc.landingSkip = lword.Skip
+	}
+	return ent
 }
 
 // uncalledFunctionError is the interpreter's own no-match raise for a named
@@ -3839,7 +3880,8 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if len(frames) > 0 {
 				fb = frames[len(frames)-1].stackBase
 			}
-			ns, ent, err := vc.callDynFamily(curReg, in.Op, int(in.Arg), fb, stack, curDebug, pc, dynFrameWordsAt(p, curUnit, pc), dynApplyNameAt(p, curUnit, pc), landingWordAt(p, curUnit, pc))
+			head := dynApplyNameAt(p, curUnit, pc)
+			ns, ent, err := vc.callDynFamily(curReg, in.Op, int(in.Arg), fb, stack, curDebug, pc, dynFrameWordsAt(p, curUnit, pc), head, landingWordAt(p, curUnit, pc))
 			if err != nil {
 				return nil, err
 			}
@@ -3848,6 +3890,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// A landing island took the rest of the body (NUR190).
 				pc = ent.jumpPC - 1
 				break
+			}
+			if vc.landingSkip > 0 {
+				// A landing that claimed the word after it (landingQuoteClaim)
+				// resumes past the word's call and the residual apply — and
+				// an entered frame returns there too (retPC is pc+1 below).
+				pc = vc.landingSkip - 1
+				vc.landingSkip = 0
 			}
 			if ent != nil {
 				// The Apply kernel's frame push, modelled on OpCallUserPoly
@@ -3860,7 +3909,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				if err := checkParamContract(r, fn, ent.locals); err != nil {
 					return nil, stampAt(err, curDebug, pc, curReg)
 				}
-				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth(), retFn: ent.retFn})
+				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth(), retFn: ent.retFn, retAt: applyAnchor(ent, head)})
 				vc.frameDepth++ // balanced by the matching RET, like OpCallUser
 				nameFrameFns(curReg, fn, ent.locals)
 				vc.pushFrameArgs(ent.locals, fn.NArgs)
@@ -4219,6 +4268,9 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					// not at the body's last instruction (NUR118).
 					if len(frames) > 0 {
 						fr := frames[len(frames)-1]
+						if fr.retAt.Row != 0 {
+							return nil, stampAt(err, []core.SrcPos{fr.retAt}, 0, curReg)
+						}
 						callDebug := p.Debug
 						if fr.retUnit >= 0 && fr.retUnit < len(p.Fns) {
 							callDebug = p.Fns[fr.retUnit].Debug
