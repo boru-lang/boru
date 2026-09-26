@@ -9552,6 +9552,20 @@ where the raise claims none can. A mixed-arity word needs the VM to
 rebuild the interpreter's full diagnostic, not the spec's arity-screened
 one.
 
+**What the `fold` fix needs (scoped 2026-09-26, the check-in after
+NUR210's silent half).** The VM can rebuild the interpreter's no-match
+byte for byte the way `DISPATCH_GENERIC` does (`core.NoMatchOverWindow`
+over a region host laid out as stack run, word, then written operands).
+NUR211's split rematch plans the same tape. What it lacks is the split.
+The poly record gets its operands in signature order, with no count of the
+operands written after the word. The check-mode match knows it (its
+positions past the pointer), but neither `DispatchBraid.TryRecordPoly` nor
+the successful dispatch's `RecordOutcome` carries it. The count has to be
+threaded through that seam (the slot type, its pinned inactive default and
+the compiler's installer), then into `PolyRef`, and read at
+`CALL_NATIVE_POLY`'s no-match when neither a `PolyNoMatchSpec` nor
+`bestEffortNoMatch` answers.
+
 **Divergence** (measured at 5c0d6b1; each an internal_error compiled with
 the "please report it" note):
 
