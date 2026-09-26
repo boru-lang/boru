@@ -150,6 +150,8 @@ keep the two in sync in the same commit.
 | [NUR226](#nur226) | FIXED 2026-09-26 (the key canons as its key — the handoff log's entry of that date): a map key renders bare only when it lexes back as the same key (letters, digits, `_ $ - @`) and quoted otherwise (`canonKey`), in every canon map arm, both ports. The original text: A map key that needs quoting canons bare: `{'q k':2}` renders `{q k:2}`, which re-parses as two entries (`{q:q k:2}`) — ADR-015's round-trip broken on the key, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
 | [NUR227](#nur227) | FIXED 2026-09-26 (a comma before the angle — the handoff log's entry of that date): a sequence joins a part whose last token is a bare capitalised name to a part opening `<` with a comma (`joinCanonParts`), so `[:A, <a/>]` re-parses as the typed list it is, both ports. The original text: A typed tag before an XML literal re-lexes as the angle sugar: `<a/>:A` canons `[:A <a/>]`, which re-parses as `[:A<a/>]` — whitespace does not separate `A` from `<`, so the tag and the element fuse into `A<a/>` | the canon fixpoint gate, closing NUR072, 2026-09-26 |
 | [NUR228](#nur228) | FIXED 2026-09-26 (the gradual window declines — the handoff log's entry of that date): the matcher flags a split whose window hangs on a gradual stack operand while a later overload forward-collects past the token the selected one stopped at (`laterCandidateCollectsPast`), and the compile declines with the gradual-split reason — the mirror of the existing split flag. The original text: `def v (whereis "x") v send {a: 1} "nobody"` is `[None]` interpreted (v is None, so `send (Any, String)` takes both forward tokens) and raised signature_error compiled: the check pass matched `send (Any, Pid)` over ONE forward token and the dynamic v, and compiled that window — `{a: 1}` sent to None; `whereis "x" send {a: 1} (self)` declined as a "stack discipline" compiler defect. A wrong answer (a program error the interpreter does not raise), pre-existing (measured on main at 3b5db68) | closing NUR064, 2026-09-26 |
+| [NUR229](#nur229) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): a boru matcher refuses a malformed quoted-string escape before jsonic's lexer reads it, the escape itself named, in both ports. The original text: the two tabnas ports reported a malformed escape in a quoted string differently — `"a\x4"` an invalid ascii escape in Go and an unterminated string in TS, `"a\xZZb"` spanning `"a\xZZ` in Go and `\xZZ` in TS. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
+| [NUR230](#nur230) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): Go's shared escape writer pairs a UTF-16 surrogate split across two `\uXXXX` escapes into one code point, as jsonic does in a quoted string. The original text: in a template, `\ud83d\ude00` read as two U+FFFD in Go and as one code point in TS (whose UTF-16 strings pair the units); both ports read it as one in a quoted string. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -175,7 +177,7 @@ keep the two in sync in the same commit.
 | [NUR130](#nur130) | FIXED 2026-09-25 (the condition's own token — the handoff log's entry of that date): A terminal trap's caret is the RECORDED site, the interpreter's is wherever its tape pointer sat: `while [] [1] end 5` raises the identical `runtime_error: while: condition produced no value` on both lanes, at `1:7` (the condition operand) compiled and `1:14` (the trailing `5`) interpreted, and the bare `while [] [1]` is `1:7` compiled against `source position unknown` interpreted. Message, code and exit agree; only the anchor differs, and the compiled one is the better anchor — the interpreter's is a tape artefact of where the loop's move token happened to sit after splicing | the forty-second increment's empty-condition trap, 2026-09-10 |
 | [NUR112](#nur112) | FIXED 2026-09-25 (the plain check's stored member — the handoff log's entry of that date): on a PLAIN check a stored fn value read as a member is the value itself, so the pass applies it over what follows as the run does (`def m {a:size/v}  m.a [1 2 3]` checks [Integer]); the compile pass keeps its dynamic carrier and the shaped method model. The earlier text: NARROWED 2026-09-25 (the extension is irrelevant; the widening is the member read's designed model — the record's resolution line): The checker's residual for a parked native word applied after its name was EXTENDED does not match what runs: `def Pos (refine Integer)  def m {a:size/v}  def size fn [[n:Pos] [Integer] [200]] end  def v:Pos 3  m.a v` is checked `[dynamic(Any) Pos]` — two values, one of them the argument left behind — and actually leaves `[Integer]`. Both ENGINES agree on the answer (3); it is the static model that differs, so no differential can see it — TestCheckTypeSoundness can, and did | writing a corpus row for the parked-native apply gate, 2026-08-29 |
 | [NUR009](#nur009) | Bytes excluded from the DepScalar refinement bases — VERDICT 2026-08-15: WAIT for the ADR-012 `types/go` consolidation to close this through the refinement-base capability; no narrow fix meanwhile | 2026-07-22 uniformity review |
-| [NUR026](#nur026) | Escape sets diverge between quoted strings and templates — NARROWED 2026-08-15: the escape VOCABULARY is resolved by fix (templates take the quoted-string set: \b \f \v \xNN \uNNNN, and an unknown escape drops its backslash); what remains is the malformed-input REPORTING difference, which needs an error channel the template lexer seam does not have | 2026-07-22 uniformity review |
+| [NUR026](#nur026) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): every string form reads every escape alike in both ports — the braced `\u{…}` form and split surrogate pairs are live in a template too — and a malformed `\x` / `\u` is refused alike, naming the escape: a template's literal matcher and a new quoted-string matcher answer to one definition (`escapeFault`). The original text: Escape sets diverge between quoted strings and templates — NARROWED 2026-08-15: the escape VOCABULARY is resolved by fix (templates take the quoted-string set: \b \f \v \xNN \uNNNN, and an unknown escape drops its backslash); what remains is the malformed-input REPORTING difference, which needs an error channel the template lexer seam does not have | 2026-07-22 uniformity review |
 | [NUR072](#nur072) | FIXED 2026-09-26 (canon spells the sugar and the word — the handoff log's entry of that date): canon renders a plain Word bare (ADR-015 settles the bare-word question: `word(foo)` re-parses as the `word` splice over a group, bare `foo` re-parses to the Word), the lambda marker `=>` and its fold group `A => B` without parens, a mini literal `+name'src'` in one canonical delimiter with the lexer's escapes, the type bound `name/t`, and a group modifier after its group (`(1 2) /s`) — in core/go and core/ts alike; the TS `/N` arity is a bigint, so `x/9223372036854775807` round-trips in both ports and left divergent.tsv for parse.tsv; a Go disjunct canon arm (missing, it spelled its members in the debug form) matches TS. A fixpoint gate over the parser corpus runs in both runners with a shrink-only ledger (parser/spec/canon-fixpoint.tsv) — NUR072's kinds all reach their fixpoint; the 33 ledgered rows are NUR225–NUR227. The original text: Three sugar kinds (mini, type-bound, lambda) still canon in DEBUG form after NUR059 — withdrawn there because the renders do not round-trip: SugarInfo does not retain the mini delimiter, and type-bound renders its Items rather than the bound's text; also carries the undecided bare-word question (`word(foo)` vs `foo`, 175 corpus rows) | NUR059's fix, 2026-08-15 |
 | [NUR075](#nur075) | FIXED 2026-09-26 (eq's capability — the handoff log's entry of that date): `eq` is extensible per type on `deq`'s terms — `core.ExactEqualer`, consulted at ExactEqual's terminal `false` exactly where DeepEqualer sits in DeepEqual (so the two reach the same values: the pairs no kernel arm names), and a `behave eq/q` slot with deq's shape (`[[T T] [Boolean]]`) and deq's seam (delegate, decline, re-entry guard). Kernel identity arms are untouched — the capability is additive, as deq's is. The original text: `deq` is extensible per type (`DeepEqualer`), `eq` is not — the one part of the retired NUR031's verdict its fix did not take: the divergences closed by adding kernel arms rather than by routing through `Behavior`, so a type can define its own deep equality but not its own identity | NUR031's fix, 2026-08-16 |
 | [NUR076](#nur076) | FIXED 2026-09-26 (the check pass notes a behave make — the handoff log's entry of that date): `behave`'s check-mode half (its ReturnsFn) validates the call as the handler does and, for the `make` slot, notes the target in the pass's own state (`CheckState.BehaveMakers`), which `HasMaker` reads — so a construction after the call skips the schema validation the type's own constructor replaces, exactly as a Go-side Maker's does; one before it validates, as the run has it. Nothing is installed on the type, so no user body runs during analysis; the other seven slots change only what a program computes, which analysis does not evaluate. `def P class {a: Integer}  behave make/q (fn Any P [make P {a: 42}])  make P {bogus: 1}` checks clean and compiles (Class/P{a:42} on both lanes). The original text: A `behave`-installed capability is invisible to check mode, because `behave` does not run there — for `make` that turns a working program into a check FAILURE: a type whose Maker ignores the schema still has the schema's unknown/missing-field rules applied statically | NUR056's fix, 2026-08-17 (flagged by the PR #379 review, Codex P1) |
@@ -4356,9 +4358,10 @@ the resolution plan (semantic vs deterministic ordering).
 
 ## NUR026 — Escape sets diverge between quoted strings and templates {#nur026}
 
-**Status:** Pending (NARROWED — the escape VOCABULARY is resolved by
-fix, 2026-08-15; the malformed-input REPORTING difference remains) ·
-**Recorded:** 2026-07-22 · **Surfaced by:** full-repo uniformity review
+**Status:** FIXED 2026-09-26 (one escape vocabulary, one malformed-escape
+report — the handoff log's entry of that date; the vocabulary was narrowed
+2026-08-15) · **Recorded:** 2026-07-22 · **Surfaced by:** full-repo
+uniformity review
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
 
@@ -4471,6 +4474,33 @@ jsonic `LexMatcher` returning a `*Token`, so raising means changing the
 lexer seam — the unified-lexer work the 2026-07-31 verdict sketched and
 the 2026-08-15 verdict did not ask for. Recorded rather than silently
 accepted, with a spec row pinning the residual.
+
+### The fix (2026-09-26)
+
+The seam was never closed: a tabnas `LexMatcher` may return a BAD token
+(`#BD`, its `Why` the code), which is how jsonic's own string lexer
+reports. So boru owns the escape check in both ports, with ONE definition
+(`escapeFault`): `\x` needs two hex digits; `\u` four, or the braced
+`\u{…}` form of 1–6 digits up to `10FFFF`; the reported span is the escape,
+clipped at the form's closing delimiter.
+
+- A template's literal matcher refuses a malformed escape with it
+  (`` `a\xZZb` `` → `invalid ascii escape: \xZZ`).
+- A new `string_escape` matcher runs ahead of jsonic's string lexer and
+  refuses a malformed escape in `"…"` / `'…'` the same way; a well-formed
+  or unterminated string, or a raw control character, stays jsonic's. That
+  closed a cross-port split in the quoted form too (NUR229).
+- Measuring the vocabulary across forms found it NOT fully unified: the
+  braced `\u{…}` form was live in a quoted string only, and Go's shared
+  writer decoded a surrogate pair split across two escapes as two U+FFFD
+  where TS joined it (NUR230). `writeStringEscape` / `readStringEscape`
+  now read both, as jsonic does.
+
+Pinned: 34 `parse.tsv` rows (the escape matrix over all three forms,
+positive and malformed, in both runners) and the residual row flipped;
+`TestTemplateWave3Escapes`, `TestTemplateWave3MalformedEscapes`, the
+direct `processTemplateEscapes` cases. REFERENCE.md §"String escapes"
+states the one vocabulary and the report.
 
 ---
 
@@ -8778,6 +8808,52 @@ map_literal_flex_member_test.go): the shapes above, nested loops, the
 loop inside and around a fn frame, a callback raising inside the loop, a
 range loop's own iterator name, the `error` handler, the while twin; and
 control.tsv §3's row.
+
+## NUR229 — the two parser ports report a malformed quoted-string escape differently {#nur229}
+
+**Status:** FIXED 2026-09-26 (one escape vocabulary, one malformed-escape
+report — the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** closing NUR026, probing the malformed-escape matrix.
+
+**Rule:** NUR060's — one language contract, two parsers, every source
+rendered identically.
+
+**Divergence** (pre-existing, outside the corpus):
+
+```
+"a\x4"      go: invalid ascii escape: "a\x4"    ts: this string is never closed: "a\x4"
+"a\u12"     go: invalid unicode escape: "a\u    ts: this string is never closed: "a\u12"
+"a\xZZb"    go: invalid ascii escape: "a\xZZ   ts: invalid ascii escape: \xZZ
+```
+
+Both come from the two tabnas ports' string lexers (the Go one spans from
+the opening quote; the TS one spans the escape and bounds-checks a short
+escape differently).
+
+**The fix.** boru's `string_escape` matcher (both ports, NUR026) refuses a
+malformed escape before either library lexer reads the string, with the
+escape itself as the reported source: all three rows now read
+`invalid … escape: \x4` / `\u12` / `\xZZ` in both ports. Pinned by
+NUR026's `parse.tsv` rows.
+
+## NUR230 — a surrogate pair in a template: two replacement characters in Go, one code point in TS {#nur230}
+
+**Status:** FIXED 2026-09-26 (one escape vocabulary, one malformed-escape
+report — the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** closing NUR026, probing the escape matrix.
+
+**Rule:** one escape vocabulary, two parsers.
+
+**Divergence:** `` `\ud83d\ude00` `` read as `'��'` in Go and `'😀'` in TS:
+Go's `writeStringEscape` decoded each `\uXXXX` as a rune, and a lone
+surrogate becomes U+FFFD; TS's UTF-16 strings join the two code units. In a
+quoted string both ports already read one code point (jsonic's Go lexer
+pairs explicitly).
+
+**The fix.** `writeStringEscape` pairs a high surrogate followed by a
+`\u` low surrogate into one code point, as jsonic does; a lone surrogate
+is still U+FFFD. Pinned by NUR026's `parse.tsv` rows and the direct
+`processTemplateEscapes` cases.
 
 ## NUR228 — a native's forward window binds a gradual stack operand the runtime value may not fit {#nur228}
 

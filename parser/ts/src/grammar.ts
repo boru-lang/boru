@@ -51,7 +51,7 @@ import { setupXmlMatcher, setupXmlGrammar } from './xml.ts'
 // template-literal matcher and shorthand-key action. The import cycle
 // (convert → grammar → convert) is benign: both functions are hoisted and
 // only called at parse time.
-import { processTemplateEscapes, scanWordModifier } from './convert.ts'
+import { escapeFault, processTemplateEscapes, scanWordModifier } from './convert.ts'
 
 export interface ParserTokens {
   OP: number // (
@@ -205,6 +205,7 @@ export function makeBoruJsonic(): { j: any; t: ParserTokens } {
   const g = loadDeclGrammar()
   const { t, tins } = setupBaseTokens(j, g)
   setupTemplateLiteralMatcher(j, t)
+  setupStringEscapeMatcher(j)
   setupBigNumberMatcher(j, t)
   setupDecimalUnderscoreMatcher(j, t)
   setupMiniLitMatcher(j, t)
@@ -655,8 +656,13 @@ export function setupTemplateLiteralMatcher(j: any, _t: ParserTokens): void {
       if ('$' === s[si] && si + 1 < s.length && '{' === s[si + 1]) {
         break
       }
-      // Process escape sequences in template literals.
+      // Process escape sequences in template literals. A malformed `\x` /
+      // `\u` is refused as a quoted string's is (NUR026).
       if ('\\' === s[si] && si + 1 < s.length) {
+        const fault = escapeFault(s, si + 1, '`')
+        if (fault !== null) {
+          return lex.bad(fault[0], si, fault[1])
+        }
         si += 2
         continue
       }
@@ -680,6 +686,43 @@ export function setupTemplateLiteralMatcher(j: any, _t: ParserTokens): void {
       }
     }
     return tkn
+  })
+}
+
+// setupStringEscapeMatcher refuses a malformed `\x` / `\u` escape in a
+// quoted string before jsonic's string lexer reads it (NUR026). The two
+// tabnas ports report one differently — Go spans from the opening quote, TS
+// spans the escape, and `"a\x4"` is an invalid escape in Go but an
+// unterminated string in TS — so boru owns the check, with the definition a
+// template's text answers to (escapeFault), as the 2026-07-31 verdict put
+// string escapes in boru's hands. A well-formed or unterminated string, or a
+// raw control character, is left to jsonic.
+export function setupStringEscapeMatcher(j: any): void {
+  addMatcher(j, 'string_escape', 1000003, (lex: any, rule: any) => {
+    if (rule && rule.k && rule.k['boru_tpl']) {
+      return undefined
+    }
+    const s: string = lex.src
+    const si: number = lex.pnt.sI
+    if (si >= s.length || ('"' !== s[si] && "'" !== s[si])) {
+      return undefined
+    }
+    const q = s[si]!
+    for (let i = si + 1; i < s.length; i++) {
+      const c = s[i]!
+      if (c === q || c.charCodeAt(0) < 32) {
+        return undefined
+      }
+      if ('\\' !== c || i + 1 >= s.length) {
+        continue
+      }
+      const fault = escapeFault(s, i + 1, q)
+      if (fault !== null) {
+        return lex.bad(fault[0], i, fault[1])
+      }
+      i++
+    }
+    return undefined
   })
 }
 

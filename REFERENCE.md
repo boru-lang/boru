@@ -299,11 +299,17 @@ arriving at a paren:
 - **dot access** still calls: `m.fn 5` and `MathUtil.sqrt 16` lower to a
   reach group whose re-step *is* the dispatch.
 
-### Template-string escapes
+### String escapes
 
-`\\`, `` \` ``, `\$`, `\n`, `\t`, `\r`. Use `\$` for a literal `${`.
-An empty hole (`${}`, `${ }`) holds no expression and contributes nothing:
-`` `x${}y` `` is the string `'xy'`.
+One escape vocabulary for every string form — `"…"`, `'…'` and a backtick
+template: `\n` `\t` `\r` `\b` `\f` `\v`; `\xHH` (two hex digits);
+`\uHHHH` (four hex digits — a surrogate pair split across two such escapes
+is one code point); `\u{H…}` (1–6 hex digits, up to `10FFFF`); any other
+character after `\` is that character (`\\`, `\"`, `` \` ``, `\$`, `\z`).
+A malformed `\x` / `\u` escape is a syntax error in every form, naming the
+escape (`invalid ascii escape: \xZZ`). In a template, use `\$` for a
+literal `${`. An empty hole (`${}`, `${ }`) holds no expression and
+contributes nothing: `` `x${}y` `` is the string `'xy'`.
 
 ### Word modifiers
 

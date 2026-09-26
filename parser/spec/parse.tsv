@@ -108,7 +108,7 @@ Box<>	Box<>	-
 `a\\x41b`	'aAb'	two-hex-digit byte, newly live in a template (NUR026)
 `a\\u0041b`	'aAb'	four-hex-digit rune, newly live (NUR026)
 `a\\0b`	'a0b'	\\0 is the digit, exactly as in a quoted string (NUR026)
-`a\\xZZb`	'axZZb'	MALFORMED \\x stays literal in a template — the recorded residual
+`a\\xZZb`	ERR [boru/syntax_error]: invalid ascii escape: \\xZZ	a MALFORMED \\x is refused in a template as in a quoted string (NUR026)
 [inf -inf nan]	[inf -inf nan]	-
 0x10	16	-
 0o17	15	-
@@ -1033,3 +1033,45 @@ a.b =>	ERR [boru/syntax_error]: `=>` has no body	NUR060
 a.(	ERR [boru/syntax_error]: unmatched opening parenthesis	NUR060
 `a${}b	'ab'	NUR060
 `x${ }y`	'xy'	NUR060
+
+# --- NUR026: one escape vocabulary, one malformed-escape report ------------
+# Every escape means the same in "…", '…' and a backtick template, in both
+# ports: the braced \\u{…} form and a surrogate pair split across two
+# \\uXXXX escapes are live in a template too, and a malformed \\x / \\u is
+# refused alike — the escape itself named — where a template read it
+# literally and the two tabnas ports reported a quoted one differently
+# (`"a\\x4"`: an invalid escape in Go, an unterminated string in TS).
+"a\\xZZb"	ERR [boru/syntax_error]: invalid ascii escape: \\xZZ	NUR026
+"a\\x4"	ERR [boru/syntax_error]: invalid ascii escape: \\x4	NUR026
+"a\\u12"	ERR [boru/syntax_error]: invalid unicode escape: \\u12	NUR026
+"a\\uZZZZb"	ERR [boru/syntax_error]: invalid unicode escape: \\uZZZZ	NUR026
+"a\\x41b"	'aAb'	NUR026
+"\\u{41}"	'A'	NUR026
+"\\u{1F600}"	'😀'	NUR026
+"\\u{}"	ERR [boru/syntax_error]: invalid unicode escape: \\u{}	NUR026
+"\\u{110000}"	ERR [boru/syntax_error]: invalid unicode escape: \\u{110000}	NUR026
+"\\u{12"	ERR [boru/syntax_error]: invalid unicode escape: \\u{12	NUR026
+"\\ud83d\\ude00"	'😀'	NUR026
+"a\\zb"	'azb'	NUR026
+'a\\xZZb'	ERR [boru/syntax_error]: invalid ascii escape: \\xZZ	NUR026
+'a\\x4'	ERR [boru/syntax_error]: invalid ascii escape: \\x4	NUR026
+'a\\u12'	ERR [boru/syntax_error]: invalid unicode escape: \\u12	NUR026
+'a\\uZZZZb'	ERR [boru/syntax_error]: invalid unicode escape: \\uZZZZ	NUR026
+'a\\x41b'	'aAb'	NUR026
+'\\u{41}'	'A'	NUR026
+'\\u{1F600}'	'😀'	NUR026
+'\\u{}'	ERR [boru/syntax_error]: invalid unicode escape: \\u{}	NUR026
+'\\u{110000}'	ERR [boru/syntax_error]: invalid unicode escape: \\u{110000}	NUR026
+'\\u{12'	ERR [boru/syntax_error]: invalid unicode escape: \\u{12	NUR026
+'\\ud83d\\ude00'	'😀'	NUR026
+'a\\zb'	'azb'	NUR026
+`a\\x4`	ERR [boru/syntax_error]: invalid ascii escape: \\x4	NUR026
+`a\\u12`	ERR [boru/syntax_error]: invalid unicode escape: \\u12	NUR026
+`a\\uZZZZb`	ERR [boru/syntax_error]: invalid unicode escape: \\uZZZZ	NUR026
+`\\u{41}`	'A'	NUR026
+`\\u{1F600}`	'😀'	NUR026
+`\\u{}`	ERR [boru/syntax_error]: invalid unicode escape: \\u{}	NUR026
+`\\u{110000}`	ERR [boru/syntax_error]: invalid unicode escape: \\u{110000}	NUR026
+`\\u{12`	ERR [boru/syntax_error]: invalid unicode escape: \\u{12	NUR026
+`\\ud83d\\ude00`	'😀'	NUR026
+`a\\zb`	'azb'	NUR026

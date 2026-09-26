@@ -19,15 +19,15 @@ func TestTemplateWave3Escapes(t *testing.T) {
 		{"`a\\\\b`", "a\\b"},
 		{"`a\\`b`", "a`b"},
 		{"`a\\$b`", "a$b"},
-		{"`a\\zb`", "azb"},     // unknown escape: backslash DROPPED (was `a\zb`)
-		{"`a\\0b`", "a0b"},     // \0 is the digit, exactly as in "a\0b"
-		{"`a\\bb`", "a\bb"},    // newly live: backspace
-		{"`a\\fb`", "a\fb"},    // newly live: formfeed
-		{"`a\\vb`", "a\vb"},    // newly live: vertical tab
-		{"`a\\x41b`", "aAb"},   // newly live: two-hex-digit byte
-		{"`a\\u0041b`", "aAb"}, // newly live: four-hex-digit rune
-		{"`a\\xZZb`", "axZZb"}, // MALFORMED \x stays literal (see readStringEscape)
-		{"`a\\u00b`", "au00b"}, // MALFORMED \u likewise
+		{"`a\\zb`", "azb"},                 // unknown escape: backslash DROPPED (was `a\zb`)
+		{"`a\\0b`", "a0b"},                 // \0 is the digit, exactly as in "a\0b"
+		{"`a\\bb`", "a\bb"},                // newly live: backspace
+		{"`a\\fb`", "a\fb"},                // newly live: formfeed
+		{"`a\\vb`", "a\vb"},                // newly live: vertical tab
+		{"`a\\x41b`", "aAb"},               // newly live: two-hex-digit byte
+		{"`a\\u0041b`", "aAb"},             // newly live: four-hex-digit rune
+		{"`a\\u{41}b`", "aAb"},             // the braced form, as in "a\u{41}b" (NUR026)
+		{"`\\ud83d\\ude00`", "\U0001F600"}, // a surrogate pair is one code point (NUR026)
 	}
 	for _, c := range cases {
 		vals := mustParseWave3(t, c.src)
@@ -41,6 +41,21 @@ func TestTemplateWave3Escapes(t *testing.T) {
 		if s != c.want {
 			t.Errorf("%q: got %q, want %q", c.src, s, c.want)
 		}
+	}
+}
+
+// TestTemplateWave3MalformedEscapes pins NUR026's close: a malformed `\x` /
+// `\u` escape in a template is refused with the quoted string's report —
+// the escape itself named — where it used to read literally.
+func TestTemplateWave3MalformedEscapes(t *testing.T) {
+	for src, want := range map[string]string{
+		"`a\\xZZb`":      "invalid ascii escape: \\xZZ",
+		"`a\\u00b`":      "invalid unicode escape: \\u00b",
+		"`a\\u{110000}`": "invalid unicode escape: \\u{110000}",
+		"\"a\\xZZb\"":    "invalid ascii escape: \\xZZ",
+		"\"a\\x4\"":      "invalid ascii escape: \\x4",
+	} {
+		wantParseErrWave3(t, src, want)
 	}
 }
 
@@ -62,11 +77,20 @@ func TestProcessTemplateEscapesWave3(t *testing.T) {
 		`a\x4Ab`:   "aJb",
 		`a\u00e9b`: "a\u00e9b",
 		`a\u00E9b`: "a\u00e9b",
-		// Short runs and non-hex digits fall back to the literal reading.
-		`a\x4`:   "ax4",
-		`a\u004`: "au004",
-		`a\bb`:   "a\bb",
-		`tail\`:  `tail\`, // lone trailing backslash is preserved
+		// The braced form, and a surrogate pair split across two escapes —
+		// one code point, a lone surrogate U+FFFD (NUR026).
+		`a\u{41}b`:     "aAb",
+		`\u{1F600}`:    "\U0001F600",
+		`\ud83d\ude00`: "\U0001F600",
+		`\ud83d\u0041`: "\uFFFDA",
+		// Short runs and non-hex digits fall back to the literal reading —
+		// the helper's own contract; the lexer refuses such an escape
+		// before it gets here (escapeFault, NUR026).
+		`a\x4`:     "ax4",
+		`a\u004`:   "au004",
+		`a\u{zz}b`: "au{zz}b",
+		`a\bb`:     "a\bb",
+		`tail\`:    `tail\`, // lone trailing backslash is preserved
 	}
 	for in, want := range cases {
 		if got := processTemplateEscapes(in); got != want {

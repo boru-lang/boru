@@ -173,6 +173,7 @@ func Parse(src string) ([]core.Value, error) {
 	g := loadDeclGrammar()
 	t, tins := setupBaseTokens(j, g)
 	setupTemplateLiteralMatcher(j, t)
+	setupStringEscapeMatcher(j)
 	setupBigNumberMatcher(j, t)
 	setupDecimalUnderscoreMatcher(j, t)
 	setupMiniLitMatcher(j, t)
@@ -1855,7 +1856,25 @@ func writeStringEscape(buf *strings.Builder, s string, at int) int {
 		}
 		buf.WriteByte(c)
 	case 'u':
+		if at+1 < len(s) && s[at+1] == '{' {
+			// The braced form, `\u{1F600}`: 1-6 hex digits, any code point.
+			if r, n, ok := parseBracedEscape(s, at+2); ok {
+				buf.WriteRune(rune(r))
+				return n + 3
+			}
+			buf.WriteByte(c)
+			break
+		}
 		if r, ok := parseHexEscape(s, at+1, 4); ok {
+			// A UTF-16 surrogate pair split across two escapes is one code
+			// point, as jsonic reads it in a quoted string (a lone surrogate
+			// becomes U+FFFD through WriteRune).
+			if r >= 0xD800 && r <= 0xDBFF && at+11 <= len(s) && s[at+5] == '\\' && s[at+6] == 'u' {
+				if lo, ok := parseHexEscape(s, at+7, 4); ok && lo >= 0xDC00 && lo <= 0xDFFF {
+					buf.WriteRune(rune(0x10000 + (r-0xD800)<<10 + (lo - 0xDC00)))
+					return 11
+				}
+			}
 			buf.WriteRune(rune(r))
 			return 5
 		}
@@ -1866,6 +1885,68 @@ func writeStringEscape(buf *strings.Builder, s string, at int) int {
 		buf.WriteByte(c)
 	}
 	return 1
+}
+
+// parseBracedEscape reads a braced code point, `{` already consumed: 1-6 hex
+// digits at s[at:] and a closing `}`, at most U+10FFFF. n is the digit count.
+func parseBracedEscape(s string, at int) (r uint32, n int, ok bool) {
+	end := strings.IndexByte(s[min(at, len(s)):], '}')
+	if end < 1 || end > 6 {
+		return 0, 0, false
+	}
+	v, ok := parseHexEscape(s, at, end)
+	if !ok || v > 0x10FFFF {
+		return 0, 0, false
+	}
+	return v, end, true
+}
+
+// escapeFault reports a malformed `\x` / `\u` escape — the one definition a
+// template's text and a quoted string's body both answer to (NUR026). at
+// indexes the character after the backslash; stop is the form's closing
+// delimiter, which a reported span never crosses. code is jsonic's
+// (invalid_ascii / invalid_unicode) and end bounds the offending span, which
+// runs from the backslash; code is "" for a well-formed or other escape.
+func escapeFault(s string, at int, stop byte) (code string, end int) {
+	span := func(n int) int {
+		for i := at; i < at-1+n; i++ {
+			if i >= len(s) || s[i] == stop {
+				return i
+			}
+		}
+		return at - 1 + n
+	}
+	switch s[at] {
+	case 'x':
+		if _, ok := parseHexEscape(s, at+1, 2); !ok {
+			return "invalid_ascii", span(4)
+		}
+	case 'u':
+		if at+1 < len(s) && s[at+1] == '{' {
+			if _, _, ok := parseBracedEscape(s, at+2); !ok {
+				// The span runs through the closing `}` when one comes
+				// before the delimiter, else to the delimiter or the end.
+				rest := s[at:]
+				c, d := strings.IndexByte(rest, '}'), strings.IndexByte(rest, stop)
+				if c >= 0 && (d < 0 || c < d) {
+					return "invalid_unicode", at + c + 1
+				}
+				return "invalid_unicode", span(len(rest) + 1)
+			}
+		} else if _, ok := parseHexEscape(s, at+1, 4); !ok {
+			return "invalid_unicode", span(6)
+		}
+	}
+	return "", 0
+}
+
+// badEscapeToken is the lexer's refusal of a malformed escape: a bad token
+// over the escape itself, carrying jsonic's code, so a template and a quoted
+// string report it alike — `invalid ascii escape: \xZZ` (NUR026).
+func badEscapeToken(lex *jsonic.Lex, code, src string) *jsonic.Token {
+	tkn := lex.Token("#BD", jsonic.TinBD, nil, src)
+	tkn.Why = code
+	return tkn
 }
 
 // parseHexEscape reads exactly n hex digits at s[at:] and returns their

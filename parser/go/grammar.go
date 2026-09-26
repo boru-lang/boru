@@ -562,8 +562,12 @@ func setupTemplateLiteralMatcher(j *jsonic.Jsonic, t parserTokens) {
 			if s[si] == '$' && si+1 < len(s) && s[si+1] == '{' {
 				break
 			}
-			// Process escape sequences in template literals.
+			// Process escape sequences in template literals. A malformed
+			// `\x` / `\u` is refused as a quoted string's is (NUR026).
 			if s[si] == '\\' && si+1 < len(s) {
+				if code, end := escapeFault(s, si+1, '`'); code != "" {
+					return badEscapeToken(lex, code, s[si:end])
+				}
 				si += 2
 				continue
 			}
@@ -587,6 +591,44 @@ func setupTemplateLiteralMatcher(j *jsonic.Jsonic, t parserTokens) {
 			}
 		}
 		return tkn
+	})
+}
+
+// setupStringEscapeMatcher refuses a malformed `\x` / `\u` escape in a
+// quoted string before jsonic's string lexer reads it (NUR026). The two
+// tabnas ports report one differently — Go spans from the opening quote,
+// TS spans the escape, and `"a\x4"` is an invalid escape in Go but an
+// unterminated string in TS — so boru owns the check, with the definition a
+// template's text answers to (escapeFault), as the 2026-07-31 verdict put
+// string escapes in boru's hands. A well-formed or unterminated string, or a
+// raw control character, is left to jsonic.
+func setupStringEscapeMatcher(j *jsonic.Jsonic) {
+	addMatcher(j, "string_escape", 1000003, func(lex *jsonic.Lex, rule *jsonic.Rule) *jsonic.Token {
+		if rule != nil {
+			if _, tpl := rule.K["boru_tpl"]; tpl {
+				return nil
+			}
+		}
+		s := lex.Src
+		si := lex.Cursor().SI
+		if si >= len(s) || (s[si] != '"' && s[si] != '\'') {
+			return nil
+		}
+		q := s[si]
+		for i := si + 1; i < len(s); i++ {
+			c := s[i]
+			if c == q || c < 32 {
+				return nil
+			}
+			if c != '\\' || i+1 >= len(s) {
+				continue
+			}
+			if code, end := escapeFault(s, i+1, q); code != "" {
+				return badEscapeToken(lex, code, s[i:end])
+			}
+			i++
+		}
+		return nil
 	})
 }
 

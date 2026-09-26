@@ -2238,6 +2238,14 @@ function readStringEscape(s: string, at: number): [string, number] {
       return v === null ? [c, 1] : [String.fromCharCode(v), 3]
     }
     case 'u': {
+      if ('{' === s[at + 1]) {
+        // The braced form, `\u{1F600}`: 1-6 hex digits, any code point.
+        const b = parseBracedEscape(s, at + 2)
+        return b === null ? [c, 1] : [String.fromCodePoint(b[0]), b[1] + 3]
+      }
+      // A UTF-16 surrogate pair split across two escapes needs no pairing
+      // here: the two code units concatenate into the one code point, as
+      // Go's writeStringEscape pairs them explicitly.
       const v = parseHexEscape(s, at + 1, 4)
       return v === null ? [c, 1] : [String.fromCodePoint(v), 5]
     }
@@ -2246,6 +2254,63 @@ function readStringEscape(s: string, at: number): [string, number] {
       // jsonic's rule for a quoted string, now the template's too.
       return [c, 1]
   }
+}
+
+// parseBracedEscape reads a braced code point, `{` already consumed: 1-6 hex
+// digits at s[at:] and a closing `}`, at most U+10FFFF. Returns the value
+// and the digit count, or null.
+function parseBracedEscape(s: string, at: number): [number, number] | null {
+  const end = s.indexOf('}', Math.min(at, s.length)) - at
+  if (end < 1 || end > 6) {
+    return null
+  }
+  const v = parseHexEscape(s, at, end)
+  if (v === null || v > 0x10ffff) {
+    return null
+  }
+  return [v, end]
+}
+
+// escapeFault reports a malformed `\x` / `\u` escape — the one definition a
+// template's text and a quoted string's body both answer to (NUR026). at
+// indexes the character after the backslash; stop is the form's closing
+// delimiter, which a reported span never crosses. Returns jsonic's code
+// (invalid_ascii / invalid_unicode) and the end of the offending span, which
+// runs from the backslash; null for a well-formed or other escape.
+export function escapeFault(s: string, at: number, stop: string): [string, number] | null {
+  const span = (n: number): number => {
+    for (let i = at; i < at - 1 + n; i++) {
+      if (i >= s.length || s[i] === stop) {
+        return i
+      }
+    }
+    return at - 1 + n
+  }
+  switch (s[at]) {
+    case 'x':
+      if (parseHexEscape(s, at + 1, 2) === null) {
+        return ['invalid_ascii', span(4)]
+      }
+      break
+    case 'u':
+      if ('{' === s[at + 1]) {
+        if (parseBracedEscape(s, at + 2) === null) {
+          // The span runs through the closing `}` when one comes before the
+          // delimiter, else to the delimiter or the end.
+          const rest = s.slice(at)
+          const c = rest.indexOf('}')
+          const d = rest.indexOf(stop)
+          if (c >= 0 && (d < 0 || c < d)) {
+            return ['invalid_unicode', at + c + 1]
+          }
+          return ['invalid_unicode', span(rest.length + 1)]
+        }
+      } else if (parseHexEscape(s, at + 1, 4) === null) {
+        return ['invalid_unicode', span(6)]
+      }
+      break
+  }
+  return null
 }
 
 // parseHexEscape reads exactly n hex digits at s[at:] and returns their

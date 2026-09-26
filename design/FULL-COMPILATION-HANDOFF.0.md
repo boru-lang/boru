@@ -13322,6 +13322,22 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR026 closed — one escape vocabulary, one malformed-escape report (2026-09-26)
+
+**The record.** Templates took the quoted-string escape vocabulary on
+2026-08-15; a malformed `\x` / `\u` still read literally in a template
+while a quoted string refused it, and the record held that residual open
+for want of an error channel in the template's lex matcher.
+
+**The fix.** A tabnas matcher can return a bad token, so boru owns the
+escape check in both ports with one definition (`escapeFault`): the
+template matcher and a new `string_escape` matcher ahead of jsonic's string
+lexer refuse a malformed escape alike, naming the escape. Probing the
+matrix also found the quoted form split between the ports (NUR229) and the
+vocabulary short of the braced `\u{…}` form in templates and, in Go, of
+surrogate pairing (NUR230); the shared escape readers now read both. 34
+escape rows in parse.tsv, parser coverage 100% in both ports.
+
 ## NUR060 closed — the parser parity ledger is empty again (2026-09-26)
 
 **The record.** `parser/spec/divergent.tsv` carried nine classes of source
