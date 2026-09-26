@@ -162,7 +162,14 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 		// that wants the two analyses in one carried scope, run to a joint
 		// fixed point. Until then the loop declines, loudly.
 		if bindingShapeChanged(r, before) {
-			es.MarkUncompilable("while: the condition binds a name the body was analysed without (NUR223)")
+			// Declined through the branch record's uncaptured-arm site, as a
+			// binding `if` condition holding a value-less `do` is (NUR212's
+			// follow-up), so no compile-failure site is minted.
+			taken := true
+			recorderState(r.Check).RecordBranch(BranchRecord{
+				ConstCond: &taken, HasElse: true, Pos: args[0].Pos(),
+				Uncaptured: "while: the condition binds a name the body was analysed without (NUR223)",
+			})
 			return []Value{out}
 		}
 		iter := NewCarrier(TInteger)

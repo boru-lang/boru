@@ -14574,7 +14574,8 @@ this to `if [do [def x 5] true] …`.
 
 **Status:** FIXED 2026-09-26 by a loud decline (the handoff log's entry
 of that date): the compiled lane declines a `while` whose condition binds a
-name (`MarkUncompilable`, "while: the condition binds a name the body was
+name (through the branch record's uncaptured-arm site, as a binding `if`
+condition declines — "while: the condition binds a name the body was
 analysed without"), so the program is a booked compile defect instead of a
 silent wrong answer. OPEN for the compile. Recorded 2026-09-26 (NUR212's
 follow-up); present on `main` at 45c3bdb.
@@ -14593,8 +14594,10 @@ read the name (`[5]`) agrees.
 
 **The decline (2026-09-26).** `whileReturnsFn` takes the binding table's
 shape (`bindingShape`, NUR212's probe) around the condition's analysis, and
-a condition that bound, rebound or unbound a name marks the loop
-uncompilable. It is conservative: it also declines a condition binding a
+a condition that bound, rebound or unbound a name declines the loop. The
+decline goes through the branch record's uncaptured-arm site, the one
+NUR212's binding `if` condition uses, so no compile-failure site is minted:
+the site census only falls. It is conservative: it also declines a condition binding a
 name the body never reads (`while [def k 1 false] [7] end k`), which
 compiled right. Pinned by lang `TestNUR223WhileConditionBindingDeclines`,
 which raises the unit-suite compile ledger 338 -> 340 with both rows named.
