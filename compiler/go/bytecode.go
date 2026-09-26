@@ -1315,6 +1315,9 @@ type Program struct {
 	// LandingWords is the main code's twin of CompiledFn.LandingWords (see
 	// there).
 	LandingWords map[int]LandingWord
+	// CallWindows is the main code's twin of CompiledFn.CallWindows (see
+	// there).
+	CallWindows map[int][]CallWindowOperand
 	// StoreNames is the main code's twin of CompiledFn.StoreNames (see
 	// there), keyed by the main code's own pc.
 	StoreNames map[int]string
@@ -1499,6 +1502,29 @@ type LandingWord struct {
 	// voided. 0 means no skip.
 	SkipTo  int
 	SkipOut int
+}
+
+// CallWindowKind names where one CallWindowOperand's value lives when the
+// call runs.
+type CallWindowKind uint8
+
+const (
+	// WinArg is the call's argument at signature position Idx.
+	WinArg CallWindowKind = iota
+	// WinValue is Value itself: a definite scalar the pass saw on the tape.
+	WinValue
+	// WinLocal is the caller's frame local Idx (a promoted event result).
+	WinLocal
+	// WinStack is the value Idx deep beneath the call's operands, 0 on top.
+	WinStack
+)
+
+// CallWindowOperand is one value of a call's no-match window
+// (CompiledFn.CallWindows), in the window's own order.
+type CallWindowOperand struct {
+	Kind  CallWindowKind
+	Idx   int
+	Value core.Value
 }
 
 // DynApplyHead is one entry of CompiledFn.DynApplyName: the binding NAME the
@@ -1686,6 +1712,14 @@ type CompiledFn struct {
 	// run-time fn's overloads over exactly that token (NUR190). Nil where
 	// no landing has a word after it.
 	LandingWords map[int]LandingWord
+	// CallWindows is the operand window a CALL_USER / TAIL_CALL_USER's
+	// param-contract no-match reports, keyed by the call's pc: the window
+	// the interpreter's failed dispatch reports (sigError's attempted
+	// window), which is not the call's arguments — a bare word read written
+	// after the word ends the written run and never lands in it, and the
+	// stack beneath the call fills it (NUR234). A call with no entry
+	// reports its arguments; an EMPTY entry is a window of no values.
+	CallWindows map[int][]CallWindowOperand
 	// StoreNames names the DEF a promoted STORE_LOCAL binds a produced fn
 	// value under, keyed by the store's pc: the interpreter's installDef
 	// renames a fn value bound by `def` (`fnDef.Name = name`), so `def h

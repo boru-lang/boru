@@ -155,7 +155,16 @@ keep the two in sync in the same commit.
 | [NUR231](#nur231) | FIXED 2026-09-26 (value half: Bytes a refinement base, a computed bound the run's; type half: the run-time type install — the handoff log's entries of that date): a refinement constructor over a bound the check pass does not know latches a run-time construct and the dispatch records as the call it is, so the run builds the refinement; a refinement bakes only over const bounds, `between` decides no empty interval from an unknown one, and a membership check over one decides nothing in the pass (an intersection keeps the unknown bound, a complement admits). A TYPE over one compiles to the run-time install: the run installs it from the body it computed (OpBindTypeRun) and the pass's node forwards to the run's, a typed def records the run's own membership check, and an overload set over one re-matches at run time. An inline parameter or return type over one compiles too: its pattern is an anonymous node the run forwards to the refinement it computed. An inline interval over one (which the run may find empty), a typed container's child and a fn body's per-call type def decline through the existing compile-time-word site. The original text: `3 is (Integer gt (size "abc"))` was false interpreted and true compiled — the check pass built the refinement over its carrier for the computed bound and the recorder baked it; a carrier orders below every value, so a lower bound admitted everything, an upper one refused everything (a false check-time type_error too), `between` over one was Never, and a type over one bound or dispatched unchecked compiled. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR232](#nur232) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the return-pattern check defers a refinement's value-level membership over an abstract residual not provably outside its base, the named return type's rule. The original text: `def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5` was a check-time type_error ("expected (Integer gt 3), got Integer") that both lanes then returned 5 for; the named twin (`[Big]`) is check-clean. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR233](#nur233) | FIXED 2026-09-26 (a make field's refusal is a type_error — the handoff log's entry of that date): a make field the run refuses raises a type_error on both lanes; a refusal already structured keeps its code. The original text: the refusal was a plain error, which the interpreter printed bare and a compiled run booked as a compiler defect (internal_error with its "please report it" note) — `def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}`. Pre-existing | compiling NUR231's type half, 2026-09-26 |
-| [NUR234](#nur234) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a compiled direct call's param-contract no-match reports every argument, where the interpreter reports its attempted window — the forward candidates up to the first bare read, filled from the stack beneath: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` notes "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Code, message head and caret agree; the notes differ. Pre-existing (a gradual argument, measured at b3bcd9a); NUR231's type half reaches it too (`def v 2 f v` over a parameter typed by a computed-bound name) | compiling NUR231's type half, 2026-09-26 |
+| [NUR234](#nur234) | FIXED 2026-09-26 (the call carries the interpreter's window — the handoff log's entry of that date): a compiled user call's param-contract no-match reports the window the interpreter's failed dispatch reports — the written run, which a bare read ends, filled from the stack beneath. The original text: a compiled direct call's param-contract no-match reported every argument, where the interpreter reports its attempted window: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` noted "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Pre-existing | compiling NUR231's type half, 2026-09-26 |
+| [NUR235](#nur235) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a fn-body-local fn def bound into a returned map: the member read returns the fn compiled, calls it interpreted — `def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g` answers `[fn g]` compiled, `[5]` interpreted. A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR236](#nur236) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a word splice over a def-bound gradual read of a fn: `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}` answers `[Function]` compiled (typeof over the fn value) and `[Integer]` interpreted (`j` calls the fn). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR237](#nur237) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a def rebound in a taken branch after a loop-result def reads the pre-branch value compiled: `def x (for 2 [5]) def c true if c [def x 1] [] end x` answers `[5 5]` compiled, `[5 1]` interpreted (both arms binding x too; a read of x before the branch makes the lanes agree). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR238](#nur238) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a paren-bounded trailing apply that matches nothing: the interpreter parks an anonymous value as data and raises `uncalled_function` for a named fn; the compiled apply raises `signature_error` at the top level (`(5 ([s:String] => [s]))` is `[5 fn (String)]` interpreted) and leaves a named fn's window as residue inside a fn (`(5 f/v)` over a `g/v` argument: a count error compiled) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR239](#nur239) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): an applied fn value's return-contract error names the fn's definition compiled and the binding it was called under interpreted: `(k 5)` over `h z/v` says `z:` compiled, `k:` interpreted; an anonymous class-field fn says `` compiled, `<fn>` interpreted (`each h.cb [1 2 3]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR240](#nur240) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a trapped unmatched module-member call inside a branch arm raises `signature_error` compiled and `uncalled_function` interpreted — a value-level divergence where the code is caught (`do [if true [(true 5 M.dec)] [1] …] error [dot code]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR241](#nur241) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a capturing callback run by `walk`: `acc (tag) append acc (m.path) append` in a factory's lambda raises `signature_error: cannot call append` compiled (the arguments `[]` and `''`) where the interpreter answers `['x' '' 'x' 'a' 'x' 'b']` | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR242](#nur242) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): eight programs compile and then fail inside the compiled runtime (internal_error) where the interpreter answers: three `/q`-capturing member landings (RESTEP_LANDING), two shaped method applies, `do [args drop] 7` in a fn (STORE_LOCAL underflow), `do b 7` over a list param (CALL_DYN_FRAME underflow) and `fold` over a gradual class field (CALL_NATIVE_POLY no match) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR243](#nur243) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): three valid programs refused: a loop carrying a branch-bound name (`if c [def x 1] [] for 3 [def x 5] x`, "body result of unknown provenance"), a constant-true branch whose taken arm leaves no value (`def x 0 if [true] [def x 1] [2] end x`, "branch produces no value" — its guard carried a `//covergate:allow` whose proof was false, removed), and NUR109's bound-slot arm declining a parser dispatch over a branch-bound SOURCE operand | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -9087,10 +9096,32 @@ bails there. Pinned by core's `TestMakeFieldErrorIsStructured` and lang's
 
 ## NUR234 — a compiled direct call's contract no-match reports every argument; the interpreter reports its attempted window {#nur234}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** compiling NUR231's type half — a call over a
-parameter typed by a computed-bound name is admitted by the pass and
-checked by the run.
+**Status:** FIXED 2026-09-26 (the call carries the interpreter's window —
+the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** compiling NUR231's type half — a call over a parameter
+typed by a computed-bound name is admitted by the pass and checked by the
+run.
+
+**The fix.** The check pass derives the window at the user fn's dispatch
+itself — sigError's own derivation over its tape (`rematchWritten`, a
+gradual operand standing where the run's value will), taken at the
+dispatch's FIRST step, since the run fails there: its plan sees every
+operand but a speculative slot's, and a speculative plan offers no window.
+The offer (`NoteCallWindow`) is keyed and held like the region offer, so a
+forward collection's force-stack re-step keeps it and the callee's body
+analysis cannot overwrite it. The call's record maps each window value to
+where the run holds it — an argument by identity, a definite scalar by
+value, an event result by its seat (a promoted slot, else its depth
+beneath the call's operands on the stack the lowering simulates), a local
+read whose binding had not moved when the window was offered — and the
+lowering writes `CallWindows[pc]`, which the VM reads when the contract
+fails. A value with no such home leaves the call reporting its arguments,
+as before: a local read rebound between the read and the call (`a def a 9
+f b` reports b's 6 compiled, a's 5 interpreted) is the residue. Pinned:
+lang `TestNUR234ContractNoMatchReportsTheAttemptedWindow` (fifteen rows
+byte-identical, notes included); compiler `TestNoteCallWindowPool`,
+`TestClaimHeldWindow`, `TestCallWindowOps`, `TestSeatCallWindow`; eng
+`TestCallWindowAt`.
 
 **Rule:** one failed dispatch, one diagnostic, on both lanes.
 
@@ -9142,6 +9173,222 @@ does. So the written count is the check pass's own
 published beside `CurCallWord` for the user-fn record. The VM then needs
 it per call site, next to the call's forward count, to rebuild the window
 over its own stack prefix.
+
+## NUR235 — a fn-body-local fn def bound into a returned map: the member read returns the fn {#nur235}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+— the emit.go coverage agent's probes.
+
+**Rule:** one read, one dispatch — a member read of a function calls it
+(ADR-011, NUR078).
+
+**Divergence** (measured at 5c0d6b1). A silent wrong answer:
+
+```
+def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g
+  interp:   [5]
+  compiled: [fn g]
+```
+
+The body-local `g` captures the param `c`; the returned map carries it as
+a member, and `m.g` reads it. The interpreter calls the 0-arg fn (5); the
+compiled read leaves the fn value.
+
+## NUR236 — a word splice over a def-bound gradual read of a fn {#nur236}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+— the emit.go coverage agent (block 16050, `deoptStatementStart`).
+
+**Rule:** one read, one dispatch — a bare name bound to a function calls
+wherever it is written (NUR078).
+
+**Divergence** (measured at 5c0d6b1). A silent wrong answer:
+
+```
+def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}
+  interp:   [Integer]    — `j` calls the fn (42), and typeof names its type
+  compiled: [Function]   — typeof runs over the fn value
+```
+
+The same program over a data member (`h {f: 5}`) agrees; the agent's test
+(`TestGradualReadConsumedBySplicedWord`) pins those.
+
+## NUR237 — a def rebound in a taken branch after a loop-result def reads the pre-branch value {#nur237}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+— the main-side coverage agent (branch_carried.go).
+
+**Rule:** one binding, one value — a read sees the last def that ran.
+
+**Divergence** (measured at 5c0d6b1). A silent wrong answer:
+
+```
+def x (for 2 [5]) def c true if c [def x 1] [] end x
+  interp:   [5 1]
+  compiled: [5 5]
+def x (for 2 [5]) def c true if c [def x 1] [def x 2] end x
+  interp:   [5 1]
+  compiled: [5 5]
+```
+
+`def x (for 2 [5])` binds x to the loop's last value and leaves the other
+on the stack. A read of `x` before the branch makes the lanes agree.
+
+## NUR238 — a paren-bounded trailing apply that matches nothing {#nur238}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+— the eng coverage agent (vm.go's nameless trail-top raise).
+
+**Rule:** one failed dispatch, one outcome, on both lanes.
+
+**Divergence** (measured at 5c0d6b1):
+
+```
+(5 ([s:String] => [s]))
+  interp:   [5 fn (String)]           — an anonymous value that matches nothing parks as data
+  compiled: signature_error: cannot call ``
+def lam ([s:String] => [s]) end (5 lam/v)
+  interp:   [5 fn lam(String)]
+  compiled: signature_error: cannot call `lam`
+def g fn [[s:String] [String] [s]] end (5 g/v)
+  interp:   uncalled_function: call to 'g' matched no signature
+  compiled: signature_error: cannot call `g` — the argument was 5
+def g fn [[s:String] [String] [s]] end def h fn [[f:Function] [Any] [(5 f/v)]] end h g/v
+  interp:   uncalled_function: call to 'f' matched no signature
+  compiled: type_error: h: expected 1 return value(s), got 2 — [5 fn f(String)]
+```
+
+At the top level no delivery head is recorded (`seatDynApplyName` records
+nothing for the main code), so the op takes its nameless raise; inside a
+fn the named window parks.
+
+## NUR239 — an applied fn value's return-contract error names the fn, not the binding {#nur239}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+— the eng and main-side coverage agents.
+
+**Rule:** one failure, one diagnostic, on both lanes.
+
+**Divergence** (measured at 5c0d6b1):
+
+```
+def z fn [[] [Integer] ['s']] end def h fn [[k:Function] [Integer Integer] [(k 5)]] end h z/v
+  interp:   type_error: k: return value 1: expected Integer, got ProperString
+  compiled: type_error: z: return value 1: …
+def Handler class {cb: Function} def h (make Handler {cb: (fn [[n:Integer][Integer][n 1]])}) each h.cb [1 2 3]
+  interp:   type_error: <fn>: expected 1 return value(s), got 2 — [1 1]
+  compiled: type_error: : expected 1 return value(s), got 2 — [1 1]
+```
+
+The interpreter names the binding the fn was called under (`k`) and an
+anonymous fn `<fn>`; the compiled checks read the definition's own name
+(`checkFnValueReturn` reads `fd.Name`). `(1 k)` and a module fn
+(`h M.z/v`) split the same way.
+
+## NUR240 — a trapped unmatched member call inside a branch arm: a different code {#nur240}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+— the emit.go coverage agent (the unit trap).
+
+**Rule:** one failed dispatch, one error code, on both lanes.
+
+**Divergence** (measured at 5c0d6b1). The code is caught as data, so the
+answers differ:
+
+```
+import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] export "M" {dec: dec/v} ] end def msg (do [if true [(true 5 M.dec)] [1] "no-raise"] error [dot code]) msg
+  interp:   [uncalled_function]
+  compiled: [signature_error]
+```
+
+The unit trap declines when the call sits inside an arm rather than at the
+unit's root frame, and the call's compiled no-match raises its own code.
+
+## NUR241 — a capturing callback run by walk: a captured read and a flex append {#nur241}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+— the main-side coverage agent (walk_core.go's closure hook).
+
+**Rule:** one callback, one result, on both lanes.
+
+**Divergence** (measured at 5c0d6b1):
+
+```
+def acc (flex []) end def mk fn [[tag:String][Function][([m:Any] => [acc (tag) append acc (m.path) append])]] end def h (mk "x") end walk {mode: "depth"} {a:1 b:2} h/v ; acc
+  interp:   [{a:1 b:2} ['x' '' 'x' 'a' 'x' 'b']]
+  compiled: signature_error: cannot call `append` — the arguments were [] (a FlexList) and '' (an EmptyString)
+```
+
+## NUR242 — programs that compile and then fail inside the compiled runtime {#nur242}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+— the coverage agents' probes.
+
+**Rule:** a program the compiler admits, the compiled runtime runs — the
+bail ledger (`bailDefectCeiling`) counts the corpus's; these are outside
+it.
+
+**Divergence** (measured at 5c0d6b1; each an internal_error compiled with
+the "please report it" note):
+
+```
+Q = def z fn [[] [Atom] [(quote z)]] end def y fn [[] [Integer] [42]] end def h fn [[] [Integer] [42]] end
+Q def h fn [[x:Atom/q] [Atom Atom] [x x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end [(m.f y)]
+  interp [[y y]]            compiled RESTEP_LANDING: the /q capture of `y` left 2 value(s) where the apply after it claims 1
+Q def h fn [[x:Atom/q] [Atom] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end if true [(m.f add 1 2)] [0]
+  interp [add 1 2]          compiled RESTEP_LANDING at h: the re-step CAPTURES the word `add`
+Q def h fn [[x:Atom/q] [Atom] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def dbl fn [[n:Integer][Integer][n mul 2]] end if true [(m.f y dbl)] [0]
+  interp signature_error: cannot call `dbl`     compiled RESTEP_LANDING at h: the re-step CAPTURES the word `y`
+def h fn [[] [Integer] [42]] end def h fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end def y fn [[] [Integer] [42]] end if true [(m.f y)] [0]
+  interp [42 42]            compiled shaped method apply (paren apply): value is not an appliable function
+import module [def inc fn [[n:Integer] [Integer] [n 1]] export "M" {inc: inc/v}] end def mk fn [[] [Map] [{f: M.inc/v}]] end def m (mk) end do [m.f 5]
+  interp [error(inc: expected 1 return value(s), got 2 — [5 1])]    compiled shaped method apply inc: result count 2 violates the host-registered shape claim 1
+def f fn [[Integer] [Any] [do [args drop] 7]] end f 5
+  interp [7]                compiled STORE_LOCAL stack underflow
+def g fn [[b:List] [Any] [do b 7]] end g [5 drop]            (and `b:Any`)
+  interp [7]                compiled CALL_DYN_FRAME underflow
+def Box class {data: Any} end def b (make Box {data: "s"}) end 0 fold [add] b.data
+  interp signature_error: cannot call `fold`    compiled CALL_NATIVE_POLY no match for fold
+```
+
+## NUR243 — three valid programs refused {#nur243}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+— the coverage agents.
+
+**Rule:** valid code compiles (a compile failure is a compiler defect).
+
+**Divergence** (measured at 5c0d6b1):
+
+```
+def f fn [[c:Boolean][Any][if c [def x 1] [] for 3 [def x 5] x]] f true
+  interp [5]      compiled: fn f: body result of unknown provenance
+def x 0 if [true] [def x 1] [2] end x
+  interp [1]      compiled: if: branch produces no value (Stage 2 lowers single-result branches)
+```
+
+The first is emit.go's `NoteLoopCarried` guard (the "NUR204" arm): its
+comment says it keeps the loop's own index out of the carry, but
+`AnalyseLoopBody` already skips bind names and `boundLocals` never holds
+an index — what it catches is a branch-join binding that may be unbound.
+The second is the constant-condition arm of `if` (basic/go
+native_control.go): its guard carried a `//covergate:allow` whose proof
+(a defensive guard) was false. The pragma is removed and
+`TestNUR243ConstTakenArmWithNoValueDeclines` covers the guard, pinning
+today's decline. The third: NUR109's bound-slot arm (compiler lower.go)
+checks every operand of a parser dispatch, so a SOURCE operand bound on
+one branch (`parse p s`) declines with a reason naming the parser; checked
+over the parser operand alone both lanes agree
+(`TestFnDispatchBranchBoundOperandDeclines` pins today's decline).
 
 ## NUR228 — a native's forward window binds a gradual stack operand the runtime value may not fit {#nur228}
 

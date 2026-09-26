@@ -864,6 +864,54 @@ func attemptedWindowOver(tape *Tape, pointer int, fn *FnDefInfo, written []Value
 	return written
 }
 
+// noteCallWindow offers the recorder, at a user fn's dispatch, the window
+// this dispatch's RUNTIME twin reports when its match fails: sigError's
+// attempted window, over the check pass's tape (rematchWritten — a gradual
+// operand stands where the runtime value will). The compiled call's
+// param-contract no-match renders the same tuple (NUR234): a bare word read
+// after the word ends the written run and is never an argument there, and
+// the stack beneath the call fills the window to the smallest arity.
+//
+// The runtime fails at the dispatch's FIRST step: its plan sees every
+// operand but a speculative slot's, which arrives only after a forward
+// collection. So the window is taken there, and a dispatch that goes on to
+// collect forward marks it deferred — its force-stack re-step, the step the
+// pass records the call at, keeps the first step's offer. A speculative plan
+// can fail at that re-step instead, over a window no first step shows: it
+// offers no window, and the record keeps its argument tuple.
+func (e *Engine) noteCallWindow(w WordInfo, fn *FnDefInfo, sig *Signature, positions []int, specAt int, pos SrcPos) {
+	es := e.Registry.Check.Recorder()
+	if !es.Active() || !fnHasBoruSig(fn) {
+		return
+	}
+	deferred := false
+	for _, p := range positions {
+		if sig != nil && p > e.Pointer {
+			deferred = true
+			break
+		}
+	}
+	var win []Value
+	if specAt < 0 {
+		win = e.rematchWritten(fn)
+		if win == nil {
+			win = []Value{}
+		}
+	}
+	es.NoteCallWindow(w.Name, pos, win, deferred, w.ForceStack)
+}
+
+// fnHasBoruSig reports whether any of fn's signatures runs a boru body — a
+// user fn, whose compiled call guards its param contract.
+func fnHasBoruSig(fn *FnDefInfo) bool {
+	for i := range fn.Signatures {
+		if _, ok := fn.Signatures[i].Impl.(*BoruImpl); ok {
+			return true
+		}
+	}
+	return false
+}
+
 func (e *Engine) noMatchError(name string, fn *FnDefInfo, written []Value, pos SrcPos, reorder string) *BoruError {
 	return NoMatchDiag(e.effectiveSource(), name, fn, written, pos, reorder)
 }
@@ -3022,6 +3070,10 @@ func (e *Engine) stepWord(val Value) error {
 	if sig != nil && sig.Fallback && !e.Registry.analysisActive() &&
 		!fnCourtesyDispatches(e.Registry, w.Name, fn) {
 		return e.sigError(w.Name, fn, val.Pos())
+	}
+
+	if e.Registry.analysisActive() {
+		e.noteCallWindow(w, fn, sig, positions, specAt, val.Pos())
 	}
 
 	if sig == nil {
@@ -9595,9 +9647,43 @@ func (e *Engine) TryRecordRecoveredUserFn(sig *Signature, fn *FnDefInfo, args []
 	if len(window) < sig.TotalArgs() {
 		return false
 	}
+	// A bare name bound to a function in the forward window CALLS at the
+	// interpreter's dispatch (NUR078): it is the boundary the matcher stops
+	// at, never an operand, so the window the recovery would bind is not the
+	// one the interpreter has — `h g` over a `g:Function` param raises
+	// signature_error there, and the guarded call answered h over g.
+	if nStack >= 0 && nStack <= len(positions) {
+		for k, p := range positions[nStack:] {
+			if e.forwardFnCall(p, k, sig) {
+				return false
+			}
+		}
+	}
 	recovered := sig.ReturnsFn(window, e.Registry)
 	CheckBraid.SpliceCheckResults(e, positions, recovered)
 	return true
+}
+
+// forwardFnCall reports whether the tape token at p, the forward operand a
+// recovery would bind at sig position idx, is a bare word the interpreter
+// DISPATCHES there — the planner's own fn-binding rule (collect_kernel.go):
+// a name bound to a function, a function carrier under the pass, or a
+// dynamic binding at a function-typed slot calls wherever it is written,
+// unless read `/v` (NUR078).
+func (e *Engine) forwardFnCall(p, idx int, sig *Signature) bool {
+	w, err := AsWord(e.Tape.At(p))
+	if err != nil || w.ForceVal {
+		return false
+	}
+	top, ok := e.Registry.Defs.Top(w.Name)
+	if !ok {
+		return false
+	}
+	if _, isFn := top.Data.(FnDefInfo); isFn || IsFnTypedCarrier(top) {
+		return true
+	}
+	et := SigArgType(sig, idx)
+	return top.Dynamic && et != nil && (et.ConformsTo(TFunction) || TypeIsFnShape(et))
 }
 
 // concreteArgsMatch reports whether every NON-Any-carrier operand still MATCHES

@@ -225,6 +225,17 @@ type EmitRecorder interface {
 	// at the same row and column of ANOTHER source would otherwise re-offer
 	// over this call's capture and consume it. Inactive: a no-op.
 	HoldRegion(word string, pos SrcPos) func()
+	// NoteCallWindow offers the operand window a dispatch's RUNTIME twin
+	// reports when its match fails — the interpreter's attempted window
+	// (attemptedWindowOver), derived over the check pass's own tape at the
+	// dispatch's FIRST step, so a gradual operand stands where the runtime
+	// value will (NUR234). deferred marks a dispatch that goes on to collect
+	// forward; restep marks its force-stack re-step, which keeps a deferred
+	// offer rather than replacing it. Keyed and held exactly as the region
+	// offer is (HoldRegion); a user-fn record claims it for its
+	// param-contract no-match. A nil window offers that no window is known.
+	// Inactive: a no-op.
+	NoteCallWindow(word string, pos SrcPos, window []Value, deferred, restep bool)
 	// RecordDynApply records a paren-bounded TRAILING fn-value apply and
 	// reports how many of `args` the lowered apply CONSUMES, counted from the
 	// TOP of the window (the values nearest the fn). That is normally all of
@@ -648,6 +659,7 @@ func (inactiveEmit) RecordUserCall(int, string, []Value, []Value, SrcPos, SrcPos
 func (inactiveEmit) RecordUserPolyCall(string, *Registry, []int, []int, []SigImpl, []Signature, []Value, []Value, SrcPos, string, SrcPos) {
 }
 func (inactiveEmit) HoldRegion(string, SrcPos) func()                         { return func() {} }
+func (inactiveEmit) NoteCallWindow(string, SrcPos, []Value, bool, bool)       {}
 func (inactiveEmit) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool) { return 0, false }
 func (inactiveEmit) RecordDynApplyLead([]Value, Value, Value, SrcPos) (int, bool) {
 	return 0, false

@@ -9,6 +9,71 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR234 closed, main's #509 merged, and the merged ADR-008 gap covered (2026-09-26)
+
+**NUR234.** A compiled user call's param-contract no-match now reports
+the interpreter's window: the written run, which a bare read ends, filled
+from the stack beneath to the smallest arity. The check pass derives it at
+the user fn's dispatch, over its own tape, with sigError's own derivation
+(`noteCallWindow` → `rematchWritten`). It takes it at the FIRST step,
+because that is where the run fails: its plan sees every operand but a
+speculative slot's. A speculative plan offers no window. The offer is
+keyed and held like the region offer (`NoteCallWindow`, held at the
+ReturnsFn's entry by `HoldRegion`). So a forward collection's force-stack
+re-step keeps the first step's offer, and the callee's body analysis
+cannot overwrite it.
+
+The record maps each window value to where the run holds it:
+- an argument, by identity;
+- a definite scalar, by value;
+- an event result, by its seat: a promoted slot, else its depth beneath
+  the call's operands on the simulated stack;
+- a local read whose binding had not moved when the window was offered.
+  That is judged at the offer, because the callee's analysis moves a
+  same-named param's generation.
+
+The lowering writes `CallWindows[pc]`, and the VM reads it when the
+contract fails (`callWindowAt`). A value with no home keeps the argument
+tuple. The residue is a local rebound between the read and the call.
+
+**The merge.** Main's #509 (S2b's first cut) merged cleanly apart from
+three ledgers, each composed from both sides' moves:
+- compileDefectCeiling: base 291, main +7, this run +19, so 317;
+- bailDefectCeiling: 36;
+- the arity gate's engine.go: base 29, NUR078 −2, main +1, so 28.
+
+The merged tree then compiled one program it should not have.
+`def h fn [[k:Function][Any][typeof k/v]]  def f fn [[g:Function][Any][h
+g]]  f ([] => [42])` answered `[Function]` compiled, where the
+interpreter raises signature_error. Main's single-overload recovery
+(`TryRecordRecoveredUserFn`) built its window from the fallback walk,
+which admits any word, so it bound `g`. But under NUR078 a bare fn-bound
+name calls wherever it is written, so the interpreter's matcher stops at
+it and h gets nothing. The recovery now refuses a forward word the
+planner's own fn-binding rule says calls (`forwardFnCall`). The program
+declines as `TestWordReadDispatchFailsToCompile` pins, and the ledger is
+back at 317.
+
+**The merged ADR-008 gap.** Four agents covered the blocks the merged
+profile left: the PR's 73 statements, a stale pragma, and main's own 80.
+All of it is tests, apart from a few provable simplifications:
+- emit.go: `RecordTypeInstall`'s keep-defs guard, `bailPoint`'s start
+  fallback and `RecordArgsProjection`'s lookup;
+- check: `method_shape.go`'s `LookupWord` fallback;
+- the VM: `reStepLanding`'s `dynApplyEnter` arm, and the render-only
+  no-match bridge now takes no invoke.
+
+One pragma was added, at check_recovery.go's window-size bound, with its
+proof. One pragma was removed because its proof was false:
+native_control.go's constant-branch guard is reachable. The agents' probes
+found fifteen divergences, all measured and recorded OPEN as NUR235–NUR243:
+- three silent wrong answers (NUR235–NUR237);
+- a trailing-apply family (NUR238);
+- diagnostic names and codes (NUR239, NUR240);
+- a walk-hook capture (NUR241);
+- eight compile-then-bail programs (NUR242);
+- three over-declines (NUR243).
+
 ## NUR231's type half compiled — the run-time type install (2026-09-26)
 
 **The record.** NUR231's first cut left a TYPE over a refinement whose

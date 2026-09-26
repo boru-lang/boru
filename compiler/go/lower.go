@@ -763,6 +763,10 @@ type lowerer struct {
 	// (Program.LandingWords / CompiledFn.LandingWords), keyed by the
 	// target's own pc — see seatLandingWord.
 	landingWords *map[int]LandingWord
+	// callWindows is the emission target's call-window table
+	// (Program.CallWindows / CompiledFn.CallWindows), keyed by the target's
+	// own pc — see seatCallWindow.
+	callWindows *map[int][]CallWindowOperand
 	// landingBody is the body a landing's `/q` claim resumes (NUR190): the
 	// program's tokens for the root lowerer (landingRoot), a deopt unit's
 	// Body for a unit's; landingDeopts are a unit's planned LANDING points
@@ -3975,6 +3979,7 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 		lw.vm = lw.vm[:len(lw.vm)-n]
 		return lw.lowerUserCallResult(ev, uc)
 	}
+	lw.seatCallWindow(uc.window, n)
 	if uc.tail {
 		lw.emit(OpTailCallUser, uc.unit, uc.pos)
 		lw.vm = lw.vm[:len(lw.vm)-n]
@@ -3983,6 +3988,52 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 	lw.emit(OpCallUser, uc.unit, uc.pos)
 	lw.vm = lw.vm[:len(lw.vm)-n]
 	return lw.lowerUserCallResult(ev, uc)
+}
+
+// seatCallWindow lowers a user call's no-match window (emitUserCall.window)
+// to the emission target's CallWindows entry at the pc of the call about to
+// be emitted, its n operands already laid out on top: an argument by its
+// signature position, a definite scalar by value, an event result by where
+// it sits when the call runs — its promoted frame slot, else its depth
+// beneath the call's operands on the simulated stack, which the VM's stack
+// mirrors. An event the layout does not hold there seats no entry, and the
+// call reports its arguments.
+func (lw *lowerer) seatCallWindow(win []callWinOp, n int) {
+	if win == nil || lw.callWindows == nil {
+		return
+	}
+	out := make([]CallWindowOperand, len(win))
+	for i, w := range win {
+		out[i] = CallWindowOperand{Kind: w.kind, Idx: w.idx, Value: w.value}
+		if w.kind != WinStack {
+			continue
+		}
+		if slot, ok := lw.promoted[w.op.idx]; ok {
+			out[i] = CallWindowOperand{Kind: WinLocal, Idx: slot + w.op.resIdx}
+			continue
+		}
+		d := simDepthBeneath(lw.vm, n, w.op)
+		if d < 0 {
+			return
+		}
+		out[i].Idx = d
+	}
+	if *lw.callWindows == nil {
+		*lw.callWindows = map[int][]CallWindowOperand{}
+	}
+	(*lw.callWindows)[len(*lw.code)] = out
+}
+
+// simDepthBeneath is how deep event operand op sits beneath the top n
+// simulated slots (0 = directly beneath them), or -1 when it is not there.
+func simDepthBeneath(vm []vmSlot, n int, op EmitOperand) int {
+	top := len(vm) - n - 1
+	for j := top; j >= 0; j-- {
+		if slotIs(vm[j], op) {
+			return top - j
+		}
+	}
+	return -1
 }
 
 // lowerUserCallResult seats a user call's result once the call op is

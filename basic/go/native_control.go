@@ -720,7 +720,9 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 			joins = InstallTakenArmDefs(r, nil, defs)
 		}
 		frag := recorderState(es).TakeFragment()
-		if len(stk) == 0 { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
+		// Reachable, and a compile defect (NUR243): a taken arm that leaves no
+		// value (`if [true] [def x 1] [2]`) is valid code the lowering refuses.
+		if len(stk) == 0 {
 			es.Recorder().MarkUncompilable("if: branch produces no value (Stage 2 lowers single-result branches)")
 			return nil
 		}

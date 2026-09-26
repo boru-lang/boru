@@ -374,9 +374,14 @@ func closureFnDef(fn *compiler.CompiledFn, ident core.FnIdentity, invoke func(ar
 	// diagnostic reads (HasForwardSigs — the "group the call in parens"
 	// suggestion); the bridge carries the same value so the two lanes'
 	// diagnostics agree line for line.
-	sig := core.Signature{Params: params, BarrierPos: len(params), Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-		return invoke(append([]core.Value(nil), a...))
-	})}
+	sig := core.Signature{Params: params, BarrierPos: len(params)}
+	// A nil invoke builds a render-only bridge: a no-match diagnostic reads
+	// the signature and never runs it.
+	if invoke != nil {
+		sig.Impl = core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+			return invoke(append([]core.Value(nil), a...))
+		})
+	}
 	core.NormalizeSig(&sig)
 	// The closure's own identity token rides on the bridge, so a bridged
 	// copy is `eq` to the closure and to every other bridge of it — one
@@ -384,4 +389,48 @@ func closureFnDef(fn *compiler.CompiledFn, ident core.FnIdentity, invoke func(ar
 	// (Codex P1 on PR #444: each bridge minted its own, and `[(mk 3)] each
 	// [dup eq]` answered false for the interpreter's true).
 	return core.NewFunctionIdentified(core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: fn.Lambda}, ident), true
+}
+
+// callWindowAt is the no-match window of the CALL_USER / TAIL_CALL_USER at
+// pc (NUR234): the code's recorded CallWindows entry read over the call's
+// arguments (args, signature order), the stack beneath them and the
+// caller's frame locals — the window the interpreter's failed dispatch
+// reports. ok is false when the call carries no entry, or an entry the
+// frame cannot satisfy; the contract then reports the arguments.
+func callWindowAt(p *compiler.Program, unit, pc int, args, stack, locals []core.Value) ([]core.Value, bool) {
+	if p == nil {
+		return nil, false
+	}
+	table := p.CallWindows
+	if unit >= 0 {
+		if unit >= len(p.Fns) {
+			return nil, false
+		}
+		table = p.Fns[unit].CallWindows
+	}
+	spec, ok := table[pc]
+	if !ok {
+		return nil, false
+	}
+	win := make([]core.Value, 0, len(spec))
+	for _, o := range spec {
+		var src []core.Value
+		at := o.Idx
+		switch o.Kind {
+		case compiler.WinValue:
+			win = append(win, o.Value)
+			continue
+		case compiler.WinArg:
+			src = args
+		case compiler.WinLocal:
+			src = locals
+		default:
+			src, at = stack, len(stack)-1-o.Idx
+		}
+		if at < 0 || at >= len(src) {
+			return nil, false
+		}
+		win = append(win, src[at])
+	}
+	return win, true
 }

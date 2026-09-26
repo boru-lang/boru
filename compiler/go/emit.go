@@ -508,6 +508,10 @@ type emitUserCall struct {
 	// a live word slot over a span the VM can drive. A generic call is
 	// never tail-marked.
 	generic bool
+	// window is the interpreter's no-match window over this call's operands
+	// (call_window.go), lowered to the call's CallWindows entry; nil keeps
+	// the argument tuple.
+	window []callWinOp
 }
 
 // emitUserPolySpec is the recorded arm table of one poly user call — the
@@ -792,6 +796,9 @@ type EmitState struct {
 	// heldRegion. Pushed by HoldRegion, popped by its release, completed by
 	// the call's record in between.
 	heldRegions []heldRegion
+	// pendingWindows is the pool of dispatch windows NoteCallWindow offers,
+	// keyed and held exactly as pendingRegions (call_window.go).
+	pendingWindows map[regionKey]pendingWindow
 
 	// pendingLoopBind carries a SplitLoopRegionBind verdict to the
 	// RecordDynBind of the same installAndRecordDef call (S5).
@@ -7434,7 +7441,8 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 		}
 		ops = append(ops, op)
 	}
-	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, region: region, generic: generic}})
+	window := es.callWindowOps(word, wordPos, args)
+	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, region: region, generic: generic, window: window}})
 	es.SiteCounts[SiteMono]++
 	// A call to an ALREADY-variadic fn yields a runtime-variable count itself, so
 	// the result propagates variadic (a branch arm / body residual carrying it is
@@ -14379,7 +14387,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		LiveLeadNames:   maps.Clone(es.liveLeadNames),
 		LiveReadNames:   maps.Clone(es.liveReadNames),
 		CondBoundNames:  maps.Clone(es.condBoundNames)}
-	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
+	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, callWindows: &p.CallWindows, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
 	// single-consume stack discipline holds. Count the residual references,
@@ -14627,7 +14635,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			cf.Reg = rec.reg
 		}
 		cf.KeepsDefs = rec.keepsDefs
-		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs}
+		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, callWindows: &cf.CallWindows, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).

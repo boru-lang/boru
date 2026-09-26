@@ -1473,9 +1473,8 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		}
 		return vc.landingFire(reg, v, fnDef, stack, top, curDebug, pc)
 	}
-	if ent := vc.dynApplyEnter(v, nil); ent != nil {
-		return stack[:top], ent, nil
-	}
+	// Neither a closure nor a FnDefInfo (both arms above return): no frame
+	// to push, so the island runs the value.
 	results, err := vc.islandRun(reg, []core.Value{v})
 	if err != nil {
 		return nil, nil, stampAt(err, curDebug, pc, reg)
@@ -1744,7 +1743,8 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 		}
 		if head.Name != "" {
 			if fn, known := vc.closureUnit(cl); known && !closureMatchesArgs(fn, args) {
-				if fnv, built := closureFnDef(fn, cl.Ident, func([]core.Value) ([]core.Value, error) { return nil, nil }); built {
+				// A render-only bridge: the no-match only reads its signature.
+				if fnv, built := closureFnDef(fn, cl.Ident, nil); built {
 					fd, _ := fnv.Data.(core.FnDefInfo)
 					view := installedSigView(fd)
 					written := args[:min(head.NWritten, len(args))]
@@ -3762,8 +3762,12 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// concrete param at check time, but the runtime value may not match;
 			// without this a laundered List bound to an `m:Map` param silently runs
 			// the body. nl[i] is param i (the body's slot i); Params[i] is its
-			// declared type. Raises the same signature_error the interpreter raises.
+			// declared type. Raises the same signature_error the interpreter raises,
+			// over the window the interpreter's failed dispatch reports (NUR234).
 			if err := checkParamContract(r, fn, nl); err != nil {
+				if win, ok := callWindowAt(p, curUnit, pc, nl, stack, locals); ok {
+					err = core.RuntimeNoMatch(r, fn.Name, win)
+				}
 				return nil, stampAt(err, curDebug, pc, curReg)
 			}
 			if in.Op == compiler.OpCallUser {
