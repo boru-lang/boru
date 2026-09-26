@@ -181,7 +181,7 @@ keep the two in sync in the same commit.
 | [NUR256](#nur256) | FIXED 2026-09-25 (numbered NUR209 until the merge of main's #511, where main's NUR209 kept the number; the loop region's residual — the handoff log's entry of that date), found the same day closing NUR197: a `do` body that is ONE container literal over the loop variable — `for 2 [do [[i]]]`, `for 2 [do [{a:i}]]`, `for 2 [do [[(i add 1)]] i]` — answered `error(undefined word: i)` per iteration on the compiled lane for the interpreter's `[0] [1]`, silent, exit 0, present on main: the token body was analysed as a DEFERRING lambda (bodyInFrame false), its residual recorded no assembly, the closure declined on the unknown provenance and the dyn-body backstop baked the literal as a const the handler re-ran through the interpreter, where the loop's `i` is a frame slot the registry never held; a multi-token body (`do [[i] 5]`) compiled. A token body compiles in-frame now (recordClosureDispatch's bodyInFrame true — the InvokeBody seam's sub-engine sweeps the residual at its end, with the bindings live), and the closure assembles the list from the captured slot | probing NUR197's neighbours, 2026-09-25 |
 | [NUR257](#nur257) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): an anonymous fn VALUE's end-of-pass body check (NUR105's drain) has no call-graph identity, so the dynamic-scope rescue cannot ask whether a binder frame reaches it. A name only a fn binds is a false positive when the value runs in that frame (`def m [(fn [[t:Temp][String][k]])]` stored by `behave` and dispatched inside a fn that defines `k`: interpreted `K`, check `undefined word: k`) and silence where it does not. Interim, from the merge of main's #511: the FOLDED map member alone answers optimistically (a name some fn binds is not a finding there; a name nothing binds still is), so no verdict is weaker than main's | merging main's #511, 2026-09-26 |
 | [NUR258](#nur258) | FIXED 2026-09-26 (the empty body's frame — the handoff log's entry of that date), found the same day closing NUR255: a fn whose body leaves FEWER values than its declared count returns its unconsumed unnamed args on the interpreter, and its compiled unit returned nothing: `def f fn [[Integer] [Integer] []] end [(f 3) 7]` and `[(3 ([Integer] => [])) 7]` answered `[[3 7]]` interpreted and raised `expected 1 return value(s), got 0` compiled. The body analysis returned nothing for an EMPTY body; its residual is its unnamed args now (`emptyBodyResidual`), so the unit returns them | closing NUR255, 2026-09-26 |
-| [NUR259](#nur259) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): the return-count error of an anonymous lambda applied inside a list literal anchors at the paren on the compiled lane (`--> 1:3`) and at no position on the interpreter; the text is identical (`[(0 ([0] => [1 2])) 7]`). Loud on both lanes; pre-existing | closing NUR255, 2026-09-26 |
+| [NUR259](#nur259) | FIXED 2026-09-26 (the lambda call's anchor — the handoff log's entry of that date), found the same day closing NUR255: a literal lambda's return-count error anchored at its first argument on the compiled lane (`[(0 ([0] => [1 2])) 7]`, `--> 1:3`) and nowhere on the interpreter, which anchors a return check at the fn value's own position — none, for a lambda built in place. The compiled call takes no argument fallback for an anonymous lambda now (`callAnchor`), so both lanes give one report | closing NUR255, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -9528,9 +9528,11 @@ which bailed at MAKE_LIST) and a fn residual's fixed-width replay window
 whose body leaves two values bailed ("result count 2 violates the
 host-registered shape claim 1"): the op read any count that missed its
 claim as a host registration's violation. A single-signature boru fn
-value's miss is the interpreter's own count error (`namedFnCountError`,
-`NamedFnReturnCount`'s text), so the `do` catches it on both lanes. Pinned
-with NUR252 by `TestNUR252ForeignValueKeepsItsCount`.
+value's miss is the interpreter's own count error (`NamedFnReturnCount`'s
+text), so the `do` catches it on both lanes. The foreign arm raises it
+before the claim is read (NUR252's contract check), and the op's own
+`namedFnCountError` proved unreachable and was deleted at the merge of
+main's #511. Pinned with NUR252 by `TestNUR252ForeignValueKeepsItsCount`.
 
 The other four programs remain: the three
 re-step landings over a `/q` param, the two shaped method applies, and
@@ -13746,8 +13748,9 @@ The count error's anchor, found beside it, is NUR259.
 
 ## NUR259 — a list-bound lambda's count error anchors at the paren compiled, nowhere interpreted {#nur259}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** closing NUR255.
+**Status:** FIXED 2026-09-26 (the lambda call's anchor — the handoff log's
+entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:** closing
+NUR255.
 
 **Rule:** one error, one report: the same text at the same place on both
 lanes.
@@ -13762,8 +13765,19 @@ lanes.
                   --> 1:3
 ```
 
-The text is identical, and the anchor differs. The lambda alone in a list
-(`[(0 ([0] => [1 2]))]`) reports no position on both lanes. The compiled
-lane's anchor is the paren the unit's call is recorded at; the
-interpreter's frame, re-stepped inside the list's element evaluation, has
-no call position to give its return check.
+The text is identical, and the anchor differs. The lambda alone
+(`[(0 ([0] => [1 2]))]`) reported no position on both lanes, and so did
+`(0 ([0] => [1 2])) 7` interpreted (compiled `--> 1:2`).
+
+**Where it sat.** The interpreter anchors a frame's return check at the fn
+value's own position (`execFnDefSig`'s call position), and a lambda built
+in place carries none. A named fn and a def-bound lambda anchor at their
+word, and both lanes agreed there. The compiled call's anchor
+(`callAnchor`) took the call word's position and, when it had none, the
+first argument's (NUR118's rule for a 0-argument call). For a literal
+lambda that fallback was never where the interpreter anchors.
+
+**The fix.** A literal lambda's call takes no argument fallback
+(`callSite.anonymous`), so both lanes report the same text at the same
+place. The named-call fallback is unchanged. Pinned by lang
+`TestNUR259LambdaCountErrorAnchor` and check `TestCallAnchorArms`.

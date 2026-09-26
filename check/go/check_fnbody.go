@@ -351,7 +351,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// is the (word, position) the region capture was offered under
 		// (compiler/go/region_record.go) — the word's own position, which is
 		// not args[0]'s, the blame position the call event carries.
-		call := callSite{word: caller.Check.CurCallWord, pos: caller.Check.CurCallPos}
+		call := callSite{word: caller.Check.CurCallWord, pos: caller.Check.CurCallPos, anonymous: fnDef.Anonymous}
 		checkRecordShapeArgs(r, nameCopy, paramPatterns, args)
 		// Generic fns (Phase 5): infer the parameter bindings from the
 		// call's arg carriers and install them around the body
@@ -741,7 +741,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// closure uses it: the snapshot at the top of
 				// BuildFnBodyReturnsFn is what the closure is entitled to read.
 				noteBakedCallTarget(es, r, nameCopy)
-				es.RecordUserCall(fnUnit, call.word, args, nil, callAnchor(call.pos, pos), call.pos)
+				es.RecordUserCall(fnUnit, call.word, args, nil, callAnchor(call, pos), call.pos)
 				return nil
 			}
 			// A ZERO-declared-return POLY set (COMPILE FAILURE-CLOSURE.0 §6a): every
@@ -925,9 +925,15 @@ func noteBakedCallTarget(es core.EmitRecorder, r *core.Registry, name string) {
 // argument's position, so a 0-argument call's contract error rendered
 // "source position unknown" and a 1-argument call's anchored at the
 // argument (NUR118).
-func callAnchor(word, arg core.SrcPos) core.SrcPos {
-	if word.Row > 0 {
-		return word
+//
+// An ANONYMOUS lambda's call takes no argument fallback: the interpreter
+// anchors its return check at the fn value's own position, and a lambda
+// built in place has none, so both lanes report no position. The argument's
+// anchor made `[(0 ([0] => [1 2])) 7]` report 1:3 compiled beside the
+// interpreter's unknown position (NUR259).
+func callAnchor(call callSite, arg core.SrcPos) core.SrcPos {
+	if call.pos.Row > 0 || call.anonymous {
+		return call.pos
 	}
 	return arg
 }
@@ -956,7 +962,7 @@ func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, 
 		return outs
 	}
 	noteBakedCallTarget(es, r, name)
-	es.RecordUserCall(fnUnit, call.word, args, outs, callAnchor(call.pos, pos), call.pos)
+	es.RecordUserCall(fnUnit, call.word, args, outs, callAnchor(call, pos), call.pos)
 	return outs
 }
 
@@ -966,6 +972,10 @@ func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, 
 type callSite struct {
 	word string
 	pos  core.SrcPos
+	// anonymous marks a literal lambda's call: the interpreter anchors its
+	// return check at the fn VALUE's own position (execFnDefSig's callPos),
+	// which a lambda built in place does not carry (callAnchor, NUR259).
+	anonymous bool
 }
 
 // recordPendingClosureApply routes the re-step dispatch of a closure this

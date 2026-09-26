@@ -73,3 +73,20 @@ func TestEmptyBodyResidual(t *testing.T) {
 		t.Errorf("every param named: nothing, got %v", got)
 	}
 }
+
+// callAnchor (NUR118, NUR259): a call word's own position; the first
+// argument's for a named call whose word carries none; and none at all for a
+// literal lambda's call, which the interpreter anchors at the fn value's own
+// (absent) position.
+func TestCallAnchorArms(t *testing.T) {
+	word, arg := core.SrcPos{Row: 1, Col: 30}, core.SrcPos{Row: 1, Col: 3}
+	if got := callAnchor(callSite{pos: word}, arg); got != word {
+		t.Errorf("a call word's own position: %v", got)
+	}
+	if got := callAnchor(callSite{}, arg); got != arg {
+		t.Errorf("a named call with no word position anchors at its argument: %v", got)
+	}
+	if got := callAnchor(callSite{anonymous: true}, arg); got != (core.SrcPos{}) {
+		t.Errorf("a literal lambda's call anchors nowhere, as the interpreter's: %v", got)
+	}
+}

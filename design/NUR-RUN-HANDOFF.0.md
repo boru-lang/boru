@@ -9,7 +9,7 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
-## NUR255 and NUR258 closed, NUR259 recorded: the unnamed args (2026-09-26)
+## NUR255, NUR258 and NUR259 closed: the unnamed args and the lambda's anchor (2026-09-26)
 
 **The count the frame keeps.** The interpreter pushes an anonymous lambda's
 unnamed args beneath its body. Its return check then takes the declared
@@ -35,9 +35,14 @@ residual already carried the unnamed args, which the unit trims. Only an
 EMPTY body lost them, because `AnalyseFnBody` returned nothing for it. Its
 residual is its unnamed args now (`emptyBodyResidual`).
 
-**NUR259, recorded (loud on both lanes).** The count error of a lambda
-applied inside a list anchors at the paren compiled and nowhere
-interpreted. The text is identical.
+**NUR259, found on the way and closed (loud on both lanes).** The count
+error of a literal lambda anchored at its first argument compiled and
+nowhere interpreted, with identical text. The interpreter anchors a frame's
+return check at the fn value's own position, and a lambda built in place
+has none. The compiled call's anchor fell back to the first argument
+(NUR118's rule for a word with no position), which is never where the
+interpreter anchors a literal lambda. An anonymous call takes no fallback
+now (`callSite.anonymous`).
 
 ## Main's #511 merged; NUR257 recorded (2026-09-26)
 
