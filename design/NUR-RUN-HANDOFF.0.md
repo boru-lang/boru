@@ -34,12 +34,23 @@ such a type re-matches at run time, because the pass's match over an
 unknown bound admits every value. The pass decides nothing over an
 unknown bound anywhere: an intersection keeps it, and a complement admits.
 
-A signature the RUN builds still declines, through the existing
-compile-time-word site: an inline parameter or return type over such a
-bound, a typed container's child, and a fn body's per-call type def. The
-retired site takes both censuses back to 91; the frontier row and oracle
-row for a type def in an each body decline one step earlier, as the
-code-body word.
+An inline parameter or return type over such a bound compiles the same
+way. In a compile pass its pattern is an anonymous node the run forwards,
+through an unnamed `OpBindTypeRun`, to the node it mints from the
+refinement it computed. The anonymous node takes the run's rendering, so
+the no-match notes agree. A refinement with any unknown bound now decides
+nothing in the pass, its known side included: a verdict the known side
+gave alone was baked with the placeholder rendered.
+
+Three shapes still decline, through the existing compile-time-word site:
+- an inline interval over such a bound, which the run may find empty (the
+  interpreter's slot is then `Never` itself);
+- a typed container's child;
+- a fn body's per-call type def.
+
+The retired site takes both censuses back to 91. The frontier row and
+oracle row for a type def in an each body decline one step earlier, as
+the code-body word.
 
 Found on the way, both pre-existing. NUR233: a make field's refusal was a
 plain error, bare interpreted and a compiler defect compiled; it is a

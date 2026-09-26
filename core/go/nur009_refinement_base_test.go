@@ -9,18 +9,22 @@ import (
 // construct latch, the remembered consts, and the declines.
 type constructRecorder struct {
 	inactiveEmit
-	constructs int
-	remembered []Value
-	declined   []string
-	typeRuns   []string
-	typeNodes  []*Type
-	dependents int
+	constructs  int
+	remembered  []Value
+	declined    []string
+	typeRuns    []string
+	typeNodes   []*Type
+	dependents  int
+	sigForwards []*Type
 }
 
 func (c *constructRecorder) NoteRuntimeConstruct()          { c.constructs++ }
 func (c *constructRecorder) RememberOriginal(v Value)       { c.remembered = append(c.remembered, v) }
 func (c *constructRecorder) MarkUncompilable(reason string) { c.declined = append(c.declined, reason) }
 func (c *constructRecorder) NoteRuntimeDependent()          { c.dependents++ }
+func (c *constructRecorder) NoteRuntimeSigForward(node *Type, _ Value) {
+	c.sigForwards = append(c.sigForwards, node)
+}
 func (c *constructRecorder) NoteRuntimeTypeInstall(name string, node *Type, _ Value) {
 	c.typeRuns = append(c.typeRuns, name)
 	c.typeNodes = append(c.typeNodes, node)
@@ -152,13 +156,21 @@ func TestRefinementConstructorsNoteUnknownBounds(t *testing.T) {
 // TestUnknownBoundDecidesNothing pins the membership half of NUR231: a
 // carrier bound orders below every value, so a verdict over it was the
 // lattice's — `Integer lte (size s)` refused 3 at check time whatever s
-// held. An unknown bound admits (gradually); a known one still decides.
+// held. An unknown bound admits (gradually), and so does an interval whose
+// OTHER side is known — that verdict would render the placeholder; a
+// refinement over known bounds still decides.
 func TestUnknownBoundDecidesNothing(t *testing.T) {
 	unknown := &DepBound{Value: NewCarrier(TInteger)}
-	for _, lower := range []bool{true, false} {
-		if !depBoundCheck(unknown, lower, NewInteger(3)) {
-			t.Errorf("an unknown bound (lower=%v) decides nothing: it must admit", lower)
+	known5 := &DepBound{Inclusive: true, Value: NewInteger(5)}
+	for _, info := range []DepScalarInfo{
+		{Lo: unknown}, {Hi: unknown}, {Lo: known5, Hi: unknown}, {Lo: unknown, Hi: known5},
+	} {
+		if !depScalarCheck(info, NewInteger(3)) {
+			t.Errorf("%+v decides nothing: it must admit 3", info)
 		}
+	}
+	if depScalarCheck(DepScalarInfo{Lo: known5, Hi: &DepBound{Inclusive: true, Value: NewInteger(9)}}, NewInteger(3)) {
+		t.Error("[5, 9] over known bounds refuses 3")
 	}
 	if depBoundCheck(&DepBound{Value: NewInteger(3)}, true, NewInteger(3)) {
 		t.Error("a known strict lower bound 3 must refuse 3")
@@ -237,13 +249,30 @@ func TestUnknownRefinementIsTheRuns(t *testing.T) {
 	if err != nil || kind != TInteger || pat == nil || !pat.IsDepScalar() || rec.dependents != 0 {
 		t.Fatalf("an inline refinement's slot is its base, the refinement its pattern: %v %v %v %d", kind, pat, err, rec.dependents)
 	}
-	if _, _, err = ResolveSigType(r, NewDepScalar(DepLT, NewCarrier(TInteger))); err != nil || rec.dependents != 1 {
-		t.Fatalf("an inline signature type over an unknown bound is the run's to build: %v %d", err, rec.dependents)
+	// A check-only pass keeps the placeholder pattern: nothing to compile.
+	if kind, pat, err = ResolveSigType(r, unknown); err != nil || kind != TInteger || pat == nil || !pat.IsDepScalar() ||
+		len(rec.sigForwards) != 0 || rec.dependents != 0 {
+		t.Fatalf("a check-only pass keeps the refinement as the pattern: %v %v %v %d", kind, pat, err, rec.dependents)
 	}
-	if _, _, err = ResolveSigType(r, NewDisjunct([]Value{unknown, NewTypeLiteral(TString)})); err != nil || rec.dependents != 2 {
-		t.Fatalf("an inline union holding one is too: %v %d", err, rec.dependents)
+	// A compile pass carries an anonymous node the run forwards.
+	r.Check.Compiling = true
+	kind, pat, err = ResolveSigType(r, unknown)
+	if err != nil || kind != TInteger || pat == nil || !IsBareTypeNode(*pat) || len(rec.sigForwards) != 1 ||
+		!HasUnknownRefinement(*pat) {
+		t.Fatalf("a compile pass's inline refinement over an unknown bound is a forwarded node: %v %v %v %d", kind, pat, err, len(rec.sigForwards))
 	}
-	if _, _, err = ResolveSigType(plain, unknown); err != nil || rec.dependents != 2 {
+	if kind, pat, err = ResolveSigType(r, NewDisjunct([]Value{unknown, NewTypeLiteral(TString)})); err != nil || kind != TAny ||
+		pat == nil || !IsBareTypeNode(*pat) || len(rec.sigForwards) != 2 {
+		t.Fatalf("an inline union holding one is too: %v %v %v %d", kind, pat, err, len(rec.sigForwards))
+	}
+	// An interval may be empty at run time — the interpreter's slot is then
+	// Never itself — so the signature is the run's to build.
+	interval := NewValueRaw(TInteger, DepScalarInfo{Lo: &DepBound{Value: NewInteger(1)}, Hi: &DepBound{Value: NewCarrier(TInteger)}})
+	if _, _, err = ResolveSigType(r, interval); err != nil || rec.dependents != 1 || len(rec.sigForwards) != 2 {
+		t.Fatalf("an inline interval over an unknown bound declines: %v %d %d", err, rec.dependents, len(rec.sigForwards))
+	}
+	r.Check.Compiling = false
+	if _, _, err = ResolveSigType(plain, unknown); err != nil || rec.dependents != 1 {
 		t.Fatalf("an interpreter run notes nothing: %v %d", err, rec.dependents)
 	}
 	zz := r.Types.MintTypeWithBehavior("Zz", TScalar, zzFormatBehavior{})

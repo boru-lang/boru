@@ -294,6 +294,11 @@ type EmitRecorder interface {
 	// know (NUR231): the def's dispatch records the run-time install of the
 	// body the run computes, the node forwarding to the run's.
 	NoteRuntimeTypeInstall(name string, node *Type, body Value)
+	// NoteRuntimeSigForward records that a signature under construction
+	// carries an anonymous node minted over a refinement whose bound the
+	// pass does not know (NUR231): the building word's dispatch records the
+	// run's forward of that node, from the refinement the run computes.
+	NoteRuntimeSigForward(node *Type, body Value)
 	// NoteRuntimeDependent records that the compile-time word now
 	// dispatching has an effect only the run knows, which the compile cannot
 	// record: the dispatch declines as the compile-time word it is (NUR231).
@@ -671,6 +676,7 @@ func (inactiveEmit) RecordArgsProjection(*Registry, []Value, Value, SrcPos) bool
 func (inactiveEmit) NoteRuntimeBind(string)                                      {}
 func (inactiveEmit) NoteRuntimeConstruct()                                       {}
 func (inactiveEmit) NoteRuntimeTypeInstall(string, *Type, Value)                 {}
+func (inactiveEmit) NoteRuntimeSigForward(*Type, Value)                          {}
 func (inactiveEmit) NoteRuntimeDependent()                                       {}
 func (inactiveEmit) RecordTypedBindRun(_ TypedBindSpec, _, _, out Value, _ SrcPos) (Value, bool) {
 	return out, false

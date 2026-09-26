@@ -152,7 +152,7 @@ keep the two in sync in the same commit.
 | [NUR228](#nur228) | FIXED 2026-09-26 (the gradual window declines — the handoff log's entry of that date): the matcher flags a split whose window hangs on a gradual stack operand while a later overload forward-collects past the token the selected one stopped at (`laterCandidateCollectsPast`), and the compile declines with the gradual-split reason — the mirror of the existing split flag. The original text: `def v (whereis "x") v send {a: 1} "nobody"` is `[None]` interpreted (v is None, so `send (Any, String)` takes both forward tokens) and raised signature_error compiled: the check pass matched `send (Any, Pid)` over ONE forward token and the dynamic v, and compiled that window — `{a: 1}` sent to None; `whereis "x" send {a: 1} (self)` declined as a "stack discipline" compiler defect. A wrong answer (a program error the interpreter does not raise), pre-existing (measured on main at 3b5db68) | closing NUR064, 2026-09-26 |
 | [NUR229](#nur229) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): a boru matcher refuses a malformed quoted-string escape before jsonic's lexer reads it, the escape itself named, in both ports. The original text: the two tabnas ports reported a malformed escape in a quoted string differently — `"a\x4"` an invalid ascii escape in Go and an unterminated string in TS, `"a\xZZb"` spanning `"a\xZZ` in Go and `\xZZ` in TS. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
 | [NUR230](#nur230) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): Go's shared escape writer pairs a UTF-16 surrogate split across two `\uXXXX` escapes into one code point, as jsonic does in a quoted string. The original text: in a template, `\ud83d\ude00` read as two U+FFFD in Go and as one code point in TS (whose UTF-16 strings pair the units); both ports read it as one in a quoted string. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
-| [NUR231](#nur231) | FIXED 2026-09-26 (value half: Bytes a refinement base, a computed bound the run's; type half: the run-time type install — the handoff log's entries of that date): a refinement constructor over a bound the check pass does not know latches a run-time construct and the dispatch records as the call it is, so the run builds the refinement; a refinement bakes only over const bounds, `between` decides no empty interval from an unknown one, and a membership check over one decides nothing in the pass (an intersection keeps the unknown bound, a complement admits). A TYPE over one compiles to the run-time install: the run installs it from the body it computed (OpBindTypeRun) and the pass's node forwards to the run's, a typed def records the run's own membership check, and an overload set over one re-matches at run time. A signature the RUN builds (an inline parameter or return type over such a bound, a typed container's child) and a fn body's per-call type def decline through the existing compile-time-word site. The original text: `3 is (Integer gt (size "abc"))` was false interpreted and true compiled — the check pass built the refinement over its carrier for the computed bound and the recorder baked it; a carrier orders below every value, so a lower bound admitted everything, an upper one refused everything (a false check-time type_error too), `between` over one was Never, and a type over one bound or dispatched unchecked compiled. Pre-existing | closing NUR009, 2026-09-26 |
+| [NUR231](#nur231) | FIXED 2026-09-26 (value half: Bytes a refinement base, a computed bound the run's; type half: the run-time type install — the handoff log's entries of that date): a refinement constructor over a bound the check pass does not know latches a run-time construct and the dispatch records as the call it is, so the run builds the refinement; a refinement bakes only over const bounds, `between` decides no empty interval from an unknown one, and a membership check over one decides nothing in the pass (an intersection keeps the unknown bound, a complement admits). A TYPE over one compiles to the run-time install: the run installs it from the body it computed (OpBindTypeRun) and the pass's node forwards to the run's, a typed def records the run's own membership check, and an overload set over one re-matches at run time. An inline parameter or return type over one compiles too: its pattern is an anonymous node the run forwards to the refinement it computed. An inline interval over one (which the run may find empty), a typed container's child and a fn body's per-call type def decline through the existing compile-time-word site. The original text: `3 is (Integer gt (size "abc"))` was false interpreted and true compiled — the check pass built the refinement over its carrier for the computed bound and the recorder baked it; a carrier orders below every value, so a lower bound admitted everything, an upper one refused everything (a false check-time type_error too), `between` over one was Never, and a type over one bound or dispatched unchecked compiled. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR232](#nur232) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the return-pattern check defers a refinement's value-level membership over an abstract residual not provably outside its base, the named return type's rule. The original text: `def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5` was a check-time type_error ("expected (Integer gt 3), got Integer") that both lanes then returned 5 for; the named twin (`[Big]`) is check-clean. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR233](#nur233) | FIXED 2026-09-26 (a make field's refusal is a type_error — the handoff log's entry of that date): a make field the run refuses raises a type_error on both lanes; a refusal already structured keeps its code. The original text: the refusal was a plain error, which the interpreter printed bare and a compiled run booked as a compiler defect (internal_error with its "please report it" note) — `def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}`. Pre-existing | compiling NUR231's type half, 2026-09-26 |
 | [NUR234](#nur234) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a compiled direct call's param-contract no-match reports every argument, where the interpreter reports its attempted window — the forward candidates up to the first bare read, filled from the stack beneath: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` notes "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Code, message head and caret agree; the notes differ. Pre-existing (a gradual argument, measured at b3bcd9a); NUR231's type half reaches it too (`def v 2 f v` over a parameter typed by a computed-bound name) | compiling NUR231's type half, 2026-09-26 |
@@ -8971,13 +8971,34 @@ was Never, and a type over one checked nothing the run would.
     (`(Integer lt (size s)) tand (Integer gt 5)` was Never at compile
     time), and a complement admits (`tnot` over an admitting refinement
     refused everything).
-  - *A signature the run builds declines.* An inline parameter or return
-    type over such a bound, or a typed container's child, is resolved
-    when the fn is built, and the compiled unit would carry the pass's
-    placeholder; the word building it notes itself run-dependent
-    (`NoteRuntimeDependent`) and declines through the existing
-    compile-time-word site. `DeclineUnknownRefinement` is retired, and
-    both censuses are back to 91.
+  - *An inline signature type forwards too.* An inline parameter or
+    return type over such a bound (`[n:(Integer gt (size s))]`, a union
+    holding one) is resolved when the fn is built. In a compile pass its
+    pattern is an ANONYMOUS node minted over the placeholder
+    (`runSigPattern`), which the compiled unit and the replayed signature
+    both carry. The building word's dispatch records an unnamed
+    `OpBindTypeRun`, which mints a node from the refinement the run
+    computed and forwards the anonymous one to it, renamed as the run
+    renders it — so the no-match's "declared pattern" and the RET's
+    "expected" read `(Integer gt 3)`, as the interpreter's do.
+  - *What still declines.* Three shapes decline, through the existing
+    compile-time-word site (`NoteRuntimeDependent`):
+    - an inline INTERVAL over such a bound: the run may find it empty,
+      and then the interpreter's slot is `Never` itself, where the
+      compiled slot is the base with a pattern;
+    - a typed container's child, which is no node a forward can stand in
+      for;
+    - a fn body's per-call type def.
+    `DeclineUnknownRefinement` is retired, and both censuses are back to
+    91.
+  - *A known side decides nothing either.* A refinement with any bound
+    the pass does not know admits whatever its known side says
+    (`depScalarCheck`). A verdict the known side gives alone was baked
+    with the placeholder rendered: `def g fn [[n:(between 5 (size s)
+    Integer)] …] g 3` compiled to a trap naming `(Integer gte 5 lte
+    Integer)`. The run checks every bound, as the interpreter does. A
+    named type the run makes an alias of `Never` also renders `Never`,
+    because the pass's node takes the bound node's name.
 
 Measured while compiling the type half, beyond the table above (each now
 agrees): `def T ((Integer gt (size "abc")) tor String) 2 is T` (interp

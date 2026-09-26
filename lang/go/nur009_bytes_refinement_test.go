@@ -168,6 +168,20 @@ func TestNUR231ComputedBoundTypesCompile(t *testing.T) {
 		{tt + `def f gen [(X extends T)] fn [[x:X] [X] [x]] f 2`, "ERROR:no signature matches"},
 		{bb + `(convert Bytes "3") is B`, "[true]"},
 		{bb + `def v:B (convert Bytes "1") v`, "ERROR:does not unify with declared type B"},
+		// An inline parameter or return type over a computed bound: the
+		// signature carries an anonymous node the run forwards to the
+		// refinement it computes, rendered as the run renders it.
+		{`def g fn [[n:(Integer gt (size "abc"))] [Any] [n]] g 5`, "[5]"},
+		{`def g fn [[n:(Integer gt (size "abc"))] [Any] [n]] g 2`, "ERROR:does not satisfy its declared pattern (Integer gt 3)"},
+		{`def g fn [[n:Integer] [(Integer gt (size "abc"))] [n]] g 5`, "[5]"},
+		{`def g fn [[n:Integer] [(Integer lt (size "abc"))] [n]] g 5`, "ERROR:expected (Integer lt 3), got Integer"},
+		{`def g fn [[n:((Integer gt (size "abc")) tor String)] [Any] [n]] g "s"`, "[s]"},
+		{`def g fn [[n:((Integer gt (size "abc")) tor String)] [Any] [n]] g 2`, "ERROR:does not satisfy its declared pattern (Integer gt 3) tor String"},
+		{`def g fn [[n:(Integer gt (size "abc"))] [Any] [n add 1]] def g fn [[n:Integer] [Any] [n sub 1]] g 2`, "[1]"},
+		{`def x:(between 5 (size "abcdefghij") Integer) 3 x`, "ERROR:declared type (Integer gte 5 lte 10)"},
+		// A named type the run makes an alias of Never renders as Never.
+		{`def T (between 5 (size "ab") Integer) def f fn [[n:T] [Any] [n]] f 3`, "ERROR:expected Never, got 3"},
+		{`def T (between 5 (size "ab") Integer) def g fn [[n:Integer] [T] [n]] g 3`, "ERROR:expected Never, got Integer"},
 		// Inside a callback or loop body, the typed def's own check is the
 		// run's too; the named type installed at the root is read there.
 		{`each ([e:Integer] => [def x:(Integer gt (size "abc")) e x]) [4 5]`, "[[4 5]]"},
@@ -233,17 +247,18 @@ func TestNUR231TypeRunDisassembles(t *testing.T) {
 }
 
 // TestNUR231RunBuiltSignaturesDecline pins what NUR231's type half leaves:
-// a signature the RUN builds — an inline parameter or return type, or a
-// typed container's child, over a computed bound — and a type def the run
+// a signature slot the run may build as a different KIND — an inline
+// interval over a computed bound, which the run may find empty (the
+// interpreter's slot is then Never itself, where the compiled slot is the
+// base with a pattern) — a typed container's child, and a type def the run
 // re-installs per call (a fn body's) decline as the compile-time word they
-// are, through the generic site, and the interpreter's answer stands. A
-// NAMED type over the same bound compiles (TestNUR231ComputedBoundTypesCompile).
+// are, through the generic site, and the interpreter's answer stands. Every
+// other inline refinement, union and named type over the same bound
+// compiles (TestNUR231ComputedBoundTypesCompile).
 func TestNUR231RunBuiltSignaturesDecline(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
-		{`def g fn [[n:(Integer gt (size "abc"))] [Any] [n]] g 2`, "ERROR:no signature matches"},
-		{`def g fn [[n:(Integer gt (size "abc"))] [Any] [n]] g 5`, "[5]"},
-		{`def g fn [[n:Integer] [(Integer gt (size "abc"))] [n]] g 2`, "ERROR:expected (Integer gt 3)"},
-		{`def g fn [[n:((Integer gt (size "abc")) tor String)] [Any] [n]] g 2`, "ERROR:no signature matches"},
+		{`def g fn [[n:(between 5 (size "ab") Integer)] [Any] [n]] g 3`, "ERROR:expected Never, got 3"},
+		{`def g fn [[n:(between 1 (size "abc") Integer)] [Any] [n]] g 2`, "[2]"},
 		{`def g fn [[xs:[:(Integer gt (size "abc"))]] [Any] [xs]] g [5]`, "[[5]]"},
 		{`def xs:[:(Integer gt (size "abc"))] [5] xs`, "[[5]]"},
 		{`def h fn [[s:String] [Boolean] [def T (Integer gt (size s)) 5 is T]] h "abc"`, "[true]"},

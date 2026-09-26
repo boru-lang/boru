@@ -60,13 +60,30 @@ func hasUnknownRefinement(v Value, depth int) bool {
 // adopted alias — Never for an empty interval). The bind twin of the same
 // def is written back (it replays nothing), so this is the one install.
 func RunTypeInstall(r *Registry, spec *TypeRunInstallSpec, body Value) error {
+	if spec.Name == "" {
+		// An inline signature type over a bound only the run knows: no name
+		// to bind, only the pass's anonymous node to forward — to a node
+		// minted from the refinement the run computed, rendered as it is
+		// (the no-match's "declared pattern", the RET's "expected").
+		if target := mintRunType(r, body); target != nil && spec.Node != nil {
+			node := CanonicalType(r, spec.Node)
+			forwardType(node, target)
+			node.ensureTMeta().Name = body.String()
+		}
+		return nil
+	}
 	if err := InstallType(r, spec.Name, body); err != nil {
 		return err
 	}
 	// InstallType's success pushed the binding it installed; a spec without
-	// the pass's node (the lowering builds none) has nothing to forward.
+	// the pass's node (the lowering builds none) has nothing to forward. The
+	// pass's node takes the bound node's name too: the same name for a fresh
+	// mint, and the adopted node's for an alias the run computed — Never for
+	// an empty interval, which the interpreter's signature slot renders.
 	if entry, ok := r.Defs.TopEntry(spec.Name); ok && entry.TypeDef != nil && spec.Node != nil {
-		forwardType(CanonicalType(r, spec.Node), entry.TypeDef)
+		node := CanonicalType(r, spec.Node)
+		forwardType(node, entry.TypeDef)
+		node.ensureTMeta().Name = entry.TypeDef.Name()
 	}
 	return nil
 }
@@ -126,4 +143,57 @@ func forwardedOperand(v Value) Value {
 		return NewTypeLiteral(t)
 	}
 	return v
+}
+
+// mintRunType mints the node a refinement, union or negation VALUE stands
+// for, bound to no name — what InstallTypeBody's kind branches mint, for an
+// inline signature type (NUR231). A bare node is the node it denotes (an
+// empty interval is Never). Nil for any other shape.
+func mintRunType(r *Registry, body Value) *Type {
+	name := body.String()
+	var t *Type
+	switch {
+	case IsBareTypeNode(body):
+		return CanonicalType(r, &body)
+	case body.IsDepScalar():
+		di, _ := body.AsDepScalar() // IsDepScalar: the payload is a DepScalarInfo
+		t = r.Types.MintType(name, body.Parent)
+		installDepScalarUnifier(t, body.Parent, di, name)
+	case IsDisjunct(body):
+		di, _ := AsDisjunct(body) // IsDisjunct: the payload is a DisjunctInfo
+		t = r.Types.MintType(name, body.Parent)
+		installDisjunctUnifier(t, di.Alternatives, name)
+	case IsNegation(body):
+		ni, _ := AsNegation(body) // IsNegation: the payload is a NegationInfo
+		t = r.Types.MintType(name, body.Parent)
+		installNegationUnifier(t, ni.Inner, name)
+	default:
+		return nil
+	}
+	t.SetTypeBody(body)
+	return t
+}
+
+// runSigPattern is an inline signature type's pattern when it holds a
+// refinement over a bound the analysis pass does not know (`n:(Integer gt
+// (size s))`, NUR231): an anonymous node minted over the pass's placeholder,
+// which the compiled unit and the replayed signature both carry, and which
+// the run forwards to the node it mints from the refinement it computed
+// (RunTypeInstall over an unnamed spec, noted here for the word building
+// the signature). ok=false outside a compile pass or over known bounds.
+func runSigPattern(r *Registry, v Value) (Value, bool) {
+	if r == nil || !r.analysisCompiling() || !HasUnknownRefinement(v) {
+		return Value{}, false
+	}
+	// An interval with a bound only the run knows may be EMPTY at run time,
+	// and then the interpreter's slot is Never itself — a slot TYPE, where
+	// this slot is the base with a pattern, and no forward turns one into
+	// the other. The word building the signature declines instead.
+	if di, ok := v.Data.(DepScalarInfo); ok && di.Lo != nil && di.Hi != nil {
+		r.analysisRecorder().NoteRuntimeDependent()
+		return Value{}, false
+	}
+	node := mintRunType(r, v)
+	r.analysisRecorder().NoteRuntimeSigForward(node, v)
+	return NewTypeLiteral(node), true
 }

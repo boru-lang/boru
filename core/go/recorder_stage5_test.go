@@ -121,6 +121,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	// NUR231's type half: the run-time type install, the run-dependent
 	// compile-time word, the run-time membership bind.
 	e.NoteRuntimeTypeInstall("T", nil, Value{})
+	e.NoteRuntimeSigForward(nil, Value{})
 	e.NoteRuntimeDependent()
 	if got, ok := e.RecordTypedBindRun(TypedBindSpec{}, Value{}, Value{}, out, SrcPos{}); ok || !ValuesEqual(got, out) {
 		t.Fatal("inactive RecordTypedBindRun must pass out through and decline")

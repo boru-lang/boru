@@ -1582,6 +1582,9 @@ func FnPredicateOverloadHazard(r *core.Registry, word string, args []core.Value)
 					hasPred = true
 				}
 			}
+			if p, ok := core.SigPattern(s, j); ok && core.HasUnknownRefinement(p) {
+				hasPred = true
+			}
 			if !core.SigTypeMatches(args[j], t) {
 				reach = false
 				break

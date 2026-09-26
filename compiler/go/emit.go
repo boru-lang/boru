@@ -948,6 +948,10 @@ type EmitState struct {
 	// compile-time word's effect is the run's to redo, and the compile cannot
 	// record it (NUR231).
 	pendingRuntimeDependent bool
+	// pendingSigForwards latch between a signature's NoteRuntimeSigForward
+	// (one per inline refinement slot over a bound only the run knows) and
+	// the building word's RecordRuntimeDispatch (NUR231).
+	pendingSigForwards []pendingTypeRun
 	// armBoundTypeNames are TYPE names whose binding, after adoption, exists
 	// at runtime only through arm-resident type installs — a node minted
 	// per element, whose depth and identity are body-run-dependent — so a
@@ -5647,6 +5651,42 @@ func (es *EmitState) NoteRuntimeTypeInstall(name string, node *core.Type, body c
 	}
 }
 
+// NoteRuntimeSigForward — a signature under construction carries an
+// anonymous node minted over a refinement whose bound the pass does not know
+// (runSigPattern, NUR231): the building word's dispatch records the run's
+// forward of that node (recordSigForwards).
+func (es *EmitState) NoteRuntimeSigForward(node *core.Type, body core.Value) {
+	if es.Active() {
+		es.pendingSigForwards = append(es.pendingSigForwards, pendingTypeRun{node: node, body: body})
+	}
+}
+
+// recordSigForwards records the run's forward of each anonymous signature
+// node the dispatching word built: the refinement operand, then an unnamed
+// OpBindTypeRun, which mints the run's node and forwards the pass's to it.
+// Only at the root, as recordTypeRun: a fn body's per-call def would share
+// the one node across its calls. All or nothing — a refinement with no
+// compiled home records none.
+func (es *EmitState) recordSigForwards(fwds []pendingTypeRun, pos core.SrcPos) bool {
+	if len(es.openUnitRecs) != 0 || len(es.frames) != 1 {
+		return false
+	}
+	ops := make([]EmitOperand, len(fwds))
+	for i, f := range fwds {
+		op, ok := es.resolveOperand(f.body)
+		if !ok {
+			return false
+		}
+		ops[i] = op
+	}
+	for i, f := range fwds {
+		spec := core.TypeRunInstallSpec{Node: f.node}
+		es.SiteCounts[SiteDynamic]++
+		es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordTypeRun, ops: []EmitOperand{ops[i]}, nout: 0, pos: pos, typeRun: &spec}})
+	}
+	return true
+}
+
 // NoteRuntimeDependent — the compile-time word now dispatching has an
 // effect only the run knows, which the compile cannot record (an inline
 // signature type over a computed bound, a typed def over one whose bind
@@ -5726,7 +5766,12 @@ func (es *EmitState) RecordRuntimeDispatch(word string, sig *core.Signature, arg
 	es.pendingRuntimeConstruct = false
 	typeRun, dependent := es.pendingTypeRun, es.pendingRuntimeDependent
 	es.pendingTypeRun, es.pendingRuntimeDependent = nil, false
+	sigFwds := es.pendingSigForwards
+	es.pendingSigForwards = nil
 	if typeRun != nil && !dependent && es.Active() && !es.recordTypeRun(typeRun, pos) {
+		dependent = true
+	}
+	if len(sigFwds) > 0 && !dependent && es.Active() && !es.recordSigForwards(sigFwds, pos) {
 		dependent = true
 	}
 	if dependent && es.Active() {

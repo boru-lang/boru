@@ -202,9 +202,21 @@ func (v Value) AsDepScalar() (DepScalarInfo, error) {
 
 // depScalarCheck returns true if `value` satisfies every populated
 // bound in info. Both Lo and Hi are AND-combined.
+//
+// A bound the analysis pass does not know — a computed one, the pass's
+// carrier — makes the whole refinement the run's, its known side included:
+// the carrier orders below every value, so a verdict over it was the
+// lattice's, not the bound's (`def T (Integer lte (size s))` refused 3 at
+// check time whatever s held), and a verdict the known side gives alone is
+// baked with the placeholder rendered (`(Integer gte 5 lte Integer)`, where
+// the run says `lte 2`). The pass admits, gradually; the run checks the
+// real bounds (NUR231).
 func depScalarCheck(info DepScalarInfo, value Value) bool {
 	if info.Lo == nil && info.Hi == nil {
 		return false
+	}
+	if (info.Lo != nil && !depBoundKnown(info.Lo)) || (info.Hi != nil && !depBoundKnown(info.Hi)) {
+		return true
 	}
 	if info.Lo != nil && !depBoundCheck(info.Lo, true, value) {
 		return false
@@ -221,14 +233,6 @@ func depScalarCheck(info DepScalarInfo, value Value) bool {
 // cross-type comparisons (e.g. Integer DepScalar vs String value)
 // reject cleanly.
 func depBoundCheck(b *DepBound, lower bool, value Value) bool {
-	// A bound the analysis pass does not know — a computed one, the pass's
-	// carrier — decides nothing: the carrier orders below every value, so a
-	// verdict over it was the lattice's, not the bound's (`def T (Integer lte
-	// (size s))` refused 3 at check time whatever s held). The pass admits,
-	// gradually; the run checks the real bound (NUR231).
-	if !IsConcrete(b.Value) {
-		return true
-	}
 	cmp, err := CompareValues(value, b.Value)
 	if err != nil {
 		return false

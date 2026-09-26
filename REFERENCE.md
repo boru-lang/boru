@@ -1669,10 +1669,11 @@ the run computed — and a typed `def`, a parameter or return typed by that
 name, a class field and an overload set over it all check against the
 run's bound. An empty interval the run computes is `Never`. A typed `def`
 over an inline refinement (`def x:(Integer gt (size s)) 5`) checks
-against the run's bound as well. A parameter or return type spelt INLINE
-over a computed bound (`[n:(Integer gt (size s))]`) is built when the
-function is, so it does not compile yet: `boru run` stops with a
-`compile_failed` ("compile-time word def"); name the type to compile it.
+against the run's bound as well, and so does a parameter or return type
+spelt inline (`[n:(Integer gt (size s))]`). An inline INTERVAL over a
+computed bound (`[n:(between 1 (size s) Integer)]`) does not compile yet,
+because the run may find it empty: `boru run` stops with a
+`compile_failed` ("compile-time word def"). Name the type to compile it.
 `convert Bytes` over a string literal is known at compile time, so
 `def Hi (Bytes gte (convert Bytes "m"))` needs none of this.
 

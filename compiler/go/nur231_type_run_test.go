@@ -120,3 +120,40 @@ func TestRecordTypedBindRun(t *testing.T) {
 		t.Error("a suspended recorder records nothing")
 	}
 }
+
+// TestRecordSigForwards pins the record of an inline signature type's
+// run-time forwards (NUR231): one unnamed install event per anonymous node,
+// over the refinement operand; all or nothing — a refinement with no
+// compiled home, or a signature built inside a fragment, records none. A
+// suspended recorder latches nothing.
+func TestRecordSigForwards(t *testing.T) {
+	body := core.NewDepScalar(core.DepGT, core.NewInteger(3))
+	a, b := &core.Value{}, &core.Value{}
+	es := NewEmitState()
+	if !es.recordSigForwards([]pendingTypeRun{{node: a, body: body}, {node: b, body: body}}, core.SrcPos{}) {
+		t.Fatal("two forwards over const refinements record")
+	}
+	evs := es.frames[0]
+	if n := len(evs); n < 2 || evs[n-2].call.typeRun == nil || evs[n-2].call.typeRun.Node != a ||
+		evs[n-1].call.typeRun.Node != b || evs[n-1].call.typeRun.Name != "" {
+		t.Fatalf("one unnamed install per node, in order: %+v", evs)
+	}
+	if es.recordSigForwards([]pendingTypeRun{{node: a, body: body}, {node: b, body: core.NewCarrier(core.TInteger)}}, core.SrcPos{}) {
+		t.Error("a refinement with no compiled home records nothing")
+	}
+	es.frames = append(es.frames, nil)
+	if es.recordSigForwards([]pendingTypeRun{{node: a, body: body}}, core.SrcPos{}) {
+		t.Error("a signature built inside a fragment records nothing")
+	}
+	sus := NewEmitState()
+	resume := sus.Suspend()
+	sus.NoteRuntimeSigForward(a, body)
+	resume()
+	if len(sus.pendingSigForwards) != 0 {
+		t.Error("a suspended recorder latches nothing")
+	}
+	sus.NoteRuntimeSigForward(a, body)
+	if len(sus.pendingSigForwards) != 1 {
+		t.Error("a live recorder latches the forward")
+	}
+}

@@ -302,3 +302,54 @@ func TestWrittenBackTypeTwinInstallsNothing(t *testing.T) {
 		t.Error("a written-back type twin installs nothing")
 	}
 }
+
+// TestAnonymousRunTypeInstall pins the unnamed OpBindTypeRun an inline
+// signature type compiles to (NUR231): the run mints a node from the value
+// it computed — a refinement, union or negation; a bare node is itself —
+// and the pass's anonymous node forwards to it, renamed as the run renders
+// it (the no-match's declared pattern). A value of no type shape mints
+// nothing, and a spec without a node forwards nothing.
+func TestAnonymousRunTypeInstall(t *testing.T) {
+	r, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	unknown := NewDepScalar(DepGT, NewCarrier(TInteger))
+	for _, tc := range []struct {
+		name      string
+		body      Value
+		admit     Value
+		refuse    Value
+		wantShape string
+	}{
+		{"refinement", NewDepScalar(DepGT, NewInteger(3)), NewInteger(5), NewInteger(2), "(Integer gt 3)"},
+		{"union", NewDisjunct([]Value{NewDepScalar(DepGT, NewInteger(3)), NewTypeLiteral(TString)}), NewString("s"), NewInteger(2), ""},
+		{"negation", NewNegation(NewDepScalar(DepGT, NewInteger(3))), NewInteger(2), NewInteger(5), ""},
+		{"empty interval", NewTypeLiteral(TNever), Value{}, NewInteger(1), "Never"},
+	} {
+		pass := mintRunType(r, unknown)
+		if err := RunTypeInstall(r, &TypeRunInstallSpec{Node: pass}, tc.body); err != nil {
+			t.Fatalf("%s: %v", tc.name, err)
+		}
+		if tc.admit.Parent != nil && !tc.admit.Is(pass) {
+			t.Errorf("%s: the forwarded node admits %v", tc.name, tc.admit)
+		}
+		if tc.refuse.Is(pass) {
+			t.Errorf("%s: the forwarded node refuses %v", tc.name, tc.refuse)
+		}
+		if got := NewTypeLiteral(pass).String(); tc.wantShape != "" && got != tc.wantShape {
+			t.Errorf("%s: the pass's node renders as the run's: %q, want %q", tc.name, got, tc.wantShape)
+		}
+	}
+	if mintRunType(r, NewInteger(1)) != nil {
+		t.Error("an Integer value is no type to mint")
+	}
+	pass := mintRunType(r, unknown)
+	before := pass.Behavior()
+	if err := RunTypeInstall(r, &TypeRunInstallSpec{Node: pass}, NewInteger(1)); err != nil || pass.Behavior() != before {
+		t.Errorf("a body of no type shape forwards nothing: %v", err)
+	}
+	if err := RunTypeInstall(r, &TypeRunInstallSpec{}, NewDepScalar(DepGT, NewInteger(1))); err != nil {
+		t.Errorf("a node-less unnamed spec is a no-op: %v", err)
+	}
+}

@@ -586,12 +586,12 @@ func looksLikeTypeName(name string) bool {
 
 // ResolveSigType converts a Value (from a pair's value side) to a *Type
 // plus an optional pattern Value for structural matching.
-// noteRuntimeSigType — an inline signature type holding a refinement over a
-// bound the analysis pass does not know (`n:(Integer gt (size s))`): the
-// signature is the run's to build, and a compiled unit would carry the
-// pass's placeholder for the bound, so the word building it declines as the
-// compile-time word it is (NUR231). A named type over such a bound compiles:
-// its node forwards to the one the run installs (RunTypeInstall).
+// noteRuntimeSigType — a typed container's child holding a refinement over
+// a bound the analysis pass does not know (`xs:[:(Integer gt (size s))]`):
+// the child is no node a forward could stand in for, and a compiled unit
+// would carry the pass's placeholder for the bound, so the word building
+// the signature declines as the compile-time word it is (NUR231). A
+// refinement or union slot compiles (runSigPattern), as a named type does.
 func noteRuntimeSigType(r *Registry, v Value) {
 	if r != nil && r.analysisActive() && HasUnknownRefinement(v) {
 		r.analysisRecorder().NoteRuntimeDependent()
@@ -722,7 +722,9 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// constrains through its minted Behavior. Previously this fell to
 	// the TAny tail: a silent wildcard that dispatched EVERYTHING.
 	if IsDisjunct(v) {
-		noteRuntimeSigType(r, v)
+		if p, ok := runSigPattern(r, v); ok {
+			return TAny, &p, nil
+		}
 		pattern := v
 		return TAny, &pattern, nil
 	}
@@ -735,7 +737,9 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// The literal arm below hand-lists five bases, and a Bytes refinement fell
 	// to the TAny tail: a wildcard slot (NUR009).
 	if v.IsDepScalar() {
-		noteRuntimeSigType(r, v)
+		if p, ok := runSigPattern(r, v); ok {
+			return v.Parent, &p, nil
+		}
 		pattern := v
 		return v.Parent, &pattern, nil
 	}
