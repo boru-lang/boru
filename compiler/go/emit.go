@@ -14993,14 +14993,25 @@ func (es *EmitState) hostedSpliceAdmitted(residual []core.Value) (string, bool) 
 	return "", true
 }
 
+// finalizeRefused is Finalize's opening refusals, in order: the recorder's
+// own blocks (finalizeBlocked), then the hosted splice's admission (main's
+// #512, hostedSpliceAdmitted). Split out of Finalize, which sits on the
+// gocyclo ceiling.
+func (es *EmitState) finalizeRefused(residual []core.Value) (string, bool) {
+	if reason, blocked := es.finalizeBlocked(); blocked {
+		return reason, true
+	}
+	if reason, ok := es.hostedSpliceAdmitted(residual); !ok {
+		return reason, true
+	}
+	return "", false
+}
+
 func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if es == nil {
 		return nil, "no emit state", false
 	}
-	if reason, blocked := es.finalizeBlocked(); blocked {
-		return nil, reason, false
-	}
-	if reason, ok := es.hostedSpliceAdmitted(residual); !ok {
+	if reason, refused := es.finalizeRefused(residual); refused {
 		return nil, reason, false
 	}
 	twinExempt := es.truncateAtTrap()
