@@ -1343,6 +1343,15 @@ type Program struct {
 	// main-code apply names no frame binding, but its window's written order
 	// decides a value's no-match (NUR238).
 	DynApplyName map[int]DynApplyHead
+	// Deopts is the main code's twin of CompiledFn.Deopts (OpDeoptIfFn's
+	// Arg at the program root, NUR207): a bare read of a def-bound value the
+	// pass types gradually, which the interpreter dispatches as a WORD when
+	// the binding holds a fn at run time. Body is the program's tokens an
+	// island point hands the interpreter from the read's token on
+	// (CompiledFn.Body's twin; nil when every root point is a guard), and
+	// an island's residual ends the run (RetPC is the main code's end).
+	Deopts []DeoptSpec
+	Body   []core.Value
 	// CallWindows is the main code's twin of CompiledFn.CallWindows (see
 	// there).
 	CallWindows map[int][]CallWindowOperand
@@ -1845,6 +1854,12 @@ type DeoptSpec struct {
 	// a fn the VM raises a designed defer — the interpreter dispatches the
 	// word at this point and the unit's slot push cannot (NUR123).
 	Bail bool
+	// Beneath marks a point tested AFTER its statement's values were laid
+	// out (a program-root residual read, NUR207): the island's prefix is the
+	// region beneath the read only, since the Depth entries above it are
+	// the statement's own, which the island produces again from their
+	// tokens.
+	Beneath bool
 }
 
 // slotNames renders a CompiledFn's slot→name table for the
@@ -1887,7 +1902,7 @@ func (p *Program) StoredRefStampedCount() int {
 // Disassemble renders the program for golden tests and debugging.
 func (p *Program) Disassemble() string {
 	var sb strings.Builder
-	p.disasmUnit(&sb, p.Code, nil)
+	p.disasmUnit(&sb, p.Code, p.Deopts)
 	for fi := range p.Fns {
 		fmt.Fprintf(&sb, "fn f%d %s/%d (locals=%d)%s:\n", fi, p.Fns[fi].Name, p.Fns[fi].NParams, p.Fns[fi].NLocals, slotNames(p.Fns[fi].LocalNames))
 		p.disasmUnit(&sb, p.Fns[fi].Code, p.Fns[fi].Deopts)

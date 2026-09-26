@@ -2896,9 +2896,9 @@ func (vc *vmContext) bindDynScopeMode(curReg *core.Registry, p *compiler.Program
 // BIND_DYN_SCOPE env). The island's residual replaces the frame region and
 // the run loop continues at the unit's RET (its RetReplay discipline).
 // Plain data costs the test and nothing else.
-func (vc *vmContext) deoptIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec *compiler.DeoptSpec, frameBase int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
+func (vc *vmContext) deoptIfFn(reg *core.Registry, body []core.Value, root bool, spec *compiler.DeoptSpec, frameBase int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
 	if spec.Results > 0 {
-		return vc.reStepIfFn(reg, fn, spec, frameBase, stack, locals, curDebug, pc)
+		return vc.reStepIfFn(reg, body, spec, frameBase, stack, locals, curDebug, pc)
 	}
 	var v core.Value
 	at := -1
@@ -2926,7 +2926,7 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec
 		return nil, false, vmErrAt(curDebug, pc, fmt.Sprintf(
 			"gradual read `%s` holds a fn the interpreter dispatches here and the unit could not re-step (NUR123)", spec.Name))
 	}
-	if spec.Token < 0 || spec.Token >= len(fn.Body) || spec.RetPC < 0 {
+	if spec.Token < 0 || spec.Token >= len(body) || spec.RetPC < 0 {
 		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad table entry")
 	}
 	prefix, err := deoptPrefix(spec, frameBase, len(stack), stack, locals, curDebug, pc)
@@ -2935,15 +2935,34 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec
 	}
 	if at >= 0 {
 		i := at - frameBase + len(spec.Prefix)
-		prefix = append(prefix[:i], prefix[i+1:]...)
+		if spec.Beneath {
+			// The entries above the read are its statement's, which the
+			// island's tokens produce again (DeoptSpec.Beneath, NUR207).
+			prefix = prefix[:i]
+		} else {
+			prefix = append(prefix[:i], prefix[i+1:]...)
+		}
 	}
-	tokens := append([]core.Value(nil), fn.Body[spec.Token:]...)
+	tokens := append([]core.Value(nil), body[spec.Token:]...)
+	// A ROOT read's binding is its def's plain write (bindGlobal pushes the
+	// runtime value), where the interpreter's `def` INSTALLS a fn value —
+	// its signatures compiled, its body runnable — and the island's first
+	// act is the word dispatch of that binding. So the value is installed
+	// for the island's run, as the whole-frame replay installs its word
+	// reads (callDynFrameWords), and popped after unless the island bound
+	// the name again (NUR207).
+	unbind := vc.bindRootRead(reg, root, spec.Name, v)
 	// The frame's def-cleanup duty, done by hand: a def the island makes
 	// tears down at its end, as the interpreter's __dc marker would (the
-	// marker itself is a frame-tape token, not an island residual).
+	// marker itself is a frame-tape token, not an island residual). A ROOT
+	// island's defs outlive it, as a top-level def does (NUR207; the root
+	// landing's rule, landingDeopt).
 	snapshot := reg.Defs.Snapshot()
 	results, err := runIslandResolved(reg, prefix, tokens)
-	core.TruncateFrameDefs(reg, snapshot)
+	unbind()
+	if !root {
+		core.TruncateFrameDefs(reg, snapshot)
+	}
 	if err != nil {
 		return nil, false, stampAt(err, curDebug, pc, reg)
 	}
@@ -2964,7 +2983,7 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec
 // them, over the frame region beneath the results as the resolved prefix;
 // the residual replaces the frame region and the run loop continues at the
 // unit's RET. Plain results cost the test and nothing else.
-func (vc *vmContext) reStepIfFn(reg *core.Registry, fn *compiler.CompiledFn, spec *compiler.DeoptSpec, frameBase int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
+func (vc *vmContext) reStepIfFn(reg *core.Registry, body []core.Value, spec *compiler.DeoptSpec, frameBase int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
 	top := len(stack) - spec.Results
 	if top < frameBase {
 		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN underflow")
@@ -2979,14 +2998,14 @@ func (vc *vmContext) reStepIfFn(reg *core.Registry, fn *compiler.CompiledFn, spe
 	if !hot {
 		return stack, false, nil
 	}
-	if spec.Token < 0 || spec.Token > len(fn.Body) || spec.RetPC < 0 {
+	if spec.Token < 0 || spec.Token > len(body) || spec.RetPC < 0 {
 		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad table entry")
 	}
 	prefix, err := deoptPrefix(spec, frameBase, top, stack, locals, curDebug, pc)
 	if err != nil {
 		return nil, false, err
 	}
-	tokens := append(append([]core.Value(nil), stack[top:]...), fn.Body[spec.Token:]...)
+	tokens := append(append([]core.Value(nil), stack[top:]...), body[spec.Token:]...)
 	// The frame's def-cleanup duty, as deoptIfFn does it: a def the island
 	// makes tears down at its end.
 	snapshot := reg.Defs.Snapshot()
@@ -3004,6 +3023,53 @@ func (vc *vmContext) reStepIfFn(reg *core.Registry, fn *compiler.CompiledFn, spe
 // deoptPrefix builds a deopt island's resolved prefix — the interpreter's
 // frame at the point: the unnamed params the unit has not pushed yet
 // (spec.Prefix, the frame's stack bottom), then the frame region below top.
+// bindRootRead installs a root read's fn value under its name for a root
+// deopt island (deoptIfFn) and returns the undo: a compiled closure bridged
+// to the fn definition whose dispatch runs it (closureAsWord), the quote
+// the Function-slot arrival drops dropped. The install REPLACES the def's
+// plain write of a fn for the island's run — stacked on top of it, the
+// island's no-match would list the fn twice (callDynFrameWords' own rule).
+// The undo pops the install and puts the write back, only while the
+// install is still the name's top entry: an island that bound the name
+// again keeps its own. Not a root point, or no name: nothing to undo.
+func (vc *vmContext) bindRootRead(reg *core.Registry, root bool, name string, v core.Value) func() {
+	if !root || name == "" {
+		return func() {}
+	}
+	fnv, ok := vc.closureAsWord(reg, v)
+	if !ok {
+		return func() {}
+	}
+	fnv.Quoted = false
+	var written *core.Value
+	if top, bound := reg.Defs.TopEntry(name); bound && top.TypeDef == nil && core.IsAppliableFn(top.Body) {
+		reg.Defs.PopEntry(name)
+		written = &top.Body
+	}
+	depth := reg.Defs.Depth(name)
+	core.InstallFrameBinding(reg, name, fnv)
+	return func() {
+		if reg.Defs.Depth(name) != depth+1 {
+			return
+		}
+		core.UninstallFrameBinding(reg, name)
+		if written != nil {
+			reg.Defs.Push(name, *written)
+		}
+	}
+}
+
+// deoptEntry is the OpDeoptIfFn table entry Arg names in the code that
+// holds it, with the body its island resumes: a fn unit's (CompiledFn.Deopts,
+// CompiledFn.Body), or the main code's (Program.Deopts, Program.Body — the
+// program root's gradual reads, NUR207).
+func deoptEntry(p *compiler.Program, unit, arg int) (*compiler.DeoptSpec, []core.Value) {
+	if unit < 0 {
+		return &p.Deopts[arg], p.Body
+	}
+	return &p.Fns[unit].Deopts[arg], p.Fns[unit].Body
+}
+
 func deoptPrefix(spec *compiler.DeoptSpec, frameBase, top int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
 	prefix := make([]core.Value, 0, len(spec.Prefix)+top-frameBase)
 	for _, s := range spec.Prefix {
@@ -3900,8 +3966,10 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if len(frames) > 0 {
 				fb = frames[len(frames)-1].stackBase
 			}
-			spec := &p.Fns[curUnit].Deopts[in.Arg]
-			ns, fired, err := vc.deoptIfFn(curReg, &p.Fns[curUnit], spec, fb, stack, locals, curDebug, pc)
+			// The main code carries its own table and body (Program.Deopts,
+			// NUR207): a root point's island runs to the program's end.
+			spec, body := deoptEntry(p, curUnit, int(in.Arg))
+			ns, fired, err := vc.deoptIfFn(curReg, body, curUnit < 0, spec, fb, stack, locals, curDebug, pc)
 			if err != nil {
 				return nil, err
 			}

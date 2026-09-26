@@ -9,6 +9,51 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR207 and NUR208 closed: the root's gradual def read, a branch of fn values (2026-09-26)
+
+Main's two new records were silent wrong answers on the merged tree, so
+they came first.
+
+**NUR207: the root had no plan for a gradual def read.** A bare read of a
+def-bound value the pass types gradually is the interpreter's WORD dispatch
+whenever the binding holds a fn. Inside a fn unit that read was already
+planned (NUR123), and every witness answered correctly there. At the root,
+`NoteWordRead` returned early, so the read lowered to a data push:
+`def j (mk) end j` answered `[fn j]` for 42, and `r 'x' 3` parked where the
+word raises `cannot call r`.
+
+The root now records these reads (`noteRootWordRead`) and `Finalize` plans
+them (`planRootWordReads`) with the fn units' own machinery:
+
+- **A residual read** is tested once the residual is laid out
+  (`seatRootResidualReads`). Where the laid-out residual is the
+  interpreter's state at the read, the point is an island from the read's
+  token over the values beneath it (`DeoptSpec.Beneath`). Its residual ends
+  the run (`Program.Deopts`, `Program.Body`, the VM's `deoptEntry`).
+- **A consumed read** takes `deoptStatementStart` and `deoptDeferred` over
+  a pseudo unit record of the root. Deferral is asked of a push-tested point
+  too, since the root lays literals out at the program's end: `7 j typeof`
+  would otherwise have pushed j over nothing and answered `[Integer]`.
+- **The binding.** The root's def writes its value (`bindGlobal`), where the
+  interpreter's `def` installs a fn. So the island installs the read's
+  value under its name in place of the write for its run (`bindRootRead`).
+  Stacked on top, the no-match listed the candidate twice.
+- **Everything else is a guard** that raises loudly when the value is a
+  fn: `7 j typeof`, `5 [j]`, `(j)`, `def k j`. The global bind's own
+  re-push is flagged a binding push now, so a push-tested point is never
+  taken by the def.
+
+**NUR208: two record-side misses.** The residual's may-be-fn lead arm
+applied a branch result without asking placement; it asks
+`leadPlacedNotRead` now, as its siblings do. `apply` over a branch result
+was elided by the registered-output arm, since the identity result carries
+the branch's id. The lead now registers the word's pending application
+(`mayBeFnBranchResult`), and it lowers as `OpCallDynApplyTop`.
+
+**Pins.** lang `TestNUR207RootGradualDefRead` and
+`TestNUR208BranchOfFnValues`, positive and negative. Docs: NUR.md (NUR207
+and NUR208 FIXED), the handover, this entry.
+
 ## The merge of main's #510 (2026-09-26)
 
 Main's #510 (S2b declared, runtime defers 51 → 7, real programs 62 of 62,

@@ -577,8 +577,12 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		lw.p.GlobalBinds = append(lw.p.GlobalBinds, GlobalBindSpec{Name: d.name, Depth: d.depth, Pop: pop, AfterDynScope: needDyn})
 		if !fastGlobal {
 			// Re-push a copy from its resolved home; the bind consumes it
-			// (Pop mode — one op, no separate DROP in the stream).
+			// (Pop mode — one op, no separate DROP in the stream). Like the
+			// dyn-scope bind's, this push is the def's, not a READ of the
+			// name (a root read's point tests at its consumer's push, NUR207).
+			lw.binding = true
 			lw.pushOperand(src, d.pos)
+			lw.binding = false
 		}
 		lw.emit(OpBindGlobal, gi, d.pos)
 		lw.markTwinWrittenBack(twin)

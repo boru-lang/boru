@@ -129,8 +129,8 @@ keep the two in sync in the same commit.
 | [NUR204](#nur204) | FIXED 2026-09-25 (the lexical index scope — the handoff log's entry of that date): A body def of the for loop's OWN index — `def i 0 end for 3 [def i 9] end i` — is the interpreter's 2 (the loop leaves its index level bound past the loop: the last index; 0 inside a nested loop, whose outer cleanup pops it) and was the compiled lane's 9 on main (the loop carried the def and wrote the body's value back), for a native or a user-call value alike, inside a fn and through an arm too; neither is the pre-loop 0 a lexical loop scope would give. The compiled lane DECLINES the shape loudly now (the for's index name rides RecordLoop into the loop event). Present on main at 3768c46; found while landing the user-call write-back. Fence: `TestForIndexDefInBodyPending`. |
 | [NUR205](#nur205) | FIXED 2026-09-25 (the module replay's own bind — the handoff log's entry of that date): a loop whose body binds a MODULE declines — its join's twin is noted with its placement withheld, so the twin regime's full-placement gate declines — where the compiled lane's one replay of the check pass's bind (the join's twin, placed at the loop) is not the interpreter's bind — when the loop may run zero times (the name stays unbound on the interpreter), and when the body's import mints a NEW instance per iteration (an inline `import module […]`; the two analysis rounds' namespaces share no export map) — and an `if` arm that may not run withholds a module bind's twin the same way (installArmJoins) (`if c [import …] [] M.a` raised `undefined_word` interpreted and answered compiled); a cached `boru:` import in a loop that provably runs, and the arm a decided condition takes, keep their one replay and agree. The original text: An inline `import module […]` inside a LOOP body runs its module body ONCE on the compiled lane where the interpreter re-imports it per iteration, so module STATE carries across iterations: `for 2 [import module [def acc (flex []) export "M" {acc: acc}] end M.acc push 1 end size M.acc]` is the interpreter's `[[1] 1 [1] 1]` (a fresh `acc` each time) and the compiled lane's `[[1 1] 1 [1 1] 2]` — silent, default lane, present on main at 00ec530 with no callback involved (the import is a compile-time word whose body the check pass ran once and whose bindings the loop body replays). Found by the generated sweep when the `for-each` and `walk` × module-export seeds graduated (their module carries `acc`): their for-body variants diverge the same way (`[3 6]` for `[3 3]`; `… 5 … 10` for `… 5 … 5`) and are pinned in `sweepKnownMiscompiles`. The `each` twin (`each M.stp [1 2 3]` in the same loop) diverges identically and always has; its sweep seed carries no state, so the matrix never saw it. | the generated sweep, closing the fn-value callback cells (2026-09-25) |
 | [NUR206](#nur206) | FIXED 2026-09-26 (the merge of main's #508 with the reverse-order NUR run — the handoff log's entry of that date): closed by the run's NUR251 (its NUR208 until the merge of main's #510), the same defect found independently — the fault path unwinds every live loop (`Engine.unwindLiveLoops`), so a caught error leaves the registry as the loop found it and all three witnesses are 99 on both lanes. The original text: A `for` loop's INDEX SURVIVES an error the enclosing `do` catches on the interpreter, for the rest of the program, where the compiled lane reads the outer binding: `def i 99 end do [for 3 [raise oops 'x']] error [drop] end i` is the interpreter's `0` (the raise unwinds the spliced body before its move cleanup, so the loop's index level stays installed over the outer `i`) and the compiled lane's `99`; the same with the handler reading `i`, and with a computed body (`for 3 (mk)` over `[raise oops 'x']`). Silent, default lane, present on main at 9e02915 — the compiled `do` body traps or islands the loop and the handler reads `i` from its compiled slot. The direction is the interpreter: an error unwind out of a spliced loop body should run the frame's cleanup as break/continue's `unwindLiveFrames` does, not leave the index bound. Pinned `TestLoopIndexSurvivesCaughtErrorPending` (lang) | the Codex review of #508 (2026-09-25), measuring the withdrawn hosted for body; the literal-body twin found on the follow-up |
-| [NUR207](#nur207) | A name DEF-BOUND to a fn value that arrives through a dynamic or `Any`-typed carrier is a WORD dispatch on the interpreter and data on the compiled lane: `def mk fn [[][Any][([] => [42])]] end def j (mk) end j` is `42` interpreted and `[fn]` compiled; `def m {s: ([a:Integer b:Integer] => [a sub b])} end def r (m.s) end r 'x' 3` raises the interpreter's `cannot call r` and answers `[fn (Integer, Integer) x 3]` compiled (the value parks where the name would raise). Silent, default lane, present on main at ae17688. The def-read model claims a window only for a carrier with a claimed shape (NUR194); a gradual carrier's read is plain data | the generated sweep's last cells (2026-09-26), measuring why the `if` × container read could not stand aside |
-| [NUR208](#nur208) | A paren-placed BRANCH whose arms are both fn values is applied by the compiled lane where the interpreter places it, and not applied where the interpreter's `apply` word dispatches it: `def c true end (if c ([x:Integer] => [x]) ([x:Integer] => [0])) 5` is the interpreter's `[fn (Integer) 5]` and the compiled lane's `[5]`; `def c true end (if c ([] => [42]) ([] => [2])) apply` is `42` interpreted and `[fn]` compiled. Silent, default lane, present on main at ae17688 (measured on a clean tree) — the residual's lead arm reads the branch event's `mayBeFn` flag and applies over the entry after it with no placement test, and the `apply` word's record over a branch result is elided | probing the neighbours of the sweep's `if` × lambda cell (2026-09-26) |
+| [NUR207](#nur207) | FIXED 2026-09-26 (the root's gradual def read — the handoff log's entry of that date): the program root plans a bare read of a def-bound gradual value as the fn units do (NUR123). A read the residual holds tests after the residual is laid out and, when the value is a fn, hands the interpreter the program from the read's token over the values beneath it; a consumed read tests at its statement's start where the compiled stack is the interpreter's. The island installs the value under its name for the word dispatch. Where no island starts from the interpreter's own state (`7 j typeof`, `(j)`), the read is a GUARD that raises loudly. The original text: A name DEF-BOUND to a fn value that arrives through a dynamic or `Any`-typed carrier is a WORD dispatch on the interpreter and data on the compiled lane: `def mk fn [[][Any][([] => [42])]] end def j (mk) end j` is `42` interpreted and `[fn]` compiled; `def m {s: ([a:Integer b:Integer] => [a sub b])} end def r (m.s) end r 'x' 3` raises the interpreter's `cannot call r` and answers `[fn (Integer, Integer) x 3]` compiled (the value parks where the name would raise). Silent, default lane, present on main at ae17688. The def-read model claims a window only for a carrier with a claimed shape (NUR194); a gradual carrier's read is plain data | the generated sweep's last cells (2026-09-26), measuring why the `if` × container read could not stand aside |
+| [NUR208](#nur208) | FIXED 2026-09-26 (the branch of fn values — the handoff log's entry of that date): the residual's may-be-fn lead arm asks the placement question its siblings ask (leadPlacedNotRead), so a paren-placed branch result is data; and `apply` over a branch result registers the word's pending application (the produced closure's arm), so it lowers as the apply word's own op. The original text: A paren-placed BRANCH whose arms are both fn values is applied by the compiled lane where the interpreter places it, and not applied where the interpreter's `apply` word dispatches it: `def c true end (if c ([x:Integer] => [x]) ([x:Integer] => [0])) 5` is the interpreter's `[fn (Integer) 5]` and the compiled lane's `[5]`; `def c true end (if c ([] => [42]) ([] => [2])) apply` is `42` interpreted and `[fn]` compiled. Silent, default lane, present on main at ae17688 (measured on a clean tree) — the residual's lead arm reads the branch event's `mayBeFn` flag and applies over the entry after it with no placement test, and the `apply` word's record over a branch result is elided | probing the neighbours of the sweep's `if` × lambda cell (2026-09-26) |
 | [NUR209](#nur209) | FIXED 2026-09-25 (the loop region's residual — the handoff log's entry of that date), found the same day closing NUR197: a `do` body that is ONE container literal over the loop variable — `for 2 [do [[i]]]`, `for 2 [do [{a:i}]]`, `for 2 [do [[(i add 1)]] i]` — answered `error(undefined word: i)` per iteration on the compiled lane for the interpreter's `[0] [1]`, silent, exit 0, present on main: the token body was analysed as a DEFERRING lambda (bodyInFrame false), its residual recorded no assembly, the closure declined on the unknown provenance and the dyn-body backstop baked the literal as a const the handler re-ran through the interpreter, where the loop's `i` is a frame slot the registry never held; a multi-token body (`do [[i] 5]`) compiled. A token body compiles in-frame now (recordClosureDispatch's bodyInFrame true — the InvokeBody seam's sub-engine sweeps the residual at its end, with the bindings live), and the closure assembles the list from the captured slot | probing NUR197's neighbours, 2026-09-25 |
 | [NUR210](#nur210) | FIXED 2026-09-25 (the reach group's survivor — the handoff log's entry of that date): A module fn returning a NAMED fn value, read through its reach group with a value beneath — `import module [def ff fn [[][Function][inc/v]] def inc fn [[n:Integer][Integer][n add 1]] export "M" {ff: ff/v}] end 5 M.ff` — is 6 on the interpreter (the reach group `( M dot ff )` never parks, its collapse re-steps the lone survivor, a NAMED fn at the pointer, and a name always calls: ADR-011) and `[5 fn inc(Integer)]` on the compiled lane, which seats the returned value as data; `M.ff 5` the same. The main-registry twin `5 ff` parks on both lanes, and so does `5 (M.ff)`. Present on main; found closing NUR191. Fence: `TestModuleFnNamedValueThroughReachPending` | probing NUR191's neighbours, 2026-09-25 |
 | [NUR211](#nur211) | FIXED 2026-09-25 (the named value's no-match on the seam — the handoff log's entry of that date): the token seam's unmatched-lambda arm (`unmatchedLambdaBody`) raises the word's `uncalled_function` for a closure that carries a def's name (`ClosurePayload.RetName`) and keeps the anonymous value's data rule otherwise; `0 fold h/v [1 2]` raises at step 1 on both lanes. The original text: A NAMED fn value driving `fold` whose signature stops matching PAST THE FIRST STEP is parked as data on the compiled lane where the interpreter raises `uncalled_function`: `def h fn [[a:Integer b:Integer] [List] [[a b]]] end 0 fold h/v [1 2]` — step 0 answers `[0 1]`, so step 1 offers a List accumulator to `a:Integer` and no signature matches — is `fold: step 1: [boru/uncalled_function]: call to 'h' matched no signature` interpreted and `[fn (Integer, Integer)]` compiled (the value itself, as the closure-body data fork leaves an unmatched TYPED LAMBDA — NUR155's rule for an anonymous value, applied to a NAMED one). A no-match at step 0 raises on both lanes; `scan` over a no-match parks on both lanes. Pre-existing at the merge base (measured 2026-09-25 on `wt-head`); silent — a value where the interpreter raises | closing NUR166, 2026-09-25 |
@@ -13194,7 +13194,45 @@ the divergence as it stands so the close is noticed.
 
 ## NUR207 — a def-bound fn value that arrives as a gradual carrier is read as data {#nur207}
 
-**Status:** Pending (recorded 2026-09-26).
+**Status:** FIXED 2026-09-26 (the root's gradual def read — the handoff
+log's entry of that date). Recorded 2026-09-26 on main (#510); fixed on the
+reverse-order NUR run after the merge.
+
+**The fix.** The defect was the program ROOT's alone. A fn unit already
+planned such a read (NUR123: a deopt at its statement's start, or the
+whole-frame replay), and every witness answered correctly inside a fn. The
+root noted nothing (`NoteWordRead` returned at no open unit), so the read
+lowered to a data push. Now the root records its gradual def reads
+(`noteRootWordRead`) and `Finalize` plans them (`planRootWordReads`):
+
+- A read the program RESIDUAL holds is tested once the residual is laid
+  out. When every read of the value is a residual entry, the first read's
+  token is a token of the program, no root event is written after it, and
+  the residual keeps written order, the point is an ISLAND
+  (`DeoptSpec.Beneath`): a fn at run time hands the interpreter the program
+  from the read's token on, over the values beneath it, and the island's
+  residual ends the run (`Program.Deopts`, `Program.Body`). `j`, `5 j`,
+  `j j`, `r 5 3` and `r 'x' 3` answer the interpreter's results, the
+  no-match's notes included.
+- A read a root event CONSUMES takes the fn units' placement
+  (`deoptStatementStart`, `deoptDeferred`): an island from its statement's
+  start where the compiled stack there is the interpreter's. `j typeof`,
+  `[j]`, `{a: j}`, `if true [j] [0]` and `5 j add` answer the interpreter's
+  results.
+- The root's def WRITES its value (`bindGlobal`) where the interpreter's
+  `def` installs a fn. So the island installs the read's value under its
+  name for its run, in place of the write (`bindRootRead`), which it puts
+  back after.
+- Anything else is a GUARD: the value a fn at run time raises a designed
+  defer, loud where it answered wrong silently. That covers a value written
+  before the statement that the root lays out at the program's end
+  (`7 j typeof`, `5 [j]`), a read in a paren group (`(j)`), and a def made
+  through the read (`def k j`). The guards are bails on the ledger, by the
+  maintainer's rule.
+
+Pinned by lang `TestNUR207RootGradualDefRead`.
+
+The record below is the finding as it was made.
 **Found:** the generated sweep's last cells, on `main` at ae17688 —
 measuring why the `if` × container cell's member read could not simply
 stand aside (the anonymous 0-arg member parks at the landing, but the
@@ -13229,7 +13267,27 @@ never a data push.
 
 ## NUR208 — a paren-placed branch of fn values: applied where the interpreter places it {#nur208}
 
-**Status:** Pending (recorded 2026-09-26).
+**Status:** FIXED 2026-09-26 (the branch of fn values — the handoff log's
+entry of that date). Recorded 2026-09-26 on main (#510); fixed on the
+reverse-order NUR run after the merge.
+
+**The fix.** Both halves were on the record side, as the finding says.
+
+- **Placement.** The residual's may-be-fn lead arm now asks
+  `leadPlacedNotRead` before it applies a branch result, as the carrier and
+  dynamic arms do. A branch result a user paren placed, with no enclosing
+  paren re-stepping it, is data: `(if c f g) 5` is `[fn (Integer) 5]` on
+  both lanes, and `((if c f g) 5)` still applies.
+- **The `apply` word.** `apply` over a branch result with an fn arm
+  (`mayBeFnBranchResult`) registers the word's pending application, as a
+  produced closure does, where the registered-output arm used to elide it.
+  It lowers as the apply word's own op (`OpCallDynApplyTop`), which fires
+  whichever arm ran: 42, 2, and 6 over a written 5.
+
+Arms that disagree on being a fn under `apply` keep their loud decline.
+Pinned by lang `TestNUR208BranchOfFnValues`.
+
+The record below is the finding as it was made.
 **Found:** probing the neighbours of the sweep's `if` × lambda cell, on
 `main` at ae17688 (both witnesses measured on a clean tree).
 

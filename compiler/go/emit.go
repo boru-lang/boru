@@ -1163,6 +1163,14 @@ type EmitState struct {
 	// binder/call-graph reachability model (dynamicScopeReachable). See
 	// NoteDefRead.
 	defReads map[string]string
+	// rootWordReads are the PROGRAM ROOT's bare reads of a def-bound value
+	// the pass types gradually (noteRootWordRead, NUR207), by value ID, and
+	// rootLocalReads every root bare read's position (NoteLocalRead at no
+	// open unit) — a fn unit's wordReadNames / localReads, for the root.
+	// The interpreter dispatches such a binding as a WORD when it holds a fn
+	// at run time; Finalize plans each read (planRootWordReads).
+	rootWordReads  map[string]rootWordRead
+	rootLocalReads map[string][]core.SrcPos
 	// valReadNoted records every `/v` read of a binding the pass noted
 	// (NoteValRead), program-wide — wider than valReadIDs below, which holds
 	// only the reads aliasValRead traced to a produced fn value. The value
@@ -9150,7 +9158,12 @@ func (es *EmitState) recordCallElided(word string, sig *core.Signature, args, ou
 	// Finalize — never compiles the closure as unapplied data. Resolved
 	// BEFORE the registered-output arm below: apply's identity result
 	// carries the producer's id, which that arm would elide silently.
-	if word == "apply" && len(args) == 1 && len(es.units) > 0 && (es.producedFnValue(args[0].ID) || es.producedConstLambda(args[0].ID) || es.producedFnCarrierInFnUnit(args[0])) {
+	// A BRANCH result with a fn arm (NUR208: `(if c ([] => [42]) ([] =>
+	// [2])) apply`) is such a lead too: apply's identity result carries the
+	// branch's own id, so the registered-output arm below took it for the
+	// branch's and elided it, and the application was lost (`[fn]` for the
+	// interpreter's 42).
+	if word == "apply" && len(args) == 1 && len(es.units) > 0 && (es.producedFnValue(args[0].ID) || es.producedConstLambda(args[0].ID) || es.producedFnCarrierInFnUnit(args[0]) || es.mayBeFnBranchResult(args[0].ID)) {
 		if _, isFn := args[0].Data.(core.FnDefInfo); isFn {
 			u := es.units[len(es.units)-1]
 			u.pendingApply = append(u.pendingApply, pendingApply{id: args[0].ID, pos: pos, fn: args[0]})
@@ -12212,6 +12225,13 @@ func (es *EmitState) producedFnValue(id string) bool {
 	return ok && w == wordDynApply
 }
 
+// mayBeFnBranchResult reports whether id is the result of a BRANCH event
+// with an fn-valued arm (eventFlags.mayBeFn) — NUR208's `apply` lead.
+func (es *EmitState) mayBeFnBranchResult(id string) bool {
+	pr, ok := es.producedBy[id]
+	return ok && es.eventInfo[pr.seq].mayBeFn
+}
+
 // producedFnCarrierInFnUnit reports whether v is a fn-typed CARRIER a call
 // of this pass PRODUCED, read inside a FN unit (a named fn body or a plain
 // lambda) below the program's — a factory whose declared `[Function]`
@@ -14035,7 +14055,11 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// fn arm's type to its lattice parent — Word — so the disjunct carrier no
 	// longer reads as Function; the branch-event mayBeFn flag is the precise
 	// signal the static residual type cannot recover.)
-	if !applyDynamic && !leadCrossed && len(residual) >= 2 && !residual[0].Quoted {
+	// A branch result a user paren PLACED and no enclosing paren re-stepped
+	// is data where it sits, as its sibling arms ask (leadPlacedNotRead):
+	// `(if c ([x:Integer] => [x]) ([x:Integer] => [0])) 5` is `[fn 5]` on
+	// the interpreter, and applied here it was `[5]` (NUR208).
+	if !applyDynamic && !leadCrossed && len(residual) >= 2 && !residual[0].Quoted && !es.leadPlacedNotRead(residual[0]) {
 		if pr, ok := es.producedBy[residual[0].ID]; ok && es.eventInfo[pr.seq].mayBeFn {
 			applyDynamic = !anyFnOrDynamicTail(residual)
 		}
@@ -14824,6 +14848,10 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	es.planRegionPrefix(lw, residual)
 	// Region-collect plan (NUR067's consuming half): see planRegionCollect.
 	es.planRegionCollect(lw)
+	// The root's gradual def reads (NUR207): a consumed read's guard is
+	// seated for the walk below, a residual read's test for after the
+	// residual is laid out (seatRootResidualReads).
+	rootResidualReads := es.planRootWordReads(lw, residual)
 	// Seed the lowerer's frame-local counter from the unit's planned locals;
 	// spillSeat bumps it for spill temps. Written back below so Program.NumLocals
 	// covers them.
@@ -14831,6 +14859,9 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if reason := lw.lowerEvents(es.frames[0], 0); reason != "" {
 		return nil, reason, false
 	}
+	// A root guard whose consumer no root event carried to the walk's end
+	// tests here, before the residual is laid out.
+	lw.emitDeoptsBefore(core.SrcPos{})
 	// Residual reconciliation.
 	lastPos := core.SrcPos{}
 	if n := len(es.frames[0]); n > 0 {
@@ -14884,6 +14915,9 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// this declines — a genuine Stage-1 failure path, not a fault arm.
 			return nil, reason, false
 		}
+	}
+	if es.trapAt == 0 {
+		es.seatRootResidualReads(lw, rootResidualReads, residual, dynOp)
 	}
 	if dynOp != 0 {
 		// The fn value (leading, or trailing rotated to the front) sits at the
@@ -15127,9 +15161,244 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		return nil, "twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it", false
 	}
 	// A top-level landing island (NUR190) continues at the program's end:
-	// its residual is the program's.
+	// its residual is the program's. So does a root read's island (NUR207).
 	stampLandingRet(lw.p.LandingWords, len(lw.p.Code))
+	stampRootDeopts(lw.p, es.rootBody)
 	return lw.p, "", true
+}
+
+// planRootWordReads plans the program root's gradual def reads (NUR207,
+// noteRootWordRead): the interpreter dispatches such a read as the WORD it
+// names whenever the binding holds a fn at run time, where the root lowered
+// a data push. A fn unit plans its twin reads as deopts (planDeopts, NUR123);
+// the root plans two kinds.
+//
+// A read a root event CONSUMES — a list's element, a word's operand, a def
+// made through it, a read in a branch arm or loop body — is a GUARD: tested
+// before that event's first op, it raises a designed defer when the value is
+// a fn, loud where it answered wrong silently (`[j]` compiled `[[fn j]]` for
+// the interpreter's `[[42]]`). A read the program RESIDUAL holds is tested
+// once the residual is laid out (seatRootResidualReads). The returned map
+// holds the residual reads by value ID.
+func (es *EmitState) planRootWordReads(lw *lowerer, residual []core.Value) map[string]rootWordRead {
+	if len(es.rootWordReads) == 0 || es.trapAt != 0 {
+		return nil
+	}
+	inResidual := map[string]bool{}
+	for _, rv := range residual {
+		inResidual[rv.ID] = true
+	}
+	ids := make([]string, 0, len(es.rootWordReads))
+	for id := range es.rootWordReads {
+		ids = append(ids, id)
+	}
+	sort.Strings(ids)
+	// The root as a unit record for the fn units' placement rules
+	// (deoptStatementStart, deoptDeferred): its events, its tokens, its
+	// reads. The residual is not in hand yet (resolved after the walk), so a
+	// point whose statement begins after a residual entry is written reads
+	// as deferred (rootResidualBefore).
+	rec := &fnUnitRec{frag: &EmitFragment{events: es.frames[0]}, body: es.rootBody, localReads: es.rootLocalReads}
+	var atResidual map[string]rootWordRead
+	for _, id := range ids {
+		r := es.rootWordReads[id]
+		seq := es.producedBy[id].seq
+		if ci, direct := rootReadConsumer(es.frames[0], r.name, seq, lw.promoted); ci >= 0 {
+			es.seatRootConsumedRead(lw, rec, r, seq, ci, direct, inResidual[id], residual)
+		}
+		if inResidual[id] {
+			if atResidual == nil {
+				atResidual = map[string]rootWordRead{}
+			}
+			atResidual[id] = r
+		}
+	}
+	if len(lw.deopts) > 0 || len(lw.deoptAtSlot) > 0 || len(atResidual) > 0 {
+		lw.deoptTable = &lw.p.Deopts
+	}
+	return atResidual
+}
+
+// seatRootConsumedRead seats the point of a root read a root event
+// consumes (planRootWordReads). Where the fn units' rules place its
+// statement's start as a body token and the compiled stack there is the
+// interpreter's — tested at the read's push, or before the statement's
+// first op with no operand deferred past it — it is an ISLAND from that
+// token to the program's end: `j typeof` answers Integer, `[j]` `[[42]]`.
+// Otherwise, or when the value is read more than once, it is a GUARD
+// before the consuming event, loud where it answered wrong silently.
+func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWordRead, seq, ci int, direct, alsoResidual bool, residual []core.Value) {
+	if d, ok := es.deoptStatementStart(rec, seq, r.name, r.reads[0], ci, direct); ok && len(r.reads) == 1 && !alsoResidual &&
+		!es.deoptDeferred(es.units[0], rec, &d, ci) && !rootResidualBefore(residual, d.start) {
+		// Deferral is asked of a push-tested point too, as deoptPointFor
+		// asks it: the root lays its residual out at the program's end, so
+		// `7 j typeof` pushes j over nothing where the interpreter holds 7.
+		slot, promoted := lw.promoted[seq]
+		switch {
+		case d.atPush && promoted:
+			if lw.deoptAtSlot == nil {
+				lw.deoptAtSlot = map[int]deoptPoint{}
+			}
+			lw.deoptAtSlot[slot] = d
+			return
+		case !d.atPush:
+			lw.deopts = append(lw.deopts, d)
+			return
+		}
+	}
+	start := eventPos(es.frames[0][ci])
+	if start.Row == 0 {
+		start = r.reads[0]
+	}
+	lw.deopts = append(lw.deopts, deoptPoint{seq: seq, slot: -1, name: r.name, pos: r.reads[0], start: start, token: -1, bail: true})
+}
+
+// rootResidualBefore reports whether a program residual entry was written
+// before p: the compiled lane lays it out at the program's end, so a root
+// island starting at p would run without a value the interpreter's stack
+// holds there.
+func rootResidualBefore(residual []core.Value, p core.SrcPos) bool {
+	for _, rv := range residual {
+		if q := rv.Pos(); q.Row > 0 && posAfter(p, q) {
+			return true
+		}
+	}
+	return false
+}
+
+// rootReadConsumer is the first root event that consumes the value of a
+// root read of name — as an operand (direct), or inside one of its
+// fragments — other than the def that binds it (its binding, not a read);
+// -1 when only the program residual holds it. The value may be named by
+// its producing event or, once promoted, by its frame slot.
+func rootReadConsumer(events []EmitEvent, name string, seq int, promoted map[int]int) (int, bool) {
+	slot, hasSlot := promoted[seq]
+	is := func(op EmitOperand) bool {
+		return (op.kind == opEvent && op.idx == seq) || (hasSlot && op.kind == opLocal && op.idx == slot)
+	}
+	for i := range events {
+		ev := &events[i]
+		if ev.kind == evDynBind && ev.dyn != nil && ev.dyn.name == name && (ev.dyn.srcSeq == seq || is(ev.dyn.src)) {
+			continue
+		}
+		uses, direct := false, false
+		forEachOperand(ev, func(op EmitOperand) {
+			if is(op) {
+				uses, direct = true, true
+			}
+		})
+		forEachFragmentOperand(ev, func(op EmitOperand) {
+			if is(op) {
+				uses = true
+			}
+		})
+		if uses {
+			return i, direct
+		}
+	}
+	return -1, false
+}
+
+// seatRootResidualReads lowers the test of each root read the program
+// residual holds (NUR207), right after the residual is laid out and before
+// its dynamic apply. When the interpreter's state at the read is exactly
+// the laid-out residual — every read of the value a residual entry, the
+// first read's token a token of the program, no root event written after
+// it, and the residual laid out in written order — the point is an
+// ISLAND: a fn at run time hands the
+// interpreter the program from the read's token on, over the values beneath
+// it (DeoptSpec.Beneath: the entries above are the tokens' own), and the
+// island's residual is the program's. `def j (mk) end j` answers the
+// interpreter's 42, `r 'x' 3` its `cannot call r`. Any other residual read
+// is a GUARD at its entry.
+func (es *EmitState) seatRootResidualReads(lw *lowerer, reads map[string]rootWordRead, residual []core.Value, dynOp Opcode) {
+	if len(reads) == 0 {
+		return
+	}
+	seen := map[string]bool{}
+	for at, rv := range residual {
+		r, noted := reads[rv.ID]
+		if !noted || seen[rv.ID] {
+			continue
+		}
+		seen[rv.ID] = true
+		n := 0
+		for _, other := range residual {
+			if other.ID == rv.ID {
+				n++
+			}
+		}
+		spec := DeoptSpec{Name: r.name, Pos: r.reads[0], Slot: -1, Depth: len(residual) - 1 - at, Token: -1, RetPC: -1}
+		if tok, ok := es.rootResidualIsland(lw, r, residual, at, n, dynOp); ok {
+			spec.Token, spec.Beneath = tok, true
+		} else {
+			// A guard reads the value's own slot when it has one: the
+			// entries above may be a runtime-variable region.
+			spec.Bail = true
+			if slot, promoted := lw.promoted[es.producedBy[rv.ID].seq]; promoted {
+				spec.Slot, spec.Depth = slot, -1
+			}
+		}
+		*lw.deoptTable = append(*lw.deoptTable, spec)
+		lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, spec.Pos)
+	}
+}
+
+// rootResidualIsland is the Body token a root residual read's island resumes
+// from, or !ok when the island would not be the interpreter's own state at
+// the read (seatRootResidualReads).
+func (es *EmitState) rootResidualIsland(lw *lowerer, r rootWordRead, residual []core.Value, at, n int, dynOp Opcode) (int, bool) {
+	// Every read must be a residual entry (none consumed), so the first
+	// entry is the first read's and the entries above it are the tokens
+	// after it, the other reads among them.
+	if n != len(r.reads) || !es.rootResidualStatic(lw, residual, at) {
+		return -1, false
+	}
+	switch dynOp {
+	case 0, OpCallDynamic, OpCallDynamicMixed:
+	default:
+		return -1, false // a rotated or mark-window layout is not the written order
+	}
+	read := r.reads[0]
+	tok := bodyTokenAt(es.rootBody, read)
+	if tok < 0 {
+		return -1, false
+	}
+	for i := range es.frames[0] {
+		if p := eventPos(es.frames[0][i]); p.Row > 0 && posAfter(p, read) {
+			return -1, false
+		}
+	}
+	return tok, true
+}
+
+// rootResidualStatic reports whether the residual entries above index at
+// are one stack entry each — no variadic region among them — so the read's
+// depth from the top is static.
+func (es *EmitState) rootResidualStatic(lw *lowerer, residual []core.Value, at int) bool {
+	for _, rv := range residual[at+1:] {
+		if pr, ok := es.producedBy[rv.ID]; ok && lw.variadic[pr.seq] {
+			return false
+		}
+	}
+	return true
+}
+
+// stampRootDeopts seats the main code's end on every root island point
+// (NUR207) — the island's residual is the program's — and the program's
+// tokens the islands resume from. A program with guards only carries no
+// body.
+func stampRootDeopts(p *Program, body []core.Value) {
+	island := false
+	for i := range p.Deopts {
+		if !p.Deopts[i].Bail {
+			p.Deopts[i].RetPC = len(p.Code)
+			island = true
+		}
+	}
+	if island {
+		p.Body = body
+	}
 }
 
 // twinsFullyPlaced is the regime's FULL-PLACEMENT gate, the strengthening
@@ -15414,7 +15683,11 @@ func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []c
 // through a closure body — is not this unit's to seat and is not counted:
 // the closure paths decline fn-typed carriers on their own gates.
 func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
-	if !es.Active() || v.ID == "" || name == "" || len(es.openUnitRecs) == 0 {
+	if !es.Active() || v.ID == "" || name == "" {
+		return
+	}
+	if len(es.openUnitRecs) == 0 {
+		es.noteRootWordRead(v, name, pos)
 		return
 	}
 	u := es.units[len(es.units)-1]
@@ -15458,6 +15731,39 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 	}
 }
 
+// rootWordRead is one root gradual read's binding name and every read
+// position (first first) — rootWordReads' entry.
+type rootWordRead struct {
+	name  string
+	reads []core.SrcPos
+}
+
+// noteRootWordRead records a bare read at the PROGRAM ROOT of a def-bound
+// value the pass types gradually — `def j (mk) end j` over a fn whose
+// declared result is Any, `def r (m.s) end r 'x' 3` over a member read —
+// which the interpreter dispatches as the WORD j when the binding holds a
+// fn at run time (NUR207). A fn unit's twin read is planned by its unit
+// (planDeopts, NUR123); the root had no plan, so the read lowered to a data
+// push: `[fn j]` for the interpreter's 42, and a residual apply that parked
+// where the word raises `cannot call r`. Only a def-bound value an event
+// produced is noted: a fn-TYPED carrier has its own read model (the shaped
+// read arrival), and a literal's binding is no gradual value.
+func (es *EmitState) noteRootWordRead(v core.Value, name string, pos core.SrcPos) {
+	if core.IsFnTypedCarrier(v) || !es.isDefRead(v) || pos.Row == 0 {
+		return
+	}
+	if _, produced := es.producedBy[v.ID]; !produced {
+		return
+	}
+	if es.rootWordReads == nil {
+		es.rootWordReads = map[string]rootWordRead{}
+	}
+	r := es.rootWordReads[v.ID]
+	r.name = name
+	r.reads = append(r.reads, pos)
+	es.rootWordReads[v.ID] = r
+}
+
 // noteWordReadName records a bare read's binding NAME and position on the
 // unit — the replay's word table (dynFrameWordsFor) and the trailing apply's
 // head name read them. The strict count (wordReads) is the caller's call.
@@ -15494,6 +15800,12 @@ func (es *EmitState) NoteLocalRead(id string, pos core.SrcPos) {
 	}
 	es.readPos[id] = pos
 	if len(es.openUnitRecs) == 0 {
+		// The root's twin, for its gradual reads' consumer search
+		// (planRootWordReads, NUR207).
+		if es.rootLocalReads == nil {
+			es.rootLocalReads = map[string][]core.SrcPos{}
+		}
+		es.rootLocalReads[id] = append(es.rootLocalReads[id], pos)
 		return
 	}
 	rec := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]]
