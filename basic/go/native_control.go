@@ -402,7 +402,18 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 		// wrongly admit `do [] convert Map` at check time (Error → Map) while
 		// the runtime leaves `convert` no argument. Distinguish the two by the
 		// body's token count.
+		//
+		// A body with no DEFINITE raise (that returned above) that ran to
+		// nothing may equally have CONSUMED its own values — `do [3 drop]`,
+		// `do [args drop]` — and then `do` nets nothing at run time: the
+		// count is 0 or (caught) 1, runtime-VARIABLE, so the compile pass
+		// latches it like a fallible multi-value body's (SetCatchVariadic,
+		// below) rather than seat the one Error a no-raise run never makes
+		// (NUR242: a promoted seat underflowed, STORE_LOCAL).
 		if bl, err := AsList(body); err == nil && !bl.IsNil() && bl.Len() > 0 {
+			if r.Check.Compiling {
+				r.Check.Recorder().SetCatchVariadic(true)
+			}
 			return []Value{NewCarrier(TError)}
 		}
 		return nil
@@ -759,19 +770,16 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	var thenStk []Value
 	var thenDefs map[string]Value
 	var thenValue *Value
-	// Both arms of a condition the model cannot decide are bracketed
-	// (EnterSpecArm): a fn def inside one is speculative (core.NoteSpecFnDef,
-	// the seventieth increment). A LITERAL condition takes no bracket — the
-	// model knows which arm runs, and its join is exact for both.
-	_, condKnown := LiteralCondValue(args[0])
-	if IsConcrete(args[0]) && args[0].Parent.Equal(TBoolean) {
-		condKnown = true // a def-bound or folded Boolean: the model has it
-	}
+	// An arm that may not run is bracketed (EnterSpecArm): a fn def inside
+	// one is speculative (core.NoteSpecFnDef, the seventieth increment). Only
+	// the arm a DECIDED condition takes goes unbracketed — its defs are the
+	// post-branch bindings exactly (armsKnownToRun).
+	thenRuns, elseRuns := armsKnownToRun(args[0])
 	if thenIsBody {
 		restoreThen := ApplyGuardNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(thenRuns)()
 			thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
 		}()
 		thenStk = es.Recorder().ArmTailApply(thenStk)
@@ -788,7 +796,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreThen := ApplyGuardNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(thenRuns)()
 			thenStk, thenDefs = RunCarrierBodyWithDefs(r, body)
 		}()
 		thenStk = es.Recorder().ArmTailApply(thenStk)
@@ -813,7 +821,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreElse := ApplyComplementNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(elseRuns)()
 			elseStk, elseDefs = RunCarrierBodyWithDefs(r, args[2])
 		}()
 		elseStk = es.Recorder().ArmTailApply(elseStk)
@@ -824,7 +832,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreElse := ApplyComplementNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(elseRuns)()
 			elseStk, elseDefs = RunCarrierBodyWithDefs(r, body)
 		}()
 		elseStk = es.Recorder().ArmTailApply(elseStk)
@@ -1036,6 +1044,24 @@ func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
 // recorder suspended, the twin keeps no placement and the program declines
 // at the twin regime's full-placement gate (NUR205). The arm a decided
 // condition takes runs every time, so its one replay stands.
+// armsKnownToRun reports which arm of a branch the model knows RUNS: the
+// taken arm of a DECIDED condition — a literal, or a def-bound or folded
+// concrete Boolean — whose defs are the post-branch bindings exactly. Every
+// other arm may not run, so a fn def in it is bound at run time only if it
+// does — speculative, as an undecided arm's is. The arm a decided condition
+// skips is the NEVER case of that (NUR244: left unbracketed, the join kept
+// its fn value and a read past the merge called it, `if false [def f fn
+// […]] [] end 3 f` answering the fn's result for undefined_word).
+func armsKnownToRun(cond Value) (thenRuns, elseRuns bool) {
+	if lit, ok := LiteralCondValue(cond); ok {
+		return lit, !lit
+	}
+	if b, ok := cond.Data.(BoolPayload); ok && cond.Parent.Equal(TBoolean) {
+		return b.B, !b.B
+	}
+	return false, false
+}
+
 func installArmJoins(r *Registry, cond Value, thenDefs, elseDefs map[string]Value) []BranchJoin {
 	decided, taken := false, false
 	if IsConcrete(cond) && cond.Parent != nil && cond.Parent.Equal(TBoolean) {
@@ -1074,7 +1100,17 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 	condFrag, condStk := analyseCondFragment(r, args[0])
 	restore := ApplyGuardNarrowing(r, args[0])
 	es.Recorder().ArmBranchCapture()
-	thenStk, thenDefs := RunCarrierBodyWithDefs(r, args[1])
+	// The arm runs only when the condition holds: bracketed unless the model
+	// decides it true, like if3's arms (NUR244 — unbracketed, a fn def in
+	// the arm was the join's own value, called past the merge on the path
+	// that skipped it).
+	thenRuns, _ := armsKnownToRun(args[0])
+	var thenStk []Value
+	var thenDefs map[string]Value
+	func() {
+		defer r.EnterSpecArm(thenRuns)()
+		thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
+	}()
 	thenFrag := recorderState(es).TakeFragment()
 	restore()
 	joins := installArmJoins(r, args[0], thenDefs, nil)

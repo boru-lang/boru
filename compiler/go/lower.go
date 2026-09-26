@@ -3321,6 +3321,17 @@ func (lw *lowerer) opsHaveVariadicResult(ops []EmitOperand) bool {
 	return false
 }
 
+// opsHaveCatchVariadic reports whether any operand names an event the
+// do-catch latch made runtime-variable (eventFlags.catchVariadic).
+func (lw *lowerer) opsHaveCatchVariadic(ops []EmitOperand) bool {
+	for _, op := range ops {
+		if op.kind == opEvent && lw.es.eventInfo[op.idx].catchVariadic {
+			return true
+		}
+	}
+	return false
+}
+
 // slotStoredInScope reports whether an event recorded before the call at
 // seq, in the call's own event list or an enclosing one, stores frame slot:
 // a def the call's own arm or loop body made dominates it, so the name is
@@ -3488,6 +3499,13 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	} else if c.makeList {
 		// Assemble the n laid-out operands into a list (a computed list literal,
 		// `[1 add 2]`). No sig, no dispatch — OpMakeList pops the n and pushes one.
+		// n counts SEATS: an operand whose count the do-catch latch made
+		// runtime-variable (`[do [3 drop] 7]` nets one value clean and two
+		// caught — NUR242) is not n values at run time, so the list declines
+		// rather than pop a count the run did not leave.
+		if lw.opsHaveCatchVariadic(c.ops) {
+			return "list literal over a result of runtime-variable count"
+		}
 		lw.emit(OpMakeList, n, c.pos)
 	} else if c.makeMap {
 		// Assemble the n laid-out VALUE operands into a map (a computed make

@@ -161,11 +161,12 @@ keep the two in sync in the same commit.
 | [NUR237](#nur237) | FIXED 2026-09-26 (an S5 name's later root defs are registry-visible — the handoff log's entry of that date): a taken branch arm's rebind of a name an S5 loop bind bound is seen after the merge on both lanes. The original text: a def rebound in a taken branch after a loop-result def reads the pre-branch value compiled: `def x (for 2 [5]) def c true if c [def x 1] [] end x` answers `[5 5]` compiled, `[5 1]` interpreted (both arms binding x too; a read of x before the branch makes the lanes agree). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR238](#nur238) | FIXED 2026-09-26 (a trailing value is re-stepped as the interpreter re-steps it — the handoff log's entry of that date): a value applied as a trailing window it does not fit parks when anonymous and raises uncalled_function when named, at the top level and in a fn. The original text: a paren-bounded trailing apply that matches nothing: the interpreter parks an anonymous value as data and raises `uncalled_function` for a named fn; the compiled apply raises `signature_error` at the top level (`(5 ([s:String] => [s]))` is `[5 fn (String)]` interpreted) and leaves a named fn's window as residue inside a fn (`(5 f/v)` over a `g/v` argument: a count error compiled) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR239](#nur239) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): an applied fn value's return-contract error names the fn's definition compiled and the binding it was called under interpreted: `(k 5)` over `h z/v` says `z:` compiled, `k:` interpreted; an anonymous class-field fn says `` compiled, `<fn>` interpreted (`each h.cb [1 2 3]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
-| [NUR240](#nur240) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a trapped unmatched module-member call inside a branch arm raises `signature_error` compiled and `uncalled_function` interpreted — a value-level divergence where the code is caught (`do [if true [(true 5 M.dec)] [1] …] error [dot code]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR240](#nur240) | FIXED 2026-09-26 (by NUR238's value-trail no-match — the handoff log's entry of that date): a trapped unmatched module-member call inside a branch arm raises `signature_error` compiled and `uncalled_function` interpreted — a value-level divergence where the code is caught (`do [if true [(true 5 M.dec)] [1] …] error [dot code]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR241](#nur241) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a capturing callback run by `walk`: `acc (tag) append acc (m.path) append` in a factory's lambda raises `signature_error: cannot call append` compiled (the arguments `[]` and `''`) where the interpreter answers `['x' '' 'x' 'a' 'x' 'b']` | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR242](#nur242) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): eight programs compile and then fail inside the compiled runtime (internal_error) where the interpreter answers: three `/q`-capturing member landings (RESTEP_LANDING), two shaped method applies, `do [args drop] 7` in a fn (STORE_LOCAL underflow), `do b 7` over a list param (CALL_DYN_FRAME underflow) and `fold` over a gradual class field (CALL_NATIVE_POLY no match) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR243](#nur243) | FIXED 2026-09-26 (the three programs compile — the handoff log's entry of that date): a constant branch's taken arm with no value is a 0-value statement, a loop rebind of a branch-bound name is carried, and a parser dispatch declines over its parser operand only. The original text: three valid programs refused: a loop carrying a branch-bound name (`if c [def x 1] [] for 3 [def x 5] x`, "body result of unknown provenance"), a constant-true branch whose taken arm leaves no value (`def x 0 if [true] [def x 1] [2] end x`, "branch produces no value" — its guard carried a `//covergate:allow` whose proof was false, removed), and NUR109's bound-slot arm declining a parser dispatch over a branch-bound SOURCE operand | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
-| [NUR244](#nur244) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): a parser bound on a branch that does not run is used compiled when it is an inline `fn` literal: `import "boru:parselang" def c false if c [def p (fn [[source:String opts:Map] [Any] [7]])] [] end parse p 'x'` answers `[7]` compiled and raises `parse_unknown_lang` interpreted — NUR109's decline catches a promoted call-result parser, not a baked literal. A silent wrong answer | closing NUR243, 2026-09-26 |
+| [NUR244](#nur244) | FIXED 2026-09-26 (an arm that may not run is speculative — the handoff log's entry of that date): a fn def in a branch arm the model knows is SKIPPED (a literal, def-bound or folded false condition — or true, for the else arm) or in an else-less if's arm was the join's own value, and a read past the merge ran it: `if false [def f fn [[a:Integer] [Any] [7]]] [] end 3 f` answered `[7]` compiled for undefined_word, and `import "boru:parselang" def c false if c [def p (fn [[source:String opts:Map] [Any] [7]])] [] end parse p 'x'` `[7]` for `parse_unknown_lang`. Silent wrong answers | closing NUR243, 2026-09-26 |
+| [NUR245](#nur245) | OPEN (recorded 2026-09-26; proposed verdict: resolve by fix): both arms of a branch define the same fn and a call past the merge fails to compile: `if false [def f fn [[a:Integer] [Any] [7]]] [def f fn [[a:Integer] [Any] [8]]] end 3 f` is `[8]` interpreted and `compile_failed: unconsumed fn-value carrier in residual (closure render)` compiled, for a decided and an undecided condition alike. A compile defect | closing NUR244, 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -9348,9 +9349,18 @@ binding half — `k:` for the interpreter, `z:` compiled — stays open.
 
 ## NUR240 — a trapped unmatched member call inside a branch arm: a different code {#nur240}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
-— the emit.go coverage agent (the unit trap).
+**Status:** FIXED 2026-09-26 (by NUR238's close — the handoff log's
+entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:** closing
+#505's merged-coverage gap (ADR-008) — the emit.go coverage agent (the unit
+trap).
+
+**The fix.** No change of its own. NUR238 gave a VALUE applied as a trailing
+window the interpreter's no-match: a named value that matches nothing raises
+`uncalled_function`. `(true 5 M.dec)` is such a window (a member read's value,
+not a bare word), so the arm's call now raises the interpreter's code even
+though the unit trap still takes only the unit's root frame. Pinned by
+`TestNUR240ArmMemberNoMatchCode`: at the root, in a literal and a def-bound
+arm, and two matching controls.
 
 **Rule:** one failed dispatch, one error code, on both lanes.
 
@@ -9382,15 +9392,51 @@ def acc (flex []) end def mk fn [[tag:String][Function][([m:Any] => [acc (tag) a
   compiled: signature_error: cannot call `append` — the arguments were [] (a FlexList) and '' (an EmptyString)
 ```
 
+**Diagnosis (2026-09-26, closing NUR244).** Neither walk nor the
+factory matters. `def h fn [[m:Any] [Any] [acc "x" append acc (m.path)
+append]]  h {path: "p"}` diverges the same way. The first `append` has
+two forward tokens, `acc` and the paren `(m.path)`. The runtime planner
+pre-evaluates the paren to `'p'`, which no FlexList slot takes, so it
+prunes the forward window and takes the all-stack split (`"x"` onto
+`acc`). The check pass plans with the paren UNEVALUATED. `acc` is a Word,
+so `preferWordSig` defers the non-`/q` match (`PlanMatch`'s
+`bestDeferred`), and the deferred window `[acc, (m.path)]` parks the word.
+The paren's gradual Any then arrives in the FlexList slot optimistically.
+NUR228's `AmbiguousGradualSplit` covers a gradual STACK operand at the
+normal return. This one is a forward operand whose type is known only at
+ARRIVAL, so the fix belongs at the arrival or its force-stack re-step. It
+should decline, as NUR228 does, when the arrived value is unproven for its
+slot and a narrower stack window matches.
+
 ## NUR242 — programs that compile and then fail inside the compiled runtime {#nur242}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
-— the coverage agents' probes.
+**Status:** OPEN — the `do` half FIXED 2026-09-26 (the handoff log's
+entry of that date); the re-step, method-apply and `fold` programs stay
+open (proposed verdict: resolve by fix) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** closing #505's merged-coverage gap (ADR-008) — the
+coverage agents' probes.
 
 **Rule:** a program the compiler admits, the compiled runtime runs — the
 bail ledger (`bailDefectCeiling`) counts the corpus's; these are outside
 it.
+
+**The `do` half.** A `do` body with no definite raise that runs to
+nothing (`do [3 drop]`, `do [args drop]`) nets nothing at run time, or
+one caught Error. The check pass modelled the Error alone, so a fn with an
+unnamed param stored a value the run never left (STORE_LOCAL underflow).
+The result is latched runtime-variable now (`SetCatchVariadic`). A fn
+residual seats the unnamed param below the run at unit start, as the
+apply-loop replay's prefix does (`noteApplyLoopReplay`, now keyed on any
+variadic call or dynamic-body run), so `f 5` answers `[7]` and `[5]` as
+the interpreter does. Two consumers that need the count decline instead of
+popping seats the run did not leave: a list literal (`[do [3 drop] 7]`,
+which bailed at MAKE_LIST) and a fn residual's fixed-width replay window
+(`do b 7` over a List param, which bailed at CALL_DYN_FRAME). Pinned by
+`TestNUR242DoBodyRunsToNothing`. The other five programs remain: the three
+re-step landings over a `/q` param, the two shaped method applies, and
+`fold` over a class member, whose runtime no-match has no record-time
+probe (the dispatch succeeded optimistically over a gradual operand, so
+no `PolyNoMatchSpec` exists).
 
 **Divergence** (measured at 5c0d6b1; each an internal_error compiled with
 the "please report it" note):
@@ -9459,10 +9505,56 @@ a parser is a fn value the join never carries. Pinned: lang
 undefined_word among them), `TestFnDispatchBranchBoundSourceAgrees`. The constant
 branch's decline site retired: both compile-failure censuses 91 → 90.
 
-## NUR244 — a branch-bound inline fn parser is used where the interpreter finds no binding {#nur244}
+## NUR245 — both arms define the same fn and the call past the merge does not compile {#nur245}
 
 **Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** closing NUR243 — probing NUR109's arm.
+2026-09-26 · **Surfaced by:** closing NUR244.
+
+**Rule:** valid code compiles.
+
+**Divergence** (pre-existing). A compile defect:
+
+```
+if false [def f fn [[a:Integer] [Any] [7]]] [def f fn [[a:Integer] [Any] [8]]] end 3 f
+  interp:   [8]
+  compiled: compile_failed: unconsumed fn-value carrier in residual (closure render)
+```
+
+An undecided condition (`def m {e: false} if (m "e" get) […] […] end 3 f`)
+fails the same way. The join of two fn values is a payload-less carrier
+(joinBranchDef), which no call past the merge can dispatch or render. The
+arms' own defs are what the runtime binds, so the fix is a dispatch that
+resolves the name live — the speculative family's routing — for every arm
+that binds it, rather than the join's carrier.
+
+## NUR244 — a branch-bound inline fn parser is used where the interpreter finds no binding {#nur244}
+
+**Status:** FIXED 2026-09-26 (an arm that may not run is speculative — the
+handoff log's entry of that date) · **Recorded:** 2026-09-26 · **Surfaced
+by:** closing NUR243 — probing NUR109's arm.
+
+**The fix.** It was wider than parsing. A fn def in an arm the model knows
+is SKIPPED — the arm a decided condition (a literal, a def-bound or folded
+Boolean) does not take — or in an else-less if's arm (If2ReturnsFn
+bracketed nothing) was installed as the join's own value, so any read past
+the merge used it: `if false [def f fn [[a:Integer] [Any] [7]]] [] end 3 f`
+answered `[7]` compiled for undefined_word. Only an undecided if3's arms
+were bracketed as speculative (`EnterSpecArm`), with a comment calling the
+decided join "exact for both" arms. The join is exact only for the TAKEN
+arm. Now every arm that may not run is bracketed (`armsKnownToRun`): a fn
+def there is a speculative family, placed at its site and dispatched with
+a live lead, so the call past the merge raises undefined_word where the
+arm did not run. The arm a decided condition takes stays exact. A
+redefinition in the skipped arm now compiles and calls the outer binding
+(it declined as a conditional shadow before).
+
+Two reads have no run-time resolution and decline rather than use the
+arm's value, both through the speculative family's value-read site ("no
+live home for the read"). A PARSER NAME read past the arms (`parse p 'x'`)
+reads the binding as a value: where the arm did not run, the interpreter
+resolves the unbound name as a registered kind (NUR109's rule), and no op
+does that. A `/v` read is the other. Pinned by `TestNUR244BranchBoundFnIsSpeculative`.
+Both arms defining the same fn is a separate compile defect: NUR245.
 
 **Rule:** one binding, one lookup — a name a skipped arm would have bound
 is unbound.

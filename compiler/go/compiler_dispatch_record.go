@@ -878,8 +878,9 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	}
 	// The dyn-body backstop already marks every code-body result variadic
 	// above; consume the ReturnsFn's catch-variadic latch so it cannot leak
-	// past this dispatch (L-DO — see catchVariadicFor).
-	es.catchVariadicFor(sig)
+	// past this dispatch (L-DO — see catchVariadicFor), keeping its own mark
+	// for the fixed-count consumers (eventFlags.catchVariadic).
+	f.catchVariadic = es.catchVariadicFor(sig)
 	es.eventInfo[seq] = f
 	// Carrier-identity de-collision, extended to INTRA-event repeats: the
 	// modeled outs of a dyn-body sub-run may repeat one value — an unrolled

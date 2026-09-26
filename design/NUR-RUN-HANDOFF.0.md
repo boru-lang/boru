@@ -9,6 +9,71 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR244 closed; NUR245 recorded; CI on 3306b85 (2026-09-26)
+
+**NUR244.** The parser case was one instance of a wider bug. A fn def in
+an arm that may not run was bound past the merge, and later calls ran it:
+- **The arm a decided condition skips.** A literal, def-bound or folded
+  Boolean condition bracketed neither arm (`condKnown`). Their join is the
+  undecided join, which keeps a fn value as it is (condBoundCarrier wraps
+  only plain values).
+- **An else-less if's arm.** `If2ReturnsFn` bracketed nothing, even for an
+  undecided condition.
+
+`armsKnownToRun` brackets every arm except the one a decided condition
+takes. A fn def in a bracketed arm is a speculative family: `3 f` past the
+merge raises undefined_word where the arm did not run. A redefinition in a
+skipped arm now compiles.
+
+The `parse` macro declines for a speculative family's name read outside
+any speculative arm. It reads the binding as a value, so it declines
+through the family's value-read site. At run time the interpreter resolves
+an unbound name as a kind (NUR109's rule), and no op re-resolves one. A
+parse in the defining arm itself still compiles. The decline goes through
+an existing site on purpose: both compile-failure censuses count sites,
+and a new one fails them.
+
+A redefinition in a skipped arm now compiles, so
+`frontier-conditional-fn-shadow.tsv:15` graduated to `control.tsv` §9.
+Its decided-condition twin moved from `mustFailToCompile` to
+`mustCompileWithParity` in the edge-finding test. The taken arm's
+redefinition still declines.
+
+**NUR242, the `do` half.** A `do` body that runs to nothing without a
+definite raise nets 0 values, or 1 caught Error. The check pass modelled 1.
+`DoListReturnsFn` now latches the count runtime-variable. The unnamed-param
+prefix seats at unit start for any variadic call or dynamic-body run. The
+list literal and the fixed-width replay window, which need the count,
+decline instead of bailing. The list literal's fence reads its own mark,
+`eventFlags.catchVariadic`, set only where the catch latch is consumed. A
+first cut fenced every variadic result, and that declined two programs the
+suite compiles: a dynamic-body `[(do [f/v])]` and a lambda over a dynamic
+map, whose counts are fixed in practice.
+
+**NUR245**, found on the way (pre-existing, a compile defect): when both
+arms define the same fn, the join is a payload-less carrier, and a call
+past the merge fails to compile.
+
+**NUR240** needed no change of its own. NUR238's value-trail no-match
+already gives `(true 5 M.dec)` inside an arm the interpreter's
+`uncalled_function`, where the unit trap does not reach. It is pinned on
+both lanes.
+
+**NUR241**, diagnosed but still open. The divergence is a forward split,
+not the walk hook. The runtime planner pre-evaluates the paren `(m.path)`
+and prunes the forward window on its value. The check pass defers the
+window (`preferWordSig` → `bestDeferred`) and parks the word, and the
+paren's gradual Any arrives optimistically. The fix belongs at the
+arrival.
+
+**CI on 3306b85** failed two jobs:
+- `cover-gate-core`: core's own suite never reached `noteCallWindow`. A
+  core unit test drives it now, and another reaches the splice arm whose
+  stale pragma went in the previous commit.
+- The arity gate: two new comparisons, each pinned with its rationale.
+  `ClosureCallsAtLanding` is the argument rule over an empty supply.
+  `valueTrailNoMatch` asks whether a value has any own signature.
+
 ## NUR238 closed; the merged ADR-008 gate's last blocks (2026-09-26)
 
 **NUR238.** A value applied as a trailing window it does not fit now

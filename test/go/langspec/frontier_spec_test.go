@@ -211,15 +211,6 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	// inline-lowered regions.
 	`context set 'k' 1 end context del 'k' end context set 'k' 2 end def l [(context get 'k')] (l get 0) add 1`: {why: "NUR054: a context read inside an auto-evaluated list has no compiled context layer", failsWith: "no layer to hand out"},
 
-	// Conditional fn-shadow — a MISCOMPILE (variation sweep,
-	// forward-barrier.tsv:73); now a COMPILE FAILURE: a user fn redefined
-	// inside a conditionally-reached body overlap-removes the enclosing
-	// overload in place, so the branch/loop def rollback cannot restore it and
-	// compiled resolution bakes the shadow while the interpreter keeps the
-	// outer fn on the not-taken / zero-iteration path. Declined CondBodyDepth-
-	// gated (eng/go/core_helpers.go). Full graduation = a runtime dispatch
-	// respecting the conditional binding compiles these rows.
-	`def g fn [[x:Any] [Integer] [x add 100]] if false [def g fn [[x:Any] [Integer] [x add 1]]] g 1`: {why: "conditional fn redefinition shadows an outer overload; compiled bake would diverge from the interpreter on the not-taken branch", failsWith: "redefined inside a conditional body"},
 	// The FN-BODY twin (the thirty-first increment): a capturing fn value —
 	// a factory's returned closure — redefining an outer overloading def
 	// from inside a fn body outlives the call on the interpreter (the

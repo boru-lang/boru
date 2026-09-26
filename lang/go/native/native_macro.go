@@ -804,6 +804,20 @@ func parseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 			// only-used-as-a-parser fn would be falsely flagged unused_def.
 			r.Check.RecordUse(kind)
 			if _, isFn := top.Data.(FnDefInfo); isFn {
+				// A SPECULATIVE family's name (a fn def in a branch arm that
+				// may not run, read past the arms — core.NoteSpecFnDef): the
+				// binding is the arm's, and on the path that skipped it the
+				// interpreter finds none and resolves the atom as a registered
+				// KIND (`parse_unknown_lang`). The expansion bakes the arm's
+				// value, and a dispatch routed live would raise undefined_word;
+				// no op re-resolves a name as a kind at run time, so the
+				// program declines (NUR244 — the inline-literal twin of
+				// NUR109's promoted parser). The expansion READS the binding
+				// as a value, so it declines as a speculative family's `/v`
+				// read does: no live home for the read.
+				if r.Check.SpecFnNames[kind] && r.Check.SpecArmDepth == 0 {
+					r.Check.Recorder().NoteValRead(top.ID, kind)
+				}
 				return parseFnExpand(top, args, r)
 			}
 			if r.Check.IsActive() && !IsConcrete(top) {

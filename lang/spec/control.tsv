@@ -195,3 +195,14 @@ for 3 [ (7 add 2) if (i eq 2) [continue] [5] end ]	9 5 9 5	a continue drops the 
 for 3 [ (7 add 2) if (i eq 2) [break] [5] end i ]	9 5 0 9 5 1	a break drops it too, and the rounds before it survive
 while [true] [ (7 add 2) if true [break] [5] end ] end 'x'	'x'	the first round's computed value goes with the round
 for 2 [ (i add 0) end for 3 [ if (i eq 1) [break] [0] end ] ]	0 0 1 0	an inner break closes the inner loop, and the outer one still counts
+#
+# §9  a fn redefinition in the arm a decided condition skips
+#
+# Graduated from frontier-conditional-fn-shadow.tsv:15 (NUR244, 2026-09-26).
+# The redefinition overlap-removes the outer overload in place, which the
+# branch rollback cannot restore, so the compiled lane once baked the arm's
+# shadow (a miscompile) and then declined it. The skipped arm is a
+# speculative family now: its def is placed at its own site and the call
+# resolves live, so the outer fn answers on both lanes.
+def g fn [[x:Any] [Integer] [x add 100]] if false [def g fn [[x:Any] [Integer] [x add 1]]] g 1	101	the outer fn answers: the arm that redefines g never runs
+def c false def g fn [[x:Any] [Integer] [x add 100]] if c [def g fn [[x:Any] [Integer] [x add 1]]] g 1	101	a def-bound false condition skips the arm too

@@ -194,6 +194,14 @@ type eventFlags struct {
 	// cut-one: `if c [def a (do […] error […]) a] [def b (do […] error […])
 	// b]` under `[Integer]`).
 	callVariadic bool
+	// catchVariadic marks a CALL event whose count the do-catch latch made
+	// runtime-variable (catchVariadicFor): the body's own count on a clean
+	// run, ONE caught Error on a raise — shrinking from N, or growing from
+	// the none a body that consumed its own values leaves (NUR242). A
+	// consumer that assembles a FIXED count of operands (a list literal's
+	// MAKE_LIST) cannot take it; the region and dyn-body marks above are
+	// broader and do not imply it.
+	catchVariadic bool
 	// variadicResult marks an event whose result count is RUNTIME-VARIABLE — a
 	// loop, or a branch whose arms leave different / multiple counts (`if c [] [a
 	// b]`). Only a variadic-absorbing position (the program residual or a
@@ -8855,6 +8863,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 		f := es.eventInfo[seq]
 		f.variadicResult = true
 		f.callVariadic = true
+		f.catchVariadic = true
 		es.eventInfo[seq] = f
 	}
 	// A VARIADIC REGION result (the GROWING direction, NUR067): the word's
@@ -12569,10 +12578,11 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 	// same mark for the same reason: the body's own residual holds a run
 	// whose runtime length is not the check run's, so nout is a seat count
 	// and not a value count.
-	if es.catchVariadicFor(sig) || regionResidual {
+	if caught := es.catchVariadicFor(sig); caught || regionResidual {
 		f := es.eventInfo[seq]
 		f.variadicResult = true
 		f.callVariadic = true
+		f.catchVariadic = caught
 		es.eventInfo[seq] = f
 	}
 	// VARIADIC PROPAGATION through a strip-input dispatch (L-DO part 2):
@@ -14878,7 +14888,7 @@ func twinsFullyPlaced(p *Program, exempt map[int]bool) bool {
 func (es *EmitState) noteApplyLoopReplay(rec *fnUnitRec, ops []EmitOperand) []EmitOperand {
 	j := -1
 	for i, op := range ops {
-		if op.kind == opEvent && es.eventInfo[op.idx].variadicResult && es.eventInfo[op.idx].applyLoop {
+		if op.kind == opEvent && es.eventInfo[op.idx].variadicResult && (es.eventInfo[op.idx].applyLoop || es.eventInfo[op.idx].callVariadic || es.eventInfo[op.idx].dynBodyResult) {
 			j = i
 			break
 		}
@@ -14979,6 +14989,7 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 			// semantics. With no fn-typed value the count is the original
 			// one-applicable rule (replayLeadApplicables).
 			if w, ok := dynFrameWindow(u, rec, vals); ok && !es.windowHasPlaced(vals[len(vals)-w:]) &&
+				!es.windowHasVariadicRun(vals[len(vals)-w:]) &&
 				es.replayIsBodyTail(rec.frag, vals[len(vals)-w:]) &&
 				replayLeadApplicables(vals[len(vals)-w:], es.dynFrameWordsFor(u, rec, vals[len(vals)-w:])) == 1 {
 				rec.dynFrameW = w
@@ -14993,6 +15004,21 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 		}
 	}
 	return true
+}
+
+// windowHasVariadicRun reports whether a replay window holds a value a
+// RUNTIME-VARIABLE-count event produced (eventFlags.variadicResult — a
+// fallible or dynamic `do` body's run): the window is a fixed width W the
+// replay pops, and a run of another length leaves it popping the wrong
+// entries (`def g fn [[b:List] [Any] [do b 7]]  g [5 drop]` underflowed
+// CALL_DYN_FRAME, NUR242). Such a window does not arm.
+func (es *EmitState) windowHasVariadicRun(window []core.Value) bool {
+	for _, v := range window {
+		if pr, ok := es.producedBy[v.ID]; ok && es.eventInfo[pr.seq].variadicResult {
+			return true
+		}
+	}
+	return false
 }
 
 // windowHasPlaced reports whether a replay window carries a paren-PLACED
