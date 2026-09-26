@@ -5,7 +5,7 @@ import (
 	"testing"
 )
 
-// TestNUR217StoredFnParamReadIsTheWord pins NUR217's close. A bare read of a
+// TestNUR279StoredFnParamReadIsTheWord pins NUR279's close. A bare read of a
 // frame binding that holds a fn is a WORD dispatch on the interpreter (NUR123),
 // whatever the param's declared type — and a fn value applied through a
 // container member runs its STORED unit (storedfn$body), compiled once under
@@ -15,7 +15,7 @@ import (
 // whose body reads such a binding bare declines, and the apply takes the
 // interpreter's own dispatch at the seam; the same fn applied by name, through
 // a def or a module member already compiled per call and keeps doing so.
-func TestNUR217StoredFnParamReadIsTheWord(t *testing.T) {
+func TestNUR279StoredFnParamReadIsTheWord(t *testing.T) {
 	const g = `def g fn [[f:Any] [Any] [f]] end def m {g: g/v} end `
 	for _, c := range []struct{ src, want string }{
 		{g + `m.g ([] => [42])`, "[42]"},

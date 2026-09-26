@@ -7,7 +7,7 @@ import (
 )
 
 // TestFnReadRefused pins the refusal the seams ask of a closure unit that
-// reads a param bare where it pushes the slot (NUR217's stored fn, NUR268's
+// reads a param bare where it pushes the slot (NUR279's stored fn, NUR268's
 // callback body): a fn argument in one of its FnReadParams slots is refused,
 // data in the same slot is not, and a slot the unit does not list refuses
 // nothing whatever it holds.

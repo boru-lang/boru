@@ -1837,7 +1837,7 @@ type CompiledFn struct {
 	// Deopts is the unit's per-read deopt table (OpDeoptIfFn's Arg).
 	Deopts []DeoptSpec
 	// FnReadParams are the param slots a closure unit — a STORED fn's
-	// (NUR217) or a callback body's (NUR268) — reads BARE under a gradual
+	// (NUR279) or a callback body's (NUR268) — reads BARE under a gradual
 	// carrier: a binding the interpreter dispatches as a word when the
 	// argument is a fn (NUR123), which the unit's slot push cannot. The seams
 	// that run the unit refuse an argument list holding a fn in one of these
@@ -1848,7 +1848,7 @@ type CompiledFn struct {
 
 // FnReadRefused reports whether args (positional — args[i] fills param slot
 // i) put a fn value in one of fn's FnReadParams: the call the unit cannot
-// run faithfully, which the seam hands to the interpreter (NUR217, NUR268).
+// run faithfully, which the seam hands to the interpreter (NUR279, NUR268).
 // A nil unit refuses nothing.
 func (fn *CompiledFn) FnReadRefused(args []core.Value) bool {
 	if fn == nil {

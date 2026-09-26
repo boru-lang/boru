@@ -55,7 +55,7 @@ func TestZeroArgLeadIslandRaiseAgrees(t *testing.T) {
 
 // TestForeignFnValueBareReadRefusalAgrees pins dynApplyForeign's refusal of
 // a module fn whose stamped unit reads a param BARE when the argument there
-// is a fn (NUR217's rule on the foreign seam): the interpreter dispatches
+// is a fn (NUR279's rule on the foreign seam): the interpreter dispatches
 // that read as a word, so the apply stays the island's and the fn fires —
 // 42 and 7 on both lanes, never the fn value itself.
 func TestForeignFnValueBareReadRefusalAgrees(t *testing.T) {

@@ -2984,8 +2984,8 @@ func (e *Engine) stepWord(val Value) error {
 				// a bound FnDefInfo through Lookup — so the pass's stand-in
 				// for such a binding is read, not substituted as the quoted
 				// data it was where it was bound: `def g (m.f/v) end g 4` is
-				// 5 (NUR218; the marker drop quotes the member carrier,
-				// NUR213, and a def binds what the paren left).
+				// 5 (NUR280; the marker drop quotes the member carrier,
+				// NUR277, and a def binds what the paren left).
 				if top.Quoted && (IsFnTypedCarrier(top) || (top.Dynamic && SigTypeMatches(top, TFunction))) {
 					top.Quoted = false
 				}
@@ -4482,13 +4482,13 @@ func (e *Engine) stepLiteral() error {
 			// peek and stays data. Quote the carrier as the peek would, or
 			// the pass's residual carries an unquoted fn lead beside the 5
 			// and the residual layout applies it (resolveDynamicApply):
-			// `6` compiled for the interpreter's `fn (Integer) 5` (NUR213).
+			// `6` compiled for the interpreter's `fn (Integer) 5` (NUR277).
 			if valIdx > 0 {
 				if prev := e.Tape.At(valIdx - 1); !prev.Quoted && (prev.Dynamic || prev.Carrier) {
 					prev.Quoted = true
 					e.Tape.Set(valIdx-1, prev)
 					// And note the delivery as the peek notes the concrete
-					// value's (NUR218): a code body whose top is this read
+					// value's (NUR280): a code body whose top is this read
 					// takes no replay — `[1 2 3] each [m.f/v]` is three fn
 					// values on both lanes.
 					if e.Registry.analysisActive() {
@@ -5887,7 +5887,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// are the usurp / stack-args / forward-args / force-arity words). Peek
 	// and consume it: the function is DELIVERED, not dispatched — pushed and
 	// stepped past, unquoted, exactly as stepWordVal delivers `inc/v`
-	// (NUR218). A member read `m.f/v` is the same value as its word twin:
+	// (NUR280). A member read `m.f/v` is the same value as its word twin:
 	// quoted, it rode into a paren's survivor, a callback slot and a branch
 	// result as DATA where `inc/v` is the fn (`each (m.f/v) [1 2 3]` stepped
 	// it per element as data; `(m.f/v 5)` stayed `fn 5` for `(inc/v 5)`'s

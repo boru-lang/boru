@@ -2,17 +2,17 @@ package core
 
 import "testing"
 
-// Core-suite pins for NUR218's three analysis notes (the core cover gate
+// Core-suite pins for NUR280's three analysis notes (the core cover gate
 // counts only this suite, and the lang differential is what drives them
 // there): the peek that consumes a group's `/v` marker notes the DELIVERED
 // value, the standalone marker drop notes the carrier it quotes, and a bare
 // read of a quoted fn-possible binding is read as the word. Positive and
 // negative paired; each note is asserted through a recording stand-in.
 
-// TestNUR218PeekNotesTheDelivery: a fn value followed by the marker is
+// TestNUR280PeekNotesTheDelivery: a fn value followed by the marker is
 // delivered — the marker consumed, the pointer past the value, the value
 // unquoted — and under a compile pass the delivery is noted as a value read.
-func TestNUR218PeekNotesTheDelivery(t *testing.T) {
+func TestNUR280PeekNotesTheDelivery(t *testing.T) {
 	es := &wordReadEmit{EmitRecorder: TheInactiveEmit}
 	r := compileCheckRegistry(t)
 	r.Check.Emit = es
@@ -31,11 +31,11 @@ func TestNUR218PeekNotesTheDelivery(t *testing.T) {
 	}
 }
 
-// TestNUR218MarkerDropNotesTheCarrier: a standalone marker after a pass
+// TestNUR280MarkerDropNotesTheCarrier: a standalone marker after a pass
 // CARRIER (a member read the pass models, which the peek never reaches)
 // quotes the carrier and notes the delivery; after a concrete value it is
 // dropped with nothing noted.
-func TestNUR218MarkerDropNotesTheCarrier(t *testing.T) {
+func TestNUR280MarkerDropNotesTheCarrier(t *testing.T) {
 	es := &wordReadEmit{EmitRecorder: TheInactiveEmit}
 	r := compileCheckRegistry(t)
 	r.Check.Emit = es
@@ -65,11 +65,11 @@ func TestNUR218MarkerDropNotesTheCarrier(t *testing.T) {
 	}
 }
 
-// TestNUR218QuotedFnBindingReadsAsTheWord: under a compile pass a bare read
+// TestNUR280QuotedFnBindingReadsAsTheWord: under a compile pass a bare read
 // of a binding whose stand-in is a QUOTED fn-possible carrier (a def bound
 // what a `/v` marker drop left) is read as the word — noted as a word read —
 // while a quoted carrier that cannot hold a fn stays the quoted data it is.
-func TestNUR218QuotedFnBindingReadsAsTheWord(t *testing.T) {
+func TestNUR280QuotedFnBindingReadsAsTheWord(t *testing.T) {
 	es := &wordReadEmit{EmitRecorder: TheInactiveEmit}
 	r := compileCheckRegistry(t)
 	r.Check.Emit = es

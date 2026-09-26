@@ -1757,7 +1757,7 @@ type fnUnitRec struct {
 	storedRefUnit bool
 	// fnReadParams are a stored unit's param slots read bare under a
 	// gradual carrier (storedUnitFnReadParams), stamped on
-	// CompiledFn.FnReadParams for the seams' refusal (NUR217).
+	// CompiledFn.FnReadParams for the seams' refusal (NUR279).
 	fnReadParams []int
 	// liveNames are the module-scope names this unit reads LIVE — a routed
 	// slot, a seated live read, a routed lead (noteUnitLive) — so a stored
@@ -11532,7 +11532,7 @@ func (es *EmitState) MayBeFn(id string) bool {
 
 // storedUnitFnRead reports a bare read, in a stored fn's unit, that the
 // interpreter DISPATCHES where the unit pushed the value and that no seam can
-// hand back to it (NUR217) — NUR123's accounting, with none of the routes a
+// hand back to it (NUR279) — NUR123's accounting, with none of the routes a
 // named fn's unit has to seat a read: a FN-TYPED read (the recorder's strict
 // count) that no accepted lowering took as the dispatch it is (a paren apply
 // or a trailing apply credit it — creditWordRead), a binding read both bare
@@ -11569,7 +11569,7 @@ func storedUnitFnRead(u *emitUnit, rec *fnUnitRec, vals []core.Value) (string, b
 // natively). storedUnitFnRead already declined a stored unit's uncredited
 // fn-typed read, and a callback body's is not accounted at all. The unit
 // runs over data there, and the seams refuse a fn argument in one of them
-// (CompiledFn.FnReadRefused, NUR217 and NUR268). Sorted, for a stable
+// (CompiledFn.FnReadRefused, NUR279 and NUR268). Sorted, for a stable
 // Program.
 func storedUnitFnReadParams(u *emitUnit, rec *fnUnitRec) []int {
 	var slots []int
@@ -11621,7 +11621,7 @@ func pendingApplyTail(rec *fnUnitRec, pend []pendingApply, bodyStk []core.Value,
 // true m.h [2]` over a flex). The interpreter re-steps whatever `if`
 // returned, so such an arm dispatches when it holds a fn (`1` for a 0-arg
 // member), and the merge must land it as it lands a named fn arm (NUR159);
-// read as data it compiled to `fn one` (NUR218's container twin).
+// read as data it compiled to `fn one` (NUR280's container twin).
 func branchArmMayBeFn(v core.Value) bool {
 	return core.IsFnValueResidual(v) || (v.Dynamic && !v.Quoted && core.SigTypeMatches(v, core.TFunction))
 }
@@ -11702,10 +11702,10 @@ func (es *EmitState) mayBeFnUnsettled(v core.Value) bool {
 // widened merge type read (NUR159).
 func (es *EmitState) fnLikeResidual(v core.Value) bool {
 	// A QUOTED value is data by the `/v` marker's intent (the pass records
-	// it on the value — the standalone-marker drop, NUR213), so no window
+	// it on the value — the standalone-marker drop, NUR277), so no window
 	// arm may apply it: the verbatim island re-stepped the fn live, and
 	// `3 m.f/v 2` / `3 4 c.op/v` answered [3 3] / [3 5] compiled for the
-	// interpreter's [3 fn 2] / [3 4 fn] (NUR216).
+	// interpreter's [3 fn 2] / [3 4 fn] (NUR278).
 	if v.Quoted {
 		return false
 	}
@@ -14337,7 +14337,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// member read a `/v` marker qualified (engine.go's standalone-marker
 	// drop), as the run-time peek quotes the concrete value — `m.f/v 5` is
 	// `fn (Integer) 5` on the interpreter, and applied here it was 6
-	// (NUR213).
+	// (NUR277).
 	if !leadCrossed && len(residual) >= 2 && residual[0].Dynamic && !residual[0].Quoted && !es.methodShapeAnnotated(residual[0].ID) && !es.siblingCallOutputs(residual) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
 		applyDynamic = !anyDynamicTail(residual)
@@ -14376,7 +14376,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// A QUOTED lead is data here too, as in the dynamic arm above: a `/v`
 	// after a class member read (`c.op/v 5`) quotes the fn-SHAPE-typed
 	// carrier the pass holds, where the run-time peek quotes the concrete fn
-	// — `fn (Integer) 5` interpreted, and this arm applied it to 6 (NUR216).
+	// — `fn (Integer) 5` interpreted, and this arm applied it to 6 (NUR278).
 	if !applyDynamic && !leadCrossed && len(residual) >= 2 && core.IsFnTypedCarrier(residual[0]) &&
 		!residual[0].Quoted && !es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) &&
 		!es.forwardLeftoverFn(residual[0]) {
@@ -14520,7 +14520,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		}
 		// A QUOTED dynamic value is data beside its neighbours (the `/v`
 		// marker's intent, recorded on the value by the standalone-marker
-		// drop; NUR213) — no boundary to decline on.
+		// drop; NUR277) — no boundary to decline on.
 		if residual[i].Dynamic && !residual[i].Quoted &&
 			core.SigTypeMatches(residual[i], core.TFunction) {
 			if es.markWindowSeq != 0 {
@@ -14558,7 +14558,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// residue is now visible rather than hidden behind a blanket failure.
 	for i := range residual {
 		if core.IsFnTypedCarrier(residual[i]) {
-			// A QUOTED carrier is data by the marker's intent (NUR213: the
+			// A QUOTED carrier is data by the marker's intent (NUR277: the
 			// standalone-marker drop quotes the carrier a `/v` follows, and
 			// a fn that returns the value it was handed returns it quoted),
 			// exactly as the interpreter's re-step leaves a quoted value —
@@ -14673,7 +14673,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 	pr, isEvent := es.producedBy[fnv.ID]
 	if !isEvent || pr.idx != 0 || fnv.Quoted || !es.fnLikeResidual(fnv) || es.eventInfo[pr.seq].dynBodyRun {
 		// A QUOTED trailing value is data (`5 m.f/v` — the marker's intent,
-		// which the pass records on the value; NUR213). A dyn-body RUN is
+		// which the pass records on the value; NUR277). A dyn-body RUN is
 		// not one value: the rotation split `9 do (mk)` over [1 2] into
 		// [1 9 2] (NUR210); the prefix island seats the ones it can.
 		return residual, false
@@ -16091,7 +16091,7 @@ func (es *EmitState) noteClosureBodyReplay(u *emitUnit, rec *fnUnitRec, vals []c
 	// A member read its `/v` marker DELIVERED is data where it sits: the
 	// interpreter's pointer stepped past it, so nothing inside the body
 	// re-steps it (`[1 2 3] each [m.f/v]` is three fn values on both
-	// lanes, as `each [inc/v]` is — NUR218).
+	// lanes, as `each [inc/v]` is — NUR280).
 	if es.placedValRead(top.ID) {
 		return
 	}
@@ -16487,17 +16487,17 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 		// of a param or capture that may hold a fn is the interpreter's
 		// WORD dispatch when it does (NUR123) — `def g fn [[f:Any] [Any]
 		// [f]] def m {g: g/v} m.g ([] => [42])` is 42 — and here it was a
-		// slot push, `fn f` (NUR217). The unit declines; the value keeps
+		// slot push, `fn f` (NUR279). The unit declines; the value keeps
 		// its plain const and the apply takes the interpreter's own
 		// dispatch at the seam.
 		if rec.storedRefUnit {
 			if name, read := storedUnitFnRead(u, rec, vals); read {
-				return "stored fn: bare read of `" + name + "` may hold a fn the interpreter dispatches as a word (NUR217)"
+				return "stored fn: bare read of `" + name + "` may hold a fn the interpreter dispatches as a word (NUR279)"
 			}
 		}
 		// The params such a unit — stored or a callback body — reads bare
 		// under a gradual carrier: the seams that run it refuse a fn there
-		// (NUR217's stored fn, NUR268's callback body).
+		// (NUR279's stored fn, NUR268's callback body).
 		rec.fnReadParams = storedUnitFnReadParams(u, rec)
 		// One replay a code body DOES take: its top value re-stepped by the
 		// interpreter's pointer inside the body (noteClosureBodyReplay).

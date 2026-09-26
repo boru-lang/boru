@@ -192,7 +192,7 @@ func TestQuotedFnValueIsData(t *testing.T) {
 
 func TestFnValueDispatchModLeavesInert(t *testing.T) {
 	// A Word/__DM marker right after the fn value DELIVERS it: pushed and
-	// stepped past, unquoted — the value its word twin `f/v` is (NUR218) —
+	// stepped past, unquoted — the value its word twin `f/v` is (NUR280) —
 	// so it is inert where it sits and the 5 beside it stays data.
 	r := covRegistry(t, nil)
 	fnv := anonFnVal(

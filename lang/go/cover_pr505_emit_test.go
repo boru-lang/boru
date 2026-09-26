@@ -87,7 +87,7 @@ func TestLoopRoundRollbackDropsArgsProjection(t *testing.T) {
 	agreeOnBothLanes(t, `def f fn [[a:Integer b:Integer][Any][def acc 0 for 2 [def acc (acc add (args size))] acc]] end f 1 2`, "[4]")
 }
 
-// TestStoredFnBodyLocalReadIsTheWord pins NUR217's non-param arm: a stored fn's
+// TestStoredFnBodyLocalReadIsTheWord pins NUR279's non-param arm: a stored fn's
 // body result that is a bare read of a BODY-LOCAL def (`j`, bound to a member
 // read the pass types gradual) is the interpreter's word dispatch when it holds
 // a fn, and no seam can refuse a body-local's value — the stored unit declines,

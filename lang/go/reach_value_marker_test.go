@@ -29,7 +29,7 @@ func TestReachValueMarkerIsNoArgument(t *testing.T) {
 		"def up1 fn [[value:Any] [String] ['UP']] end def g up1/v end g 1",
 		"def m {z: (fn [[] [Integer] [7]])} m.z/v",
 		"(1 add 2)/s",
-		// NUR213: a `/v`-marked MAP member with arguments beside it is data on
+		// NUR277: a `/v`-marked MAP member with arguments beside it is data on
 		// both lanes — the pass quotes the dynamic member read the marker
 		// qualifies, and the residual layout leaves a quoted lead alone.
 		"def m {f: (fn [[a:Integer] [Integer] [a add 1]])} m.f/v 5",
@@ -89,7 +89,7 @@ func TestNamedValueNoMatchOnTheSeamRaises(t *testing.T) {
 	}
 }
 
-// TestClassMemberValueMarkerIsData pins NUR216's close — NUR213's twin for a
+// TestClassMemberValueMarkerIsData pins NUR278's close — NUR277's twin for a
 // CLASS member and for the window spellings. A `/v` after a member read says
 // DATA: the run-time peek quotes the concrete fn and leaves it beside its
 // neighbours. The pass quotes the carrier it holds (the standalone-marker
@@ -98,7 +98,7 @@ func TestNamedValueNoMatchOnTheSeamRaises(t *testing.T) {
 // verbatim window islands (`3 c.op/v 2` compiled [3 3], `3 4 c.op/v`
 // compiled [3 5]; the map twins likewise). The class shapes compile and
 // agree; the map window twins decline at the existing residual limit ("call
-// result above a literal"), as NUR213's `5 m.f/v` does, and the fallback
+// result above a literal"), as NUR277's `5 m.f/v` does, and the fallback
 // answers as the interpreter. The unmarked reads still apply.
 func TestClassMemberValueMarkerIsData(t *testing.T) {
 	const cls = `def T fnsig Integer Integer def C class {op:T} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) `

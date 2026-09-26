@@ -4991,7 +4991,7 @@ func (lw *lowerer) lowerComputedBranch(ev *EmitEvent, jf int) string {
 	// The guarded landing over the merged value, as the general merge lands
 	// it: the eager arm is a COMPUTED value — a member read over a container
 	// the pass cannot see into (`if true m.h [2]` over a flex) — which the
-	// interpreter re-steps after `if` returns, firing a 0-arg fn (NUR218).
+	// interpreter re-steps after `if` returns, firing a 0-arg fn (NUR280).
 	if !multi {
 		lw.emitBranchLanding(ev)
 	}

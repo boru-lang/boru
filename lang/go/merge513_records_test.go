@@ -19,7 +19,7 @@ func errAt(err error) string {
 // interpreter's own answer — value, error and position alike:
 //
 //   - NUR220: a stored fn value's unit read a Function-typed param bare as
-//     data (`[fn f]` for `[0]`). NUR217's decline hands a fn argument in a
+//     data (`[fn f]` for `[0]`). NUR279's decline hands a fn argument in a
 //     slot the unit reads bare to the island.
 //   - NUR221: a name def-bound to a `/q`-capturing member fn, read with
 //     nothing after it, stayed data (`[0 fn h(Atom)]` for the interpreter's

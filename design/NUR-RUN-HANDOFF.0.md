@@ -171,7 +171,7 @@ answers exactly the same, and so did this branch, at 1:99. It is fenced by
 
 **Main's new records on the merged tree.**
 - NUR220, NUR221 and NUR224 answer as the interpreter does through this
-  branch's earlier closes: NUR217's decline of a stored unit's bare fn read,
+  branch's earlier closes: NUR279's decline of a stored unit's bare fn read,
   NUR207's root read, and NUR118's call anchor, whose witness NUR224 is.
   They are marked FIXED and pinned by
   `TestMain513RecordsClosedOnTheMergedTree`.
@@ -1575,7 +1575,7 @@ g/v [([] => [1]) 7]` was `[fn f 7]` compiled for the interpreter's `[1 7]`;
 the lambda spelling, `x typeof`, a gradual list param, `(f)` and the
 map-iteration fold's accumulator likewise. Silent, pre-existing.
 
-**The fix.** NUR217's slot list is computed for every closure unit, and a
+**The fix.** NUR279's slot list is computed for every closure unit, and a
 fn-typed read no apply lowering credited joins the gradual reads (a
 callback body's reads are not accounted). The closure push carries its
 callback VALUE (`callbackSourceSpec` → `ClosureRetSpec.Source` →
@@ -1588,7 +1588,7 @@ the unit.
 **Pins.** lang `TestNUR268CallbackParamReadIsTheWord`; compiler
 `TestFnReadRefused`, `TestCallbackSourceSpec`.
 
-## NUR217 closed — a stored fn's word read declines its unit or its call (2026-09-26)
+## NUR279 closed — a stored fn's word read declines its unit or its call (2026-09-26)
 
 **The divergence.** A fn value applied through a container member runs its
 STORED unit (`compileStoredFnUnit`, `storedfn$body`), compiled once under
@@ -1618,9 +1618,9 @@ so that call takes the interpreter's dispatch. Data through the same member
 runs the unit (`m.g 5`), and the per-call routes — a module member, a
 def-bound value — keep their compiled frame replay.
 
-**Pins.** lang `TestNUR217StoredFnParamReadIsTheWord`.
+**Pins.** lang `TestNUR279StoredFnParamReadIsTheWord`.
 
-## NUR218 closed — a member reference is its word twin (2026-09-26)
+## NUR280 closed — a member reference is its word twin (2026-09-26)
 
 **The divergence.** `/v` yields the binding's value whoever reads it, but a
 MEMBER read's value was quoted where its word twin's is not:
@@ -1641,7 +1641,7 @@ value it quoted for its marker (`ReachGroup`) and the arrival delivers any
 such value unquoted, a carrier included (the flex twin of `if true m.h/v
 [2]` was data compiled — a NUR078 regression, loud before it); a bare read
 of a binding that may hold a fn un-quotes the stand-in (the run routes a
-bound fn through Lookup whatever its quote); the NUR213 marker drop notes
+bound fn through Lookup whatever its quote); the NUR277 marker drop notes
 the carrier's delivery beside its quote, so `noteClosureBodyReplay` stands
 aside for it (`[1 2 3] each [m.f/v]` declines loudly now — "result above a
 literal" — where the word twin compiles).
@@ -1658,8 +1658,8 @@ left are the word twin's own (`inc/v 5`), the member forms the corpus
 already declined (`5 m.f/v`, `def ret fn [[][Function][m.f/v]]` over a
 container), and the body shape above.
 
-**Pins.** lang `TestNUR218MemberRefIsItsWordTwin`,
-`TestNUR218DynamicBranchArmLands`; core `TestFnValueDispatchModLeavesInert`
+**Pins.** lang `TestNUR280MemberRefIsItsWordTwin`,
+`TestNUR280DynamicBranchArmLands`; core `TestFnValueDispatchModLeavesInert`
 (the delivery is unquoted).
 
 ## The merge of main's #508, NUR206 closed by it (2026-09-26)
@@ -1734,10 +1734,10 @@ unit row that passed a callback bare. The arity gate's engine.go pin drops
 a PAREN keeps its quote to the consumer: `each (m.f/v) [1 2 3]` and `fold
 (m.f/v) …` step it as data interpreted and apply it compiled, `def g
 (m.f/v) end g 4` is 5 interpreted and `[fn 4]` compiled — pre-existing
-(measured on the committed head), NUR218. (2) A member-read fn applied
+(measured on the committed head), NUR280. (2) A member-read fn applied
 over a fn argument whose body reads a GRADUAL param bare: `def g fn [[f:Any]
 [Any] [f]] def m {g: g/v} m.g ([] => [42])` is 42 interpreted and `fn f`
-compiled — pre-existing, NUR217.
+compiled — pre-existing, NUR279.
 
 **Pins.** lang `TestNUR078BareFnNameCalls` (the `/v` spellings at every
 slot, both lanes; the bare spellings raise, and a carrier-bound bare name
@@ -1803,15 +1803,15 @@ re-analysed.
 the S pair, both spellings, and the String negative); check
 `TestRunFnBodyOnceCallsFnValueParam` / `…Capture`.
 
-## NUR216 closed — the quoted lead is data on every arm (2026-09-25)
+## NUR278 closed — the quoted lead is data on every arm (2026-09-25)
 
 **The divergence** (recorded and closed the same day, found closing
 NUR096). `c.op/v 5` over a class member typed by a fn shape answered `6`
 compiled for the interpreter's `fn (Integer) 5`; the window spellings `3
-c.op/v 2` and `3 4 c.op/v` applied too, and so did NUR213's map member in
+c.op/v 2` and `3 4 c.op/v` applied too, and so did NUR277's map member in
 those two spellings.
 
-**The fix.** NUR213 quoted the value a standalone `/v` follows and taught
+**The fix.** NUR277 quoted the value a standalone `/v` follows and taught
 the DYNAMIC lead arm to honour the quote. A class member read is a
 fn-shape-typed carrier, not dynamic, so it took the Function-carrier lead
 arm, which now skips a quoted lead as well; and `fnLikeResidual` — the one
@@ -1849,8 +1849,8 @@ signatures or an optional / patterned / quoted parameter.
 
 **Found on the way.** `c.op/v 5` over the same class member answers
 `fn (Integer) 5` interpreted and `6` compiled — the class-instance twin of
-NUR213's map fix, pre-existing (measured with this change stashed).
-Recorded as NUR216 and taken next.
+NUR277's map fix, pre-existing (measured with this change stashed).
+Recorded as NUR278 and taken next.
 
 **Pins.** lang `TestPlainCheckModelsFnShapeMemberApply` (checked stack and
 both lanes, with the paren and unfit-argument negatives); check
@@ -2022,8 +2022,8 @@ and takes main's S2a quote declaration (a bit set); the frame's error path
 (NUR201's fault-return unwind) supersedes `unwindFrameTailOnError`, whose
 teardown already calls main's `UninstallFrameBinding`. **The register:**
 main's new NUR205 keeps its number; this run's NUR205, NUR206 and NUR207
-(all closed) are NUR211, NUR212 and NUR213 everywhere they are cited (NUR261,
-NUR262 and NUR213 since the merge of main's #512, where main's NUR211 and
+(all closed) are NUR211, NUR212 and NUR277 everywhere they are cited (NUR261,
+NUR262 and NUR277 since the merge of main's #512, where main's NUR211 and
 NUR212 kept their numbers).
 
 **The fallout, fixed.** `TestCheckProp_ShrinksFailingInput` shrank to 40
@@ -2488,7 +2488,7 @@ under the render gate rather than answering under another name
 
 **Pins.** lang `TestEmitDynamicLeadIsNotRoutedAsData`. Docs: NUR.md (NUR170 FIXED as a sound decline), this entry.
 
-## NUR213 closed — the marker's intent on the value (2026-09-25)
+## NUR277 closed — the marker's intent on the value (2026-09-25)
 
 **The divergence.** `def m {f: (fn [[a:Integer] [Integer] [a add 1]])}  m.f/v 5` was `fn (Integer) 5` on the interpreter (the marker says data; the 5 strands) and `6` compiled; `5 m.f/v` was `5 fn (Integer)` for `6`. Found closing NUR262; pre-existing.
 
@@ -2498,7 +2498,7 @@ under the render gate rather than answering under another name
 
 **Measured:** the compiler and core builds; the NUR262/207 pin green. The broader suites run in the next batch. **Scoped (same day, the milestone batch).** The drop quotes a dynamic or carrier value only; a concrete Function value is the peek's at run time on both lanes. A quoted fn-typed carrier passes the residual render gate as data — `(f MathUtil.sqrt/v) 16.0` compiles again (its render divergence stays the measured-open NUR119 shape `TestClosureCaptureOpenShapes` pins).
 
-**Pins.** lang `TestReachValueMarkerIsNoArgument` (four more same-verdict rows, the trailing decline's parity, the interpreter's own answers), fn-value.tsv §15 (three rows). Docs: NUR.md (NUR213 FIXED), the handover, this entry.
+**Pins.** lang `TestReachValueMarkerIsNoArgument` (four more same-verdict rows, the trailing decline's parity, the interpreter's own answers), fn-value.tsv §15 (three rows). Docs: NUR.md (NUR277 FIXED), the handover, this entry.
 
 ## NUR262 closed — the marker is no argument (2026-09-25)
 
@@ -2506,11 +2506,11 @@ under the render gate rather than answering under another name
 
 **The mechanism.** The parser emits a dotted path's `/v` as the reach followed by a dispatch-modifier marker (`Word/__DM`). In `def`'s forward window the plan asks whether the reach is a CALL HEAD that would claim what follows (`ReachCallHeadBarrierOn` → `ReachFnWouldClaimOn`), probing the next token through `ForwardClaimProbeOn` — which had no arm for a marker: it fell to the literal arm and was offered to the fn's first parameter. `Any` matched it, so the reach read as a call head about to claim its own marker, a barrier, and the window collected nothing.
 
-**The fix.** `ForwardClaimProbeOn` answers `probeNone` for a dispatch-modifier marker: it qualifies the value before it and is never an argument. The reach is one datum again and the value binds as the bare `/v` word always did. Found beside it and recorded as NUR213: a `/v`-marked MAP member with arguments beside it (`m.f/v 5`) is applied on the compiled lane and data on the interpreter (the checker's shaped member apply collects the window past the marker); pre-existing.
+**The fix.** `ForwardClaimProbeOn` answers `probeNone` for a dispatch-modifier marker: it qualifies the value before it and is never an argument. The reach is one datum again and the value binds as the bare `/v` word always did. Found beside it and recorded as NUR277: a `/v`-marked MAP member with arguments beside it (`m.f/v 5`) is applied on the compiled lane and data on the interpreter (the checker's shaped member apply collects the window past the marker); pre-existing.
 
 **Measured:** the core and lang root suites green; the langspec gates over module-fnvalue-boundary.tsv at their ceilings.
 
-**Pins.** lang `TestReachValueMarkerIsNoArgument` (twelve same-verdict rows, the interpreter's own answers for three), module-fnvalue-boundary.tsv §5 (four rows). Docs: NUR.md (NUR262 FIXED, NUR213 recorded, NUR260's record traced), the handover, this entry.
+**Pins.** lang `TestReachValueMarkerIsNoArgument` (twelve same-verdict rows, the interpreter's own answers for three), module-fnvalue-boundary.tsv §5 (four rows). Docs: NUR.md (NUR262 FIXED, NUR277 recorded, NUR260's record traced), the handover, this entry.
 
 ## NUR261 closed — the named value's no-match on the seam (2026-09-25)
 

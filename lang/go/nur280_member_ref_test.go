@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestNUR218MemberRefIsItsWordTwin pins NUR218's close: `/v` yields the
+// TestNUR280MemberRefIsItsWordTwin pins NUR280's close: `/v` yields the
 // binding's VALUE whoever reads it, so a member read `m.f/v` is the value its
 // word twin `inc/v` is — delivered unquoted and stepped past, inert only by
 // where it sits — on both lanes. The peek that consumes a group's `/v`
@@ -17,7 +17,7 @@ import (
 // compiled. Every shape below answers what the word twin answers, for a
 // member of a map literal, of a flex (the check pass's dynamic carrier) and
 // of a module export, compiled.
-func TestNUR218MemberRefIsItsWordTwin(t *testing.T) {
+func TestNUR280MemberRefIsItsWordTwin(t *testing.T) {
 	const fns = `def inc fn [[n:Integer][Integer][n add 1]] end def s2 fn [[a:Integer b:Integer][Integer][a add b]] end def one fn [[][Integer][1]] end `
 	twins := []struct {
 		name, pre, x, g, h string
@@ -66,15 +66,15 @@ func TestNUR218MemberRefIsItsWordTwin(t *testing.T) {
 	}
 }
 
-// TestNUR218DynamicBranchArmLands pins the container twin of NUR159 found
-// closing NUR218: a branch arm that is a member read over a container the
+// TestNUR280DynamicBranchArmLands pins the container twin of NUR159 found
+// closing NUR280: a branch arm that is a member read over a container the
 // check pass cannot see into (a flex) — bare or `/v` — may hold a fn, and
 // the interpreter re-steps whatever `if` returned: a 0-arg member fires (1),
 // an arg-taking one applies over the value beneath (6) or stays data with
 // nothing to take. The merge lands it (OpReStepLanding) on the computed-arm
 // path as the general merge does; it compiled to the member itself. A plain
 // data member is untouched.
-func TestNUR218DynamicBranchArmLands(t *testing.T) {
+func TestNUR280DynamicBranchArmLands(t *testing.T) {
 	const one = `def one fn [[][Integer][1]] end def m (flex {h: one/v}) end `
 	const inc = `def inc fn [[n:Integer][Integer][n add 1]] end def m (flex {h: inc/v}) end `
 	for _, c := range []struct{ src, want string }{

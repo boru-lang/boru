@@ -175,7 +175,7 @@ func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, ar
 		return nil
 	}
 	// A fn argument in a slot the stored unit reads bare is the interpreter's
-	// word dispatch, which the unit's slot push cannot run (NUR217): the
+	// word dispatch, which the unit's slot push cannot run (NUR279): the
 	// island answers.
 	if fn.FnReadRefused(args) {
 		return nil
