@@ -387,7 +387,10 @@ func laterCandidateCollectsPast(h CollectHost, fn *FnDefInfo, si int, w WordInfo
 		if limit <= fwd {
 			continue
 		}
-		if n, _ := CollectCandidateScan(h, alt, limit, make([]int, alt.TotalArgs()), pointer+1, checkActive, compiling); n > fwd {
+		// A claim of the stop token by a DISPATCHING word (specAt == fwd — a
+		// function word the plan admits speculatively at an Any slot, its
+		// result to complete the slot) is no wider window of values.
+		if n, specAt := CollectCandidateScan(h, alt, limit, make([]int, alt.TotalArgs()), pointer+1, checkActive, compiling); n > fwd && specAt != fwd {
 			return true
 		}
 	}

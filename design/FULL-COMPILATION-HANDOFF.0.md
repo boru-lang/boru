@@ -13337,6 +13337,10 @@ tokens taken and a later candidate whose own scan collects past the stop
 token (`laterCandidateCollectsPast`), a compiling pass sets
 `AmbiguousGradualSplit`, the latch the reverse case already used, and the
 program declines loudly. All-stack matches stay the forward-drift guard's.
+A speculative claim (a function word admitted at an Any slot for its
+dispatch's result) does not count: the first cut declined kg/main.boru,
+whose `var` body puts `__varundef` after an `and` over a `lt` result the
+pass types `Scalar tor Boolean`.
 Faithfully compiling such a window would take the drift window's island
 generalised to mixed forms, and only a terminal window could absorb its
 variadic result; left for the full-compilation line.

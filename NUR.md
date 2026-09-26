@@ -8702,7 +8702,10 @@ chooses between.
 carrier whose static type does not conform to the slot); when the selected
 candidate took some forward tokens and such an operand, and a LATER
 candidate's own scan collects past the token this one stopped at
-(`laterCandidateCollectsPast`), a compiling pass flags
+(`laterCandidateCollectsPast`) — as a value: a function word the plan
+admits only speculatively at an Any slot (its dispatch's result to complete
+the slot) is no wider window, which is what kg/queries.boru's `and` before a
+`var` body's `__varundef` cleanup meets — a compiling pass flags
 `AmbiguousGradualSplit` — the latch the reverse case (the static choice
 forward-collects, the runtime grabs the carrier) already sets — and the
 compile declines with "forward/stack split depends on a gradual operand".
@@ -8710,7 +8713,8 @@ All-stack matches stay the forward-drift guard's. A window no later
 candidate would widen (`v send {a: 1} 5`), a concrete value beneath
 (`"q" send …`) and a paren that seals the call off still compile and agree.
 Pinned: core `TestNUR228GradualStackWindowIsAmbiguous`,
-`TestNUR228NoLaterClaimIsNoAmbiguity`; lang
+`TestNUR228NoLaterClaimIsNoAmbiguity`,
+`TestNUR228SpeculativeClaimIsNoWiderWindow`; lang
 `TestNUR228GradualStackWindowDeclines`,
 `TestNUR228ProvenWindowsStillCompile`.
 

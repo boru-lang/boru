@@ -7,6 +7,11 @@ import "testing"
 // sigs, on a check pass that is (or is not) compiling, and reports the
 // selected signature's forward count and whether the split was flagged.
 func nur228Match(t *testing.T, compiling bool, sigs []Signature) (int, bool) {
+	return nur228MatchStop(t, compiling, sigs, NewString("s"))
+}
+
+// nur228MatchStop is nur228Match with stop as the second forward token.
+func nur228MatchStop(t *testing.T, compiling bool, sigs []Signature, stop Value) (int, bool) {
 	t.Helper()
 	r := covRegistry(t, nil)
 	r.Check.Mode = true
@@ -16,7 +21,7 @@ func nur228Match(t *testing.T, compiling bool, sigs []Signature) (int, bool) {
 	om := NewOrderedMap()
 	om.Set("a", NewInteger(1))
 	e := NewTop(r)
-	e.Tape = NewTape([]Value{dyn, NewWord("w"), NewMap(om), NewString("s")}, StackHeadroom)
+	e.Tape = NewTape([]Value{dyn, NewWord("w"), NewMap(om), stop}, StackHeadroom)
 	e.Pointer = 1
 	fn := &FnDefInfo{Name: "w", Signatures: sigs}
 	sig, positions, _ := e.MatchSignature(fn, WordInfo{Name: "w", ArgCount: 2}, []Value{dyn})
@@ -82,5 +87,23 @@ func TestNUR228NoLaterClaimIsNoAmbiguity(t *testing.T) {
 	}
 	if _, flagged := nur228Match(t, false, withClaim); flagged {
 		t.Error("a plain check pass must not flag the split")
+	}
+}
+
+// TestNUR228SpeculativeClaimIsNoWiderWindow: a later candidate that claims
+// the stop token only SPECULATIVELY — a function word admitted at an Any slot
+// for its dispatch's result (a `var` body's `__varundef` cleanup after an
+// `and`, in kg/queries.boru) — offers no wider window of values, so nothing
+// is flagged.
+func TestNUR228SpeculativeClaimIsNoWiderWindow(t *testing.T) {
+	sigs := []Signature{
+		{Args: []*Type{TAny, TBoolean}, BarrierPos: 2},
+		{Args: []*Type{TAny, TAny}, BarrierPos: 2},
+	}
+	for i := range sigs {
+		NormalizeSig(&sigs[i])
+	}
+	if _, flagged := nur228MatchStop(t, true, sigs, NewWord("cneg")); flagged {
+		t.Error("a speculative claim of a function word must not flag the split")
 	}
 }
