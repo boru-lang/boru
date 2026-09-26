@@ -917,6 +917,13 @@ type EmitState struct {
 	// pendingRuntimeBindCall latches between a binder handler's
 	// NoteRuntimeBind and the dispatch's RecordRuntimeBindDispatch.
 	pendingRuntimeBindCall bool
+	// runtimeDefNames are the names a def form binds at RUN time with no
+	// check-engine install (NoteRuntimeDefDispatch), re-read by
+	// finalizeBlocked against the registry's name parts.
+	runtimeDefNames []string
+	// runtimeDefInUnit marks the latched run-time def as one inside a
+	// compiled unit, which RecordRuntimeBindDispatch declines.
+	runtimeDefInUnit bool
 	// armBoundTypeNames are TYPE names whose binding, after adoption, exists
 	// at runtime only through arm-resident type installs — a node minted
 	// per element, whose depth and identity are body-run-dependent — so a
@@ -5329,6 +5336,60 @@ func (es *EmitState) NoteRuntimeBind(name string) {
 	es.dynEnv = true
 }
 
+// NoteRuntimeDefDispatch — a def keyword form whose constructor needs an
+// operand's run-time value (`def T fnsig M.sg`, 2026-09-26: the sweep's
+// `fnsig` × module-export cell) bound nothing on the check engine; the
+// dispatch itself is the bind. It arms RecordRuntimeBindDispatch's latch so
+// the def form is emitted as a plain CALL_NATIVE whose handler constructs
+// and installs name on the run-time registry, exactly where the interpreter
+// does. No stub is latched: the check engine never bound the name, so there
+// is no twin to exempt and no read to seat live — a later read of it is the
+// pass's own undefined-word finding, and the program declines.
+//
+// Two fences keep the run-time install on the interpreter's registry:
+//
+//   - ROOT ONLY. Inside a compiled unit the install would outlive the frame
+//     the interpreter unwinds it with: `def g fn [[][] [def T fnsig M.sg]]
+//     g g` raises the second call's name-part conflict interpreted and
+//     answered compiled (measured). The form declines there, as the
+//     compile-time word it is (RecordRuntimeBindDispatch hands it to
+//     RecordCall).
+//   - NO LATER PART. The install runs the front door (validateTypeName)
+//     against the registry's name PARTS, which the replay does not roll
+//     back, so a type of the same name the pass installs AFTER this point —
+//     `def T fnsig M.sg  def T refine Integer` — is already a known part
+//     when the run reaches this install, and it raises a conflict the
+//     interpreter never meets (measured). finalizeBlocked re-reads the parts
+//     at the end of the pass and declines the program if any name's part
+//     became known; the handler admitted the name only while it was not.
+func (es *EmitState) NoteRuntimeDefDispatch(name string) {
+	if !es.Active() {
+		return
+	}
+	es.pendingRuntimeBindCall = true
+	if len(es.units) != 1 {
+		// The dispatch hands itself to RecordCall, whose compile-time-word
+		// arm declines it loudly (RecordRuntimeBindDispatch) — no decline
+		// site of its own, as the unresolved-operand arm there.
+		es.runtimeDefInUnit = true
+		return
+	}
+	es.runtimeDefNames = append(es.runtimeDefNames, name)
+}
+
+// runtimeDefPartsBlocked names the first run-time def (NoteRuntimeDefDispatch)
+// whose name's part a type of the pass has registered since the def was
+// admitted — the run's front-door install would then raise a conflict the
+// interpreter, installing in program order, does not.
+func (es *EmitState) runtimeDefPartsBlocked() (string, bool) {
+	for _, name := range es.runtimeDefNames {
+		if core.ValidateTypeNameParts(name, es.reg.IsKnownPart) != nil {
+			return "def `" + name + "` constructs its type at run time, and the pass registered a type of the same name part after it (the run-time install would meet a name-part conflict the interpreter does not)", true
+		}
+	}
+	return "", false
+}
+
 // RecordRuntimeBindDispatch — the dispatch of a check-mode-run binder word
 // (`unpack`) whose handler bound RUN-TIME names in this very dispatch
 // (NoteRuntimeBind's latch): the check pass's stub installs are not the
@@ -5344,6 +5405,11 @@ func (es *EmitState) RecordRuntimeBindDispatch(word string, sig *core.Signature,
 		return
 	}
 	es.pendingRuntimeBindCall = false
+	if es.runtimeDefInUnit {
+		es.runtimeDefInUnit = false
+		es.RecordCall(word, sig, args, nil, pos, false, false)
+		return
+	}
 	ops := make([]EmitOperand, len(args))
 	for i := range args {
 		op, ok := es.resolveOperand(args[i])
@@ -8136,6 +8202,21 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	if !ok {
 		return
 	}
+	// A STORE-FN word that declares CompileDynBody (`behave`) runs the stored
+	// fn's body LATER against the registry, resolving its names in the
+	// dynamic scope the interpreter keeps — so a fn-local `def k` shadows the
+	// program's `k` for a behaviour dispatched inside that fn. Only the DynEnv
+	// mirror reproduces that scope (every def a registry-visible twin), so
+	// the record arms it exactly as the dyn-body backstop does. Before
+	// (2026-09-26): `def g fn [[][String] [def k 'K' canon (make Temp 5)]]
+	// def k 'Z'  behave canon/q (fn [[t:Temp][String][k]])  g` answered 'Z'
+	// compiled for the interpreter's 'K'.
+	// Armed only when the stored body names something
+	// (storedFnNeedsDynEnv): a pure-data body resolves nothing.
+	if sig.Callable == nil && sig.CompileEffect.Has(core.CompileStoresFn) && sig.CompileEffect.Has(core.CompileDynBody) &&
+		es.storedFnNeedsDynEnv(sig, args, ops) {
+		es.dynEnv = true
+	}
 	// Phase B: claim this dispatch's region capture, if it has one, and fill
 	// the sources of the slots it actually took forward. Inert — nothing reads
 	// Program.Regions yet; what it buys now is that the descriptor model is
@@ -8939,8 +9020,21 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 				}
 			}
 		}
-		if !ok {
-			es.MarkUncompilable("operand of unknown provenance or not statically materialisable at " + word)
+		// A STRICT store slot (the handler validates an FnDefInfo) admits
+		// only an operand proven to arrive as one — never a compiled closure
+		// the handler would reject where the interpreter holds the source fn
+		// (strictFnOperandProven; stored_fn_proof.go, NUR209). It shares the
+		// unknown-provenance decline's site: an unproven payload is the same
+		// verdict, an operand the recorder cannot vouch for.
+		reason := ""
+		switch {
+		case !ok:
+			reason = "operand of unknown provenance or not statically materialisable at " + word
+		case sig.CompileEffect.Has(core.CompileFnHandlerStrict) && strictFnSlot(sig, i) && !es.strictFnOperandProven(a, op):
+			reason = "fn operand at " + word + " is not proven an interpreter fn value (a compiled closure arriving at the strict store slot would be rejected where the interpreter holds the source fn)"
+		}
+		if reason != "" {
+			es.MarkUncompilable(reason)
 			return nil, false
 		}
 		// A FnDataArgs slot (parselang-fn-dispatch arg0, the computed parser fn)
@@ -8954,6 +9048,12 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 		ops[i] = op
 	}
 	return ops, true
+}
+
+// strictFnSlot reports whether sig position i is a Function-typed operand.
+func strictFnSlot(sig *core.Signature, i int) bool {
+	ts := sig.ArgTypes()
+	return i < len(ts) && ts[i] != nil && ts[i].ConformsTo(core.TFunction)
 }
 
 // valueDivergingWord reports whether any overload of word in the registry
@@ -13615,7 +13715,7 @@ func (es *EmitState) finalizeBlocked() (string, bool) {
 	if !es.Compilable {
 		return es.Reason, true
 	}
-	return "", false
+	return es.runtimeDefPartsBlocked()
 }
 
 // programPendingApply is the program unit's one pending `apply`-word

@@ -585,6 +585,41 @@ func DefFormVia(base *Signature, offset int, genChain bool) func([]Value, map[st
 	}
 }
 
+// defFormRun is a keyword form's run implementation: DefFormVia, except for
+// the `def Name fnsig <spec list>` form over a spec list the CHECK engine
+// cannot read — a carrier, the list a module fn returns (`def T fnsig M.sg`,
+// 2026-09-26: the sweep's `fnsig` × module-export cell). fnsig mints its
+// type from the list's CONTENT, which exists only at run time, so the check
+// pass must not mint one: binding the carrier bakes a type the run never
+// builds, and `f/v is T` then tests the wrong node. The form binds nothing
+// on the check engine and hands the dispatch to the recorder
+// (NoteRuntimeDefDispatch): the compiled run calls this very handler over
+// the run-time list, and it constructs and installs T exactly as the
+// interpreter does. The name stays unbound for the rest of the pass, so a
+// later read of T is the pass's undefined-word finding and the program
+// declines instead of compiling a guess.
+func defFormRun(ctor string, base *Signature, offset int, genChain bool) func([]Value, map[string]Value, []Value, *Registry) ([]Value, error) {
+	run := DefFormVia(base, offset, genChain)
+	if ctor != "fnsig" || genChain || !base.Args[0].Equal(TList) {
+		return run
+	}
+	return func(args []Value, named map[string]Value, stack []Value, r *Registry) ([]Value, error) {
+		if r.Check.IsActive() && !IsConcrete(args[offset]) {
+			name := DefName(args[0])
+			// Only a name the check engine has never bound, whose parts no
+			// type has registered: then the run-time install meets the same
+			// registry the interpreter's does. Anything else keeps the
+			// constructor's own verdict on the carrier (a check error).
+			if IsCapitalisedName(name) && !r.Defs.Has(name) && r.Lookup(name) == nil &&
+				core.ValidateTypeNameParts(name, r.IsKnownPart) == nil {
+				r.Check.Recorder().NoteRuntimeDefDispatch(name)
+				return nil, nil
+			}
+		}
+		return run(args, named, stack, r)
+	}
+}
+
 // synthDefKeywordSig mirrors one constructor signature as a def
 // keyword overload: [name/q ctor/q …ctor-args], or the gen chain
 // [name/q gen/q params:List tail/q …tail-args]. The constructor's
@@ -650,7 +685,7 @@ func synthDefKeywordSigNamed(ctor string, base *Signature, genChain bool, nameTy
 		Args:       args,
 		QuoteArgs:  quote,
 		Patterns:   patterns,
-		Impl:       Go(DefFormVia(base, offset, genChain), RunInCheck()),
+		Impl:       Go(defFormRun(ctor, base, offset, genChain), RunInCheck()),
 		Returns:    []*Type{},
 		BarrierPos: -1,
 		// The handler-contract declaration (design/HANDLER-MIGRATION-LINE.0.md,

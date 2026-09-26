@@ -730,6 +730,9 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	if es == nil || !es.Active() || sig == nil || !sig.CompileEffect.Has(core.CompileDynBody) {
 		return false
 	}
+	if sig.Callable == nil && sig.CompileEffect.Has(core.CompileStoresFn) {
+		return recordStoredFnDyn(es, word, sig, args, outs, pos)
+	}
 	if sig.Callable == nil {
 		// A CLAUSE-LIST word (`receive`: its one NoEvalArgs slot holds
 		// clauses whose bodies the handler runs in a sub-engine over the
@@ -880,6 +883,65 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// whose value has no compiled home (`def found None` → "dynamic-scope def of
 	// unknown provenance"), an unnecessary, whole-program compile failure.
 	if !fixedValueEval {
+		es.dynEnv = true
+	}
+	return true
+}
+
+// recordStoredFnDyn is the dyn-body backstop for a STORE-FN word (`behave`,
+// 2026-09-26: the sweep's `behave` × container cell) whose fn operand is a
+// GRADUAL carrier — `m.c`, a fn member read the check pass widens to
+// dynamic(Any) because a read of a fn-valued member may auto-dispatch — so
+// the generic record declines "dynamic input". The word stores the fn and
+// runs its body LATER against the registry, which is why it declares
+// CompileDynBody: that deferred run resolves names exactly as the
+// interpreter's does only under the DynEnv mirror, which this record arms
+// whenever the stored body names something (storedFnNeedsDynEnv).
+//
+// Recorded when every quoted operand is an inert const the word declares
+// verbatim (CompileQuoteInert) and the one Function slot's operand is PROVEN
+// to arrive as an interpreter fn value (strictFnOperandProven — for `m.c`, a
+// read over a const container whose member is a concrete fn). The call is a
+// poly re-match over the word's own signatures, so the run-time value picks
+// the overload exactly as the interpreter's dispatch does. Anything
+// unproven — a closure-valued member, a flex member, a fn param — leaves the
+// decline standing: behave cannot install a compiled closure (it has no body
+// tokens), where the interpreter installs the source fn.
+func recordStoredFnDyn(es *EmitState, word string, sig *core.Signature, args, outs []core.Value, pos core.SrcPos) bool {
+	if len(sig.NoEvalArgs) > 0 || restepsSig(sig) || len(outs) != 0 {
+		return false
+	}
+	fnSlot := -1
+	for i := range args {
+		if strictFnSlot(sig, i) {
+			if fnSlot >= 0 {
+				return false
+			}
+			fnSlot = i
+		}
+	}
+	if fnSlot < 0 || core.IsConcrete(args[fnSlot]) || !args[fnSlot].Dynamic {
+		return false
+	}
+	for i := range args {
+		if sig.QuoteArgs[i] && (!sig.CompileEffect.Has(core.CompileQuoteInert) || !core.IsInertConst(args[i])) {
+			return false
+		}
+	}
+	ops := make([]EmitOperand, len(args))
+	for i := range args {
+		op, ok := es.resolveOperand(args[i])
+		if !ok {
+			return false
+		}
+		ops[i] = op
+	}
+	if !es.strictFnOperandProven(args[fnSlot], ops[fnSlot]) {
+		return false
+	}
+	es.SiteCounts[SiteDynamic]++
+	es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, pos: pos, poly: true}})
+	if es.storedFnNeedsDynEnv(sig, args, ops) {
 		es.dynEnv = true
 	}
 	return true

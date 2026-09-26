@@ -15242,3 +15242,60 @@ storage, reach) pass at their ceilings.
 `TestModuleNativeFnValueOverAnyRecovers`); `s2b_registry_bodies_test.go`
 and `uncalled_dispatch_trap_test.go` (the two inverted rows);
 `real_program_compile_test.go` (the empty ledger).
+
+## The sweep's `behave` × container and `fnsig` × module-export cells (2026-09-26)
+
+**Measured.** Sweep compile failures **3 -> 1** (`sweepFailureCeiling`);
+the one left is `if` × container (NUR207, recorded). Call-form failures
+**295 -> 304** (`sweepVariantFailureCeiling`): the two graduated seeds
+bring twenty-eight call forms, nine decline — `behave` × container's
+fn-, lambda- and for-body ("check diagnostics", every behave seed's
+family), `fnsig` × module-export's do-, do-catch- and each-body (the
+code-body family) and its fn-, lambda- and module-body as "compile-time
+word def" (the run-time def's unit fence hands the dispatch to RecordCall,
+so the census of decline sites stays at 91). No variant that passed before fails (SWEEP_STATUS.md
+diffed). lang `compileDefectCeiling` 302 and `bailDefectCeiling` 39
+unchanged (measured at the ceilings).
+
+- **`behave` × container** (compiler `recordStoredFnDyn`,
+  `stored_fn_proof.go`). `m.c` is a dynamic(Any) carrier, so the generic
+  record declined "dynamic input at behave". behave declares
+  CompileDynBody and CompileFnHandlerStrict now; the dyn-body backstop
+  records the dispatch as a poly re-match when the operand is PROVEN to
+  arrive as an interpreter fn value — for `m.c`, a read over a const
+  container whose member is a concrete fn. A flex, closure-valued or param
+  member keeps the decline: behave installs a fn's body TOKENS, which a
+  compiled closure does not carry.
+- **The strict slot, generally** (NUR209, found and FIXED). The same proof
+  now gates every CompileFnHandlerStrict slot in RecordCallOperands (on the
+  unknown-provenance decline's own site — the site census stays 91): a
+  factory's capturing closure reached behave and `FnUtil.compose` as a
+  ClosurePayload and raised where the interpreter answered. And behave's
+  record arms DynEnv when the stored body names something — its deferred
+  run resolves names in the interpreter's dynamic scope. A first cut armed
+  DynEnv for every behave record and declined three `behave` × factory
+  variants; the proof's known fn lets pure-data bodies skip it.
+- **`fnsig` × module-export** (basic `defFormRun`, core
+  `EmitRecorder.NoteRuntimeDefDispatch`, compiler
+  `NoteRuntimeDefDispatch` / `runtimeDefPartsBlocked`). `def T fnsig M.sg`
+  mints its type from a list that exists only at run time. The check pass
+  mints nothing: the def form binds nothing on the check engine and arms
+  unpack's run-time-bind latch, so its dispatch is emitted as the plain
+  CALL_NATIVE it is and the run constructs and installs T exactly as the
+  interpreter does. A later static read of T is the pass's undefined-word
+  finding (declines; `is T` never reads a guessed node). Fences, each
+  measured as a divergence before it: only a name the check engine has
+  never bound and whose part no type registered; root stream only (inside
+  a unit the install outlives the frame the interpreter unwinds it with, so
+  the dispatch declines as the compile-time word it is);
+  and Finalize declines when a type of the same name part was registered
+  later in the pass (the replay rolls name parts back never, so the run's
+  front-door install would meet a conflict the interpreter does not).
+
+**Pins.** lang `sweep_cells_behave_fnsig_test.go`
+(`TestBehaveOverContainerMemberCompiles`,
+`TestStrictStoreSlotRefusesACompiledClosure`,
+`TestFnsigRuntimeSpecListCompiles`, each with its fences, read from the
+compile pass alone); compiler `stored_fn_proof_test.go`; core
+`recorder_stage5_test.go` (the inactive seam). Docs: NUR.md (NUR209), the
+sweep ceilings, SWEEP_STATUS.md refreshed.

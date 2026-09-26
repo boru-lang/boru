@@ -613,6 +613,13 @@ const (
 	// sub-run resolves names and `args` exactly as it does under the
 	// interpreter. The result is marked variadic (the runtime count is the
 	// body's own), so only variadic-absorbing positions consume it.
+	//
+	// A STORE-FN word declares it too (`behave`, 2026-09-26): it stores a fn
+	// and runs the fn's body LATER against the registry, so the same
+	// name-environment proviso holds. Its record arms DynEnv when the stored
+	// body names something, and a GRADUAL fn operand whose payload the
+	// recorder proves records as a poly re-match (compiler recordStoredFnDyn)
+	// — 0 results, nothing variadic.
 	CompileDynBody
 	// CompileStoresBody marks a word that STORES a NoEvalArgs CODE-BODY list to run
 	// LATER on its own registry — `spawn`'s process body. Like CompileStoresFn but
