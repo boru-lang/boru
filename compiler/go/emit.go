@@ -954,6 +954,24 @@ type EmitState struct {
 	// MarkUncompilable site (the failure-site census counts that layer,
 	// and its count only falls).
 	armReadCompileFailure string
+	// keptDefsWord / keptDefsLevel are the KEPT-DEFS LATCH (kept_defs.go,
+	// NUR210): armed when a keep-defs word (`do`, `each`: a CallableSpec
+	// BodyOnceKeepsDefs / BodyMultiRunKeepsDefs) runs a COMPUTED code body —
+	// tokens that exist only at run time, whose defs and undefs the
+	// interpreter keeps in the enclosing scope while the check model, which
+	// never saw them, keeps the bindings from before. While armed, every
+	// observer of a binding recorded after it (a def read, a user fn call, a
+	// fn-value apply) poisons armReadCompileFailure. keptDefsLevel is the
+	// unit depth (len(units)) it was armed at, 0 when disarmed; a unit's
+	// finish hands a latch armed inside it to the unit (runsKeptDefs) and
+	// disarms it, so the latch re-arms where that unit RUNS — after a call of
+	// it — never at its analysis.
+	keptDefsWord  string
+	keptDefsLevel int
+	// keptDefsUnitWord is the word of the first unit that runs a kept-defs
+	// body (fnUnitRec.runsKeptDefs); non-empty, any event that may invoke
+	// such a unit indirectly re-arms the latch (keptDefsInvoker).
+	keptDefsUnitWord string
 	// storedGradualDepth marks a DETACHED stamp compile (StampDetachedFn
 	// sets it on the fork's private EmitState). While non-zero,
 	// buildFnBodyReturnsFn generalises an Any arg into an Any param as a
@@ -1746,6 +1764,17 @@ type fnUnitRec struct {
 	numLoc    int
 	pos       core.SrcPos
 	finished  bool
+	// runsKeptDefs names the keep-defs word whose COMPUTED body this unit
+	// runs, directly or through a unit it calls (kept_defs.go, NUR210): a
+	// run of the unit may define or undefine any name, so the kept-defs
+	// latch re-arms wherever the unit runs. "" for every other unit.
+	runsKeptDefs string
+	// calledOpen marks a unit a CALL_USER reached while it was still being
+	// recorded (recursion), and openCallObserver the first binding observer
+	// recorded after such a call: whether the call ran a kept-defs body is
+	// known only at the unit's finish, which then poisons for it.
+	calledOpen       bool
+	openCallObserver string
 	// inShape is the closure input convention recorded for a closure body unit
 	// (ClosureInValue by default; ClosureInKeyVal for a map-iteration lambda).
 	// Copied into CompiledFn.InShape at lowering. Zero (value) for user fns.
@@ -2811,6 +2840,7 @@ func (es *EmitState) appendEvent(ev EmitEvent) int {
 	}
 	es.seq++
 	ev.seq = es.seq
+	es.keptDefsEvent(&ev)
 	es.frames[n] = append(es.frames[n], ev)
 	return ev.seq
 }
@@ -6523,6 +6553,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 		return -1, nil, false
 	}
 	if u, hit := es.fnUnits[key]; hit && !es.unitStale(u) {
+		es.keptDefsHandedOn(es.fnRecs[u], len(es.units))
 		return u, nil, true
 	}
 	// A miss, or a STALE hit: the memoised unit baked a binding this call
@@ -6907,6 +6938,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 		}
 		rec.numLoc = u.numLocals
 		rec.finished = true
+		es.finishKeptDefs(rec)
 		es.units = es.units[:len(es.units)-1]
 		es.unitNames = es.unitNames[:len(es.unitNames)-1]
 		es.openUnitRecs = es.openUnitRecs[:len(es.openUnitRecs)-1]
@@ -9795,6 +9827,7 @@ func (es *EmitState) NoteDefRead(id, name string) {
 		return
 	}
 	es.noteMayBeFnRead(id, name)
+	es.noteKeptDefsObserver("the read of `" + name + "`")
 	if es.defReads == nil {
 		es.defReads = map[string]string{}
 	}

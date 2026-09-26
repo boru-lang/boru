@@ -58,6 +58,7 @@ var eventKindSites = map[string]string{
 	"computeLeaverPrefix":     "lower.go — the prefix a diverging arm leaves",
 	"seqFnDef":                "stored_fn_proof.go — does the event's single result arrive as an interpreter fn value at a strict store-fn slot? (default: unproven, so the slot declines — sound, never a closure handed to a validating handler)",
 	"fragCanCarry":            "branch_carried.go — does the arm carry a name's binding out on every path? (default: an unnamed kind neither binds nor carries, so the name is NOT seated and its read declines as before — sound, never a stale slot)",
+	"keptDefsInvoker":         "kept_defs.go — may the event RUN a unit that runs a computed keep-defs body? (default: runs nothing — a new kind that can apply a fn value must be named here, or the kept-defs latch misses the run, NUR210)",
 }
 
 // operandKindSites key on OPERAND kind (opConst / opLocal / opEvent / …), a
@@ -77,6 +78,8 @@ var operandKindSites = map[string]bool{
 	"residualReadHazard":    true,
 	"provenFnDef":           true,
 	"strictFnOperandProven": true,
+	"operandMayInvoke":      true,
+	"provenBodyTokens":      true,
 }
 
 // evKinds is every event kind, with the name a failure should print.

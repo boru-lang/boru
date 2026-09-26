@@ -2581,6 +2581,16 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 					return msgs.variadic
 				}
 			}
+			// A COMPUTED `do` body's run (a dyn-body region that may leave a
+			// callable) seats only as the residual's LAST entries — the
+			// program residual included, which otherwise absorbs a region
+			// anywhere: the interpreter re-steps a fn value the handler
+			// hands back, and it collects what follows it FORWARD (`do (mk)
+			// 5` over `[g/v]` is g applied to 5, where the seated run leaves
+			// `fn g 5`).
+			if lw.dynRegionMayBeFn(op.idx) && !eventRunLast(ops[i:], op.idx) {
+				return dynRegionNotLast
+			}
 			if len(tail) > 0 {
 				return msgs.aboveLiteral
 			}
@@ -3109,6 +3119,21 @@ func eventRunThenInert(ops []EmitOperand, idx int) bool {
 	return true
 }
 
+// dynRegionNotLast is seatResults' decline for a computed `do` body's run
+// with residual entries above it (dynRegionMayBeFn).
+const dynRegionNotLast = "do: a computed body's values seat only as the residual's last entries — the interpreter re-steps a fn value they may hold over what follows (NUR210)"
+
+// eventRunLast reports whether ops is exactly one contiguous run of event
+// idx's results, in result order, and nothing after it.
+func eventRunLast(ops []EmitOperand, idx int) bool {
+	for n, op := range ops {
+		if op.kind != opEvent || op.idx != idx || op.resIdx != n {
+			return false
+		}
+	}
+	return true
+}
+
 // reconcileResults arranges a unit's N result operands (bottom→top) as the
 // final stack, ready for a RET. who prefixes the compile failure reason ("fn name").
 // This is the fn-unit caller of the shared seatResults primitive — it rejects a
@@ -3156,6 +3181,17 @@ func (lw *lowerer) reconcileResults(ops []EmitOperand, who string, noContract, v
 		return ""
 	}
 	return reason
+}
+
+// dynRegionMayBeFn reports whether seq is a dyn-body dispatch recorded as a
+// variadic REGION whose run may leave a callable (eventFlags.regionMayBeFn):
+// a computed `do` body, whose tokens the recorder never saw.
+func (lw *lowerer) dynRegionMayBeFn(seq int) bool {
+	if lw.es == nil {
+		return false
+	}
+	fi := lw.es.eventInfo[seq]
+	return fi.dynBodyResult && fi.regionMayBeFn
 }
 
 // opsHaveVariadicResult reports whether any operand names an event whose
