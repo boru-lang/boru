@@ -13322,6 +13322,23 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR064 closed — add patterns bind as receive clauses do (2026-09-26)
+
+**The record.** A `receive` clause's pattern routes on its scalar fields and
+binds its `name:Type` fields into the body; the design had a service `add`
+pattern route only, and the code in fact refused a typed field outright. The
+maintainer deferred the choice to when both modules were built — they are.
+
+**The fix.** One clause pattern (`splitClausePattern`), one guard (a routed
+handler's slots decide whether it takes the request; a declining one falls
+to a slot-free catch-all or raises `no_match`), one binding (frame bindings
+around the clause's code — the `receive` body, the `add` handler). Layers
+keep their own slots. The checker analyses the handler's fn literal before
+`add` names the slots, so `add`'s check half notes each slot-reading token
+(`SlotBoundReads`, name and position) and the undefined-word rescue excuses
+exactly those. Both lanes agree on every pinned shape; the handler's stamp is
+unaffected (a body the stamp declines interprets, per body).
+
 ## NUR228 closed — the gradual window declines (2026-09-26)
 
 **The divergence.** Found probing `send` beside a `receive` (NUR064):

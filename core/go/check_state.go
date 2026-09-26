@@ -183,6 +183,17 @@ type CheckState struct {
 	// does for a Go-side Maker. Reset per pass.
 	BehaveMakers map[*Type]bool
 
+	// SlotBoundReads are the word tokens, by name and position, that a
+	// pattern's binding slot binds for the handler whose body holds them
+	// (NUR064): a service `add` over `{op:"create" text:String}` binds
+	// `text` for its handler's run, as a `receive` clause binds it for its
+	// body. The handler's body is analysed where the fn literal is built,
+	// before `add` names its slots, so the reads report undefined_word; the
+	// word's check-mode half notes them here and RescueForwardRefDiagnostics
+	// drops exactly those. Keyed by position as well as name, so no other
+	// read of the name is excused. Reset per pass.
+	SlotBoundReads map[SlotRead]bool
+
 	// FnNameInflight counts, per fn NAME, how many of its body analyses
 	// are on the stack. A recursive self-call with a DIFFERENT arg shape
 	// has a different FnInflight key, so it does not bail — it re-analyses
@@ -1053,6 +1064,7 @@ func (c *CheckState) Clone() *CheckState {
 	cp.FnInflight = cloneMap(c.FnInflight)
 	cp.FnBodyChecked = cloneMap(c.FnBodyChecked)
 	cp.BehaveMakers = cloneMap(c.BehaveMakers)
+	cp.SlotBoundReads = cloneMap(c.SlotBoundReads)
 	if c.PendingFnBodies != nil {
 		cp.PendingFnBodies = append([]PendingFnBody(nil), c.PendingFnBodies...)
 	}
@@ -1145,6 +1157,7 @@ func (c *CheckState) Begin() func() {
 	c.FnBodyChecked = nil
 	c.PendingFnBodies = nil
 	c.BehaveMakers = nil
+	c.SlotBoundReads = nil
 	c.Emit = TheInactiveEmit
 	c.CodeEffectDepth = 0
 	c.FnBodyDepth = 0
@@ -1224,6 +1237,26 @@ func (c *CheckState) NoteBehaveMaker(t *Type) {
 		c.BehaveMakers = map[*Type]bool{}
 	}
 	c.BehaveMakers[t] = true
+}
+
+// SlotRead names one word token a binding slot binds: the slot's name and
+// the token's source position (SlotBoundReads).
+type SlotRead struct {
+	Name     string
+	Row, Col int
+}
+
+// NoteSlotBoundRead records that the word token at pos reads a name a
+// binding slot binds for the code that holds it (SlotBoundReads). A no-op
+// outside check mode.
+func (c *CheckState) NoteSlotBoundRead(name string, pos SrcPos) {
+	if c == nil || !c.Mode || name == "" {
+		return
+	}
+	if c.SlotBoundReads == nil {
+		c.SlotBoundReads = map[SlotRead]bool{}
+	}
+	c.SlotBoundReads[SlotRead{Name: name, Row: pos.Row, Col: pos.Col}] = true
 }
 
 // SuppressBindLedger marks a snapshot/restore-truncated evaluation region:
@@ -1968,6 +2001,11 @@ func (r *Registry) RescueForwardRefDiagnostics() {
 			// Module-scope forward reference: the name has a binding by end of
 			// pass (recursion, mutual recursion, a later top-level def).
 			if _, bound := r.Defs.Top(d.Word); bound || r.Lookup(d.Word) != nil {
+				continue
+			}
+			// A read a pattern's binding slot binds for the code holding it
+			// (a service handler's body, NUR064) — that exact token only.
+			if r.Check.SlotBoundReads[SlotRead{Name: d.Word, Row: d.Row, Col: d.Col}] {
 				continue
 			}
 			// Dynamic-scope reference: the name lives only in a per-call frame

@@ -144,14 +144,18 @@ processes **one request at a time** (in-process: the caller's goroutine; served:
 the process's single goroutine — the gen_server guarantee, no locks). Reuses the
 existing `patrunAddHandler` registration shape.
 
-> **An `add` pattern routes; it does not bind.** Unlike a `receive` clause
-> (`PROCESSES.0.md` §3), where `name:Type` fields are typed binding slots parsed
-> by `ParseFnParams`, an `add` pattern is **scalar-tag routing only** — it picks
-> *which* handler runs and binds nothing. The whole request arrives as `req`, and
-> destructuring its payload (`req.text`, `req.id`) is the handler's job. So
-> `add {op:"create" text:String} …` does **not** bind `text`; write
-> `add {op:"create"} [ [req state] => [ … req.text … ] ]`. (Binding slots are a
-> `receive` feature, not an `add` feature — see `PROCESSES.0.md` §3.)
+> **An `add` pattern routes and binds, as a `receive` clause does.** The
+> pattern is the clause pattern of `PROCESSES.0.md` §3 (NUR064, 2026-09-26):
+> scalar fields are routing tags, `name:Type` fields are binding slots. Routing
+> picks the handler by its tags; its slots then decide whether it takes the
+> request — a declining one falls back to a slot-free catch-all `add {} …`, or
+> the call raises `no_match` — and the handler runs with each slot's field
+> bound by name. The whole request still arrives as `req`. So
+> `add {op:"create" text:String} [ [req state] => [ … text … ] ]` reads `text`
+> directly (and `req.text` still works). A pattern's identity for layering is
+> its routing tags; each stacked handler keeps its own slots, bound from the
+> request it receives — a request `prior` passes on without a slot's field
+> reaches no handler (`no_match`).
 
 ### `call` (core) — synchronous request → reply
 

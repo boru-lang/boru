@@ -181,7 +181,7 @@ keep the two in sync in the same commit.
 | [NUR076](#nur076) | FIXED 2026-09-26 (the check pass notes a behave make — the handoff log's entry of that date): `behave`'s check-mode half (its ReturnsFn) validates the call as the handler does and, for the `make` slot, notes the target in the pass's own state (`CheckState.BehaveMakers`), which `HasMaker` reads — so a construction after the call skips the schema validation the type's own constructor replaces, exactly as a Go-side Maker's does; one before it validates, as the run has it. Nothing is installed on the type, so no user body runs during analysis; the other seven slots change only what a program computes, which analysis does not evaluate. `def P class {a: Integer}  behave make/q (fn Any P [make P {a: 42}])  make P {bogus: 1}` checks clean and compiles (Class/P{a:42} on both lanes). The original text: A `behave`-installed capability is invisible to check mode, because `behave` does not run there — for `make` that turns a working program into a check FAILURE: a type whose Maker ignores the schema still has the schema's unknown/missing-field rules applied statically | NUR056's fix, 2026-08-17 (flagged by the PR #379 review, Codex P1) |
 | [NUR060](#nur060) | The parser twins disagree on open-input sources beyond the corpus | PR #337 parity-probe sweep (flagged for NUR by Codex P1) |
 | [NUR063](#nur063) | Seven self-knowledge words are proposed to dispatch from two module surfaces (`boru:debug` and `boru:scry`) — VERDICT 2026-08-15: `boru:scry` canonical, the `boru:debug` copies frozen behind shared handlers and deprecated on a stated timeline | design/BORU-SCRY.0.md §6 (flagged for NUR by PR #344 Codex P1) |
-| [NUR064](#nur064) | Pattern clauses route-and-bind in `receive` but route-only in `add` — VERDICT 2026-08-15: defer to the processes/services design line, to be decided when those modules are built | `design/STATE-MACHINES.0.md` §8 (flagged for NUR by the PR #345 review, Codex P1) |
+| [NUR064](#nur064) | FIXED 2026-09-26 (add patterns bind as receive clauses do — the handoff log's entry of that date): a service `add` pattern is read by the one clause-pattern splitter `receive` uses (`splitClausePattern`) — scalar fields route, `name:Type` fields are binding slots that decide whether the routed handler takes the request (falling back to a slot-free catch-all, else `no_match`) and are bound by name around the handler's run; `add`'s check-mode half notes the handler body's reads of a slot so the undefined-word rescue excuses exactly those tokens. The original text: Pattern clauses route-and-bind in `receive` but route-only in `add` — VERDICT 2026-08-15: defer to the processes/services design line, to be decided when those modules are built | `design/STATE-MACHINES.0.md` §8 (flagged for NUR by the PR #345 review, Codex P1) |
 | [NUR065](#nur065) | RESOLVED 2026-09-26 (one set of guarantees for both classifier spellings — the handoff log's entry of that date): open question #7 of design/STATE-MACHINES.0.md is decided in the design, `boru:state` being unbuilt — the fn form declares its output alphabet (`classify: {fn: … yields: […]}`) and returns a class ATOM the machine wraps in the table form's frozen `{event raw}` payload, so alphabet closure (define-time `state_unknown_name` on `yields:`), payload shape and the `state_bad_class` / `state_class_gap` / `state_bad_event` diagnostics are one rule for both; only the mapping inside the fn stays opaque. The original text: Two spellings of the classifier role get different static guarantees: `classes:` is alphabet-closed and diagnosed, `classify:` is neither — VERDICT 2026-08-15: defer to the state-machine design line (its open question #7) | `design/STATE-MACHINES.0.md` §3.6 (flagged for NUR by the PR #352 review, Codex P1) |
 | [NUR074](#nur074) | RESOLVED 2026-09-26 (the parameter name is part of the value — the handoff log's entry of that date): not a divergence — the record's premise, that two functions differing only in a parameter name are behaviourally indistinguishable, is false in boru and was refuted by measurement: a parameter is a frame binding on the def stack, visible to every function the body reaches (FUNCTION-VALUE-SCOPE §7.4), so `def x 1  def g fn [[] [Any] [x]]` then `def f fn [[x:Any] [Any] [g]]  f 5` answers 5 and its `y`-named twin 1, on both lanes. canon rendering the name and `deq` comparing it is the uniform answer; the content-addressing note's de-naming step (§4.2 step 3) is withdrawn as unsound. The original text: `canon` renders a function's PARAMETER names, so alpha-equivalent functions render — and digest — differently; NUR031's planned fix (render the anonymous fn literal) does not reach this | `design/legacy/unison-hash-identity-probe.0.ignore` P4 (flagged for NUR by the PR #376 review, Codex P1) |
 | [NUR077](#nur077) | FIXED 2026-09-25 (the Apply op — the handoff log's entry of that date): `StackForm`'s op vocabulary can CALL a word by name but cannot APPLY a function value, so an inline lambda or a fn read out of a container has no faithful representation — `Call{Name, Arity}` re-invokes by name and does not consume a receiver. `Eval` now refuses those forms (`ErrUnnamedApply`) rather than replaying them to a different answer — VERDICT 2026-08-17: resolve by fix, a NEW dedicated Apply Op (arity-carrying, consumes the value, seamed at `execFnDefLiteral`; `DoEval` stays reserved), after the three prerequisite recorder/gate defects are fixed | the `OnCall` frame-skeleton over-count fix, 2026-08-16 |
@@ -5220,13 +5220,52 @@ notice in place.
 
 ## NUR064 — Pattern clauses route-and-bind in `receive` but route-only in `add` {#nur064}
 
-**Status:** Pending · **Recorded:** 2026-08-12 · **Surfaced by:**
-`design/STATE-MACHINES.0.md` §8 (which names the asymmetry while declining to
-solve it there); flagged for this register by the PR #345 review (Codex P1).
-The split itself was designed deliberately in `PROCESSES.0.md` §3 and
-`SERVICES.0.md` §1 but never recorded here.
+**Status:** FIXED 2026-09-26 (add patterns bind as receive clauses do —
+the handoff log's entry of that date) · **Recorded:** 2026-08-12 ·
+**Surfaced by:** `design/STATE-MACHINES.0.md` §8 (which names the asymmetry
+while declining to solve it there); flagged for this register by the PR #345
+review (Codex P1). The split itself was designed deliberately in
+`PROCESSES.0.md` §3 and `SERVICES.0.md` §1 but never recorded here.
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
+
+**The fix (2026-09-26).** The verdict's condition holds: both modules are
+built (`lang/go/native/native_process.go`, `native_service.go`), so the
+design line decides on implementation experience — and it generalises the
+binding slots, the resolution that keeps "match a message" one thing. The
+implementation had drifted from both design texts: `add` did not silently
+ignore a `name:Type` field, it REFUSED it ("pattern value for "text" must be
+a Scalar, got Scalar").
+
+- One reading: `splitClausePattern(r, pat, op, code)` splits a pattern into
+  routing tags and binding slots for `receive` (raw, a slot's type spelled
+  as a word) and `add` (evaluated, a type literal) alike, with one error
+  message shape.
+- One guard: routing picks the handler by its tags; its slots then decide
+  whether it takes the request (`bindSlots`). A declining one falls back to
+  a slot-free catch-all (`add {} …`, a `{}` clause), else the call raises
+  `no_match` "routed to a handler but failed its typed binding slots" — the
+  `receive` text.
+- One binding: the slots' fields are frame bindings around the code the
+  clause runs (`withSlotBindings`) — a `receive` body, an `add` handler (and
+  the fns it calls or builds, by dynamic scope); `req` still carries the
+  whole request.
+- Layering keeps its identity by routing tags: each stacked handler carries
+  its own slots, bound from the request it receives, so a request `prior`
+  passes on without a lower handler's field reaches no handler (`no_match`).
+- The check: the handler's body is analysed where its fn literal is built,
+  before `add` names the slots, so `add`'s check-mode half
+  (`serviceAddCheck`) notes the body's word tokens that read a slot
+  (`CheckState.SlotBoundReads`, by name AND position), and
+  `RescueForwardRefDiagnostics` excuses exactly those — a misspelt read, or
+  the name read in code no slot binds, stays `undefined_word`.
+
+Raw patrun (`add {pattern} value patrun`, `find`) stays scalar-only: it
+stores values, not code, so there is nothing to bind into. Pinned: lang
+`TestNUR064AddPatternBindsItsSlots`, `TestNUR064DecliningSlotsRaiseNoMatch`
+(both lanes, with the `receive` twins), `TestNUR064SlotReadsPassTheCheck`;
+native `TestServiceCoverTopSlotsOfAnEmptyStack`. `PROCESSES.0.md` §3,
+`SERVICES.0.md` §1 and `STATE-MACHINES.0.md` §8 state the one semantics.
 
 **Rule:** one pattern-clause semantics per matcher. The service `add` and the
 process `receive` route through the same patrun matcher, and "match a message"

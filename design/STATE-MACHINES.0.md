@@ -1011,11 +1011,12 @@ core parser first"). Candidates, with verdicts:
    it plausible and value semantics makes it sound-ish without linearity, but
    it should be driven by evidence from `state_*` diagnostics in use, not
    designed speculatively.
-5. **Generalizing `receive`-style binding slots** to `add`/machine clauses
-   (healing the route-only vs route+bind asymmetry) — **out of scope here**;
-   it belongs to the processes/services design line. The asymmetry itself is
-   now recorded in the register as **NUR064** (Pending), so it cannot be
-   silently baselined while that line decides.
+5. **Binding slots in machine clauses.** The route-only vs route+bind
+   asymmetry between `add` and `receive` is healed (**NUR064**, resolved
+   2026-09-26): a service `add` pattern is the same two-layer clause pattern
+   a `receive` clause is (`PROCESSES.0.md` §3), so a machine clause built
+   over either inherits one semantics. Whether machine clauses take binding
+   slots at all is this document's own open question, not an asymmetry.
 
 ## 9. Gap analysis
 

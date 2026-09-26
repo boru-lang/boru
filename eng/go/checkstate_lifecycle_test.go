@@ -28,6 +28,7 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"FnBodyChecked":   true,
 		"PendingFnBodies": true,
 		"BehaveMakers":    true,
+		"SlotBoundReads":  true,
 		"CaughtBodyDepth": true, "RaiseWatches": true, "NestedBodyDepth": true, "CondBodyDepth": true,
 		"RolledBackBodyDepth":      true,
 		"SpecBaselines":            true,
