@@ -13844,9 +13844,11 @@ interpreter's own machinery. A list literal opens an outer mark first and
 collects the island's results. A list over a run the island cannot seat, in a
 fn body or through a branch, declines. The trailing apply no longer rotates a
 run, and NUR067's prefix seating, which does not re-step, stands aside for
-one. A run is a dyn-body event whose results ARE its body's residual
-(`eventFlags.dynBodyRun`, `do`'s list form). `each` and `fold` over a dyn body
-answer one value and keep their layouts. Pinned by lang
+one. A run is a dyn-body event over a COMPUTED body whose results ARE its
+body's residual (`eventFlags.dynBodyRun`, `do`'s list form). `each` and
+`fold` over a dyn body answer one value and keep their layouts. A literal
+body the backstop took was modelled exactly by the pass and keeps its
+layout too (fn-value.tsv L332 and L333 stay native). Pinned by lang
 `TestNUR210ComputedDoRunBeneathAndCollected` and compiler's
 `prefix_island_test.go`.
 
@@ -13894,9 +13896,14 @@ the body finds nothing beneath, so it raises. The check pass now records how
 many of the window's operands were written (`DispatchSpec.NFwd`). A window
 that has any is planned the way `DISPATCH_GENERIC` plans one: the stack run,
 the word, then the written operands, through `core.PlanMatch` over the
-region host. A match defers, as before. A plan the host cannot run (a written
-template string it would have to evaluate) defers too. No match raises the
-interpreter's diagnostic, rendered over the written tuple. Pinned by lang
+region host. The planned signature is then matched STRICTLY over the values
+at its positions, as the interpreter's dispatch matches what arrives. The
+plan alone takes a written record by its base, so `use (mk)` over a refined
+record another refinement's param refuses (record.tsv L155) planned a
+match the dispatch raises on. A match defers, as before. A plan the host
+cannot run (a written template string it would have to evaluate) defers
+too. No match raises the interpreter's diagnostic, rendered over the
+written tuple. Pinned by lang
 `TestNUR211StackFormCountOverAComputedBody`, which covers both witnesses and
 `3 each (mk)` on both lanes with the written forms as negatives, and by eng
 `TestDispatchRematchPlansTheWrittenSplit`.

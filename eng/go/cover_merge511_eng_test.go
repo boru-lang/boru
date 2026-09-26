@@ -120,3 +120,28 @@ func TestDispatchRematchPlansTheWrittenSplit(t *testing.T) {
 		t.Fatalf("an unplannable window defers, got %v", err)
 	}
 }
+
+// The split rematch's strict re-match: the plan claims positions over the
+// written operands, and the planned signature is then matched strictly
+// over the values at them, as the interpreter's dispatch matches what
+// arrives (record.tsv L155 is the refusal the plan alone missed: a refined
+// record another refinement's param refuses). Here a written 3 against a
+// pattern of 5 matches nothing, and a written 5 matches.
+func TestDispatchRematchSplitMatchesStrictly(t *testing.T) {
+	r := newTestRegistry(t)
+	impl := core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+		return nil, nil
+	})
+	r.Register("zzpat", core.Signature{Args: []*core.Type{core.TInteger}, Patterns: map[int]core.Value{0: core.NewInteger(5)}, BarrierPos: 1, Impl: impl})
+	if err := r.Err(); err != nil {
+		t.Fatal(err)
+	}
+	vc := &vmContext{r: r}
+	fn := r.Lookup("zzpat")
+	if m, planned := vc.rematchSplitMatches(&compiler.DispatchSpec{Word: "zzpat", NArgs: 1, NFwd: 1}, fn, []core.Value{core.NewInteger(3)}); m || !planned {
+		t.Errorf("a written 3 against a pattern of 5 is no match: matched=%v planned=%v", m, planned)
+	}
+	if m, planned := vc.rematchSplitMatches(&compiler.DispatchSpec{Word: "zzpat", NArgs: 1, NFwd: 1}, fn, []core.Value{core.NewInteger(5)}); !m || !planned {
+		t.Errorf("a written 5 matches: matched=%v planned=%v", m, planned)
+	}
+}

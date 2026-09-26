@@ -45,9 +45,13 @@ top under the 9, and `MAKE_LIST` counted one element.
   longer rotates a run, so an unplanned one declines as a result above a
   literal.
 - **What is a run.** It is a new record-time flag, `eventFlags.dynBodyRun`:
-  a dyn-body event whose results ARE its body's residual (`do`'s list form,
-  whose `CallableSpec` returns the whole residual and leaks its defs). The
-  backstop's variadic mark is wider. `each` and `fold` over a dyn body
+  a dyn-body event over a COMPUTED body whose results ARE its body's
+  residual (`do`'s list form, whose `CallableSpec` returns the whole residual
+  and leaks its defs). A literal body the backstop took was modelled exactly
+  by the pass. gate23 caught the first cut islanding fn-value.tsv L332 and
+  L333 (`[(do [f/v])] join ','`), which were right natively: the entry
+  censuses rose 186 → 189 and 39 → 41. The backstop's variadic mark is
+  wider still. `each` and `fold` over a dyn body
   answer one value, and keying on that mark declined
   `[(each hold.f [1 2]) (each hold.f [3 4])]`, which compiled correctly
   before. The ledger caught it (339 against 338).
@@ -89,10 +93,15 @@ the count to the recorder (`RecordDispatchRematchValues`'s `nFwd`). The
 count rides as `DispatchSpec.NFwd`. With any written operand, the VM plans
 the window as `DISPATCH_GENERIC` does: the stack run bottom up, the word,
 then the written operands, through `core.PlanMatch` over the region host
-(`rematchSplitMatches`). A match defers, as before. A plan the host cannot
-run (a written template string it would have to evaluate) defers too. No
-match raises the diagnostic the rematch always built over the written
-tuple. A window with no written operand keeps the flat match.
+(`rematchSplitMatches`). The planned signature is then matched strictly
+over the values at its positions, because the plan alone is optimistic.
+It takes a written record by its base, and gate23 caught the first cut
+deferring record.tsv L155 (`use (mk)`, a refined record another
+refinement's param refuses) where the flat match had raised. A match
+defers, as before. A plan the host cannot run (a written template string
+it would have to evaluate) defers too. No match raises the diagnostic the
+rematch always built over the written tuple. A window with no written
+operand keeps the flat match.
 
 **Pins.** lang `TestNUR211StackFormCountOverAComputedBody`: both witnesses
 and `3 each (mk)` on both lanes with the interpreter's `signature_error`,

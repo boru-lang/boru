@@ -186,12 +186,13 @@ type eventFlags struct {
 	// whose 0-value runtime shape the interpreter tolerates and fixed
 	// consumers must keep declining.
 	dynBodyResult bool
-	// dynBodyRun marks a dyn-body event whose results ARE its body's
-	// residual, spliced back and re-stepped by the interpreter (`do`'s
-	// list form: CallableSpec.BodyOut is the whole residual and the body's
-	// defs leak). Its count is the run's; a word that answers one value
-	// over a dyn body (each, fold …) is not one. The prefix island
-	// (prefix_island.go, NUR210) re-steps it.
+	// dynBodyRun marks a dyn-body event over a COMPUTED body whose results
+	// ARE its body's residual, spliced back and re-stepped by the
+	// interpreter (`do`'s list form: CallableSpec.BodyOut is the whole
+	// residual and the body's defs leak). Its count is the run's; a word
+	// that answers one value over a dyn body (each, fold …) is not one, and
+	// a literal body the backstop took was modelled exactly by the pass.
+	// The prefix island (prefix_island.go, NUR210) re-steps it.
 	dynBodyRun bool
 	// callVariadic marks a CALL event whose variadicResult stands for a
 	// runtime-variable count of REAL stack values — a fallible multi-value

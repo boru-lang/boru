@@ -939,8 +939,11 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	fixedValueEval := core.IsConcrete(body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
 	if !fixedValueEval {
 		f.variadicResult = true
+		// A COMPUTED body's run (NUR210): a literal body the backstop took
+		// was modelled exactly by the pass, and its layouts stand.
 		cs := sig.Callable
-		f.dynBodyRun = cs != nil && cs.BodyOut == core.BodyOutResidual && cs.BodyOnceKeepsDefs
+		f.dynBodyRun = cs != nil && cs.BodyOut == core.BodyOutResidual && cs.BodyOnceKeepsDefs &&
+			(!core.IsConcrete(body) || body.Dynamic)
 	}
 	// The dyn-body backstop already marks every code-body result variadic
 	// above; consume the ReturnsFn's catch-variadic latch so it cannot leak

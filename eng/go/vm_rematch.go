@@ -63,9 +63,11 @@ func (vc *vmContext) dispatchRematch(ds *compiler.DispatchSpec, stack []core.Val
 // order, so `3 for (mk)` is the tape `3 for [i]`: for's forward phase stops
 // at the List where a count goes, the stack's 3 fills the count, and the
 // body finds nothing beneath — no match, the interpreter's raise. The flat
-// match read it as `for 3 [i]` and deferred. planned is false when the walk
-// needs an evaluation this host cannot perform; the caller then defers, as
-// it does on a match.
+// match read it as `for 3 [i]` and deferred. The planned signature is then
+// matched strictly over the values at its positions, as the interpreter's
+// dispatch matches what arrives. planned is false when the walk needs an
+// evaluation this host cannot perform; the caller then defers, as it does
+// on a match.
 func (vc *vmContext) rematchSplitMatches(ds *compiler.DispatchSpec, fn *core.FnDefInfo, window []core.Value) (matched, planned bool) {
 	nStack := ds.NArgs - ds.NFwd
 	toks := make([]core.Value, 0, ds.NArgs+1)
@@ -79,6 +81,19 @@ func (vc *vmContext) rematchSplitMatches(ds *compiler.DispatchSpec, fn *core.FnD
 	if err := h.Collected(core.CollectForward(h, fn, w, nStack+1)); err != nil {
 		return false, false
 	}
-	sig, _, _ := core.PlanMatch(h, h.win, vc.r, fn, w, toks[:nStack], nStack, false, false, false)
-	return sig != nil && !sig.Fallback, true
+	sig, positions, _ := core.PlanMatch(h, h.win, vc.r, fn, w, toks[:nStack], nStack, false, false, false)
+	if sig == nil || sig.Fallback {
+		return false, true
+	}
+	// The plan claims positions; the interpreter's dispatch then matches the
+	// values that arrive there STRICTLY, and only that is a match. The plan
+	// takes a written record by its base, so `use (mk)` over a refined
+	// record another refinement's param refuses planned a match that the
+	// interpreter's dispatch raises on (record.tsv L155).
+	args := make([]core.Value, len(positions))
+	for i, at := range positions {
+		args[i] = h.win.At(at)
+	}
+	mr := core.MatchSignature([]core.Signature{*sig}, args, core.WordInfo{ArgCount: -1})
+	return mr != nil, true
 }
