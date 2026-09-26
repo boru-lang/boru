@@ -54,6 +54,13 @@ func BuildDebugModule(parent *native.Registry) (native.ModuleDesc, error) {
 	return moduleDesc(parent, "Debug", subReg, exports), nil
 }
 
+// debugSelf builds boru:debug's copies of the seven self-knowledge words
+// (words, defs, modules, sig, body, deps, shape) from the constructor
+// boru:scry — their canonical home — uses, so the two surfaces cannot fork.
+// The copies are frozen at these seven and deprecated (NUR063): new
+// self-knowledge lands in boru:scry only.
+var debugSelf = selfKnowledge{prefix: "debug", ns: "Debug", code: "debug_error"}
+
 // debugExportName strips the internal "debug-" prefix off an inner native
 // name to produce the dotted export key (debug-tap -> "tap").
 func debugExportName(internal string) string {
@@ -193,33 +200,7 @@ func debugNatives() []native.NativeFunc {
 				Impl:       native.Go(debugParseHandler),
 			}},
 		},
-		{
-			// The distinct word names a quoted body references.
-			Name: "debug-deps",
-			Signatures: []native.Signature{{
-				Args:       []*native.Type{native.TList},
-				Returns:    []*native.Type{native.TList},
-				NoEvalArgs: map[int]bool{0: true},
-				BarrierPos: -1,
-				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-					body, err := native.RequireConcreteList(args[0], "Debug.deps")
-					if err != nil {
-						return nil, err
-					}
-					seen := map[string]bool{}
-					var names []string
-					native.WalkBodyWords(body.Slice(), func(w native.WordInfo, _ native.Value) {
-						if w.Name == "" || seen[w.Name] {
-							return
-						}
-						seen[w.Name] = true
-						names = append(names, w.Name)
-					})
-					sort.Strings(names)
-					return []native.Value{stringsToList(names)}, nil
-				}),
-			}},
-		},
+		debugSelf.deps(),
 		{
 			// The full `describe` text for a word, as a String.
 			Name: "debug-explain",
@@ -240,60 +221,9 @@ func debugNatives() []native.NativeFunc {
 		},
 
 		// ── (D) System structural analysis ────────────────────────────
-		{
-			// Every word actually dispatchable in this registry (live
-			// natives/host words + def-bound names) — not the static help
-			// catalog, which can list words that are documented but not
-			// registered (e.g. moved to an unimported module) and would
-			// fail with undefined_word.
-			Name: "debug-words",
-			Signatures: []native.Signature{{
-				Args:       []*native.Type{},
-				Returns:    []*native.Type{native.TList},
-				BarrierPos: -1,
-				Impl: native.Go(func(_ []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-					return []native.Value{stringsToList(r.RegisteredWordNames())}, nil
-				}),
-			}},
-		},
-		{
-			// Current def-bound names mapped to their active top binding.
-			Name: "debug-defs",
-			Signatures: []native.Signature{{
-				Args:       []*native.Type{},
-				Returns:    []*native.Type{native.TMap},
-				BarrierPos: -1,
-				Impl: native.Go(func(_ []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-					names := append([]string(nil), r.Defs.Names()...)
-					sort.Strings(names)
-					om := native.NewOrderedMap()
-					for _, name := range names {
-						if v, ok := r.Defs.Top(name); ok {
-							om.Set(name, v)
-						}
-					}
-					return []native.Value{native.NewMap(om)}, nil
-				}),
-			}},
-		},
-		{
-			// The native modules available to import.
-			Name: "debug-modules",
-			Signatures: []native.Signature{{
-				Args:       []*native.Type{},
-				Returns:    []*native.Type{native.TList},
-				BarrierPos: -1,
-				Impl: native.Go(func(_ []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
-					names := moduleNamesFn()
-					sort.Strings(names)
-					out := make([]string, len(names))
-					for i, n := range names {
-						out[i] = "boru:" + n
-					}
-					return []native.Value{stringsToList(out)}, nil
-				}),
-			}},
-		},
+		debugSelf.words(),
+		debugSelf.defs(),
+		debugSelf.modules(),
 
 		// ── (E) Memory analysis ───────────────────────────────────────
 		{
@@ -308,27 +238,7 @@ func debugNatives() []native.NativeFunc {
 				}),
 			}},
 		},
-		{
-			// Structural census of a value: counts by kind, depth, node count.
-			Name: "debug-shape",
-			Signatures: []native.Signature{{
-				Args:       []*native.Type{native.TAny},
-				Returns:    []*native.Type{native.TMap},
-				BarrierPos: -1,
-				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, _ *native.Registry) ([]native.Value, error) {
-					var c shapeCensus
-					c.walk(args[0], 0)
-					om := native.NewOrderedMap()
-					om.Set("nodes", native.NewInteger(int64(c.nodes)))
-					om.Set("lists", native.NewInteger(int64(c.lists)))
-					om.Set("maps", native.NewInteger(int64(c.maps)))
-					om.Set("strings", native.NewInteger(int64(c.strings)))
-					om.Set("scalars", native.NewInteger(int64(c.scalars)))
-					om.Set("max-depth", native.NewInteger(int64(c.maxDepth)))
-					return []native.Value{native.NewMap(om)}, nil
-				}),
-			}},
-		},
+		debugSelf.shape(),
 
 		// ── (F) Performance analysis ──────────────────────────────────
 		{
@@ -487,62 +397,8 @@ func debugNatives() []native.NativeFunc {
 		},
 
 		// ── (C2) Word reflection ──────────────────────────────────────
-		{
-			// The signatures of a word, as structured data.
-			Name: "debug-sig",
-			Signatures: []native.Signature{{
-				Args:       []*native.Type{native.TString},
-				Returns:    []*native.Type{native.TList},
-				BarrierPos: -1,
-				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-					name, err := args[0].AsConcreteString()
-					if err != nil {
-						return nil, err
-					}
-					fn := r.Lookup(name)
-					if fn == nil {
-						return nil, r.BoruError("debug_error",
-							fmt.Sprintf("Debug.sig: no such word %q", name), "Debug.sig")
-					}
-					var sigs []native.Value
-					for _, sig := range fn.Signatures {
-						sm := native.NewOrderedMap()
-						sm.Set("args", typeLeavesToList(sig.ArgTypes()))
-						sm.Set("returns", typeLeavesToList(sig.Returns))
-						sigs = append(sigs, native.NewMap(sm))
-					}
-					return []native.Value{native.NewList(sigs)}, nil
-				}),
-			}},
-		},
-		{
-			// The quoted body of a boru-defined word; `native/q` for a host word.
-			Name: "debug-body",
-			Signatures: []native.Signature{{
-				Args:       []*native.Type{native.TString},
-				Returns:    []*native.Type{native.TAny},
-				BarrierPos: -1,
-				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-					name, err := args[0].AsConcreteString()
-					if err != nil {
-						return nil, err
-					}
-					fn := r.Lookup(name)
-					if fn == nil {
-						return nil, r.BoruError("debug_error",
-							fmt.Sprintf("Debug.body: no such word %q", name), "Debug.body")
-					}
-					for _, sig := range fn.OwnSigs() {
-						if len(sig.Body()) > 0 {
-							body := native.NewList(append([]native.Value(nil), sig.Body()...))
-							body.Quoted = true
-							return []native.Value{body}, nil
-						}
-					}
-					return []native.Value{native.NewAtom("native")}, nil
-				}),
-			}},
-		},
+		debugSelf.sig(),
+		debugSelf.body(),
 		{
 			// Print a name's current binding and return it (None if unbound).
 			Name: "debug-watch",

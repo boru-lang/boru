@@ -1,0 +1,33 @@
+# boru Language Specification: the boru:scry module
+# Format: input<TAB>expected<TAB>description
+#
+# A boru system's knowledge of itself, as plain data (design/BORU-SCRY.0.md).
+# Import binds the `Scry` namespace. boru:scry is the canonical home of the
+# seven self-knowledge words boru:debug shipped first; both modules build
+# them from ONE constructor, and the Debug copies are frozen and deprecated
+# (NUR063) — §4 pins that the two surfaces answer alike.
+#
+# ─────────────────────────────────────────────────────────────────────
+# §1  census — what is here
+import "boru:scry" Scry.words typeof	List	words returns every dispatchable word
+import "boru:scry" Scry.defs typeof	Map	defs returns the active def bindings as a map
+import "boru:scry" def k 5 (Scry.defs) get "k"	5	defs maps a def-bound name to its binding
+import "boru:scry" Scry.modules typeof	List	modules returns the importable native modules
+#
+# §2  per-word — what is this word
+import "boru:scry" ("add" Scry.sig) typeof	List	sig returns the word's signatures as structured data
+import "boru:scry" "no-such-word-xyz" Scry.sig	ERROR:scry_unknown_word	sig of an unknown word raises
+import "boru:scry" ("add" Scry.body) typeof	Atom	a native word reports `native` (an Atom)
+import "boru:scry" def f fn [[x:Integer] [Integer] [x add 1]] end ("f" Scry.body) typeof	List	a boru-defined word reports its quoted body
+import "boru:scry" "no-such-word-xyz" Scry.body	ERROR:scry_unknown_word	body of an unknown word raises
+import "boru:scry" size ([1 add 2 mul 3] Scry.deps)	2	deps returns the distinct referenced words (add, mul)
+import "boru:scry" size ([1 2 3] Scry.deps)	0	a body that references no word has no deps
+#
+# §3  values — what is this thing
+import "boru:scry" (Scry.shape [1 2 [3]]) get "max-depth"	2	shape counts the nesting depth
+import "boru:scry" (Scry.shape Map) typeof	Map	shape on a bare type literal does not panic
+#
+# §4  one constructor, two surfaces — boru:debug's deprecated copies agree
+import "boru:scry" import "boru:debug" ("add" Scry.sig) deq ("add" Debug.sig)	true	sig answers alike on both surfaces
+import "boru:scry" import "boru:debug" ([1 add 2 mul 3] Scry.deps) deq ([1 add 2 mul 3] Debug.deps)	true	deps answers alike on both surfaces
+import "boru:scry" import "boru:debug" (Scry.modules) deq (Debug.modules)	true	modules answers alike on both surfaces

@@ -180,7 +180,7 @@ keep the two in sync in the same commit.
 | [NUR075](#nur075) | FIXED 2026-09-26 (eq's capability — the handoff log's entry of that date): `eq` is extensible per type on `deq`'s terms — `core.ExactEqualer`, consulted at ExactEqual's terminal `false` exactly where DeepEqualer sits in DeepEqual (so the two reach the same values: the pairs no kernel arm names), and a `behave eq/q` slot with deq's shape (`[[T T] [Boolean]]`) and deq's seam (delegate, decline, re-entry guard). Kernel identity arms are untouched — the capability is additive, as deq's is. The original text: `deq` is extensible per type (`DeepEqualer`), `eq` is not — the one part of the retired NUR031's verdict its fix did not take: the divergences closed by adding kernel arms rather than by routing through `Behavior`, so a type can define its own deep equality but not its own identity | NUR031's fix, 2026-08-16 |
 | [NUR076](#nur076) | FIXED 2026-09-26 (the check pass notes a behave make — the handoff log's entry of that date): `behave`'s check-mode half (its ReturnsFn) validates the call as the handler does and, for the `make` slot, notes the target in the pass's own state (`CheckState.BehaveMakers`), which `HasMaker` reads — so a construction after the call skips the schema validation the type's own constructor replaces, exactly as a Go-side Maker's does; one before it validates, as the run has it. Nothing is installed on the type, so no user body runs during analysis; the other seven slots change only what a program computes, which analysis does not evaluate. `def P class {a: Integer}  behave make/q (fn Any P [make P {a: 42}])  make P {bogus: 1}` checks clean and compiles (Class/P{a:42} on both lanes). The original text: A `behave`-installed capability is invisible to check mode, because `behave` does not run there — for `make` that turns a working program into a check FAILURE: a type whose Maker ignores the schema still has the schema's unknown/missing-field rules applied statically | NUR056's fix, 2026-08-17 (flagged by the PR #379 review, Codex P1) |
 | [NUR060](#nur060) | The parser twins disagree on open-input sources beyond the corpus | PR #337 parity-probe sweep (flagged for NUR by Codex P1) |
-| [NUR063](#nur063) | Seven self-knowledge words are proposed to dispatch from two module surfaces (`boru:debug` and `boru:scry`) — VERDICT 2026-08-15: `boru:scry` canonical, the `boru:debug` copies frozen behind shared handlers and deprecated on a stated timeline | design/BORU-SCRY.0.md §6 (flagged for NUR by PR #344 Codex P1) |
+| [NUR063](#nur063) | FIXED 2026-09-26 (boru:scry ships the seven, the debug copies deprecated — the handoff log's entry of that date): `boru:scry` ships `words`, `defs`, `modules`, `sig`, `body`, `deps`, `shape` from the one constructor boru:debug's frozen copies use (`selfKnowledge`), and `describe` marks each `Debug.*` copy deprecated, naming its `Scry.*` twin and the removal release — the maintainer's verdict, implemented. The original text: Seven self-knowledge words are proposed to dispatch from two module surfaces (`boru:debug` and `boru:scry`) — VERDICT 2026-08-15: `boru:scry` canonical, the `boru:debug` copies frozen behind shared handlers and deprecated on a stated timeline | design/BORU-SCRY.0.md §6 (flagged for NUR by PR #344 Codex P1) |
 | [NUR064](#nur064) | FIXED 2026-09-26 (add patterns bind as receive clauses do — the handoff log's entry of that date): a service `add` pattern is read by the one clause-pattern splitter `receive` uses (`splitClausePattern`) — scalar fields route, `name:Type` fields are binding slots that decide whether the routed handler takes the request (falling back to a slot-free catch-all, else `no_match`) and are bound by name around the handler's run; `add`'s check-mode half notes the handler body's reads of a slot so the undefined-word rescue excuses exactly those tokens. The original text: Pattern clauses route-and-bind in `receive` but route-only in `add` — VERDICT 2026-08-15: defer to the processes/services design line, to be decided when those modules are built | `design/STATE-MACHINES.0.md` §8 (flagged for NUR by the PR #345 review, Codex P1) |
 | [NUR065](#nur065) | RESOLVED 2026-09-26 (one set of guarantees for both classifier spellings — the handoff log's entry of that date): open question #7 of design/STATE-MACHINES.0.md is decided in the design, `boru:state` being unbuilt — the fn form declares its output alphabet (`classify: {fn: … yields: […]}`) and returns a class ATOM the machine wraps in the table form's frozen `{event raw}` payload, so alphabet closure (define-time `state_unknown_name` on `yields:`), payload shape and the `state_bad_class` / `state_class_gap` / `state_bad_event` diagnostics are one rule for both; only the mapping inside the fn stays opaque. The original text: Two spellings of the classifier role get different static guarantees: `classes:` is alphabet-closed and diagnosed, `classify:` is neither — VERDICT 2026-08-15: defer to the state-machine design line (its open question #7) | `design/STATE-MACHINES.0.md` §3.6 (flagged for NUR by the PR #352 review, Codex P1) |
 | [NUR074](#nur074) | RESOLVED 2026-09-26 (the parameter name is part of the value — the handoff log's entry of that date): not a divergence — the record's premise, that two functions differing only in a parameter name are behaviourally indistinguishable, is false in boru and was refuted by measurement: a parameter is a frame binding on the def stack, visible to every function the body reaches (FUNCTION-VALUE-SCOPE §7.4), so `def x 1  def g fn [[] [Any] [x]]` then `def f fn [[x:Any] [Any] [g]]  f 5` answers 5 and its `y`-named twin 1, on both lanes. canon rendering the name and `deq` comparing it is the uniform answer; the content-addressing note's de-naming step (§4.2 step 3) is withdrawn as unsound. The original text: `canon` renders a function's PARAMETER names, so alpha-equivalent functions render — and digest — differently; NUR031's planned fix (render the anonymous fn literal) does not reach this | `design/legacy/unison-hash-identity-probe.0.ignore` P4 (flagged for NUR by the PR #376 review, Codex P1) |
@@ -5166,9 +5166,10 @@ this verdict — the record closes as it stands.
 
 ## NUR063 — Seven self-knowledge words are proposed to dispatch from two module surfaces (`boru:debug` and `boru:scry`) {#nur063}
 
-**Status:** Pending · **Recorded:** 2026-08-12 · **Surfaced by:**
-design/BORU-SCRY.0.md §6 (the boru:scry proposal); flagged for this
-register by the PR #344 review (Codex P1)
+**Status:** FIXED 2026-09-26 (boru:scry ships the seven, the debug copies
+deprecated — the handoff log's entry of that date) · **Recorded:**
+2026-08-12 · **Surfaced by:** design/BORU-SCRY.0.md §6 (the boru:scry
+proposal); flagged for this register by the PR #344 review (Codex P1)
 
 **Reviewed 2026-09-25 (the reverse-order NUR run).** The recorded verdict stands and nothing in this run moved it; left pending on its design line.
 
@@ -5215,6 +5216,30 @@ Recorded before `BuildScryModule` exists, so the dual surface never
 ships as an unexamined default — which is what this record was opened
 to prevent. Stays **Pending** until scry ships with the deprecation
 notice in place.
+
+**The fix (2026-09-26).** Scry ships, with the notice in place:
+
+- `lang/go/modules/scry.go` builds `boru:scry` (namespace `Scry`) from
+  `selfKnowledge`, one constructor of the seven natives; `debug.go` builds
+  its seven from the same constructor, in their old export positions. The
+  handlers are one body of Go: a surface supplies only the name an error
+  gives the word (`Scry.sig` / `Debug.sig`) and the code an unknown word
+  raises (`scry_unknown_word` per BORU-SCRY §4 / the historical
+  `debug_error`). The copies stay exported — a timeline, not a break.
+- `describe` names the canonical home: each `Debug.*` doc reads
+  "Deprecated (NUR063): canonical home boru:scry (`Scry.<word>`); this
+  frozen copy is removed in the first minor release after the one that
+  ships boru:scry" — the stated timeline (BORU-SCRY §9 Q1's lean, keep
+  through one release). The module catalog says the same.
+- Profiles: every shipped profile admits modules by allowlist and none
+  lists `boru:debug`, so `boru:scry` is denied identically (BORU-SCRY §8)
+  with no profile change.
+
+Pinned: `lang/spec/module-scry.tsv` (every export, positive and negative
+rows, §4 the two surfaces answering alike under `deq`); modules
+`TestScryExportsTheSelfKnowledgeWords`,
+`TestDebugSelfKnowledgeIsDeprecatedToScry` (the seven marked, naming their
+twin and the timeline; no other Debug word marked).
 
 ---
 

@@ -293,6 +293,7 @@ var unflaggedPins = map[string]int{
 	// remaining lane graduates off the island.
 	"path-modifier.tsv": 3,
 	"module-rand.tsv":   1,
+	"module-scry.tsv":   2, // the two unknown-word rows: Scry.sig / Scry.body look the NAME up at run time, as their Debug twins do (NUR063)
 	"module-sift.tsv":   24,
 	"module-struct.tsv": 2,
 	// module-test.tsv: 0 -> 3. The three check-prop count guards

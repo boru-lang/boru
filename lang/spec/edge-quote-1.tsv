@@ -3,7 +3,7 @@
 # =====================================================================
 # Edge cases for the quotation system's FIRST principle: lists are
 # EVALUATED by default ([add 1 2] -> [3]); `quote` opts out and holds
-# the tokens as data ((quote [word(add) 1 2]) in canon); implicit-quote
+# the tokens as data ((quote [add 1 2]) in canon); implicit-quote
 # positions (if branches, for/each/fn bodies) hold code WITHOUT the
 # quote wrapper; `def name [body]` is NOT such a position — it
 # evaluates the node and binds the value. Expected values use the

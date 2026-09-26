@@ -13322,6 +13322,23 @@ check/go/method_shape.go (a bounds check on the claim's type slice, the
 matching itself SigTypeMatches). Docs: NUR.md (NUR194 FIXED),
 COMPILABLE-SUBSET.md, the handover.
 
+## NUR063 closed — boru:scry ships the seven, the debug copies deprecated (2026-09-26)
+
+**The record.** The maintainer ruled `boru:scry` canonical for the seven
+self-knowledge words `boru:debug` shipped first, with the debug copies
+frozen behind the same handlers and deprecated on a stated timeline; the
+record stayed open until scry shipped with the notice.
+
+**The fix.** `lang/go/modules/scry.go`: one constructor (`selfKnowledge`)
+builds the seven for both modules — a surface supplies only the word's name
+in errors and the unknown-word code. `describe` marks each `Debug.*` copy
+deprecated, naming its `Scry.*` twin and the removal release (the first
+minor release after the one that ships scry). `lang/spec/module-scry.tsv`
+covers every export (ADR-003) and pins the two surfaces equal under `deq`;
+check-accuracy pins the file's two runtime-only unknown-word rows. Found on
+the way: frontier-do-catch.tsv row 25 still expected the pre-NUR072
+`word(if)` rendering of a fn body in a map — updated to the canon spelling.
+
 ## NUR064 closed — add patterns bind as receive clauses do (2026-09-26)
 
 **The record.** A `receive` clause's pattern routes on its scalar fields and
