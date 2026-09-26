@@ -58,13 +58,13 @@ type Engine struct {
 	// skip its prefix scan entirely for a program that has none. Monotonic by
 	// design — see inFnFrame.
 	sawFnFrame bool
-	stepLimit  int             // hard cap on the Run loop; always positive, set by the New/NewTop constructors below
+	stepLimit  int // hard cap on the Run loop; always positive, set by the New/NewTop constructors below
 	// stepsTaken counts every Run-loop step this engine has taken, across
 	// runs (StepsTaken); limitReport, when positive, is the bound an
 	// exhausted run REPORTS in place of stepLimit (StepBudget).
 	stepsTaken  int
 	limitReport int
-	marks      map[string]bool // active mark IDs (for mark/move control flow)
+	marks       map[string]bool // active mark IDs (for mark/move control flow)
 	// sealFnValue / sealFnValueIdx: one-shot commit seal for a VALUE-called
 	// function whose forward collection just COMPLETED. Completion re-steps
 	// the callee stack-only; a WORD callee gets that via the /s token
