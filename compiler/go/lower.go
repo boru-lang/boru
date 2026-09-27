@@ -1538,6 +1538,20 @@ func (lw *lowerer) emitBranchLanding(ev *EmitEvent) {
 	lw.noteRootBeneathLanding(lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos), ev.seq)
 }
 
+// splitLanding reports whether a branch lands its value on its VALUE arm's
+// path alone (NUR313): one arm is a value the interpreter re-steps after `if`
+// returns (NUR159, NUR280), and the other a body whose own paren places its
+// one value (branchPlaces). The merge's one landing re-stepped both, so `def
+// c true if c [(mkf)] 0` over a factory of a no-argument g answered 7 for the
+// interpreter's `fn g`.
+func splitLanding(br *emitBranch) bool {
+	if br == nil || br.constCond != nil || !br.hasThenOut || !br.hasElsOut {
+		return false
+	}
+	placed := func(isVal bool, frag *EmitFragment) bool { return !isVal && frag != nil && frag.residualN == 1 }
+	return (br.thenIsVal && placed(br.elsIsVal, br.els)) || (br.elsIsVal && placed(br.thenIsVal, br.then))
+}
+
 // seatDynApplyName records a trailing fn-value apply's head binding name at
 // the pc of the OpCallDynTrailTop / OpCallDynTrailKeepQ about to be emitted
 // (CompiledFn.DynApplyName, Program.DynApplyName for the main code), so the
@@ -5266,10 +5280,14 @@ func (lw *lowerer) lowerArm(kind armKind, val EmitOperand, frag *EmitFragment, o
 // (no else) merges with 0-or-1 values — a VARIADIC result.
 func (lw *lowerer) lowerArms(ev *EmitEvent, jf int) string {
 	br := ev.br
+	split := splitLanding(br)
 	if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, true, br.pos, lw.armGuard(br, true)); reason != "" {
 		return reason
 	}
 	thenMulti := lw.fragMulti
+	if split && br.thenIsVal {
+		lw.emitBranchLanding(ev)
+	}
 	if !br.hasElse {
 		// 2-arg if: false path jumps straight to the merge.
 		(*lw.code)[jf].Arg = int32(len(*lw.code))
@@ -5293,6 +5311,9 @@ func (lw *lowerer) lowerArms(ev *EmitEvent, jf int) string {
 		return reason
 	}
 	elseMulti := lw.fragMulti
+	if split && br.elsIsVal {
+		lw.emitBranchLanding(ev)
+	}
 	if jend >= 0 {
 		(*lw.code)[jend].Arg = int32(len(*lw.code))
 	}
@@ -5300,8 +5321,9 @@ func (lw *lowerer) lowerArms(ev *EmitEvent, jf int) string {
 		lw.vm = append(lw.vm, vmSlot{seq: ev.seq})
 		// The guarded landing over the merged value, where both arms net one
 		// (the landing tests ONE value): a fn-valued arm's result is what the
-		// interpreter re-steps after `if` returns (NUR159).
-		if br.hasThenOut && br.hasElsOut && !thenMulti && !elseMulti {
+		// interpreter re-steps after `if` returns (NUR159). A split branch
+		// landed on its value arm's path above.
+		if br.hasThenOut && br.hasElsOut && !thenMulti && !elseMulti && !split {
 			lw.emitBranchLanding(ev)
 		}
 		// A MULTI-VALUE arm (either side leaves >1 runtime value) makes the merge
@@ -5487,11 +5509,14 @@ func (lw *lowerer) lowerComputedCond(br *emitBranch, condOnTop bool) (int, strin
 //     the FALSE (jump-target) path drops it and runs the else arm.
 func (lw *lowerer) lowerComputedBranch(ev *EmitEvent, jf int) string {
 	br := ev.br
-	multi := false
+	multi, split := false, splitLanding(br)
 	base, eager := len(lw.vm)-1, lw.vm[len(lw.vm)-1]
 	if br.thenComputed {
 		// TRUE/fall-through keeps the eager then value; jump over the else arm.
 		lw.emitCodeGuard(br, true)
+		if split {
+			lw.emitBranchLanding(ev)
+		}
 		jend := lw.emit(OpJmp, 0, br.pos)
 		(*lw.code)[jf].Arg = int32(len(*lw.code)) // FALSE lands here
 		lw.emit(OpDrop, 0, br.pos)                // discard the eager then value
@@ -5513,14 +5538,18 @@ func (lw *lowerer) lowerComputedBranch(ev *EmitEvent, jf int) string {
 		jend := lw.emit(OpJmp, 0, br.pos)
 		(*lw.code)[jf].Arg = int32(len(*lw.code)) // FALSE lands here, eager value intact
 		lw.emitCodeGuardOver(br, false, base, eager)
+		if split {
+			lw.emitBranchLanding(ev)
+		}
 		(*lw.code)[jend].Arg = int32(len(*lw.code))
 	}
 	lw.vm = append(lw.vm, vmSlot{seq: ev.seq})
 	// The guarded landing over the merged value, as the general merge lands
 	// it: the eager arm is a COMPUTED value — a member read over a container
 	// the pass cannot see into (`if true m.h [2]` over a flex) — which the
-	// interpreter re-steps after `if` returns, firing a 0-arg fn (NUR280).
-	if !multi {
+	// interpreter re-steps after `if` returns, firing a 0-arg fn (NUR280). A
+	// split branch landed on the eager value's own path above.
+	if !multi && !split {
 		lw.emitBranchLanding(ev)
 	}
 	lw.note()

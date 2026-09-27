@@ -10812,7 +10812,7 @@ func (es *EmitState) NoteReStepLanding(v core.Value, pos core.SrcPos) {
 		return
 	}
 	pr, ok := es.producedBy[v.ID]
-	if !ok || pr.idx != 0 {
+	if !ok || pr.idx != 0 || es.branchPlacesAt(pr.seq) {
 		return
 	}
 	// A VARIADIC producer (a loop, a variadic branch, a call to an already-
@@ -10831,6 +10831,63 @@ func (es *EmitState) NoteReStepLanding(v core.Value, pos core.SrcPos) {
 	if p := v.Pos(); p.Row > 0 {
 		es.landingValPos[pr.seq] = p
 	}
+}
+
+// branchPlaces reports whether a branch's result is PLACED where it lands
+// (NUR313): every arm that yields it is a code body netting one value. The
+// interpreter splices a body arm inside its own paren (spliceArg), and a
+// one-survivor paren parks a fn value (fnReturnPark), so `def c true if c
+// [(mkf)] [0]` over a factory of a no-argument g is `fn g` interpreted. The
+// check pass hands the joined value back to the step loop, which re-steps it,
+// and the lowering took that step as a guarded landing: 7 compiled. A VALUE
+// arm is spliced bare and re-stepped (`if true one/v [2]` fires one, NUR159),
+// and a body netting two or more values re-steps them all (the paren's
+// more-than-one-survivor rule), so a branch with either keeps its landing.
+func branchPlaces(br *emitBranch) bool {
+	if br == nil {
+		return false
+	}
+	type arm struct {
+		frag       *EmitFragment
+		has, isVal bool
+	}
+	arms := []arm{{br.then, br.hasThenOut, br.thenIsVal}}
+	if br.constCond == nil {
+		arms = append(arms, arm{br.els, br.hasElsOut, br.elsIsVal})
+	}
+	placed := false
+	for _, a := range arms {
+		if !a.has {
+			continue
+		}
+		if a.isVal || a.frag == nil || a.frag.residualN != 1 {
+			return false
+		}
+		placed = true
+	}
+	return placed
+}
+
+// splitArmMayBeFn reports whether the event seq is a split branch
+// (splitLanding) whose placed body arm may leave a fn value: anything but a
+// const that is no fn.
+func (es *EmitState) splitArmMayBeFn(seq int) bool {
+	ev := es.eventBySeq(seq)
+	if ev == nil || ev.kind != evBranch || !splitLanding(ev.br) {
+		return false
+	}
+	out := ev.br.thenOut
+	if ev.br.thenIsVal {
+		out = ev.br.elsOut
+	}
+	return out.kind != opConst || core.IsFnValueResidual(es.consts[out.idx])
+}
+
+// branchPlacesAt is branchPlaces for the event seq, false for any other
+// kind of event.
+func (es *EmitState) branchPlacesAt(seq int) bool {
+	ev := es.eventBySeq(seq)
+	return ev != nil && ev.kind == evBranch && branchPlaces(ev.br)
 }
 
 // NoteStatementEnd records a statement boundary's position (EmitRecorder;
@@ -10852,7 +10909,7 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 		return
 	}
 	pr, ok := es.producedBy[v.ID]
-	if !ok || pr.idx != 0 {
+	if !ok || pr.idx != 0 || es.branchPlacesAt(pr.seq) {
 		return
 	}
 	// A VARIADIC result has no landing to describe (NoteReStepLanding stands
@@ -15588,6 +15645,15 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 			applyDynamic = !anyFnOrDynamicTail(residual)
 		}
 	}
+	// A SPLIT branch (splitLanding, NUR313) re-steps its value arm and places
+	// its body arm's value, and the one apply after the merge cannot tell the
+	// paths apart: `if c [(mkf)] one/v 5` applied the placed g (7 5 for `fn g
+	// 5`), so a body arm that may leave a fn declines the apply.
+	if applyDynamic {
+		if pr, ok := es.producedBy[residual[0].ID]; ok && es.splitArmMayBeFn(pr.seq) {
+			return residual, 0, "a branch whose body arm places a fn value and whose value arm is re-stepped leads the residual (NUR313)"
+		}
+	}
 	if applyDynamic {
 		return residual, OpCallDynamic, ""
 	}
@@ -19822,6 +19888,13 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 	switch ev.kind {
 	case evCallUser:
 		if ev.uc.nout != 1 {
+			return false
+		}
+	case evBranch:
+		// A branch whose body arms each net one value: the arm's paren
+		// parks it (branchPlaces, NUR313) — a question only for a value
+		// that may be a fn; data sits where it lands either way.
+		if !branchPlaces(ev.br) || !(core.IsFnTypedCarrier(v) || (v.Dynamic && core.SigTypeMatches(v, core.TFunction)) || core.IsFnValueResidual(v)) {
 			return false
 		}
 	case evCall:

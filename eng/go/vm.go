@@ -19,6 +19,7 @@ package eng
 
 import (
 	"fmt"
+	"slices"
 	"strconv"
 	"strings"
 	"sync/atomic"
@@ -69,6 +70,9 @@ type vmLoop struct {
 	exitPC, nextPC int
 	unit           int
 	iterBase       int
+	// base is the operand-stack depth where the loop's results begin, and
+	// frameBase its frame's own base (loopExitReStep).
+	base, frameBase int
 }
 
 // vmFrame remembers a caller's resumption point across a CALL_USER: the
@@ -2845,7 +2849,17 @@ func (vc *vmContext) callDynamicMixed(reg *core.Registry, w int, stack []core.Va
 			}
 		}
 	}
-	results, err := vc.islandRun(reg, window)
+	// A PLACED value the step loop would dispatch starts the island past it
+	// (placedWindowSplit): the interpreter holds it resolved beneath the word.
+	var results []core.Value
+	var err error
+	if inputs, toks, split, refused := placedWindowSplit(window); refused {
+		return nil, vmDefer(vc.r, curDebug, pc, "vm:mixed-placed-fn", "a placed fn value lies above a value the window must step, and the island cannot start between them (NUR312); the compiled runtime cannot execute it")
+	} else if split {
+		results, err = runIslandResolved(reg, inputs, toks)
+	} else {
+		results, err = vc.islandRun(reg, window)
+	}
 	if err != nil {
 		return nil, stampAt(err, curDebug, pc, reg)
 	}
@@ -2853,6 +2867,48 @@ func (vc *vmContext) callDynamicMixed(reg *core.Registry, w int, stack []core.Va
 		return nil, err
 	}
 	return append(stack[:base], results...), nil
+}
+
+// placedWindowSplit splits a forward-drift window around its PLACED values
+// (NUR312). The recorder writes a value the interpreter parks — a user call's
+// result, a paren's placed survivor — inside its own paren
+// (tryRecordDriftWindow), so the island's one-survivor rule parks it again.
+// That holds for data and for a fn the paren leaves with nothing to take, but
+// a fn that takes nothing FIRES inside the paren before the paren can park it:
+// `2 (mkf) add 3` over a factory of a no-argument `g` answered [2 10] for the
+// interpreter's signature_error, which the parked fn meets at `add`.
+//
+// So where a placed value would dispatch at the pointer, the island starts
+// after the last placed value, over the window beneath it as RESOLVED inputs
+// (runIslandResolved): exactly the interpreter's tape when the word steps.
+// split is false where no placed value would dispatch (the verbatim island is
+// exact). refused is true where a value beneath the last placed one is not
+// plain data: the verbatim island would step it, which the interpreter's
+// delivery may have done, and resolving it would not.
+func placedWindowSplit(window []core.Value) (inputs, tokens []core.Value, split, refused bool) {
+	last, dispatches := -1, false
+	for i := 0; i+2 < len(window); i++ {
+		if core.IsOpenParen(window[i]) && core.IsCloseParen(window[i+2]) {
+			dispatches = dispatches || core.FnValueDispatchesAtPointer(window[i+1])
+			last = i + 2
+			i += 2
+		}
+	}
+	if !dispatches {
+		return nil, nil, false, false
+	}
+	for i := 0; i <= last; i++ {
+		if core.IsOpenParen(window[i]) {
+			inputs = append(inputs, window[i+1])
+			i += 2
+			continue
+		}
+		if !core.IsSteplessValue(window[i]) {
+			return nil, nil, false, true
+		}
+		inputs = append(inputs, window[i])
+	}
+	return inputs, window[last+1:], true, false
 }
 
 // closureRetAt reads the callback return contract keyed at a PUSH_CLOSURE's
@@ -4092,7 +4148,11 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			stack = append(stack, core.NewTypeLiteral(core.ForwardedType(t)))
 		case compiler.OpForSetup:
 			var err error
-			if stack, loops, err = vc.opForSetup(stack, loops, int(in.Arg), curCode, curUnit, pc, curDebug); err != nil {
+			fb := 0
+			if len(frames) > 0 {
+				fb = frames[len(frames)-1].stackBase
+			}
+			if stack, loops, err = vc.opForSetup(stack, loops, int(in.Arg), fb, curCode, curUnit, pc, curDebug); err != nil {
 				return nil, err
 			}
 		case compiler.OpForNext:
@@ -4105,6 +4165,10 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				done = lp.cur <= lp.end
 			}
 			if done {
+				var err error
+				if stack, err = vc.loopExitReStep(curReg, *lp, stack, curCode, curDebug, pc); err != nil {
+					return nil, err
+				}
 				loops = loops[:len(loops)-1]
 				pc = int(in.Arg) - 1
 				continue
@@ -4873,7 +4937,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 // loop's targets without a side table. Returns the trimmed stack and the
 // grown loop slice. Split out of run to keep that switch under the complexity
 // budget.
-func (vc *vmContext) opForSetup(stack []core.Value, loops []vmLoop, slot int, curCode []compiler.Instr, curUnit, pc int, debug []core.SrcPos) ([]core.Value, []vmLoop, error) {
+func (vc *vmContext) opForSetup(stack []core.Value, loops []vmLoop, slot, frameBase int, curCode []compiler.Instr, curUnit, pc int, debug []core.SrcPos) ([]core.Value, []vmLoop, error) {
 	if len(stack) < 3 {
 		return nil, nil, vmErrAt(debug, pc, "FOR_SETUP underflow")
 	}
@@ -4901,8 +4965,37 @@ func (vc *vmContext) opForSetup(stack []core.Value, loops []vmLoop, slot int, cu
 	loops = append(loops, vmLoop{
 		cur: start, end: endV, step: stepV, slot: slot,
 		exitPC: int(curCode[next].Arg), nextPC: next, unit: curUnit, iterBase: len(stack),
+		base: len(stack), frameBase: frameBase,
 	})
 	return stack, loops, nil
+}
+
+// loopExitReStep settles a finished loop's results as the interpreter's loop
+// end does (NUR314). Its move splices the collected results back where the
+// loop stood and steps them (stepMoveCont's done arm, handleLoopBreak), so a
+// fn value among them dispatches there: a named fn fires or collects, an
+// anonymous one collects what it reaches. `for 1 [(mkf)]` over a factory of
+// a no-argument g is 7 interpreted, and the compiled loop left `fn g` as
+// data. Where no result would dispatch, the results stand. Where one would
+// and the loop is ISOLATED — nothing beneath its results in the frame, and
+// its exit the end of its unit — the island steps the results exactly as the
+// interpreter does. Anywhere else the re-step could reach a value the island
+// does not hold (a forward operand the compiled code pushes after the loop,
+// a value beneath it), and it is a designed defer.
+func (vc *vmContext) loopExitReStep(reg *core.Registry, lp vmLoop, stack []core.Value, code []compiler.Instr, debug []core.SrcPos, pc int) ([]core.Value, error) {
+	base := min(lp.base, len(stack))
+	res := stack[base:]
+	if !slices.ContainsFunc(res, core.FnValueDispatchesAtPointer) {
+		return stack, nil
+	}
+	if base != lp.frameBase || (lp.exitPC < len(code) && code[lp.exitPC].Op != compiler.OpRet) {
+		return nil, vmDefer(vc.r, debug, pc, "vm:loop-result-restep", "a loop's result is a fn value the interpreter re-steps where the loop stood, over values the compiled loop cannot hand it (NUR314); the compiled runtime cannot execute it")
+	}
+	out, err := runIslandResolved(reg, nil, append([]core.Value(nil), res...))
+	if err != nil {
+		return nil, stampAt(err, debug, pc, reg)
+	}
+	return append(stack[:base], out...), nil
 }
 
 // flowSignal resolves a cross-frame break/continue (OpFlowBreak /
@@ -4946,12 +5039,27 @@ func (vc *vmContext) flowSignal(op compiler.Opcode, frames []vmFrame, loops []vm
 	}
 	stack = stack[:lp.iterBase]
 	if op == compiler.OpFlowBreak {
+		code, reg := vc.unitCode(unit)
+		var err error
+		if stack, err = vc.loopExitReStep(reg, lp, stack, code, debug, pc); err != nil {
+			return nil, nil, nil, nil, 0, 0, err
+		}
 		loops = loops[:target]
 		pc = lp.exitPC - 1
 	} else {
 		pc = lp.nextPC - 1
 	}
 	return frames, loops, locals, stack, pc, unit, nil
+}
+
+// unitCode is unit u's code and the registry its dispatch runs on, the
+// program's own for the main unit (u < 0), as the run loop's enterUnit
+// resolves them.
+func (vc *vmContext) unitCode(u int) ([]compiler.Instr, *core.Registry) {
+	if u < 0 {
+		return vc.p.Code, vc.r
+	}
+	return vc.p.Fns[u].Code, dispatchRegistry(vc.p.Fns[u].Reg, vc.r)
 }
 
 // stampAt / vmErrAt are the per-unit debug-table variants of the

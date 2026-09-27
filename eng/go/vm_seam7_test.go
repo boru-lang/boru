@@ -235,13 +235,13 @@ func TestSeam7CodeUnitEndedWithoutRet(t *testing.T) {
 func TestSeam7ForSetupRangeErrors(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
 	// Non-integer range triple.
-	_, _, err := vc.opForSetup([]core.Value{core.NewString("a"), core.NewString("b"), core.NewString("c")}, nil, 0, nil, -1, 0, seam7Dbg)
+	_, _, err := vc.opForSetup([]core.Value{core.NewString("a"), core.NewString("b"), core.NewString("c")}, nil, 0, 0, nil, -1, 0, seam7Dbg)
 	wantErr(t, err, "range must be concrete Integers")
 	// Zero step (stack top→ start, then end, then step).
-	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(0), core.NewInteger(5), core.NewInteger(1)}, nil, 0, nil, -1, 0, seam7Dbg)
+	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(0), core.NewInteger(5), core.NewInteger(1)}, nil, 0, 0, nil, -1, 0, seam7Dbg)
 	wantErr(t, err, "step cannot be zero")
 	// Underflow.
-	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(1)}, nil, 0, nil, -1, 0, seam7Dbg)
+	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(1)}, nil, 0, 0, nil, -1, 0, seam7Dbg)
 	wantInternal(t, err, "FOR_SETUP underflow")
 }
 
