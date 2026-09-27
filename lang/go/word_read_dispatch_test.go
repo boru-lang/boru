@@ -120,6 +120,10 @@ func TestWordReadDispatchFailsToCompile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
+		// The GENERIC path's pin: a constant fn arg compiles through a
+		// call-site specialised unit instead, where the read IS the
+		// interpreter's word dispatch (TestCallSiteSpecialisationGraduatedShapes).
+		a.SetCallSiteSpecialisation(false)
 		prog, reason, _, cerr := a.CompileCheck(c.src)
 		if cerr != nil {
 			t.Fatalf("CompileCheck(%q): %v", c.src, cerr)
@@ -131,7 +135,7 @@ func TestWordReadDispatchFailsToCompile(t *testing.T) {
 		if !strings.Contains(reason, c.reason) {
 			t.Errorf("%q: compile failure drifted: want %q in %q", c.src, c.reason, reason)
 		}
-		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
+		gotC, _, errC, gotI, errI := runBothEnginesNoSpec(t, c.src)
 		requireParity(t, c.src, gotC, errC, gotI, errI)
 	}
 }

@@ -235,7 +235,9 @@ func TestApplyChainInFnBodyCompiles(t *testing.T) {
 	if codeOf(errC) != "uncalled_function" || codeOf(errI) != "uncalled_function" {
 		t.Errorf("%q: want uncalled_function on both lanes, got compiled=%v interp=%v", src, errC, errI)
 	}
-	dis := compileDisasm(t, `def apply-twice fn [[f:Function x:Integer][Integer][x f/v apply f/v apply]]  def inc fn [[n:Integer][Integer][n add 1]]  apply-twice inc/v 5`)
+	// The GENERIC lowering (a constant fn arg specialises instead, calling
+	// the fn's unit directly — TestCallSiteSpecialisationGraduatedShapes).
+	dis := compileDisasmNoSpec(t, `def apply-twice fn [[f:Function x:Integer][Integer][x f/v apply f/v apply]]  def inc fn [[n:Integer][Integer][n add 1]]  apply-twice inc/v 5`)
 	if !strings.Contains(dis, "CALL_DYN_APPLY_ONE") || !strings.Contains(dis, "CALL_DYN_APPLY_TOP") {
 		t.Errorf("the chain must lower as a one-result step and a tail apply:\n%s", dis)
 	}

@@ -195,7 +195,7 @@ type ClosureRetSpec struct {
 	Source *core.Value
 	// Named marks a push of a NAMED fn value (ClosurePayload.Named,
 	// namedFnValueSpec): the unit is shared with anonymous values over the
-	// same body, so the anonymity rides on the push (NUR235).
+	// same body, so the anonymity rides on the push (NUR321).
 	Named bool
 }
 

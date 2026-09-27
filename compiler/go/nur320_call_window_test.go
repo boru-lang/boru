@@ -6,7 +6,7 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// TestNoteCallWindowPool pins the window pool (NUR234): an offer is keyed by
+// TestNoteCallWindowPool pins the window pool (NUR320): an offer is keyed by
 // the word token; a force-stack re-step keeps a deferred first step's offer
 // and every other note replaces it; a suspended recorder pools nothing and
 // drops the key's offer; the take removes it.
@@ -224,7 +224,7 @@ func TestSeatCallWindow(t *testing.T) {
 	}
 }
 
-// TestNamedFnValueSpec pins NUR235's push flag: a named fn value marks its
+// TestNamedFnValueSpec pins NUR321's push flag: a named fn value marks its
 // push, making a spec with no contract when it declares none; an anonymous
 // one's spec is untouched.
 func TestNamedFnValueSpec(t *testing.T) {
@@ -242,7 +242,7 @@ func TestNamedFnValueSpec(t *testing.T) {
 	}
 }
 
-// TestClosureCallsAtLanding pins the landing's reading of NUR235's flag: a
+// TestClosureCallsAtLanding pins the landing's reading of NUR321's flag: a
 // named closure over a nullary unit calls; an anonymous one, one over a
 // unit that takes arguments, one from a program not its own, and a value
 // that is no closure park; the bridge's anonymity is the unit's lambda

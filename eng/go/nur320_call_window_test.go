@@ -7,7 +7,7 @@ import (
 	"github.com/boru-lang/boru/core/go"
 )
 
-// TestCallWindowAt pins the VM's read of a call's no-match window (NUR234):
+// TestCallWindowAt pins the VM's read of a call's no-match window (NUR320):
 // each operand kind from its home — the argument, the value, the caller's
 // local, the stack beneath the call — in the main code's table or a unit's;
 // no program, no table entry, an unknown unit or an operand the frame

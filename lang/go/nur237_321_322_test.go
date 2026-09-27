@@ -2,13 +2,13 @@ package lang
 
 import "testing"
 
-// TestNUR235NamedFnValueMemberCalls pins NUR235's close: a fn value built
+// TestNUR321NamedFnValueMemberCalls pins NUR321's close: a fn value built
 // from a `fn` literal is NAMED (only `afn` / `=>` make one anonymous), and a
 // name always calls — a member read of a nullary one fires on both lanes,
 // though its compiled closure shares a unit with anonymous values over the
 // same body; the push carries the name. An anonymous value, one that needs
 // an argument, and a `/v` read stay data.
-func TestNUR235NamedFnValueMemberCalls(t *testing.T) {
+func TestNUR321NamedFnValueMemberCalls(t *testing.T) {
 	const named = `def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end `
 	for _, r := range []struct{ src, want string }{
 		{named + `m.g`, "[5]"},
@@ -22,12 +22,12 @@ func TestNUR235NamedFnValueMemberCalls(t *testing.T) {
 	}
 }
 
-// TestNUR236SplicedConsumerDeopts pins NUR236's close: a gradual def read
+// TestNUR322SplicedConsumerDeopts pins NUR322's close: a gradual def read
 // consumed by a spliced word's expansion (`j tp` over `def tp word
 // [typeof]`) carries its deopt — the consumer's position names the word's
 // definition, so the point is ordered by the event stream — and a read that
 // holds a fn at run time dispatches it, as the interpreter's bare name does.
-func TestNUR236SplicedConsumerDeopts(t *testing.T) {
+func TestNUR322SplicedConsumerDeopts(t *testing.T) {
 	const h = `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] `
 	const hg = `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j (m get "g") drop tp]] `
 	for _, r := range []struct{ src, want string }{

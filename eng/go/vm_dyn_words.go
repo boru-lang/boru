@@ -410,7 +410,7 @@ func closureFnDef(fn *compiler.CompiledFn, cl core.ClosurePayload, invoke func(a
 // closureSigView is closureFnDef's SHAPE without its handler: the one
 // signature over the unit's declared param contract and the closure's
 // Anonymous flag — an `afn` / `=>` value, not a named `fn` literal
-// (compiler.ClosureIsAnonymous, NUR235). It is what a diagnostic describes —
+// (compiler.ClosureIsAnonymous, NUR321). It is what a diagnostic describes —
 // callDynTrailTop's named-head no-match raise reads the view and never runs
 // it, so it needs no invoker (the placeholder one it used to build was a
 // function no path could call). ok=false for a unit that recorded no
@@ -431,7 +431,7 @@ func closureSigView(fn *compiler.CompiledFn, cl core.ClosurePayload) (core.FnDef
 }
 
 // callWindowAt is the no-match window of the CALL_USER / TAIL_CALL_USER at
-// pc (NUR234): the code's recorded CallWindows entry read over the call's
+// pc (NUR320): the code's recorded CallWindows entry read over the call's
 // arguments (args, signature order), the stack beneath them and the
 // caller's frame locals — the window the interpreter's failed dispatch
 // reports. ok is false when the call carries no entry, or an entry the

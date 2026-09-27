@@ -1520,7 +1520,7 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		// parameterised unit and RunResolved steps the body to the same answer
 		// (bytecode-migrated.tsv:L285, callbacks.tsv:L150).
 		// A NAMED fn value that takes no argument is the other side of the
-		// gate: a name always calls, so it fires (NUR235).
+		// gate: a name always calls, so it fires (NUR321).
 		if compiler.ClosureIsFnValue(v) && !compiler.ClosureCallsAtLanding(v) {
 			return stack, nil, nil
 		}
@@ -3844,19 +3844,20 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 	// resolveEscapedFlow translates a break/continue that escaped an island
 	// apply (the registry FlowCtrl contract — see escapedFlow) into the
 	// cross-frame flow unwind, mutating the run loop's frames/loops/locals/
-	// stack/pc in place. Shared by every island-apply opcode case.
-	resolveEscapedFlow := func() error {
+	// stack/pc in place. Shared by every island-apply opcode case. Reports
+	// whether a signal was resolved (pc then points into the loop).
+	resolveEscapedFlow := func() (bool, error) {
 		fop := vc.escapedFlow(vc.r, curReg)
 		if fop == 0 {
-			return nil
+			return false, nil
 		}
 		var u int
 		var err error
 		if frames, loops, locals, stack, pc, u, err = vc.flowSignal(fop, frames, loops, locals, stack, pc, curUnit, curDebug); err != nil {
-			return err
+			return false, err
 		}
 		enterUnit(u)
-		return nil
+		return true, nil
 	}
 	for pc = 0; pc < len(curCode); pc++ {
 		if len(stack) > ceiling || vc.frameDepth > ceiling {
@@ -3873,8 +3874,10 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 		// and is small enough to inline, so the hot loop keeps its complexity.
 		curReg.NoteVMCoverage(curDebug, pc)
 		// Each op is one dispatch: a predicate verdict memoised by the
-		// previous op (RunPredicate, NUR102) must not answer this one.
+		// previous op (RunPredicate, NUR102) must not answer this one. A
+		// re-dispatch of the same op (`goto dispatch`) keeps it.
 		r.ClearPredMemo()
+	dispatch:
 		switch in.Op {
 		case compiler.OpPushConst:
 			stack = append(stack, p.Consts[in.Arg])
@@ -4350,7 +4353,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// interpreter's one (NUR195, 2026-09-24). Translated here as after
 			// a fallback: the nearest open loop, or the loop-less internal
 			// error that defers to the interpreter's canonical raise.
-			if err := resolveEscapedFlow(); err != nil {
+			if _, err := resolveEscapedFlow(); err != nil {
 				return nil, err
 			}
 		case compiler.OpBindTyped:
@@ -4420,7 +4423,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// `do <computed>` inside a compiled loop) — translate it the same way
 			// as the fn-value seam. resolveEscapedFlow is a no-op when no flow
 			// signal escaped (escapedFlow returns 0), so call it unconditionally.
-			if err := resolveEscapedFlow(); err != nil {
+			if _, err := resolveEscapedFlow(); err != nil {
 				return nil, err
 			}
 		case compiler.OpCallNativePoly:
@@ -4430,7 +4433,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			stack = ns
 			// The poly re-match's handler runs bodies too (see OpCallNative).
-			if err := resolveEscapedFlow(); err != nil {
+			if _, err := resolveEscapedFlow(); err != nil {
 				return nil, err
 			}
 		case compiler.OpCallDynamic, compiler.OpCallDynamicTrailing, compiler.OpCallDynamicMixed,
@@ -4488,7 +4491,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				pc = -1
 				break
 			}
-			if err := resolveEscapedFlow(); err != nil {
+			if _, err := resolveEscapedFlow(); err != nil {
 				return nil, err
 			}
 
@@ -4603,12 +4606,40 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// without this a laundered List bound to an `m:Map` param silently runs
 			// the body. nl[i] is param i (the body's slot i); Params[i] is its
 			// declared type. Raises the same signature_error the interpreter raises,
-			// over the window the interpreter's failed dispatch reports (NUR234).
+			// over the window the interpreter's failed dispatch reports (NUR320).
 			if err := checkParamContract(r, fn, nl); err != nil {
 				if win, ok := callWindowAt(p, curUnit, pc, nl, stack, locals); ok {
 					err = core.RuntimeNoMatch(r, fn.Name, win)
 				}
 				return nil, stampAt(err, curDebug, pc, curReg)
+			}
+			// A call-site SPECIALISED unit is valid only while each guarded
+			// arg is the fn it was compiled for. Decided before any of the
+			// body runs: a failed guard applies the fn itself to the call's
+			// signature args instead — an island over the args as resolved
+			// stack data, the interpreter's own dispatch of the call — and a
+			// tail call then leaves this frame exactly as the tail-called
+			// unit's RET would. A break/continue the applied body escapes
+			// with is the enclosing loop's, as at every island seam: the loop
+			// then owns pc, and there is no RET.
+			if len(fn.SpecGuards) > 0 && !specGuardsHold(fn.SpecGuards, nl) {
+				res, err := runIslandResolved(curReg, specFallbackInputs(nl[:fn.NArgs]), []core.Value{fn.SpecFallback})
+				if err != nil {
+					return nil, stampAt(err, curDebug, pc, curReg)
+				}
+				stack = append(stack, res...)
+				flowed, err := resolveEscapedFlow()
+				if err != nil {
+					return nil, err
+				}
+				if flowed {
+					continue
+				}
+				if in.Op == compiler.OpTailCallUser {
+					in = compiler.Instr{Op: compiler.OpRet}
+					goto dispatch
+				}
+				continue
 			}
 			if in.Op == compiler.OpCallUser {
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})

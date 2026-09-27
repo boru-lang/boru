@@ -156,9 +156,9 @@ keep the two in sync in the same commit.
 | [NUR231](#nur231) | FIXED on the merged tree for the bail (the merge of main's #515, 2026-09-27): `mini` over a member holding the Function TYPE raises the interpreter's `signature_error` on both lanes, same message and caret (main bailed `DISPATCH_REMATCH`); the no-match notes still differ — [NUR311](#nur311) |
 | [NUR232](#nur232) | FIXED 2026-09-27 (the root arm's install — the handoff log's entry of that date): a ROOT def inside an `if` arm installs its binding beside the branch-carried slot store (`rootArmInstall`, main's NUR226 split-name install generalised), so the next request on the instance reads what the interpreter's arm left — `def x 5 if (g 9) [def x 9] [] end x` left 5 for the interpreter's 9, `if (g 9) [def y 9] [] end 0` left no y |
 | [NUR233](#nur233) | FIXED 2026-09-27 (the promoted split bind — the handoff log's entry of that date): a static region's first-value bind whose results the planner promoted to frame locals binds from its local, where the splice found the stack empty — `def x (5 dup) x add 1` bailed `BIND_GLOBAL splice underflow` for the interpreter's `[5 6]` |
-| [NUR234](#nur234) | FIXED 2026-09-26 (the call carries the interpreter's window — the handoff log's entry of that date): a compiled user call's param-contract no-match reports the window the interpreter's failed dispatch reports — the written run, which a bare read ends, filled from the stack beneath. The original text: a compiled direct call's param-contract no-match reported every argument, where the interpreter reports its attempted window: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` noted "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Pre-existing | compiling NUR308's type half, 2026-09-26 |
-| [NUR235](#nur235) | FIXED 2026-09-26 (a named fn value's push carries its name — the handoff log's entry of that date): a member read of a nullary fn value from a `fn` literal fires on both lanes; the closure's unit is shared with anonymous values over the same body, so the name rides on the push. The original text: a fn-body-local fn def bound into a returned map: the member read returns the fn compiled, calls it interpreted — `def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g` answers `[fn g]` compiled, `[5]` interpreted. A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
-| [NUR236](#nur236) | FIXED 2026-09-26 (a spliced consumer is ordered by the stream — the handoff log's entry of that date): a gradual def read consumed by a spliced word's expansion carries its deopt, so a read that holds a fn at run time dispatches it on both lanes. The original text: a word splice over a def-bound gradual read of a fn: `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}` answers `[Function]` compiled (typeof over the fn value) and `[Integer]` interpreted (`j` calls the fn). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR234](#nur234) | LOUD on this branch (the merge of main's #516, 2026-09-27 — the handoff log's entry of that date): this branch's NUR123 close models the bare read of a fn-valued frame binding as its call, so the generic unit declines (`unmatched dispatch recovered at h`) where `main` answered `[20]`; the compile of the interpreter's `signature_error` is owed. The original text: A `Function` param passed on BARE to a recursive call — `(h g (n sub 1))` inside `h`'s own body — is a word dispatch of `g` on the interpreter (the bare-name-calls rule), so `h inc/v 5` raises `signature_error`; the generic compiled unit passes the value and answers `[20]` — SILENT, present on `main` at c8bce66 | call-site specialisation (2026-09-27) |
+| [NUR235](#nur235) | A typed-map param pattern (`m:{f:Integer}`, `m:{:Integer}`) rejects an INLINE map literal whose member is computed (`h {f: (1 add 1)}`) on both lanes, and the two lanes' `signature_error` notes differ (`{f:paren(…)}` / "does not satisfy its declared pattern" interpreted, `{f:2}`-style values / "expected: h (Map) or (no args)" compiled) | call-site specialisation's investigation (2026-09-27) |
+| [NUR236](#nur236) | A source naming `Function` whose COMPILE PASS makes an effect the retry cannot repeat — a counted effect (a file write, a network send, a RunInCheckMode word that notes one) or a stdin read, in a module body or a check-mode word — and whose call-site specialisation declines does not compile (`call-site specialisation declined after an unrepeatable check-pass effect`), where `main` compiles it; the effect happens once, never twice | Codex review of #516 (2026-09-27) |
 | [NUR237](#nur237) | FIXED 2026-09-26 (an S5 name's later root defs are registry-visible — the handoff log's entry of that date): a taken branch arm's rebind of a name an S5 loop bind bound is seen after the merge on both lanes. The original text: a def rebound in a taken branch after a loop-result def reads the pre-branch value compiled: `def x (for 2 [5]) def c true if c [def x 1] [] end x` answers `[5 5]` compiled, `[5 1]` interpreted (both arms binding x too; a read of x before the branch makes the lanes agree). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR238](#nur238) | FIXED 2026-09-26 (a trailing value is re-stepped as the interpreter re-steps it — the handoff log's entry of that date): a value applied as a trailing window it does not fit parks when anonymous and raises uncalled_function when named, at the top level and in a fn. The original text: a paren-bounded trailing apply that matches nothing: the interpreter parks an anonymous value as data and raises `uncalled_function` for a named fn; the compiled apply raises `signature_error` at the top level (`(5 ([s:String] => [s]))` is `[5 fn (String)]` interpreted) and leaves a named fn's window as residue inside a fn (`(5 f/v)` over a `g/v` argument: a count error compiled) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR239](#nur239) | FIXED 2026-09-26 (both halves — the anonymous `<fn>` earlier, the binding half by the island's word dispatch; the handoff log's entry of that date): an applied fn value's return-contract error names the fn's definition compiled and the binding it was called under interpreted: `(k 5)` over `h z/v` says `z:` compiled, `k:` interpreted; an anonymous class-field fn says `` compiled, `<fn>` interpreted (`each h.cb [1 2 3]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
@@ -242,6 +242,9 @@ keep the two in sync in the same commit.
 | [NUR317](#nur317) | PARTLY FIXED 2026-09-27 (an enclosing re-step undoes a branch's placement — the handoff log's entry of that date): an `if` body arm's placed fn value that a `do` or a two-survivor paren re-steps stayed data — `def c true do [if c [g/v] [0]]` answered `fn g` for 7, `(if c [g/v] [0] 5)` `fn g 5` for `7 5`, and a dyn body's parked lead (`do [if c [(mkf)] [0] 5]`) `fn g 5` too; present on main except the last, which NUR271's settled lead made silent. OPEN, silent: a `do` body's union lead under its own sibling (`do [if c [g/v] [0] 5]`, `do [if c [l/v] [0] 5]`) and a join of two fn arms (`do [if c [g/v] [g/v]]`) — the pass folds the caller's re-step of a closure body's results into its model and nothing compiles it |
 | [NUR318](#nur318) | FIXED 2026-09-27 (a `/v` after a member read says data — the handoff log's entry of that date): a 0-arg member of a map read with `/v` fired — `def m {f: g/v} m.f/v` answered 7 for `fn g`, `m.f/v typeof` Integer for Function, ten forms in all; present on main. `5 m.f/v` and `m.f/v dup` decline, loud |
 | [NUR319](#nur319) | FIXED 2026-09-27 (a def read of a branch's union dispatches — the handoff log's entry of that date): a bare read of a def bound to a placed branch's join was data before a value — `def r (if c [g/v] [0]) r 5` answered `fn r 5` for `7 5`, `3 r 5` `3 fn r 5` for `3 7 5`; present on main. An arg-taking arm's read declines, loud |
+| [NUR320](#nur320) | FIXED 2026-09-26 (numbered NUR234 until the merge of main's #516, where main's NUR234 kept the number; the call carries the interpreter's window — the handoff log's entry of that date): a compiled user call's param-contract no-match reports the window the interpreter's failed dispatch reports — the written run, which a bare read ends, filled from the stack beneath. The original text: a compiled direct call's param-contract no-match reported every argument, where the interpreter reports its attempted window: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` noted "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Pre-existing | compiling NUR308's type half, 2026-09-26 |
+| [NUR321](#nur321) | FIXED 2026-09-26 (numbered NUR235 until the merge of main's #516, where main's NUR235 kept the number; a named fn value's push carries its name — the handoff log's entry of that date): a member read of a nullary fn value from a `fn` literal fires on both lanes; the closure's unit is shared with anonymous values over the same body, so the name rides on the push. The original text: a fn-body-local fn def bound into a returned map: the member read returns the fn compiled, calls it interpreted — `def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g` answers `[fn g]` compiled, `[5]` interpreted. A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR322](#nur322) | FIXED 2026-09-26 (numbered NUR236 until the merge of main's #516, where main's NUR236 kept the number; a spliced consumer is ordered by the stream — the handoff log's entry of that date): a gradual def read consumed by a spliced word's expansion carries its deopt, so a read that holds a fn at run time dispatches it on both lanes. The original text: a word splice over a def-bound gradual read of a fn: `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}` answers `[Function]` compiled (typeof over the fn value) and `[Integer]` interpreted (`j` calls the fn). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -6917,151 +6920,6 @@ wrong shape — are the same class and stay plain errors, still ledgered as
 bails there. Pinned by core's `TestMakeFieldErrorIsStructured` and lang's
 `TestNUR310MakeFieldRefusalIsATypeError`.
 
-## NUR234 — a compiled direct call's contract no-match reports every argument; the interpreter reports its attempted window {#nur234}
-
-**Status:** FIXED 2026-09-26 (the call carries the interpreter's window —
-the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
-**Surfaced by:** compiling NUR308's type half — a call over a parameter
-typed by a computed-bound name is admitted by the pass and checked by the
-run.
-
-**The fix.** The check pass derives the window at the user fn's dispatch
-itself — sigError's own derivation over its tape (`rematchWritten`, a
-gradual operand standing where the run's value will), taken at the
-dispatch's FIRST step, since the run fails there: its plan sees every
-operand but a speculative slot's, and a speculative plan offers no window.
-The offer (`NoteCallWindow`) is keyed and held like the region offer, so a
-forward collection's force-stack re-step keeps it and the callee's body
-analysis cannot overwrite it. The call's record maps each window value to
-where the run holds it — an argument by identity, a definite scalar by
-value, an event result by its seat (a promoted slot, else its depth
-beneath the call's operands on the stack the lowering simulates), a local
-read whose binding had not moved when the window was offered — and the
-lowering writes `CallWindows[pc]`, which the VM reads when the contract
-fails. A value with no such home leaves the call reporting its arguments,
-as before: a local read rebound between the read and the call (`a def a 9
-f b` reports b's 6 compiled, a's 5 interpreted) is the residue. Pinned:
-lang `TestNUR234ContractNoMatchReportsTheAttemptedWindow` (fifteen rows
-byte-identical, notes included); compiler `TestNoteCallWindowPool`,
-`TestClaimHeldWindow`, `TestCallWindowOps`, `TestSeatCallWindow`; eng
-`TestCallWindowAt`.
-
-**Rule:** one failed dispatch, one diagnostic, on both lanes.
-
-**Divergence** (pre-existing; measured at b3bcd9a with a gradual argument):
-
-```
-def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]
-  interp:   signature_error … note: candidate `f (String)` takes 1 argument, but none were supplied
-  compiled: signature_error … note: the argument was 5 (an Integer)
-                              note: candidate `f (String)` — argument 1: expected String, got 5 (an Integer)
-```
-
-The code, message head and caret agree; the notes differ. The interpreter
-reports its ATTEMPTED WINDOW (`attemptedWindowOver`): the forward
-candidates written after the word, which stop at the first bare read, and,
-when those are fewer than the smallest overload's arity, the stack prefix
-beneath. `f e` inside a body, and `def v 2 f v` at the top level, attempt
-an empty window. The compiled direct call's contract check
-(`checkParamContract` at `OpCallUser` / `OpTailCallUser`) reports every
-argument (`RuntimeNoMatch` over `guardArgs`). The spellings whose window
-holds the value agree: `e f` (a stack argument), `f (e)` (a paren group)
-and `f (g e 1)` (a nested call).
-
-NUR122 closed the same gap for a trailing fn-value apply, by carrying the
-written run (`DynApplyHead.NWritten`, from `writtenRun`). **Proposed fix:**
-carry each user call's written run and forward/stack split on its record,
-and build the contract's no-match over the same window: the written
-prefix, filled from the unit's stack beneath the call's operands to the
-smallest arity.
-
-The window, measured on the interpreter inside a fn body (`e` a param
-holding 5, `f` one String parameter, `g` two):
-
-```
-7 f e      the argument was 7              (a bare read ends the run; the prefix fills)
-f e 7      takes 1 argument, none supplied (the run is empty and so is the prefix)
-9 e f      the arguments were 5 and 9      (no forward run: the prefix, top first)
-g "x" e    the argument was 'x'            (the run is ["x"]; the prefix is empty)
-g e "x"    none supplied                   (the first forward token is a read)
-e g "x"    'x' and 5                       (the run ["x"], filled from the prefix)
-"x" e g    5 and 'x'                       (the prefix, top first)
-f (e)      the argument was 5              (a paren group is evaluated first: written)
-```
-
-A bare word read is resolved by lookup at the dispatch and never lands
-in the forward window. A paren group is evaluated before the dispatch and
-does. So the written count is the check pass's own
-`ReorderForwardCandidates` at the dispatch, bounded by the forward count,
-published beside `CurCallWord` for the user-fn record. The VM then needs
-it per call site, next to the call's forward count, to rebuild the window
-over its own stack prefix.
-
-## NUR235 — a fn-body-local fn def bound into a returned map: the member read returns the fn {#nur235}
-
-**Status:** FIXED 2026-09-26 (a named fn value's push carries its name — the handoff log's entry of that
-date) · **Recorded:** 2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
-— the emit.go coverage agent's probes.
-
-**Rule:** one read, one dispatch — a member read of a function calls it
-(ADR-011, NUR078).
-
-**Divergence** (measured at 5c0d6b1). A silent wrong answer:
-
-```
-def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g
-  interp:   [5]
-  compiled: [fn g]
-```
-
-The body-local `g` captures the param `c`; the returned map carries it as
-a member, and `m.g` reads it. The interpreter calls the 0-arg fn (5); the
-compiled read leaves the fn value.
-
-**The fix.** The closure unit a fn value compiles to is shared by every fn
-value over the same body and inputs (its memo key), so it cannot carry the
-value's anonymity; `lambdaUnit` read every fn value as the anonymous `=>`
-flavour, and the landing parked a named one. The push now carries the name
-(`namedFnValueSpec` marks `ClosureRetSpec.Named` for a value whose FnDefInfo
-is not Anonymous, making a contract-free spec when the value declares none;
-the VM copies it to `ClosurePayload.Named`). The landing fires a named
-closure over a nullary unit (`ClosureCallsAtLanding`) where an anonymous
-one parks, and the bridge and the renamed render read anonymity as the
-unit's lambda flavour without a name (`ClosureIsAnonymous`). Pinned: lang
-`TestNUR235NamedFnValueMemberCalls` (six rows); compiler
-`TestNamedFnValueSpec`, `TestClosureCallsAtLanding`.
-
-## NUR236 — a word splice over a def-bound gradual read of a fn {#nur236}
-
-**Status:** FIXED 2026-09-26 (a spliced consumer is ordered by the stream — the handoff log's entry of that
-date) · **Recorded:** 2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
-— the emit.go coverage agent (block 16050, `deoptStatementStart`).
-
-**Rule:** one read, one dispatch — a bare name bound to a function calls
-wherever it is written (NUR078).
-
-**Divergence** (measured at 5c0d6b1). A silent wrong answer:
-
-```
-def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}
-  interp:   [Integer]    — `j` calls the fn (42), and typeof names its type
-  compiled: [Function]   — typeof runs over the fn value
-```
-
-The same program over a data member (`h {f: 5}`) agrees; the agent's test
-(`TestGradualReadConsumedBySplicedWord`) pins those.
-
-**The fix.** The per-read deopt (planDeopts) places its test at the read's
-push when the consumer follows the read — decided by comparing source
-positions. A spliced word's expansion carries the positions of the word's
-DEFINITION, earlier than the read, so the point was declined and the read
-kept its slot push. A consumer from outside the body is now ordered by the
-event stream (`deoptStatementStart`): tested at the read's push when no
-body event after the read runs before the consumer, else before that
-event, as the in-body case. Pinned: lang `TestNUR236SplicedConsumerDeopts`
-(six rows, an intervening event among them). The general "best effort"
-remains where a point cannot be placed at all.
-
 ## NUR237 — a def rebound in a taken branch after a loop-result def reads the pre-branch value {#nur237}
 
 **Status:** FIXED 2026-09-26 (an S5 name's later root defs are registry-visible — the handoff log's entry of that
@@ -10399,6 +10257,10 @@ ledgers that moved are that increment's, and this fix moved none of its own.
 
 **Status:** FIXED 2026-09-25 (the 0-arg lead's window — the handoff log's
 entry of that date). Recorded 2026-09-22 while landing S1b's apply shapes.
+Main's #516 (merged 2026-09-27) closes the CONSTANT lead a second way: a
+call-site specialised unit dispatches the lead as the interpreter does.
+Both paths answer; the rows are pinned with specialisation on and off
+(`TestApplyShapesZeroArgLeadResolves`).
 
 **The fix.** The window op (`callDynTrailTop`) asks the screen the re-step
 landing already asks (`FnValueOnlyZeroArgSigs`, NUR175) of a NAME-read
@@ -14168,6 +14030,95 @@ precedes residual args"), and under a one-value return `stack discipline:
 result operand of add is not on top` where the interpreter raises the
 return-count type_error.
 
+## NUR234 — a Function param passed on bare to a recursive call is a word dispatch interpreted and a value compiled {#nur234}
+
+**Status:** LOUD on this branch — the merge of main's #516 (2026-09-27).
+The generic compile declines (`unmatched dispatch recovered at h`): this
+branch's NUR123 close models the bare read of `g` as the interpreter's call
+of `g`, and `h` then no-matches, so the compiled lane no longer answers
+`[20]`. The `/v` spelling (`(h g/v (n sub 1))`) is `[20]` on both lanes.
+The compile of the interpreter's `signature_error` is owed. The original
+status: Pending — SILENT. Recorded 2026-09-27 while landing call-site
+specialisation; present on `main` at c8bce66.
+
+```
+def inc fn [[x:Integer][Integer][x add 1]] end
+def h fn [[g:Function n:Integer][Integer][if (n lte 0) [0] [(g n) add (h g (n sub 1))]]] end
+h inc/v 5
+  interpreted   signature_error: cannot call `h` — no signature matches the arguments
+  compiled      [20]
+```
+
+The interpreter reads the bare `g` in `(h g (n sub 1))` as a CALL of `g`
+(the bare-name-calls rule — ADR-011's 2026-08-17 amendment: passing a fn as
+an argument takes `/v`), so `g` consumes `(n sub 1)` and `h` no-matches. The
+generic compiled unit passes `g`'s VALUE as `h`'s first argument and
+recurses to 20. NUR123's family (a bare read of a fn-valued frame binding is
+a word dispatch) — its table's last row is the non-recursive sibling.
+
+A call-site specialisation of this call declines (the check pass models the
+call of `g`, and `h`'s dispatch then no-matches — "unmatched dispatch
+recovered"), so the retry compiles exactly what `main` compiles. The
+declining analysis costs about half a second per compile: the recovery's
+assumed dispatch of `h` re-expands a splice marker in check mode until the
+tape nears its ceiling (the three `tape at 9x%` warnings) — a latent
+check-mode pathology the specialised analysis is the first to reach.
+Diagnosis of the splice runaway: reported, not confirmed.
+
+## NUR235 — a typed-map param pattern rejects an inline map literal with a computed member, and the lanes word the error differently {#nur235}
+
+**Status:** Pending. Recorded 2026-09-27 in the investigation that led to
+call-site specialisation; present on `main` at c8bce66.
+
+```
+def h fn [[m:{f:Integer}][Any][m.f]] end  h {f: (1 add 1)}
+  interpreted   signature_error: cannot call `h` … the argument was {f:paren([…])} (a Map)
+                … candidate `h (Map)` — argument 1: … does not satisfy its declared pattern {f:Integer}
+  compiled      signature_error: cannot call `h` … the argument was {f:2} (a Map)
+                … expected: h (Map) or (no args)
+```
+
+Both lanes refuse the call — the error CODE agrees — but the notes differ:
+the interpreter matches the pattern against the literal before its paren
+members are evaluated, and the compiled lane reports the evaluated map and
+no candidate. The same holds for `{:Integer}` and for a lambda member
+(`h {f: ([x:Integer] => [x add 1])}` against `{f:Function}`); a map bound
+first (`def mm {f: …}  h mm`) matches on both lanes. Whether the
+interpreter's refusal is itself the language defect (a typed-map pattern
+unusable with an inline literal of computed members) is a question for the
+maintainer, not recorded here as settled.
+
+## NUR236 — a declined specialisation after an unrepeatable compile-pass effect does not compile {#nur236}
+
+**Status:** Recorded 2026-09-27 (Codex review of #516); introduced by call-site
+specialisation, deliberately — the alternative is a repeated effect.
+
+A compile pass is the program's own execution of what the check pass runs
+for real: a RunInCheckMode word, an imported module's body (the VM never
+re-imports). CompileCheck re-runs a pass whose call-site specialisation
+declined, and a re-run would repeat every effect the first pass made — the
+duplicate-effect class (L-DUP) removing the interpreter re-run closed. The
+first pass's OUTPUT is held and written once (`lang/go/compile_effect_hold.go`),
+so a printing module body or check-mode word costs nothing. A counted effect
+(the effect ledger: a file write, a network send) or a stdin read cannot be
+held, and the pass that made one is not re-run: where it needed the re-run,
+the program does not compile.
+
+```
+zz-effect ; def inc fn [[x:Integer][Integer][x add 1]] end
+def h fn [[g:Function x:Any][Any][g x]] end  h inc/v "s"
+  main          compiles (no specialisation)
+  this branch   compile_failed: call-site specialisation declined after an
+                unrepeatable check-pass effect (uncompilable) — the effect once
+```
+
+(`zz-effect` is `lang/go/compile_effect_hold_test.go`'s check-mode word
+that notes an effect.) The class is narrow — a source must name `Function`,
+make such an effect during compilation, AND specialise a call site that
+declines — and the cure is the declines' own: a specialisation that
+declines less often, or one that can be unwound in place so no re-run is
+needed.
+
 ## NUR311 — a reach-led forward window's no-match notes name the pass's window {#nur311}
 
 **Status:** Pending · **Recorded:** 2026-09-27 · **Surfaced by:** the merge
@@ -14184,7 +14135,7 @@ import "boru:minilang" end def m {e: Function} end mini m.e 'ab'
 ```
 
 The compiled report is built over the window the check pass matched (the
-attempted window, NUR234); the interpreter's forward collection stopped at
+attempted window, NUR320); the interpreter's forward collection stopped at
 the reach `m.e` and supplied none. The notes are the only difference.
 
 **Where it comes from (analysis, 2026-09-27).** The program compiles to a
@@ -14489,3 +14440,154 @@ every gate that asks whether a value may re-step over its neighbours
 (`mayBeFnUnsettled` — `3 r 5` is `3 7 5`). An arg-taking arm's read keeps
 its decline, loud. Pinned by `lang/go/nur318_319_test.go` and compiler
 `TestNUR319UnionReadReStepped`.
+
+## NUR320 — a compiled direct call's contract no-match reports every argument; the interpreter reports its attempted window {#nur320}
+
+*Numbered NUR234 until the merge of main's #516 (2026-09-27), where main's NUR234 kept the number.*
+
+**Status:** FIXED 2026-09-26 (the call carries the interpreter's window —
+the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
+**Surfaced by:** compiling NUR308's type half — a call over a parameter
+typed by a computed-bound name is admitted by the pass and checked by the
+run.
+
+**The fix.** The check pass derives the window at the user fn's dispatch
+itself — sigError's own derivation over its tape (`rematchWritten`, a
+gradual operand standing where the run's value will), taken at the
+dispatch's FIRST step, since the run fails there: its plan sees every
+operand but a speculative slot's, and a speculative plan offers no window.
+The offer (`NoteCallWindow`) is keyed and held like the region offer, so a
+forward collection's force-stack re-step keeps it and the callee's body
+analysis cannot overwrite it. The call's record maps each window value to
+where the run holds it — an argument by identity, a definite scalar by
+value, an event result by its seat (a promoted slot, else its depth
+beneath the call's operands on the stack the lowering simulates), a local
+read whose binding had not moved when the window was offered — and the
+lowering writes `CallWindows[pc]`, which the VM reads when the contract
+fails. A value with no such home leaves the call reporting its arguments,
+as before: a local read rebound between the read and the call (`a def a 9
+f b` reports b's 6 compiled, a's 5 interpreted) is the residue. Pinned:
+lang `TestNUR320ContractNoMatchReportsTheAttemptedWindow` (fifteen rows
+byte-identical, notes included); compiler `TestNoteCallWindowPool`,
+`TestClaimHeldWindow`, `TestCallWindowOps`, `TestSeatCallWindow`; eng
+`TestCallWindowAt`.
+
+**Rule:** one failed dispatch, one diagnostic, on both lanes.
+
+**Divergence** (pre-existing; measured at b3bcd9a with a gradual argument):
+
+```
+def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]
+  interp:   signature_error … note: candidate `f (String)` takes 1 argument, but none were supplied
+  compiled: signature_error … note: the argument was 5 (an Integer)
+                              note: candidate `f (String)` — argument 1: expected String, got 5 (an Integer)
+```
+
+The code, message head and caret agree; the notes differ. The interpreter
+reports its ATTEMPTED WINDOW (`attemptedWindowOver`): the forward
+candidates written after the word, which stop at the first bare read, and,
+when those are fewer than the smallest overload's arity, the stack prefix
+beneath. `f e` inside a body, and `def v 2 f v` at the top level, attempt
+an empty window. The compiled direct call's contract check
+(`checkParamContract` at `OpCallUser` / `OpTailCallUser`) reports every
+argument (`RuntimeNoMatch` over `guardArgs`). The spellings whose window
+holds the value agree: `e f` (a stack argument), `f (e)` (a paren group)
+and `f (g e 1)` (a nested call).
+
+NUR122 closed the same gap for a trailing fn-value apply, by carrying the
+written run (`DynApplyHead.NWritten`, from `writtenRun`). **Proposed fix:**
+carry each user call's written run and forward/stack split on its record,
+and build the contract's no-match over the same window: the written
+prefix, filled from the unit's stack beneath the call's operands to the
+smallest arity.
+
+The window, measured on the interpreter inside a fn body (`e` a param
+holding 5, `f` one String parameter, `g` two):
+
+```
+7 f e      the argument was 7              (a bare read ends the run; the prefix fills)
+f e 7      takes 1 argument, none supplied (the run is empty and so is the prefix)
+9 e f      the arguments were 5 and 9      (no forward run: the prefix, top first)
+g "x" e    the argument was 'x'            (the run is ["x"]; the prefix is empty)
+g e "x"    none supplied                   (the first forward token is a read)
+e g "x"    'x' and 5                       (the run ["x"], filled from the prefix)
+"x" e g    5 and 'x'                       (the prefix, top first)
+f (e)      the argument was 5              (a paren group is evaluated first: written)
+```
+
+A bare word read is resolved by lookup at the dispatch and never lands
+in the forward window. A paren group is evaluated before the dispatch and
+does. So the written count is the check pass's own
+`ReorderForwardCandidates` at the dispatch, bounded by the forward count,
+published beside `CurCallWord` for the user-fn record. The VM then needs
+it per call site, next to the call's forward count, to rebuild the window
+over its own stack prefix.
+
+## NUR321 — a fn-body-local fn def bound into a returned map: the member read returns the fn {#nur321}
+
+*Numbered NUR235 until the merge of main's #516 (2026-09-27), where main's NUR235 kept the number.*
+
+**Status:** FIXED 2026-09-26 (a named fn value's push carries its name — the handoff log's entry of that
+date) · **Recorded:** 2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+— the emit.go coverage agent's probes.
+
+**Rule:** one read, one dispatch — a member read of a function calls it
+(ADR-011, NUR078).
+
+**Divergence** (measured at 5c0d6b1). A silent wrong answer:
+
+```
+def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g
+  interp:   [5]
+  compiled: [fn g]
+```
+
+The body-local `g` captures the param `c`; the returned map carries it as
+a member, and `m.g` reads it. The interpreter calls the 0-arg fn (5); the
+compiled read leaves the fn value.
+
+**The fix.** The closure unit a fn value compiles to is shared by every fn
+value over the same body and inputs (its memo key), so it cannot carry the
+value's anonymity; `lambdaUnit` read every fn value as the anonymous `=>`
+flavour, and the landing parked a named one. The push now carries the name
+(`namedFnValueSpec` marks `ClosureRetSpec.Named` for a value whose FnDefInfo
+is not Anonymous, making a contract-free spec when the value declares none;
+the VM copies it to `ClosurePayload.Named`). The landing fires a named
+closure over a nullary unit (`ClosureCallsAtLanding`) where an anonymous
+one parks, and the bridge and the renamed render read anonymity as the
+unit's lambda flavour without a name (`ClosureIsAnonymous`). Pinned: lang
+`TestNUR321NamedFnValueMemberCalls` (six rows); compiler
+`TestNamedFnValueSpec`, `TestClosureCallsAtLanding`.
+
+## NUR322 — a word splice over a def-bound gradual read of a fn {#nur322}
+
+*Numbered NUR236 until the merge of main's #516 (2026-09-27), where main's NUR236 kept the number.*
+
+**Status:** FIXED 2026-09-26 (a spliced consumer is ordered by the stream — the handoff log's entry of that
+date) · **Recorded:** 2026-09-26 · **Surfaced by:** closing #505's merged-coverage gap (ADR-008)
+— the emit.go coverage agent (block 16050, `deoptStatementStart`).
+
+**Rule:** one read, one dispatch — a bare name bound to a function calls
+wherever it is written (NUR078).
+
+**Divergence** (measured at 5c0d6b1). A silent wrong answer:
+
+```
+def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}
+  interp:   [Integer]    — `j` calls the fn (42), and typeof names its type
+  compiled: [Function]   — typeof runs over the fn value
+```
+
+The same program over a data member (`h {f: 5}`) agrees; the agent's test
+(`TestGradualReadConsumedBySplicedWord`) pins those.
+
+**The fix.** The per-read deopt (planDeopts) places its test at the read's
+push when the consumer follows the read — decided by comparing source
+positions. A spliced word's expansion carries the positions of the word's
+DEFINITION, earlier than the read, so the point was declined and the read
+kept its slot push. A consumer from outside the body is now ordered by the
+event stream (`deoptStatementStart`): tested at the read's push when no
+body event after the read runs before the consumer, else before that
+event, as the in-body case. Pinned: lang `TestNUR322SplicedConsumerDeopts`
+(six rows, an intervening event among them). The general "best effort"
+remains where a point cannot be placed at all.

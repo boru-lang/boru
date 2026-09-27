@@ -71,12 +71,28 @@ func TestApplyShapesBareFnWordArgDeclines(t *testing.T) {
 		`def inc fn [[n:Integer] [Integer] [n add 1]] end def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function] [Integer] [(k inc)]] end h app/v`,
 		// a bare read of a Function-typed PARAM is a word dispatch too (NUR123)
 		`def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function g:Function] [Integer] [(k g)]] end def inc fn [[n:Integer] [Integer] [n add 1]] end h app/v inc/v`,
+		// main's NUR234: passed on bare to a recursive call, the param is
+		// called over the next argument, and the recursion no-matches
+		`def inc fn [[x:Integer][Integer][x add 1]] end def h fn [[g:Function n:Integer][Integer][if (n lte 0) [0] [(g n) add (h g (n sub 1))]]] end h inc/v 5`,
 	} {
-		prog, _, _, cerr := mustNew(t).CompileCheck(src)
-		if cerr == nil && prog != nil {
-			t.Errorf("%s: compiled — a bare fn word at the lead's argument position must decline", src)
+		// Both paths decline: a bare fn name calls at every slot (NUR078),
+		// so the interpreter calls the word over nothing and raises
+		// signature_error, and a call-site specialised unit — whose body
+		// dispatches the constant lead over that failed call — declines as
+		// the generic path does (the `/v` spelling specialises,
+		// TestCallSiteSpecialisationGraduatedShapes).
+		for _, a := range []*Boru{mustNewNoSpec(t), mustNew(t)} {
+			prog, _, _, cerr := a.CompileCheck(src)
+			if cerr == nil && prog != nil {
+				t.Errorf("%s: compiled — a bare fn word at the lead's argument position must decline", src)
+			}
+		}
+		if _, errI := mustNew(t).RunInterp(src); codeOf(errI) != "signature_error" {
+			t.Errorf("%s: interpreter %v, want signature_error (NUR078: the bare name calls)", src, errI)
 		}
 	}
+	// NUR234's `/v` spelling passes the fn on both lanes.
+	agreeOnBothLanes(t, `def inc fn [[x:Integer][Integer][x add 1]] end def h fn [[g:Function n:Integer][Integer][if (n lte 0) [0] [(g n) add (h g/v (n sub 1))]]] end h inc/v 5`, "[20]")
 }
 
 // TestApplyShapesZeroArgLeadResolves pins NUR176's close: a 0-arg runtime
@@ -100,6 +116,13 @@ func TestApplyShapesZeroArgLeadResolves(t *testing.T) {
 		`def app fn [[g:Function] [Integer Integer] [(g 3)]] end def h fn [[k:Function] [Integer Integer] [(k ([] => [9]))]] end h app/v`,
 	} {
 		requireSameVerdict(t, src)
+		// The generic path's verdict too: a constant lead compiles through
+		// a call-site specialised unit (TestCallSiteSpecialisationGraduatedShapes),
+		// and the window op's own hand-off is the lane with it off.
+		gotC, compiled, errC, gotI, errI := runBothEnginesNoSpec(t, src)
+		if !compiled || fmt.Sprint(gotC) != fmt.Sprint(gotI) || codeOf(errC) != codeOf(errI) {
+			t.Errorf("%s: generic path %v / %v (compiled=%v), interpreter %v / %v", src, gotC, errC, compiled, gotI, errI)
+		}
 	}
 	for _, c := range []struct{ src, want string }{
 		{`def z fn [[] [Integer] [7]] end def inc fn [[n:Integer] [Integer] [n add 1]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h z/v`, "[8]"},

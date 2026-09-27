@@ -606,7 +606,6 @@ var frontierCompileLedger = map[string]frontierEntryLS{
 	//     and the interpreter owns the program. The CPS rows are the same
 	//     family one step in: the continuation call `(k m)` inside a
 	//     fn-local fn is a fn CALL operand of unknown provenance.
-	`def chainif fn [[a:Function b:Function s:Integer][Any][def r1 (a s) if (r1.ok) [def r2 (b (r1.rest)) (r2.val)] [0]]] chainif ([z:Integer] => [{ok:true rest:8}]) ([z:Integer] => [{ok:true val:50}]) 4`: {why: "NUR087's branch-local def-split: the check pass is clean since the fix, but the branch arm's dispatch through a Function param takes the checker's best-fit recovery, and a recovered dispatch declines compilation; graduation = a modelled branch-arm param dispatch", failsWith: "unmatched dispatch recovered at dot"},
 	// `for-each dbl/v [1 2 3]` GRADUATED with the forty-fourth increment
 	// (2026-09-10): the word declared no CallableSpec, so its body never
 	// compiled to a closure and its Function form met the Stage-3 gate

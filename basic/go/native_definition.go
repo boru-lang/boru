@@ -1986,7 +1986,7 @@ func FnConstruct(r *Registry, elems []Value, genSpec *GenSpecInfo) ([]Value, err
 	// ComputeCaptures' baseline check.
 	perSig := make([][]CapturedBinding, len(fnDef.Signatures))
 	for i := range fnDef.Signatures {
-		perSig[i] = core.ComputeCaptures(r, &fnDef.Signatures[i])
+		perSig[i] = core.ComputeFnValueCaptures(r, &fnDef.Signatures[i])
 	}
 	fnDef.Captured = core.MergeCaptures(perSig)
 
@@ -2164,7 +2164,7 @@ func AfnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 	fnDef := FnDefInfo{
 		Signatures: []FnSig{sig},
 		Anonymous:  true,
-		Captured:   core.ComputeCaptures(r, &sig),
+		Captured:   core.ComputeFnValueCaptures(r, &sig),
 		// Home registry, as FnConstruct stamps it: a lambda's free words
 		// resolve where it was written, whichever module applies it.
 		Registry: r,

@@ -15925,3 +15925,108 @@ on the registry once per element. `interpEntryRowCeiling` 25 -> 27,
 panicked: plain=no_signature/gt armed=). The aritygate pin of
 compiler_dispatch_record.go rises 2 -> 3 for the guard itself (the
 argument rule, not a NUR100 site).
+
+## Call-site specialisation of fn units on a constant Function arg (2026-09-27)
+
+**What it is.** A fn body compiles once per generalised call shape: every arg
+becomes a carrier of its type, and a `Function` arg becomes a bare
+`Function` carrier — no arity, no result count, no result types (ADR-011:
+one function type). A body that calls its fn param (`g 2`, `fold [drop g]
+xs`) therefore compiled to a run-time apply that re-matches the fn's
+signatures on every call, with everything downstream re-matching too
+(`CALL_NATIVE_POLY`); a code body naming the param ran as a dynamic body
+under the program-wide dynamic environment. Where the call site passes a
+CONSTANT fn (`h inc/v`, `h ([x:Integer] => [x add 1])`), the call now
+records a SPECIALISED unit instead: the same body compiled with the param
+bound to that fn, exactly as the interpreter's frame binding binds it
+(`InstallFrameBinding` — the relabel under the param's name, so a call
+through it names, renders and errors as `g`). A call through the param
+records the fn's own unit (`CALL_USER g/1`) and types its result by the
+fn's declared return; a code body naming it compiles to a closure over the
+placed param (`placeFnParam` → `BIND_DYN_SCOPE` at entry). No generic unit
+is compiled beside it: an unexecuted generic body is not free — its
+dynamic code body alone arms `dynEnv` for every unit in the program.
+
+**The guard and the fallback.** `CompiledFn.SpecGuards` holds, per
+specialised param, the fn the unit was compiled for; `CALL_USER` /
+`TAIL_CALL_USER` checks each guarded arg's identity (`core.ExactEqual`,
+what `eq` compares — the `FnDefInfo.ident` token) at entry, before any of
+the body runs, and on a failed guard applies `SpecFallback` — the fn
+itself, single-signature — to the call's signature args, the dispatch the
+interpreter makes: an island (`runIslandResolved`) that steps only the fn
+over the args laid out as resolved stack data (`specFallbackInputs`, so a
+fn VALUE among them is never re-applied). A break/continue the fn's body
+escapes with is the enclosing loop's, resolved as at every island seam
+(`resolveEscapedFlow`); otherwise a tail call re-dispatches as `RET` so the
+frame leaves exactly as the tail-called unit's would. (It first went through
+`InvokeCallbackFn`, whose callback sub-engine is a loop barrier: a fallback
+body's `break` raised `flow_error` where the interpreter exits the caller's
+loop — Codex review of #516.) Nothing has run when the guard decides, so
+there is no deoptimisation — design §6's "no speculation, no deopt" rule
+holds.
+
+**Admission** (`check/go/call_site_spec.go`). A named `Function` param of
+a single-signature, non-generic, capture-free callee whose home is the
+dispatching registry (a capturing callee's captures ride `CALL_USER` as
+per-construction trailing slots, which one fallback fn value cannot carry —
+Codex review of #516); a constant fn arg with an identity, no captures, no generic
+spec, no macro splice, no modifier wrap, homed there too (a module's fn
+values are re-minted per import instance — the check pass's are not the
+run's; a module callee's fallback would not run where its body resolves:
+the checkprop comparator row declined `undefined word: arr` until this
+held). At most `FnSpecQuota` (4) specialisations per definition site.
+
+**Declines, all retried.** A specialisation cannot be unwound in place (a
+failing unit leaves the recorder's unit stack mid-body), so a compile pass
+that tried one and did not produce a program is re-run once with
+`CheckState.SpecOff`, from `SnapshotForCompile` — the check pass leaves
+real side effects the program's replay base would otherwise inherit
+(`CompileCheck`; a source that never names `Function` skips the snapshot
+and compiles in one pass). The specialised analysis marks the pass
+uncompilable when: its residual misses the declared returns (the
+specialised unit would raise the return error at its own RET where the
+generic unit's run-time apply raises it at the call — `apply-twice two/v`);
+a call THROUGH the param passes an argument the callee's contract may
+refuse at run time (an untyped one, or one whose type or gradual bound lies
+outside the param's — the refusal would carry CALL_USER's notes, not the
+interpreter's written tuple, NUR172's class); or a fn VALUE the body
+constructs captures the param (`ComputeFnValueCaptures` — its body is
+analysed outside the specialised window). `boru:vm`'s module compile and
+runtime stamps run with specialisation off (no retry to contain it).
+
+**The retry does not repeat an effect.** A compile pass is the program's own
+execution of what the check pass runs for real — a RunInCheckMode word, an
+imported module's body (the VM never re-imports) — so re-running it would
+reopen the duplicate-effect class (L-DUP) that removing the interpreter
+re-run closed. The first pass's output is therefore HELD
+(`lang/go/compile_effect_hold.go`, both writers in written order): a kept
+pass writes it, a retried pass drops it for the retry's own. What cannot
+be held — a counted effect (a file write, a network send: the effect
+ledger) or a stdin read (`native.StdinReads`) — makes the first pass
+unrepeatable, and a pass that needed the retry then does not compile
+(NUR236). Codex review of #516 found the repeat (`zz-emit` before a
+declining call printed `EE`).
+
+**One general fix on the way.** A `CALL_USER` / `TAIL_CALL_USER`
+instruction now carries the DISPATCHING WORD's position
+(`emitUserCall.callPos`), where the interpreter reports an error raised
+at the call; it carried the first argument's, which a param-slot argument
+does not have ("source position unknown" — NUR171's class, pre-existing
+for every named call over a param-slot argument).
+
+**Measured** (a 200 000-iteration `0 fold [drop g] (range 0 n)` loop,
+compiled, best of three on an idle box, specialisation off → on): through
+`g:Function` passed `inc/v` 1.152 s → 0.548 s; passed a lambda literal
+0.859 s → 0.488 s; the direct `inc` call it now matches, 0.532 s → 0.541 s
+(unchanged — nothing to specialise).
+
+**Tests that pinned the generic path over a constant fn arg** now run it
+with `SetCallSiteSpecialisation(false)` — the generic pins hold unchanged
+(apply shapes, arm-tail apply, the M2 fn-value negatives, the closure-render
+measure, the returned-closure park, the apply chain's lowering, the tail
+apply collapse, the collection hazard, the word-read dispatch, and the
+loud-decline helper) — and each shape's constant form is asserted to
+compile with interpreter parity in `TestCallSiteSpecialisationGraduatedShapes`.
+NUR176 closes for a constant lead (`h z/v` answers the interpreter's 8).
+Found and recorded: NUR234 (a Function param passed on bare to a recursive
+call — silent on main), NUR235 (typed-map patterns and inline literals).

@@ -68,14 +68,16 @@ func fnValueM2Native(t *testing.T, name, src, want string) {
 // plain interpreted run on value and error taxonomy.
 func fnValueM2CompileFailure(t *testing.T, name, src, wantReason string) {
 	t.Helper()
-	prog, reason, _, _ := mustNew(t).CompileCheck(src)
+	// These rows pin the GENERIC compile path; a constant fn arg would take
+	// a call-site specialised unit instead.
+	prog, reason, _, _ := mustNewNoSpec(t).CompileCheck(src)
 	if prog != nil {
 		t.Fatalf("%s: compiled; want compile failure", name)
 	}
 	if wantReason != "" && !strings.Contains(reason, wantReason) {
 		t.Errorf("%s: compile failure reason %q; want substring %q", name, reason, wantReason)
 	}
-	gotC, _, errC := mustNew(t).RunCompiled(src)
+	gotC, _, errC := mustNewNoSpec(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
 	if noteCompileDefect(t, src, gotC, errC) {
 		return

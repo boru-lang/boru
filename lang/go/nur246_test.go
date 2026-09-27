@@ -78,7 +78,9 @@ func TestNUR246ParkedApplyCount(t *testing.T) {
 		// beside another element, the list declines.
 		{`def h fn [[f:Function] [List] [[7 (5 f/v)]]] end h ([s:Integer] => [s add 1])`, "consumes loop results", "[[7 6]]"},
 	} {
-		gotC, compiled, errC := mustNew(t).RunCompiled(r.src)
+		// The generic path's pin: a constant fn argument compiles the call
+		// through a call-site specialised unit instead (the row below).
+		gotC, compiled, errC := mustNewNoSpec(t).RunCompiled(r.src)
 		if !noteCompileDefect(t, r.src, gotC, errC) || compiled || !strings.Contains(fmt.Sprint(errC), r.reason) {
 			t.Errorf("%s: want a %q decline, got %v compiled=%v err=%v", r.src, r.reason, gotC, compiled, errC)
 		}
@@ -91,4 +93,7 @@ func TestNUR246ParkedApplyCount(t *testing.T) {
 			t.Errorf("%s: interp got %v / %v, want %s", r.src, gotI, errI, r.interp)
 		}
 	}
+	// Specialised on the constant closure, the fitting window's one result
+	// is known, and the list seats it (main's call-site specialisation).
+	agreeOnBothLanes(t, `def h fn [[f:Function] [List] [[7 (5 f/v)]]] end h ([s:Integer] => [s add 1])`, "[[7 6]]")
 }

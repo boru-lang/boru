@@ -35,11 +35,14 @@ func TestNUR249ZeroArgCarrierUnderAWindow(t *testing.T) {
 		agreeOnBothLanes(t, r.src, r.want)
 	}
 	// A list inside a branch arm is the arm's fragment, not the unit's scope:
-	// the one-result form stands, and raises on the 0-arg run.
+	// the generic unit's one-result form stands, and raises on the 0-arg run.
+	// Specialised on the constant `c/v`, the unit knows the run's count and
+	// answers (main's call-site specialisation).
 	for _, r := range []struct{ src, interp string }{
 		{c + `def h fn [[k:Function b:Boolean] [] [if b [[(k 5)]] [0]]] end h c/v true`, "[[7 5]]"},
 	} {
-		gotC, compiled, errC := mustNew(t).RunCompiled(r.src)
+		agreeOnBothLanes(t, r.src, r.interp)
+		gotC, compiled, errC := mustNewNoSpec(t).RunCompiled(r.src)
 		if !noteCompileDefect(t, r.src, gotC, errC) || !compiled || !strings.Contains(fmt.Sprint(errC), "a 0-arg lead left 2 values") {
 			t.Errorf("%s: want the one-result raise, got %v compiled=%v err=%v", r.src, gotC, compiled, errC)
 		}

@@ -3176,7 +3176,7 @@ false, compiled true — the union's install had no decline);
 `T`, compiled Never); `def T (Integer gt (size "abc"))` with `f [n:T]` and
 `f [n:Integer]`, `f 2` (interp 1, compiled signature_error). Found on the
 way: NUR310 (a make field's refusal was a plain error, a compiler defect
-when compiled) and NUR234 (a direct call's contract no-match notes).
+when compiled) and NUR320 (a direct call's contract no-match notes).
 
 Pinned by core's `TestRefinementConstructorsNoteUnknownBounds`,
 `TestUnknownBoundDecidesNothing`, `TestRefinementConstOnlyOverKnownBounds`,

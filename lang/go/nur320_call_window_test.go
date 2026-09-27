@@ -6,14 +6,14 @@ import (
 	"testing"
 )
 
-// TestNUR234ContractNoMatchReportsTheAttemptedWindow pins NUR234's close: a
+// TestNUR320ContractNoMatchReportsTheAttemptedWindow pins NUR320's close: a
 // compiled user call whose gradual argument fails its param contract raises
 // over the window the interpreter's failed dispatch reports — the written
 // run, which a bare word read ends, filled from the stack beneath to the
 // smallest arity — not over the call's arguments. Every row compiles and the
 // two lanes' errors agree to the byte, notes included; note is the one that
 // tells the rows apart.
-func TestNUR234ContractNoMatchReportsTheAttemptedWindow(t *testing.T) {
+func TestNUR320ContractNoMatchReportsTheAttemptedWindow(t *testing.T) {
 	const fg = `def f fn [[n:String] [Integer] [0]] end def g fn [[a:String b:String] [Integer] [0]] end `
 	rows := []struct{ src, note string }{
 		{fg + `each ([e:Any] => [f e]) [5]`, "takes 1 argument, but none were supplied"},

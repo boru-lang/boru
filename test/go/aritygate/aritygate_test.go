@@ -215,6 +215,14 @@ var pinnedAritySites = map[string]int{
 	// compiles that one signature's body as a dispatch of it would — the
 	// seventieth increment's replaced outer).
 	"check/go/spec_fn_unit.go": 1,
+	// Call-site specialisation (2026-09-27) is attempted only for a fn with
+	// exactly one signature (`len(fnDef.OwnSigs()) != 1`): an OVERLOAD-LIST
+	// presence test choosing the specialised unit's fallback — the one
+	// signature a failed guard applies. It never decides whether a body
+	// compiles or how a call behaves: every fn, one signature or many,
+	// compiles its generic unit exactly as before, and a specialised call
+	// answers what the generic call answers. Not behaviour by arity.
+	"check/go/call_site_spec.go": 1,
 	// 10 -> 11: nameFrameFns bounds its loop by `i < fn.NParams` to visit the
 	// NAMED PARAM slots of a frame — which slots are params, so a fn value
 	// bound for one takes the binding's name as the interpreter's frame
@@ -431,7 +439,7 @@ var pinnedAritySites = map[string]int{
 	// signature to match; one that does is a fn VALUE, and every arity of
 	// one takes the same path. Matching machinery, not a decision by arity —
 	// S1b-2 of design/FULL-COMPILATION-REPLAN.0.md.
-	// 1 -> 2: ClosureCallsAtLanding (NUR235) asks whether a NAMED fn value
+	// 1 -> 2: ClosureCallsAtLanding (NUR321) asks whether a NAMED fn value
 	// landing where nothing supplies an argument matches at all — the
 	// argument rule over an EMPTY supply. A signature that needs no operand
 	// matches there, so a nullary named value calls, exactly as

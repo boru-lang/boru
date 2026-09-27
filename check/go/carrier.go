@@ -2863,6 +2863,18 @@ func bindFrameValue(r *core.Registry, name string, v core.Value) {
 }
 
 func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, args []core.Value, captures []core.CapturedBinding, anonymous bool) []core.Value {
+	return runFnBodyOnce(r, name, paramNames, body, args, captures, anonymous, false)
+}
+
+// runFnBodyOnce is RunFnBodyOnce with the param-binding mode: frameBindFns
+// binds a named param holding a CONCRETE fn the way the interpreter binds it
+// (core.InstallFrameBinding — re-installed under the param's name, so a read
+// dispatches, errors and renders as the binding), where every other analysis
+// pushes the arg as a plain def. Only a call-site specialised unit's analysis
+// sets it (AnalyseFnBody under a SpecKeySuffix): that is the one analysis
+// whose concrete fn params are COMPILED, so the one whose binding must be the
+// interpreter's own.
+func runFnBodyOnce(r *core.Registry, name string, paramNames []string, body, args []core.Value, captures []core.CapturedBinding, anonymous, frameBindFns bool) []core.Value {
 	snapshot := r.Defs.Snapshot()
 	r.PushFnBaseline(snapshot)
 	defer r.PopFnBaseline()
@@ -2890,12 +2902,24 @@ func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 
 	// Bind named parameters as simple defs (carrier-typed).
 	// Unnamed parameters flow through the stack — push them
-	// before the body.
+	// before the body. A specialised analysis's constant-fn params are
+	// published for its duration (CheckState.SpecParamNames).
+	specNames := map[string]bool{}
+	if frameBindFns {
+		saved := r.Check.SpecParamNames
+		r.Check.SpecParamNames = specNames
+		defer func() { r.Check.SpecParamNames = saved }()
+	}
 	var input []core.Value
 	hasUnnamed := false
 	for i, arg := range args {
 		if i < len(paramNames) && paramNames[i] != "" {
-			bindFrameValue(r, paramNames[i], arg)
+			if frameBindFns && core.IsConcrete(arg) && arg.Parent.ConformsTo(core.TFunction) {
+				core.InstallFrameBinding(r, paramNames[i], arg)
+				specNames[paramNames[i]] = true
+			} else {
+				bindFrameValue(r, paramNames[i], arg)
+			}
 		} else {
 			// An unnamed FN-VALUE param is inert frame DATA under the
 			// arguments-are-inert unification (the interpreter no longer
@@ -3044,6 +3068,10 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	// fragment). Mirrors how captureArm/loopArm are consumed at the top
 	// of their analysis functions.
 	defer r.Check.Recorder().FnBodyGuard()()
+	// A call-site specialisation's key suffix is this analysis's alone: taken
+	// at entry, above every early return, so no nested analysis inherits it.
+	keySuffix := r.Check.SpecKeySuffix
+	r.Check.SpecKeySuffix = ""
 	// A callee's body is its OWN control flow: an undecidable arm the
 	// CALLER is inside (CheckState.SpecArmDepth) says nothing about a def
 	// in the callee — `sift-spec-from-map`'s fn-local `check-keys`, defined
@@ -3094,7 +3122,7 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 		}
 		args[i] = core.WithPos(c, args[i])
 	}
-	key := FnAnalysisKey(r.AnalysisScopeID(), name, args, captures, body)
+	key := FnAnalysisKey(r.AnalysisScopeID(), name, args, captures, body) + keySuffix
 
 	if r.Check.FnSummaries == nil {
 		r.Check.FnSummaries = map[string][]core.Value{}
@@ -3225,7 +3253,9 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 	// body sees this scope as its enclosing-fn baseline — without it,
 	// ComputeCaptures would treat outer params as if they lived at
 	// module/global scope and miss the capture.
-	runOnce := func() []core.Value { return RunFnBodyOnce(r, name, paramNames, body, args, captures, anonymous) }
+	runOnce := func() []core.Value {
+		return runFnBodyOnce(r, name, paramNames, body, args, captures, anonymous, keySuffix != "")
+	}
 
 	bailsBefore := r.Check.InflightBails
 	diagBase := len(r.Check.Diagnostics)

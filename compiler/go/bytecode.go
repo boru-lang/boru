@@ -941,7 +941,7 @@ func UnitIsFnValue(fn *CompiledFn) bool {
 // ClosureIsAnonymous reports whether closure cl over unit fn is an
 // ANONYMOUS fn value (`afn` / `=>`): the interpreter parks such a value,
 // unapplied, where nothing supplies an argument (ADR-016's gate); a named
-// one — a `fn` literal, cl.Named — calls (NUR235).
+// one — a `fn` literal, cl.Named — calls (NUR321).
 func ClosureIsAnonymous(fn *CompiledFn, cl core.ClosurePayload) bool {
 	return fn != nil && fn.Lambda && !cl.Named
 }
@@ -949,7 +949,7 @@ func ClosureIsAnonymous(fn *CompiledFn, cl core.ClosurePayload) bool {
 // ClosureCallsAtLanding reports whether a fn-value closure landing with
 // nothing to apply CALLS rather than parks: a NAMED fn value whose unit
 // takes no argument — its only call form is nullary, and a name always
-// calls (NUR235). An anonymous value, or one that needs arguments, parks.
+// calls (NUR321). An anonymous value, or one that needs arguments, parks.
 func ClosureCallsAtLanding(v core.Value) bool {
 	cl, ok := v.Data.(core.ClosurePayload)
 	if !ok || !cl.Named {
@@ -2099,7 +2099,7 @@ type CompiledFn struct {
 	// the interpreter's failed dispatch reports (sigError's attempted
 	// window), which is not the call's arguments — a bare word read written
 	// after the word ends the written run and never lands in it, and the
-	// stack beneath the call fills it (NUR234). A call with no entry
+	// stack beneath the call fills it (NUR320). A call with no entry
 	// reports its arguments; an EMPTY entry is a window of no values.
 	CallWindows map[int][]CallWindowOperand
 	// StoreNames names the DEF a promoted STORE_LOCAL binds a produced fn
@@ -2138,6 +2138,19 @@ type CompiledFn struct {
 	// slots (FnReadRefused), and the value takes the interpreter's own
 	// dispatch there; data arguments run the unit.
 	FnReadParams []int
+	// SpecGuards marks a CALL-SITE SPECIALISED unit: the body was compiled
+	// with each guarded param bound to a constant fn, so its reads of that
+	// param dispatch the fn's own compiled unit directly, typed by the fn's
+	// declared signature. It is valid only while every guarded runtime arg IS
+	// that fn (core.ExactEqual — fn identity); CALL_USER checks the guards at
+	// entry, before anything runs, and when one fails applies SpecFallback
+	// instead. Nil for every other unit.
+	SpecGuards []SpecGuard
+	// SpecFallback is the fn this unit specialises (single-signature): what
+	// a failed SpecGuards check applies to the call's args, through the
+	// fn-value callback seam — the dispatch the interpreter makes for it.
+	// Meaningful only when SpecGuards is non-empty.
+	SpecFallback core.Value
 }
 
 // FnReadRefused reports whether args (positional — args[i] fills param slot
@@ -2163,6 +2176,13 @@ func (ref *CompiledFnRef) RefusesArgs(args []core.Value) bool {
 		return false
 	}
 	return ref.Prog.Fns[ref.Unit].FnReadRefused(args)
+}
+
+// SpecGuard is one call-site specialisation guard: the runtime arg bound to
+// param Param (sig position Param, the body's slot Param) must be the fn Fn.
+type SpecGuard struct {
+	Param int
+	Fn    core.Value
 }
 
 // DeoptSpec is one OpDeoptIfFn: the gradual word read it guards (Name, its
@@ -2212,6 +2232,20 @@ type DeoptSpec struct {
 	Install bool
 }
 
+// specNote renders a specialised unit's guards for the disassembler:
+// " spec [l<param>=<fn>]" — empty for an ordinary unit.
+func specNote(fn CompiledFn) string {
+	if len(fn.SpecGuards) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString(" spec")
+	for _, g := range fn.SpecGuards {
+		fmt.Fprintf(&sb, " [l%d=%s]", g.Param, g.Fn.String())
+	}
+	return sb.String()
+}
+
 // slotNames renders a CompiledFn's slot→name table for the
 // disassembler: " [n acc]" with empty (anonymous body-local) slots shown
 // as "_". Empty string when no names are known.
@@ -2254,7 +2288,7 @@ func (p *Program) Disassemble() string {
 	var sb strings.Builder
 	p.disasmUnit(&sb, p.Code, p.Deopts)
 	for fi := range p.Fns {
-		fmt.Fprintf(&sb, "fn f%d %s/%d (locals=%d)%s:\n", fi, p.Fns[fi].Name, p.Fns[fi].NParams, p.Fns[fi].NLocals, slotNames(p.Fns[fi].LocalNames))
+		fmt.Fprintf(&sb, "fn f%d %s/%d (locals=%d)%s%s:\n", fi, p.Fns[fi].Name, p.Fns[fi].NParams, p.Fns[fi].NLocals, slotNames(p.Fns[fi].LocalNames), specNote(p.Fns[fi]))
 		p.disasmUnit(&sb, p.Fns[fi].Code, p.Fns[fi].Deopts)
 	}
 	fmt.Fprintf(&sb, "; consts=%d types=%d sigs=%d fallbacks=%d fns=%d max-stack=%d locals=%d",

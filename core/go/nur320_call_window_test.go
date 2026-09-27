@@ -104,7 +104,7 @@ func (c *callWindowEmit) NoteCallWindow(word string, _ SrcPos, window []Value, d
 }
 
 // TestNoteCallWindowOffer pins what a user fn's dispatch offers the
-// recorder (NUR234): the attempted window over the tape — present but EMPTY
+// recorder (NUR320): the attempted window over the tape — present but EMPTY
 // when nothing is written and nothing sits beneath (a nil window means "no
 // offer", so the empty one must stay non-nil) — no window for a speculative
 // plan, and the deferred flag when a matched position lies past the word (a

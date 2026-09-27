@@ -9,6 +9,41 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## The merge of main's #516: call-site specialisation on a branch where a bare fn name calls (2026-09-27)
+
+Main's #516 numbered its new records NUR234–NUR236, the numbers the branch
+had used; the branch's three became NUR320–NUR322 in the merge, and main
+keeps its own. The code conflicts compose both sides: a user call's event
+carries the branch's word position and main's argument window, a fn unit
+seats main's spec guards beside the branch's bound slots, and `CompiledFn`
+carries the branch's refused fn reads beside main's guards and fallback.
+The fallout, fixed in the merge:
+
+- **A fresh literal has no identity to guard.** The branch pushes a fn
+  literal with a fresh identity each time a fn or closure unit runs it
+  (NUR288), so main's identity guard on such a literal never holds, and
+  its specialised unit only ever took the fallback. A literal passed from
+  inside a fn body's analysis or a closure unit does not specialise
+  (`freshLiteralContext`). A `/v` reference and a root literal still do.
+- **A bare fn name calls (NUR078).** Main's first two graduated rows,
+  `(k inc)` and `(k g)`, pass a fn by its bare name. On main that is the
+  fn (`[4]`); on this branch the name calls at every slot, so the
+  interpreter calls `inc` over nothing and raises `signature_error`. Both
+  compile paths decline it, as the generic path did before. The graduated
+  list takes the `/v` spellings, which specialise and answer `[4]`.
+- **Two generic pins graduate.** NUR246's `[[7 (5 f/v)]]` over a fitting
+  closure and NUR249's branch-arm `[[(k 5)]]` over `c/v` compile through a
+  specialised unit and agree (`[[7 6]]`, `[[7 5]]`). Their decline and
+  raise pins now run with specialisation off.
+- **Main's records on the merged tree.** NUR234 is loud here: the
+  branch's NUR123 close models the bare `g` as its call, so the generic
+  unit declines where main answered `[20]`; the `/v` spelling is `[20]` on
+  both lanes. NUR235 and NUR236 stand as main recorded them.
+- **Pins.** check `TestSpecialisableFnArgFreshLiteral`; lang
+  `TestApplyShapesBareFnWordArgDeclines` (both paths and the interpreter's
+  code, with NUR234's row) and the NoSpec pins with agreeing rows in
+  `nur246_test.go` and `nur249_test.go`.
+
 ## A sweep of placed fn values under re-steps: NUR318, NUR319; NUR313's placed data (2026-09-27)
 
 A sweep crossing eleven placed-fn producers (branch arms, parens, `/v`
@@ -2135,7 +2170,7 @@ differing-shape witness, less the one both-arms program that compiles now.
 
 The merged gate measured 80248/80250, down from 148 uncovered statements
 at the start of the coverage work. Three items remained, all closed now:
-- **`deoptStatementStart`'s final decline.** NUR236's case now takes the
+- **`deoptStatementStart`'s final decline.** NUR322's case now takes the
   direct spliced consumer that used to reach it. A deopt unit test reaches
   it with a top-level read whose consumer stands inside an earlier paren.
 - **`parkedWindow`'s trailing arm.** NUR238 restricted the FnDefInfo
@@ -2266,9 +2301,9 @@ literal, bakes as a value and runs compiled. The interpreter finds no
 binding and raises `parse_unknown_lang`. NUR109 catches only a promoted
 call-result parser.
 
-## The three silent wrong answers closed: NUR235, NUR236, NUR237 (2026-09-26)
+## The three silent wrong answers closed: NUR321, NUR322, NUR237 (2026-09-26)
 
-**NUR235.** A fn value's closure unit is shared by every value over the
+**NUR321.** A fn value's closure unit is shared by every value over the
 same body and inputs, because the memo key holds neither the name nor
 the anonymity. `lambdaUnit` read every fn value as the anonymous `=>`
 flavour, so the landing parked a `fn` literal's named value where the
@@ -2285,7 +2320,7 @@ So the name rides on the push, as the return contract does:
 `ClosureCallsAtLanding` fires a named closure over a nullary unit, and
 the bridge reads `ClosureIsAnonymous`.
 
-**NUR236.** The per-read deopt ordered a read and its consumer by source
+**NUR322.** The per-read deopt ordered a read and its consumer by source
 position. A spliced word's expansion carries its DEFINITION's positions,
 so the point declined and the read kept its slot push. A consumer from
 outside the body is now ordered by the event stream.
@@ -2295,9 +2330,9 @@ The program's residual resolves after the events lower, so its rescue
 came too late for the arm's def (`loopSplitRebind`: every later root def
 of such a name is registry-visible).
 
-## NUR234 closed, main's #509 merged, and the merged ADR-008 gap covered (2026-09-26)
+## NUR320 closed, main's #509 merged, and the merged ADR-008 gap covered (2026-09-26)
 
-**NUR234.** A compiled user call's param-contract no-match now reports
+**NUR320.** A compiled user call's param-contract no-match now reports
 the interpreter's window: the written run, which a bare read ends, filled
 from the stack beneath to the smallest arity. The check pass derives it at
 the user fn's dispatch, over its own tape, with sigError's own derivation
@@ -2352,8 +2387,8 @@ All of it is tests, apart from a few provable simplifications:
 One pragma was added, at check_recovery.go's window-size bound, with its
 proof. One pragma was removed because its proof was false:
 native_control.go's constant-branch guard is reachable. The agents' probes
-found fifteen divergences, all measured and recorded OPEN as NUR235–NUR243:
-- three silent wrong answers (NUR235–NUR237);
+found fifteen divergences, all measured and recorded OPEN as NUR321, NUR322 and NUR237–NUR243:
+- three silent wrong answers (NUR321, NUR322 and NUR237);
 - a trailing-apply family (NUR238);
 - diagnostic names and codes (NUR239, NUR240);
 - a walk-hook capture (NUR241);
@@ -2405,7 +2440,7 @@ the code-body word.
 
 Found on the way, both pre-existing. NUR310: a make field's refusal was a
 plain error, bare interpreted and a compiler defect compiled; it is a
-type_error on both lanes now, CLOSED. NUR234: a compiled direct call's
+type_error on both lanes now, CLOSED. NUR320: a compiled direct call's
 contract no-match reports every argument where the interpreter reports its
 attempted window. The notes differ and the code and head agree. Recorded
 OPEN with a proposed fix: NUR122's written-run carried to user calls.

@@ -238,6 +238,8 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	}
 	e.SetUnitParamTypes(0, nil, nil)
 	e.SetUnitReturnPatterns(0, nil)
+	e.SetUnitBody(0, nil)
+	e.SetUnitSpecialisation(0, nil, nil, Value{})
 	e.SetUnitDecl(0, DeclSite{})
 	if e.UnitVariadic(0) {
 		t.Fatal("inactive UnitVariadic must be false")

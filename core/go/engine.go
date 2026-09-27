@@ -1028,7 +1028,7 @@ func attemptedWindowOver(tape *Tape, pointer int, fn *FnDefInfo, written, prefix
 // this dispatch's RUNTIME twin reports when its match fails: sigError's
 // attempted window, over the check pass's tape (rematchWritten — a gradual
 // operand stands where the runtime value will). The compiled call's
-// param-contract no-match renders the same tuple (NUR234): a bare word read
+// param-contract no-match renders the same tuple (NUR320): a bare word read
 // after the word ends the written run and is never an argument there, and
 // the stack beneath the call fills the window to the smallest arity.
 //

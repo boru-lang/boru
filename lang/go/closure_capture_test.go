@@ -114,7 +114,10 @@ func TestClosureCaptureSoundCompileFailures(t *testing.T) {
 // mirror), so its render differs.
 func TestClosureCaptureOpenShapes(t *testing.T) {
 	const src = `import "boru:math-util"  def f fn [[g:Function][Function][g/v]]  (f MathUtil.sqrt/v) 16.0`
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	// The GENERIC path's measure: a call-site specialised unit binds the
+	// wrapper as the interpreter's frame binding does and renders alike
+	// (TestCallSiteSpecialisationGraduatedShapes).
+	gotC, compiled, errC, gotI, errI := runBothEnginesNoSpec(t, src)
 	if !compiled || errC != nil || errI != nil {
 		t.Fatalf("compiled=%v errC=%v errI=%v", compiled, errC, errI)
 	}

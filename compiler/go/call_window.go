@@ -2,7 +2,7 @@ package compiler
 
 import core "github.com/boru-lang/boru/core/go"
 
-// The no-match window of a compiled user call (NUR234).
+// The no-match window of a compiled user call (NUR320).
 //
 // A compiled CALL_USER guards its param contract at run time
 // (checkParamContract in eng): a gradual operand the pass admitted may not

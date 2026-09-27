@@ -596,7 +596,7 @@ type ClosurePayload struct {
 	// only `afn` / `=>` make one anonymous. The unit is shared with
 	// anonymous values over the same body, so the push carries it
 	// (compiler ClosureRetSpec.Named): a name always calls, so a nullary
-	// named value fires where an anonymous one parks (NUR235).
+	// named value fires where an anonymous one parks (NUR321).
 	Named bool
 }
 

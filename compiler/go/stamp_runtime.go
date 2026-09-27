@@ -84,6 +84,9 @@ func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 	// diagnostics and emit state), so the compile pass is armed on it
 	// directly.
 	defer fork.Check.BeginCompilePass()()
+	// No call-site specialisation in a runtime stamp: a stamp that declines
+	// is dropped, not retried (CheckState.SpecOff).
+	fork.Check.SpecOff = true
 	// BeginCompilePass installs a concrete *EmitState; the two-value cast
 	// (never-failing here) keeps this panic-free without an unreachable
 	// guard branch — every EmitState method below is nil-receiver-safe and
