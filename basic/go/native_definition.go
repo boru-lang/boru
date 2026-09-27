@@ -1569,20 +1569,110 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	// interpreter, which enforces. A CONCRETE body is validated statically above
 	// and compiles faithfully (the plain {:T} map case is unaffected).
 	MarkTypedContainerDefUncompilable(r, name, body, constraint)
-	// FnUndef constraint (`def f:Mapper fn […]`): after Unify
-	// confirms the function shape matches Mapper, rewrap the
-	// Parent so dispatch keys off Mapper rather than the generic
-	// the generic TFunction. Behaviors installed via
-	// `behave compare/q (fn [[Mapper Mapper] …])` then dispatch on
-	// f. Same rewrap pattern as predicate types — the payload
-	// shape (FnDefInfo) is unchanged, accessors keep working, just
-	// the dispatch identity flips.
-	if constraint.Parent.Equal(TFnUndef) && typeName != "" {
-		if def := r.LookupTypeName(typeName); def != nil && def.Origin != core.OriginBuiltin {
-			unified = ReparentValue(unified, def)
-		}
+	reparent := fnUndefReparentTarget(r, constraint, typeName)
+	if bound, ok := defNarrowedBodyBind(r, name, constraint, body, unified, describeType(), reparent, defPos); ok {
+		return InstallAndRecordDef(r, name, bound, defPos)
+	}
+	if reparent != nil {
+		unified = ReparentValue(unified, reparent)
 	}
 	return InstallAndRecordDef(r, name, unified, defPos)
+}
+
+// fnUndefReparentTarget is the type a typed def over an FnUndef constraint
+// (`def f:Mapper fn […]`) reparents its value to once Unify confirms the
+// function shape matches Mapper: the Parent is rewrapped so dispatch keys off
+// Mapper rather than the generic TFunction, and behaviors installed via
+// `behave compare/q (fn [[Mapper Mapper] …])` dispatch on f. Same rewrap
+// pattern as predicate types — the payload shape (FnDefInfo) is unchanged,
+// accessors keep working, just the dispatch identity flips. nil: no
+// reparent (any other constraint, an inline FnUndef, a builtin node).
+func fnUndefReparentTarget(r *Registry, constraint Value, typeName string) *Type {
+	if !constraint.Parent.Equal(TFnUndef) || typeName == "" {
+		return nil
+	}
+	if def := r.LookupTypeName(typeName); def != nil && def.Origin != core.OriginBuiltin {
+		return def
+	}
+	return nil
+}
+
+// defNarrowedBodyBind binds a typed def whose body the pass holds only
+// abstractly — a carrier, `def x:Integer (mk)` over mk's Any — when the
+// carrier's own type does not make the value a member (NUR290). Unify says
+// nothing about that value: over a wider carrier it takes the narrower side,
+// the annotation's own type content, which is no value (binding it bound the
+// TYPE, so the compiled run bound `Integer` where the interpreter binds 42,
+// or refuses "s"), and a membership unifier that cannot inspect a carrier
+// admits it as the sound over-approximation (a fn shape, a negation), which
+// bound the run's value unchecked. Whether the value is a member is the
+// run's to decide: the pass binds a carrier — of the annotation's node when
+// that is a builtin one, which the run's check guarantees, else the
+// carrier the unify kept, the value still unknown — and records the run's
+// check, OpBindTyped over TypedBindRunMembership against the annotation,
+// which binds what the interpreter's unify binds or raises its refusal (an
+// FnUndef annotation's reparent never reaches a record: only a fn is its
+// member, and a body that may hold one declines).
+//
+// An Any annotation admits every value, so the def is the untyped one and
+// binds the body's carrier as that def does. A value that may be a fn under
+// an annotation that may hold one declines: the read of such a binding
+// applies the fn, which the read models see only through the body's own
+// carrier. A bind the compile cannot record declines as the compile-time
+// word it is (NoteRuntimeDependent — no decline site of its own). ok=false:
+// a concrete body, a proven member, or a typed container (declined above).
+func defNarrowedBodyBind(r *Registry, name string, constraint, body, unified Value, describe string, reparent *Type, pos SrcPos) (Value, bool) {
+	if !r.Check.IsActive() || !body.Carrier || IsTypedMap(constraint) || IsTypedList(constraint) {
+		return Value{}, false
+	}
+	if IsBareTypeNode(constraint) && constraint.Equal(TAny) {
+		return body, true
+	}
+	if carrierMembershipProven(r, body, constraint) {
+		return Value{}, false
+	}
+	bound := body
+	if unified.Carrier {
+		bound = unified
+	} else if IsBareTypeNode(unified) && unified.Origin == core.OriginBuiltin {
+		bound = NewCarrier(CanonicalType(r, &unified))
+	}
+	if reparent != nil {
+		bound = ReparentValue(bound, reparent)
+	}
+	es := r.Check.Recorder()
+	if _, fnMember := UnifyR(NewCarrier(TFunction), constraint, r); fnMember && carrierMayHoldFn(body) {
+		es.NoteRuntimeDependent()
+		return bound, true
+	}
+	cons := constraint
+	spec := core.TypedBindSpec{Kind: core.TypedBindRunMembership, Name: name, Describe: describe, Cons: &cons}
+	if out, ok := es.RecordTypedBind(spec, body, bound, pos); ok {
+		return out, true
+	}
+	es.NoteRuntimeDependent()
+	return bound, true
+}
+
+// carrierMembershipProven reports whether a carrier body's own type makes
+// every value it stands for a member of the annotation: a static carrier
+// of a node under a plain lattice node, whose membership is the lattice's
+// alone (no constraint Unifier — a union, a record shape, a refinement
+// decides by content).
+func carrierMembershipProven(r *Registry, body, constraint Value) bool {
+	if body.Dynamic || body.Parent == nil || !IsBareTypeNode(constraint) {
+		return false
+	}
+	node := CanonicalType(r, &constraint)
+	return !core.HasConstraintUnify(node) && body.Parent.ConformsTo(node)
+}
+
+// carrierMayHoldFn reports whether a carrier may stand for a fn value at
+// run time: its type is a fn's own or a fn shape's, or one a fn inhabits
+// (Any, Type).
+func carrierMayHoldFn(v Value) bool {
+	p := v.Parent
+	return p != nil && (TFunction.ConformsTo(p) || p.ConformsTo(TFunction) || p.ConformsTo(TFnUndef))
 }
 
 // ---- undef ----

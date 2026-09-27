@@ -9,6 +9,28 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR290 found and closed by a probe sweep of typed defs (2026-09-27)
+
+**How it was found.** A sweep of typed defs, an annotation over a body the
+check pass holds as a carrier (a user fn's Any result, a member read, a
+list element, a Number or Scalar result): 127 of 420 answered silently
+wrong, 91 of 119 over the Any result alone. The arm is main's.
+
+**The divergence.** `def x:Integer (mk) end x` answered `[Integer]` where
+the interpreter answers 42, and `[String]` where it refuses. Unify over a
+carrier wider than the annotation takes the narrower side, the
+annotation's own type content, and the typed def's general arm bound it;
+a fn-shape or negation annotation admits a carrier outright, and the run
+bound its value unchecked.
+
+**The fix.** Unless the carrier's own type proves membership (a static
+carrier under a plain lattice node), the pass binds a carrier and records
+OpBindTyped over `TypedBindRunMembership`, the run's unify with the
+interpreter's refusal. `Any` is the untyped def. A value that may be a fn
+under an annotation a fn may inhabit declines through the
+compile-time-word arm (the census holds: no new site). After: 0 silent of
+420, 193 declines where there were 197.
+
 ## NUR288 and NUR289 found and closed by a probe sweep (2026-09-27)
 
 **How they were found.** After NUR287, three combinatorial sweeps ran over

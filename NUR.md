@@ -212,6 +212,7 @@ keep the two in sync in the same commit.
 | [NUR287](#nur287) | FIXED 2026-09-27 (recorded and closed together, probing NUR282's `j j`; the handoff log's entry of that date): two results the check pass holds as dynamic carriers under a forward-eligible word with a literal after it — `def mk fn [[][Any][42]] end mk mk add 1` — answered `[84 1]` compiled for the interpreter's `[42 43]` (silent): the match over two carriers took `add (Bytes, Bytes)` all-stack and the poly re-match over that window could not collect the 1; three carriers took `add (Map, Any, Service)` and raised a claim failure. The forward-drift window (and the decline it mirrors) required a concrete operand beneath the dynamic top; a dynamic top is the whole precondition now. Inside a list literal the window met a fixed-count assembly (`[7 mk add 1]` was `[7 [43]]` for `[[7 43]]`, present before): it stands aside there and the decline answers. A word bound to a literal after the word (`def k 1 end mk mk add k`, `[84 1]` too) is the forward operand as well (`ForwardOperandValue`) | probing NUR282, 2026-09-27 |
 | [NUR288](#nur288) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): a fn literal written in a fn body is a new function every time the body runs — `def mk fn [[][Any][([x:Any] => [x])]] end mk mk eq` is `[false]` interpreted — and the compiled body pushed the literal's pooled const, one identity across calls: `[true]` (silent). An unbound, capture-free fn literal in a fn body is re-identified per push now (`OpPushConstFresh`, core's `WithFreshFnIdentity`), as a compound body literal is re-constructed; a named fn read by `/v` stays one function | probe sweep, 2026-09-27 |
 | [NUR289](#nur289) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): an anonymous fn whose Any slot meets a function word where a `do` body's result lands — `def mk fn [[][Any][([x:Any] => [x])]] end do [mk] typeof` — is the interpreter's strict-rule `signature_error`, and the compiled landing's walk answered `[Function]` (silent): it planned over the value's AUTHORED signature, whose `BarrierAllForward` scanned nothing forward. It plans over the installed view now (`installedSigView`). The caret still points at the word where the interpreter points at the fn (the landed value carries no position) | probe sweep, 2026-09-27 |
+| [NUR290](#nur290) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): a typed def over a body the check pass holds as a carrier — `def mk fn [[][Any][42]] end def x:Integer (mk) end x` — bound the ANNOTATION: Unify over a wider carrier takes the narrower side, the annotation's own type content, so the compiled run answered `[Integer]` where the interpreter answers 42 (and `[String]` where it refuses), and a membership unifier that cannot inspect a carrier (a fn shape, a negation) admitted it, binding the run's value unchecked (silent; 127 of 420 probed typed defs, in an arm unchanged from main). Unless the carrier's own type proves membership, the run decides it now: OpBindTyped over TypedBindRunMembership. A value that may be a fn under an annotation a fn may inhabit declines | probe sweep, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14237,3 +14238,62 @@ interpreter reports at the fn's own token, and the landed value (and the
 landing op) carry no position, so the compiled lane points at the word.
 Pinned by `lang/go/nur289_test.go`.
 
+## NUR290 — a typed def over a carrier bound the annotation {#nur290}
+
+**Status:** FIXED 2026-09-27 (recorded and closed together; the handoff
+log's entry of that date) · **Surfaced by:** a probe sweep of typed defs
+over dynamic bodies (present on main).
+
+**Rule:** a program the compiler admits, the compiled runtime runs, and
+answers as the interpreter does.
+
+**Divergence:**
+
+```
+def mk fn [[][Any][42]] end def x:Integer (mk) end x
+  interpreted   [42]
+  compiled      [Integer]                                 (silent)
+def mk fn [[][Any]["s"]] end def x:Integer (mk) end x
+  interpreted   type_error:  def x: value 's' does not unify with declared type Integer
+  compiled      [Integer]                                 (silent)
+def M (fnsig [[Integer] [Integer]]) end def mk fn [[][Any][42]] end def x:M (mk) end x typeof
+  interpreted   type_error:  def x: value 42 does not unify with declared type M
+  compiled      [Integer]                                 (silent)
+```
+
+The sweep: every builtin annotation (`Integer`, `Number`, `Scalar`,
+`String`, `List`, `Map`, `Any`, …), a union, a record shape and a named
+refinement, over a user fn's Any result, a member read, a list element
+and a Number or Scalar result — 127 of 420 typed defs silent before the
+fix (and 91 of 119 over a user fn's Any result alone); the arm is
+unchanged from main.
+
+**Cause.** The typed def's general arm (`DefTypedHandler`'s tail) unifies
+the body with the annotation and binds the result. Over a concrete body
+that is the value. Over a carrier WIDER than the annotation, Unify takes
+the narrower side, which is the annotation's own type content — no
+value — and the pass bound it: the compiled run bound the TYPE (the
+refine arm's comment names the same swap hazard, and the refine arm
+avoids it). A membership unifier that cannot inspect a carrier (the named
+fn shape's, the negation's) admits it as the sound over-approximation and
+returns the carrier, and the run bound its value with no check.
+
+**Fix.** Unless the carrier's own type proves membership — a static
+carrier of a node under a plain lattice node, whose membership is the
+lattice's alone — membership is the run's to decide
+(`defNarrowedBodyBind`, `basic/go/native_definition.go`): the pass binds
+a carrier (of the annotation's node when that is a builtin one, which the
+run's check guarantees, else the carrier the unify kept) and records
+OpBindTyped over `TypedBindRunMembership` against the annotation, which
+binds what the interpreter's unify binds or raises its refusal
+byte-identically (the kind NUR231 added for a bound only the run knows).
+An `Any` annotation admits every value, so that def is the untyped one.
+A value that may be a fn under an annotation a fn may inhabit (`Function`,
+`Type`, a fn shape, a negation) declines, through the compile-time-word
+arm (no decline site of its own): the binding's read applies the fn, and
+the read models see that only through the body's own carrier, whose
+claimed shape a typed bind's fresh identity would drop. A typed container
+declines as before. The check pass alone binds the same carrier, so a
+use downstream of the def is analysed over a value, not a type. Pinned
+by `lang/go/nur290_test.go`; the sweep after the fix: 0 silent of 420,
+and 193 declines where there were 197.

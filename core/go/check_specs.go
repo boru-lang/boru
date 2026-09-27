@@ -74,8 +74,12 @@ const (
 	// knows — a type over a refinement whose bound the analysis pass did not
 	// know (NUR231): a named node the run installed (RunTypeInstall forwards
 	// it to the run's type) or, with ConsOperand, the inline constraint the
-	// run computed. Runtime unifies the value against it; the value keeps its
-	// tag (a refinement, union or negation constraint never reparents).
+	// run computed — or a value only the run knows, a dynamic body whose
+	// carrier does not prove it a member of the annotation (NUR290). Runtime
+	// unifies the value against it; the value keeps its tag (a refinement,
+	// union or negation constraint never reparents; an FnUndef annotation,
+	// which does, never records one — only a fn is its member, and a body
+	// that may hold a fn declines).
 	TypedBindRunMembership
 )
 
