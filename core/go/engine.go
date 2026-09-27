@@ -3397,11 +3397,13 @@ func ForwardLiteralOperand(t Value) bool {
 
 // ForwardOperandValue is the one value a forward-collecting word takes for
 // the token t right after it: a literal ForwardLiteralOperand admits is
-// itself, and a plain WORD bound to such a literal is its bound value — the
-// forward phase collects a value-bound word as its value (`def k 1 end mk mk
-// add k` is `add` over the 1 and the top), where a function word stops it
-// and a modified word (`/v`, `/s`, `/f`, `/u`) is not a lone value. ok is
-// false for anything else. The drift guards read it (NUR287).
+// itself, and a plain WORD bound to such a literal — or the reserved literal
+// word `true` or `false`, which the engine resolves as it steps it
+// (ForwardClaimProbeOn reads them the same way) — is that value:
+// the forward phase collects a value-bound word as its value (`def k 1 end
+// mk mk add k` is `add` over the 1 and the top), where a function word
+// stops it and a modified word (`/v`, `/s`, `/f`, `/u`) is not a lone value.
+// ok is false for anything else. The drift guards read it (NUR287).
 func (e *Engine) ForwardOperandValue(t Value) (Value, bool) {
 	if ForwardLiteralOperand(t) {
 		return t, true
@@ -3411,6 +3413,9 @@ func (e *Engine) ForwardOperandValue(t Value) (Value, bool) {
 		return Value{}, false
 	}
 	top, ok := e.DefTop(w.Name)
+	if !ok && (w.Name == "true" || w.Name == "false") {
+		top, ok = NewBoolean(w.Name == "true"), true
+	}
 	if !ok || !ForwardLiteralOperand(top) {
 		return Value{}, false
 	}

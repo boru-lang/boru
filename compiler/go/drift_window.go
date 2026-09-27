@@ -135,6 +135,18 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 		if !ok {
 			return false
 		}
+		// A PLACED value — a user call's parked result, a paren's placed
+		// survivor — is data the interpreter never re-steps, and the island
+		// stepped it live and applied it: `5 mk add 1` over mk's lambda
+		// answered 7 where the interpreter's add meets the parked fn and
+		// raises (NUR287). It rides into the island inside its own paren,
+		// the interpreter's placement: a one-survivor paren parks a fn as
+		// data (fnReturnPark) and leaves any other value as it is. Top-first,
+		// so the close marker goes first.
+		if es.callResultPlaced(v) || es.placedNotReStepped(v) {
+			ops = append(ops, ConstOperand(es.intern(core.NewCloseParen())), op, ConstOperand(es.intern(core.NewOpenParen())))
+			continue
+		}
 		ops = append(ops, op)
 	}
 

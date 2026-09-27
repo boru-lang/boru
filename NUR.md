@@ -14145,8 +14145,25 @@ forward operand may be a WORD bound to a literal: the interpreter's forward
 phase collects a value-bound word as its value, so `def k 1 end mk mk add
 k` answered `[84 1]` too (and a String-bound `s`, `[84 x]` for `[42
 42x]`); both guards read the token through core's `ForwardOperandValue`,
-which yields the literal itself or the word's bound literal at the word's
-position, and the window carries that value. `mk mk add 1`, three carriers,
+which yields the literal itself, the word's bound literal, or the reserved
+literal word `true`/`false` as its Boolean, at the word's position, and the
+window carries that value (`s mk add true` over a `true` result answered
+`[ytrue true]` for add's Boolean refusal). A sweep of 3360 word × prefix ×
+forward-operand combinations over four result types finds no silent
+divergence after it.
+
+A third half, found by a second sweep (736 fn-valued factories — `do`
+runs, parens, member reads, list members — in landing and apply contexts):
+a PLACED value in the window, a user call's parked result or a paren's
+placed survivor, is data the interpreter's `add` meets and refuses (`5 mk
+add 1` over mk's lambda, `5 (mk) add 1`, `5 (l.0) add 1`:
+`signature_error`), and the island stepped it live and applied it over the
+5 — `[7]`, present before (a concrete operand beneath). A placed value
+(`callResultPlaced`, `placedNotReStepped`) now rides into the island inside
+its own paren, the interpreter's placement: a one-survivor paren parks a fn
+as data and leaves any other value as it is, so a data call result still
+compiles (`mk mk add 1`) and the parked fn meets `add`'s refusal. Both
+sweeps together, 4676 programs, find no silent divergence after it. `mk mk add 1`, three carriers,
 `sub`, a String pair, `if` and `do` bodies, the fn-valued `j j add 1` and
 the bound-word forms answer as the interpreter does; `[mk mk add 1]`, `[7
 mk add 1]` and a non-terminal `mk mk add 1 drop` decline. Pinned by

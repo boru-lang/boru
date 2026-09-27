@@ -43,6 +43,25 @@ func TestNUR287AllDynamicDriftWindow(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
+	// The reserved literal word `true` after the word is collected as its
+	// Boolean: `s mk add true` over a `true` result is add's Boolean refusal
+	// on both lanes, where the poly re-match answered `[ytrue true]`.
+	gotC, _, errC, gotI, errI := runBothEngines(t, `def mk fn [[][Any][true]] end def s "y" end s mk add true`)
+	if codeOf(errI) != "type_error" || codeOf(errC) != codeOf(errI) || len(gotC) != 0 {
+		t.Errorf("s mk add true: add's Boolean refusal on both lanes; got %v %v / %v %v", gotC, errC, gotI, errI)
+	}
+	// A PLACED value in the window — a user call's parked result, a paren's
+	// placed survivor — is data the interpreter's add meets and refuses; the
+	// island re-stepped it over the 5 and answered 7 (present before). It
+	// rides into the island inside its own paren, which parks a fn and
+	// leaves data as it is.
+	const lam = `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def l [([x:Integer] => [x add 1])] end `
+	for _, src := range []string{lam + `5 mk add 1`, lam + `5 (mk) add 1`, lam + `5 (l.0) add 1`} {
+		gotC, _, errC, gotI, errI := runBothEngines(t, src)
+		if codeOf(errI) != "signature_error" || codeOf(errC) != codeOf(errI) || len(gotC) != 0 {
+			t.Errorf("%s: add's refusal of the parked fn on both lanes; got %v %v / %v %v", src, gotC, errC, gotI, errI)
+		}
+	}
 	for _, src := range []string{
 		mk + `[mk mk add 1]`,
 		mk + `[7 mk add 1]`,

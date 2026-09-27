@@ -21,11 +21,17 @@ func TestForwardOperandValue(t *testing.T) {
 	if v, ok := e.ForwardOperandValue(word); !ok || !v.Is(TInteger) || v.Pos().Col != 9 {
 		t.Errorf("a word bound to a literal is its value at the word: %v %v", v, ok)
 	}
+	for name, want := range map[string]Value{"true": NewBoolean(true), "false": NewBoolean(false)} {
+		if v, ok := e.ForwardOperandValue(NewWord(name)); !ok || v.Data != want.Data || !v.Parent.Equal(want.Parent) {
+			t.Errorf("the reserved literal word %s is its value: %v %v", name, v, ok)
+		}
+	}
 	for name, tok := range map[string]Value{
 		"a fn binding":   NewWord("fnk"),
 		"a /v word":      NewWordRef("k"),
 		"a /s word":      NewWordModified("k", -1, true, false),
 		"an unbound one": NewWord("nope"),
+		"none":           NewWord("none"),
 		"a list":         NewList([]Value{NewInteger(1)}),
 	} {
 		if _, ok := e.ForwardOperandValue(tok); ok {
