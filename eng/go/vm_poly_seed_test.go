@@ -36,3 +36,23 @@ func TestPolySeedWindow(t *testing.T) {
 		t.Error("the only overload matching positionally gives the window")
 	}
 }
+
+// A shape guard holds for any Map of its exact shape; a fn guard for its fn.
+func TestSpecGuardsHoldShape(t *testing.T) {
+	mk := func(v core.Value) core.Value {
+		m := core.NewOrderedMap()
+		m.Set("a", v)
+		return core.NewMap(m)
+	}
+	shape, ok := core.ShapeOf(mk(core.NewInteger(1)), 8)
+	if !ok {
+		t.Fatal("shape")
+	}
+	guards := []compiler.SpecGuard{{Param: 0, Fn: shape}}
+	if !specGuardsHold(guards, []core.Value{mk(core.NewInteger(9))}) {
+		t.Error("the same shape holds")
+	}
+	if specGuardsHold(guards, []core.Value{mk(core.NewString("x"))}) {
+		t.Error("another tag fails the guard")
+	}
+}

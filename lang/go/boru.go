@@ -479,9 +479,10 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	// types, loaded modules — that the program's replay base would
 	// otherwise inherit), so specialisation never costs a program the
 	// compilation it has without it: the retry records exactly what a pass
-	// with none records. Specialisation acts on a Function-typed param, and
-	// a source that never names the type declares none: it compiles in one
-	// pass with specialisation off and pays for no snapshot.
+	// with none records. Specialisation acts on a TYPED param (a Function,
+	// Map, List or record param — each written `name:Type`), and a source
+	// with no `:` declares none: it compiles in one pass with specialisation
+	// off and pays for no snapshot.
 	//
 	// The first pass's effects are the program's (a module body imported,
 	// a RunInCheckMode word run), so a retry must not repeat them: its
@@ -490,7 +491,7 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	// is not retried (checkPassHold). Where it needed the retry, the program
 	// does not compile: a program the first pass declined is owed the
 	// retry's recording, which only a repeat of the effect can make.
-	if a.noCallSiteSpec || !strings.Contains(src, "Function") {
+	if a.noCallSiteSpec || !strings.Contains(src, ":") {
 		return a.compilePass(src, values, true)
 	}
 	snap := a.registry.SnapshotForCompile()

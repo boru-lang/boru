@@ -16022,3 +16022,70 @@ compile with interpreter parity in `TestCallSiteSpecialisationGraduatedShapes`.
 NUR176 closes for a constant lead (`h z/v` answers the interpreter's 8).
 Found and recorded: NUR234 (a Function param passed on bare to a recursive
 call — silent on main), NUR235 (typed-map patterns and inline literals).
+
+## Guarded fast paths over generic dispatch (2026-09-27)
+
+**Why.** The review of discarded type information measured where compiled
+programs still dispatch generically. `CALL_NATIVE_POLY` was 10% of executed
+instructions in the utils test suites but 54% of VM time, and every one of
+143,772 poly executions over the real suites picked the overload its site
+picked first. The Pareto cut keeps a precise fact for that common case,
+guards it where it is used, and takes the existing generic path otherwise.
+`TestGenericDispatchBench` (`BORU_BENCH=1`, test/go/langspec) times the run
+of nine micro shapes and seven utils suites, and checks each against the
+interpreter.
+
+**1 — the poly inline cache** (`eng/go/vm_poly_cache.go`). Each poly site
+remembers its last pick and the operand tags that made it; the same tags
+take it without re-matching. Sound where the word's overloads are
+tag-determined (`core.TagDeterminedSigs`: no patterns, no type-literal
+slots, builtin non-content types) and every operand is tag-keyable
+(`core.TagKeyable`); a different aggregate or other tags re-match.
+
+**2 — the seeded pick** (`compiler/go/poly_seed.go`,
+`eng/go/vm_poly_seed.go`). A poly site records the checker's own overload
+when a tag guard proves it: strict/concrete operands over tag-determined
+overloads (the dynamic-out-only reads — `m.a`, `xs get i`), or a word's
+only overload of the arity (`is`, `eq`). The VM dispatches it directly
+while the guard holds.
+
+**3 — withdrawn.** Keeping a single-reachable Boolean result strict
+(`is` → `not` → `if`) was implemented and measured: no run-time gain once 1
+and 2 made those sites cheap, and 63 corpus rows gained a false-positive
+`partial_dispatch` warning in the compile-armed pass (a strict Boolean
+joined at an `if` arm becomes a strict disjunct; the partition warns on the
+dead alternative). The diagnostic-parity ceilings caught it; the change was
+reverted rather than the ceilings raised.
+
+**4 — shape specialisation** (`core/go/shape_spec.go`,
+`check/go/call_site_spec.go`). A call passing a plain Map to an untyped
+`m:Map` param — or a record-typed `m:R` param — compiles a unit whose param
+is a strict record carrier of the map's exact keys and value tags
+(`core.ShapeOf`); field reads of it are strict (`getNodeReturns`), so the
+reads and the dispatches over them commit. A plain List to an untyped
+`xs:List` param keys a list of element carriers (`core.ListShapeOf`) —
+exact length and tags. The entry guard (`specGuardsHold`) checks the exact
+shape; a miss runs the fn itself (the #516 island fallback). Plain Maps and
+Lists are copy-on-write, so a shape that holds at entry holds for the
+frame. Only plain data keys a shape (scalars, plain List/Map, none): a
+reach or other behaviour-bearing field commits dispatches the interpreter
+resolves by value (`apply` over `$.a`). The specialisation gate in
+`CompileCheck` widened from "names Function" to "has a typed param" (`:`).
+
+**5 — proven typing.** A fn declaring `[Any]` whose params are all typed
+and whose body proves an exact leaf scalar (`[x:Integer][Any][x add 1]`)
+types the caller's use of the result as that scalar
+(`provenNarrowerReturn`) — strict carriers of Integer, Float or Boolean
+only. The first cut narrowed any declared return to any narrower residual
+and was cut back on the evidence: a join widens to an upper bound (List ∪
+Map is Node) that matches FEWER overloads than the runtime value would
+(`d for-each […]` over `(mk false)` raised where the interpreter ran), a
+String carrier holds a ProperString at run time, and an Any-in, Any-out fn
+(`def id fn [[x:Any][Any][x]]`) is how programs and tests launder a value
+gradual on purpose. Record-typed params read strict under 4's shape. Not
+taken, with the measurement: an `each` over a typed lambda typed its result
+`[:Integer]`, but a read of a typed list stays gradual (an out-of-bounds
+read is None), so nothing downstream committed; and seeding a recursive
+lambda's self-call with an unarmed pre-analysis needs a second body
+analysis per armed recursive fn and cannot be unwound if the armed residual
+disagrees — its sites are cache hits after 1.

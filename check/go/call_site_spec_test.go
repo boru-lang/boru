@@ -145,3 +145,93 @@ func TestSpecialiseCallSiteAdmission(t *testing.T) {
 		t.Errorf("past FnSpecQuota distinct fns the site stops specialising")
 	}
 }
+
+// A plain Map arg to a NAMED, untyped Map param specialises on its shape;
+// a patterned, Node-typed or unnamed param does not, nor does a map with no
+// shape.
+func TestSpecialisableShapeArg(t *testing.T) {
+	m := core.NewOrderedMap()
+	m.Set("a", core.NewInteger(1))
+	arg := core.NewMap(m)
+	mParam := core.FnParam{Name: "m", Type: core.TMap}
+	if s, _, ok := specialisableShapeArg(mParam, arg); !ok || !core.IsShapeCarrier(s) {
+		t.Fatal("a plain Map to m:Map specialises on its shape")
+	}
+	pat := core.NewInteger(1)
+	for name, p := range map[string]core.FnParam{
+		"unnamed": {Type: core.TMap}, "Node": {Name: "m", Type: core.TNode},
+		"untyped": {Name: "m"}, "value-patterned": {Name: "m", Type: core.TMap, Pattern: &pat},
+	} {
+		if _, _, ok := specialisableShapeArg(p, arg); ok {
+			t.Errorf("%s: must not specialise", name)
+		}
+	}
+	if _, _, ok := specialisableShapeArg(mParam, core.NewCarrier(core.TMap)); ok {
+		t.Error("a Map carrier has no shape")
+	}
+	recFields := core.NewOrderedMap()
+	recFields.Set("a", core.NewTypeLiteral(core.TInteger))
+	recType := &core.Type{Parent: core.TMap}
+	recType.SetTypeBody(core.NewMap(recFields))
+	if _, _, ok := specialisableShapeArg(core.FnParam{Name: "m", Type: recType}, arg); !ok {
+		t.Error("a record-typed param specialises on the arg's shape")
+	}
+	schemaType := &core.Type{Parent: core.TMap}
+	schemaType.SetTypeBody(core.NewRecordType(recFields))
+	if !isRecordType(schemaType) {
+		t.Error("a node whose body is a record schema is a record type")
+	}
+	bodyless := &core.Type{Parent: core.TMap}
+	scalarBody := &core.Type{Parent: core.TMap}
+	scalarBody.SetTypeBody(core.NewInteger(1))
+	for name, rt := range map[string]*core.Type{"no parent": {}, "not under Map": core.TInteger, "no body": bodyless, "scalar body": scalarBody} {
+		if isRecordType(rt) {
+			t.Errorf("%s: not a record type", name)
+		}
+	}
+	xsParam := core.FnParam{Name: "xs", Type: core.TList}
+	if s, _, ok := specialisableShapeArg(xsParam, core.NewList([]core.Value{core.NewInteger(1)})); !ok || !core.IsListShapeGuard(s) {
+		t.Error("a plain List to xs:List specialises on its shape")
+	}
+	if _, _, ok := specialisableShapeArg(xsParam, arg); ok {
+		t.Error("a Map to a List param has no list shape")
+	}
+	// specialisedArgs keys the shape into the suffix.
+	r, _ := core.NewRegistry()
+	args, ps, guards, suffix := specialisedArgs(r, []core.FnParam{mParam}, []core.Value{arg}, []core.Value{core.NewCarrier(core.TMap)})
+	if len(args) != 1 || !core.IsShapeCarrier(args[0]) || len(ps) != 1 || len(guards) != 1 || suffix == "" {
+		t.Errorf("want one shape guard, got %v %v %v %q", args, ps, guards, suffix)
+	}
+}
+
+// A body residual proving an exact leaf scalar under a declared `Any`
+// surfaces that type; anything else keeps the declaration's rules.
+func TestProvenNarrowerReturn(t *testing.T) {
+	ints := core.NewCarrier(core.TInteger)
+	if c, ok := provenNarrowerReturn(core.TAny, []core.Value{ints}, 1, 0); !ok || !c.Parent.Equal(core.TInteger) || c.Dynamic {
+		t.Errorf("an Integer carrier under [Any] narrows, got %v %v", c, ok)
+	}
+	for name, c := range map[string]struct {
+		t   *core.Type
+		stk []core.Value
+	}{
+		"count miss":  {core.TAny, []core.Value{ints, ints}},
+		"Number decl": {core.TNumber, []core.Value{ints}},
+		"concrete":    {core.TAny, []core.Value{core.NewInteger(1)}},
+		"dynamic":     {core.TAny, []core.Value{core.NewDynamicCarrier(core.TInteger)}},
+		"upper bound": {core.TAny, []core.Value{core.NewCarrier(core.TNode)}},
+		"String":      {core.TAny, []core.Value{core.NewCarrier(core.TString)}},
+		"no parent":   {core.TAny, []core.Value{{Carrier: true}}},
+		"nil decl":    {nil, []core.Value{ints}},
+	} {
+		if _, ok := provenNarrowerReturn(c.t, c.stk, 1, 0); ok {
+			t.Errorf("%s: must not narrow", name)
+		}
+	}
+	if allParamsTyped([]core.FnParam{{Name: "x", Type: core.TAny}}) || allParamsTyped([]core.FnParam{{Name: "x"}}) {
+		t.Error("an Any or untyped param is not typed")
+	}
+	if !allParamsTyped([]core.FnParam{{Name: "x", Type: core.TInteger}}) {
+		t.Error("an Integer param is typed")
+	}
+}

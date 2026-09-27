@@ -703,6 +703,16 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					out[i] = rc
 					continue
 				}
+				// The body PROVED a narrower result than the declaration (an
+				// `[Any]` fn returning `x add 1`, a `[List]` fn returning a
+				// list of Integers): the caller sees the proven type, so its
+				// dispatches over the result commit instead of re-matching at
+				// run time. The TYPE only — never the residual's value, which
+				// may be one call's.
+				if pc, ok := provenNarrowerReturn(t, stk, len(declaredReturns), i); ok && allParamsTyped(sigParams) {
+					out[i] = pc
+					continue
+				}
 				c := core.NewCarrier(t)
 				// A declared `Any` return is "statically unknown", not "the Any
 				// root": a STRICT Any conforms to no typed slot, so a user fn
@@ -1233,4 +1243,38 @@ func narrowToDeclaredParam(pt *core.Type, a core.Value, generic bool) (core.Valu
 		return nc, true
 	}
 	return core.Value{}, false
+}
+
+// provenNarrowerReturn is the carrier for return slot i of a fn declaring n
+// returns of which slot i is `Any`, when the analysed body residual stk
+// proves an exact leaf scalar there: exactly n residual values, slot i a
+// STRICT CARRIER of Integer, Float or Boolean. Exact leaves only: a join
+// widens to an upper bound (List ∪ Map is Node, Integer ∪ Float is Number)
+// that matches FEWER overloads than the runtime value would, and a String
+// carrier holds a ProperString at run time. Carriers only: a concrete
+// residual value is one call's constant.
+func provenNarrowerReturn(t *core.Type, stk []core.Value, n, i int) (core.Value, bool) {
+	if t == nil || !t.Equal(core.TAny) || len(stk) != n {
+		return core.Value{}, false
+	}
+	bv := stk[i]
+	if !bv.Carrier || bv.Dynamic || bv.Parent == nil || core.IsDisjunct(bv) || bv.AscribedType() != nil {
+		return core.Value{}, false
+	}
+	if !bv.Parent.Equal(core.TInteger) && !bv.Parent.Equal(core.TFloat) && !bv.Parent.Equal(core.TBoolean) {
+		return core.Value{}, false
+	}
+	return core.NewCarrier(bv.Parent), true
+}
+
+// allParamsTyped reports whether every param declares a type other than
+// Any: an Any-in, Any-out fn (`def id fn [[x:Any][Any][x]]`) is how a
+// program launders a value gradual on purpose, and its result stays so.
+func allParamsTyped(params []core.FnParam) bool {
+	for _, p := range params {
+		if p.Type == nil || p.Type.Equal(core.TAny) {
+			return false
+		}
+	}
+	return true
 }
