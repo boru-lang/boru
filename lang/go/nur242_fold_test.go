@@ -29,6 +29,8 @@ func TestNUR242FoldNoMatchIsTheInterpreters(t *testing.T) {
 		{`"s"`, `def f fn [[] [Any] [0 fold [add] b.data]] end f`},
 		{`"s"`, `if true [0 fold [add] b.data] [0]`},
 		{`"s"`, `do [0 fold [add] b.data] error [(99)]`},
+		// A function word after the window (NUR283).
+		{`"s"`, `0 fold [add] b.data drop`},
 		// …and a window a plan fills keeps answering.
 		{`[1 2]`, `0 fold [add] b.data`},
 		{`{a:1}`, `0 fold [add] b.data`},
@@ -47,17 +49,17 @@ func TestNUR242FoldNoMatchIsTheInterpreters(t *testing.T) {
 			t.Errorf("%s: the compiled report names %q, got %v", c.prog, c.note, err)
 		}
 	}
-	// Negative: a value the dispatch did not take beside its window (a 5
-	// written after the field, which the interpreter's report lists) leaves
-	// no exact layout. The run keeps its sound defer rather than raising a
-	// report without the 5.
+	// A value the dispatch did not take beside its window — a 5 written
+	// after the field, which the interpreter's report lists — rides with
+	// the layout (After, NUR283), so the compiled run raises the same
+	// report, the 5 included.
 	src := fmt.Sprintf(box, `"s"`) + `0 fold [add] b.data 5`
 	_, ei := mustNew(t).RunInterp(src)
 	_, ec := mustNew(t).Run(src)
 	if ei == nil || !strings.Contains(ei.Error(), "and 5 (an Integer)") {
 		t.Fatalf("%s: the interpreter's report lists the 5, got %v", src, ei)
 	}
-	if ec == nil || (ec.Error() != ei.Error() && !strings.Contains(ec.Error(), "internal_error")) {
-		t.Errorf("%s: the compiled run raises the interpreter's report or defers, never another report; got %v", src, ec)
+	if ec == nil || ec.Error() != ei.Error() {
+		t.Errorf("%s: the compiled run raises the interpreter's report; got %v", src, ec)
 	}
 }

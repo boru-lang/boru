@@ -829,9 +829,14 @@ type PolyRef struct {
 }
 
 // PolySplit is PolyRef.Split: the number of the poly's operands, in
-// signature order from position 0, that were written after the word.
+// signature order from position 0, that were written after the word, and
+// what else the interpreter's tape holds for its plan to reach (core
+// DispatchLayout's Beneath and After, NUR283): the constants beneath the
+// stack operands and the source tokens after the written ones.
 type PolySplit struct {
-	NFwd int
+	NFwd    int
+	Beneath []core.Value
+	After   []core.Value
 }
 
 // UserPolyRef names one runtime-dispatched multi-overload USER-FN call: the
@@ -1183,13 +1188,17 @@ type SigRef struct {
 }
 
 // NativeSplit is SigRef.Split: how many of the call's operands, in
-// signature order from position 0, were written after the word, and the
-// body operand the program passes as a compiled closure — its signature
-// position and the token list the interpreter's tape holds there.
+// signature order from position 0, were written after the word, the body
+// operand the program passes as a compiled closure — its signature
+// position and the token list the interpreter's tape holds there — and
+// what else that tape holds for the plan to reach (PolySplit's Beneath and
+// After, NUR283).
 type NativeSplit struct {
-	NFwd   int
-	BodyAt int
-	Body   core.Value
+	NFwd    int
+	BodyAt  int
+	Body    core.Value
+	Beneath []core.Value
+	After   []core.Value
 }
 
 // TypeRef names one type operand: the canonical type ID (resolved

@@ -13,14 +13,17 @@ package core
 // overloads of more than one arity (fold's 2- and 3-operand forms) the
 // split decides what the interpreter's plan claims. The layout says it.
 //
-// It is published only when it is EXACT: the operands are the tape's own
-// values, contiguous on each side of the word (the written ones after it
-// in signature order, the stack ones beneath it top first), and nothing
-// else on the tape is reachable — a statement or group boundary, or the
-// tape's end, on both sides. The interpreter's tape at a failed dispatch
-// is then exactly [stack operands, word, written operands], so a rebuild
-// from the operands is its plan and its report, byte for byte. Any other
-// shape publishes nothing, and the record keeps the defer it had.
+// It is published only when the interpreter's tape at a failed dispatch can
+// be REBUILT: the operands are the tape's own values, contiguous on each
+// side of the word (the written ones after it in signature order, the stack
+// ones beneath it top first), and what else the plan could reach up to the
+// statement or group boundary (or the tape's end) on each side rides with
+// it — constant values beneath the operands (Beneath) and source tokens
+// after them (After, layoutSurround). The tape is then exactly [Beneath,
+// stack operands, word, written operands, After], so a rebuild from the
+// operands is its plan and its report, byte for byte. Any other shape
+// publishes nothing, and the record keeps the defer it had. With nothing
+// beneath or after, the layout is EXACT (NUR242); the rest is NUR283's.
 type DispatchLayout struct {
 	// args is the operand slice the layout describes; a record reads the
 	// layout only for this slice (LayoutFor).
@@ -28,6 +31,14 @@ type DispatchLayout struct {
 	// NFwd is how many leading signature positions were written after the
 	// word; the rest came off the stack beneath it, top first.
 	NFwd int
+	// Beneath are the values between the boundary below and the stack
+	// operands, in tape order — constants, which the run's tape holds as
+	// the pass's does.
+	Beneath []Value
+	// After are the source tokens between the written operands and the
+	// boundary after them, in tape order: scalar literals, closed by a
+	// function word that bars the forward collection.
+	After []Value
 }
 
 // LayoutFor returns the published layout when it describes args — the
@@ -60,7 +71,7 @@ func (e *Engine) exactLayout(args []Value, at []int, pos SrcPos) *DispatchLayout
 		return nil
 	}
 	w, err := AsWord(e.Tape.At(e.Pointer))
-	if err != nil || w.ArgCount != -1 || w.ForceStack || w.ForceForward || w.ForceVal || w.ForceUsurp {
+	if err != nil || !unmodifiedWord(w) {
 		return nil
 	}
 	// The report's two tape-only layers must not apply (the probe's rule,
@@ -81,13 +92,60 @@ func (e *Engine) exactLayout(args []Value, at []int, pos SrcPos) *DispatchLayout
 			return nil
 		}
 	}
-	if below := e.Pointer - (n - k) - 1; below >= 0 && !IsOpenParen(e.Tape.At(below)) && !IsEnd(e.Tape.At(below)) {
+	beneath, after, ok := e.layoutSurround(e.Pointer-(n-k)-1, e.Pointer+k+1)
+	if !ok {
 		return nil
 	}
-	if after := e.Pointer + k + 1; after < e.Tape.Len() && !IsCloseParen(e.Tape.At(after)) && !IsEnd(e.Tape.At(after)) {
-		return nil
+	return &DispatchLayout{args: args, NFwd: k, Beneath: beneath, After: after}
+}
+
+// layoutSurround reads what a dispatch's plan could reach around its
+// operands, from the tape index below them down to the statement or group
+// boundary beneath (an open paren, an `end`, the tape's start) and from the
+// index after them up to the boundary above (a close paren, an `end`, the
+// tape's end). ok is false unless every value beneath is a constant the
+// run's tape holds as the pass's does (layoutConstant) and every token after
+// is a scalar literal, the run closed by a bare function word — the next
+// dispatch, which bars the forward collection on both lanes (NUR283).
+func (e *Engine) layoutSurround(below, after int) (beneath, afterToks []Value, ok bool) {
+	for i := below; i >= 0 && !IsOpenParen(e.Tape.At(i)) && !IsEnd(e.Tape.At(i)); i-- {
+		v := e.Tape.At(i)
+		if !layoutConstant(v, true) {
+			return nil, nil, false
+		}
+		beneath = append([]Value{v}, beneath...)
 	}
-	return &DispatchLayout{args: args, NFwd: k}
+	for i := after; i < e.Tape.Len() && !IsCloseParen(e.Tape.At(i)) && !IsEnd(e.Tape.At(i)); i++ {
+		tok := e.Tape.At(i)
+		if layoutConstant(tok, false) {
+			afterToks = append(afterToks, tok)
+			continue
+		}
+		if w, err := AsWord(tok); err == nil && !tok.Quoted && unmodifiedWord(w) && FnWordBarrierOn(e.Registry, tok) {
+			return beneath, append(afterToks, tok), true
+		}
+		return nil, nil, false
+	}
+	return beneath, afterToks, true
+}
+
+// unmodifiedWord reports whether w carries no modifier the source wrote —
+// no `/N` count, no forced stack, forward, value or usurp read.
+func unmodifiedWord(w WordInfo) bool {
+	return w.ArgCount == -1 && !w.ForceStack && !w.ForceForward && !w.ForceVal && !w.ForceUsurp
+}
+
+// layoutConstant reports whether v is a value a rebuilt tape can hold as
+// the pass's tape holds it: a concrete scalar — a number, a string, a
+// boolean, an atom — or, beneath the operands (where values are already
+// resolved), a concrete list.
+func layoutConstant(v Value, lists bool) bool {
+	if !IsConcrete(v) || v.Carrier || v.Dynamic || v.Quoted || v.Parent == nil {
+		return false
+	}
+	p := v.Parent
+	return p.ConformsTo(TNumber) || p.ConformsTo(TString) || p.ConformsTo(TBoolean) || p.ConformsTo(TAtom) ||
+		(lists && p.ConformsTo(TList))
 }
 
 // SigOrderPositions is SigOrderArgs over tape indices: positions lists the

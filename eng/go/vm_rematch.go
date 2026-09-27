@@ -109,18 +109,29 @@ func (vc *vmContext) rematchSplitMatches(ds *compiler.DispatchSpec, fn *core.FnD
 // this host cannot perform; the callers then keep their defer. The pointer
 // of the laid-out tape is len(stackTop).
 func planSplit(reg *core.Registry, word string, fn *core.FnDefInfo, stackTop, written []core.Value) (*regionHost, *core.Signature, []int, bool) {
+	return planSplitOver(reg, word, fn, nil, stackTop, written, nil)
+}
+
+// planSplitOver is planSplit over the whole tape the interpreter's plan
+// could reach (NUR283): the constants beneath the stack run (tape order)
+// and the source tokens after the written operands. The pointer of the
+// laid-out tape is len(beneath)+len(stackTop).
+func planSplitOver(reg *core.Registry, word string, fn *core.FnDefInfo, beneath, stackTop, written, after []core.Value) (*regionHost, *core.Signature, []int, bool) {
 	nStack := len(stackTop)
-	toks := make([]core.Value, 0, nStack+1+len(written))
+	toks := make([]core.Value, 0, len(beneath)+nStack+1+len(written)+len(after))
+	toks = append(toks, beneath...)
 	for i := nStack - 1; i >= 0; i-- {
 		toks = append(toks, stackTop[i])
 	}
+	at := len(toks)
 	toks = append(toks, core.NewWord(word))
 	toks = append(toks, written...)
+	toks = append(toks, after...)
 	h := newRegionHostOver(reg, toks)
 	w := core.WordInfo{Name: word, ArgCount: -1}
-	if err := h.Collected(core.CollectForward(h, fn, w, nStack+1)); err != nil {
+	if err := h.Collected(core.CollectForward(h, fn, w, at+1)); err != nil {
 		return nil, nil, nil, false
 	}
-	sig, positions, _ := core.PlanMatch(h, h.win, reg, fn, w, toks[:nStack], nStack, false, false, false)
+	sig, positions, _ := core.PlanMatch(h, h.win, reg, fn, w, toks[:at], at, false, false, false)
 	return h, sig, positions, true
 }

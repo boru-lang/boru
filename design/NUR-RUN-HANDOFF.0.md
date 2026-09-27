@@ -9,6 +9,31 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR283 closed: the report over an inexact layout; the shuffle-only body counts its depth (2026-09-27)
+
+**NUR283.** A committed optimistic bake (and a poly) raised the word's
+report only over an EXACT layout — a boundary on both sides of the
+operands — because the VM rebuilds the interpreter's tape from the
+operands alone. The interpreter's plan also reaches what lies between the
+operands and each boundary, so the layout now carries it
+(`layoutSurround`): constants beneath (`Beneath`), scalar literals after,
+closed by a bare function word (`After`). The VM lays the whole tape out
+(`planSplitOver`); a plan that takes one of those tokens is a dispatch the
+program never assembled, and defers (`vm:split-plan-reaches`). `0 fold
+[add] (mk) 7` lists the 7 on both lanes.
+
+**Gate41 (620926b) was red, three ways.** (1) NUR222's shuffle-only claim
+admitted `do [drop]`: `do` runs its body isolated, so `drop` finds nothing
+and raises, which `do` nets as an Error — the claim now simulates the
+body's stack (`shuffleEffect`) and admits only a body that never takes
+past its own values and ends empty; `def f fn [[Integer] [Any] [do [drop]
+7]] end f 5` compiles and raises the interpreter's count error again. (2)
+The aritygate: shuffleOnlyBody's overload-list guard (native_control.go
+1 → 2) and the list re-step's quote-slot reads (vm_list_restep.go, new,
+2), both argument-rule sites. (3) The compile-defect ceiling 342 → 341:
+`[1 2 3] each [ do [ 9 drop ] ]` and `[do [3 drop] 7]` compile; the NUR242
+decline row is `[do [3 4 add drop] 7]` now.
+
 ## NUR222's witnesses compile: a shuffle-only `do` body has no phantom (2026-09-27)
 
 A value-less `do` body is latched as the one Error a caught raise would

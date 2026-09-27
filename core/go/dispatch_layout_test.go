@@ -25,16 +25,19 @@ func layoutEngine(t *testing.T, tape []Value, at int) *Engine {
 	return e
 }
 
-// TestDispatchLayoutIsExactOrNothing pins NUR242's layout. `0 fold [add]
-// s` is two written operands and one stack operand, published in
-// signature order with their count; `s 0 fold [add]` is one written and
-// two beneath. A group or statement boundary, or the tape's end, closes
-// each side. Every other shape publishes nothing: a value the dispatch
-// did not take beside the window (the interpreter's report would list it),
-// an operand that is not the tape's own value (a resolved word, an
+// TestDispatchLayoutIsReplayableOrNothing pins NUR242's layout and NUR283's
+// surround. `0 fold [add] s` is two written operands and one stack operand,
+// published in signature order with their count; `s 0 fold [add]` is one
+// written and two beneath. A group or statement boundary, or the tape's end,
+// closes each side, and what lies between a boundary and the operands rides
+// with them when a rebuilt tape holds it as the pass's does: constants
+// beneath (Beneath), scalar literals after, closed by a bare function word
+// (After). Every other shape publishes nothing: a value beneath the window
+// that is not a constant, a token after it that is not a literal or that
+// word, an operand that is not the tape's own value (a resolved word, an
 // evaluated list), a gap, a modified word, a tape-only report layer, or no
 // recording pass.
-func TestDispatchLayoutIsExactOrNothing(t *testing.T) {
+func TestDispatchLayoutIsReplayableOrNothing(t *testing.T) {
 	zero, body, s := withID(NewInteger(0)), withID(NewList([]Value{NewWord("add")})), withID(NewString("s"))
 	fold := NewWord("fold")
 	// `0 fold [add] s`, the operands in signature order: [add], s, 0.
@@ -72,6 +75,17 @@ func TestDispatchLayoutIsExactOrNothing(t *testing.T) {
 		t.Error("end-bounded: exact")
 	}
 	restore()
+	// A constant beneath and literals after ride with the layout, the run
+	// after it closed by a bare function word.
+	seven, five, cneg := withID(NewInteger(7)), withID(NewInteger(5)), NewWord("cneg")
+	e = layoutEngine(t, []Value{seven, zero, fold, body, five, cneg, NewInteger(9)}, 2)
+	args = []Value{body, zero}
+	restore = e.PublishLayout(args, []int{3, 1}, SrcPos{})
+	if l := e.Registry.Check.LayoutFor(args); l == nil || l.NFwd != 1 || len(l.Beneath) != 1 || l.Beneath[0].ID != seven.ID ||
+		len(l.After) != 2 || l.After[0].ID != five.ID || !IsWord(l.After[1]) {
+		t.Errorf("7 0 fold [add] 5 cneg 9: 7 beneath, 5 cneg after; got %+v", l)
+	}
+	restore()
 
 	declines := []struct {
 		name string
@@ -90,8 +104,10 @@ func TestDispatchLayoutIsExactOrNothing(t *testing.T) {
 		{"a gap", []Value{fold, zero, body}, 0, []Value{body}, []int{2}, nil},
 		{"not the tape's value", []Value{fold, body}, 0, []Value{withID(NewList([]Value{NewInteger(3)}))}, []int{1}, nil},
 		{"an operand with no identity", []Value{fold, body}, 0, []Value{{Parent: TList}}, []int{1}, nil},
-		{"a value beneath", []Value{withID(NewInteger(7)), zero, fold, body}, 2, []Value{body, zero}, []int{3, 1}, nil},
-		{"a value after", []Value{zero, fold, body, withID(NewInteger(5))}, 1, []Value{body, zero}, []int{2, 0}, nil},
+		{"a carrier beneath", []Value{withID(NewDynamicCarrier(TAny)), zero, fold, body}, 2, []Value{body, zero}, []int{3, 1}, nil},
+		{"a list after", []Value{zero, fold, body, withID(NewList([]Value{NewInteger(5)}))}, 1, []Value{body, zero}, []int{2, 0}, nil},
+		{"a word bound to no function after", []Value{zero, fold, body, NewWord("nope")}, 1, []Value{body, zero}, []int{2, 0}, nil},
+		{"a group after", []Value{zero, fold, body, NewOpenParen(), NewInteger(5), NewCloseParen()}, 1, []Value{body, zero}, []int{2, 0}, nil},
 	}
 	for _, c := range declines {
 		e := layoutEngine(t, c.tape, c.at)

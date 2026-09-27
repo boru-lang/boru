@@ -13963,7 +13963,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 	// the body slot as the token list it holds there (NUR263). A lambda
 	// body or an extra hook slot keeps the handler's own refusal.
 	if l := es.layoutFor(args); l != nil && len(extraOps) == 0 && core.IsConcrete(args[bodyPos]) && args[bodyPos].Parent.ConformsTo(core.TList) {
-		call.nativeSplit = &NativeSplit{NFwd: l.NFwd, BodyAt: bodyPos, Body: args[bodyPos]}
+		call.nativeSplit = &NativeSplit{NFwd: l.NFwd, BodyAt: bodyPos, Body: args[bodyPos], Beneath: l.Beneath, After: l.After}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	// A fallible multi-value catch body (the ReturnsFn latched it): the

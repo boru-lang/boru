@@ -490,10 +490,21 @@ var pinnedAritySites = map[string]int{
 	// more than two recorded operands, which no stack shuffle (swap, rot)
 	// can lift the applied value above — how the replay DELIVERS the
 	// arguments, not what a fn may do by its count.
-	"lang/go/stackform/walk.go":     2,
-	"lang/go/stackform/eval.go":     1,
-	"basic/go/native_control.go":    1,
+	"lang/go/stackform/walk.go": 2,
+	"lang/go/stackform/eval.go": 1,
+	// 1 -> 2 (2026-09-27, NUR222's shuffle-only `do` body): shuffleOnlyBody
+	// admits a stack-shuffle word only while its registered native carries
+	// exactly its one signature (`len(fd.Signatures) != 1`) — a user overload
+	// appended to `drop` may raise. An OVERLOAD-LIST presence test on a
+	// native basic itself registers, never a decision about a user fn's
+	// shape; the shuffle's stack effect is the word's own table.
+	"basic/go/native_control.go":    2,
 	"basic/go/native_definition.go": 1,
+	// The list re-step asks whether a fn value's first declared slot QUOTES
+	// (a `/q` slot captures the next word — NUR219, NUR295): the params
+	// presence test guards the index it reads. How the argument rule
+	// collects that slot, never behaviour decided by the count.
+	"eng/go/vm_list_restep.go": 2,
 
 	// ── Tooling and fixtures.
 	"tools/piecetool/demethod.go": 1,

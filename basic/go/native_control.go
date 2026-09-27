@@ -601,18 +601,18 @@ func generaliseRootValues(r *Registry) {
 	}
 }
 
-// doBodyMayRaise reports whether a `do` body can RAISE at run time — the
-// discriminator for whether a MULTI-VALUE body is safe to seat at a fixed
-// arity (a raise makes `do` net ONE Error instead of the N-value residual). See
-// tokensMayRaise for the fallibility rule. A non-list / nil body is conservative
-// (fallible).
 // shuffleOnlyBody reports whether a body's tokens are only scalar or list
 // literals and plain words of the closed stack-shuffle set that still name
-// the registered all-Any native (a user's redefinition may raise) — a body
-// whose run, over only the values it pushes itself, cannot raise.
+// the registered all-Any native (a user's redefinition may raise), and
+// whether its run over only the values it pushes itself — `do` runs a body
+// isolated — takes no shuffle past them and leaves nothing: such a run
+// cannot raise. `[3 drop]` is one; `[drop]` raises, as `drop` finds nothing
+// to take, and `do` nets that Error.
 func shuffleOnlyBody(toks []Value, r *Registry) bool {
+	depth := 0
 	for _, t := range toks {
 		if IsConcrete(t) && t.Parent != nil && (t.Parent.ConformsTo(TScalar) || t.Parent.Equal(TList)) {
+			depth++
 			continue
 		}
 		w, err := AsWord(t)
@@ -631,10 +631,27 @@ func shuffleOnlyBody(toks []Value, r *Registry) bool {
 				return false
 			}
 		}
+		eff := shuffleEffect[w.Name]
+		if depth < eff[0] {
+			return false
+		}
+		depth += eff[1] - eff[0]
 	}
-	return true
+	return depth == 0
 }
 
+// shuffleEffect is each stack-shuffle word's (takes, leaves) count.
+var shuffleEffect = map[string][2]int{
+	"dup": {1, 2}, "swap": {2, 2}, "drop": {1, 0}, "over": {2, 3}, "rot": {3, 3},
+	"nip": {2, 1}, "tuck": {2, 3}, "dup2": {2, 4}, "swap2": {4, 4}, "drop2": {2, 0},
+	"over2": {4, 6},
+}
+
+// doBodyMayRaise reports whether a `do` body can RAISE at run time — the
+// discriminator for whether a MULTI-VALUE body is safe to seat at a fixed
+// arity (a raise makes `do` net ONE Error instead of the N-value residual). See
+// tokensMayRaise for the fallibility rule. A non-list / nil body is conservative
+// (fallible).
 func doBodyMayRaise(body Value, r *Registry) bool {
 	bl, err := AsList(body)
 	if err != nil || bl.IsNil() { //covergate:allow do's TList sig + the len(stk)>1 caller guard guarantee a concrete non-empty list body

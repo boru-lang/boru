@@ -54,3 +54,44 @@ func TestNativeSplitRaiseIsTheInterpretersPlan(t *testing.T) {
 		}
 	}
 }
+
+// TestNativeSplitRaisePlansTheSurround pins NUR283: the arm plans the whole
+// tape the interpreter's plan could reach — the constants beneath the stack
+// operands and the source tokens after the written ones (NativeSplit's
+// Beneath and After) — so `7 0 zzfold [add] 's'` raises the no-match over
+// that tape, and a plan that TAKES a token after the operands (`zzfold [add]
+// [1] 5`, the 3-operand form collecting the 5) is a dispatch the program
+// never assembled: a designed defer, never the handler's bare error.
+func TestNativeSplitRaisePlansTheSurround(t *testing.T) {
+	r := newTestRegistry(t)
+	impl := core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+		return []core.Value{core.NewInteger(1)}, nil
+	})
+	r.Register("zzfold",
+		core.Signature{Args: []*core.Type{core.TList, core.TMap}, NoEvalArgs: map[int]bool{0: true}, BarrierPos: 2, Impl: impl},
+		core.Signature{Args: []*core.Type{core.TList, core.TList, core.TAny}, NoEvalArgs: map[int]bool{0: true}, BarrierPos: 3, Impl: impl},
+	)
+	if err := r.Err(); err != nil {
+		t.Fatal(err)
+	}
+	body := core.NewList([]core.Value{core.NewWord("add")})
+	body.Quoted = true
+	closure, s, zero := core.NewInteger(99), core.NewString("s"), core.NewInteger(0)
+	sp := &compiler.NativeSplit{NFwd: 2, BodyAt: 0, Body: body, Beneath: []core.Value{core.NewInteger(7)}, After: []core.Value{core.NewWord("zzfold")}}
+	err := nativeSplitRaise(r, "zzfold", sp, []core.Value{closure, s, zero}, []core.SrcPos{{Row: 1, Col: 5}}, 0)
+	if be, ok := err.(*core.BoruError); !ok || be.Code != "signature_error" || !strings.Contains(err.Error(), "[word(add)]") {
+		t.Fatalf("7 0 zzfold [add] 's' zzfold: the interpreter's no-match over its tape; got %v", err)
+	}
+	// The 3-operand form collects the literal after the written pair.
+	one := core.NewList([]core.Value{core.NewInteger(1)})
+	reach := &compiler.NativeSplit{NFwd: 2, BodyAt: 0, Body: body, After: []core.Value{core.NewInteger(5)}}
+	err = nativeSplitRaise(r, "zzfold", reach, []core.Value{closure, one}, nil, 0)
+	if be, ok := err.(*core.BoruError); !ok || !be.VMDefer || !strings.Contains(err.Error(), "NUR283") {
+		t.Errorf("zzfold [add] [1] 5: the plan takes the 5, a designed defer; got %v", err)
+	}
+	// Over its own operands the same plan is the dispatch the program made.
+	if err := nativeSplitRaise(r, "zzfold", &compiler.NativeSplit{NFwd: 3, BodyAt: 0, Body: body, Beneath: []core.Value{core.NewInteger(7)}},
+		[]core.Value{closure, one, zero}, nil, 0); err != nil {
+		t.Errorf("7 zzfold [add] [1] 0: the plan fills the operands, no raise; got %v", err)
+	}
+}

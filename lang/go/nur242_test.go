@@ -24,6 +24,9 @@ func TestNUR242DoBodyRunsToNothing(t *testing.T) {
 		{`def f fn [[Integer] [Any] [do [drop] 7]] end f 5`, "ERROR:expected 1 return value(s), got 2"},
 		{`do [3 drop] 7`, "[7]"},
 		{`(do [1 0 div]).code`, "[arith_error]"},
+		// A body of literals and stack shuffles cannot raise, so it nets
+		// nothing and a list literal counts it (NUR222's shuffle-only body).
+		{`[do [3 drop] 7]`, "[[7]]"},
 	} {
 		agreeOnBothLanes(t, r.src, r.want)
 	}
@@ -33,7 +36,7 @@ func TestNUR242DoBodyRunsToNothing(t *testing.T) {
 	// fixed-width replay window over a dynamic body's run (which bailed
 	// with CALL_DYN_FRAME underflow).
 	for _, r := range []struct{ src, reason string }{
-		{`[do [3 drop] 7]`, "list literal over a result of runtime-variable count"},
+		{`[do [3 4 add drop] 7]`, "list literal over a result of runtime-variable count"},
 		{`def g fn [[b:List] [Any] [do b 7]] end g [5 drop]`, "unapplied fn-value in body residual"},
 	} {
 		gotC, compiled, errC := mustNew(t).RunCompiled(r.src)

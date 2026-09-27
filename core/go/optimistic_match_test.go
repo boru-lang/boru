@@ -111,10 +111,12 @@ func TestOptimisticOuterWindow(t *testing.T) {
 	}
 }
 
-// TestOptimisticLayoutIsExactOrNothing pins NUR263's layout: the dispatch's
-// operands beneath the word in signature order, their written count from
-// the rearrangement's record, and a boundary on both sides — or nothing.
-func TestOptimisticLayoutIsExactOrNothing(t *testing.T) {
+// TestOptimisticLayoutIsReplayableOrNothing pins NUR263's layout and
+// NUR283's surround: the dispatch's operands beneath the word in signature
+// order, their written count from the rearrangement's record, and a
+// boundary on both sides with what lies between it and the operands riding
+// along when a rebuilt tape holds it as the pass's does — or nothing.
+func TestOptimisticLayoutIsReplayableOrNothing(t *testing.T) {
 	e, match, indices := optimisticEngine(t)
 	restore := e.publishOptimisticLayout(match, indices)
 	if l := e.Registry.Check.LayoutFor(match.Args); l == nil || l.NFwd != 2 {
@@ -180,13 +182,13 @@ func TestOptimisticLayoutIsExactOrNothing(t *testing.T) {
 		{"not the tape's value", func(_ *Engine, m *MatchResult) (*MatchResult, []int) {
 			return &MatchResult{Sig: m.Sig, Args: []Value{m.Args[0], withID(NewDynamicCarrier(TAny)), m.Args[2]}, Name: "fold"}, []int{2, 1, 0}
 		}},
-		{"a value beneath", func(e *Engine, m *MatchResult) (*MatchResult, []int) {
-			e.Tape.Insert(0, withID(NewInteger(7)))
+		{"a carrier beneath", func(e *Engine, m *MatchResult) (*MatchResult, []int) {
+			e.Tape.Insert(0, withID(NewDynamicCarrier(TAny)))
 			e.Pointer, e.fwdSplitAt = 4, 4
 			return m, []int{3, 2, 1}
 		}},
-		{"a value after", func(e *Engine, m *MatchResult) (*MatchResult, []int) {
-			e.Tape.Insert(4, withID(NewInteger(5)))
+		{"a group after", func(e *Engine, m *MatchResult) (*MatchResult, []int) {
+			e.Tape.Insert(4, NewOpenParen())
 			return m, []int{2, 1, 0}
 		}},
 	}
@@ -202,8 +204,16 @@ func TestOptimisticLayoutIsExactOrNothing(t *testing.T) {
 	e.Tape.Insert(0, NewOpenParen())
 	e.Tape.Insert(5, NewEnd())
 	e.Pointer, e.fwdSplitAt = 4, 4
-	if l := e.optimisticLayout(m, []int{3, 2, 1}); l == nil || l.NFwd != 2 {
+	if l := e.optimisticLayout(m, []int{3, 2, 1}); l == nil || l.NFwd != 2 || len(l.Beneath)+len(l.After) != 0 {
 		t.Errorf("(0 fold [add] (mk)) end: exact; got %+v", l)
+	}
+	// A constant beneath and a literal after ride with it (NUR283).
+	e, m, _ = optimisticEngine(t)
+	e.Tape.Insert(0, withID(NewInteger(7)))
+	e.Tape.Insert(5, withID(NewInteger(5)))
+	e.Pointer, e.fwdSplitAt = 4, 4
+	if l := e.optimisticLayout(m, []int{3, 2, 1}); l == nil || len(l.Beneath) != 1 || len(l.After) != 1 {
+		t.Errorf("7 0 fold [add] (mk) 5: 7 beneath, 5 after; got %+v", l)
 	}
 }
 

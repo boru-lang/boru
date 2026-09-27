@@ -76,15 +76,17 @@ func (e *Engine) optimisticOuter(match *MatchResult, indices []int) *OuterMatch 
 	return &OuterMatch{Word: match.Name, Vals: vals, NFwd: nFwd, Written: written, Pos: pos}
 }
 
-// optimisticLayout is the exact layout (DispatchLayout) of an optimistic
-// dispatch at the pointer, or nil. The interpreter's tape at the run's
-// failed dispatch is [stack operands, word, written operands]; here, after
-// rearrangeForForward, signature position i sits i+1 beneath the word, and
-// forwardSplit says how many were written. Exactness is exactLayout's: the
-// operands are the tape's own values, a statement or group boundary (or the
-// tape's end) closes both sides, the word carries no modifier the source
-// wrote — a forced stack read is the forward collection's own when it
-// recorded a split — and neither tape-only report layer applies.
+// optimisticLayout is the layout (DispatchLayout) of an optimistic dispatch
+// at the pointer, or nil. The interpreter's tape at the run's failed
+// dispatch is [Beneath, stack operands, word, written operands, After];
+// here, after rearrangeForForward, signature position i sits i+1 beneath
+// the word, and forwardSplit says how many were written. The rules are
+// exactLayout's: the operands are the tape's own values, what the plan
+// could reach around them rides with them up to a statement or group
+// boundary (or the tape's end) on both sides (layoutSurround), the word
+// carries no modifier the source wrote — a forced stack read is the
+// forward collection's own when it recorded a split — and neither
+// tape-only report layer applies.
 func (e *Engine) optimisticLayout(match *MatchResult, indices []int) *DispatchLayout {
 	n := len(match.Args)
 	if n == 0 || len(indices) != n || match.Sig == nil || !e.Registry.analysisRecorder().Active() ||
@@ -105,13 +107,11 @@ func (e *Engine) optimisticLayout(match *MatchResult, indices []int) *DispatchLa
 			return nil
 		}
 	}
-	if below := e.Pointer - n - 1; below >= 0 && !IsOpenParen(e.Tape.At(below)) && !IsEnd(e.Tape.At(below)) {
+	beneath, after, ok := e.layoutSurround(e.Pointer-n-1, e.Pointer+1)
+	if !ok {
 		return nil
 	}
-	if after := e.Pointer + 1; after < e.Tape.Len() && !IsCloseParen(e.Tape.At(after)) && !IsEnd(e.Tape.At(after)) {
-		return nil
-	}
-	return &DispatchLayout{args: match.Args, NFwd: nFwd}
+	return &DispatchLayout{args: match.Args, NFwd: nFwd, Beneath: beneath, After: after}
 }
 
 // publishOptimisticLayout publishes optimisticLayout for the dispatch's

@@ -129,26 +129,48 @@ func polySplitRaise(r *core.Registry, pr *compiler.PolyRef, fn *core.FnDefInfo, 
 	if sp == nil {
 		return nil
 	}
-	return splitNoMatch(r, pr.Word, fn, window, sp.NFwd, curDebug, pc)
+	return splitNoMatch(r, pr.Word, fn, window, sp.NFwd, sp.Beneath, sp.After, curDebug, pc)
 }
 
 // splitNoMatch lays window (signature order, the nFwd written operands
-// first) out as the interpreter's tape at word and raises its
-// signature_error over that tape when its plan finds no signature; nil when
-// the plan finds one or cannot be driven, and for a layout out of range.
-func splitNoMatch(r *core.Registry, word string, fn *core.FnDefInfo, window []core.Value, nFwd int, curDebug []core.SrcPos, pc int) error {
+// first) out as the interpreter's tape at word — with the constants beneath
+// and the source tokens after that the record read there (NUR283) — and
+// raises its signature_error over that tape when its plan finds no
+// signature; nil when the plan finds one over the operands or cannot be
+// driven, and for a layout out of range. A plan that takes a value beneath
+// or a token after is a dispatch the interpreter makes over a window the
+// program never assembled: a designed defer.
+func splitNoMatch(r *core.Registry, word string, fn *core.FnDefInfo, window []core.Value, nFwd int, beneath, after []core.Value, curDebug []core.SrcPos, pc int) error {
 	if fn == nil || nFwd < 0 || nFwd > len(window) {
 		return nil
 	}
-	h, sig, _, ok := planSplit(r, word, fn, window[nFwd:], window[:nFwd])
-	if !ok || (sig != nil && !sig.Fallback) {
+	h, sig, positions, ok := planSplitOver(r, word, fn, beneath, window[nFwd:], window[:nFwd], after)
+	if !ok {
+		return nil
+	}
+	if sig != nil && !sig.Fallback {
+		if len(beneath)+len(after) > 0 && planReaches(positions, len(beneath), len(beneath)+len(window)) {
+			return vmDefer(r, curDebug, pc, "vm:split-plan-reaches",
+				"`"+word+"`'s dispatch takes a value the compiled call's operands do not hold (NUR283)")
+		}
 		return nil
 	}
 	var pos core.SrcPos
 	if pc >= 0 && pc < len(curDebug) {
 		pos = curDebug[pc]
 	}
-	return stampAt(core.NoMatchOverWindow(r.Source, h.win, len(window)-nFwd, word, fn, pos), curDebug, pc, r)
+	return stampAt(core.NoMatchOverWindow(r.Source, h.win, len(beneath)+len(window)-nFwd, word, fn, pos), curDebug, pc, r)
+}
+
+// planReaches reports whether a plan's tape positions reach outside the
+// operands, which the laid-out tape holds at lo..hi (the word between them).
+func planReaches(positions []int, lo, hi int) bool {
+	for _, at := range positions {
+		if at < lo || at > hi {
+			return true
+		}
+	}
+	return false
 }
 
 // nativeSplitRaise is the no-match arm of a committed CALL_NATIVE the pass
@@ -163,5 +185,5 @@ func nativeSplitRaise(r *core.Registry, word string, sp *compiler.NativeSplit, a
 	}
 	window := append([]core.Value(nil), args...)
 	window[sp.BodyAt] = sp.Body
-	return splitNoMatch(r, word, r.Lookup(word), window, sp.NFwd, curDebug, pc)
+	return splitNoMatch(r, word, r.Lookup(word), window, sp.NFwd, sp.Beneath, sp.After, curDebug, pc)
 }
