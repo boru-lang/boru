@@ -27,7 +27,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `fnsig` | ✓ 13/14 | n/a | n/a | n/a | n/a | ✓ 7/14 | ✓ 13/14 |
 | `fold` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
 | `for` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
-| `for-each` | ✓ 14/14 | ✓ 14/14 | ✓ 12/14 | ✓ 7/14 | ✓ 7/14 | ✓ 7/14 | ✓ 14/14 |
+| `for-each` | ✓ 14/14 | ✓ 14/14 | ✓ 12/14 | ✓ 7/14 | ✓ 8/14 | ✓ 7/14 | ✓ 14/14 |
 | `force-arity` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 8/14 | ✓ 8/14 | ✓ 12/14 | n/a |
 | `forward-args` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 8/14 | ✓ 8/14 | ✓ 12/14 | n/a |
 | `gen` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
@@ -210,7 +210,6 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `for-each` container · lambda-body — **declined** — unannotated or opaque word dot
 - `for-each` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `for-each` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `for-each` container · for-body — **declined** — for-each: a computed body keeps its defs and undefs in the enclosing scope, and the read of `acc` after it would read th…
 - `for-each` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `for-each` container · module-body — **declined** — unannotated or opaque word dot
 - `for-each` module-export · fn-body — **declined** — operand of unknown provenance or not statically materialisable at dot
