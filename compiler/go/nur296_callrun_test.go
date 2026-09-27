@@ -78,6 +78,11 @@ func TestCallRun(t *testing.T) {
 			t.Errorf("%s: callRun = %v %d %v, want %v %d %v", c.name, path, span, ok, c.path, c.span, c.ok)
 		}
 	}
+	varied := call(23, 1, 1, lit(7))
+	es.eventInfo[23] = eventFlags{variadicResult: true}
+	if _, _, ok := es.callRun(tree, varied, body, 0); ok {
+		t.Error("a call whose run's count varies has no fixed run to write")
+	}
 	unnoted := &EmitEvent{kind: evCall, seq: 20, call: emitCall{word: "print", pos: gpos(1)}}
 	if _, _, ok := es.callRun(tree, unnoted, body, 0); ok {
 		t.Error("a call whose arguments were never placed has no run")

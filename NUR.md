@@ -13499,7 +13499,9 @@ the interpreter parks a returned fn value, so one that would dispatch where
 the island writes it defers (`RestartSubst.Placed`, NUR297's rule). An
 adversarial read before the push found the first cut stepping it: `mk2 5
 [(l.0 true)]` over a List-taking lambda answered a type_error for `[fn
-(List) [true]]`. Pinned by `TestNUR296EffectBeforeTheStop`,
+(List) [true]]`. A call whose run's count may vary (a variadic unit, a
+caught body's latch, a region) is no call run. Pinned by
+`TestNUR296EffectBeforeTheStop`,
 compiler `nur296_callrun_test.go` and eng `TestSubstIslandNone`.
 
 **What a fix needs.** An island that resumes AT the stop instead of the

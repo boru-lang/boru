@@ -564,6 +564,11 @@ func (es *EmitState) callRun(tree map[int]treeEvent, ev *EmitEvent, body []core.
 	sites, noted := es.argSites[ev.seq]
 	p := eventPos(*ev)
 	path = tokenPath(body, p)
+	// A call whose run's count the program cannot hold (a variadic unit, a
+	// caught body's latch, a region) has no fixed run to write.
+	if f := es.eventInfo[ev.seq]; f.variadicResult || f.catchPhantom {
+		return nil, 0, false
+	}
 	if nout > 1 || !noted || len(sites) != len(ops) || len(path) == 0 || path[0] < tok {
 		return nil, 0, false
 	}
