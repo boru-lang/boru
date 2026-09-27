@@ -19,16 +19,17 @@ import (
 // whose body ran only reads runs again whole, and a body of one call — its
 // paren or its bare word — is written as the do's own result, the landed
 // value (compiler's doBody). The shapes an arm re-steps as the interpreter
-// does, and data or a nullary fn, answer as before. A `do` body the island
-// cannot write — two calls, a call among other tokens — and an effect before
-// the stop stay designed defers.
+// does, and data or a nullary fn, answer as before. An effect before the
+// stop is written as its run (NUR296's call run). A `do` body the island
+// cannot write — two calls, a call among other tokens — and an effect that
+// took an operand off the stack stay designed defers.
 func TestNUR286LandingBeneathIsLoud(t *testing.T) {
 	const mk = `def mk fn [[][Any][([x:Integer] => [x add 1])]] end `
 	const mk2 = `def mk fn [[][Any][([x:Integer y:Integer] => [x sub y])]] end `
 	for _, src := range []string{
 		mk + `def j (5 do [(mk) drop (mk)]) end j`,
 		mk + `def j (5 do [1 drop (mk)]) end j`,
-		mk + `print "x" 5 do [(mk)] typeof`,
+		mk + `"x" print/s 5 do [(mk)] typeof`,
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 		if !compiled || !strings.Contains(fmt.Sprint(errC), "NUR286") {
@@ -41,6 +42,7 @@ func TestNUR286LandingBeneathIsLoud(t *testing.T) {
 		{mk + `def j (5 do [mk]) end j`, "[6]"},
 		{mk + `(5 do [(mk)]) typeof`, "[Integer]"},
 		{mk + `5 do [(mk)] typeof`, "[Integer]"},
+		{mk + `print "x" 5 do [(mk)] typeof`, "[Integer]"},
 		{mk + `(5 do [(mk)]) 9`, "[6 9]"},
 		{mk + `def j ("a" do [(mk)]) end j`, "[fn (Integer) a]"},
 		{`def mk fn [[][Function][([x:Integer] => [x add 1])]] end def j (5 do [(mk)]) end j`, "[6]"},
