@@ -938,6 +938,16 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	// shapes the alone-island models faithfully; an inert VALUE after it is not,
 	// and the landing stands aside (never declines — see emitLandingAfter).
 	if !nothingToCollectAfter(e, valIdx) {
+		// Inside a `def`'s operand group the re-step's collection is
+		// noted all the same, as a COLLECTING landing (NUR298): the def
+		// takes the group's first value, so the fn the re-step applies to
+		// the literal after it reaches the residual arms only after the
+		// def — `def j (5 do [(mk)] 7) end 1 j` is `[8 1 5]`, and the arms
+		// saw `fn 7 1 5`. A dispatch modifier is data intent, no collection.
+		if !core.IsDispatchMod(e.Tape.At(valIdx+1)) && inDefGroup(e, valIdx) {
+			es.NoteReStepLanding(v, v.Pos())
+			es.NoteLandingNext(v, core.LandingNextCollect, len(e.EffectiveResolved()) > 0, core.Value{})
+		}
 		return
 	}
 	es.NoteReStepLanding(v, v.Pos())
@@ -963,6 +973,29 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 		}
 	}
 	es.NoteLandingNext(v, next, len(e.EffectiveResolved()) > 0, word)
+}
+
+// inDefGroup reports whether valIdx sits directly in the paren group written
+// as a `def`'s operand: the group runs before the def dispatches, so its
+// open paren follows the def word and the binding's name.
+func inDefGroup(e *core.Engine, valIdx int) bool {
+	depth := 0
+	for i := valIdx - 1; i >= 0; i-- {
+		t := e.Tape.At(i)
+		switch {
+		case core.IsCloseParen(t):
+			depth++
+		case core.IsOpenParen(t) && depth > 0:
+			depth--
+		case core.IsOpenParen(t):
+			if i < 2 || !core.IsWord(e.Tape.At(i-1)) {
+				return false
+			}
+			w, _ := core.AsWord(e.Tape.At(i - 2))
+			return w.Name == "def"
+		}
+	}
+	return false
 }
 
 // landingNextForWord classifies the word after a landed value the way the

@@ -10814,12 +10814,15 @@ func (es *EmitState) landingWordAt(seq int) LandingWord {
 }
 
 // mergeLandingNext joins two notes on one landing: a function word wins (a
-// candidate at either step), then the tape's end, then a collected value
-// (the arms' apply), then a boundary.
+// candidate at either step), then a literal a def group's step collects
+// (NUR298), then the tape's end, then a collected value (the arms' apply),
+// then a boundary.
 func mergeLandingNext(a, b core.LandingNext) core.LandingNext {
 	switch {
 	case a == core.LandingNextWord || b == core.LandingNextWord:
 		return core.LandingNextWord
+	case a == core.LandingNextCollect || b == core.LandingNextCollect:
+		return core.LandingNextCollect
 	case a == core.LandingNextEnd || b == core.LandingNextEnd:
 		return core.LandingNextEnd
 	case a == core.LandingNextValue || b == core.LandingNextValue:
@@ -10841,6 +10844,9 @@ func mergeLandingNext(a, b core.LandingNext) core.LandingNext {
 // its collection (LandingNextValue: `m.f k` is g over 2), or when values
 // beneath it are the residual arms' to apply it over.
 func (es *EmitState) landingArg(seq int, frameTail bool) int {
+	if es.landingCollects(seq) {
+		return LandingCollects
+	}
 	if es == nil || es.landingBeneath[seq] {
 		return 0
 	}
@@ -10869,6 +10875,22 @@ func (es *EmitState) landingArg(seq int, frameTail bool) int {
 // defer for a fn with an argument-taking signature; data and a nullary fn
 // pass.
 const LandingBeneathGuard = 4
+
+// LandingCollects is the OpReStepLanding argument bit of a COLLECTING
+// landing (NUR298): inside a `def`'s operand group the value's own step had
+// a literal after it that the interpreter's re-step collects
+// (core.LandingNextCollect). The landing's one-value re-step cannot reach
+// that token, so the op re-steps nothing itself. Where an arm or an event
+// applies the value it is theirs; where none does (LandingBeneathGuard),
+// the statement runs again on the interpreter (LandingWord.Restart), and
+// with no island an argument-taking fn is a designed defer.
+const LandingCollects = 8
+
+// landingCollects reports whether event seq's landing is a collecting one
+// (LandingCollects).
+func (es *EmitState) landingCollects(seq int) bool {
+	return es != nil && es.landingNext[seq] == core.LandingNextCollect
+}
 
 // guardRootLandings sets LandingBeneathGuard on each root landing whose own
 // step had values beneath it (lw.rootBeneathLandings) when the interpreter
@@ -11100,13 +11122,18 @@ func (es *EmitState) crossesStatementEnd(v core.Value, rest []core.Value) bool {
 	if from.Row == 0 {
 		return false
 	}
-	for _, r := range rest {
+	for i, r := range rest {
 		// A def-bound READ has no position of its own (residualPos), but
 		// its reads were each seen at their token: when every one of them
 		// sits past a boundary after the lead, this entry does too
 		// (NUR266: `do (mk) end x` over a run ending in a lambda applied
 		// it to x, where the interpreter's re-step stopped at the `end`).
-		if es.isDefRead(r) && es.defReadCrossed(r.ID, from) {
+		// Only the entry right after the lead: one further on is taken only
+		// by a fn whose arity reaches it, and a def's group may leave
+		// values between the lead and the read — `def j (5 do [(mk)] 7)
+		// end j` applies mk's lambda to the 7 before the def takes the 5,
+		// which the apply over the residual's 7 answers (NUR298).
+		if i == 0 && es.isDefRead(r) && es.defReadCrossed(r.ID, from) {
 			return true
 		}
 		to := es.residualPos(r)
@@ -17743,7 +17770,9 @@ func stampDeoptRet(cf *CompiledFn, retPC int) {
 	for i := range cf.Deopts {
 		cf.Deopts[i].RetPC = retPC
 	}
-	if len(cf.Deopts) > 0 || stampLandingRet(cf.LandingWords, retPC) {
+	// Both stamps run: a unit with deopt points may carry a landing's island
+	// too (`[5] each [m get "f" drop]` — NUR286's), which an `||` skipped.
+	if landed := stampLandingRet(cf.LandingWords, retPC); len(cf.Deopts) > 0 || landed {
 		cf.RetReplay = true
 	}
 }

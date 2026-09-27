@@ -21,41 +21,54 @@ func TestGuardRestart(t *testing.T) {
 	lit := core.NewEvalList([]core.Value{core.NewInteger(1), core.NewParenExpr([]core.Value{core.NewWord("mk")})})
 	toks := []core.Value{core.NewInteger(5), paren, lit}
 
-	if got, ok := substToken(toks, nil, v); !ok || len(got) != 3 || &got[0] != &toks[0] {
+	if got, ok := substToken(toks, nil, 1, v); !ok || len(got) != 3 || &got[0] != &toks[0] {
 		t.Error("an empty path is the tokens themselves")
 	}
-	got, ok := substToken(toks, []int{1}, v)
+	got, ok := substToken(toks, []int{1}, 1, v)
 	if !ok || got[1].String() != "7" || !core.IsParenExpr(toks[1]) {
 		t.Errorf("a top-level paren replaced in a copy: %v %v", got, ok)
 	}
-	got, ok = substToken(toks, []int{2, 1}, v)
+	got, ok = substToken(toks, []int{2, 1}, 1, v)
 	l, _ := core.AsList(got[2])
 	orig, _ := core.AsList(toks[2])
 	if !ok || !got[2].Eval || l.Get(1).String() != "7" || !core.IsParenExpr(orig.Get(1)) {
 		t.Errorf("a paren inside a list literal, the literal copied with its flags: %v %v", got, ok)
 	}
 	nested := []core.Value{core.NewParenExpr([]core.Value{core.NewInteger(1), core.NewParenExpr(nil)})}
-	got, ok = substToken(nested, []int{0, 1}, v)
+	got, ok = substToken(nested, []int{0, 1}, 1, v)
 	inner, _ := core.AsParenExpr(got[0])
 	if !ok || len(inner) != 2 || inner[1].String() != "7" {
 		t.Errorf("a paren inside a paren: %v %v", got, ok)
 	}
+	// A run of two — a do and its body list — is one token now.
+	got, ok = substToken(toks, []int{1}, 2, v)
+	if !ok || len(got) != 2 || got[0].String() != "5" || got[1].String() != "7" || len(toks) != 3 {
+		t.Errorf("a run of two replaced by one token in a copy: %v %v", got, ok)
+	}
+	got, ok = substToken(toks, []int{2, 0}, 2, v)
+	l, _ = core.AsList(got[2])
+	if !ok || l.Len() != 1 || l.Get(0).String() != "7" {
+		t.Errorf("a run of two inside a list literal: %v %v", got, ok)
+	}
 	for _, c := range []struct {
 		name string
 		path []int
+		span int
 	}{
-		{"an index past the tokens", []int{3}},
-		{"a negative index", []int{-1}},
-		{"a path into a scalar", []int{0, 0}},
-		{"a path past a nested token's end", []int{2, 5}},
+		{"an index past the tokens", []int{3}, 1},
+		{"a negative index", []int{-1}, 1},
+		{"a path into a scalar", []int{0, 0}, 1},
+		{"a path past a nested token's end", []int{2, 5}, 1},
+		{"a run past the tokens", []int{2}, 2},
+		{"an empty run", []int{1}, 0},
 	} {
-		if _, ok := substToken(toks, c.path, v); ok {
+		if _, ok := substToken(toks, c.path, c.span, v); ok {
 			t.Errorf("%s: substToken reports the bad path", c.name)
 		}
 	}
 
 	is := &compiler.StmtIsland{Island: []core.Value{core.NewInteger(9), core.NewParenExpr([]core.Value{core.NewWord("zz-no-such-word")})}, RetPC: 3, Root: true,
-		Substs: []compiler.RestartSubst{{Path: []int{1}, Src: compiler.RestartSrc{Kind: compiler.RestartGuard}}}}
+		Substs: []compiler.RestartSubst{{Path: []int{1}, Span: 1, Src: compiler.RestartSrc{Kind: compiler.RestartGuard}}}}
 	res, ent, err := vc.guardRestart(r, is, v, 0, nil, seam7Dbg, 0)
 	if err != nil || ent == nil || ent.jumpPC != 3 || len(res) != 2 || res[1].String() != "7" {
 		t.Fatalf("the island runs with the value in the paren's place: %v %+v %v", res, ent, err)
@@ -79,7 +92,7 @@ func TestSubstIsland(t *testing.T) {
 	island := []core.Value{core.NewParenExpr(nil), core.NewParenExpr(nil), core.NewParenExpr(nil)}
 	stack := []core.Value{core.NewInteger(0), core.NewInteger(3)}
 	sub := func(i int, kind compiler.RestartSrcKind, idx int) compiler.RestartSubst {
-		return compiler.RestartSubst{Path: []int{i}, Src: compiler.RestartSrc{Kind: kind, Idx: idx}}
+		return compiler.RestartSubst{Path: []int{i}, Span: 1, Src: compiler.RestartSrc{Kind: kind, Idx: idx}}
 	}
 	got, err := vc.substIsland(island, []compiler.RestartSubst{sub(0, compiler.RestartGuard, 0), sub(1, compiler.RestartLocal, 0), sub(2, compiler.RestartStack, 0)}, &g, 1, stack, seam7Dbg, 0)
 	if err != nil || got[0].String() != "1" || got[1].String() != "2" || got[2].String() != "3" || !core.IsParenExpr(island[0]) {
@@ -95,10 +108,31 @@ func TestSubstIsland(t *testing.T) {
 		{"an entry past the stack", sub(0, compiler.RestartStack, 1)},
 		{"a constant", sub(0, compiler.RestartConst, 0)},
 		{"a path past the island", sub(7, compiler.RestartStack, 0)},
+		{"an empty run", compiler.RestartSubst{Path: []int{0}, Src: compiler.RestartSrc{Kind: compiler.RestartStack}}},
 	} {
 		if _, err := vc.substIsland(island, []compiler.RestartSubst{c.sb}, nil, 1, stack, seam7Dbg, 0); err == nil || !core.IsVMDefer(err) {
 			t.Errorf("%s: substIsland raises the compiler's fault, got %v", c.name, err)
 		}
+	}
+	// The runs are written last to first: a do's run of two before a paren
+	// leaves the paren's path where the plan put it.
+	runs := []compiler.RestartSubst{{Path: []int{0}, Span: 2, Src: compiler.RestartSrc{Kind: compiler.RestartStack}}, sub(2, compiler.RestartLocal, 0)}
+	got, err = vc.substIsland(island, runs, nil, 1, stack, seam7Dbg, 0)
+	if err != nil || len(got) != 2 || got[0].String() != "3" || got[1].String() != "2" {
+		t.Errorf("a run of two, then a paren after it: %v %v", got, err)
+	}
+	// A paren's value that would dispatch as a token is a designed defer —
+	// the interpreter parks it — while a do's result, which the interpreter
+	// steps in the do's place, is written.
+	fn := core.NewFunction(core.FnDefInfo{Name: "g", Signatures: []core.Signature{{Impl: core.Boru(nil)}}})
+	fstack := []core.Value{core.NewInteger(0), fn}
+	_, err = vc.substIsland(island, []compiler.RestartSubst{sub(0, compiler.RestartStack, 0)}, nil, 1, fstack, seam7Dbg, 0)
+	if err == nil || !core.IsVMDefer(err) || !strings.Contains(err.Error(), "parks it") {
+		t.Errorf("a paren's fn value defers: %v", err)
+	}
+	got, err = vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0}, Span: 2, Src: compiler.RestartSrc{Kind: compiler.RestartStack}}}, nil, 1, fstack, seam7Dbg, 0)
+	if err != nil || len(got) != 2 || !core.FnValueDispatchesAtPointer(got[0]) {
+		t.Errorf("a do's fn result is written: %v %v", got, err)
 	}
 	// A landing's island and a shaped apply's write their substitutions.
 	lword := compiler.LandingWord{Island: []core.Value{core.NewParenExpr([]core.Value{core.NewWord("zz-no-such-word")})}, RetPC: 4, Root: true,
@@ -175,5 +209,31 @@ func TestFirstIteration(t *testing.T) {
 	spec := &compiler.DynMethodSpec{Word: "f", NOut: 1, Restart: true, Root: true, RetPC: 2, Island: lword.Island, FirstIter: later}
 	if _, _, err := vc.callDynMethod(r, spec, 0, []core.Value{core.NewInteger(5)}, seam7Dbg, 0); err == nil || !core.IsVMDefer(err) || !strings.Contains(err.Error(), "first iteration") {
 		t.Errorf("a shaped apply's island past the first iteration defers: %v", err)
+	}
+}
+
+// TestLandingCollectsVM pins the VM's collecting landing
+// (compiler.LandingCollects, NUR298): unguarded, the value is the residual
+// arms' as it always was; guarded, the statement island runs the re-step,
+// and with no island an argument-taking fn is a designed defer while a
+// nullary one passes.
+func TestLandingCollectsVM(t *testing.T) {
+	r := seam7Reg(t)
+	vc := &vmContext{p: landingProg(), r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	unary := core.NewFunction(core.FnDefInfo{Name: "g", Signatures: []core.Signature{{Args: []*core.Type{core.TInteger}}}})
+	nullary := core.NewFunction(core.FnDefInfo{Name: "h", Signatures: []core.Signature{{}}})
+	collect, guarded := compiler.LandingCollects, compiler.LandingCollects|compiler.LandingBeneathGuard
+	if got, ent, err := vc.reStepLanding(r, collect, 0, []core.Value{unary}, seam7Dbg, 0, compiler.LandingWord{}); err != nil || ent != nil || len(got) != 1 {
+		t.Errorf("unguarded: the arms' value: %v %v %v", got, ent, err)
+	}
+	if _, _, err := vc.reStepLanding(r, guarded, 0, []core.Value{unary}, seam7Dbg, 0, compiler.LandingWord{}); err == nil || !core.IsVMDefer(err) || !strings.Contains(err.Error(), "NUR298") {
+		t.Errorf("guarded with no island: a designed defer: %v", err)
+	}
+	if got, _, err := vc.reStepLanding(r, guarded, 0, []core.Value{nullary}, seam7Dbg, 0, compiler.LandingWord{}); err != nil || len(got) != 1 {
+		t.Errorf("guarded, a nullary fn passes: %v %v", got, err)
+	}
+	lword := compiler.LandingWord{Restart: true, Root: true, RetPC: 4, Island: []core.Value{core.NewInteger(9)}}
+	if got, ent, err := vc.reStepLanding(r, guarded, 0, []core.Value{unary}, seam7Dbg, 0, lword); err != nil || ent == nil || ent.jumpPC != 4 || len(got) != 1 || got[0].String() != "9" {
+		t.Errorf("guarded with an island: the statement runs again: %v %+v %v", got, ent, err)
 	}
 }

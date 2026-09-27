@@ -629,7 +629,7 @@ const (
 	// both lanes). The recorded landing claims ONE value, so a result count
 	// that differs is a claim failure and defers. Arg is a bit set
 	// (landingArg): a candidate follows (1), a function word the VM walks
-	// (2), and LandingBeneathGuard (4).
+	// (2), LandingBeneathGuard (4), and LandingCollects (8).
 	OpReStepLanding
 	// OpPushLocalBound is OpPushLocal for a BRANCH-CARRIED binding that may
 	// never have been stored on the path that reached it — a name bound only
@@ -1796,14 +1796,23 @@ type RestartFirst struct {
 	Val  int64
 }
 
-// RestartSubst is one paren a statement island writes a value in place of
-// (compiler's restartSubsts): the call that opens it ran in the compiled
-// code, which must not repeat it, and a paren seals the stack off, so its
-// value is all it leaves. Path is the paren's index in the island, then in
-// each paren or list literal entered on the way down; Src is where the
-// compiled code holds the value when the island runs.
+// RestartSubst is one run of tokens a statement island writes a value in
+// place of (compiler's restartSubsts): the call that computed it ran in the
+// compiled code, which must not repeat it. Path is the run's first token's
+// index in the island, then in each paren or list literal entered on the
+// way down; Span is how many tokens the run holds there, never below 1; Src
+// is where the compiled code holds the value when the island runs.
+//
+// A run of one is a paren, which seals the stack off so its value is all it
+// leaves, or a bare word that took nothing. The interpreter parks such a
+// value where it lands if it would dispatch there, and a token does
+// dispatch (core.FnValueDispatchesAtPointer), so the VM defers on one
+// (NUR297). A run of two is a `do` and its body list (NUR286): the do's
+// result goes back on the tape in the do's place and is stepped there,
+// exactly as the token is.
 type RestartSubst struct {
 	Path []int
+	Span int
 	Src  RestartSrc
 }
 

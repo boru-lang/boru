@@ -135,7 +135,8 @@ func TestParenOf(t *testing.T) {
 		{"a paren inside the else arm", mk(22, 1), []int{6, 0}, true},
 		{"a paren that leaves two values", mk(11, 2), []int{4}, false},
 		{"a call that took no token for its operand", mk(11, 1, EmitOperand{kind: opConst}), []int{4}, false},
-		{"a word, not a paren", mk(7, 1), nil, false},
+		{"a bare word whose call took nothing", mk(7, 1), []int{3}, true},
+		{"a bare word whose call took an operand", mk(7, 1, EmitOperand{kind: opConst}), []int{3}, false},
 		{"an earlier statement's call", mk(1, 1), nil, false},
 		{"a position-less call", &EmitEvent{kind: evCallUser, uc: emitUserCall{nout: 1}}, nil, false},
 	} {
@@ -155,7 +156,7 @@ func TestRestartSubsts(t *testing.T) {
 	inner := EmitEvent{kind: evCallUser, seq: 4, uc: emitUserCall{pos: gpos(22), nout: 1}}
 	outer := EmitEvent{kind: evCallUser, seq: 5, uc: emitUserCall{pos: gpos(20), nout: 1}}
 	tree := rootTreeEvents([]EmitEvent{read, call(6, 11), call(7, 22), inner, outer}, false)
-	got, ok := restartSubsts(tree, body, 2, []int{3, 6, 7})
+	got, ok := NewEmitState().restartSubsts(tree, body, 2, []int{3, 6, 7})
 	if !ok || len(got) != 2 || got[0].seq != 6 || got[1].seq != 7 || len(got[1].path) != 2 {
 		t.Errorf("a read runs again, and each call's paren is written as its value: %+v %v", got, ok)
 	}
@@ -167,15 +168,15 @@ func TestRestartSubsts(t *testing.T) {
 	}
 	deep := []core.Value{gtok(core.NewParenExpr([]core.Value{gtok(core.NewWord("f"), 11), gtok(core.NewParenExpr([]core.Value{gtok(core.NewWord("g"), 12)}), 12)}), 10)}
 	nested[1].ev.uc.ops = []EmitOperand{{kind: opEvent, idx: 2}}
-	if got, ok := restartSubsts(nested, deep, 0, []int{1, 2}); !ok || len(got) != 1 || got[0].seq != 1 {
+	if got, ok := NewEmitState().restartSubsts(nested, deep, 0, []int{1, 2}); !ok || len(got) != 1 || got[0].seq != 1 {
 		t.Errorf("the outermost paren is written: %+v %v", got, ok)
 	}
 	bind := map[int]treeEvent{1: {ev: &EmitEvent{kind: evCallUser, seq: 1, uc: emitUserCall{pos: gpos(11), nout: 1}}}, 2: {ev: &EmitEvent{kind: evDynBind, seq: 2, dyn: &emitDynBind{pos: gpos(11)}}}}
-	if _, ok := restartSubsts(bind, body, 2, []int{1, 2}); ok {
+	if _, ok := NewEmitState().restartSubsts(bind, body, 2, []int{1, 2}); ok {
 		t.Error("a bind inside a written paren is one the island would miss")
 	}
 	effect := map[int]treeEvent{1: {ev: &EmitEvent{kind: evCall, seq: 1, call: emitCall{word: "print", pos: gpos(5)}}}}
-	if _, ok := restartSubsts(effect, body, 2, []int{1}); ok {
+	if _, ok := NewEmitState().restartSubsts(effect, body, 2, []int{1}); ok {
 		t.Error("an effect outside any written paren would run twice")
 	}
 }
@@ -196,16 +197,16 @@ func guardTree(extra ...EmitEvent) map[int]treeEvent {
 
 func TestGuardReruns(t *testing.T) {
 	body := guardBody()
-	substs, ok := guardReruns(guardTree(), 10, body, 2)
+	substs, ok := NewEmitState().guardReruns(guardTree(), 10, body, 2)
 	if !ok || len(substs) != 1 || substs[0].seq != 6 || substs[0].path[0] != 4 {
 		t.Errorf("the condition's call is written as its value; an arm's effect and effects outside the statement's span do not block: %+v %v", substs, ok)
 	}
 	bind := EmitEvent{kind: evDynBind, seq: 7, dyn: &emitDynBind{pos: gpos(11)}}
-	if _, ok := guardReruns(guardTree(bind), 10, body, 2); ok {
+	if _, ok := NewEmitState().guardReruns(guardTree(bind), 10, body, 2); ok {
 		t.Error("a bind inside the substituted paren is one the island would miss")
 	}
 	effect := EmitEvent{kind: evCall, seq: 7, call: emitCall{word: "print", pos: gpos(5)}}
-	if _, ok := guardReruns(guardTree(effect), 10, body, 2); ok {
+	if _, ok := NewEmitState().guardReruns(guardTree(effect), 10, body, 2); ok {
 		t.Error("an effect in the statement before the guard would run twice")
 	}
 }
@@ -308,7 +309,7 @@ func TestGuardSeatAndEmit(t *testing.T) {
 	if len(code) != 3 {
 		t.Error("no guard, no call")
 	}
-	if _, ok := lw.restartSubstSrcs(nil, EmitOperand{}); ok {
+	if _, ok := lw.restartSubstSrcs(nil, EmitOperand{}, -1); ok {
 		t.Error("no island, no substitutions")
 	}
 	// The arm guard over the run's own stack: the walk's other operands are
@@ -412,5 +413,167 @@ func TestGuardPointInLoop(t *testing.T) {
 	call := EmitEvent{kind: evCallUser, seq: 6, uc: emitUserCall{pos: gpos(11), nout: 1}}
 	if _, ok := es.guardPoint(es.units[0], rec, mk(nil, call), guardCand{seq: 10, kind: guardCond, op: EmitOperand{kind: opEvent, idx: 6}}); ok {
 		t.Error("a paren substituted inside the loop would carry one iteration's value into every other")
+	}
+}
+
+// doProgram is `(5 do [(mk)])` at column 1: the paren (token 0) holds 5,
+// the do word (column 5) and the body list (column 8) whose one token is
+// the paren (column 9) around mk (column 10).
+func doProgram(bodyToks ...core.Value) []core.Value {
+	if len(bodyToks) == 0 {
+		bodyToks = []core.Value{gtok(core.NewParenExpr([]core.Value{gtok(core.NewWord("mk"), 10)}), 9)}
+	}
+	return []core.Value{gtok(core.NewParenExpr([]core.Value{gtok(core.NewInteger(5), 2), gtok(core.NewWord("do"), 5),
+		gtok(core.NewEvalList(bodyToks), 8)}), 1)}
+}
+
+// doState is an EmitState whose unit 0 is the do body's closure over events.
+func doState(events ...EmitEvent) (*EmitState, *EmitEvent) {
+	es := NewEmitState()
+	es.fnRecs = []*fnUnitRec{{frag: &EmitFragment{events: events}}}
+	return es, &EmitEvent{kind: evCall, seq: 4, call: emitCall{word: "do", nout: 1, pos: gpos(5), ops: []EmitOperand{{kind: opClosure, closureUnit: 0}}}}
+}
+
+// TestDoBody pins the statement island's `do` over a literal body (NUR286):
+// a body of reads runs again whole, a body of one call — its paren or its
+// bare word — has the do's own result written over the do word and its body
+// list (the do word's path; the interpreter steps a do's result in the do's
+// place), and any other do, body or event is no island's.
+func TestDoBody(t *testing.T) {
+	mkCall := EmitEvent{kind: evCallUser, seq: 3, uc: emitUserCall{pos: gpos(10), nout: 1}}
+	es, do := doState(mkCall)
+	sub, whole, ok := es.doBody(do, doProgram(), 0)
+	if !ok || whole || len(sub) != 2 || sub[0] != 0 || sub[1] != 1 {
+		t.Errorf("a body of one call has the do's result written over the do: %v %v %v", sub, whole, ok)
+	}
+	reads, rdo := doState(EmitEvent{kind: evCall, seq: 3, call: emitCall{word: "dot", pos: gpos(10)}})
+	if _, whole, ok := reads.doBody(rdo, doProgram(), 0); !ok || !whole {
+		t.Error("a body of reads runs again whole")
+	}
+	bare, bdo := doState(EmitEvent{kind: evCallUser, seq: 3, uc: emitUserCall{pos: gpos(9), nout: 1}})
+	if sub, _, ok := bare.doBody(bdo, doProgram(gtok(core.NewWord("mk"), 9)), 0); !ok || len(sub) != 2 || sub[1] != 1 {
+		t.Errorf("a body of one bare call word is written the same: %v %v", sub, ok)
+	}
+	two, tdo := doState(mkCall, EmitEvent{kind: evCallUser, seq: 2, uc: emitUserCall{pos: gpos(12), nout: 1}})
+	if _, _, ok := two.doBody(tdo, doProgram(), 0); ok {
+		t.Error("a body of two calls is no island's")
+	}
+	wide := doProgram(gtok(core.NewParenExpr([]core.Value{gtok(core.NewWord("mk"), 10)}), 9), gtok(core.NewInteger(1), 14))
+	if _, _, ok := es.doBody(do, wide, 0); ok {
+		t.Error("a body with more tokens than the call's leaves another value")
+	}
+	notDo := doProgram()
+	inner, _ := core.AsParenExpr(notDo[0])
+	inner[1] = gtok(core.NewWord("each"), 6)
+	if _, _, ok := es.doBody(do, notDo, 0); ok {
+		t.Error("a body list another word takes is not the do's")
+	}
+	for _, c := range []struct {
+		name string
+		ev   *EmitEvent
+	}{
+		{"another word", &EmitEvent{kind: evCall, call: emitCall{word: "each", nout: 1, ops: do.call.ops}}},
+		{"a do over no closure", &EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 1, ops: []EmitOperand{{kind: opLocal}}}}},
+		{"a do of two results", &EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 2, ops: do.call.ops}}},
+		{"a unit past the table", &EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 1, ops: []EmitOperand{{kind: opClosure, closureUnit: 5}}}}},
+	} {
+		if _, _, ok := es.doBody(c.ev, doProgram(), 0); ok {
+			t.Errorf("%s: no island's", c.name)
+		}
+	}
+	es.fnRecs[0].lambdaUnit = true
+	if _, _, ok := es.doBody(do, doProgram(), 0); ok {
+		t.Error("a lambda's unit escapes the frame")
+	}
+	es.fnRecs[0].lambdaUnit = false
+	// The plan: the do and its body list, two tokens, are written as the
+	// do's result, the do's own event and its body's paren covered by it; a
+	// whole body's do runs again.
+	tree := map[int]treeEvent{4: {ev: do}, 3: {ev: &mkCall}}
+	got, ok := es.restartSubsts(tree, doProgram(), 0, []int{3, 4})
+	if !ok || len(got) != 1 || got[0].seq != 4 || len(got[0].path) != 2 || got[0].span != 2 {
+		t.Errorf("the do's result stands for the do and its body: %+v %v", got, ok)
+	}
+	if got, ok := reads.restartSubsts(map[int]treeEvent{4: {ev: rdo}}, doProgram(), 0, []int{4}); !ok || len(got) != 0 {
+		t.Errorf("a whole body's do runs again: %+v %v", got, ok)
+	}
+}
+
+// TestWordlessRestartAndLandedSource pins a landing with no word after it
+// (NUR286): its entry carries only the statement island of a landing over
+// its own values beneath, and the landed value's source is the stack's top
+// entry — just above the walk's stack for a call, whose seating comes after
+// the landing, or the walk's top slot for a branch's merge.
+func TestWordlessRestartAndLandedSource(t *testing.T) {
+	es := NewEmitState()
+	es.landingOwn = map[int]landingStep{4: {beneath: true}, 5: {}}
+	var code []Instr
+	words := map[int]LandingWord(nil)
+	lw := &lowerer{es: es, code: &code, landingWords: &words, landingBody: doProgram(), landingRoot: true, promoted: map[int]int{4: 7}}
+	lw.vm = []vmSlot{{seq: -1}}
+	lw.landingRestarts = map[int]*landingRestart{4: {token: 0, depth: 0, held: 0, substs: []substPlan{{path: []int{0, 1}, span: 2, seq: 4}}},
+		5: {token: 0, depth: 0, held: 0}}
+	lw.seatLandingWord(LandingWord{}, 5)
+	lw.seatLandingWord(LandingWord{}, 6)
+	if len(words) != 0 {
+		t.Errorf("no island, or none over values beneath, seats nothing: %+v", words)
+	}
+	lw.seatLandingWord(LandingWord{}, 4)
+	w, ok := words[0]
+	if !ok || !w.Restart || len(w.Substs) != 1 || w.Substs[0].Src.Kind != RestartStack || w.Substs[0].Src.Idx != 1 || w.Substs[0].Span != 2 {
+		t.Fatalf("the landed value is the entry just above the walk's stack, never its unwritten slot: %+v", words)
+	}
+	lw.vm = append(lw.vm, vmSlot{seq: 4})
+	if got := lw.landedIdx(4); got != 1 {
+		t.Errorf("a merge's landed value is the walk's top slot: %d", got)
+	}
+	lw.landingRestarts[4].substs[0].seq = 9
+	lw.seatLandingWord(LandingWord{}, 4)
+	if len(words) != 1 {
+		t.Errorf("a value held nowhere seats no island: %+v", words)
+	}
+}
+
+// TestSubstPlanCovers pins the run of tokens a substitution replaces (NUR286,
+// NUR297): a paren's run is its own token and everything inside it, a do's
+// is the do word and its body list; and the plans are ordered as their
+// tokens stand, so the VM, writing them last to first, never moves a later
+// one's path.
+func TestSubstPlanCovers(t *testing.T) {
+	paren := substPlan{path: []int{2, 1}, span: 1}
+	do := substPlan{path: []int{0}, span: 2}
+	for _, c := range []struct {
+		name string
+		p    substPlan
+		path []int
+		want bool
+	}{
+		{"a paren's own token", paren, []int{2, 1}, true},
+		{"a token inside the paren", paren, []int{2, 1, 0}, true},
+		{"the paren's neighbour", paren, []int{2, 2}, false},
+		{"another enclosing token", paren, []int{3, 1}, false},
+		{"the token enclosing the paren", paren, []int{2}, false},
+		{"the do word", do, []int{0}, true},
+		{"inside the do's body list", do, []int{1, 0}, true},
+		{"the token after the body", do, []int{2}, false},
+		{"no plan path", substPlan{span: 1}, []int{0}, false},
+	} {
+		if got := c.p.covers(c.path); got != c.want {
+			t.Errorf("%s: covers = %v, want %v", c.name, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		a, b []int
+		want bool
+	}{
+		{[]int{0}, []int{2, 1}, true},
+		{[]int{2, 1}, []int{0}, false},
+		{[]int{2}, []int{2, 1}, true},
+		{[]int{2, 1}, []int{2}, false},
+		{[]int{1, 3}, []int{1, 4}, true},
+	} {
+		if got := pathLess(c.a, c.b); got != c.want {
+			t.Errorf("pathLess(%v, %v) = %v, want %v", c.a, c.b, got, c.want)
+		}
 	}
 }

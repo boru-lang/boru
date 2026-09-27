@@ -1472,6 +1472,24 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		}
 		return stack, nil, nil // data on both lanes — stepLiteral pushes it
 	}
+	// A COLLECTING landing (LandingCollects, NUR298): inside a def's operand
+	// group the interpreter's re-step applies the fn over the literal written
+	// after it, which no one-value re-step reaches. Where a residual arm or an
+	// event applies it the value is theirs, as it always was. Where none
+	// does (LandingBeneathGuard), its statement island runs the re-step, and
+	// with no island an argument-taking fn is a designed defer.
+	if arg&compiler.LandingCollects != 0 {
+		if arg&compiler.LandingBeneathGuard == 0 {
+			return stack, nil, nil
+		}
+		if lword.Restart {
+			return vc.landingRestart(reg, lword, frameBase, stack, curDebug, pc)
+		}
+		if landedFnTakesArgs(v) {
+			return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-collects", "a landed fn value takes arguments: the interpreter's re-step applies it here over the value written after it, and no compiled apply re-steps it (NUR298); the compiled runtime cannot execute it")
+		}
+		return stack, nil, nil
+	}
 	// A root landing over its OWN values beneath whose value a later event
 	// took (LandingBeneathGuard, NUR286): the interpreter's re-step applies
 	// an argument-taking fn over those values here — `def j (5 do [(mk)])
@@ -1479,6 +1497,10 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 	// fn that could take one is a designed defer, loud where the lane bound
 	// the fn and left the 5.
 	if arg&compiler.LandingBeneathGuard != 0 && landedFnTakesArgs(v) {
+		if lword.Restart {
+			// Its statement island runs the re-step as the interpreter does.
+			return vc.landingRestart(reg, lword, frameBase, stack, curDebug, pc)
+		}
 		return nil, nil, vmErrAt(curDebug, pc, "a landed fn value takes arguments: the interpreter re-steps it here over the values beneath it, and no compiled apply re-steps it (NUR286)")
 	}
 	if _, isClosure := v.Data.(core.ClosurePayload); isClosure {
@@ -1836,13 +1858,18 @@ func laterIterationDefer(reg *core.Registry, curDebug []core.SrcPos, pc int) err
 	return vmDefer(reg, curDebug, pc, "vm:restart-later-iteration", "a statement island's loop is past its first iteration, whose effects its run would repeat (NUR296); the compiled runtime cannot execute it")
 }
 
-// substIsland is island with each substituted paren written as the value the
-// compiled code left there (RestartSubst, compiler's restartSubsts): its
-// call ran and must not run again. The value is read where the stop holds
-// it — a slot, a frame-region entry, or guarded, the value a guard checks —
-// and a source the stop does not hold is the compiler's own fault.
+// substIsland is island with each substituted run of tokens written as the
+// value the compiled code left there (RestartSubst, compiler's
+// restartSubsts): its call ran and must not run again. The value is read
+// where the stop holds it — a slot, a frame-region entry, or guarded, the
+// value a guard checks — and a source the stop does not hold is the
+// compiler's own fault. The runs are in the island's token order and are
+// written last to first, so a run of two never moves a later one's path.
+// A paren's or a bare word's value that would dispatch as a token is a
+// designed defer: the interpreter parks it where it lands (NUR297).
 func (vc *vmContext) substIsland(island []core.Value, substs []compiler.RestartSubst, guarded *core.Value, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
-	for _, sb := range substs {
+	for k := len(substs) - 1; k >= 0; k-- {
+		sb := substs[k]
 		var v core.Value
 		i := sb.Src.Idx
 		switch {
@@ -1855,8 +1882,11 @@ func (vc *vmContext) substIsland(island []core.Value, substs []compiler.RestartS
 		default:
 			return nil, vmErrAt(curDebug, pc, "bad statement-island substitution")
 		}
+		if sb.Span == 1 && core.FnValueDispatchesAtPointer(v) {
+			return nil, vmDefer(vc.r, curDebug, pc, "vm:restart-parked-fn", "a statement island would write a fn value where the interpreter parks it, and the island's step would apply it (NUR297); the compiled runtime cannot execute it")
+		}
 		var ok bool
-		if island, ok = substToken(island, sb.Path, v); !ok {
+		if island, ok = substToken(island, sb.Path, sb.Span, v); !ok {
 			return nil, vmErrAt(curDebug, pc, "bad statement-island substitution")
 		}
 	}
@@ -1918,11 +1948,12 @@ func (vc *vmContext) guardRestart(reg *core.Registry, is *compiler.StmtIsland, g
 	return vc.statementRestart(reg, is.PrefixSrc, island, is.Depth, is.RetPC, is.Root, frameBase, stack, curDebug, pc)
 }
 
-// substToken is toks with the token at path replaced by v — a fresh copy of
-// every level on the way down, a paren's or a list literal's, keeping its
-// flags and position; the program's own tokens are never written. An
-// empty path is toks itself; ok is false for a path that leaves them.
-func substToken(toks []core.Value, path []int, v core.Value) ([]core.Value, bool) {
+// substToken is toks with the span tokens from path on replaced by v — a
+// fresh copy of every level on the way down, a paren's or a list literal's,
+// keeping its flags and position; the program's own tokens are never
+// written. An empty path is toks itself; ok is false for a path or span
+// that leaves them.
+func substToken(toks []core.Value, path []int, span int, v core.Value) ([]core.Value, bool) {
 	if len(path) == 0 {
 		return toks, true
 	}
@@ -1930,15 +1961,19 @@ func substToken(toks []core.Value, path []int, v core.Value) ([]core.Value, bool
 	if i < 0 || i >= len(toks) {
 		return nil, false
 	}
-	out := append([]core.Value(nil), toks...)
 	if len(path) == 1 {
-		out[i] = v
+		if span < 1 || i+span > len(toks) {
+			return nil, false
+		}
+		out := make([]core.Value, 0, len(toks)-span+1)
+		out = append(append(append(out, toks[:i]...), v), toks[i+span:]...)
 		return out, true
 	}
+	out := append([]core.Value(nil), toks...)
 	t := out[i]
 	if core.IsParenExpr(t) {
 		inner, _ := core.AsParenExpr(t)
-		sub, ok := substToken(inner, path[1:], v)
+		sub, ok := substToken(inner, path[1:], span, v)
 		t.Data = core.ParenExprPayload{Toks: sub}
 		out[i] = t
 		return out, ok
@@ -1947,7 +1982,7 @@ func substToken(toks []core.Value, path []int, v core.Value) ([]core.Value, bool
 	if err != nil {
 		return nil, false
 	}
-	sub, ok := substToken(l.Slice(), path[1:], v)
+	sub, ok := substToken(l.Slice(), path[1:], span, v)
 	t.Data = core.ListPayload{Elems: sub}
 	out[i] = t
 	return out, ok

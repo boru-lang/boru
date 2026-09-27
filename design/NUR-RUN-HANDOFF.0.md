@@ -9,6 +9,52 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR286 closed; NUR297 and NUR298 found and closed (2026-09-27)
+
+**NUR286's compile.** A guarded landing over its own values beneath takes
+the statement island (NUR242) where one is planned, at the root and at a
+unit's own depth (`planLandingRestarts`, `planUnitRestarts`). A landing
+with no word after it carries only that island (`seatWordlessRestart`).
+The island must not run a `do` twice, so a do over a literal body is read
+two ways (`doBody`). A body of reads runs again whole. A body of one call
+ran in the compiled code, so the island writes the do's result over the do
+word and its body list, a run of two tokens (`RestartSubst.Span`). The
+interpreter puts a do's result back on the tape in the do's place and
+steps it there, as it steps the token. The result is the landed value, read
+off the stack's top: its promotion's store comes after the landing
+(`landedIdx`).
+
+**NUR297 (the branch's own bug).** The island stepped a paren's written
+value as a token. The interpreter parks a paren's value that would
+dispatch (`fnReturnPark`), so a paren's fn value applied over the values
+beneath where the interpreter placed it: `[5 (g) (l.0 true)]` over a
+factory of a lambda answered `[[6 true]]` for `[[5 fn (Integer) true]]`,
+from b89fbfa. Such a value is a designed defer now
+(`vm:restart-parked-fn`); data is written as before. The runs are written
+last to first, in token order (`pathLess`).
+
+**NUR298.** Inside a def's operand group the interpreter's re-step applies
+a landed fn to the literal after it before the def takes the group's
+first value. The compiled lane left the fn to the residual arms, which met
+it after the def: `def j (5 do [(mk)] 7) end 1 j` answered `[fn (Integer)
+7 1 5]` for `[8 1 5]`. That is silent on main too, and a string or list
+after the fn is the same. A bisect put the plain `end j` form's regression
+at 51b1a62: NUR266's def-read crossing refused the residual's apply over
+the 7 because j's later read sits past the `end`. The crossing now counts
+only the entry right after the lead. The check pass notes a def group's
+landing as a COLLECTING one (`LandingNextCollect`, `inDefGroup`). Its op
+(`LandingCollects`) re-steps nothing itself, joins the root guard, and
+takes the statement island where no arm applies the value; with an effect
+before the stop it defers (`vm:landing-collects`). A first cut noted every
+collecting landing; it broke paren-bounded member calls (`(fs.b 10)`) and
+the prop specs, whose applies other models own, and was narrowed.
+
+**Found on the way.** `stampDeoptRet` stamped a unit's landing islands only
+when the unit had no deopt points (an `||`), so `[5] each [m get "f"
+drop]`, whose each body has both, ran an island with no RET. Both stamps
+run now, and the three each-body forms compile: the bail ledger is back to
+31. gate45 (on 1510ad9) was red on that ledger alone (34 against 31).
+
 ## NUR296's loop forms, NUR286's fn-body form and NUR289's caret (2026-09-27)
 
 **NUR296's loops.** A stop inside a counted loop restarts the loop's

@@ -208,7 +208,7 @@ keep the two in sync in the same commit.
 | [NUR283](#nur283) | FIXED 2026-09-27 (recorded the same day, closing NUR263; the handoff log's entry of that date): the published layout carries what the interpreter's plan could reach around the operands — constants beneath them (`DispatchLayout.Beneath`), scalar literals after them closed by a bare function word (`After`) — and the VM plans that whole tape (`planSplitOver`), for the optimistic bake (`NativeSplit`) and the poly (`PolySplit`) alike; a plan that takes a token the operands do not hold is a designed defer. Was: an optimistic closure bake whose layout is not exact — a value beneath its operands, or a token after them — raised the handler's bare signature_error where the interpreter raises the word's report. `def mk fn [[][Any][5]] end 1 2 fold [add] (mk)`, `… 0 scan [add] (mk)` and `… 0 fold [add] (mk) drop` carried no notes compiled. Loud: the same code, head and caret |
 | [NUR284](#nur284) | FIXED 2026-09-27 (recorded the same day, probing NUR257; the handoff log's entry of that date): a folded map member's anonymous fn APPLIED inside a fn whose frame binds a name the member reads — `def m {c: ([x:Any] => [k])} end def h fn [[][Any] [def k 7 m.c 1]] end h`, and with `k` h's parameter — raised `undefined word: k` compiled for the interpreter's `[7]`; passed to a fn that applies it (`def run fn [[f:Any][Any] [f 1]] end … run m.c`) it raised a count error, and after NUR218's close `is still waiting for 1 argument(s)`. The stored unit reads the name live, and a read some fn that binds it reaches (NUR257's binder model over the value's reader identity) now joins the dynamic-scope names, so every binder installs it where the lookup finds it (`seatStoredLiveReads`); NUR218's interpreter route seats its arguments as resolved values beneath the call word | probing NUR257, 2026-09-27 |
 | [NUR285](#nur285) | FIXED 2026-09-27 (recorded and closed together, closing NUR217; the handoff log's entry of that date): a root def bound to a factory's argument-taking fn, read inside a code body at the root over values the body pushed beneath it, was a slot push — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (mk) end do [10 j]` answered `[10 fn j(Integer)]` for `[11]`, `[1 2] each [j]` `[[fn j(Integer) fn j(Integer)]]` for `[[2 3]]` (silent); read in a fn body it raised `dynamic-scope read of a dispatching binding` (loud); and `def j (do [(mk)]) end j/v` rendered `fn` for `fn j` (silent). The body's deopt point stands with the root as its parent and installs the captured fn for its island (`DeoptSpec.Install`), the frame replay's word reads take the data lookup, and a def's rename reaches the value's frame local (`GlobalBindSpec.WriteSlot`). Present on main | closing NUR217, 2026-09-27 |
-| [NUR286](#nur286) | OPEN — its silent root half made LOUD 2026-09-27, and its fn-body form the same day (recorded the same day, closing NUR217; the handoff log's entries of that date; proposed verdict: resolve by fix): a paren whose `do` run lands an argument-taking fn over the paren's own values, taken by a def or a later word — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (5 do [(mk)]) end j` is `[6]` interpreted and was `[fn (Integer) 5]` compiled; so were `(5 do [(mk)]) typeof`, `(5 do [(mk)]) 9` and a list member's lambda (`def j (5 do [l.0]) end j`). A root landing whose own step had values beneath it now carries a guard (`LandingBeneathGuard`) unless the interpreter parks the value (a user call's result), the residual's apply re-steps it as the interpreter does, or an event applies it; the VM raises a designed defer where the landed fn takes an argument. A fn unit's own-depth landing takes the same guard unless an event applies the value, its call's frame parks it, or the unit's whole-frame replay re-steps it (`guardUnitLandings`): `def g fn [[][Any][(5 do [(mk)]) typeof]] end g` had failed on the unit's return count, a `type_error` the interpreter does not raise, and defers now. Open: the compile (answering 6) | closing NUR217, 2026-09-27 |
+| [NUR286](#nur286) | FIXED 2026-09-27 — its silent root half made LOUD, then its fn-body form, then the compile, all that day (recorded the same day, closing NUR217; the handoff log's entries of that date): a paren whose `do` run lands an argument-taking fn over the paren's own values, taken by a def or a later word — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (5 do [(mk)]) end j` is `[6]` interpreted and was `[fn (Integer) 5]` compiled; so were `(5 do [(mk)]) typeof`, `(5 do [(mk)]) 9` and a list member's lambda (`def j (5 do [l.0]) end j`). A root landing whose own step had values beneath it now carries a guard (`LandingBeneathGuard`) unless the interpreter parks the value (a user call's result), the residual's apply re-steps it as the interpreter does, or an event applies it; the VM raises a designed defer where the landed fn takes an argument. A fn unit's own-depth landing takes the same guard unless an event applies the value, its call's frame parks it, or the unit's whole-frame replay re-steps it (`guardUnitLandings`): `def g fn [[][Any][(5 do [(mk)]) typeof]] end g` had failed on the unit's return count, a `type_error` the interpreter does not raise. The compile: a guarded landing takes the statement island, and a `do` over one call is written as its result over the do and its body list (`RestartSubst.Span`), which the interpreter steps there as it steps the token; every form above answers as the interpreter does, root and fn body alike, and a body the island cannot write or an effect before the stop defers (NUR296's scope) | closing NUR217, 2026-09-27 |
 | [NUR287](#nur287) | FIXED 2026-09-27 (recorded and closed together, probing NUR282's `j j`; the handoff log's entry of that date): two results the check pass holds as dynamic carriers under a forward-eligible word with a literal after it — `def mk fn [[][Any][42]] end mk mk add 1` — answered `[84 1]` compiled for the interpreter's `[42 43]` (silent): the match over two carriers took `add (Bytes, Bytes)` all-stack and the poly re-match over that window could not collect the 1; three carriers took `add (Map, Any, Service)` and raised a claim failure. The forward-drift window (and the decline it mirrors) required a concrete operand beneath the dynamic top; a dynamic top is the whole precondition now. Inside a list literal the window met a fixed-count assembly (`[7 mk add 1]` was `[7 [43]]` for `[[7 43]]`, present before): it stands aside there and the decline answers. A word bound to a literal after the word (`def k 1 end mk mk add k`, `[84 1]` too) is the forward operand as well (`ForwardOperandValue`) | probing NUR282, 2026-09-27 |
 | [NUR288](#nur288) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): a fn literal written in a fn body is a new function every time the body runs — `def mk fn [[][Any][([x:Any] => [x])]] end mk mk eq` is `[false]` interpreted — and the compiled body pushed the literal's pooled const, one identity across calls: `[true]` (silent). An unbound, capture-free fn literal in a fn body is re-identified per push now (`OpPushConstFresh`, core's `WithFreshFnIdentity`), as a compound body literal is re-constructed; a named fn read by `/v` stays one function | probe sweep, 2026-09-27 |
 | [NUR289](#nur289) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): an anonymous fn whose Any slot meets a function word where a `do` body's result lands — `def mk fn [[][Any][([x:Any] => [x])]] end do [mk] typeof` — is the interpreter's strict-rule `signature_error`, and the compiled landing's walk answered `[Function]` (silent): it planned over the value's AUTHORED signature, whose `BarrierAllForward` scanned nothing forward. It plans over the installed view now (`installedSigView`). The caret is the landed fn's tape position on both lanes where the recording pass can place it (`LandingWord.ValPos`: a `do` lands its lambda at the `do`); a `do` body ending in a member read lands at the read on the interpreter, where the compiled value carries no token and the caret points at the `do` | probe sweep, 2026-09-27 |
@@ -219,6 +219,8 @@ keep the two in sync in the same commit.
 | [NUR294](#nur294) | FIXED 2026-09-27 (recorded and closed together, found probing NUR292; the handoff log's entry of that date): a RUN — a computed body's values, counted at run time — was seated as the one value the pass models wherever it was not the dyn-body call's own result: a branch whose arm is one (`9 if true (mk) ["f"]` over a List `[1 2]` answered `[1 9 2]`), a literal `do` body ending in one (`9 do [do (mk)]` the same; `[9 do [do (mk)]]` `[1 [9 2]]`; `do [do (mk)] add` a signature_error for 3). A run is a run wherever it surfaces (`runOperand`: the trailing apply declines it, a closure body holding one is a region or declines, the backstop learns it from a probe); `__arm` runs the compiled closure of a literal body | probing NUR292, 2026-09-27 |
 | [NUR295](#nur295) | FIXED 2026-09-27 (recorded and closed together, found probing NUR219; the handoff log's entry of that date): a list literal's element the pass holds as possibly a fn — a gradual member read, a word's fn result, a list element — was assembled as data, where the interpreter's evaluation of the literal re-steps it over its neighbours: `[m.g 5]` over a factory's map answered `[[fn g(Integer) 5]]` for `[[6]]` (silent, on main). Such a list lowers to `OpMakeListReStep`: data elements assemble as before, a fn element re-steps the window through the island where the elements after it are literals, and anything else defers | probing NUR219, 2026-09-27 |
 | [NUR296](#nur296) | OPEN (recorded 2026-09-27, closing NUR242 and NUR219; proposed verdict: resolve by fix): a landing's `/q` claim, a paren apply over data or a branch guard over a list (NUR292) restarts its statement on the interpreter only where the compiled code ran nothing a second run would repeat — a call before the stop is written as its paren's value where the compiled code still holds it — and, inside counted loops, only on their first iteration (checked at run time); otherwise it defers. `[(g) drop (l.0 true)]` (a call whose value the statement consumed), an effect before the stop, a stop on a later iteration or in a condition loop, and a paren substituted inside a loop answer interpreted and defer compiled. `[(g) (l.0 true)]`, `for 2 [[(l.(i) true)]]` and `for 2 [[(l.0 true)] def q 1 end]`, recorded here first, compile since the same day. Loud | closing NUR242, 2026-09-27 |
+| [NUR297](#nur297) | FIXED 2026-09-27 (recorded and closed together, probing NUR286's compile; the branch's own NUR292 work, never on main; the handoff log's entry of that date): a statement island wrote the value a paren's call left as a token, which the island steps — the interpreter parks a paren's value that would dispatch at the pointer, so `[5 (g) (l.0 true)]` over a factory of a lambda answered `[[6 true]]` for `[[5 fn (Integer) true]]` (silent). A paren's or a bare word's fn value is a designed defer now (`vm:restart-parked-fn`); data is written as before. Loud | probing NUR286, 2026-09-27 |
+| [NUR298](#nur298) | FIXED 2026-09-27 (recorded and closed together, probing NUR286's compile; the handoff log's entry of that date): inside a def's operand group the interpreter's re-step applies a landed fn to the literal after it before the def takes the group's first value, and the compiled lane left the fn to the residual arms, which met it only after the def: `def j (5 do [(mk)] 7) end 1 j` answered `[fn (Integer) 7 1 5]` for `[8 1 5]`, as did a string or list after the fn (silent, on main); the plain `end j` form regressed on the branch at 51b1a62 (NUR266's crossing rule). The crossing counts only the entry right after the lead, and a def group's collecting landing (`LandingCollects`) is guarded and takes its statement island; with an effect before the stop it defers (`vm:landing-collects`) | probing NUR286, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14105,11 +14107,10 @@ fn's `do [10 j]` (compile declines). Pinned by lang
 
 ## NUR286 — a def of a paren whose `do` run leaves an argument-taking fn above a value {#nur286}
 
-**Status:** OPEN — the silent root half made LOUD 2026-09-27, and the fn
-body's form the same day (the handoff log's entries of that date); the
-compile open (proposed verdict: resolve by fix) · **Recorded:** 2026-09-27
-· **Surfaced by:** closing NUR217, measuring the fold's fence (present on
-main).
+**Status:** FIXED 2026-09-27 — the silent root half made LOUD, then the fn
+body's form, then the compile, all that day (the handoff log's entries of
+that date) · **Recorded:** 2026-09-27 · **Surfaced by:** closing NUR217,
+measuring the fold's fence (present on main).
 
 **Rule:** a program the compiler admits, the compiled runtime runs, and
 answers as the interpreter does.
@@ -14211,10 +14212,29 @@ whole-frame replay re-steps it — an entry of the residual's top
 defers. A unit with a tail apply chain or a trailing apply of its own
 keeps today's arms.
 
-**What stays open.** The compile: answering 6 wants the check pass to
-model the re-step over the values beneath as a runtime-variable region
-(the prefix island's, NUR210), which a def or a later word could then
-take.
+**The compile (2026-09-27).** A guarded landing takes the statement island
+(NUR242) where one is planned: the statement runs again on the
+interpreter, which re-steps the fn over the values beneath as it does. A
+landing over its own values beneath is an island candidate at the root
+(`planLandingRestarts`) and at a unit's own depth (`planUnitRestarts`); a
+landing with no word after it carries only that island
+(`seatWordlessRestart`). The `do` is what the island must not run twice,
+so a do over a literal body is read two ways (`doBody`). A body of reads
+runs again whole. A body of one call, its paren or its bare word, ran in
+the compiled code: the island writes the do's result over the do word and
+its body list, a run of two tokens (`RestartSubst.Span`). The interpreter
+puts a do's result back on the tape in the do's place and steps it there,
+exactly as it steps that token. The result is the landed value, read off
+the stack's top, since its promotion's store comes after the landing
+(`landedIdx`). Every form above answers as the interpreter does, root and
+fn body alike: `def j (5 do [(mk)]) end j` is 6, `(5 do [(mk)]) typeof`
+is `Integer`, and `("a" do [(mk)])` is `[fn (Integer) a]`. A unit whose
+deopt points stamped its RET left its landings' islands unstamped (an `||`
+in `stampDeoptRet`); `[5] each [m get "f" drop]` compiles now. A body the
+island cannot write (two calls, a call among other tokens) and an effect
+before the stop stay designed defers (NUR296's scope). Pinned by
+`lang/go/nur286_test.go` and `compiler/go/guard_restart_test.go`
+(`TestDoBody`, `TestWordlessRestartAndLandedSource`).
 
 ## NUR287 — a forward-drift window over dynamic operands only {#nur287}
 
@@ -14790,3 +14810,96 @@ statement's start: the statement's evaluated values substituted for their
 tokens (a data value placed where its paren stood), and a loop's
 continuation — the rest of this iteration, then the remaining iterations —
 rebuilt as tokens.
+
+## NUR297 — a statement island wrote a paren's fn value where the interpreter parks it {#nur297}
+
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-27 · **Surfaced by:** probing NUR286's compile (the
+branch's own NUR292 work; never on main).
+
+**Rule:** a program the compiler admits, the compiled runtime runs, and
+answers as the interpreter does.
+
+**Divergence** (silent, from b89fbfa; over `def h fn [[x:Atom/q] [Any]
+[x]] end def mkl fn [[] [List] [[h/v h/v]]] end def l (mkl) end` and `def g
+fn [[][Any][([x:Integer] => [x add 1])]] end`):
+
+```
+[5 (g) (l.0 true)]                     interp [[5 fn (Integer) true]]
+                                       compiled [[6 true]]
+[5 (g) 7 if (mkq) ["big"] ["small"]]   interp [[5 fn (Integer) 'big']]
+  (mkq a factory of quote [gt 3])      compiled [[5 'big']]
+```
+
+**Cause.** A statement island writes the value a paren's call left in the
+paren's place (`restartSubsts`, NUR292), so the call does not run twice,
+and the island steps that value as a token. The interpreter's paren parks
+a value that would dispatch at the pointer (`fnReturnPark`) and re-steps
+any other one, so the two differ on a fn value alone: the token applies it
+over the 5 beneath, where the paren placed it.
+
+**Fix.** A paren's or a bare word's value that would dispatch as a token
+(`core.FnValueDispatchesAtPointer`) is a designed defer
+(`vm:restart-parked-fn`), loud. A data value is written as before: `[5 (k)
+(l.0 true)]` over a factory of 7 or of `[1 2]` compiles. The runs are
+written last to first, in token order (`pathLess`), so a run of two tokens
+never moves a later one's path. Pinned by `lang/go/nur297_test.go`,
+`eng/go/guard_restart_test.go` (`TestSubstIsland`) and
+`compiler/go/guard_restart_test.go` (`TestSubstPlanCovers`).
+
+## NUR298 — a def group's gradual fn with a value after it stayed data {#nur298}
+
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-27 · **Surfaced by:** probing NUR286's compile. The
+`"a"`, `[7]` and `end 1 j` forms are present on main. The plain form
+regressed on the branch at 51b1a62 (bisected; NUR266's crossing rule).
+
+**Rule:** a program the compiler admits, the compiled runtime runs, and
+answers as the interpreter does.
+
+**Divergence** (silent; over `def mk fn [[][Any][([x:Integer] => [x add
+1])]] end`):
+
+```
+def j (5 do [(mk)] 7) end j       interp [8 5]      compiled [fn (Integer) 7 5]   (branch only)
+def j (5 do [(mk)] 7) end 1 j     interp [8 1 5]    compiled [fn (Integer) 7 1 5]
+def j (5 do [(mk)] "a") end j     interp [a 6]      compiled [fn (Integer) a 5]
+def j (5 do [(mk)] [7]) end j     interp [[7] 6]    compiled [fn (Integer) [7] 5]
+```
+
+and the same over a member (`def j (5 m.f 7) end j`), a list element
+(`do [l.0]`) and a two-argument lambda.
+
+**Cause.** The group runs before the def dispatches, and the def takes its
+first value. The interpreter's re-step of the landed fn collects the
+literal after it inside the group; failing to match it, the fn takes the 5
+beneath instead. The check pass's landing stands aside wherever the re-step
+could collect a token, since its one-value re-step cannot reach one, and
+leaves the fn to the residual arms. Those meet it only after the def,
+beside whatever the program pushed since, and apply it to the wrong window
+or not at all. On main the plain form answered by luck: the residual's
+leading apply took the 7. On the branch NUR266's crossing rule
+(`crossesStatementEnd`) refused that apply, because the residual's later
+entry, j's read, sits past the `end`.
+
+**Fix.**
+- The def-read crossing counts only the entry right after the lead. One
+  further on is taken only by a fn whose arity reaches it. NUR266's
+  witnesses all cross at the first entry, and main's rules (NUR213)
+  already defer their other forms.
+- Inside a def's operand group (`inDefGroup`: the group's open paren
+  follows the def word and the name) the check pass notes such a landing
+  as a COLLECTING one (`core.LandingNextCollect`). Its op carries
+  `LandingCollects` and re-steps nothing itself. It joins the root guard
+  (`guardRootLandings`), so where no arm or event applies the value, the
+  statement island runs the re-step (the do's run of two tokens, NUR286).
+  With no island, an argument-taking fn is a designed defer
+  (`vm:landing-collects`): an effect before the stop, as in `def j (print
+  "x" 5 do [(mk)] 7) end j`.
+
+A first cut noted every collecting landing, outside def groups too. It
+broke paren-bounded member calls (`(fs.b 10)`) and the prop specs, whose
+applies other models own, and was narrowed to the def group. Pinned by
+`lang/go/nur298_test.go`, `compiler/go/nur298_test.go`,
+`check/go/branch_fn_value_landing_test.go` (`TestInDefGroup`) and
+`eng/go/guard_restart_test.go` (`TestLandingCollectsVM`).

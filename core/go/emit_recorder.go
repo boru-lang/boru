@@ -102,7 +102,11 @@ type BranchJoin struct {
 // the phase stops at (a candidate the interpreter counts), the end of the
 // tape, or a token the phase COLLECTS — a word bound to a value (`m.f k`
 // with `def k 2` is g over 2), a literal name — which the residual arms
-// model rather than the landing.
+// model rather than the landing. LandingNextCollect is a literal the phase
+// collects inside a `def`'s operand group (`def j (5 do [(mk)] 7) end`
+// applies mk's lambda to the 7 before the def takes the 5): the residual
+// arms meet that value only after the def, so the landing guards it
+// (NUR298).
 type LandingNext int
 
 const (
@@ -110,6 +114,7 @@ const (
 	LandingNextWord
 	LandingNextEnd
 	LandingNextValue
+	LandingNextCollect
 )
 
 type EmitRecorder interface {

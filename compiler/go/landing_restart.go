@@ -54,11 +54,30 @@ type landingRestart struct {
 	first []RestartFirst
 }
 
-// substPlan is one paren a statement island writes a value in place of: its
-// token path (tokenPath) and the call event whose one result it is.
+// substPlan is one run of tokens a statement island writes a value in place
+// of (RestartSubst): its first token's path (tokenPath), how many tokens it
+// holds there — a paren or a bare word is one, a `do` and its body list two
+// (doBody) — and the call event whose one result it is.
 type substPlan struct {
 	path []int
+	span int
 	seq  int
+}
+
+// covers reports whether path lies in the run of tokens p replaces: it
+// passes through one of the run's tokens, or ends at one.
+func (p substPlan) covers(path []int) bool {
+	n := len(p.path)
+	if n == 0 || len(path) < n {
+		return false
+	}
+	for i := 0; i < n-1; i++ {
+		if path[i] != p.path[i] {
+			return false
+		}
+	}
+	at := path[n-1]
+	return at >= p.path[n-1] && at < p.path[n-1]+p.span
 }
 
 // seated reports whether the walk seated r where the island can take the
@@ -83,7 +102,8 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 	tree := rootTreeEvents(es.frames[0], false)
 	seqs := make([]int, 0, len(es.landingAfter))
 	for seq, te := range tree {
-		if _, landed := es.landingAfter[seq]; (landed && es.landingWord[seq].Name != "") || (te.ev.kind == evCall && te.ev.call.dynMethod != nil) {
+		_, landed := es.landingAfter[seq]
+		if (landed && (es.landingWord[seq].Name != "" || es.landingOwn[seq].beneath || es.landingCollects(seq))) || (te.ev.kind == evCall && te.ev.call.dynMethod != nil) {
 			seqs = append(seqs, seq)
 		}
 	}
@@ -203,7 +223,7 @@ func (es *EmitState) guardPoint(u *emitUnit, rec *fnUnitRec, tree map[int]treeEv
 	if d.start.Row == 0 || es.deoptDeferred(u, rec, &d, -1) {
 		return deoptPoint{}, false
 	}
-	substs, ok := guardReruns(tree, g.seq, rec.body, tok)
+	substs, ok := es.guardReruns(tree, g.seq, rec.body, tok)
 	if !ok {
 		return deoptPoint{}, false
 	}
@@ -220,27 +240,32 @@ func (es *EmitState) guardPoint(u *emitUnit, rec *fnUnitRec, tree map[int]treeEv
 	return d, true
 }
 
-// restartSubsts plans the parens a statement island writes values in place
-// of, so that it may run the statement (from body token tok on) again: every
-// event of pending — the compiled code's run in the statement before the
-// stop — that is no re-runnable read (restartRead) must have run inside a
-// paren another such event's call opens (parenOf), binding nothing there,
-// and the island writes each outermost one as the value its call left: the
-// run is the compiled code's, never repeated. ok is false otherwise.
-func restartSubsts(tree map[int]treeEvent, body []core.Value, tok int, pending []int) ([]substPlan, bool) {
+// restartSubsts plans the runs of tokens a statement island writes values in
+// place of, so that it may run the statement (from body token tok on) again:
+// every event of pending — the compiled code's run in the statement before
+// the stop — that is no re-runnable read (restartRead) must have run inside
+// a paren another such event's call opens (parenOf), or a `do` over one call
+// (doBody), binding nothing there, and the island writes each outermost one
+// as the value its call left: the run is the compiled code's, never
+// repeated. The plans are in token order (pathLess). ok is false otherwise.
+func (es *EmitState) restartSubsts(tree map[int]treeEvent, body []core.Value, tok int, pending []int) ([]substPlan, bool) {
 	var cands []substPlan
 	for _, s := range pending {
-		if ev := tree[s].ev; !restartRead(ev) {
-			if path, ok := parenOf(ev, body, tok); ok {
-				cands = append(cands, substPlan{path: path, seq: s})
-			}
+		ev := tree[s].ev
+		if restartRead(ev) {
+			continue
+		}
+		if path, ok := parenOf(ev, body, tok); ok {
+			cands = append(cands, substPlan{path: path, span: 1, seq: s})
+		} else if sub, whole, ok := es.doBody(ev, body, tok); ok && !whole {
+			cands = append(cands, substPlan{path: sub, span: 2, seq: s})
 		}
 	}
 	var kept []substPlan
-	for _, c := range cands {
+	for i, c := range cands {
 		outer := false
-		for _, o := range cands {
-			outer = outer || (len(o.path) < len(c.path) && hasPrefix(c.path, o.path))
+		for j, o := range cands {
+			outer = outer || (i != j && len(o.path) < len(c.path) && o.covers(c.path))
 		}
 		if !outer {
 			kept = append(kept, c)
@@ -248,27 +273,41 @@ func restartSubsts(tree map[int]treeEvent, body []core.Value, tok int, pending [
 	}
 	for _, s := range pending {
 		ev := tree[s].ev
-		inside := false
+		inside, own := false, false
 		for _, k := range kept {
-			inside = inside || hasPrefix(tokenPath(body, eventPos(*ev)), k.path)
+			inside = inside || k.covers(tokenPath(body, eventPos(*ev)))
+			own = own || k.seq == s
 		}
+		_, whole, isDo := es.doBody(ev, body, tok)
 		switch {
 		case inside && (ev.kind == evDynBind || ev.kind == evStore || ev.kind == evBindTwin):
 			return nil, false
-		case !inside && !restartRead(ev):
+		case !inside && !own && !restartRead(ev) && !(isDo && whole):
 			return nil, false
 		}
 	}
-	sort.Slice(kept, func(i, j int) bool { return kept[i].seq < kept[j].seq })
+	sort.Slice(kept, func(i, j int) bool { return pathLess(kept[i].path, kept[j].path) })
 	return kept, true
+}
+
+// pathLess orders two token paths as the tokens they reach stand in the
+// program: by the first index they differ at, an enclosing token first.
+func pathLess(a, b []int) bool {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] != b[i] {
+			return a[i] < b[i]
+		}
+	}
+	return len(a) < len(b)
 }
 
 // parenOf is the path (tokenPath) to the paren of the statement, from body
 // token tok on, that call event ev opens — ev at its first token — when the
 // paren leaves exactly ev's one value: a paren seals the stack off, so the
 // call takes nothing from outside it, and it leaves its value alone when it
-// takes every later token as one operand each. ok is false for any other
-// event.
+// takes every later token as one operand each. A bare word whose call took
+// no operand at all is its one value the same way. ok is false for any
+// other event.
 func parenOf(ev *EmitEvent, body []core.Value, tok int) ([]int, bool) {
 	p := eventPos(*ev)
 	path := tokenPath(body, p)
@@ -283,11 +322,58 @@ func parenOf(ev *EmitEvent, body []core.Value, tok int) ([]int, bool) {
 			return path[:i+1], nout == 1 && len(ops) == len(inner)-1
 		}
 		if !nested {
-			break
+			return path, i == len(path)-1 && core.IsWord(toks[at]) && toks[at].Pos() == p && nout == 1 && len(ops) == 0
 		}
 		toks = inner
 	}
 	return nil, false
+}
+
+// doBody is how a statement island treats a `do` over a literal body (NUR286):
+// a body whose unit ran only re-runnable reads runs again whole; a body of
+// ONE call — its paren, or its bare word — ran in the compiled code, so the
+// island writes the do's result in place of the do and its body list (sub,
+// the do word's path; a run of two tokens), read where the compiled code
+// holds it. The interpreter puts a do's result back on the tape in the do's
+// place and steps it there, as the island steps the token. ok is false for
+// any other event, and for a body of any other shape.
+func (es *EmitState) doBody(ev *EmitEvent, body []core.Value, tok int) (sub []int, whole, ok bool) {
+	c := &ev.call
+	if ev.kind != evCall || c.word != "do" || c.nout != 1 || len(c.ops) != 1 || c.ops[0].kind != opClosure {
+		return nil, false, false
+	}
+	u := c.ops[0].closureUnit
+	if u < 0 || u >= len(es.fnRecs) || es.fnRecs[u] == nil || es.fnRecs[u].frag == nil || es.fnRecs[u].lambdaUnit || es.fnRecs[u].storedRefUnit {
+		return nil, false, false
+	}
+	var calls []*EmitEvent
+	for _, te := range rootTreeEvents(es.fnRecs[u].frag.events, false) {
+		if !restartRead(te.ev) {
+			calls = append(calls, te.ev)
+		}
+	}
+	if len(calls) == 0 {
+		return nil, true, true
+	}
+	if len(calls) > 1 {
+		return nil, false, false
+	}
+	path, ok := parenOf(calls[0], body, tok)
+	if !ok || len(path) < 2 {
+		return nil, false, false
+	}
+	// The call's token is the body list's only one, and the list is the
+	// do's own operand: the token before it is the do word.
+	toks := body
+	for _, at := range path[:len(path)-2] {
+		toks, _ = nestedToks(toks[at])
+	}
+	list := path[len(path)-2]
+	elems, nested := nestedToks(toks[list])
+	if !nested || core.IsParenExpr(toks[list]) || len(elems) != 1 || list == 0 || !core.IsWord(toks[list-1]) || toks[list-1].Pos() != c.pos {
+		return nil, false, false
+	}
+	return append(append([]int(nil), path[:len(path)-2]...), list-1), false, true
 }
 
 // tokenPath is the path of token indexes from body down to the token that
@@ -353,7 +439,7 @@ func callShape(ev *EmitEvent) ([]EmitOperand, int) {
 // guard is every event recorded from the statement's first event up to the
 // branch, its arms aside, which had not run. The guarded value's own paren
 // is one of them, its value the one the guard checks.
-func guardReruns(tree map[int]treeEvent, seq int, body []core.Value, tok int) ([]substPlan, bool) {
+func (es *EmitState) guardReruns(tree map[int]treeEvent, seq int, body []core.Value, tok int) ([]substPlan, bool) {
 	br := tree[seq].ev.br
 	arms := map[int]bool{}
 	for _, frag := range []*EmitFragment{br.then, br.els} {
@@ -372,7 +458,7 @@ func guardReruns(tree map[int]treeEvent, seq int, body []core.Value, tok int) ([
 		}
 	}
 	sort.Ints(pending)
-	return restartSubsts(tree, body, tok, pending)
+	return es.restartSubsts(tree, body, tok, pending)
 }
 
 // rootPreStart reads the program residual's entries the interpreter's stack
@@ -441,7 +527,8 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 	for seq, te := range tree {
 		_, landed := es.landingAfter[seq]
 		w := es.landingWord[seq]
-		if (landed && w.Name != "" && (w.Collected || !top[seq] || landingTopToken(rec.body, w.Pos) < 0)) || (te.ev.kind == evCall && te.ev.call.dynMethod != nil) {
+		if (landed && w.Name != "" && (w.Collected || !top[seq] || landingTopToken(rec.body, w.Pos) < 0)) || (landed && top[seq] && (es.landingOwn[seq].beneath || es.landingCollects(seq))) ||
+			(te.ev.kind == evCall && te.ev.call.dynMethod != nil) {
 			seqs = append(seqs, seq)
 		}
 	}
@@ -642,11 +729,11 @@ func statementToken(body []core.Value, p core.SrcPos) int {
 func (es *EmitState) restartReruns(tree map[int]treeEvent, at treeEvent, seq int, body []core.Value, tok int) ([]substPlan, []RestartFirst, bool) {
 	start := body[tok].Pos()
 	if !at.inLoop {
-		substs, ok := restartRunsReadsOnly(tree, seq, body, tok, core.SrcPos{})
+		substs, ok := es.restartRunsReadsOnly(tree, seq, body, tok, core.SrcPos{})
 		return substs, nil, ok
 	}
 	if first, counted := es.firstIterGuard(at.loops); counted {
-		if substs, ok := restartRunsReadsOnly(tree, seq, body, tok, eventPos(*at.ev)); ok && loopFree(tree, substs) {
+		if substs, ok := es.restartRunsReadsOnly(tree, seq, body, tok, eventPos(*at.ev)); ok && loopFree(tree, substs) {
 			return substs, first, true
 		}
 	}
@@ -727,7 +814,7 @@ func containsInt(xs []int, x int) bool {
 // others. On a loop's first iteration (after set), an event written after
 // the stop has not run either, whatever order the pass recorded it in — the
 // tape runs left to right — so it is not the run's.
-func restartRunsReadsOnly(tree map[int]treeEvent, seq int, body []core.Value, tok int, after core.SrcPos) ([]substPlan, bool) {
+func (es *EmitState) restartRunsReadsOnly(tree map[int]treeEvent, seq int, body []core.Value, tok int, after core.SrcPos) ([]substPlan, bool) {
 	first := statementFirstSeq(tree, seq, body[tok].Pos())
 	var pending []int
 	for s, te := range tree {
@@ -738,7 +825,7 @@ func restartRunsReadsOnly(tree map[int]treeEvent, seq int, body []core.Value, to
 		}
 	}
 	sort.Ints(pending)
-	return restartSubsts(tree, body, tok, pending)
+	return es.restartSubsts(tree, body, tok, pending)
 }
 
 // restartRead reports whether ev runs no user code, binds nothing and has

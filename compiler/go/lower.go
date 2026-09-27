@@ -1248,7 +1248,7 @@ func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) {
 // owes LandingBeneathGuard (NUR286). A landing inside a fragment keeps
 // today's arms.
 func (lw *lowerer) noteRootBeneathLanding(pc, seq int) {
-	if (lw.landingRoot || lw.isFnUnit) && lw.depth == 0 && lw.es.landingOwn[seq].beneath {
+	if (lw.landingRoot || lw.isFnUnit) && lw.depth == 0 && (lw.es.landingOwn[seq].beneath || lw.es.landingCollects(seq)) {
 		lw.rootBeneathLandings = append(lw.rootBeneathLandings, [2]int{pc, seq})
 	}
 }
@@ -1261,13 +1261,17 @@ func (lw *lowerer) noteRootBeneathLanding(pc, seq int) {
 // the body also carries the DEOPT its `/q` claim takes (landingDeoptIsland):
 // the island from the word on.
 func (lw *lowerer) seatLandingWord(w LandingWord, seq int) {
-	if lw.landingWords == nil || w.Name == "" {
+	if lw.landingWords == nil {
+		return
+	}
+	if w.Name == "" {
+		lw.seatWordlessRestart(w, seq)
 		return
 	}
 	if opens, island, ok := lw.landingDeoptIsland(seq, w); ok {
 		w.Deopt, w.Root, w.Opens, w.Island, w.RetPC = true, lw.landingRoot, opens, island, -1
 	} else if r := lw.restartAt(seq); r != nil {
-		if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}); ok {
+		if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, seq); ok {
 			w.Restart, w.Root, w.Depth, w.Island, w.RetPC, w.PrefixSrc, w.Substs, w.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
 		}
 	}
@@ -1285,6 +1289,28 @@ func (lw *lowerer) seatLandingWord(w LandingWord, seq int) {
 	}
 	(*lw.landingWords)[len(*lw.code)] = w
 	lw.landingSeq[len(*lw.code)] = seq
+}
+
+// seatWordlessRestart records, for a landing with no word after it, the one
+// thing its entry carries: the statement island of a landing over its own
+// values beneath (NUR286), which the VM takes where LandingBeneathGuard
+// would defer — the interpreter's re-step applies the fn over them — or of
+// a collecting landing (LandingCollects, NUR298), whose re-step applies it
+// over the literal after it.
+func (lw *lowerer) seatWordlessRestart(w LandingWord, seq int) {
+	r := lw.restartAt(seq)
+	if r == nil || !(lw.es.landingOwn[seq].beneath || lw.es.landingCollects(seq)) {
+		return
+	}
+	substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, seq)
+	if !ok {
+		return
+	}
+	w.Restart, w.Root, w.Depth, w.Island, w.RetPC, w.PrefixSrc, w.Substs, w.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
+	if *lw.landingWords == nil {
+		*lw.landingWords = map[int]LandingWord{}
+	}
+	(*lw.landingWords)[len(*lw.code)] = w
 }
 
 // listOwnsLandings clears the COLLECTED mark (LandingWord.Collected) of each
@@ -3770,7 +3796,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		di := len(lw.p.DynMethods)
 		spec := *c.dynMethod
 		if r := lw.restartAt(ev.seq); r != nil {
-			if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}); ok {
+			if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, -1); ok {
 				spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc, spec.Substs, spec.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
 				lw.restartMethods = append(lw.restartMethods, di)
 			}
@@ -4957,7 +4983,7 @@ func (lw *lowerer) armGuard(br *emitBranch, then bool) armGuardRef {
 // (SigRef.Restart, NUR292).
 func (lw *lowerer) emitGuardCallAt(word string, guard *core.Signature, pos core.SrcPos, kind int, op EmitOperand) {
 	r := lw.guardRestarts[guardKey(lw.curBranch, kind)]
-	substs, ok := lw.restartSubstSrcs(r, op)
+	substs, ok := lw.restartSubstSrcs(r, op, -1)
 	if guard == nil || !r.seated() || !ok {
 		lw.emitGuardCall(word, guard, pos)
 		return
@@ -4973,25 +4999,43 @@ func (lw *lowerer) emitGuardCallAt(word string, guard *core.Signature, pos core.
 // emitted, the value of each paren r's island substitutes (substPlan), its
 // path made relative to the island: the guarded operand's — guarded, an
 // event's result when a guard is the stop — is the value the guard checks,
-// off the stack when the island runs; any other, its call's promoted slot or
-// its frame-region entry (heldAt). ok is false for no island, or a value
-// held nowhere the island can read.
-func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand) ([]RestartSubst, bool) {
+// off the stack when the island runs; the landed value's — landed, the
+// landing's event when a landing is the stop — is the stack's top entry,
+// which its call just left and nothing has seated yet (a promotion's store
+// comes after the landing); any other, its call's promoted slot or its
+// frame-region entry (heldAt). ok is false for no island, or a value held
+// nowhere the island can read.
+func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, landed int) ([]RestartSubst, bool) {
 	if r == nil {
 		return nil, false
 	}
 	out := make([]RestartSubst, 0, len(r.substs))
 	for _, sp := range r.substs {
 		src, ok := RestartSrc{Kind: RestartGuard}, true
-		if guarded.kind != opEvent || guarded.idx != sp.seq {
+		switch {
+		case guarded.kind == opEvent && guarded.idx == sp.seq:
+		case sp.seq == landed && landed >= 0:
+			src = RestartSrc{Kind: RestartStack, Idx: lw.landedIdx(landed)}
+		default:
 			src, ok = lw.heldAt(sp.seq)
 		}
 		if !ok {
 			return nil, false
 		}
-		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Src: src})
+		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Span: sp.span, Src: src})
 	}
 	return out, true
+}
+
+// landedIdx is the frame-region entry of the value event seq's landing
+// re-steps: the walk's top slot when the walk has seated it there (a
+// branch's merge), else the entry just above the walk's stack, where its
+// call left it (a call's landing runs before its result is seated).
+func (lw *lowerer) landedIdx(seq int) int {
+	if n := len(lw.vm); n > 0 && lw.vm[n-1].seq == seq && lw.vm[n-1].idx == 0 {
+		return n - 1
+	}
+	return len(lw.vm)
 }
 
 // heldAt is where the compiled code holds event seq's one result now: its
