@@ -1,6 +1,8 @@
 package lang
 
 import (
+	"fmt"
+	"strings"
 	"sync"
 	"testing"
 )
@@ -61,5 +63,26 @@ func TestPredicateBodyRunsOnTheVM(t *testing.T) {
 				"a compiled program grew an interpreter island back inside a native handler, "+
 				"which no whole-program FALLBACK check can see", tc.name, got)
 		}
+	}
+}
+
+// A predicate body that RAISES fails the typed def with that raise, wrapped
+// in the def's own context — the interpreter's defTypedHandler and the
+// compiled OpBindTyped both run the predicate and both report it the same
+// way, taxonomy intact (the wrap keeps the raise's code). The negative twin:
+// a predicate that answers two values is not a raise, and is refused as a
+// malformed predicate on both lanes too.
+func TestTypedDefPredicateRaisePropagates(t *testing.T) {
+	const raising = `def Boom fnpred [[n:Integer] [raise bad_input "no"]] end def x:Boom 5 end x`
+	requireEngineParity(t, raising, true)
+	_, errI := mustNew(t).RunInterp(raising)
+	if codeOf(errI) != "bad_input" || !strings.Contains(fmt.Sprint(errI), "def x: predicate type Boom: ") {
+		t.Errorf("the raise must surface in the def's context with its own code, got %v", errI)
+	}
+	const twoValued = `def Two fnpred [[n:Integer] [n n]] end def x:Two 5 end x`
+	requireEngineParity(t, twoValued, true)
+	_, errI = mustNew(t).RunInterp(twoValued)
+	if !strings.Contains(fmt.Sprint(errI), "def x: predicate type Two: RunPredicate: predicate must return exactly one value, got 2") {
+		t.Errorf("a two-valued predicate must be refused in the def's context, got %v", errI)
 	}
 }

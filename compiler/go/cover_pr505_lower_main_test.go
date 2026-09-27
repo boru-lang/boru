@@ -5,12 +5,12 @@ import (
 	"testing"
 )
 
-// TestMergeBindConsumes pins mergeBindConsumes' nil-safe union. Both
+// TestMergeBindConsumesNilUnion pins mergeBindConsumes' nil-safe union. Both
 // callers hand it a fresh map from collectRootBindConsumes or
 // collectResidentBindConsumes, so its nil first set is reached only here:
 // a nil set with members to add yields a new set of those members; an empty
 // second set returns the first unchanged, nil included.
-func TestMergeBindConsumes(t *testing.T) {
+func TestMergeBindConsumesNilUnion(t *testing.T) {
 	if got := mergeBindConsumes(nil, map[int]bool{3: true}); !maps.Equal(got, map[int]bool{3: true}) {
 		t.Errorf("nil ∪ {3} = %v, want {3}", got)
 	}

@@ -387,14 +387,38 @@ func closureMatchesArgs(fn *compiler.CompiledFn, args []core.Value) bool {
 // matches under, so a `z:Integer` lambda handed a String no-matches there —
 // whose handler applies the closure through invoke. A unit that recorded no
 // contract (a token body) declines: guessing Any would apply where the
-// interpreter declines. Anonymous mirrors the source fn's flag
-// (CompiledFn.Lambda): it is what parks a 0-arg lambda VALUE nothing calls
-// at the pointer (ADR-016's gate), so the value-path bridge parks in the
-// same places the interpreter's own value does.
+// interpreter declines. Anonymous is the closure's own (closureSigView): it
+// is what parks a 0-arg lambda VALUE nothing calls at the pointer (ADR-016's
+// gate), so the value-path bridge parks in the same places the
+// interpreter's own value does.
 func closureFnDef(fn *compiler.CompiledFn, cl core.ClosurePayload, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
-	params, ok := closureSigParams(fn)
+	fd, ok := closureSigView(fn, cl)
 	if !ok {
 		return core.Value{}, false
+	}
+	fd.Signatures[0].Impl = core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+		return invoke(append([]core.Value(nil), a...))
+	})
+	// The closure's own identity token rides on the bridge, so a bridged
+	// copy is `eq` to the closure and to every other bridge of it — one
+	// function, as the interpreter's copies of the source lambda are
+	// (Codex P1 on PR #444: each bridge minted its own, and `[(mk 3)] each
+	// [dup eq]` answered false for the interpreter's true).
+	return core.NewFunctionIdentified(fd, cl.Ident), true
+}
+
+// closureSigView is closureFnDef's SHAPE without its handler: the one
+// signature over the unit's declared param contract and the closure's
+// Anonymous flag — an `afn` / `=>` value, not a named `fn` literal
+// (compiler.ClosureIsAnonymous, NUR235). It is what a diagnostic describes —
+// callDynTrailTop's named-head no-match raise reads the view and never runs
+// it, so it needs no invoker (the placeholder one it used to build was a
+// function no path could call). ok=false for a unit that recorded no
+// contract.
+func closureSigView(fn *compiler.CompiledFn, cl core.ClosurePayload) (core.FnDefInfo, bool) {
+	params, ok := closureSigParams(fn)
+	if !ok {
+		return core.FnDefInfo{}, false
 	}
 	// All-forward as the interpreter INSTALLS it: compileFnDef resolves a
 	// boru fn's BarrierAllForward to len(Params), which is what its no-match
@@ -402,20 +426,8 @@ func closureFnDef(fn *compiler.CompiledFn, cl core.ClosurePayload, invoke func(a
 	// suggestion); the bridge carries the same value so the two lanes'
 	// diagnostics agree line for line.
 	sig := core.Signature{Params: params, BarrierPos: len(params)}
-	// A nil invoke builds a render-only bridge: a no-match diagnostic reads
-	// the signature and never runs it.
-	if invoke != nil {
-		sig.Impl = core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
-			return invoke(append([]core.Value(nil), a...))
-		})
-	}
 	core.NormalizeSig(&sig)
-	// The closure's own identity token rides on the bridge, so a bridged
-	// copy is `eq` to the closure and to every other bridge of it — one
-	// function, as the interpreter's copies of the source lambda are
-	// (Codex P1 on PR #444: each bridge minted its own, and `[(mk 3)] each
-	// [dup eq]` answered false for the interpreter's true).
-	return core.NewFunctionIdentified(core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: compiler.ClosureIsAnonymous(fn, cl)}, cl.Ident), true
+	return core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: compiler.ClosureIsAnonymous(fn, cl)}, true
 }
 
 // callWindowAt is the no-match window of the CALL_USER / TAIL_CALL_USER at

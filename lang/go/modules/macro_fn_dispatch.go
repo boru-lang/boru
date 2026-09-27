@@ -18,9 +18,11 @@ import (
 //     — through the callback seam for a boru body, and the token run
 //     `<fn> <subject> <opts> end` otherwise (the expansion itself); a mini
 //     FILTER fn yields the very partial the expansion builds;
-//   - anything else re-runs the macro WORD over the same operands, where
-//     the interpreter's classification (a kind name, emit's auto form, the
-//     literal-name error) decides.
+//   - anything else — a Function-family value with no FnDefInfo behind it
+//     included — re-runs the macro WORD over the same operands, where the
+//     interpreter's own dispatch and classification (a kind name, emit's
+//     auto form, the literal-name error, a signature no overload admits)
+//     decides.
 //
 // NOT exported from the namespaces: the surface stays `emit <fn> …` /
 // `mini <fn> …`. The result count is the applied fn's own; the compiled call
@@ -57,24 +59,33 @@ func registerMacroFnDispatch(subReg, parent *native.Registry, name string, h nat
 	install(parent, subReg.Lookup(name))
 }
 
-// macroFnValue is the leading operand as the interpreter's macro sees it:
-// ok=false for a value that is not a function at all (the word re-run
-// classifies it); a compiled closure is bridged (closureFnView).
-func macroFnValue(r *native.Registry, v native.Value) (native.Value, bool) {
+// macroFnValue is the leading operand as the interpreter's macro sees it: a
+// fn VALUE and its FnDefInfo (a compiled closure read through its bridge,
+// closureFnView), or ok=false for anything else, which the word re-run
+// classifies exactly as the interpreter's dispatch does. That includes a
+// Function-FAMILY value with no FnDefInfo behind it — a member TYPE such as
+// `MiniLang.Re`, whose parent is Function: the interpreter's `mini` never
+// reaches its handler over one (no signature admits a type node), so this
+// twin raising the handler's "not a usable function value" there answered
+// mini_error for the interpreter's signature_error. The re-run raises what
+// the word raises, for `emit` (whose handler does run: emit_error) as for
+// `mini`.
+func macroFnValue(r *native.Registry, v native.Value) (native.Value, native.FnDefInfo, bool) {
 	if !v.Parent.ConformsTo(native.TFunction) {
-		return v, false
+		return v, native.FnDefInfo{}, false
 	}
 	if native.IsCompiledClosure(v) {
 		if bv, bridged := closureFnView(r, v); bridged {
-			return bv, true
+			v = bv
 		}
 	}
-	return v, true
+	fd, ok := v.Data.(native.FnDefInfo)
+	return v, fd, ok
 }
 
 // rerunMacroWord re-runs the macro word over its surface operands in a
-// sub-engine — the interpreter's own classification of a leading operand
-// that is not a fn.
+// sub-engine — the interpreter's own dispatch and classification of a
+// leading operand that is not a fn value.
 func rerunMacroWord(r *native.Registry, word string, args []native.Value) ([]native.Value, error) {
 	toks := make([]native.Value, 0, len(args)+2)
 	toks = append(toks, native.NewWord(word))
@@ -99,15 +110,9 @@ func applyMacroFn(r *native.Registry, operand, fnVal native.Value, fnDef native.
 
 // emitFnDispatchHandler is emitlang-fn-dispatch: `emit <lead> <opts?> <data>`.
 func emitFnDispatchHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-	fnVal, isFn := macroFnValue(r, args[0])
+	fnVal, fnDef, isFn := macroFnValue(r, args[0])
 	if !isFn {
 		return rerunMacroWord(r, "emit", args)
-	}
-	fnDef, ok := fnVal.Data.(native.FnDefInfo)
-	if !ok {
-		return nil, r.BoruErrorHint("emit_error",
-			"emit: the emitter is not a usable function value", "emit",
-			"pass an emitter fn: emit (fn [[value:Any opts:Map] [String] [...]]) {a:1}")
 	}
 	if why := native.EmitLangFnSigWhy(fnDef); why != "" {
 		return nil, r.BoruErrorHint("emit_bad_signature",
@@ -123,15 +128,9 @@ func emitFnDispatchHandler(args []native.Value, _ map[string]native.Value, _ []n
 
 // miniFnDispatchHandler is minilang-fn-dispatch: `mini <lead> <src> <opts?>`.
 func miniFnDispatchHandler(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
-	fnVal, isFn := macroFnValue(r, args[0])
+	fnVal, fnDef, isFn := macroFnValue(r, args[0])
 	if !isFn {
 		return rerunMacroWord(r, "mini", args)
-	}
-	fnDef, ok := fnVal.Data.(native.FnDefInfo)
-	if !ok {
-		return nil, r.BoruErrorHint("mini_error",
-			"mini: the mini-language is not a usable function value", "mini",
-			"pass a transducer fn: mini (fn [[src:String opts:Map] [Any] [...]]) 'text'")
 	}
 	if why := native.MiniLangFnSigWhy(fnDef); why != "" {
 		return nil, r.BoruErrorHint("mini_bad_signature",

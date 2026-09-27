@@ -52,7 +52,7 @@ func TestMarkIslandMadeDefs(t *testing.T) {
 		t.Error("an island-made def asks no source of its own")
 	}
 	lw := &lowerer{es: es, deoptNames: map[string]bool{"ok": true}}
-	if lw.bindNeedsDyn(src.dyn) || !lw.bindNeedsDyn(islandBind("ok", 5).dyn) {
+	if lw.needDynInstall(src.dyn) || !lw.needDynInstall(islandBind("ok", 5).dyn) {
 		t.Error("only the islands' read makes a def bind, and an island-made def has none")
 	}
 }

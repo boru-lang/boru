@@ -532,11 +532,20 @@ func parseFnDispatchHandler(args []native.Value, _ map[string]native.Value, _ []
 }
 
 // parseLeadDispatchHandler is parselang-lead-dispatch: a leading operand that
-// is not a fn at run time re-runs the `parse` word over the same operands
-// (source and opts in its surface order), where the interpreter's own
-// classification decides; a fn is parseFnDispatchHandler's.
+// is not a fn VALUE at run time re-runs the `parse` word over the same
+// operands (source and opts in its surface order), where the interpreter's
+// own dispatch and classification decide; a fn value is
+// parseFnDispatchHandler's. "Not a fn value" is macroFnValue's reading, the
+// emit / mini dispatch's: a Function-FAMILY value with no FnDefInfo behind
+// it (the mini member type MiniLang.Re) re-runs too — no parse signature
+// admits a type node, so the interpreter raises signature_error where the
+// fn dispatch's refusal answered parse_error. The re-run is faithful here
+// because a gradual lead is always a written EXPRESSION (a member read, a
+// factory call) the interpreter evaluated to this same value; the fn
+// dispatch keeps its refusal, since it also serves the NAME path (`parse op
+// …`), whose interpreter verdict is keyed on the name it does not carry.
 func parseLeadDispatchHandler(args []native.Value, named map[string]native.Value, stack []native.Value, r *native.Registry) ([]native.Value, error) {
-	if !args[0].Parent.ConformsTo(native.TFunction) {
+	if _, _, isFn := macroFnValue(r, args[0]); !isFn {
 		res, err := rerunMacroWord(r, "parse", []native.Value{args[0], args[2], args[1]})
 		return parseFnResult(r, res, err)
 	}
@@ -547,28 +556,30 @@ func parseLeadDispatchHandler(args []native.Value, named map[string]native.Value
 // interpreter's `parse` validates and dispatches (core.ClosureAsFnDef — valid
 // for this one dispatch, under the running VM's invoker). The bridge carries
 // the unit's param contract; its RETURN contract is the closure value's own
-// (ClosurePayload.RetTypes), and an empty one is an anonymous lambda's
-// conservative single `Any` — exactly the Returns the interpreter's lambda
-// carries — so ParseLangFnSigWhy asks the bridge what it asks the source fn.
+// (ClosurePayload.RetTypes), which is the source fn's declared Returns as the
+// interpreter carries them (the compiler's fnValueRetSpec): an anonymous
+// lambda's conservative single `Any`, a verbose fn's own declaration, and
+// NOTHING for a fn that declares no returns — so ParseLangFnSigWhy asks the
+// bridge what it asks the source fn. An empty contract used to be widened to
+// a single `Any`, which let a no-return parser through the contract the
+// interpreter enforces: `parse (mk '!') 'x'` over a capturing
+// `fn [[source:String opts:Map] [] […]]` answered compiled where the
+// interpreter raised parse_bad_signature.
+//
+// A closure the bridge cannot describe — met outside a VM run, or a unit it
+// cannot name — stays the data it is (bridged=false).
 func closureFnView(r *native.Registry, v native.Value) (native.Value, bool) {
 	bv, ok := native.ClosureAsFnDef(r, v)
-	if !ok {
-		return v, false
-	}
 	fd, isFn := bv.Data.(native.FnDefInfo)
 	cl, isCl := v.Data.(core.ClosurePayload)
-	if !isFn || !isCl { //covergate:allow the bridge answers ok only for a ClosurePayload operand and always hands back an FnDefInfo value (eng closureFnDef), so an ok bridge makes both assertions hold
+	if !ok || !isFn || !isCl {
 		return v, false
-	}
-	rets := cl.RetTypes
-	if len(rets) == 0 {
-		rets = []*native.Type{native.TAny}
 	}
 	sigs := make([]native.Signature, len(fd.Signatures))
 	copy(sigs, fd.Signatures)
 	for i := range sigs {
 		if len(sigs[i].Returns) == 0 {
-			sigs[i].Returns = rets
+			sigs[i].Returns = cl.RetTypes
 		}
 	}
 	fd.Signatures = sigs

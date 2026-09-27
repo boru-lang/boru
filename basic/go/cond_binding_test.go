@@ -1,6 +1,10 @@
 package basic
 
-import "testing"
+import (
+	"testing"
+
+	"github.com/boru-lang/boru/parser/go"
+)
 
 // cond_binding_test.go covers the binding-shape probe the kept `if`
 // condition declines by (NUR212's follow-up, analyseCondFragment): a
@@ -49,5 +53,31 @@ func TestBindingShapeChanged(t *testing.T) {
 	r.Defs.Pop("__gen:Box[Integer]")
 	if bindingShapeChanged(r, before) {
 		t.Error("a generic memo's install or removal is not an observable binding")
+	}
+}
+
+// keepScrutineeBindings keeps a `case` scrutinee's bindings in the model of a
+// compile pass's SUSPENDED run (lang's case_scrutinee_model_test.go pins the
+// compile end). With no recorder armed — plain check, or a kernel-only
+// registry like this one — there is no such model, and the scrutinee must
+// not run at all: the kept-condition runner itself binds (the control), the
+// helper leaves the table untouched.
+func TestKeepScrutineeBindingsNeedsArmedRecorder(t *testing.T) {
+	r := newTestRegistry(t)
+	if err := Register(r); err != nil {
+		t.Fatalf("Register: %v", err)
+	}
+	vals, err := parser.Parse("[def x 5]")
+	if err != nil || len(vals) != 1 {
+		t.Fatalf("parse: %v %v", vals, err)
+	}
+	body := vals[0]
+	keepScrutineeBindings(r, body)
+	if r.Defs.Has("x") {
+		t.Fatal("with no recorder armed the scrutinee must not run")
+	}
+	RunCarrierCondBodyKeepDefs(r, body)
+	if !r.Defs.Has("x") {
+		t.Error("control: the kept-condition runner binds the scrutinee's name")
 	}
 }

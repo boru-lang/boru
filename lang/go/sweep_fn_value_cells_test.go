@@ -63,6 +63,32 @@ func TestWalkFnValueHookCompiles(t *testing.T) {
 	}
 }
 
+// TestWalkCapturingClosureHookMatchesItsSignature pins walk's fn-VALUE
+// closure arm (S1b-2): a CAPTURING factory lambda, def-bound or held in a
+// container, reaches walk at run time as a compiled closure, not the
+// FnDefInfo the non-capturing cells above carry. walk bridges it to the
+// signature the interpreter's lambda carries and matches every node's
+// payload map against it before the unit runs — in both modes and in the
+// ascend slot as in the descend one — so a hook whose declared parameter
+// the payload does not fit raises walk's own no-match, as the interpreter's
+// lambda arm does, rather than running the unit blind over the map.
+func TestWalkCapturingClosureHookMatchesItsSignature(t *testing.T) {
+	const mk = `def acc (flex []) end def mk fn [[k:Integer][Function][(m:Any => [acc push (m.depth add k)])]] end `
+	const mkN = `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end `
+	for _, src := range []string{
+		mk + `def h (mk 10) end walk {mode: "depth"} {a:{b:1}} h/v end acc`,
+		mk + `def h (mk 10) end walk {mode: "depth"} {a:{b:1}} h/v h/v end acc`,
+		mk + `def h (mk 10) end walk {mode: "breadth"} {a:{b:1} c:2} h/v end acc`,
+		mk + `def m {h: (mk 10)} end walk {mode: "breadth"} {a:{b:1} c:2} m.h m.h end acc`,
+		`def acc (flex []) end def mk fn [[k:String][Function][([m:Map] => [acc push (m.path add k)])]] end def h (mk '!') end walk {} {a:{b:1}} h/v end acc`,
+		// The payload map fits no Integer parameter: walk's no-match.
+		mkN + `def h (mk 5) end walk {} {a:1} h/v`,
+		mkN + `def m {h: (mk 5)} end walk {} {a:1} m.h`,
+	} {
+		requireEngineParity(t, src, true)
+	}
+}
+
 // TestQuotedReceiverReachBakes pins the sweep's `codequote` × container /
 // module-export cells: `typeof (codequote m.f)` is the interpreter's Reach
 // (the quoted dot-access is data), and the operand declined "operand of

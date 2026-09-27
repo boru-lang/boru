@@ -59,9 +59,11 @@ func TestMiniFnDispatchOptionsAndFilter(t *testing.T) {
 	}
 }
 
-// closureFnView over a bridged closure with no declared return: the bridge's
-// signature takes the anonymous lambda's single `Any`, as the interpreter's
-// lambda carries it.
+// closureFnView over a bridged closure: the bridge's return contract is the
+// closure value's own (ClosurePayload.RetTypes) — NOTHING for a fn that
+// declares no returns (main's NUR227 retired the widening to a single Any,
+// which let a no-return parser through the contract the interpreter
+// enforces), and the declared list otherwise.
 func TestClosureFnViewDefaultsTheReturn(t *testing.T) {
 	r, err := native.DefaultRegistry()
 	if err != nil {
@@ -70,13 +72,15 @@ func TestClosureFnViewDefaultsTheReturn(t *testing.T) {
 	r.Invoker = func(*core.Registry, core.Value, []core.Value) ([]core.Value, error) { return nil, nil }
 	p := &compiler.Program{Fns: []compiler.CompiledFn{{Name: "p$body", NParams: 2, NArgs: 2, NLocals: 2,
 		Params: []*core.Type{core.TString, core.TMap}, Code: []compiler.Instr{{Op: compiler.OpRet}}, Debug: []core.SrcPos{{}}}}}
-	cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity()})
-	bv, ok := closureFnView(r, cl)
-	fd, isFn := bv.Data.(native.FnDefInfo)
-	if !ok || !isFn || len(fd.Signatures) == 0 {
-		t.Fatalf("the closure bridges: %v %v", bv, ok)
-	}
-	if rets := fd.Signatures[0].Returns; len(rets) != 1 || rets[0] != native.TAny {
-		t.Errorf("no declared return reads as the lambda's single Any, got %v", rets)
+	for _, want := range [][]*core.Type{nil, {core.TAny}} {
+		cl := core.NewValueRaw(core.TFunction, core.ClosurePayload{Prog: p, Unit: 0, InShape: compiler.ClosureInValue, Ident: core.NewFnIdentity(), RetTypes: want})
+		bv, ok := closureFnView(r, cl)
+		fd, isFn := bv.Data.(native.FnDefInfo)
+		if !ok || !isFn || len(fd.Signatures) == 0 {
+			t.Fatalf("the closure bridges: %v %v", bv, ok)
+		}
+		if rets := fd.Signatures[0].Returns; len(rets) != len(want) || (len(want) == 1 && rets[0] != want[0]) {
+			t.Errorf("the bridge's returns are the closure's own %v, got %v", want, rets)
+		}
 	}
 }

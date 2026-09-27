@@ -1307,15 +1307,24 @@ func bindingShapeChanged(r *Registry, before map[string]int64) bool {
 // (RunCarrierCondBody), so no install is ledgered for a fragment no
 // lowering places. It reports whether the body binds a name the program
 // can observe, for the shapes that cannot keep it (condBindsName).
-func condResidual(r *Registry, cond Value) ([]Value, bool) {
+//
+// ran is false when there is no body to run: a scrutinee the pass holds as
+// a CARRIER — a list the gradual-contagion rule flagged (`case (v [1 2]
+// nip) […]` over a gradual v: nip's identity return is the literal, but the
+// pass cannot vouch for it) — has a residual only the run knows. That is
+// not an EMPTY residual, and the caller must not read it as one: this
+// guard used to return the same nil as a body that nets nothing, and the
+// case recorded its terminal trap over it — `case_error` compiled where the
+// interpreter answers "two".
+func condResidual(r *Registry, cond Value) (stk []Value, binds, ran bool) {
 	es := r.Check.Recorder()
 	if !es.Armed() || !IsConcrete(cond) || !cond.Parent.ConformsTo(TList) {
-		return nil, false
+		return nil, false, false
 	}
 	es.ArmBranchCapture()
 	stk, adds := RunCarrierCondBody(r, cond)
 	es.TakeFragment()
-	return stk, condBindsName(adds)
+	return stk, condBindsName(adds), true
 }
 
 // condBindsName reports whether a condition body's added bindings include a

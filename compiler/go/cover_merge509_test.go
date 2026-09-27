@@ -49,7 +49,7 @@ func TestRunsBodyOnRegistryAtModuleScopeArms(t *testing.T) {
 	reg.Defs.Push("x", core.NewInteger(1))
 	es := NewEmitState()
 	es.reg = reg
-	sig := &core.Signature{NoEvalArgs: map[int]bool{1: true}}
+	sig := &core.Signature{NoEvalArgs: map[int]bool{1: true}, CompileEffect: core.CompileRunsBodyOnRegistry}
 	body := func(elems ...core.Value) core.Value { return core.NewList(elems) }
 	def := core.NewWord("def")
 	if !es.runsBodyOnRegistryAtModuleScope(sig, []core.Value{core.NewInteger(5), body(def, core.NewWord("y"), core.NewInteger(2))}) {

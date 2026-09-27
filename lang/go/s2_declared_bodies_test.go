@@ -111,6 +111,21 @@ func TestArgsProjectionCompiles(t *testing.T) {
 	if !strings.Contains(dis, "MAKE_LIST") {
 		t.Errorf("the bare args read must assemble the params:\n%s", dis)
 	}
+	// A projection that is NOT the frame's last event when the index reads it
+	// — another event recorded between (a computed def), or the read inside a
+	// branch arm's own fragment — cannot be retracted: the fold stands aside,
+	// the assembly stays, and the get reads the list it built.
+	for _, src := range []string{
+		`def f fn [[a:Integer b:Integer][Integer][def l (args)  def s (a add b)  (l get 0) add s]]  f 1 2`,
+		`def f fn [[a:Integer b:Integer][Integer][def l (args)  if (a gt 0) [l get 0] [0]]]  f 1 2`,
+		`def f fn [[a:Integer b:Integer][Integer][def l (args)  if (a gt 0) [l get 0] [0]]]  f 0 2`,
+		`def f fn [[a:Integer b:Integer][Integer][def l (args)  (a add b) drop  l.1]]  f 1 2`,
+	} {
+		requireEngineParity(t, src, true)
+		if dis := compileDisasm(t, src); !strings.Contains(dis, "MAKE_LIST") {
+			t.Errorf("%q: an unretractable projection keeps its assembly:\n%s", src, dis)
+		}
+	}
 }
 
 // TestUnpackUnprovenSourceCompiles — `unpack [names] src` over a source the

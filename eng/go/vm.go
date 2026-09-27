@@ -1606,8 +1606,11 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		}
 		return vc.landingFire(reg, v, fnDef, stack, top, curDebug, pc)
 	}
-	// Neither a closure nor a FnDefInfo (both arms above return): no frame
-	// to push, so the island runs the value.
+	// What reaches here is appliable by its lattice tag alone — a Function
+	// value carrying neither a closure nor an FnDefInfo — so there is no unit
+	// to enter (dynApplyEnter declines every non-FnDefInfo payload; the probe
+	// that stood here could never fire) and the island decides, as the
+	// interpreter's re-step does.
 	results, err := vc.islandRun(reg, []core.Value{v})
 	if err != nil {
 		return nil, nil, stampAt(err, curDebug, pc, reg)
@@ -2139,9 +2142,7 @@ func (vc *vmContext) callDynTrailTop(reg *core.Registry, n int, stack []core.Val
 		}
 		if head.Name != "" {
 			if fn, known := vc.closureUnit(cl); known && !closureMatchesArgs(fn, args) {
-				// A render-only bridge: the no-match only reads its signature.
-				if fnv, built := closureFnDef(fn, cl, nil); built {
-					fd, _ := fnv.Data.(core.FnDefInfo)
+				if fd, built := closureSigView(fn, cl); built {
 					view := installedSigView(fd)
 					written := args[:min(head.NWritten, len(args))]
 					return nil, nil, stampAt(core.NoMatchDiag(reg.Source, head.Name, &view, written, head.Pos, core.ReorderHintFor(head.Name, &view, written)), curDebug, pc, reg)

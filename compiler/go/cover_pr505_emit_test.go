@@ -369,15 +369,6 @@ func TestTrailingWindowDeclinesAFnValuedArgument(t *testing.T) {
 	}
 }
 
-// TestContainerReadResultNilSafe pins ContainerReadResult on a nil recorder
-// and on one that has produced nothing.
-func TestContainerReadResultNilSafe(t *testing.T) {
-	var nilES *EmitState
-	if nilES.ContainerReadResult("id") || (&EmitState{}).ContainerReadResult("id") {
-		t.Error("no recorder, no container read")
-	}
-}
-
 // TestRecordArgsProjectionArms pins the `args` projection's record: nothing on
 // a declined recorder or for an identity-less list, nothing when a param has
 // no compiled home, and — recorded — its event remembered for the `args.N`
@@ -471,11 +462,11 @@ func TestCallResultRenderKnownOffFrame(t *testing.T) {
 	}
 }
 
-// TestApplyChainStepsShapes pins the apply chain's admission (fnUnitRec.
+// TestApplyChainStepsCarriers pins the apply chain's admission (fnUnitRec.
 // applyChain): every pending fn in the residual in order, the last on top,
 // every operand re-pushable, the first step with an argument beneath it, no
 // fn-valued argument, and nothing left over — any other shape is no chain.
-func TestApplyChainStepsShapes(t *testing.T) {
+func TestApplyChainStepsCarriers(t *testing.T) {
 	val := func(id string, fn bool) core.Value {
 		v := core.NewCarrier(core.TInteger)
 		if fn {

@@ -11836,7 +11836,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 // end x` answered [5 5] for the interpreter's [5 1]. The split bind itself
 // (spliceDepth) installs through its splice and is not a rebind.
 func (es *EmitState) loopSplitRebind(d *emitDynBind) bool {
-	return d.root && d.spliceDepth < 0 && es.loopSplitBinds[d.name]
+	return d.root && d.spliceDepth < 0 && !d.armCarried && es.loopSplitBinds[d.name]
 }
 
 // keepInstallable reports whether a KEEP-DEFS unit's def can install its
@@ -13667,9 +13667,9 @@ func (es *EmitState) RecordArgsProjection(r *core.Registry, ins []core.Value, ou
 	if es.argsProjSeq == nil {
 		es.argsProjSeq = map[string]int{}
 	}
-	// A recorded list has registered out as its OpMakeList's product
-	// (RecordMakeListInner's setProduced, which only an empty ID skips —
-	// excluded above), so its producer is the projection's event.
+	// No lookup miss to guard: RecordMakeListInner's one success path
+	// registers out at its OpMakeList event (setProduced), and out has the
+	// identity setProduced keys on (checked above).
 	es.argsProjSeq[out.ID] = es.producedBy[out.ID].seq
 	return true
 }
@@ -14362,6 +14362,9 @@ func (es *EmitState) valueNamesKnown(v core.Value) bool {
 // The caller asks only for a word declaring CompileRunsBodyOnRegistry
 // (noEvalBodyBakes' switch), so the effect is not tested again here.
 func (es *EmitState) runsBodyOnRegistryAtModuleScope(sig *core.Signature, args []core.Value) bool {
+	if !sig.CompileEffect.Has(core.CompileRunsBodyOnRegistry) {
+		return false
+	}
 	if len(es.units) != 1 || es.reg == nil || es.reg.Check.FnBodyDepth != 0 || es.reg.Check.NestedBodyDepth != 0 {
 		// The TOP-LEVEL STATEMENT position only: no unit open, no fn body
 		// and no nested (branch / loop) body under analysis. There every

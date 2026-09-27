@@ -249,9 +249,10 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		// dispatches on its last result. In compile mode:
 		//   - 0-net body → the run-time case_error (CaseHandler): record a TERMINAL
 		//     OpTrap raising the byte-identical error. The residual count must come
-		//     from the RECORDING analyseCondFragment — a type-only RunCarrierBody
+		//     from the RECORDING run (condResidual) — a type-only RunCarrierBody
 		//     gives an empty-body 0-return fn (`[f 1]`) a bogus 1-value count that
-		//     would miss the trap.
+		//     would miss the trap — and only from a body that RAN: a carrier
+		//     scrutinee is not a 0-net one.
 		//   - 1+-net body, a SINGLE clause + default, both blocks VALUES
 		//     (`case [1 add 1] [2 "two" "other"]`) → desugar to a nested `if` whose
 		//     guard runs the body ONCE via `do`: `if (do [body] m __casematch)
@@ -259,50 +260,12 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		//     are values, `do [body]` is evaluated exactly once — so this needs no
 		//     scrutinee seating and is sound for ANY body (no recompute). Any other
 		//     shape (multi-clause, code-body blocks, no default) keeps the island.
-		// Plain check (no emit) keeps the prior dynAny.
+		// Plain check (no emit) keeps the prior dynAny; a compile pass's
+		// SUSPENDED run keeps the scrutinee's bindings (keepScrutineeBindings).
 		if es := r.Check.Recorder(); es.Active() {
-			nDiag := len(r.Check.Diagnostics)
-			stk, binds := condResidual(r, v)
-			r.Check.TruncateDiagnostics(nDiag)
-			// A scrutinee that BINDS a name (`case [def x 5 1] […]`) keeps
-			// the binding on the interpreter; only the desugared `if` below
-			// runs the body as a kept condition fragment (NUR212), so every
-			// other shape — the trap, the islanded multi-clause chain —
-			// declines rather than read a stale binding after the `case`.
-			if binds && len(stk) == 0 {
-				declineCondBinding(r, v.Pos())
-				return dynAny
-			}
-			if len(stk) == 0 {
-				es.RecordTrap("case_error",
-					"case: value expression produced no value to dispatch on",
-					"case", "", v.Pos())
-				return dynAny
-			}
-			if isCodeBody(clauses) {
-				if lst, _ := AsList(clauses); !lst.IsNil() {
-					elems := caseNormalizeClauses(r, lst.Slice())
-					if len(elems) == 3 && !isCodeBody(elems[1]) && !isCodeBody(elems[2]) {
-						// `[do]` + the normal guard tokens: do runs the body once,
-						// leaving its value as the scrutinee for the match.
-						cond := NewList(append([]Value{NewWord("do")}, caseGuardTokens(v, elems[0])...))
-						then := NewList(caseBlockTokens(v, elems[1]))
-						rest := NewList(caseBlockTokens(v, elems[2]))
-						// The desugared chain lowers its fragments INLINE where the
-						// runtime CaseHandler isolates each block in a sub-engine —
-						// bracket the desugar so an ambient-context write inside a
-						// fragment declines instead of escaping its layer (NUR054).
-						es.PushInlineCtxBoundary()
-						out := if3ReturnsFn([]Value{cond, then, rest}, r)
-						es.PopInlineCtxBoundary()
-						return out
-					}
-				}
-			}
-			if binds {
-				declineCondBinding(r, v.Pos())
-			}
+			return caseCodeBodyRecord(r, es, v, clauses, dynAny)
 		}
+		keepScrutineeBindings(r, v)
 		return dynAny
 	}
 	if !isCodeBody(clauses) {
@@ -473,6 +436,86 @@ func recordCaseSubject(r *Registry, v Value, swapped bool, pos SrcPos) (Value, b
 	subject := NewDynamicCarrier(TAny)
 	es.RecordPolyCall(word, []Value{v}, []Value{subject}, pos, r, nil)
 	return subject, es.CanSeatAcrossFragment(subject)
+}
+
+// caseCodeBodyRecord is CaseReturnsFn's RECORDING path for a code-body
+// scrutinee (the shapes are listed at its call): the terminal trap for a
+// body that nets nothing, the single-clause desugar, or the conservative
+// dynAny that leaves the dispatch to the generic record.
+func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny []Value) []Value {
+	nDiag := len(r.Check.Diagnostics)
+	stk, binds, ran := condResidual(r, v)
+	r.Check.TruncateDiagnostics(nDiag)
+	// A scrutinee the pass cannot run — a CARRIER list, computed at run
+	// time — nets what only the run knows: neither the trap nor the desugar
+	// is a model of it (condResidual's doc has the miscompile the trap made
+	// of it).
+	if !ran {
+		return dynAny
+	}
+	// A scrutinee that BINDS a name (`case [def x 5 1] […]`) keeps
+	// the binding on the interpreter; only the desugared `if` below
+	// runs the body as a kept condition fragment (NUR212), so every
+	// other shape — the trap, the islanded multi-clause chain —
+	// declines rather than read a stale binding after the `case`.
+	if binds && len(stk) == 0 {
+		declineCondBinding(r, v.Pos())
+		return dynAny
+	}
+	if len(stk) == 0 {
+		es.RecordTrap("case_error",
+			"case: value expression produced no value to dispatch on",
+			"case", "", v.Pos())
+		return dynAny
+	}
+	if isCodeBody(clauses) {
+		if lst, _ := AsList(clauses); !lst.IsNil() {
+			elems := caseNormalizeClauses(r, lst.Slice())
+			if len(elems) == 3 && !isCodeBody(elems[1]) && !isCodeBody(elems[2]) {
+				// `[do]` + the normal guard tokens: do runs the body once,
+				// leaving its value as the scrutinee for the match.
+				cond := NewList(append([]Value{NewWord("do")}, caseGuardTokens(v, elems[0])...))
+				then := NewList(caseBlockTokens(v, elems[1]))
+				rest := NewList(caseBlockTokens(v, elems[2]))
+				// The desugared chain lowers its fragments INLINE where the
+				// runtime CaseHandler isolates each block in a sub-engine —
+				// bracket the desugar so an ambient-context write inside a
+				// fragment declines instead of escaping its layer (NUR054).
+				es.PushInlineCtxBoundary()
+				out := if3ReturnsFn([]Value{cond, then, rest}, r)
+				es.PopInlineCtxBoundary()
+				return out
+			}
+		}
+	}
+	if binds {
+		declineCondBinding(r, v.Pos())
+	}
+	return dynAny
+}
+
+// keepScrutineeBindings is the NON-recording twin of the scrutinee's kept
+// condition (NUR212). A SUSPENDED run inside a compile pass — a `do` body's
+// model run (DoListReturnsFn's RunCarrierBodyKeepDefs), a fn body's
+// construction-time check — records nothing for the `case`, but the
+// interpreter still runs its scrutinee exactly once, unconditionally, and
+// every binding it makes stands after the construct. The model has to hold
+// them too, exactly as analyseCondFragment holds an `if` condition's in the
+// same runs (it gates on Armed, not Active). Skipping the run left them
+// out: `def x 1 end do [case [def x 5] [5 "five" "other"]] end x` islanded
+// the do over a model that still held x = 1, baked the 1, and compiled
+// `[error(…) 1]` where the interpreter answers `[error(…) 5]`. Kept, the
+// install reaches the bind ledger, whose twin regime places it or declines
+// the program. The run's diagnostics are dropped — it exists for the
+// model, and before it the pass reported nothing here. Plain check (no
+// recorder armed) is unchanged, as it is for `if` conditions.
+func keepScrutineeBindings(r *Registry, v Value) {
+	if !r.Check.Recorder().Armed() || !IsConcrete(v) {
+		return
+	}
+	nDiag := len(r.Check.Diagnostics)
+	RunCarrierCondBodyKeepDefs(r, v)
+	r.Check.TruncateDiagnostics(nDiag)
 }
 
 // CaseBranchJoin computes a `case` result TYPE as the join of every clause

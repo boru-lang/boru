@@ -1007,10 +1007,9 @@ func inDefGroup(e *core.Engine, valIdx int) bool {
 // so a named fn matching nothing raises there. A name the phase resolves to
 // a literal (`true`, a type name, an undefined name's atom) is collected too.
 //
-// DefTop is the whole question: a registered word IS a Defs binding (natives
-// register into the store Lookup aggregates, and Lookup reads nothing else),
-// so a name DefTop does not know has no dispatch either — there is no
-// function word past it to find.
+// A registered word needs no arm of its own: the def table is the single
+// binding store, so a native is an FnDefInfo binding DefTop already finds,
+// and a name DefTop misses has no stack for Lookup to aggregate either.
 func landingNextForWord(e *core.Engine, tv core.Value) core.LandingNext {
 	ww, _ := core.AsWord(tv)
 	// A `/v` word denotes its binding's VALUE — a fn binding's reference —

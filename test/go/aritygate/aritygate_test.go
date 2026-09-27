@@ -364,7 +364,15 @@ var pinnedAritySites = map[string]int{
 	//    the argument rule, which every dispatch honours when it hands a
 	//    handler its window; a recovery's short window reached `gt`'s
 	//    handler and the check pass panicked.
-	"compiler/go/compiler_dispatch_record.go": 2,
+	// 2 -> 3 (NUR225, 2026-09-27, from main): tryFoldScalarConst's
+	//    `len(args) != sig.TotalArgs()` refuses to CALL a handler over a
+	//    window that is not its declared positions (the no-match recovery
+	//    handed it gt's two-slot constructor over one value, and the
+	//    handler's unguarded read panicked out of RunCompiled). The same
+	//    contract as NUR265's — a handler reads the params it declares — at
+	//    the fold's call; a sig of any arity takes the same path, and only
+	//    the fold is skipped, the dispatch records as it would.
+	"compiler/go/compiler_dispatch_record.go": 3,
 
 	// ── Compiler: recording and lowering against declared signatures.
 	// 3 -> 4: the `apply` word's two overloads differ in arity — [Function]

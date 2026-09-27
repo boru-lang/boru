@@ -83,7 +83,7 @@ func TestValueNamesKnownShapes(t *testing.T) {
 // branchResultRenderKnown and fnOpRenderKnown: every value-producing arm
 // must be a fn value the compiler renders as the interpreter does; a body
 // arm's out operand counts as an arm, a variadic or empty branch does not.
-func TestBranchResultRenderKnownArms(t *testing.T) {
+func TestBranchResultRenderKnownDecidedArms(t *testing.T) {
 	var nilES *EmitState
 	if nilES.branchResultRenderKnown(core.NewInteger(1)) {
 		t.Error("a nil recorder knows no render")
