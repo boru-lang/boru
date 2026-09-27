@@ -20,7 +20,10 @@ import (
 // cannot take keeps the decline. Inside a list literal the window's
 // variadic result met a fixed-count assembly (`[7 mk add 1]` was `[7 [43]]`
 // for `[[7 43]]`, present before): the window stands aside there, and the
-// decline answers.
+// decline answers. A word bound to a literal after the word (`def k 1 end mk
+// mk add k`) is collected as its value on the interpreter, so both guards
+// read it as the forward operand (core's ForwardOperandValue): it answered
+// `[84 1]` too.
 func TestNUR287AllDynamicDriftWindow(t *testing.T) {
 	const mk = `def mk fn [[][Any][42]] end `
 	for _, c := range []struct{ src, want string }{
@@ -34,6 +37,9 @@ func TestNUR287AllDynamicDriftWindow(t *testing.T) {
 		{mk + `do [mk mk add 1]`, "[42 43]"},
 		{`def mk fn [[][Any]["a"]] end mk mk add 1`, "[aa 1]"},
 		{`def mk fn [[][Any][([] => [42])]] end def j (mk) end j j add 1`, "[42 43]"},
+		{mk + `def k 1 end mk mk add k`, "[42 43]"},
+		{mk + `def s "x" end mk mk add s`, "[42 42x]"},
+		{mk + `mk mk add (1)`, "[42 43]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}

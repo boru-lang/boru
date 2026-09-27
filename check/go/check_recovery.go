@@ -252,7 +252,7 @@ func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []i
 	if nxt >= e.Tape.Len() {
 		return
 	}
-	if core.ForwardLiteralOperand(e.Tape.At(nxt)) {
+	if _, ok := e.ForwardOperandValue(e.Tape.At(nxt)); ok {
 		es.MarkUncompilable("forward operand accounting across a dynamic/island residual (Stage 3)")
 	}
 }

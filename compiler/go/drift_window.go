@@ -71,7 +71,14 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 		return false
 	}
 	fwdIdx := e.Pointer + 1
-	if fwdIdx >= e.Tape.Len() || !core.ForwardLiteralOperand(e.Tape.At(fwdIdx)) {
+	if fwdIdx >= e.Tape.Len() {
+		return false
+	}
+	// The forward operand is a literal, or a word bound to one, which the
+	// interpreter's forward phase collects as its value: the window carries
+	// that value, the island's own token for it (NUR287, `mk mk add k`).
+	fwdVal, fwdOK := e.ForwardOperandValue(e.Tape.At(fwdIdx))
+	if !fwdOK {
 		return false
 	}
 	// CONTIGUITY: the matched operands must be exactly the tape span directly
@@ -109,8 +116,8 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// island's tape in source order. A value produced by a VARIADIC event
 	// cannot ride a fixed-width window.
 	ops := make([]EmitOperand, 0, len(positions)+2)
-	fwdOp, ok := es.resolveOperand(e.Tape.At(fwdIdx))
-	if !ok { //covergate:allow forwardLiteralOperand admits only concrete scalars/atoms and bare type nodes, all of which resolveOperand materialises as const/type operands (§compiler)
+	fwdOp, ok := es.resolveOperand(fwdVal)
+	if !ok { //covergate:allow ForwardOperandValue yields only concrete scalars/atoms and bare type nodes, all of which resolveOperand materialises as const/type operands (§compiler)
 		return false
 	}
 	ops = append(ops, fwdOp)
