@@ -47,14 +47,29 @@ func TestNUR301HandlerRunsNotSeatedAsOne(t *testing.T) {
 		requireLoudDecline(t, c.src, c.reason, c.want)
 	}
 	// A single-value seat takes the island's run under the runtime count
-	// check (FallbackSpan.CheckOne): a path whose handler leaves one value
-	// runs compiled, and one that leaves two is the loud designed defer —
-	// the island's own, where the interpreter answers want.
+	// check (FallbackSpan.CheckOne), and where the check refuses a run the
+	// statement's count island runs it again on the interpreter, the do,
+	// its body, the word and the handler written as the run
+	// (Program.FallbackCounts, countPoint's island arm).
+	for _, c := range []struct{ src, want string }{
+		{`1 [do [raise oops 'x'] error [drop 9 8]]`, "[1 [9 8]]"},
+		{`1 [do [raise oops 'x'] error [drop 9 8]] 2`, "[1 [9 8] 2]"},
+		{`(do [raise oops 'x'] error [drop 5 6]) add 1`, "[5 7]"},
+		{`1 [do [do [raise oops 'x'] error [drop 5 6]] error [drop 9]]`, "[1 [5 6]]"},
+		{`def f fn [[b:Boolean][Any][[do [if b [raise oops 'x'] [7]] error [drop 5 6]]]] end [f true f false]`, "[[[5 6] [7]]]"},
+		{`def f fn [[] [Any] [[do [raise oops 'x'] error [drop 9 8]]]] end f`, "[[9 8]]"},
+		{`def xs [0] end [do [1 div (xs 0 getr)] error [drop]]`, "[[]]"},
+		{`def g fn [[x:Integer][Integer][x add 100]] end 1 [do [raise oops 'x'] error [drop g/v]]`, "[1 [fn g(Integer)]]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// Where no island is seated the check's loud defer stands: a list
+	// literal that is the program's first token has no position (NUR222's
+	// owed form), and a do inside a loop plans none.
 	for _, c := range []struct{ src, what, want string }{
 		{`[do [raise oops 'x'] error [drop 9 8]]`, "error's island left 2", "[[9 8]]"},
-		{`(do [raise oops 'x'] error [drop 5 6]) add 1`, "error's island left 2", "[5 7]"},
 		{`[do [do [raise oops 'x'] error [drop 5 6]] error [drop 9]]`, "do over a computed body left 2", "[[5 6]]"},
-		{`def f fn [[b:Boolean][Any][[do [if b [raise oops 'x'] [7]] error [drop 5 6]]]] end [f true f false]`, "error's island left 2", "[[[5 6] [7]]]"},
+		{`for 2 [[do [raise oops 'x'] error [drop 9 8]]]`, "error's island left 2", "[[9 8] [9 8]]"},
 	} {
 		prog, reason, _, err := mustNew(t).CompileCheck(c.src)
 		if prog == nil || err != nil {

@@ -830,7 +830,10 @@ type lowerer struct {
 	// being lowered, whose guards look their island up.
 	guardRestarts map[int]*landingRestart
 	restartSigs   []int
-	curBranch     int
+	// restartFallbacks is the fallback indices seated with a count island
+	// (Program.FallbackCounts), whose RetPC the finish stamps.
+	restartFallbacks []int
+	curBranch        int
 	// substStash are the frame slots stashSubst kept a substituted paren's
 	// value in, by its call's event seq (NUR296): a later event of the
 	// statement may consume the value before the stop.
@@ -4627,6 +4630,15 @@ func (lw *lowerer) lowerFallback(ev *EmitEvent) string {
 	// the VM checks its run left exactly the one value the seat takes.
 	if lw.es != nil && lw.es.eventInfo[ev.seq].stripIsland && lw.dynBodyOneAt(ev.seq) {
 		lw.es.fallbacks[fb.spanIdx].CheckOne = true
+		// A run the check refuses takes the statement's count island where
+		// the walk seated one (countPoint's island arm).
+		if cnt := lw.countIsland(ev.seq); cnt != nil {
+			if lw.p.FallbackCounts == nil {
+				lw.p.FallbackCounts = map[int]*StmtIsland{}
+			}
+			lw.p.FallbackCounts[fb.spanIdx] = cnt
+			lw.restartFallbacks = append(lw.restartFallbacks, fb.spanIdx)
+		}
 	}
 	// A REGION island (`error` over a maybe-raising body): the one sim slot
 	// this pushes below already IS the region's representation — runFallback

@@ -17959,6 +17959,10 @@ func stampUnitRestarts(flw *lowerer, cf *CompiledFn, retPC int) {
 		stampSigRestart(&flw.p.Sigs[si], retPC)
 		cf.RetReplay = true
 	}
+	for _, fi := range flw.restartFallbacks {
+		flw.p.FallbackCounts[fi].RetPC = retPC
+		cf.RetReplay = true
+	}
 }
 
 // stampRootRestarts seats the program's end on every top-level island: a
@@ -17973,6 +17977,9 @@ func stampRootRestarts(lw *lowerer) {
 	}
 	for _, si := range lw.restartSigs {
 		stampSigRestart(&lw.p.Sigs[si], end)
+	}
+	for _, fi := range lw.restartFallbacks {
+		lw.p.FallbackCounts[fi].RetPC = end
 	}
 }
 

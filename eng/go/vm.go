@@ -3206,9 +3206,14 @@ func stampFnValuePos(err error, fnVal core.Value) error {
 // residual pushed. break/continue/return raised across the boundary propagate
 // via the shared registry FlowCtrl, as in any nested Run. (Deleted in plan
 // P7 once every shape compiles natively.)
-func (vc *vmContext) runFallback(reg *core.Registry, fb *core.FallbackSpan, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+//
+// A checked island (FallbackSpan.CheckOne) whose run the single seat does not
+// hold returns it as refused, the stack without it, when its statement has a
+// count island (counted) for the caller to run; without one it is the check's
+// loud defer.
+func (vc *vmContext) runFallback(reg *core.Registry, fb *core.FallbackSpan, counted bool, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *refusedRun, error) {
 	if len(stack) < fb.NIn {
-		return nil, vmErrAt(curDebug, pc, "FALLBACK underflow at "+fb.Desc)
+		return nil, nil, vmErrAt(curDebug, pc, "FALLBACK underflow at "+fb.Desc)
 	}
 	if fb.NIn > 1 {
 		// The lowerer threads only 0 or 1 input into an island (lower.go declines
@@ -3217,7 +3222,7 @@ func (vc *vmContext) runFallback(reg *core.Registry, fb *core.FallbackSpan, stac
 		// inversion that bounds OpCallDynamicTrailing to arity 1). Assert it so a
 		// future lowering bug degrades to a loud internal_error → whole-program
 		// fallback rather than silently mis-ordering the island's inputs.
-		return nil, vmErrAt(curDebug, pc, "FALLBACK threads >1 input at "+fb.Desc)
+		return nil, nil, vmErrAt(curDebug, pc, "FALLBACK threads >1 input at "+fb.Desc)
 	}
 	island := make([]core.Value, 0, fb.NIn+len(fb.Tokens))
 	island = append(island, stack[len(stack)-fb.NIn:]...)
@@ -3225,17 +3230,26 @@ func (vc *vmContext) runFallback(reg *core.Registry, fb *core.FallbackSpan, stac
 	stack = stack[:len(stack)-fb.NIn]
 	results, err := vc.islandRun(reg, island)
 	if err != nil {
-		return nil, stampAt(err, curDebug, pc, reg)
+		return nil, nil, stampAt(err, curDebug, pc, reg)
 	}
 	if err := vc.screenResults(results, "island result at "+fb.Desc, curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
-		return nil, err
+		return nil, nil, err
 	}
 	if fb.CheckOne {
+		if counted && dynBodyOneRefuses(results) {
+			return stack, &refusedRun{results: results}, nil
+		}
 		if err := checkRunOne(reg, fb.Desc+"'s island", results, curDebug, pc); err != nil {
-			return nil, err
+			return nil, nil, err
 		}
 	}
-	return append(stack, results...), nil
+	return append(stack, results...), nil, nil
+}
+
+// refusedRun is a checked island's run its single seat does not hold, handed
+// to the statement's count island (runFallback).
+type refusedRun struct {
+	results []core.Value
 }
 
 // gateWord consults the engine word policy before a compiled NAMED dispatch
@@ -4313,9 +4327,28 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			stack[len(stack)-1] = bound
 		case compiler.OpFallback:
-			ns, err := vc.runFallback(curReg, &p.Fallbacks[in.Arg], stack, curDebug, pc)
+			cnt := p.FallbackCounts[int(in.Arg)]
+			ns, refused, err := vc.runFallback(curReg, &p.Fallbacks[in.Arg], cnt != nil, stack, curDebug, pc)
 			if err != nil {
 				return nil, err
+			}
+			if refused != nil {
+				// A strip island's run its single seat does not hold, with a
+				// count island (Program.FallbackCounts, NUR301): its
+				// statement runs again, the run written in the do's place.
+				fb := 0
+				if len(frames) > 0 {
+					fb = frames[len(frames)-1].stackBase
+				}
+				vc.restartLocals = locals
+				rs, ent, rerr := vc.stopRestart(curReg, cnt, refused.results, fb, ns, curDebug, pc)
+				vc.restartLocals = nil
+				if rerr != nil {
+					return nil, rerr
+				}
+				stack = rs
+				pc = ent.jumpPC - 1
+				break
 			}
 			stack = ns
 			// runFallback re-steps the word through the interpreter, which can

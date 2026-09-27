@@ -9,6 +9,21 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR301's owed count island: a literal handler's two-value run answers (2026-09-27)
+
+The checked single seat (5cb5591) deferred where a literal handler's
+island left two values. NUR300's error count island now covers the island
+too: `countPoint` takes a strip island whose threaded value a do left over
+a literal body, with the literal handler after the word (`islandRun`), and
+writes the four tokens as the run. The lowering seats the island in
+`Program.FallbackCounts` beside the span's `CheckOne`; the VM hands a run
+the check refuses to `stopRestart` instead of deferring. `1 [do [raise oops
+'x'] error [drop 9 8]]`, `(do … error [drop 5 6]) add 1` and the fn form
+answer on both lanes. A first-token list, a do in a loop and a statement
+that also binds keep the loud defer. Pinned by lang
+`TestNUR301HandlerRunsNotSeatedAsOne` (eight agreeing rows, three defers)
+and compiler `TestIslandCountPoint`.
+
 ## The merge of main's #515: NUR232 and NUR233 closed, NUR229–231 answered on the merged tree (2026-09-27)
 
 Main's #515 numbered its new records NUR225–NUR233, the numbers the branch

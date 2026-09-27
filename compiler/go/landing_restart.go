@@ -351,11 +351,13 @@ func (es *EmitState) notePhantomConsumersIn(events []EmitEvent) {
 func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Value) (int, []substPlan, bool) {
 	ev := tree[seq].ev
 	c := &ev.call
-	if ev.kind != evCall || !(c.word == "do" && len(c.ops) == 1 || c.word == "error" && len(c.ops) == 2) {
+	island := ev.kind == evFallback && es.eventInfo[seq].stripIsland
+	if !island && (ev.kind != evCall || !(c.word == "do" && len(c.ops) == 1 || c.word == "error" && len(c.ops) == 2)) {
 		return 0, nil, false
 	}
-	tok := statementToken(body, c.pos)
-	path := tokenPath(body, c.pos)
+	pos := eventPos(*ev)
+	tok := statementToken(body, pos)
+	path := tokenPath(body, pos)
 	if tok < 0 || len(path) == 0 {
 		return 0, nil, false
 	}
@@ -364,19 +366,20 @@ func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Val
 		toks, _ = nestedToks(toks[at])
 	}
 	at := path[len(path)-1]
-	if at+1 >= len(toks) || !core.IsWord(toks[at]) || toks[at].Pos() != c.pos {
+	if at+1 >= len(toks) || !core.IsWord(toks[at]) || toks[at].Pos() != pos {
 		return 0, nil, false
 	}
-	// The run the island writes: the do and its body, or — for a computed
-	// error handler (NUR300) — the do before the word, its body, the word
-	// and the handler, since the handler took the do's caught value.
+	// The run the island writes: the do and its body, or — for an error
+	// handler, computed (NUR300) or a literal one's interpreter island
+	// (NUR301) — the do before the word, its body, the word and the
+	// handler, since the handler took the do's caught value.
 	span := 2
-	if c.word == "error" {
-		if !es.handlerRun(tree, seq, toks, at) {
-			return 0, nil, false
-		}
+	switch {
+	case island && !es.islandRun(tree, seq, toks, at), !island && c.word == "error" && !es.handlerRun(tree, seq, toks, at):
+		return 0, nil, false
+	case island || c.word == "error":
 		path, span = append(append([]int(nil), path[:len(path)-1]...), at-2), 4
-	} else if !es.doBodyAfter(tree, seq, toks, at) {
+	case !es.doBodyAfter(tree, seq, toks, at):
 		return 0, nil, false
 	}
 	first := statementFirstSeq(tree, seq, body[tok].Pos())
@@ -408,8 +411,7 @@ func (es *EmitState) handlerRun(tree map[int]treeEvent, seq int, toks []core.Val
 	if !in || do.ev.kind != evCall || do.ev.call.word != "do" || len(do.ev.call.ops) != 1 || do.ev.call.ops[0].kind != opClosure {
 		return false
 	}
-	lit := toks[at-1]
-	if !core.IsWord(toks[at-2]) || toks[at-2].Pos() != do.ev.call.pos || !lit.Eval || lit.Quoted || !lit.Parent.Equal(core.TList) {
+	if !core.IsWord(toks[at-2]) || toks[at-2].Pos() != do.ev.call.pos || !literalListTok(toks[at-1]) {
 		return false
 	}
 	q := sites[0].pos
@@ -419,6 +421,29 @@ func (es *EmitState) handlerRun(tree map[int]treeEvent, seq int, toks []core.Val
 		return false
 	}
 	return bodyTokenContaining(toks, q) == at+1
+}
+
+// islandRun reports whether the strip word's interpreter island at toks[at]
+// threads the value of the do written right before it over a literal body,
+// and runs the literal handler written right after the word (`do [raise
+// oops 'x'] error [drop 5 6]`, NUR301): the four tokens are one run, as a
+// computed handler's are (handlerRun).
+func (es *EmitState) islandRun(tree map[int]treeEvent, seq int, toks []core.Value, at int) bool {
+	fb := &tree[seq].ev.fb
+	if at < 2 || len(fb.ins) != 1 || fb.ins[0].kind != opEvent {
+		return false
+	}
+	do, in := tree[fb.ins[0].idx]
+	if !in || do.ev.kind != evCall || do.ev.call.word != "do" || len(do.ev.call.ops) != 1 || do.ev.call.ops[0].kind != opClosure {
+		return false
+	}
+	return core.IsWord(toks[at-2]) && toks[at-2].Pos() == do.ev.call.pos && literalListTok(toks[at-1]) && literalListTok(toks[at+1])
+}
+
+// literalListTok reports whether v is a list literal as written: evaluated
+// and unquoted.
+func literalListTok(v core.Value) bool {
+	return v.Eval && !v.Quoted && v.Parent.Equal(core.TList)
 }
 
 // inSpan reports whether position p stands inside the span tokens at path's

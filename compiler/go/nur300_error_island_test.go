@@ -116,3 +116,70 @@ func TestInSpan(t *testing.T) {
 		t.Error("the first paren's own position is not inside the second")
 	}
 }
+
+// islandBody is `w end do [raise] error [drop 5 6] drop`: the literal
+// handler at token 5 (column 21) where handlerBody writes a paren.
+func islandBody() []core.Value {
+	body := handlerBody()
+	body[5] = gtok(core.NewEvalList([]core.Value{gtok(core.NewWord("drop"), 22)}), 21)
+	return body
+}
+
+// islandTree is the do (seq 10) over its body's closure and the strip
+// island (seq 12) threading the do's value.
+func islandTree() (map[int]treeEvent, *EmitEvent) {
+	do := EmitEvent{kind: evCall, seq: 10, call: emitCall{word: "do", pos: gpos(5), ops: []EmitOperand{{kind: opClosure}}}}
+	isl := EmitEvent{kind: evFallback, seq: 12, fb: emitFallback{pos: gpos(15), ins: []EmitOperand{EventOperand(10, 0)}}}
+	return map[int]treeEvent{10: {ev: &do}, 12: {ev: &isl}}, &isl
+}
+
+// TestIslandCountPoint pins NUR301's count island over a literal handler's
+// interpreter island: the do, its body, the word and the handler are the
+// run, as a computed handler's are.
+func TestIslandCountPoint(t *testing.T) {
+	es := NewEmitState()
+	es.eventInfo = map[int]eventFlags{12: {stripIsland: true}}
+	tree, _ := islandTree()
+	tok, substs, ok := es.countPoint(tree, 12, islandBody())
+	if !ok || tok != 2 || len(substs) != 1 || substs[0].span != 4 || substs[0].path[0] != 2 {
+		t.Errorf("the do, its body, the word and the handler are the run: %d %+v %v", tok, substs, ok)
+	}
+	for _, c := range []struct {
+		why  string
+		edit func(tree map[int]treeEvent, isl *EmitEvent, body []core.Value)
+	}{
+		{"an island threading no value", func(_ map[int]treeEvent, isl *EmitEvent, _ []core.Value) { isl.fb.ins = nil }},
+		{"a threaded value that is no event", func(_ map[int]treeEvent, isl *EmitEvent, _ []core.Value) {
+			isl.fb.ins = []EmitOperand{{kind: opLocal}}
+		}},
+		{"a threaded value no do left", func(tree map[int]treeEvent, _ *EmitEvent, _ []core.Value) { tree[10].ev.call.word = "dup" }},
+		{"a do over a computed body", func(tree map[int]treeEvent, _ *EmitEvent, _ []core.Value) {
+			tree[10].ev.call.ops[0] = EventOperand(11, 0)
+		}},
+		{"a do outside the statement", func(tree map[int]treeEvent, _ *EmitEvent, _ []core.Value) { delete(tree, 10) }},
+		{"a handler that is no literal list", func(_ map[int]treeEvent, _ *EmitEvent, body []core.Value) {
+			body[5] = gtok(core.NewParenExpr([]core.Value{gtok(core.NewWord("mk"), 22)}), 21)
+		}},
+		{"a quoted body", func(_ map[int]treeEvent, _ *EmitEvent, body []core.Value) { body[3].Quoted = true }},
+		{"a do not written before the word", func(_ map[int]treeEvent, _ *EmitEvent, body []core.Value) {
+			body[2] = gtok(core.NewInteger(9), 5)
+		}},
+		{"an island that is no strip word's", func(_ map[int]treeEvent, _ *EmitEvent, _ []core.Value) {
+			es.eventInfo[12] = eventFlags{}
+		}},
+	} {
+		es.eventInfo = map[int]eventFlags{12: {stripIsland: true}}
+		tree, isl := islandTree()
+		body := islandBody()
+		c.edit(tree, isl, body)
+		if _, _, ok := es.countPoint(tree, 12, body); ok {
+			t.Errorf("%s: no count island", c.why)
+		}
+	}
+	// An island word at its statement's second token has no do before it.
+	es.eventInfo = map[int]eventFlags{12: {stripIsland: true}}
+	tree, _ = islandTree()
+	if _, _, ok := es.countPoint(tree, 12, islandBody()[3:]); ok {
+		t.Error("an island word at its statement's second token has no do before it")
+	}
+}

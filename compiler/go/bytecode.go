@@ -1509,18 +1509,25 @@ type DynMethodSpec struct {
 // Program is a compiled unit: code, interned constants, the signature
 // table, a pc → source-position map, and the precomputed stack bound.
 type Program struct {
-	Code       []Instr
-	Consts     []core.Value
-	Types      []TypeRef
-	Sigs       []SigRef
-	PolyRefs   []PolyRef
-	UserPolys  []UserPolyRef
-	Fallbacks  []core.FallbackSpan
-	MakeMaps   []MakeMapSpec
-	Interps    []InterpSpec
-	XmlInterps []XmlInterpSpec
-	Traps      []TrapSpec
-	Dispatches []DispatchSpec
+	Code      []Instr
+	Consts    []core.Value
+	Types     []TypeRef
+	Sigs      []SigRef
+	PolyRefs  []PolyRef
+	UserPolys []UserPolyRef
+	Fallbacks []core.FallbackSpan
+	// FallbackCounts is the count island of a strip word's island a single
+	// seat takes (core.FallbackSpan.CheckOne), by fallback index: a run
+	// that is not one plain value runs its statement again on the
+	// interpreter, the run written in the do's place (countPoint's island
+	// arm, NUR301). Absent where the walk seated none; the check's loud
+	// defer stands there.
+	FallbackCounts map[int]*StmtIsland
+	MakeMaps       []MakeMapSpec
+	Interps        []InterpSpec
+	XmlInterps     []XmlInterpSpec
+	Traps          []TrapSpec
+	Dispatches     []DispatchSpec
 	// Regions backs OpCollect / OpDispatchGeneric: one entry per G-lane
 	// region, recording what the interpreter would have read off the tape
 	// (region_desc.go). Peer to Dispatches. Nil for a program with no

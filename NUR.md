@@ -13898,8 +13898,18 @@ loud designed defer ("error's island left 2 value(s)"). `[do [raise oops
 compile and defer on the two-value path; `def r (do … error [drop 5 6]) r`
 and a value beneath the island keep their compile declines; `[do [do [raise
 oops 'x'] error (mk)] error [drop 9]]` compiles and answers `[[5 6]]`.
-Still owed: a count island for a literal handler's run, so the two-value
-path answers rather than defers.
+
+**The island's count island (2026-09-27).** Where the check refuses the
+island's run, the statement runs again on the interpreter with the do, its
+body, the word and the handler written as the run — NUR300's error count
+island over a literal handler's interpreter island (`countPoint`'s island
+arm, `islandRun`; `Program.FallbackCounts`, the VM's refused run through
+`stopRestart`). `1 [do [raise oops 'x'] error [drop 9 8]]` is `[1 [9 8]]`,
+`(do … error [drop 5 6]) add 1` is `[5 7]`, the fn form is `[[[5 6] [7]]]`,
+on both lanes. Still loud: a list literal that is the program's first token
+(no position, NUR222's owed form), a do inside a loop (it plans no island),
+a statement that also binds (`def xs [0] [do … error [drop]]`), and the
+def's group and value-beneath declines above.
 
 ## NUR225 — a Go panic through RunCompiled: the scalar fold over a short window {#nur225}
 
@@ -14133,6 +14143,12 @@ ordinary promoted computed def's arm), and the spilled value stays in its
 own, re-pushed by the residual: `def x (5 dup) x add 1` is `[5 6]`, `def x
 (1 2 3 dup) x add 10` is `[2 3 3 11]`, the install stack in the next
 request the interpreter's. Pinned by lang `TestNUR233PromotedSplitBind`.
+
+**Owed (loud).** The same split inside a fn body declines at compile time:
+`def f fn [[] [Any Any] [def x (5 dup) x add 1]] f` ("dynamic value
+precedes residual args"), and under a one-value return `stack discipline:
+result operand of add is not on top` where the interpreter raises the
+return-count type_error.
 
 ## NUR311 — a reach-led forward window's no-match notes name the pass's window {#nur311}
 

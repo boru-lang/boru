@@ -437,10 +437,10 @@ func TestSeam7TryNativeFnApplyNoSigs(t *testing.T) {
 
 func TestSeam7RunFallbackArms(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
-	_, err := vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, nil, seam7Dbg, 0)
+	_, _, err := vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, false, nil, seam7Dbg, 0)
 	wantInternal(t, err, "FALLBACK underflow at d")
 	// NIn > 1 with enough stack: the lowerer never threads >1, so it is declined.
-	_, err = vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, []core.Value{core.NewInteger(1), core.NewInteger(2)}, seam7Dbg, 0)
+	_, _, err = vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, false, []core.Value{core.NewInteger(1), core.NewInteger(2)}, seam7Dbg, 0)
 	wantInternal(t, err, "FALLBACK threads >1 input at d")
 }
 
