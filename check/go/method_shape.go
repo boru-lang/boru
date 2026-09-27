@@ -894,15 +894,16 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 // dispatches — stops the phase and is a candidate the interpreter counts,
 // so a named fn matching nothing raises there. A name the phase resolves to
 // a literal (`true`, a type name, an undefined name's atom) is collected too.
+//
+// A registered word needs no arm of its own: the def table is the single
+// binding store, so a native is an FnDefInfo binding DefTop already finds,
+// and a name DefTop misses has no stack for Lookup to aggregate either.
 func landingNextForWord(e *core.Engine, tv core.Value) core.LandingNext {
 	ww, _ := core.AsWord(tv)
 	if top, ok := e.DefTop(ww.Name); ok {
 		if _, isFn := top.Data.(core.FnDefInfo); !isFn {
 			return core.LandingNextValue
 		}
-		return core.LandingNextWord
-	}
-	if e.LookupWord(ww.Name) != nil {
 		return core.LandingNextWord
 	}
 	return core.LandingNextValue

@@ -1,6 +1,8 @@
 package lang
 
 import (
+	"fmt"
+	"regexp"
 	"strings"
 	"testing"
 )
@@ -154,6 +156,98 @@ func TestMacroGradualLeadDispatchesAtRunTime(t *testing.T) {
 	dis := compileDisasm(t, `import "boru:emitlang" end def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}`)
 	if !strings.Contains(dis, "emitlang-fn-dispatch") || strings.Contains(dis, "emitlang-auto") {
 		t.Errorf("a gradual emit lead must dispatch at run time, never bake the auto form:\n%s", dis)
+	}
+}
+
+// miniPartialSeq masks the process-wide sequence number a mini FILTER
+// partial's name carries (`fn mini-fn#12(Integer)`): every expansion mints
+// the next one, so two runs of the same program render different numbers
+// on either lane.
+var miniPartialSeq = regexp.MustCompile(`#[0-9]+`)
+
+// TestMacroFnDispatchValueFormParity pins the value-form arms of the runtime
+// macro dispatch natives (modules/macro_fn_dispatch.go, modules/parselang.go)
+// against the interpreter, beyond the plain two-operand cells above:
+//
+//   - `mini`'s explicit OPTS operand, and a FILTER-shaped transducer, which
+//     yields the very partial the expansion builds (compared with its name's
+//     sequence number masked) and applies it over a subject beneath;
+//   - a Function-FAMILY lead with no fn behind it — the mini kind member
+//     type MiniLang.Re, whose parent is Function. No `mini` or `parse`
+//     signature admits a type node, so the interpreter raises
+//     signature_error; `emit`'s handler takes it and raises emit_error. The
+//     emit / mini dispatch and parse's LEAD dispatch raised the value form's
+//     own "not a usable function value" for it — emit_error agreed, but
+//     mini_error and parse_error stood where the interpreter raises
+//     signature_error — and now re-run the WORD, whose dispatch decides;
+//   - a capturing parser that declares NO return: the bridge carries the
+//     closure's own (empty) return contract, so parse refuses it as the
+//     interpreter does, where a default single Any let it parse (compiled
+//     [x!] for the interpreter's parse_bad_signature).
+//
+// The fn-dispatch rows (a `[Function]` factory's parser) compare code and
+// detail: that dispatch anchors its event at the fn operand rather than the
+// word, a position difference that predates these arms.
+func TestMacroFnDispatchValueFormParity(t *testing.T) {
+	const mini = `import "boru:minilang" end `
+	const filt = `([src:String opts:Map subject:Integer] => [subject add 1])`
+	for _, src := range []string{
+		mini + `def mk fn [[][Function][([src:String opts:Map] => [src add src])]] end mini (mk) 'ab' {}`,
+		mini + `def m {d: ([src:String opts:Map] => [opts.x])} end mini m.d 'ab' {x:7}`,
+		mini + `def mk fn [[][Function][` + filt + `]] end 5 do [mini (mk) 'ab']`,
+		mini + `def m {d: ` + filt + `} end 5 do [mini m.d 'ab']`,
+		mini + `def m {e: MiniLang.Re} end mini m.e 'ab'`,
+		mini + `def m {e: MiniLang.Re} end mini m.e 'ab' {}`,
+		mini + `def mk fn [[][Any][MiniLang.Re]] end mini (mk) 'ab'`,
+		mini + `def mk fn [[][Function][MiniLang.Re]] end mini (mk) 'ab'`,
+		mini + `import "boru:emitlang" end def m {e: MiniLang.Re} end emit m.e {a:1}`,
+		mini + `import "boru:emitlang" end def mk fn [[][Function][MiniLang.Re]] end emit (mk) {a:1}`,
+		mini + `import "boru:parselang" end def m {e: MiniLang.Re} end parse m.e 'x'`,
+		mini + `import "boru:parselang" end def mk fn [[][Any][MiniLang.Re]] end parse (mk) 'x'`,
+		`import "boru:parselang" end def mk fn [[k:String][Function][(fn [[source:String opts:Map] [] [source add k]])]] end def m {p: (mk '!')} end parse m.p 'x'`,
+	} {
+		requireEngineParity(t, src, true)
+	}
+	for _, c := range []struct {
+		src  string
+		mask bool
+	}{
+		{mini + `def mk fn [[][Function][` + filt + `]] end mini (mk) 'ab'`, true},
+		{mini + `def mk fn [[k:Integer][Function][([src:String opts:Map subject:Integer] => [subject add k])]] end mini (mk 10) 'ab' {}`, true},
+		{mini + `def m {d: ` + filt + `} end mini m.d 'ab'`, true},
+		{`import "boru:parselang" end def mk fn [[k:String][Function][(fn [[source:String opts:Map] [] [source add k]])]] end parse (mk '!') 'x'`, false},
+		{`import "boru:parselang" end def mk fn [[k:String][Function][(fn [[source:String opts:Map] [] [k drop]])]] end parse (mk '!') 'x'`, false},
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		if noteCompileDefect(t, c.src, gotC, errC) || !compiled {
+			t.Errorf("%q: this shape is meant to compile and run", c.src)
+			continue
+		}
+		rc, ri := fmt.Sprint(gotC), fmt.Sprint(gotI)
+		if c.mask {
+			rc, ri = miniPartialSeq.ReplaceAllString(rc, "#N"), miniPartialSeq.ReplaceAllString(ri, "#N")
+			if !strings.Contains(ri, "fn mini-fn#N(Integer)") {
+				t.Errorf("%q: the interpreter must leave the filter partial, got %s", c.src, ri)
+			}
+		}
+		if rc != ri || codeOf(errC) != codeOf(errI) || detailOf(errC) != detailOf(errI) {
+			t.Errorf("%q: engine divergence: compiled=%s / [%s] %s interp=%s / [%s] %s",
+				c.src, rc, codeOf(errC), detailOf(errC), ri, codeOf(errI), detailOf(errI))
+		}
+	}
+	// Without the module that owns the runtime resolver there is nothing for
+	// a compiled program to dispatch through: the value form interprets (it
+	// needs no namespace), and the compile DECLINES loudly rather than guess.
+	for _, c := range []struct{ src, want string }{
+		{`def m {up: (fn [[value:Any opts:Map] [String] ['UP']])} end emit m.up {a:1}`, "[UP]"},
+		{`def m {d: ([src:String opts:Map] => [src add src])} end mini m.d 'ab'`, "[abab]"},
+	} {
+		if prog, reason, _, err := mustNew(t).CompileCheck(c.src); prog != nil || err != nil || reason == "" {
+			t.Errorf("%q: no resolver without the module import — the compile must decline, got prog=%v reason=%q err=%v", c.src, prog != nil, reason, err)
+		}
+		if got, err := mustNew(t).RunInterp(c.src); err != nil || fmt.Sprint(got) != c.want {
+			t.Errorf("%q: interpreter = %v / %v, want %s", c.src, got, err, c.want)
+		}
 	}
 }
 
