@@ -15572,6 +15572,11 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		if es.mayBeFnUnsettled(residual[i]) {
 			return residual, 0, "a branch result whose fn arm re-steps over the values beneath precedes residual args (NUR159)"
 		}
+		// A def-bound name's dispatch result, parked by the interpreter when
+		// the callee is a boru fn, which its apply claims (claimParked).
+		if lw.claimParked(residual[i]) {
+			continue
+		}
 		// A QUOTED dynamic value is data beside its neighbours (the `/v`
 		// marker's intent, recorded on the value by the standalone-marker
 		// drop; NUR277) — no boundary to decline on.
@@ -15639,6 +15644,38 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 		}
 	}
 	return residual, 0, ""
+}
+
+// claimParked accepts v, a residual entry before others, as a PLACED call
+// result where its callee is unknown here: the one result of a def-bound
+// name's dispatch (DynMethodSpec.DefRead — `j j` over a factory's lambda,
+// NUR282). The interpreter parks what a boru fn returns (fnReturnPark), so
+// the result never applies to the entries above it; the apply claims that
+// (DynMethodSpec.Parks) and the VM defers on any other callee. A reach
+// group's survivor, a paren's re-step and a member read keep their own
+// rules (callResultPlacedIn).
+func (lw *lowerer) claimParked(v core.Value) bool {
+	es := lw.es
+	pr, ok := es.producedBy[v.ID]
+	if !ok || v.ID == "" || pr.idx != 0 {
+		return false
+	}
+	ev := es.eventBySeq(pr.seq)
+	if ev == nil || ev.kind != evCall || ev.call.dynMethod == nil || !ev.call.dynMethod.DefRead || ev.call.nout != 1 {
+		return false
+	}
+	if (es.reg != nil && es.reg.Check != nil && es.reg.Check.ReachSurvivorFnIDs[v.ID]) || es.parenReSteppedFn(v) || es.isDefRead(v) {
+		return false
+	}
+	if _, member := es.MemberFnReadValue(v.ID); member {
+		return false
+	}
+	di, seated := lw.dynMethodAt[pr.seq]
+	if !seated {
+		return false
+	}
+	lw.p.DynMethods[di].Parks = true
+	return true
 }
 
 // anyDynamicTail reports whether any residual entry after the first is dynamic.

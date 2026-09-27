@@ -296,3 +296,36 @@ func TestSubstIslandNone(t *testing.T) {
 		t.Errorf("a do span's value is stepped, as the interpreter steps it: %v", err)
 	}
 }
+
+// TestParksResult pins the shaped apply's parked-result claim (NUR282's
+// `j j`): the interpreter parks what a boru fn returns, so a compiled
+// closure or a fn whose every signature runs a boru body satisfies it, and
+// a native, a mixed fn or a value that is no fn does not — the apply then
+// defers rather than keep a result the interpreter might step on.
+func TestParksResult(t *testing.T) {
+	boru := core.Signature{Impl: &core.BoruImpl{}}
+	native := core.Signature{Impl: &core.GoImpl{}}
+	for _, c := range []struct {
+		name string
+		v    core.Value
+		want bool
+	}{
+		{"a compiled closure", core.Value{Data: core.ClosurePayload{}}, true},
+		{"a boru fn", core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{boru, boru}}), true},
+		{"a native", core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{native}}), false},
+		{"a fn of both", core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{boru, native}}), false},
+		{"a fn of no signature", core.NewFunction(core.FnDefInfo{}), false},
+		{"data", core.NewInteger(5), false},
+	} {
+		if parksResult(c.v) != c.want {
+			t.Errorf("%s: parksResult = %v", c.name, !c.want)
+		}
+	}
+	r := seam7Reg(t)
+	vc := &vmContext{p: &compiler.Program{}, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	nat := core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{native}})
+	spec := &compiler.DynMethodSpec{Word: "j", NOut: 1, DefRead: true, Parks: true}
+	if _, _, err := vc.callDynMethod(r, spec, 0, []core.Value{nat}, seam7Dbg, 0); err == nil || !core.IsVMDefer(err) {
+		t.Errorf("a native callee under the claim defers: %v", err)
+	}
+}

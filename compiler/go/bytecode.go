@@ -1498,6 +1498,12 @@ type DynMethodSpec struct {
 	// FirstIter is the loops' first-iteration check the island takes at run
 	// time (RestartFirst); empty outside loops.
 	FirstIter []RestartFirst
+	// Parks is the residual's claim that the apply's result is placed where
+	// it lands: a def-bound name's dispatch over a callee the compiler cannot
+	// see (`j j` over a factory's lambda, NUR282), whose result the
+	// interpreter parks when the callee is a boru fn (fnReturnPark). The VM
+	// defers on any other appliable callee, whose result it might step on.
+	Parks bool
 }
 
 // Program is a compiled unit: code, interned constants, the signature

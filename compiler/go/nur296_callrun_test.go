@@ -151,3 +151,68 @@ func TestRestartSubstsCallRuns(t *testing.T) {
 		t.Errorf("a call run is placed, a paren's value is not a run: %+v", got)
 	}
 }
+
+// TestClaimParked pins the residual's parked-result claim (NUR282's `j
+// j`): the one result of a def-bound name's dispatch over an unknown callee
+// is placed, claimed on the apply's spec (DynMethodSpec.Parks), where the
+// walk lowered that apply; any other entry keeps its own rule.
+func TestClaimParked(t *testing.T) {
+	es := NewEmitState()
+	lw := &lowerer{es: es, p: &Program{}}
+	apply := func(seq, nout int, defRead bool) EmitEvent {
+		return EmitEvent{kind: evCall, seq: seq, call: emitCall{word: "j", nout: nout, dynMethod: &DynMethodSpec{Word: "j", NOut: nout, DefRead: defRead}}}
+	}
+	es.frames[len(es.frames)-1] = []EmitEvent{apply(4, 1, true), apply(5, 1, false), apply(6, 2, true), {kind: evCallUser, seq: 7}}
+	val := func(id string, seq, idx int) core.Value {
+		v := core.NewInteger(1)
+		v.ID = id
+		if seq > 0 {
+			es.producedBy[id] = producer{seq: seq, idx: idx}
+		}
+		return v
+	}
+	r := val("r", 4, 0)
+	if lw.claimParked(r) {
+		t.Error("an apply the walk never lowered claims nothing")
+	}
+	lw.p.DynMethods = []DynMethodSpec{{Word: "j"}}
+	lw.dynMethodAt = map[int]int{4: 0}
+	if !lw.claimParked(r) || !lw.p.DynMethods[0].Parks {
+		t.Error("a def-bound name's dispatch result is placed, claimed on its apply")
+	}
+	for _, c := range []struct {
+		name string
+		v    core.Value
+	}{
+		{"a value no event produced", val("free", 0, 0)},
+		{"a value of no identity", core.NewInteger(1)},
+		{"a second result", val("second", 4, 1)},
+		{"an event the frame does not hold", val("gone", 9, 0)},
+		{"a member apply", val("member", 5, 0)},
+		{"an apply of two results", val("pair", 6, 0)},
+		{"a user call", val("user", 7, 0)},
+	} {
+		if lw.claimParked(c.v) {
+			t.Errorf("%s: no claim", c.name)
+		}
+	}
+	es.defReads = map[string]string{"r": "j"}
+	if lw.claimParked(r) {
+		t.Error("a result read back from a def dispatches: no claim")
+	}
+	delete(es.defReads, "r")
+	es.memberFnReads = map[string]core.Value{"r": core.NewFunction(core.FnDefInfo{})}
+	if lw.claimParked(r) {
+		t.Error("a member read keeps its own rule")
+	}
+	delete(es.memberFnReads, "r")
+	reg, err := core.NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	reg.Check.ReachSurvivorFnIDs = map[string]bool{"r": true}
+	es.reg = reg
+	if lw.claimParked(r) {
+		t.Error("a reach group's survivor is re-stepped: no claim")
+	}
+}

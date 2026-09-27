@@ -804,6 +804,10 @@ type lowerer struct {
 	// restartMethods are the DynMethods entries this lowerer seated a
 	// statement island on, whose RetPC its finish stamps.
 	restartMethods []int
+	// dynMethodAt is the DynMethods index each shaped apply event lowered
+	// to, by event seq: the residual's parked-result claim sets its spec
+	// after the walk (claimParked).
+	dynMethodAt map[int]int
 	// guardRestarts are the branch guards' planned statement islands, keyed
 	// by guardKey (planGuardRestarts); restartSigs the Sigs entries seated
 	// with one, whose RetPC the finish stamps. curBranch is the branch event
@@ -3810,6 +3814,10 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 			}
 		}
 		lw.p.DynMethods = append(lw.p.DynMethods, spec)
+		if lw.dynMethodAt == nil {
+			lw.dynMethodAt = map[int]int{}
+		}
+		lw.dynMethodAt[ev.seq] = di
 		lw.seatLandingSkip(c)
 		lw.emit(OpCallDynMethod, di, c.pos)
 	} else if c.makeList {

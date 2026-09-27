@@ -9,6 +9,19 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR282's `j j` compiles (2026-09-27)
+
+A def-bound name over a factory's fn value dispatches at each read, and the
+interpreter parks what a boru fn returns. So `def j (mk) end j j` over `[]
+=> [42]` is `[42 42]`. The compiled residual declined the first result as a
+dynamic value that might apply to the entries above it. The one result of a
+def-bound name's dispatch is placed now (`claimParked`), and its apply
+carries the claim (`DynMethodSpec.Parks`). The claim is set only where the
+residual relies on it, recorded through the DynMethods index each shaped
+apply lowered to (`dynMethodAt`), so no program that compiled before
+changes. The VM defers on a callee that is not a boru fn, a native whose
+result the interpreter might step on (`parksResult`).
+
 ## The register resolved: NUR296 and NUR282 by the scope ruling (2026-09-27)
 
 With NUR296's effect form compiled, the two records still OPEN were NUR296

@@ -2549,6 +2549,26 @@ func (vc *vmContext) closureUnit(cl core.ClosurePayload) (*compiler.CompiledFn, 
 // interpreter's forward auto-dispatch of the same window. A genuine boru
 // error from the method surfaces as-is (the interpreter raises the same,
 // prior side effects included).
+// parksResult reports whether the interpreter parks what a dispatch of
+// fnVal returns rather than stepping it on: a boru fn's result
+// (fnReturnPark) — a compiled closure, or a fn whose every signature runs a
+// boru body. A native's may be re-stepped (CompileResteps).
+func parksResult(fnVal core.Value) bool {
+	if _, ok := fnVal.Data.(core.ClosurePayload); ok {
+		return true
+	}
+	fd, ok := fnVal.Data.(core.FnDefInfo)
+	if !ok || len(fd.Signatures) == 0 {
+		return false
+	}
+	for i := range fd.Signatures {
+		if _, boru := fd.Signatures[i].Impl.(*core.BoruImpl); !boru {
+			return false
+		}
+	}
+	return true
+}
+
 func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodSpec, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
 	if err := vc.gateWord(reg, spec.Word); err != nil {
 		return nil, nil, err
@@ -2613,6 +2633,10 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		}
 		return nil, nil, vmDefer(vc.r, curDebug, pc, "vm:shaped-method-not-appliable", "shaped method apply "+spec.Word+
 			": value is not an appliable function at run time; the compiled runtime cannot execute it")
+	}
+	if spec.Parks && !parksResult(fnVal) {
+		return nil, nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-method-parks", "shaped method apply "+spec.Word+
+			": the program keeps its result where it lands, which the interpreter does for a boru fn's result only (NUR282); the compiled runtime cannot execute it")
 	}
 	if fnDef, ok := fnVal.Data.(core.FnDefInfo); ok && vmNativeApplicable(vc.r, fnDef) {
 		if results, done, err := vc.tryNativeFnApply(fnVal, args); done {
