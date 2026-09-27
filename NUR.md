@@ -135,6 +135,7 @@ keep the two in sync in the same commit.
 | [NUR234](#nur234) | A `Function` param passed on BARE to a recursive call — `(h g (n sub 1))` inside `h`'s own body — is a word dispatch of `g` on the interpreter (the bare-name-calls rule), so `h inc/v 5` raises `signature_error`; the generic compiled unit passes the value and answers `[20]` — SILENT, present on `main` at c8bce66 | call-site specialisation (2026-09-27) |
 | [NUR235](#nur235) | A typed-map param pattern (`m:{f:Integer}`, `m:{:Integer}`) rejects an INLINE map literal whose member is computed (`h {f: (1 add 1)}`) on both lanes, and the two lanes' `signature_error` notes differ (`{f:paren(…)}` / "does not satisfy its declared pattern" interpreted, `{f:2}`-style values / "expected: h (Map) or (no args)" compiled) | call-site specialisation's investigation (2026-09-27) |
 | [NUR236](#nur236) | A source naming `Function` whose COMPILE PASS makes an effect the retry cannot repeat — a counted effect (a file write, a network send, a RunInCheckMode word that notes one) or a stdin read, in a module body or a check-mode word — and whose call-site specialisation declines does not compile (`call-site specialisation declined after an unrepeatable check-pass effect`), where `main` compiles it; the effect happens once, never twice | Codex review of #516 (2026-09-27) |
+| [NUR237](#nur237) | A `def` inside a Rand.map-from / Rand.list-of generator body is a registry binding on the interpreter (the body runs on the shared registry, no def cleanup) that outlives the call, and invisible to the compiled program after it: `import "boru:rand"  def k 5 Rand.map-from {b:[def k 1 k]} k` is `[{b:1} 1]` interpreted, `[{b:1} 5]` compiled — the recorder reads the later `k` as the def it saw and does not know the rand words' bodies can rebind it. Pre-existing on both words; found while moving map-from's bodies onto the InvokeBody seam, which neither causes nor cures it | found 2026-09-27 (the interp-entry census, module-rand.tsv) |
 | [NUR232](#nur232) | A ROOT def made inside an `if` arm is lost for the NEXT request on a reused instance: `if true [def y 9] [] end 0` then `y` fails to compile (`undefined_word`) where the interpreter answers 9; the same request agrees; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
 | [NUR231](#nur231) | `mini` over a member whose declared type is `Function` — `import "boru:minilang" end def m {e: Function} end mini m.e 'ab'` — bails `internal_error: DISPATCH_REMATCH … matched at run time where the static model failed` where the interpreter raises `signature_error`; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
 | [NUR230](#nur230) | A value-less `case` scrutinee inside a `do` body followed by more of it — `do [case [1 drop] [5 "five" "other"] 9]` — compiles, then bails `internal_error: CALL_DYNAMIC underflow` where the interpreter answers `[error(case: value expression produced no value to dispatch on)]`; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
@@ -10788,3 +10789,32 @@ make such an effect during compilation, AND specialise a call site that
 declines — and the cure is the declines' own: a specialisation that
 declines less often, or one that can be unwound in place so no re-run is
 needed.
+
+## NUR237 — a def inside a rand generator body outlives the call on the interpreter only {#nur237}
+
+**Status:** Pending. Recorded 2026-09-27 (the interp-entry census's
+module-rand.tsv row); pre-existing.
+
+`Rand.map-from` and `Rand.list-of` run each generator body on the shared
+registry with no def cleanup — the token-body contract every code-body word
+shares (a `do` body's `def` survives the `do` alike, NUR202) — so a `def`
+inside a body rebinds the name for the rest of the program. The compiled
+program does not see it: the recorder treats the rand words' body operands
+as opaque, so a later read of the name is the binding it recorded before
+the call.
+
+```
+import "boru:rand"  def k 5 Rand.map-from {b:[def k 1 k]} k
+  interpreter   [{b:1} 1]
+  compiled      [{b:1} 5]
+import "boru:rand"  def k 5 Rand.list-of [def k 1 k] 1 k
+  interpreter   [[1] 1]
+  compiled      [[1] 5]
+```
+
+`do [def k 1] k` is `[1]` on both lanes: its body is joined into the model
+(the do$body unit's BIND_DYN_SCOPE and the dyn read after it). The cure is
+the same for the rand words — join a body that defines a name into the
+model, or decline to compile one — and moving map-from's bodies onto the
+InvokeBody seam (2026-09-27) neither causes nor cures it: the old pooled
+run diverged identically.

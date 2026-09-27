@@ -445,13 +445,27 @@ func randNativesForState(state *randState) []native.NativeFunc {
 					out := native.NewOrderedMap()
 					for _, key := range schema.Keys() {
 						bodyVal, _ := schema.Get(key)
-						body, err := native.RequireConcreteList(bodyVal, "Rand.map-from value")
+						if _, err := native.RequireConcreteList(bodyVal, "Rand.map-from value"); err != nil {
+							return nil, fmt.Errorf("evaluating Rand.map-from[%s]: %w", key, err)
+						}
+						// The body runs through the InvokeBody seam, the one
+						// every code-body word shares: on the interpreter it is
+						// RunPooled's run exactly (RunResolved over no inputs),
+						// and on a compiled run the VM hosts the raw token body
+						// as a run-time-stamped unit (eng vm_token_body.go)
+						// instead of stepping it on a pooled sub-engine — the
+						// interp-entry census's module-rand.tsv row.
+						res, err := native.InvokeBody(r, bodyVal, nil)
 						if err != nil {
 							return nil, fmt.Errorf("evaluating Rand.map-from[%s]: %w", key, err)
 						}
-						res, err := native.RunPooled(r, append([]native.Value(nil), body.Slice()...))
-						if err != nil {
-							return nil, fmt.Errorf("evaluating Rand.map-from[%s]: %w", key, err)
+						// A break/continue the body raised with no loop of
+						// its own ends the build and returns NO result, the
+						// iterating natives' contract (core.BodyEscaped): the
+						// enclosing run resolves the signal, and the escaped
+						// run's residual is no key's value on either lane.
+						if native.BodyEscaped(r) {
+							return nil, nil
 						}
 						if len(res) == 0 {
 							return nil, r.BoruError("rand_error",
