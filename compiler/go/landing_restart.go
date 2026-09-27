@@ -68,6 +68,9 @@ type substPlan struct {
 	// none marks a call run that left nothing (callRun over an effect,
 	// `print "a"`): the island writes no token in its place (RestartNone).
 	none bool
+	// run marks a call run (callRun): its value, placed by the interpreter,
+	// must not dispatch where the island writes it (RestartSubst.Placed).
+	run bool
 }
 
 // covers reports whether path lies in the run of tokens p replaces: it
@@ -381,7 +384,7 @@ func (es *EmitState) restartSubsts(tree map[int]treeEvent, body []core.Value, to
 			cands = append(cands, substPlan{path: sub, span: 2, seq: s})
 		} else if run, span, ok := es.callRun(tree, ev, body, tok); ok && inertBefore(body, tok, run, cands...) {
 			_, nout := callShape(ev)
-			cands = append(cands, substPlan{path: run, span: span, seq: s, none: nout == 0})
+			cands = append(cands, substPlan{path: run, span: span, seq: s, none: nout == 0, run: true})
 		}
 	}
 	var kept []substPlan

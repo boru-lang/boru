@@ -1819,11 +1819,15 @@ type RestartFirst struct {
 // dispatch (core.FnValueDispatchesAtPointer), so the VM defers on one
 // (NUR297). A run of two is a `do` and its body list (NUR286): the do's
 // result goes back on the tape in the do's place and is stepped there,
-// exactly as the token is.
+// exactly as the token is. Placed marks a longer run whose value the
+// interpreter placed as a paren's is — a bare call and the arguments written
+// after it (NUR296's call run): a call's returned fn value is parked, never
+// stepped, so the VM defers on one as it does on a paren's.
 type RestartSubst struct {
-	Path []int
-	Span int
-	Src  RestartSrc
+	Path   []int
+	Span   int
+	Src    RestartSrc
+	Placed bool
 }
 
 // RestartSrc is one value a root statement island seats beneath the

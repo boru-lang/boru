@@ -13494,7 +13494,12 @@ run and still defers. Written runs are no collection barrier to what
 follows them (`writtenOver`: `print "a" print "b"` before the stop), and a
 list literal never collects forward (`barrierFree`): `[(l.0 true)] print
 "z"`, where the pass recorded the print before the list's landing, writes
-the print as no token too. Pinned by `TestNUR296EffectBeforeTheStop`,
+the print as no token too. A call run's value is placed, as a paren's is:
+the interpreter parks a returned fn value, so one that would dispatch where
+the island writes it defers (`RestartSubst.Placed`, NUR297's rule). An
+adversarial read before the push found the first cut stepping it: `mk2 5
+[(l.0 true)]` over a List-taking lambda answered a type_error for `[fn
+(List) [true]]`. Pinned by `TestNUR296EffectBeforeTheStop`,
 compiler `nur296_callrun_test.go` and eng `TestSubstIslandNone`.
 
 **What a fix needs.** An island that resumes AT the stop instead of the

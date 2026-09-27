@@ -84,4 +84,13 @@ func TestNUR296EffectBeforeTheStop(t *testing.T) {
 			t.Errorf("%s: prints %q once on both lanes; got compiled %q, interpreter %q", c.src, c.out, oc.String(), oi.String())
 		}
 	}
+	// A call run that returned a fn value: the interpreter parks it, and the
+	// island would step it and apply it to the list after it, so it defers
+	// (RestartSubst.Placed) — the first cut answered a type_error here.
+	src := l + `def mk2 fn [[n:Integer][Any][([x:List] => [x n])]] end mk2 5 [(l.0 true)]`
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if errI != nil || fmt.Sprint(gotI) != "[fn (List) [true]]" || !compiled || codeOf(errC) != "internal_error" || !strings.Contains(errC.Error(), "NUR297") {
+		t.Errorf("%s: a placed fn value defers; got compiled=%v %v %v / interpreter %v %v", src, compiled, gotC, errC, gotI, errI)
+	}
+	agreeOnBothLanes(t, l+`def mk2 fn [[n:Integer][Any][n]] end mk2 5 [(l.0 true)]`, "[5 [true]]")
 }

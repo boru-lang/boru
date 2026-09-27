@@ -46,7 +46,11 @@ later one (`writtenOver`), and a list literal never collects forward
 (`barrierFree`). The first also let NUR222's count island take `(g) 1 do
 [...] drop`, which is `[5]` on both lanes now. A call that took an operand
 off the stack (`"x" print/s`) is no run and still defers; the pins that had
-held `print "x"` as their loud row hold that now.
+held `print "x"` as their loud row hold that now. A call run's value is
+placed, as a paren's is. The interpreter parks a returned fn value, so one
+that would dispatch where the island writes it defers (`RestartSubst.Placed`).
+An adversarial read of be11252, before its push, found the island stepping
+it: `mk2 5 [(l.0 true)]` over a List-taking lambda answered a type_error.
 
 **NUR299 asks the top operand.** gate48 (0475f76) was green but for one
 corpus row: `Log.dump 0 get "trace-id" get` (module-log.tsv) declined, since

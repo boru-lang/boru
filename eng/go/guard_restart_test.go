@@ -283,4 +283,16 @@ func TestSubstIslandNone(t *testing.T) {
 	if err != nil || len(got) != 1 || got[0].String() != "5" || len(island) != 4 {
 		t.Errorf("the effects' runs are gone from a copy of the island: %v %v", got, err)
 	}
+	// A call run's value is placed: a fn value that would dispatch where the
+	// island writes it defers, whatever the run's span (NUR297's rule).
+	vc.restartLocals = []core.Value{core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}}})}
+	defer func() { vc.restartLocals = nil }()
+	placed := compiler.RestartSubst{Path: []int{0}, Span: 2, Src: compiler.RestartSrc{Kind: compiler.RestartLocal, Idx: 0}, Placed: true}
+	if _, err := vc.substIsland(island, []compiler.RestartSubst{placed}, nil, 0, nil, seam7Dbg, 0); err == nil || !core.IsVMDefer(err) {
+		t.Errorf("a placed fn value defers: %v", err)
+	}
+	placed.Placed = false
+	if _, err := vc.substIsland(island, []compiler.RestartSubst{placed}, nil, 0, nil, seam7Dbg, 0); err != nil {
+		t.Errorf("a do span's value is stepped, as the interpreter steps it: %v", err)
+	}
 }

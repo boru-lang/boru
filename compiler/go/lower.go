@@ -5048,7 +5048,7 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 		if !ok {
 			return nil, false
 		}
-		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Span: sp.span, Src: src})
+		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Span: sp.span, Src: src, Placed: sp.run})
 	}
 	return out, true
 }

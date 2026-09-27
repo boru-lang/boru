@@ -139,7 +139,10 @@ func TestRestartSubstsCallRuns(t *testing.T) {
 	lw := &lowerer{es: es, landingRoot: true}
 	r := &landingRestart{token: 0, depth: 0, held: -1, substs: got[:2]}
 	srcs, ok := lw.restartSubstSrcs(r, EmitOperand{}, -1)
-	if !ok || len(srcs) != 2 || srcs[0].Src.Kind != RestartNone || srcs[1].Span != 2 {
-		t.Errorf("an effect's run is written as no token: %+v %v", srcs, ok)
+	if !ok || len(srcs) != 2 || srcs[0].Src.Kind != RestartNone || srcs[1].Span != 2 || !srcs[0].Placed {
+		t.Errorf("an effect's run is written as no token, a placed run: %+v %v", srcs, ok)
+	}
+	if !got[0].run || got[2].run {
+		t.Errorf("a call run is placed, a paren's value is not a run: %+v", got)
 	}
 }
