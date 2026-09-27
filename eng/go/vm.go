@@ -4339,6 +4339,18 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					return nil, err
 				}
 			}
+			if s.ReStep {
+				// A `do`'s results the interpreter re-steps where the model
+				// had stepped them already (vm_do_restep.go, NUR317).
+				fb := 0
+				if len(frames) > 0 {
+					fb = frames[len(frames)-1].stackBase
+				}
+				var rerr error
+				if results, rerr = vc.doReStep(curReg, &s, results, len(stack) == fb, curCode, curUnit, curDebug, pc); rerr != nil {
+					return nil, rerr
+				}
+			}
 			stack = append(stack, results...)
 			// A native that ran a code body through the InvokeBody seam can
 			// return with the registry's FlowCtrl set — a break/continue the

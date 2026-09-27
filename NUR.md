@@ -239,7 +239,7 @@ keep the two in sync in the same commit.
 | [NUR314](#nur314) | FIXED 2026-09-27 (an isolated loop re-steps its results; elsewhere a designed defer — the handoff log's entry of that date): a loop's fn-valued results, which the loop's end re-steps, stayed data — `for 2 [(mkf)]` answered `[fn g fn g]` for [7 7], `for 1 [(mka)] 5` `[fn 5]` for [6]; present on main |
 | [NUR315](#nur315) | FIXED 2026-09-27 (a flex container passed to a user fn loses its claims — the handoff log's entry of that date): a FlexList written through a fn parameter's alias kept the check pass's element join — `poke fl drop def j (fl get 0) j`, where poke sets a fn `h/v` at 0, answered `fn j` compiled for the interpreter's 42; present on main |
 | [NUR316](#nur316) | FIXED 2026-09-27 (a gradual element stays gradual — the handoff log's entry of that date): `each`'s result type dropped the gradual mark of its body's value, so a later body committed a direct op over an element the run may not hold — `[0] each [drop (fl get 0)]` then `each [add 1]` over a flex holding "s" answered [[1]] for [['s1']], and over a typed list's out-of-range read [[1]] for the interpreter's signature_error (now a loud defer); present on main |
-| [NUR317](#nur317) | PARTLY FIXED 2026-09-27 (an enclosing re-step undoes a branch's placement — the handoff log's entry of that date): an `if` body arm's placed fn value that a `do` or a two-survivor paren re-steps stayed data — `def c true do [if c [g/v] [0]]` answered `fn g` for 7, `(if c [g/v] [0] 5)` `fn g 5` for `7 5`, and a dyn body's parked lead (`do [if c [(mkf)] [0] 5]`) `fn g 5` too; present on main except the last, which NUR271's settled lead made silent. OPEN, silent: a `do` body's union lead under its own sibling (`do [if c [g/v] [0] 5]`, `do [if c [l/v] [0] 5]`) and a join of two fn arms (`do [if c [g/v] [g/v]]`) — the pass folds the caller's re-step of a closure body's results into its model and nothing compiles it |
+| [NUR317](#nur317) | PARTLY FIXED 2026-09-27 (an enclosing re-step undoes a branch's placement — the handoff log's entry of that date): an `if` body arm's placed fn value that a `do` or a two-survivor paren re-steps stayed data — `def c true do [if c [g/v] [0]]` answered `fn g` for 7, `(if c [g/v] [0] 5)` `fn g 5` for `7 5`, and a dyn body's parked lead (`do [if c [(mkf)] [0] 5]`) `fn g 5` too; present on main except the last, which NUR271's settled lead made silent. Its second half FIXED the same day (a `do`'s results re-stepped at the call, SigRef.ReStep): `do [if c [g/v] [0] 5]` is `7 5`, `do [if c [l/v] [0] 5]` 6 and `do [if c [g/v] [g/v]]` 7 on both lanes, and a value beneath the run no longer hides a dyn body's re-step (`1 do [if c [(mkf)] [0] 5]` was `1 fn g 5`). OPEN, silent: in a fn body over an undecided condition, the union the join models is re-stepped by nothing (`h true` over `[[c:Boolean][Integer][do [if c [l/v] [0] 5]]]` raises the frame's count error compiled for the interpreter's 6) |
 | [NUR318](#nur318) | FIXED 2026-09-27 (a `/v` after a member read says data — the handoff log's entry of that date): a 0-arg member of a map read with `/v` fired — `def m {f: g/v} m.f/v` answered 7 for `fn g`, `m.f/v typeof` Integer for Function, ten forms in all; present on main. `5 m.f/v` and `m.f/v dup` decline, loud |
 | [NUR319](#nur319) | FIXED 2026-09-27 (a def read of a branch's union dispatches — the handoff log's entry of that date): a bare read of a def bound to a placed branch's join was data before a value — `def r (if c [g/v] [0]) r 5` answered `fn r 5` for `7 5`, `3 r 5` `3 fn r 5` for `3 7 5`; present on main. An arg-taking arm's read declines, loud |
 | [NUR320](#nur320) | FIXED 2026-09-26 (numbered NUR234 until the merge of main's #516, where main's NUR234 kept the number; the call carries the interpreter's window — the handoff log's entry of that date): a compiled user call's param-contract no-match reports the window the interpreter's failed dispatch reports — the written run, which a bare read ends, filled from the stack beneath. The original text: a compiled direct call's param-contract no-match reported every argument, where the interpreter reports its attempted window: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` noted "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Pre-existing | compiling NUR308's type half, 2026-09-26 |
@@ -14321,8 +14321,9 @@ the loud defer it always is for a no-match. Pinned by
 
 ## NUR317 — an enclosing re-step undoes a branch arm's placement {#nur317}
 
-**Status:** PARTLY FIXED 2026-09-27 (the handoff log's entry of that date);
-the open half is silent · **Recorded:** 2026-09-27 · **Surfaced by:** probing
+**Status:** PARTLY FIXED 2026-09-27 (the handoff log's entries of that
+date); its second half FIXED the same day; one fn-body form stays open,
+silent · **Recorded:** 2026-09-27 · **Surfaced by:** probing
 NUR313's placement rule under the words that re-step a value. Present on
 main, except the dyn-body form, which NUR271 made silent on the branch.
 
@@ -14377,15 +14378,41 @@ asked wherever the placement of a user call's result is
 (`callResultPlaced`'s branch case, over the fragment's own event —
 `branchPlacedBy`), and the re-step note skips a placed branch.
 
-**Open, silent.** A `do` body whose union lead sits under its own sibling —
-`do [if c [g/v] [0] 5]` (`fn g 5` for `7 5`), `do [if c [l/v] [0] 5]` (`fn
-l 5` for 6) — and a join of two fn arms, `do [if c [g/v] [g/v]]` (`fn g` for
-7). The closure compiles the body, and the pass models the `do`'s outputs
-after the caller's re-step (`[Integer 5]`: it dispatched the concrete g),
-while the compiled `do` returns them before it and nothing re-steps them.
-The fix is the caller's re-step at run time — NUR314's loop-exit shape at
-the `do`'s return, on the island where the results are isolated and a
-designed defer elsewhere.
+**Second half — FIXED 2026-09-27.** A `do` body whose placed fn sits
+under its own sibling — `do [if c [g/v] [0] 5]` (`fn g 5` for `7 5`), `do
+[if c [l/v] [0] 5]` (`fn l 5` for 6) — and a join of two fn arms, `do [if c
+[g/v] [g/v]]` (`fn g` for 7). The check pass's own run of the body steps an
+`if` whose condition it decides into the taken arm (`ReduceStaticIf`) and
+dispatches the arm's fn inside the body, so the `do`'s modelled outputs are
+the caller's re-step's (`[Integer 5]`), and nothing the program records
+after the call applies the fn the compiled body hands back. Such a call now
+carries `SigRef.ReStep`: a closure `do` whose compiled body may leave a fn
+value (`fnUnitRec.mayReturnFn`) while no modelled output may be one
+(`noteClosureReStep`), the same body when the closure declines and the
+dyn-body backstop takes it (the probe's `noteBodyReStep`), and a dyn body's
+run seated beneath its prefix whose outputs may hold a fn
+(`planRegionPrefix` — `1 do [if c [(mkf)] [0] 5]` was `1 fn g 5` for `1 7
+5`, a form of the first half's fix the prefix hid). The VM re-steps the
+results through the island where that is exact (`doReStep`): every value
+it dispatches takes no argument, or nothing lies beneath the results in the
+frame and the unit ends after the call; anywhere else, or when the re-step
+leaves another count than the program seats, it is a designed defer
+(`vm:do-restep` — `do [if c [l/v] [0] 5] add 1`, `1 do [if c [l/v] [0]
+5]`). Pinned by `lang/go/nur317_test.go`'s `TestNUR317DoReStepsItsResults`,
+eng `TestDoReStep` / `TestTakesArgsAtPointer` and compiler
+`TestNoteClosureReStep`, `TestValueMayBeFn`, `TestBodyReStepNote`,
+`TestReStepsResults` and `TestDisassembleReStep`.
+
+**Open, silent.** In a fn body over an UNDECIDED condition the pass keeps
+the join's union carrier in the `do`'s outputs, and nothing re-steps it:
+`def h fn [[c:Boolean][Integer][do [if c [l/v] [0] 5]]] end h true` raises
+the frame's count error over `fn l 5` compiled for the interpreter's 6, and
+`[Any]` over `[do [if c [g/v] [0] 5]]` names `[fn g 5]` in the count error
+for `[7 5]`. A union output cannot take the re-step as the decided forms
+do: the program records a runtime-conditional apply over one in other
+layouts (`do [if c [l/v] [0]] 5` lowers `CALL_DYNAMIC /1` after the call),
+and the residual's apply is resolved only after the events are lowered, so
+the call's own lowering cannot tell the two apart.
 
 ## NUR318 — a `/v` after a member read did not keep a 0-arg member as data {#nur318}
 

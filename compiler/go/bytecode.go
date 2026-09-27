@@ -1201,6 +1201,18 @@ type SigRef struct {
 	CountCheck bool
 	CountClaim int
 	Count      *StmtIsland
+	// ReStep marks the CALL_NATIVE of a `do` whose results the interpreter's
+	// step loop re-steps where the check pass's model had already stepped
+	// them (eventFlags.reStepResults, NUR317): the body's own analysed run
+	// dispatched a placed fn inside it, so nothing the program records after
+	// the call applies the fn value the compiled body hands back. The VM
+	// re-steps the results through the island where that is exact — every
+	// value it would dispatch takes no argument, or nothing beneath the
+	// results in the frame and the unit ending after the call — and they must
+	// leave ReStepOut values (-1: a region's, any count). Anywhere else, or at
+	// another count, it is a designed defer (vm:do-restep).
+	ReStep    bool
+	ReStepOut int
 }
 
 // NativeSplit is SigRef.Split: how many of the call's operands, in
@@ -2341,6 +2353,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			}
 			if s.DynBodyPlain {
 				guard = " [plain values, checked]"
+			}
+			if s.ReStep {
+				guard = " [results re-stepped]"
 			}
 			fmt.Fprintf(sb, " s%-3d ; %s (%s)%s", in.Arg, s.Word, strings.Join(names, ", "), guard)
 		case OpJmp, OpJmpIfFalse, OpForNext:

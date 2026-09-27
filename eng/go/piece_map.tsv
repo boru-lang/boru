@@ -13,6 +13,7 @@ vm_args_debug.go	eng
 vm_args_release.go	eng	
 vm_callback_unit.go	eng
 vm_defer.go	eng	
+vm_do_restep.go	eng
 vm_dyn_apply.go	eng
 vm_dyn_body_one.go	eng
 vm_dyn_words.go	eng

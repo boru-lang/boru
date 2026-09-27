@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"slices"
+
 	check "github.com/boru-lang/boru/check/go"
 	core "github.com/boru-lang/boru/core/go"
 )
@@ -1065,6 +1067,12 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 			f.plainOne = true
 		}
 	}
+	// A literal body whose results the interpreter re-steps where the model
+	// already stepped them (the closure probe's note, NUR317), and a run a
+	// modelled output of which may be a fn — which a region seated beneath
+	// its prefix re-steps (planRegionPrefix).
+	f.reStepResults = es.takeBodyReStep(body)
+	f.outsMayBeFn = slices.ContainsFunc(outs, valueMayBeFn)
 	// The dyn-body backstop already marks every code-body result variadic
 	// above; consume the ReturnsFn's catch-variadic latch so it cannot leak
 	// past this dispatch (L-DO — see catchVariadicFor), keeping its own mark

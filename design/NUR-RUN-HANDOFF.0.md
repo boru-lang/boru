@@ -9,6 +9,56 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## A `do`'s results re-stepped where it stood: NUR317's second half (2026-09-27)
+
+The interpreter's `do` hands its body's whole residual back to the step
+loop, which re-steps it where the `do` stood. A placed fn value the body
+left (an `if` body arm's one survivor) dispatches there, over the results
+after it. The check pass's own run of the body decides a constant `if`
+(`ReduceStaticIf`) and dispatches the taken arm's fn inside the body, so
+the `do`'s modelled outputs are the re-step's (`[Integer 5]`). Nothing the
+program recorded after the call applied the fn the compiled body handed
+back: `do [if c [g/v] [0] 5]` was `fn g 5` for `7 5`.
+
+- **The flag.** Such a call carries `SigRef.ReStep`. It applies to a
+  closure `do` whose compiled body may leave a fn value
+  (`fnUnitRec.mayReturnFn`) while no modelled output may be one
+  (`noteClosureReStep`). It also applies to the same body when the
+  closure declines and the dyn-body backstop takes it (the probe's
+  `noteBodyReStep`).
+- **The prefix seat.** A dyn body's run seated beneath its prefix whose
+  outputs may hold a fn gets its own `SigRef`, flagged by
+  `seatRegionPrefix` when that seat takes the residual. `1 do [if c
+  [(mkf)] [0] 5]` was `1 fn g 5`: the first half's mark window re-stepped
+  only a lead, and the prefix hid it.
+- **The VM.** `doReStep` re-steps the results through the island where
+  that is exact: every value it dispatches takes no argument, or nothing
+  lies beneath the results in the frame and the unit ends after the call.
+  Anywhere else, or at another count than the program seats, it is a
+  designed defer (`vm:do-restep`).
+- **A regression the ledger caught.** The first cut flagged every run the
+  region plan armed, and `7 do [if true inc/v [2]]` bailed. The residual's
+  own trailing apply takes that run, and the plan is armed before the
+  residual knows it, so the prefix seat flags the call's own `SigRef` only
+  when it seats.
+- **Open, silent.** A fn body over an undecided condition keeps the join's
+  union in the `do`'s outputs, and nothing re-steps it: `h true` over
+  `[[c:Boolean][Integer][do [if c [l/v] [0] 5]]]` raises the frame's count
+  error for the interpreter's 6. A union output cannot take the flag, since
+  the program applies one itself in other layouts (`do [if c [l/v] [0]] 5`
+  lowers `CALL_DYNAMIC /1`), and that apply is resolved only after the
+  events lower.
+- **Gate61's fallout on the merge.** Main's specialisation closure pushed
+  `BuildFnBodyReturnsFn` to gocognit 174. The unit compile is now a
+  method (`fnUnitCompile.compile`). The compile-defect ledger is 339:
+  `fnvalue_param_render_test.go`'s `app sq/v` compiles through a
+  specialised unit with parity. `lowerCall` stays under gocyclo through
+  `siteSigRef`.
+- **Pins.** lang `TestNUR317DoReStepsItsResults`; eng `TestDoReStep` and
+  `TestTakesArgsAtPointer`; compiler `TestNoteClosureReStep`,
+  `TestValueMayBeFn`, `TestBodyReStepNote`, `TestReStepsResults` and
+  `TestDisassembleReStep`.
+
 ## The merge of main's #516: call-site specialisation on a branch where a bare fn name calls (2026-09-27)
 
 Main's #516 numbered its new records NUR234–NUR236, the numbers the branch

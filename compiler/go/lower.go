@@ -903,6 +903,10 @@ type lowerer struct {
 	// consuming half — planRegionPrefix armed it and put an OpStackMark in
 	// markBefore). 0 = not armed. Read once, by seatRegionPrefix.
 	regionPrefixSeq int
+	// regionPrefixSig is one past the index in Program.Sigs of the region's
+	// own call SigRef, when its run may hold a fn value
+	// (regionReStepCandidate); seatRegionPrefix flags it. 0 = none.
+	regionPrefixSig int
 	// island is the prefix-island plan (prefix_island.go, NUR210): a
 	// dyn-body run re-stepped over the inert values beneath it. Nil when
 	// the plan is not armed.
@@ -3185,6 +3189,12 @@ func (lw *lowerer) seatRegionPrefix(ops []EmitOperand, pos core.SrcPos) bool {
 		lw.pushOperand(op, pos)
 	}
 	lw.emit(OpSeatBelowMark, n, pos)
+	// Seated beneath its prefix, a run whose outputs may hold a fn takes the
+	// step loop's re-step at its own call (regionReStepCandidate, NUR317).
+	if lw.regionPrefixSig > 0 {
+		s := &lw.p.Sigs[lw.regionPrefixSig-1]
+		s.ReStep, s.ReStepOut = true, -1
+	}
 	// Model the seated layout: the prefix beneath the region's one slot.
 	lw.vm = lw.vm[:0]
 	for range ops[:n] {
@@ -3943,13 +3953,11 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// checks the count, and carries the statement island a miss takes
 		// where the walk seated one (planCountRestarts).
 		lw.emitCountedSig(SigRef{Word: c.word, Sig: c.sig, CountCheck: true, CountClaim: c.nout}, ev.seq, c.pos)
-	} else if c.hostSplice || dynOne || plainChk || c.nativeSplit != nil {
-		// A hosted splice (a computed `for` body): its own SigRef, never
-		// shared with a plain call of the same signature — the flag is the
-		// call site's, and the VM runs the handler's tokens on its island.
-		// A runtime-checked single value (dynOne) and an optimistic bake's
-		// layout (nativeSplit) take their own SigRef for the same reason.
-		lw.emitCountedSig(SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit}, ev.seq, c.pos)
+	} else if ref, own := lw.siteSigRef(ev.seq, c, dynOne, plainChk); own {
+		lw.emitCountedSig(ref, ev.seq, c.pos)
+		if lw.regionReStepCandidate(ev.seq) {
+			lw.regionPrefixSig = len(lw.p.Sigs)
+		}
 	} else {
 		si, ok := lw.sigIdx[c.sig]
 		if !ok {
@@ -3984,6 +3992,56 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		return ""
 	}
 	return lw.seatCallResults(ev, c)
+}
+
+// siteSigRef is the call's OWN SigRef, when it needs one (own): a hosted
+// splice (a computed `for` body) is never shared with a plain call of the
+// same signature — the flag is the call site's, and the VM runs the
+// handler's tokens on its island — and a runtime-checked single value
+// (dynOne), a computed run's plain check (plainChk), an optimistic bake's
+// layout (nativeSplit), a `do` whose results the interpreter re-steps
+// (NUR317) and a run the region's prefix seat may flag so
+// (regionReStepCandidate) take their own for the same reason.
+func (lw *lowerer) siteSigRef(seq int, c *emitCall, dynOne, plainChk bool) (SigRef, bool) {
+	reStep := lw.reStepsResults(seq)
+	if !c.hostSplice && !dynOne && !plainChk && c.nativeSplit == nil && !reStep && !lw.regionReStepCandidate(seq) {
+		return SigRef{}, false
+	}
+	ref := SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit}
+	if reStep {
+		ref.ReStep, ref.ReStepOut = true, lw.reStepOut(seq, c.nout)
+	}
+	return ref, true
+}
+
+// reStepsResults reports whether the call seq's results take the step
+// loop's re-step at the call (SigRef.ReStep, NUR317): a `do` whose model had
+// stepped them already (eventFlags.reStepResults).
+func (lw *lowerer) reStepsResults(seq int) bool {
+	return lw.es != nil && lw.es.eventInfo[seq].reStepResults
+}
+
+// regionReStepCandidate reports whether the call seq is a run the region
+// plan may seat beneath its prefix (planRegionPrefix) whose modelled outputs
+// may hold a fn value: seated so, nothing else re-steps it, where the
+// interpreter's `1 do [if c [(mkf)] [0] 5]` fires the fn (NUR317). The plan
+// is armed before the events lower, but whether the seat takes the residual
+// is known only when the residual lowers — the program's own apply may take
+// the run instead (`7 do [if true inc/v [2]]` applies its fn over the 7) —
+// so the call takes its own SigRef here and seatRegionPrefix flags it.
+func (lw *lowerer) regionReStepCandidate(seq int) bool {
+	return lw.es != nil && lw.regionPrefixSeq == seq && lw.es.eventInfo[seq].outsMayBeFn
+}
+
+// reStepOut is the count a re-stepped `do`'s results must leave
+// (SigRef.ReStepOut): the recorded seat count, or -1 where the result is a
+// run whose count only the run knows — a variadic result the program's
+// region rules own.
+func (lw *lowerer) reStepOut(seq, nout int) int {
+	if lw.seatsAsRegion(seq) || lw.es.eventInfo[seq].variadicResult {
+		return -1
+	}
+	return nout
 }
 
 // seatsAsRegion reports whether the event's result seats as a VARIADIC

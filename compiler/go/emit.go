@@ -187,6 +187,17 @@ type eventFlags struct {
 	typeOut      bool
 	valueDef     bool
 	generic      bool
+	// reStepResults marks a `do` call whose results the interpreter's step
+	// loop re-steps where the check pass's model already stepped them
+	// (NUR317): the body's compiled residual may hold a placed fn value that
+	// none of the modelled outputs shows, so nothing recorded after the call
+	// applies it. The call's SigRef carries SigRef.ReStep.
+	reStepResults bool
+	// outsMayBeFn marks a dyn-body call a modelled output of which may be a
+	// fn value at run time (valueMayBeFn): a region seated beneath its
+	// prefix (planRegionPrefix) re-steps such a run, which nothing else does
+	// once a value lies beneath it (NUR317).
+	outsMayBeFn bool
 	// mayBeFn marks a BRANCH event whose result may be a Function at run time
 	// (an arm is an fn value), so a trailing arg over it in the residual lowers
 	// to a runtime-conditional OpCallDynamic (`if c [99] MathUtil.sqrt 16`).
@@ -917,6 +928,11 @@ type EmitState struct {
 	// operand home), for the dyn-body backstop that takes them (NUR294):
 	// keyed by the body value's ID, read once by takeBodyRun.
 	bodyRuns map[string]bool
+	// bodyReSteps holds the LITERAL bodies whose compiled residual a closure
+	// probe found may leave a fn value none of the dispatch's modelled
+	// outputs shows, for the dyn-body backstop that takes them (NUR317):
+	// keyed by the body value's ID, read once by takeBodyReStep.
+	bodyReSteps map[string]bool
 	// Compilable latches false at the first construct Stage 1 cannot
 	// lower; Reason names the first offender.
 	Compilable bool
@@ -1957,6 +1973,12 @@ type fnUnitRec struct {
 	// differs from the check registry (see emitUnit.reg).
 	reg  *core.Registry
 	frag *EmitFragment
+	// mayReturnFn marks a code-body closure whose analysed residual holds a
+	// value that may be a fn at run time (a fn value, a fn-typed or gradual
+	// carrier, a union with a Function alternative): the value its driving
+	// word hands back may be one the caller's step loop dispatches
+	// (reStepResults, NUR317).
+	mayReturnFn bool
 	// storedRefUnit marks a unit compiled for a STORED-REF carrier
 	// (compileStoredFnUnit's "storedfn" / compileStoredBody's "spawnbody"):
 	// it is reachable at run time only through its CompiledFnRef, whose
@@ -14371,6 +14393,8 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 		call.nativeSplit = &NativeSplit{NFwd: l.NFwd, BodyAt: bodyPos, Body: args[bodyPos], Beneath: l.Beneath, After: l.After}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
+	es.noteClosureReStep(sig, unit, outs, seq)
+	es.takeBodyReStep(args[bodyPos])
 	// Where the closure's body was written (closureBodySites): a body read
 	// from a def-bound list — `do b` — proves its token to the count
 	// islands (doBodyAfter) as a literal list does. Its own map, not
@@ -14465,6 +14489,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 // (`timeout 1000 [body]`, `interval`) is already validated as inert by the
 // noEvalBodiesInert path and bakes as a plain const, so it must not be double-
 // declined here.
+
 func hasUncoveredQuoteArg(sig *core.Signature) bool {
 	for i := range sig.QuoteArgs {
 		if sig.QuoteArgs[i] && !sig.NoEvalArgs[i] {

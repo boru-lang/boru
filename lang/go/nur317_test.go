@@ -41,3 +41,47 @@ func TestNUR317EnclosingReStepUndoesPlacement(t *testing.T) {
 	}
 	requireLoudDecline(t, nur312Pre+`def c true (if c [(mkf)] [0] 5)`, "fn-value application bounded by a paren", "[7 5]")
 }
+
+// TestNUR317DoReStepsItsResults pins NUR317's second half. The check pass's
+// own run of a `do` body steps an `if` whose condition it decides into the
+// taken arm and dispatches the arm's placed fn inside the body, so the `do`'s
+// modelled outputs are the re-step's (`[Integer 5]`), and nothing the program
+// recorded after the call applied the fn the compiled body handed back: `do
+// [if c [g/v] [0] 5]` was `fn g 5` for the interpreter's `7 5`, `do [if c
+// [l/v] [0] 5]` `fn l 5` for 6. The call carries SigRef.ReStep, and the VM
+// re-steps the results through the island where that is exact — the fn takes
+// nothing, or nothing lies beneath the results and the unit ends after them.
+// A value beneath (the prefix a region seats below the run) no longer hides
+// the dyn body's re-step either.
+func TestNUR317DoReStepsItsResults(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{`def c true do [if c [g/v] [0] 5]`, "[7 5]"},
+		{`def c true do [if c [l/v] [0] 5]`, "[6]"},
+		{`def c true do [if c [g/v] [g/v]]`, "[7]"},
+		{`def c false do [if c [g/v] [0] 5]`, "[0 5]"},
+		{`def c true do [if c [l/v] [0] 5 6]`, "[6 6]"},
+		{`def c true (do [if c [g/v] [0] 5])`, "[7 5]"},
+		// A fn that takes nothing fires over nothing, whatever lies around it.
+		{`def c true 1 do [if c [g/v] [0] 5]`, "[1 7 5]"},
+		{`def c true do [if c [g/v] [0] 5] add 1`, "[7 6]"},
+		{`def c true do [if c [g/v] [0] 5] drop`, "[7]"},
+		// The dyn body's run beneath a prefix (planRegionPrefix).
+		{`def c true 1 do [if c [(mkf)] [0] 5]`, "[1 7 5]"},
+		{`def c true 1 do [if c [(mkl)] [0]]`, "[2]"},
+		// In a fn body, a decided condition's re-step; an undecided one's
+		// lone union the closure's own landing re-steps.
+		{`def c true def h fn [[][Integer Integer][do [if c [g/v] [0] 5]]] end h`, "[7 5]"},
+		{`def h fn [[c:Boolean][Any][do [if c [g/v] [0]]]] end h true`, "[7]"},
+	} {
+		agreeOnBothLanes(t, nur312Pre+c.src, c.want)
+	}
+	// A fn that takes an argument, where a value lies beneath the results
+	// or the program goes on after them: its collection could reach what the
+	// island does not hold.
+	for _, c := range []struct{ src, want string }{
+		{`def c true do [if c [l/v] [0] 5] add 1`, "[7]"},
+		{`def c true 1 do [if c [l/v] [0] 5]`, "[1 6]"},
+	} {
+		requireLoudDefer(t, nur312Pre+c.src, "re-steps where the `do` stood", c.want)
+	}
+}

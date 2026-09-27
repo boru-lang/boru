@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"slices"
+
 	check "github.com/boru-lang/boru/check/go"
 	core "github.com/boru-lang/boru/core/go"
 )
@@ -139,6 +141,7 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 		// the unit resolves each input to its param slot (PUSH_LOCAL i … RET).
 		stk = append(stk, inputs...)
 	}
+	es.fnRecs[unit].mayReturnFn = slices.ContainsFunc(stk, valueMayBeFn)
 	finish(stk)
 	return unit, es.Compilable
 }
@@ -873,6 +876,13 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	probe := real.forkForProbe()
 	r.Check.Emit = probe
 	probeUnit, probeOk := compile(bodyToks, paramNames, captures)
+	// A body the probe finds may leave a fn value no modelled output shows
+	// is one whose results the interpreter re-steps, whichever strategy
+	// takes it (NUR317): the dyn-body backstop reads the note when the
+	// closure declines.
+	if spec.BodyOut == core.BodyOutResidual && probeUnit >= 0 && probe.fnRecs[probeUnit].mayReturnFn && !slices.ContainsFunc(outs, valueMayBeFn) {
+		real.noteBodyReStep(args[spec.BodyPos])
+	}
 	for _, ex := range extras {
 		if !probeOk { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			break
