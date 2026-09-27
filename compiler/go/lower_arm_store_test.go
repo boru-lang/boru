@@ -102,7 +102,7 @@ func TestStoreArmBindArms(t *testing.T) {
 
 // TestLowerDynBindArmStore: lowerDynBind lowers a branch-carried def's store
 // first, propagates its decline unchanged, and adds the registry install for
-// a root arm's store of a top-level split-bound name.
+// a root arm's store (rootArmInstall).
 func TestLowerDynBindArmStore(t *testing.T) {
 	store := func(d *emitDynBind) *EmitEvent { return &EmitEvent{kind: evDynBind, dyn: d} }
 
@@ -113,28 +113,34 @@ func TestLowerDynBindArmStore(t *testing.T) {
 		t.Fatalf("the arm store's decline must propagate: reason %q, code %v", reason, *lw.code)
 	}
 
-	// A plain root arm store: the slot store alone.
+	// A fn unit's arm store: the slot store alone (the frame's binding is
+	// torn down with the call).
 	lw = w8lw()
-	if reason := lw.lowerDynBind(store(&emitDynBind{name: "x", srcSeq: -1, val: core.NewInteger(9), root: true,
+	if reason := lw.lowerDynBind(store(&emitDynBind{name: "x", srcSeq: -1, val: core.NewInteger(9),
 		armCarried: true, armSlot: 1, residentTwin: -1})); reason != "" {
-		t.Fatalf("root arm store: %s", reason)
+		t.Fatalf("unit arm store: %s", reason)
 	}
 	if got := lasOps(*lw.code); got != lasWant(OpPushConst, OpStoreLocal) {
-		t.Fatalf("a root arm store of an ordinary name is the slot store alone, got %s", got)
+		t.Fatalf("a fn unit's arm store is the slot store alone, got %s", got)
 	}
 
-	// The same store of a split-bound name also installs the binding.
-	lw = w8lw()
-	lw.es.loopSplitBinds = map[string]bool{"x": true}
-	if reason := lw.lowerDynBind(store(&emitDynBind{name: "x", srcSeq: -1, val: core.NewInteger(9), root: true,
-		armCarried: true, armSlot: 1, residentTwin: -1})); reason != "" {
-		t.Fatalf("split-bound arm store: %s", reason)
-	}
-	if got := lasOps(*lw.code); got != lasWant(OpPushConst, OpStoreLocal, OpPushConst, OpBindDynScope) || len(lw.vm) != 0 {
-		t.Fatalf("a root arm store of a split-bound name must also install it, got %s (vm %v)", got, lw.vm)
-	}
-	if name, err := core.AsString(lw.es.consts[(*lw.code)[3].Arg]); err != nil || name != "x" {
-		t.Fatalf("the install must bind `x`, got %v (%v)", lw.es.consts[(*lw.code)[3].Arg], err)
+	// A ROOT arm's store also installs the binding — of a split-bound name
+	// (main's NUR226) and of any other (NUR232: the next request reads it).
+	for _, split := range []bool{true, false} {
+		lw = w8lw()
+		if split {
+			lw.es.loopSplitBinds = map[string]bool{"x": true}
+		}
+		if reason := lw.lowerDynBind(store(&emitDynBind{name: "x", srcSeq: -1, val: core.NewInteger(9), root: true,
+			armCarried: true, armSlot: 1, residentTwin: -1})); reason != "" {
+			t.Fatalf("root arm store (split %v): %s", split, reason)
+		}
+		if got := lasOps(*lw.code); got != lasWant(OpPushConst, OpStoreLocal, OpPushConst, OpBindDynScope) || len(lw.vm) != 0 {
+			t.Fatalf("a root arm store must also install it (split %v), got %s (vm %v)", split, got, lw.vm)
+		}
+		if name, err := core.AsString(lw.es.consts[(*lw.code)[3].Arg]); err != nil || name != "x" {
+			t.Fatalf("the install must bind `x`, got %v (%v)", lw.es.consts[(*lw.code)[3].Arg], err)
+		}
 	}
 }
 

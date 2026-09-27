@@ -472,7 +472,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			lw.markTwinWrittenBack(twin)
 			lw.note()
 			return ""
-		case d.srcSeq >= 0 && !lw.variadic[d.srcSeq] && d.spliceDepth >= 0 && needGlobal:
+		case d.srcSeq >= 0 && !lw.variadic[d.srcSeq] && d.spliceDepth >= 0 && needGlobal && !lw.isPromoted(d.srcSeq):
 			// The S9.1 STATIC-region first-value bind (SplitEventRegionBind):
 			// the bound value is idx 0 of a multi-out event — stack-deepest of
 			// the region, at the STATIC depth nout-1 below its top. Same
@@ -494,6 +494,11 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			}
 			lw.note()
 			return ""
+		// A static region whose results the planner PROMOTED to frame locals
+		// (a spilled value the residual re-pushes under a later result —
+		// `def x (5 dup)  x add 1`, NUR233) is not on the stack to splice:
+		// its first value binds from its local below, as any promoted
+		// computed def does, and the spilled one stays in its own.
 		case d.srcSeq >= 0 && lw.variadic[d.srcSeq]:
 			// A def of a VARIADIC producer (a loop collect) has no single
 			// value to bind — the same Stage-2 boundary every other consumer
@@ -583,6 +588,13 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	return ""
 }
 
+// isPromoted reports whether the planner promoted event seq's results to
+// frame locals (lowerer.promoted).
+func (lw *lowerer) isPromoted(seq int) bool {
+	_, ok := lw.promoted[seq]
+	return ok
+}
+
 // needDynInstall reports whether def d lowers the registry-visible
 // OpBindDynScope install: every def under DynEnv, and a def of a deopt name
 // (unless every island makes it itself — emitDynBind.islandMade), of a name
@@ -591,13 +603,13 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 // the interpreter runs the body in the caller's frame and the binding leaks,
 // so each is registry-visible — a kept OpBindDynScope the VM leaves standing
 // past this unit's RET (CompiledFn.KeepsDefs). A top-level read of an S5
-// loop-split name (loopSplitRebind) and a root arm's store of a split-bound
-// name (splitArmInstall) install too. collectDynBindSources promotes the
+// loop-split name (loopSplitRebind) and a root arm's slot store
+// (rootArmInstall) install too. collectDynBindSources promotes the
 // computed source of each such install for its re-push.
 func (lw *lowerer) needDynInstall(d *emitDynBind) bool {
 	es := lw.es
 	return es != nil && ((lw.keepsDefs && !d.keepSkip) || es.dynEnv || (lw.deoptNames[d.name] && !d.islandMade) || es.dynScopeNames[d.name] ||
-		es.routedBindsDyn(d) || es.loopSplitRebind(d) || es.splitArmInstall(d))
+		es.routedBindsDyn(d) || es.loopSplitRebind(d) || es.rootArmInstall(d))
 }
 
 // storeArmBind lowers a branch-carried def's store (emitDynBind.armCarried):
@@ -1123,6 +1135,9 @@ func (lw *lowerer) pushOperand(op EmitOperand, pos core.SrcPos) {
 	case opType:
 		lw.emit(OpPushType, op.idx, pos)
 	case opDynScope:
+		if op.boundPos.Row != 0 {
+			pos = op.boundPos
+		}
 		lw.emit(OpLookupDynScope, op.idx, pos)
 	case opDataScope:
 		lw.emit(OpLookupDynScopeData, op.idx, pos)
@@ -3343,29 +3358,34 @@ func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[st
 			// store-once / re-push-per-use discipline as the dyn-bound
 			// sources above.
 			es.armResidentDepth > 0 ||
-			// A root arm's store of a split-bound name re-pushes its value
-			// for the registry install beside the slot store.
-			es.splitArmInstall(ev.dyn) {
+			// A root arm's store re-pushes its value for the registry
+			// install beside the slot store.
+			es.rootArmInstall(ev.dyn) {
 			dynBindSrc[ev.dyn.srcSeq] = true
 		}
 	}
 	return dynBindSrc
 }
 
-// splitArmInstall reports whether a def is a ROOT arm's branch-carried store
-// of a top-level SPLIT-bound name (EmitState.rootSplitBind) that needs its
-// registry install beside the slot store: the slot serves this run's reads
-// after the merge, and the install leaves the binding in the def stack as the
-// interpreter's arm does. A split-bound name is the one a root read resolves
-// LIVE, through the registry (dynScopeRescue's split arm), so a binding kept
-// only in the slot is the wrong one for every reader the slot does not reach
-// — a live read, the next request. A def that writes back
-// (rootBindWritesBack) already installs at its own depth; a second install
-// beside it would stack the value twice. The whole name is deliberately NOT
-// committed to dynamic scope (dynScopeNames): that would move the split
-// def's own lowering too.
-func (es *EmitState) splitArmInstall(d *emitDynBind) bool {
-	return d.armCarried && d.root && es.loopSplitBinds[d.name] && !rootBindWritesBack(d)
+// rootArmInstall reports whether a def is a ROOT arm's branch-carried store
+// that needs its registry install beside the slot store: the slot serves
+// this run's reads after the merge, and the install leaves the binding in
+// the def stack as the interpreter's arm does. The run's reads never see
+// the difference; every reader the slot does not reach does — a split-bound
+// name's live read (dynScopeRescue's split arm, main's NUR226, where this
+// began as splitArmInstall), and the NEXT REQUEST on the same instance for
+// every name (NUR232: `if (g 9) [def y 9] [] end 0` left no y, and `def x 5
+// if (g 9) [def x 9] [] end x` left the next request reading 5, where the
+// interpreter's arm pushed 9). The join's twin captures the model's joined
+// CARRIER and its replay installs nothing (core.ApplyBindTwin), so this op
+// is the arm's only install; a taken arm whose twin DOES replay (a constant
+// condition's concrete capture) keeps the replay alone (lowerDynBind's
+// twinInstalls). A def that writes back (rootBindWritesBack) already
+// installs at its own depth; a second install beside it would stack the
+// value twice. The whole name is deliberately NOT committed to dynamic
+// scope (dynScopeNames): that would move the split def's own lowering too.
+func (es *EmitState) rootArmInstall(d *emitDynBind) bool {
+	return d.armCarried && d.root && !rootBindWritesBack(d)
 }
 
 // collectBranchCarriedSources returns the producing seqs of every
@@ -4603,6 +4623,11 @@ func (lw *lowerer) lowerUserPolyCall(ev *EmitEvent) string {
 // value. Multiple threaded inputs are a documented follow-on.
 func (lw *lowerer) lowerFallback(ev *EmitEvent) string {
 	fb := &ev.fb
+	// A strip word's island a single-value seat consumes (dynBodyOneAt):
+	// the VM checks its run left exactly the one value the seat takes.
+	if lw.es != nil && lw.es.eventInfo[ev.seq].stripIsland && lw.dynBodyOneAt(ev.seq) {
+		lw.es.fallbacks[fb.spanIdx].CheckOne = true
+	}
 	// A REGION island (`error` over a maybe-raising body): the one sim slot
 	// this pushes below already IS the region's representation — runFallback
 	// appends whatever the re-run produced, 0 values or 1 — so the mark is

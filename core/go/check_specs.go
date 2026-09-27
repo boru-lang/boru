@@ -47,6 +47,11 @@ type FallbackSpan struct {
 	Tokens []Value
 	NIn    int
 	Desc   string
+	// CheckOne marks a strip word's island (`error` over a literal handler)
+	// whose run a single-value seat consumes (compiler dyn_body_one.go): the
+	// VM seats it only when it left exactly one value the interpreter would
+	// not re-step, and defers loudly otherwise (vm:dyn-body-one).
+	CheckOne bool
 }
 
 // TypedBindKind selects which of defTypedHandler's refinement branches one

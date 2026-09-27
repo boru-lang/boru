@@ -17,13 +17,20 @@ import (
 // placed another. (Word tokens, marks, moves and splices never get here:
 // screenResults refused them first.)
 func checkDynBodyOne(r *core.Registry, word string, results []core.Value, curDebug []core.SrcPos, pc int) error {
+	return checkRunOne(r, word+" over a computed body", results, curDebug, pc)
+}
+
+// checkRunOne is checkDynBodyOne's rule over any run a single-value seat
+// takes — a computed body's, or a strip word's island (FallbackSpan.CheckOne,
+// `error` over a literal handler, NUR301) — named by what left it.
+func checkRunOne(r *core.Registry, what string, results []core.Value, curDebug []core.SrcPos, pc int) error {
 	if len(results) != 1 {
 		return vmDefer(r, curDebug, pc, "vm:dyn-body-one", fmt.Sprintf(
-			"%s over a computed body left %d value(s) where a single-value seat consumes it; the compiled runtime cannot execute it", word, len(results)))
+			"%s left %d value(s) where a single-value seat consumes it; the compiled runtime cannot execute it", what, len(results)))
 	}
 	if dynBodyValueReSteps(results[0]) {
-		return vmDefer(r, curDebug, pc, "vm:dyn-body-one", word+
-			" over a computed body left a value the interpreter re-steps (a fn value, class, reach or modifier) where a single-value seat consumes it; the compiled runtime cannot execute it")
+		return vmDefer(r, curDebug, pc, "vm:dyn-body-one", what+
+			" left a value the interpreter re-steps (a fn value, class, reach or modifier) where a single-value seat consumes it; the compiled runtime cannot execute it")
 	}
 	return nil
 }

@@ -3230,6 +3230,11 @@ func (vc *vmContext) runFallback(reg *core.Registry, fb *core.FallbackSpan, stac
 	if err := vc.screenResults(results, "island result at "+fb.Desc, curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return nil, err
 	}
+	if fb.CheckOne {
+		if err := checkRunOne(reg, fb.Desc+"'s island", results, curDebug, pc); err != nil {
+			return nil, err
+		}
+	}
 	return append(stack, results...), nil
 }
 

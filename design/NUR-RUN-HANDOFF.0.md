@@ -9,6 +9,49 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## The merge of main's #515: NUR232 and NUR233 closed, NUR229–231 answered on the merged tree (2026-09-27)
+
+Main's #515 numbered its new records NUR225–NUR233, the numbers the branch
+had used; the branch's nine became NUR302–NUR310 first (9ef107c), and main
+keeps its own. The merge (7f9828d) carries both sides; its fallout, fixed
+after it:
+
+- **Two fixes for one bug.** Main's NUR226 and the branch's NUR237 closed
+  the same silent read (a split-bound name rebound in an arm, read as the
+  program's result) two ways: main seats the join from a registry read and
+  installs the arm's store; the branch made every later root def of the
+  name registry-visible. The merged tree keeps main's seat and hands arm
+  stores to main's install (`loopSplitRebind` skips an arm-carried def);
+  the seat's carried-undef decline gives way where the undef exposes the
+  split's own binding (`splitUndefExposesLive`), whose miss on the skipped
+  path is the interpreter's `undefined_word` at the read's own position.
+- **NUR232, general.** Main's install covered split names; every root arm
+  store installs now (`rootArmInstall`), because the join's twin replays a
+  carrier and nothing else left the arm's binding for the next request.
+  The merge surfaced it: the branch lowers `dup` into locals, so main's
+  `def x (5 dup drop)` row is no split here and fell into NUR232.
+- **NUR233.** A static region's first-value bind over results the planner
+  promoted to locals binds from its local (`isPromoted`); the splice found
+  the stack empty.
+- **NUR301's single seat.** Marking every strip island a region declined
+  `def ok (do b error [drop false])`, the mini-s3 shape that compiled
+  before (a regression from c7d0243, unpushed). A strip over a demoted
+  region is one value again (`settleDemotedStrips`), and a strip island is
+  a checkable region: a single seat takes its run under the runtime count
+  check (`FallbackSpan.CheckOne`), deferring loudly on a two-value path.
+- **NUR229–231.** Answered on the merged tree by the run's case and
+  dispatch work; NUR231's no-match notes still differ, recorded as NUR311
+  (loud).
+- **Test fallout.** Main's tests that collided by name with the branch's
+  are renamed (both run); main's predicate tests use `fnpred` (NUR099); the
+  bridge test pins main's NUR227 return contract; main's runtime-bind test
+  calls `RecordRuntimeDispatch` (the branch's NUR231 generalisation).
+- **Pins.** lang `TestNUR232RootArmInstall`, `TestNUR237SplitUndefAfterAJoin`,
+  `TestNUR229To231OnTheMergedTree`, `TestNUR233PromotedSplitBind`; NUR301's
+  test (four checked-seat defers, three agreeing rows); compiler
+  `TestRootArmInstall`, `TestSplitUndefExposesLive`,
+  `TestSettleDemotedStrips`.
+
 ## NUR301 found and closed: an error handler's caught run seated as one value (2026-09-27)
 
 Probing NUR300 found its literal and nested twins, silent on main and here.

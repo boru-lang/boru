@@ -187,23 +187,25 @@ func TestDynBindStorable(t *testing.T) {
 	}
 }
 
-// TestSplitArmInstall pins which defs lower a registry install beside their
-// branch-carried slot store: a ROOT arm's store of a top-level split-bound
-// name, unless the def already installs through its own write-back.
-func TestSplitArmInstall(t *testing.T) {
+// TestRootArmInstall pins which defs lower a registry install beside their
+// branch-carried slot store: a ROOT arm's store, of a split-bound name
+// (main's NUR226) or any other (NUR232), unless the def already installs
+// through its own write-back.
+func TestRootArmInstall(t *testing.T) {
 	es := NewEmitState()
 	es.loopSplitBinds = map[string]bool{"x": true}
-	arm := emitDynBind{name: "x", srcSeq: -1, val: core.NewInteger(9), root: true, armCarried: true}
-	if !es.splitArmInstall(&arm) {
-		t.Fatal("a root arm's literal store of a split-bound name installs")
+	for _, name := range []string{"x", "y"} {
+		arm := emitDynBind{name: name, srcSeq: -1, val: core.NewInteger(9), root: true, armCarried: true}
+		if !es.rootArmInstall(&arm) {
+			t.Fatalf("a root arm's literal store of %s installs", name)
+		}
 	}
 	for what, d := range map[string]emitDynBind{
 		"not branch-carried":   {name: "x", srcSeq: -1, val: core.NewInteger(9), root: true},
 		"not at the root":      {name: "x", srcSeq: -1, val: core.NewInteger(9), armCarried: true},
-		"not split-bound":      {name: "y", srcSeq: -1, val: core.NewInteger(9), root: true, armCarried: true},
 		"written back already": {name: "x", srcSeq: -1, val: core.NewCarrier(core.TInteger), root: true, armCarried: true},
 	} {
-		if es.splitArmInstall(&d) {
+		if es.rootArmInstall(&d) {
 			t.Errorf("%s: must not add an install", what)
 		}
 	}

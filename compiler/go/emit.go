@@ -112,7 +112,8 @@ type EmitOperand struct {
 	// pre-branch binding, bound in one arm only (branch_carried.go). The
 	// push lowers to OpPushLocalBound, which raises the interpreter's
 	// undefined_word on the zero slot. Empty for every other local. boundPos
-	// is the read's own source position, the one that raise names.
+	// is the read's own source position, the one that raise names — on a
+	// live dyn-scope read of a split-bound name too (dynScopeRescue).
 	bound    string
 	boundPos core.SrcPos
 }
@@ -227,6 +228,19 @@ type eventFlags struct {
 	// a literal body the backstop took was modelled exactly by the pass.
 	// The prefix island (prefix_island.go, NUR210) re-steps it.
 	dynBodyRun bool
+	// stripIsland marks a strip-input word's interpreter island (`error`
+	// over a literal handler the closure path refused — TryRecordFallback,
+	// NUR301): its run is a region of whatever the interpreter left, and a
+	// single-value seat takes it under the runtime count check
+	// (dynRegionCheckable, FallbackSpan.CheckOne).
+	stripIsland bool
+	// stripFrom marks a strip-input call whose region marks it inherited
+	// from the growing region beneath it (NUR301's propagation), and
+	// stripSrc names that region's event: when the pre-pass demotes the
+	// source to a checked single value (demoteConsumedDynRegions), the
+	// strip consumed exactly that value and its result is one value too.
+	stripFrom bool
+	stripSrc  int
 	// callVariadic marks a CALL event whose variadicResult stands for a
 	// runtime-variable count of REAL stack values — a fallible multi-value
 	// catch body's shrinking count (catchVariadicFor), a count-agnostic
@@ -7148,6 +7162,12 @@ func (es *EmitState) declineUndef(name string, kind undefCompileFailure) {
 		reason = "module binding " + name + " rebound to a value with no declared signature after a stored handler dispatched it live (the binder half)"
 	case kind == liveReadDispatching:
 		reason = "module binding " + name + " rebound to a dispatching value after a stored handler read it live (the binder half)"
+	case kind == undefCarried && es.Active() && es.splitUndefExposesLive(name):
+		// The exposed split binding is read live, and on the path that
+		// skipped the arm the undef popped the name's only level: the live
+		// read's miss is then the interpreter's undefined_word
+		// (CondBoundNames), not a runtime defect.
+		es.noteCondBound(name)
 	case kind == undefCarried && es.Active() && es.nameCarried(name):
 		reason = "undef of the loop-carried def `" + name + "` (Stage 3)"
 	}
@@ -7198,6 +7218,38 @@ func (es *EmitState) specUndefUnroutedSlot(d *RegionDesc, routed bool) string {
 		from = d.NFwd
 	}
 	return es.specUndefFwdSlot(d, from, len(d.Slots))
+}
+
+// splitUndefExposesLive reports whether an undef of a carried name exposes a
+// binding the carried slot does not hold: a root SPLIT-bound name
+// (rootSplitBind) that only a branch join seated in the unit's slot — no
+// loop carries it — and whose binding under the join's has no slot home.
+// That is the split's own binding, which a root read resolves live through
+// the registry (dynScopeRescue's split arm), and the registry is current:
+// the arm's store installed beside the slot (rootArmInstall) and the undef's
+// twin pops it at its position. So `def x (for 2 [5])  def c true  if c
+// [def x 1] [] end  undef x  x` reads the split's 5 on both lanes (NUR237's
+// row, which main's seat for split names had turned into this decline). A
+// binding under the join that IS the slot's — an earlier join's, `if c1
+// [def x 1] []  if c2 [def x 2] []  undef x  x` — still declines: the slot
+// holds the later arm's value.
+func (es *EmitState) splitUndefExposesLive(name string) bool {
+	if !es.rootSplitBind(name) || es.carriedNames[name] || es.reg == nil {
+		return false
+	}
+	for i := range es.loopCarried {
+		if _, ok := es.loopCarried[i].slots[name]; ok {
+			return false
+		}
+	}
+	u := es.units[0]
+	slot, seated := u.nameSlots[name]
+	stk := es.reg.Defs.Stack(name)
+	if !seated || len(stk) < 2 {
+		return false
+	}
+	home, has := u.localByID[stk[len(stk)-2].ID]
+	return !has || home != slot
 }
 
 // nameCarried reports whether an armed loop carries, or has carried, name
@@ -11906,7 +11958,13 @@ func (es *EmitState) dynScopeRescue(v core.Value) (EmitOperand, bool) {
 				es.dynScopeNames = map[string]bool{}
 			}
 			es.dynScopeNames[name] = true
-			return dynScopeOperand(es.intern(core.NewString(name))), true
+			// The read's own position rides the operand: a miss (the undef
+			// of a split name whose arm never ran — CondBoundNames) raises
+			// the interpreter's undefined_word at the read, not at the
+			// consumer or the program's end the residual lowers at.
+			op := dynScopeOperand(es.intern(core.NewString(name)))
+			op.boundPos = es.readPos[v.ID]
+			return op, true
 		}
 		return EmitOperand{}, false
 	}
@@ -14153,6 +14211,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 				// be anything the run left.
 				if es.eventInfo[pr.seq].variadicRegion {
 					f.variadicRegion, f.regionMayBeFn = true, true
+					f.stripFrom, f.stripSrc = true, pr.seq
 				}
 				es.eventInfo[seq] = f
 				break

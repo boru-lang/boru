@@ -1397,7 +1397,7 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 	seq, ok := real.recordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, outs[0], pos)
 	if ok {
 		f := real.eventInfo[seq]
-		f.variadicResult, f.variadicRegion, f.regionMayBeFn, f.dynBodyRun = true, true, true, true
+		f.variadicResult, f.variadicRegion, f.regionMayBeFn, f.dynBodyRun, f.stripIsland = true, true, true, true, true
 		real.eventInfo[seq] = f
 	}
 	return ok

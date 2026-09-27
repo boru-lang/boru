@@ -151,11 +151,11 @@ keep the two in sync in the same commit.
 | [NUR226](#nur226) | FIXED 2026-09-27 (the merged cover-gate pass): a ROOT name bound by a SPLIT def (`def x (for [1 4] [i])`, `def x (5 dup)`) and rebound in an `if` arm read the PRE-branch value when the read was only the program's final result — `… if (g 9) [def x 9] [] end x` answered `2 3 1` for `2 3 9` (silent). The join is seated from a registry lookup now | the merged cover-gate pass (2026-09-27) |
 | [NUR227](#nur227) | FIXED 2026-09-27 (the merged cover-gate pass): the `mini` / `emit` / `parse` fn dispatch took any Function-FAMILY lead as the value form — `mini m.e 'ab'` over `{e: MiniLang.Re}` raised `mini_error` for the interpreter's `signature_error` — and a capturing parser that declares no return was bridged with a single `Any` (compiled `[x!]` for the interpreter's `parse_bad_signature`). Both match the interpreter now | the merged cover-gate pass (2026-09-27) |
 | [NUR228](#nur228) | FIXED 2026-09-27 (the merged cover-gate pass): a `case` over a CARRIER scrutinee compiled to its terminal trap (`case_error` for the interpreter's `[two]`), and a `case` scrutinee's bindings were missing from the model inside an islanded body (`def x 1 end do [case [def x 5] …] end x` answered `…1` for `…5`, silent). Both decline loudly now | the merged cover-gate pass (2026-09-27) |
-| [NUR229](#nur229) | A def inside a `case` CLAUSE body is never joined into the model: `def x 1 end do [case [1] [1 [def x 5 "one"] "other"]] end x` compiles to `[1 one 1]` where the interpreter answers `[1 one 5]` (silent) — `if` arms are joined, `case` clauses are not; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
-| [NUR230](#nur230) | A value-less `case` scrutinee inside a `do` body followed by more of it — `do [case [1 drop] [5 "five" "other"] 9]` — compiles, then bails `internal_error: CALL_DYNAMIC underflow` where the interpreter answers `[error(case: value expression produced no value to dispatch on)]`; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
-| [NUR231](#nur231) | `mini` over a member whose declared type is `Function` — `import "boru:minilang" end def m {e: Function} end mini m.e 'ab'` — bails `internal_error: DISPATCH_REMATCH … matched at run time where the static model failed` where the interpreter raises `signature_error`; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
-| [NUR232](#nur232) | A ROOT def made inside an `if` arm is lost for the NEXT request on a reused instance: `if true [def y 9] [] end 0` then `y` fails to compile (`undefined_word`) where the interpreter answers 9; the same request agrees; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
-| [NUR233](#nur233) | A two-value producer SPLIT into a def and read later — `def x (5 dup) x add 1` — raises `internal_error: BIND_GLOBAL splice underflow` compiled where the interpreter answers `[5 6]`; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
+| [NUR229](#nur229) | FIXED on the merged tree (the merge of main's #515, 2026-09-27): a def inside a `case` clause body is joined past the case — `def x 1 end do [case [1] [1 [def x 5 "one"] "other"]] end x` is `[1 one 5]` on both lanes (it was `[1 one 1]` compiled on main, silent) — through the run's case work. Pinned by lang `TestNUR229To231OnTheMergedTree` |
+| [NUR230](#nur230) | FIXED on the merged tree (the merge of main's #515, 2026-09-27): a value-less `case` scrutinee inside a `do` body is the interpreter's trapped error value on both lanes (main's compiled lane bailed `CALL_DYNAMIC underflow`) |
+| [NUR231](#nur231) | FIXED on the merged tree for the bail (the merge of main's #515, 2026-09-27): `mini` over a member holding the Function TYPE raises the interpreter's `signature_error` on both lanes, same message and caret (main bailed `DISPATCH_REMATCH`); the no-match notes still differ — [NUR311](#nur311) |
+| [NUR232](#nur232) | FIXED 2026-09-27 (the root arm's install — the handoff log's entry of that date): a ROOT def inside an `if` arm installs its binding beside the branch-carried slot store (`rootArmInstall`, main's NUR226 split-name install generalised), so the next request on the instance reads what the interpreter's arm left — `def x 5 if (g 9) [def x 9] [] end x` left 5 for the interpreter's 9, `if (g 9) [def y 9] [] end 0` left no y |
+| [NUR233](#nur233) | FIXED 2026-09-27 (the promoted split bind — the handoff log's entry of that date): a static region's first-value bind whose results the planner promoted to frame locals binds from its local, where the splice found the stack empty — `def x (5 dup) x add 1` bailed `BIND_GLOBAL splice underflow` for the interpreter's `[5 6]` |
 | [NUR234](#nur234) | FIXED 2026-09-26 (the call carries the interpreter's window — the handoff log's entry of that date): a compiled user call's param-contract no-match reports the window the interpreter's failed dispatch reports — the written run, which a bare read ends, filled from the stack beneath. The original text: a compiled direct call's param-contract no-match reported every argument, where the interpreter reports its attempted window: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` noted "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Pre-existing | compiling NUR308's type half, 2026-09-26 |
 | [NUR235](#nur235) | FIXED 2026-09-26 (a named fn value's push carries its name — the handoff log's entry of that date): a member read of a nullary fn value from a `fn` literal fires on both lanes; the closure's unit is shared with anonymous values over the same body, so the name rides on the push. The original text: a fn-body-local fn def bound into a returned map: the member read returns the fn compiled, calls it interpreted — `def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g` answers `[fn g]` compiled, `[5]` interpreted. A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR236](#nur236) | FIXED 2026-09-26 (a spliced consumer is ordered by the stream — the handoff log's entry of that date): a gradual def read consumed by a spliced word's expansion carries its deopt, so a read that holds a fn at run time dispatches it on both lanes. The original text: a word splice over a def-bound gradual read of a fn: `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}` answers `[Function]` compiled (typeof over the fn value) and `[Integer]` interpreted (`j` calls the fn). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
@@ -223,7 +223,7 @@ keep the two in sync in the same commit.
 | [NUR298](#nur298) | FIXED 2026-09-27 (recorded and closed together, probing NUR286's compile; the handoff log's entry of that date): inside a def's operand group the interpreter's re-step applies a landed fn to the literal after it before the def takes the group's first value, and the compiled lane left the fn to the residual arms, which met it only after the def: `def j (5 do [(mk)] 7) end 1 j` answered `[fn (Integer) 7 1 5]` for `[8 1 5]`, as did a string or list after the fn (silent, on main); the plain `end j` form regressed on the branch at 51b1a62 (NUR266's crossing rule). The crossing counts only the entry right after the lead, and a def group's collecting landing (`LandingCollects`) is guarded and takes its statement island; with an effect before the stop it defers (`vm:landing-collects`) | probing NUR286, 2026-09-27 |
 | [NUR299](#nur299) | FIXED 2026-09-27 by a loud decline (recorded and closed together, probing the statement island's barriers; the handoff log's entry of that date; by the scope ruling a refusal is no answer divergence): a one-operand word over a gradual value beneath it and a literal after it splits at run time by the value — `(mk) do [5]` over a factory of `[1 2]` is `[[1 2] 5]` interpreted (the List misses do's Map overload, and the List one takes the `[5]`), and the check pass filled the Map overload from the stack: the branch answered `[1 2 [5]]` (silent since 13aa881's region claim) and main bailed; over a fn value (`m.f do [(g)]`) the compiled lane raised `cannot call do` on both. the forward-drift guard now asks an all-stack window neither of its models answers (NUR305's question at fwd 0, keyed on the drift window and its decline, not on arity — ADR-016), so the compile declines | probing NUR296, 2026-09-27 |
 | [NUR300](#nur300) | FIXED 2026-09-27 (recorded and closed together, probing NUR282's owed compile of a computed error handler's count; the handoff log's entry of that date): a computed error handler's run leaves 0-or-more values the interpreter splices onto its tape and steps, and the compiled lane seated it as one plain value — silent on main and on this branch: `[do [raise oops 'x'] error (mk)]` over a handler of `[drop 5 6]` answered `[5 [6]]` for `[[5 6]]`, a def's group bound the top value where the interpreter binds the first, a value beneath was seated above the run (`[5 3 6]` for `[3 5 6]`), a map literal and print's operand took one value, and a handler's fn value stayed data (`[fn g]` for `[7]`). The run is a variadic region now, as a computed `do` body's is: a residual seats it whole, a single-value seat takes it under the runtime count check, and a layout that cannot place it declines. Where the check refuses a run, the error's count island re-runs the statement with the do, its body, the word and the handler written as the run, so every witness above answers as the interpreter does; a map literal's value, which no island reaches, defers | probing NUR282, 2026-09-27 |
-| [NUR301](#nur301) | FIXED 2026-09-27 (recorded and closed together, probing NUR300; the handoff log's entry of that date): an error handler's run on the caught path is the handler's own count, and the compiled lane seated it as one value — silent on main and on this branch. A literal handler the closure path refused ran as an interpreter island whose values were no region (`[do [raise oops 'x'] error [drop 5 6]]` answered `[5 [6]]` for `[[5 6]]`; a def's group bound the top, a value beneath went above the run, and a fn's list raised a return-count error for `[[[5 6] [7]]]`), and a `do` whose literal body ends in a handler's run took one seat (`[do [do [raise oops 'x'] error (mk)] error (mk)]`, the same). The island's run is a region and a run now, a computed handler's run is a run (`dynBodyRun`), a literal body holding a run the closure path declines takes a computed body's marks (`noteBodyRun`), and a strip over a growing region stays one; a value beneath a computed handler's run takes the prefix island. The literal forms decline loudly | probing NUR300, 2026-09-27 |
+| [NUR301](#nur301) | FIXED 2026-09-27 (recorded and closed together, probing NUR300; the handoff log's entry of that date): an error handler's run on the caught path is the handler's own count, and the compiled lane seated it as one value — silent on main and on this branch. A literal handler the closure path refused ran as an interpreter island whose values were no region (`[do [raise oops 'x'] error [drop 5 6]]` answered `[5 [6]]` for `[[5 6]]`; a def's group bound the top, a value beneath went above the run, and a fn's list raised a return-count error for `[[[5 6] [7]]]`), and a `do` whose literal body ends in a handler's run took one seat (`[do [do [raise oops 'x'] error (mk)] error (mk)]`, the same). The island's run is a region and a run now, a computed handler's run is a run (`dynBodyRun`), a literal body holding a run the closure path declines takes a computed body's marks (`noteBodyRun`), and a strip over a growing region stays one; a value beneath a computed handler's run takes the prefix island. The literal forms decline loudly | probing NUR300, 2026-09-27 On the merged tree (the merge of main's #515) a strip word's island is a checkable region: a single-value seat takes its run under the runtime count check, so a one-value path runs compiled and a two-value one defers loudly (`def ok (do b error [drop false])` compiles again); a strip over a demoted region is one value |
 | [NUR302](#nur302) | FIXED 2026-09-26 (templates and XML holes spell their source — the handoff log's entry of that date): canon renders a template string as backtick source (`canonTemplate`: literal text with the template lexer's escapes, each hole `${…}` over its tokens' canon) and an XML literal with holes as its XML (`canonXmlTmpl`: text and attribute text escaped as a plain element's), in both ports — TS keeps a tagged empty hole as `${}`. The original text: Template strings and XML literals with `${}` holes canon in DEBUG form — `interp('v ' ${1} ' w')`, `interp-xml(<a>${1}</a>)` — which no parser accepts (a template re-parses as a syntax error, an XML literal as the word `interp-xml` over a group): 30 of parse.tsv's rows fail the canon fixpoint on it, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
 | [NUR303](#nur303) | FIXED 2026-09-26 (the key canons as its key — the handoff log's entry of that date): a map key renders bare only when it lexes back as the same key (letters, digits, `_ $ - @`) and quoted otherwise (`canonKey`), in every canon map arm, both ports. The original text: A map key that needs quoting canons bare: `{'q k':2}` renders `{q k:2}`, which re-parses as two entries (`{q:q k:2}`) — ADR-015's round-trip broken on the key, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
 | [NUR304](#nur304) | FIXED 2026-09-26 (a comma before the angle — the handoff log's entry of that date): a sequence joins a part whose last token is a bare capitalised name to a part opening `<` with a comma (`joinCanonParts`), so `[:A, <a/>]` re-parses as the typed list it is, both ports. The original text: A typed tag before an XML literal re-lexes as the angle sugar: `<a/>:A` canons `[:A <a/>]`, which re-parses as `[:A<a/>]` — whitespace does not separate `A` from `<`, so the tag and the element fuse into `A<a/>` | the canon fixpoint gate, closing NUR072, 2026-09-26 |
@@ -233,6 +233,7 @@ keep the two in sync in the same commit.
 | [NUR308](#nur308) | FIXED 2026-09-26 (value half: Bytes a refinement base, a computed bound the run's; type half: the run-time type install — the handoff log's entries of that date): a refinement constructor over a bound the check pass does not know latches a run-time construct and the dispatch records as the call it is, so the run builds the refinement; a refinement bakes only over const bounds, `between` decides no empty interval from an unknown one, and a membership check over one decides nothing in the pass (an intersection keeps the unknown bound, a complement admits). A TYPE over one compiles to the run-time install: the run installs it from the body it computed (OpBindTypeRun) and the pass's node forwards to the run's, a typed def records the run's own membership check, and an overload set over one re-matches at run time. An inline parameter or return type over one compiles too: its pattern is an anonymous node the run forwards to the refinement it computed. An inline interval over one (which the run may find empty), a typed container's child and a fn body's per-call type def decline through the existing compile-time-word site. The original text: `3 is (Integer gt (size "abc"))` was false interpreted and true compiled — the check pass built the refinement over its carrier for the computed bound and the recorder baked it; a carrier orders below every value, so a lower bound admitted everything, an upper one refused everything (a false check-time type_error too), `between` over one was Never, and a type over one bound or dispatched unchecked compiled. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR309](#nur309) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the return-pattern check defers a refinement's value-level membership over an abstract residual not provably outside its base, the named return type's rule. The original text: `def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5` was a check-time type_error ("expected (Integer gt 3), got Integer") that both lanes then returned 5 for; the named twin (`[Big]`) is check-clean. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR310](#nur310) | FIXED 2026-09-26 (a make field's refusal is a type_error — the handoff log's entry of that date): a make field the run refuses raises a type_error on both lanes; a refusal already structured keeps its code. The original text: the refusal was a plain error, which the interpreter printed bare and a compiled run booked as a compiler defect (internal_error with its "please report it" note) — `def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}`. Pre-existing | compiling NUR308's type half, 2026-09-26 |
+| [NUR311](#nur311) | Pending, loud (recorded 2026-09-27, the merge of main's #515): a reach-led forward window's no-match NOTES name the window the check pass matched — `mini m.e 'ab'` over `{e: Function}` reports `the arguments were Function … and 'ab'` and `2 were supplied` compiled, where the interpreter's forward collection stopped at the reach and supplied none; the error, message and caret agree |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -7085,6 +7086,15 @@ registry-visible (`loopSplitRebind`: not the split bind itself, whose
 splice installs it). Pinned: lang `TestNUR237LoopSplitRebindInABranch`
 (eight rows, `undef` and a fn read among them).
 
+**On the merged tree (2026-09-27, the merge of main's #515).** Main's NUR226
+seats the branch join of a split-bound name, which turned this record's
+`undef x` row into a carried-undef decline. An undef whose exposed binding
+the slot does not hold — the split's own, read live — compiles again
+(`splitUndefExposesLive`); an earlier join's binding under it keeps the
+decline. On the path that skipped the arm the live read misses and raises
+the interpreter's `undefined_word` at the read. Pinned by lang
+`TestNUR237SplitUndefAfterAJoin`.
+
 ## NUR238 — a paren-bounded trailing apply that matches nothing {#nur238}
 
 **Status:** FIXED 2026-09-26 (a trailing value is re-stepped as the
@@ -13873,6 +13883,24 @@ seat: `[do [raise oops 'x'] error [drop 9 8]]`, `def r (do … error [drop 5
 6]) r`, `(do … error [drop 5 6]) add 1`. The error's count island
 (NUR300's) covers computed handlers only.
 
+**The single seat (2026-09-27, the merge of main's #515).** Marking every
+strip island a region also declined the mini-s3 handler shape `def ok (do
+b error [drop false])`, which compiled before: a computed body the pre-pass
+demotes to a checked single value, under a literal handler that nets one.
+Two changes restore it. A strip call over a region the pre-pass demoted is
+one value again (`settleDemotedStrips`: the checked run left exactly the
+value the strip consumes). And a strip word's island is a checkable region
+(`eventFlags.stripIsland`): a single-value seat takes its run under the
+runtime count check (`FallbackSpan.CheckOne`, the VM's `checkRunOne`), so
+a path whose handler nets one runs compiled and one that nets two is the
+loud designed defer ("error's island left 2 value(s)"). `[do [raise oops
+'x'] error [drop 9 8]]`, `(do … error [drop 5 6]) add 1` and the fn form
+compile and defer on the two-value path; `def r (do … error [drop 5 6]) r`
+and a value beneath the island keep their compile declines; `[do [do [raise
+oops 'x'] error (mk)] error [drop 9]]` compiles and answers `[[5 6]]`.
+Still owed: a count island for a literal handler's run, so the two-value
+path answers rather than defers.
+
 ## NUR225 — a Go panic through RunCompiled: the scalar fold over a short window {#nur225}
 
 **Status:** FIXED 2026-09-27 (the merged cover-gate pass); present on
@@ -13925,6 +13953,18 @@ pre-branch value a registry lookup of the name (`rootSplitBind`), and an
 arm's store of a root split name installs the binding (`splitArmInstall`).
 Pinned by lang `TestBranchCarriedSplitBindParity`.
 
+**On the merged tree (2026-09-27).** The branch had closed the same
+silent read as its NUR237 by making every later root def of a split-bound
+name registry-visible (`loopSplitRebind`), reads live. The merged tree
+keeps main's seat and hands an arm-carried def to main's install, which
+promotes its source (`if (g 9) [def x (g 3)] []` over a split x otherwise
+declined as an unpromoted dynamic-scope def); the install itself is every
+root arm store's now (NUR232). The seat made NUR237's `undef x` row a
+carried-undef decline; an undef that exposes the split's own binding,
+which no slot holds, compiles again (`splitUndefExposesLive`), and a miss
+on the path that skipped the arm is the interpreter's `undefined_word` at
+the read (`CondBoundNames`, the read's own position on the live operand).
+
 ## NUR227 — the macro fn dispatch's lead: a Function-family type node, a capturing parser's return {#nur227}
 
 **Status:** FIXED 2026-09-27 (the merged cover-gate pass); present on
@@ -13972,8 +14012,12 @@ and the `case_scrutinee_model_test.go` rows.
 
 ## NUR229 — a def inside a `case` clause body is never joined {#nur229}
 
-**Status:** Pending (recorded 2026-09-27, the merged cover-gate pass);
-present on `main` at cd188a2.
+**Status:** FIXED on the merged tree (the merge of main's #515 with the
+reverse-order NUR run, 2026-09-27 — the handoff log's entry of that date):
+both lanes answer `[1 one 5]`, the clause body's def joined past the case,
+through the run's case work (the case-subject record and the scrutinee's
+kept bindings). Recorded 2026-09-27, the merged cover-gate pass; present on
+`main` at cd188a2. Pinned by lang `TestNUR229To231OnTheMergedTree`.
 
 ```
 def x 1 end do [case [1] [1 [def x 5 "one"] "other"]] end x
@@ -13987,8 +14031,11 @@ it bakes the pre-case binding.
 
 ## NUR230 — a value-less `case` scrutinee inside a `do` body bails at run time {#nur230}
 
-**Status:** Pending (recorded 2026-09-27, the merged cover-gate pass);
-present on `main` at cd188a2.
+**Status:** FIXED on the merged tree (the merge of main's #515 with the
+reverse-order NUR run, 2026-09-27): both lanes answer the interpreter's
+trapped error value. Recorded 2026-09-27, the merged cover-gate pass;
+present on `main` at cd188a2. Pinned by lang
+`TestNUR229To231OnTheMergedTree`.
 
 ```
 do [case [1 drop] [5 "five" "other"] 9]
@@ -14002,8 +14049,14 @@ leaves the body's later values unseated.
 
 ## NUR231 — `mini` over a Function-typed member bails a rematch {#nur231}
 
-**Status:** Pending (recorded 2026-09-27, the merged cover-gate pass);
-present on `main` at cd188a2.
+**Status:** FIXED on the merged tree for the bail (the merge of main's #515
+with the reverse-order NUR run, 2026-09-27): both lanes raise the
+interpreter's `signature_error` at `mini`, same message and caret. The
+no-match NOTES still differ — the compiled report names the window the
+pass matched (`Function` and `'ab'`), the interpreter's forward collection
+stopped at the reach and supplied none — recorded as
+[NUR311](#nur311). Recorded 2026-09-27, the merged cover-gate pass; present
+on `main` at cd188a2. Pinned by lang `TestNUR229To231OnTheMergedTree`.
 
 ```
 import "boru:minilang" end def m {e: Function} end mini m.e 'ab'
@@ -14018,8 +14071,11 @@ Diagnosis not confirmed beyond the bail's own message.
 
 ## NUR232 — a root def inside an `if` arm is lost for the next request {#nur232}
 
-**Status:** Pending (recorded 2026-09-27, the merged cover-gate pass);
-present on `main` at cd188a2.
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date): a ROOT
+arm's def installs the binding beside its branch-carried slot store
+(compiler `rootArmInstall`, main's NUR226 split-name install generalised),
+so the next request reads what the interpreter's arm left. Recorded
+2026-09-27, the merged cover-gate pass; present on `main` at cd188a2.
 
 ```
 if true [def y 9] [] end 0      (then, on the same instance)   y
@@ -14033,10 +14089,30 @@ replay that re-installs a program's root bindings places no arm-resident
 def; NUR226's split-name install closes the analogous case only for split
 names.
 
+**The fix (2026-09-27).** The diagnosis held. An arm's def under a
+dynamic condition is a branch-carried store into the name's frame slot; the
+join's twin captures the model's joined CARRIER, whose replay installs
+nothing (`core.ApplyBindTwin`), so no op left the arm's binding on the
+registry. Main's NUR226 added that install for a split-bound name only
+(`splitArmInstall`); on the merged tree it is every root arm store
+(`rootArmInstall`): the arm's store also lowers `BIND_DYN_SCOPE`, unless its
+own write-back installs (`rootBindWritesBack`), and a taken arm whose twin
+does replay (a constant condition's concrete capture) keeps the replay
+alone (`twinInstalls`). The merge made the case urgent: the branch lowers
+`dup` into locals, so main's `def x (5 dup drop)  if (g 9) [def x 9] []
+end x` row is no split there, and its next request read 5 for the
+interpreter's 9. Pinned by lang `TestNUR232RootArmInstall` (results and the
+name's whole install stack in the next request, sixteen rows with a fn
+frame's torn-down def as the negative) and compiler `TestRootArmInstall` /
+`TestLowerDynBindArmStore`.
+
 ## NUR233 — a two-value split def read later bails a splice underflow {#nur233}
 
-**Status:** Pending (recorded 2026-09-27, the merged cover-gate pass);
-present on `main` at cd188a2.
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date): a static
+region's first-value bind whose results the planner promoted to frame
+locals binds from its local (compiler `lowerDynBind`, `isPromoted`).
+Recorded 2026-09-27, the merged cover-gate pass; present on `main` at
+cd188a2.
 
 ```
 def x (5 dup) x add 1
@@ -14047,4 +14123,33 @@ def x (5 dup) x add 1
 Diagnosis (reported, not confirmed): `SplitEventRegionBind` applies to
 any two-output word, and once the name is committed to dynamic scope the
 global bind's splice finds one value where the region bound two.
+
+**The fix (2026-09-27).** The static-region first-value bind splices the
+bound value out of the stack at a static depth, but when a later result
+must sit above the spilled value (`x add 1` over the spill) the planner
+promotes the region's results to frame locals, and the splice then found
+the stack empty. Such a source binds from its promoted local instead (the
+ordinary promoted computed def's arm), and the spilled value stays in its
+own, re-pushed by the residual: `def x (5 dup) x add 1` is `[5 6]`, `def x
+(1 2 3 dup) x add 10` is `[2 3 3 11]`, the install stack in the next
+request the interpreter's. Pinned by lang `TestNUR233PromotedSplitBind`.
+
+## NUR311 — a reach-led forward window's no-match notes name the pass's window {#nur311}
+
+**Status:** Pending · **Recorded:** 2026-09-27 · **Surfaced by:** the merge
+of main's #515 (NUR231's witness on the merged tree). Loud: both lanes
+raise the same error at the same caret.
+
+```
+import "boru:minilang" end def m {e: Function} end mini m.e 'ab'
+  interpreted   signature_error: cannot call `mini` — no signature matches the arguments
+                  = note: candidate `mini (Function, String, Map)` takes 3 arguments, but none were supplied
+  compiled      signature_error: cannot call `mini` — no signature matches the arguments
+                  = note: the arguments were Function (a Function) and 'ab' (a ProperString)
+                  = note: candidate `mini (Function, String, Map)` takes 3 arguments, but 2 were supplied
+```
+
+The compiled report is built over the window the check pass matched (the
+attempted window, NUR234); the interpreter's forward collection stopped at
+the reach `m.e` and supplied none. The notes are the only difference.
 
