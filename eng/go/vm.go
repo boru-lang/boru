@@ -3935,7 +3935,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				if err := checkParamContract(r, fn, ent.locals); err != nil {
 					return nil, stampAt(err, curDebug, pc, curReg)
 				}
-				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth(), retFn: ent.retFn, retAt: applyAnchor(ent, head)})
+				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth(), retFn: headNamedContract(ent.retFn, head), retAt: applyAnchor(ent, head)})
 				vc.frameDepth++ // balanced by the matching RET, like OpCallUser
 				nameFrameFns(curReg, fn, ent.locals)
 				vc.pushFrameArgs(ent.locals, fn.NArgs)

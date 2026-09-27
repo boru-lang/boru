@@ -15882,6 +15882,17 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		if dynOp == OpCallDynMixedFromMark {
 			arg = 0 // the mark is the boundary; the op takes no count
 		}
+		// A leading apply over a root def READ is the interpreter's word
+		// dispatch of the binding (NUR275): the op carries the binding's name
+		// and raises at the read's token — its no-match and the entered
+		// frame's contract name the binding, as installFnDef renames the
+		// value to it — where it named the value's own fn and its def site.
+		if dynOp == OpCallDynamic && len(residual) > 0 {
+			if r, read := rootResidualReads[residual[0].ID]; read && len(r.reads) > 0 && r.reads[0].Row > 0 {
+				lw.seatDynApplyName(DynApplyHead{Name: r.name, Pos: r.reads[0], NWritten: len(residual) - 1, Leading: true})
+				dynOpPos = r.reads[0]
+			}
+		}
 		lw.emit(dynOp, arg, dynOpPos)
 		lw.sealLandingSkip(dynOp, ops)
 	}

@@ -71,6 +71,22 @@ func applyAnchor(ent *dynEnter, head compiler.DynApplyHead) core.SrcPos {
 	return ent.at
 }
 
+// headNamedContract is the frame contract of a fn value applied under a NAMED
+// head: the interpreter dispatches such a read as the WORD, and the fn it
+// finds carries the binding's name — `def g <fn value>` renames the value to
+// g (installFnDef), a param's frame binding names it by the param (NUR239) —
+// so its return check reports `g: return value 1: …`, where the value's own
+// contract carries the name it was built under (`h`, NUR275). Unnamed heads,
+// and frames whose unit is its own contract, keep theirs.
+func headNamedContract(fn *compiler.CompiledFn, head compiler.DynApplyHead) *compiler.CompiledFn {
+	if fn == nil || head.Name == "" || fn.Name == head.Name {
+		return fn
+	}
+	named := *fn
+	named.Name = head.Name
+	return &named
+}
+
 // allForwardSig reports whether every parameter of a matched signature is
 // forward-eligible: the barrier sits at or past the last param, so the call
 // collects all of its arguments from the tokens written after it and none from

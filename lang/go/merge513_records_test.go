@@ -89,27 +89,35 @@ func TestApplyKernelFrameAnchorsAtTheValue(t *testing.T) {
 	}
 }
 
-// TestRootDefBoundMemberFnContractPending fences NUR275: a member fn value
-// def-bound at the root and applied by its NAME raises its contract error
-// under the NAME at the read on the interpreter (the word dispatch
-// re-steps the value as `g`, at `g`'s token) and under the value's own name
-// at the value's own token compiled (`h:` at 1:69) — the op carries no named
-// head. The code and the rest of the message agree. Present on main, which
-// answers exactly the same.
-func TestRootDefBoundMemberFnContractPending(t *testing.T) {
+// TestRootDefBoundMemberFnContractAgrees pins NUR275's close: a member fn
+// value DEF-BOUND at the root and applied by its NAME is the interpreter's
+// word dispatch of the binding — `def g <fn value>` renames the value to g
+// (installFnDef) and the read's return check sits at the read's token — so
+// the compiled root's leading apply seats the binding as a named head (its
+// name, the read's position; compiler Finalize over rootResidualReads) and
+// the entered frame's contract takes the head's name (eng
+// headNamedContract). Both lanes report `g: …` at the read, where the
+// compiled lane named the value's own `h` at its `h/v` token.
+func TestRootDefBoundMemberFnContractAgrees(t *testing.T) {
 	const h = `def h fn [[x:Integer] [Integer] ['s']] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
-	const tail = ": return value 1: expected Integer, got ProperString"
-	for _, c := range []struct{ src, interp string }{
-		{h + `def g m.f end g 5`, "1:109"},
-		{h + `def g (m.f) end g 5`, "1:111"},
+	const h2 = `def h fn [[x:Integer] [Integer Integer] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
+	const h1 = `def h fn [[x:Integer] [Integer] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
+	for _, c := range []struct{ src, code, at string }{
+		{h + `def g m.f end g 5`, "type_error", "1:109"},
+		{h + `def g (m.f) end g 5`, "type_error", "1:111"},
+		{h2 + `def g m.f end g 5`, "type_error", ""},
+		{h1 + `def g m.f end g 'x'`, "signature_error", ""},
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
-		if !compiled || len(gotC) != 0 || len(gotI) != 0 || codeOf(errC) != "type_error" || codeOf(errI) != codeOf(errC) {
-			t.Errorf("%q: the same contract error code on both lanes, got compiled=%v %v %v, interp %v %v", c.src, compiled, gotC, errC, gotI, errI)
+		if !compiled || len(gotC) != 0 || len(gotI) != 0 || codeOf(errI) != c.code || codeOf(errC) != c.code {
+			t.Errorf("%q: %s on both lanes, got compiled=%v %v %v, interp %v %v", c.src, c.code, compiled, gotC, errC, gotI, errI)
 			continue
 		}
-		if detailOf(errI) != "[boru/type_error]: g"+tail || errAt(errI) != c.interp || detailOf(errC) != "[boru/type_error]: h"+tail || errAt(errC) != "1:69" {
-			t.Errorf("%q: NUR275 moved — interp %q at %q, compiled %q at %q: update the record", c.src, detailOf(errI), errAt(errI), detailOf(errC), errAt(errC))
+		if detailOf(errC) != detailOf(errI) || errAt(errC) != errAt(errI) || (c.at != "" && errAt(errI) != c.at) {
+			t.Errorf("%q: interp %q at %q, compiled %q at %q", c.src, detailOf(errI), errAt(errI), detailOf(errC), errAt(errC))
 		}
 	}
+	// A matching window answers on both lanes, and a 0-arg value fires.
+	agreeOnBothLanes(t, h1+`def g m.f end g 5`, "[5]")
+	agreeOnBothLanes(t, `def g0 fn [[][Integer][7]] end def mk fn [[] [Map] [{f: g0/v}]] end def m (mk) end def g m.f end g 5`, "[7 5]")
 }

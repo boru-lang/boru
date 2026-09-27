@@ -4,6 +4,7 @@ import (
 	"strings"
 	"testing"
 
+	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
 )
 
@@ -66,5 +67,25 @@ func TestCheckDynBodyPlain(t *testing.T) {
 		if err == nil || !core.IsVMDefer(err) || !strings.Contains(err.Error(), "where the run is seated as data") {
 			t.Errorf("%s: want the loud dyn-body-plain defer, got %v", name, err)
 		}
+	}
+}
+
+// TestHeadNamedContract pins NUR275's frame naming (vm_dyn_apply.go): a fn
+// value applied under a named head reports its contract under the head's
+// name, as the interpreter's word dispatch of the binding does; no contract,
+// an unnamed head or the same name keeps the frame's own.
+func TestHeadNamedContract(t *testing.T) {
+	h := &compiler.CompiledFn{Name: "h"}
+	if got := headNamedContract(nil, compiler.DynApplyHead{Name: "g"}); got != nil {
+		t.Errorf("no contract stays none, got %v", got)
+	}
+	if got := headNamedContract(h, compiler.DynApplyHead{}); got != h {
+		t.Error("an unnamed head keeps the value's contract")
+	}
+	if got := headNamedContract(h, compiler.DynApplyHead{Name: "h"}); got != h {
+		t.Error("the same name keeps the contract as it is")
+	}
+	if got := headNamedContract(h, compiler.DynApplyHead{Name: "g"}); got == h || got.Name != "g" || h.Name != "h" {
+		t.Errorf("a named head renames a copy: got %+v, original %q", got, h.Name)
 	}
 }

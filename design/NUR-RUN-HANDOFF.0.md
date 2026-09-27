@@ -9,6 +9,24 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR275 closed: the root's leading apply over a def read is the binding's word dispatch (2026-09-27)
+
+**The divergence.** `def g m.f end g 5` over a member lambda `h` whose body
+returns a String raised `g: return value 1: …` at the read interpreted and
+`h: …` at the value's `h/v` token compiled. The interpreter's `def` renames
+the fn value to the def's name (installFnDef) and dispatches the read as a
+named call; the compiled root applied the value through the Apply kernel
+with no named head, so the frame took the value's own name and anchor.
+
+**The fix, as recorded.** Finalize seats a named head (`DynApplyHead`) at
+the root's leading `OpCallDynamic` when the lead is a root def read the
+NUR207 plan recorded — its name, the read's position, the window's count,
+`Leading` — and emits the op at the read. The Apply kernel's frame contract
+takes the head's name (`headNamedContract`, eng). A no-match names the
+binding (`cannot call `g``) and a count error too. A zero-argument value
+still fires and leaves its window (`g 5` over `g0/v` is [7 5]); `Leading`
+is what keeps the window after the result on the island path.
+
 ## NUR282's latch half: a live-seated read passes the kept-defs latch as a carrier (2026-09-27)
 
 **The problem.** Main's kept-defs latch declines the first observer of a
