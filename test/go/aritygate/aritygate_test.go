@@ -301,7 +301,12 @@ var pinnedAritySites = map[string]int{
 	// DECLARES the callee's signature from the unit's own param count and
 	// types — the argument rule's input, not a decision about what a closure
 	// of a given arity may do; a closure of any arity takes the same path.
-	"eng/go/vm_dyn_words.go": 1,
+	// 1 -> 2: landedFnTakesArgs (NUR286) asks the same of a FnDefInfo — does
+	// any real signature take an argument — so the landing's guard knows
+	// whether the interpreter's re-step could match the fn over the values
+	// beneath it: the argument rule over that supply, never a decision about
+	// what a fn of a given arity may do.
+	"eng/go/vm_dyn_words.go": 2,
 	// The COLLECT oracle's candidate table (oracleCandidates, the
 	// sixty-second increment): a FN-LOCAL fn is a frame binding the run-time
 	// registry never holds, so the oracle DECLARES the callee's signature
@@ -421,7 +426,13 @@ var pinnedAritySites = map[string]int{
 	// match and stays data, as the interpreter leaves it. The count decides
 	// only whether the match can succeed over nothing, never what a fn of a
 	// given arity may do.
-	"compiler/go/bytecode.go": 2,
+	// 2 -> 3: ClosureTakesArgs (NUR286) asks whether a fn-value closure's
+	// unit takes an argument at all — the argument rule over the values
+	// beneath a landing: a unit that takes none cannot match any of them,
+	// exactly as MatchSignature over a supply admits only a signature that
+	// consumes from it. The count decides only whether a match over those
+	// values is possible, never what a fn of a given arity may do.
+	"compiler/go/bytecode.go": 3,
 
 	// ── Generics: instantiation matches a declaration's shape.
 	"core/go/generics_unify.go":       1,
