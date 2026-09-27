@@ -35,6 +35,13 @@ String pair, `j j add 1`); `[mk mk add 1]`, `[7 mk add 1]` and `mk mk add 1
 drop` decline. The check suite, the compiler suite and the commit gate's
 lanes pass.
 
+**The word half (11b0572).** Probing the window's reach found `def k 1 end
+mk mk add k` answering `[84 1]` too: the interpreter's forward phase
+collects a value-bound word as its value, but both guards recognised only
+a literal after the word. Core's `ForwardOperandValue` yields the literal
+itself or a plain word's bound literal at the word's position, and the
+window carries that value (`def s "x"` likewise, `[42 42x]` on both lanes).
+
 ## NUR284 closed: a folded member fn applied in a binder's frame reads its dynamic scope (2026-09-27)
 
 **The divergence.** `def m {c: ([x:Any] => [k])} end def h fn [[][Any]
