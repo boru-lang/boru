@@ -88,13 +88,19 @@ func TestBranchOfLambdasCompiles(t *testing.T) {
 		`def one fn [[][Integer][1]] end def c true end if c one/v ([] => [2])`, "closure render")
 	fnValueM2CompileFailure(t, "def-bound branch of lambdas",
 		`def c true end def g (if c ([] => [1]) ([] => [2])) end g`, "closure render")
-	// `if` × container stays declined (the member's 0-arg landing): the read
-	// is data at the landing, but the carrier it leaves hides the fn from a
-	// later NAME read, `apply` or param read, which the interpreter
-	// dispatches — standing the model aside was measured to miscompile
-	// `def j (m get "f")  j` (NUR207's family), so it keeps its decline.
-	fnValueM2CompileFailure(t, "container member 0-arg lambda in a branch",
-		`def m {f: ([] => [1])} end if true m.f [2]`, "0-arg landing not modelable")
+	// `if` × container (NUR207, 2026-09-26): the member read of a PARKING
+	// lambda over a concrete container folds to the lambda itself, so the
+	// branch is the `if` × lambda cell above and a later NAME read dispatches
+	// it as a literal's does — the dynamic carrier the 0-arg landing left,
+	// which hid the fn from that read, is gone (see sweep_nur207_test.go).
+	for _, src := range []string{
+		`def m {f: ([] => [1])} end if true m.f [2]`,
+		`def m {f: ([] => [1])} end if false m.f [2]`,
+		`def m {f: ([] => [1])} end def c true end if c m.f [2]`,
+		`def m {f: ([] => [1])} end def c false end if c (m get "f") [2]`,
+	} {
+		requireEngineParity(t, src, true)
+	}
 }
 
 // TestMacroGradualLeadDispatchesAtRunTime pins `parse` × container, `mini` ×

@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"fmt"
 	"strings"
 	"testing"
 )
@@ -17,7 +16,10 @@ import (
 // do: a fn at run time hands the interpreter the program from the read's
 // statement on, over the values beneath it, with the value installed under
 // its name for the word dispatch; the island's residual is the program's.
-// Data at run time costs the test and nothing else.
+// Data at run time costs the test and nothing else. Main's #514 closed the
+// same record with a gradual shape claim (check tryShapedFnReadArrival),
+// which runs first on the merged tree: the reads it claims dispatch over
+// their window, and the ones it declines stay loud.
 func TestNUR207RootGradualDefRead(t *testing.T) {
 	const (
 		mk0 = `def mk fn [[][Any][([] => [42])]] end def j (mk) end `
@@ -31,12 +33,9 @@ func TestNUR207RootGradualDefRead(t *testing.T) {
 		// token, the residual beneath it its prefix.
 		{mk0 + `j`, "[42]"},
 		{mk0 + `5 j`, "[5 42]"},
-		{mk0 + `j j`, "[42 42]"},
 		{mk0 + `j end 5`, "[42 5]"},
 		{mk2 + `r 5 3`, "[2]"},
 		{ms + `r 5 3`, "[2]"},
-		{mk2 + `r 'x' 3`, "ERROR:cannot call `r`"},
-		{ms + `r 'x' 3`, "ERROR:cannot call `r`"},
 		// A read an event consumes: the island from its statement's start.
 		{mk0 + `j typeof`, "[Integer]"},
 		{mk0 + `[j]`, "[[42]]"},
@@ -50,6 +49,12 @@ func TestNUR207RootGradualDefRead(t *testing.T) {
 		{mk7 + `j typeof`, "[Integer]"},
 		{mk7 + `7 j typeof`, "[7 Integer]"},
 		{mk7 + `[j]`, "[[7]]"},
+		// Main's gradual claim (#514, check tryShapedFnReadArrival)
+		// dispatches the name over its whole window, where the branch's
+		// guard deferred: both lanes answer.
+		{mk0 + `7 j typeof`, "[7 Integer]"},
+		{mk0 + `5 [j]`, "[5 [42]]"},
+		{mk0 + `(j)`, "[42]"},
 		// A read that LEADS the residual's dynamic apply over a window the
 		// value matches is that apply's own answer, so a root event after
 		// the read, which leaves no island, costs nothing: the guard bails
@@ -61,43 +66,21 @@ func TestNUR207RootGradualDefRead(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, r.src, r.want)
 	}
-	if dis := compileDisasm(t, mc+`f 5 def zzvpost 8`); !strings.Contains(dis, "bail if the read holds a fn its window does not match (guard)") {
-		t.Errorf("the leading read's guard must bail on a no-match alone:\n%s", dis)
-	}
-	// The error an island raises is the interpreter's own, notes included.
-	for _, src := range []string{mk2 + `r 'x' 3`, ms + `r 'x' 3`} {
-		_, _, errC, _, errI := runBothEngines(t, src)
-		if fmt.Sprint(errC) != fmt.Sprint(errI) {
-			t.Errorf("%s: compiled %v, interpreter %v", src, errC, errI)
-		}
-	}
-
-	// A read whose statement the island cannot start from the interpreter's
-	// own state — a value written before it that the root lays out at the
-	// program's end, a read inside a paren group, a def made through the
-	// read — is a GUARD: when the value is a fn it raises a designed defer,
-	// loud where it answered wrong silently (`[7 Function]`, `[5 [fn j]]`,
-	// `[fn j]`, `[fn k]`).
-	for _, r := range []struct{ src, interp string }{
-		{mk0 + `7 j typeof`, "[7 Integer]"},
-		{mk0 + `5 [j]`, "[5 [42]]"},
-		{mk0 + `(j)`, "[42]"},
-		{mk0 + `def k j end k`, "ERROR:def is still waiting"},
-		// The leading read's guard over a window the value does not match:
-		// the word raises, and no island can take the statement over.
-		{mc + `f 'x' def q 1 end q`, "ERROR:cannot call `f`"},
+	// Main's claim declines what the program-level paths got wrong (#514:
+	// a written token the parameter does not take, a read a pending word
+	// collects — NUR216) and the shape it cannot seat after a claimed read
+	// (`j j`); the branch's island answered these, and at the merge the
+	// claim, which runs first, stands. Loud either way.
+	for _, r := range []struct{ src, reason string }{
+		{mk0 + `j j`, "dynamic value precedes residual args"},
+		{mk2 + `r 'x' 3`, "a written argument does not fit the wrapper's parameter"},
+		{ms + `r 'x' 3`, "a written argument does not fit the wrapper's parameter"},
+		{mk0 + `def k j end k`, "is collected where the interpreter dispatches the name as a word (NUR216)"},
+		{mc + `f 'x' def q 1 end q`, "a written argument does not fit the wrapper's parameter"},
 	} {
-		gotC, _, errC := mustNew(t).RunCompiled(r.src)
-		if !noteCompileDefect(t, r.src, gotC, errC) || !strings.Contains(fmt.Sprint(errC), "gradual read") {
-			t.Errorf("%s: want the guard's defer, got %v / %v", r.src, gotC, errC)
-		}
-		gotI, errI := mustNew(t).RunInterp(r.src)
-		if sub, isErr := strings.CutPrefix(r.interp, "ERROR:"); isErr {
-			if !strings.Contains(fmt.Sprint(errI), sub) {
-				t.Errorf("%s: interp got %v / %v, want an error containing %q", r.src, gotI, errI, sub)
-			}
-		} else if errI != nil || fmt.Sprint(gotI) != r.interp {
-			t.Errorf("%s: interp got %v / %v, want %s", r.src, gotI, errI, r.interp)
+		prog, why, _, err := mustNew(t).CompileCheck(r.src)
+		if prog != nil || err != nil || !strings.Contains(why, r.reason) {
+			t.Errorf("%s: want the decline %q, got prog=%v reason=%q err=%v", r.src, r.reason, prog != nil, why, err)
 		}
 	}
 }

@@ -50,7 +50,8 @@ func TestNUR210ComputedDoRunBeneathAndCollected(t *testing.T) {
 	// Negative: a list over a run the island cannot seat (inside a fn body,
 	// or reached through a branch) declines loudly, never assembling the
 	// wrong count; the interpreter's answers stand.
-	const runtimeCount = "list literal over a result of runtime-variable count"
+	// (Main's region rule, #514, names the decline first on the merged tree.)
+	const runtimeCount = "consumes loop results"
 	requireLoudDecline(t, mk(`1 2`)+`def f fn [[][List][[9 do (mk)]]] end f`, runtimeCount, "[[9 1 2]]")
 	requireLoudDecline(t, mk(`1 2`)+`def f fn [[][List][[do (mk)]]] end f`, runtimeCount, "[[1 2]]")
 	requireLoudDecline(t, mk(`1 2`)+`def c true end [9 if c [do (mk)] [3]]`, runtimeCount, "[[9 1 2]]")
@@ -66,7 +67,11 @@ func TestNUR210ComputedDoRunBeneathAndCollected(t *testing.T) {
 // underflowed. After such a body a root read of a value binding seats live
 // on the registry the body installed into (EmitState.rootDynLeak), a statement
 // boundary between the body's run and the read is proven (NUR266), and a body
-// that unbinds runs on the interpreter (NUR267).
+// that unbinds runs on the interpreter (NUR267). Since the merge of main's
+// #514 a body whose tokens are not proven plain data declines instead: its
+// run may leave a callable (main's region rule, dynRegionNotLast — a named
+// zero-argument fn fires across the `end`), and a later read observes a
+// binding the body may have changed (main's kept-defs latch).
 func TestNUR210ComputedBodyRebindsTheRoot(t *testing.T) {
 	mk := func(body string) string { return `def mk fn [[][List][quote [` + body + `]]] end def x 99 end ` }
 	for _, src := range []string{
@@ -74,10 +79,10 @@ func TestNUR210ComputedBodyRebindsTheRoot(t *testing.T) {
 		mk(`def y 5`) + `do (mk) end x`,   // [99]: another name
 		mk(`undef x`) + `do (mk) end x`,   // undefined_word: the body's undef
 		mk(`def x 5 7`) + `do (mk) end x`, // [7 5]: the run, then the read
-		mk(`1 2`) + `do (mk) end x`,       // a body that binds nothing
 	} {
-		requireEngineParity(t, src, true)
+		requireDeclineReason(t, src, dynRegionNotLastReason)
 	}
+	requireEngineParity(t, mk(`1 2`)+`do (mk) end x`, true) // a body that binds nothing
 	// Negative: the shapes the run's count still cannot seat stay loud —
 	// never the read's stale value.
 	for _, src := range []string{
@@ -101,17 +106,24 @@ func TestNUR210ComputedBodyRebindsTheRoot(t *testing.T) {
 // read — folded the value the pass held BEFORE the body (`[7 [99]]` for
 // `[7 [5]]` over `[def x 5 7]`). The pass now stops knowing root values
 // there: each root value binding is generalised in place (the speculative
-// undef's transition), so every later read is live.
+// undef's transition), so every later read is live. Since the merge of main's
+// #514 the binding bodies decline (main's region rule and kept-defs latch —
+// see TestNUR210ComputedBodyRebindsTheRoot); a body proven to be one plain
+// value still compiles, its later reads live.
 func TestNUR210ComputedBodyGeneralisesTheRoot(t *testing.T) {
 	mk := func(body string) string { return `def x 99 end def mk fn [[][List][quote [` + body + `]]] end ` }
+	for _, src := range []string{
+		mk(`def x 5 7`) + `do (mk) end [x]`,
+		mk(`def x 5 7`) + `do (mk) end {a: x}`,
+		mk(`def x 5 7`) + `do (mk) end def y x end y`,
+		mk(`def x 5 7`) + `do (mk) end [x x]`,
+		mk(`def x 5 7`) + `def f fn [[][Any][[x]]] end do (mk) end f`,
+		mk(`undef x 7`) + `do (mk) end [x]`,
+	} {
+		requireDeclineReason(t, src, dynRegionNotLastReason)
+	}
 	for _, c := range []struct{ src, want string }{
-		{mk(`def x 5 7`) + `do (mk) end [x]`, "[7 [5]]"},
-		{mk(`def x 5 7`) + `do (mk) end {a: x}`, "[7 {a:5}]"},
-		{mk(`def x 5 7`) + `do (mk) end def y x end y`, "[7 5]"},
-		{mk(`def x 5 7`) + `do (mk) end [x x]`, "[7 [5 5]]"},
-		{mk(`def x 5 7`) + `def f fn [[][Any][[x]]] end do (mk) end f`, "[7 [5]]"},
-		// Negative: a body that leaves x alone reads the pre-body value live,
-		// and one that unbinds it raises where the interpreter does.
+		// A body that leaves x alone reads the pre-body value live.
 		{mk(`7`) + `do (mk) end [x]`, "[7 [99]]"},
 		{mk(`7`) + `do (mk) end def y x end y`, "[7 99]"},
 	} {
@@ -119,10 +131,5 @@ func TestNUR210ComputedBodyGeneralisesTheRoot(t *testing.T) {
 		if got, err := mustNew(t).RunInterp(c.src); err != nil || fmt.Sprint(got) != c.want {
 			t.Errorf("%s: the interpreter answers %s, got %v %v", c.src, c.want, got, err)
 		}
-	}
-	src := mk(`undef x 7`) + `do (mk) end [x]`
-	_, _, errC, _, errI := runBothEngines(t, src)
-	if codeOf(errI) != "undefined_word" || codeOf(errC) != codeOf(errI) {
-		t.Errorf("%s: undefined_word on both lanes, got compiled %v, interp %v", src, errC, errI)
 	}
 }

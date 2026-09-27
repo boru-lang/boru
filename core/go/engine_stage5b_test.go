@@ -38,6 +38,7 @@ type s5bEmit struct {
 	dynApplies   int
 	trapErrs     []*BoruError
 	rematches    int
+	rematchNFwd  int
 	// pending is the one value id the stub reports as an `apply`-word
 	// application in flight (ApplyPending); lastOut is the out carrier the
 	// last RecordDynApply received.
@@ -87,8 +88,9 @@ func (s *s5bEmit) RecordTrapErr(ae *BoruError, pos SrcPos) bool {
 	s.trapErrs = append(s.trapErrs, ae)
 	return s.trapOK
 }
-func (s *s5bEmit) RecordDispatchRematchValues(word string, vals []Value, _ int, written []int, pos SrcPos) bool {
+func (s *s5bEmit) RecordDispatchRematchValues(word string, vals []Value, nFwd int, written []int, pos SrcPos) bool {
 	s.rematches++
+	s.rematchNFwd = nFwd
 	return s.rematchOK
 }
 
@@ -1471,6 +1473,27 @@ func TestS5BTrapCarrierRematchRecords(t *testing.T) {
 	}
 	if es.rematches != 1 {
 		t.Errorf("RecordDispatchRematchValues calls = %d", es.rematches)
+	}
+}
+
+func TestS5BTrapCarrierWindowMatchRecordsTheSplit(t *testing.T) {
+	// NUR211: a window the flexible match accepts over the static values
+	// still records — the rematch plans it with the interpreter's forward /
+	// stack split, so at run time it raises the interpreter's own
+	// signature_error rather than matching where the static model failed.
+	// (Main's #514 declined this window through rematchWindowMatches; the
+	// branch's split-aware rematch compiles it with parity instead.) Both
+	// window positions lie past the pointer, so both are forward operands.
+	carrier := NewCarrier(TInteger)
+	fn := &FnDefInfo{Name: "trapw", Signatures: []Signature{
+		{Args: []*Type{TInteger, TInteger}, BarrierPos: 2},
+	}}
+	e, es := trapEngine(t, []Value{NewWord("hd"), carrier, NewInteger(5)}, 0, []int{1, 2})
+	if !e.TryRecordUnmatchedDispatchTrap(WordInfo{Name: "trapw"}, fn, SrcPos{Row: 1}) {
+		t.Fatalf("the split rematch must record (traps=%+v)", es.trapErrs)
+	}
+	if es.rematches != 1 || es.rematchNFwd != 2 {
+		t.Errorf("RecordDispatchRematchValues calls = %d nFwd = %d, want 1 and 2", es.rematches, es.rematchNFwd)
 	}
 }
 

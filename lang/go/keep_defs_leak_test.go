@@ -276,25 +276,34 @@ func TestKeepDefsTokenBodyOverGradualListCompiles(t *testing.T) {
 	}
 }
 
-// TestDynamicKeepDefsBodyLeaksToTheFn pins NUR203's close: a keep-defs
-// word over a DYNAMIC body (a List param, a def-bound quoted list) inside a
-// fn leaks the body's defs into the fn's frame, and the fn's LATER reads
-// see them on both lanes — the pass cannot know which names the body
-// rebinds, so every name the unit value-defs before the dispatch seats
-// live at its later reads (noteDynKeepDefsLeak), where the body's
-// per-element install put the value. Both lanes answer 3; the compiled
-// lane used to read the pre-call 0.
-func TestDynamicKeepDefsBodyLeaksToTheFn(t *testing.T) {
+// TestDynamicKeepDefsBodyLeakDeclines pins NUR203's close: a keep-defs
+// word over a DYNAMIC body (a List param) inside a fn — `def f fn [[b:List
+// xs:List][Integer][def t 0 each b xs drop t]]  f (quote [def t (t add 1)
+// t]) [1 2 3]` — leaks the body's def per element on the interpreter (3),
+// and the compile pass cannot know which names a body it never sees will
+// rebind. The compiled lane answered the pre-call 0 until 2026-09-26; the
+// kept-defs latch (compiler kept_defs.go, NUR210) now declines the later
+// read of `t` loudly instead. The same shape at the root agrees (a root read
+// is live). (The branch had compiled these by seating the unit's own defs
+// live, noteDynKeepDefsLeak; at the merge of main's #514 the latch stands,
+// because that seat left a list or map literal over the name baking the
+// pre-body value: `… drop [t]` answered [[0]] for [[3]].)
+func TestDynamicKeepDefsBodyLeakDeclines(t *testing.T) {
+	const reason = "a computed body keeps its defs and undefs in the enclosing scope, and the read of `t` after it"
 	for _, src := range []string{
 		`def f fn [[b:List xs:List][Integer][def t 0 each b xs drop t]] end f (quote [def t (t add 1) t]) [1 2 3]`,
 		`def f fn [[b:List xs:List][Integer][def t 0 fold b xs 0 drop t]] end f (quote [def t (t add 1) add]) [1 2 3]`,
 	} {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-		if errI != nil || fmt.Sprint(gotI) != "[3]" {
-			t.Errorf("%q: interpreted %v / %v, want [3]", src, gotI, errI)
-		}
-		if errC != nil || !compiled || fmt.Sprint(gotC) != "[3]" {
-			t.Errorf("%q: compiled %v / %v (compiled=%v), want [3]", src, gotC, errC, compiled)
+		requireLoudDecline(t, src, reason, "[3]")
+	}
+	// The literal reads the unit's live seat missed decline the same way.
+	for _, src := range []string{
+		`def f fn [[b:List xs:List][Any][def t 0 each b xs drop [t]]] end f (quote [def t (t add 1) t]) [1 2 3]`,
+		`def f fn [[b:List xs:List][Any][def t 0 each b xs drop {a: t}]] end f (quote [def t (t add 1) t]) [1 2 3]`,
+	} {
+		prog, why, _, err := mustNew(t).CompileCheck(src)
+		if prog != nil || err != nil || !strings.Contains(why, reason) {
+			t.Errorf("%q: want the latch's decline, got prog=%v reason=%q err=%v", src, prog != nil, why, err)
 		}
 	}
 }

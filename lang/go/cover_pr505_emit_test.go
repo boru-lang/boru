@@ -70,12 +70,14 @@ func TestLoopRebindOfBranchBoundNameCompiles(t *testing.T) {
 // TestDynamicKeepDefsBodyRefreshesTheCarriedSlot pins noteDynKeepDefsLeak's
 // carried-slot store (NUR203 inside a loop): a keep-defs word over a DYNAMIC
 // body inside a fn's loop may rebind a name the loop carries in a frame slot,
-// so the slot is refreshed from the registry right after the call — the next
-// iteration and the read after the loop see the body's per-element installs.
+// so the slot is refreshed from the registry right after the call. Since the
+// merge of main's #514 the kept-defs latch declines the read after the loop
+// (the body may rebind any name, not only the carried one — NUR203's
+// close); the store is still recorded on the way.
 func TestDynamicKeepDefsBodyRefreshesTheCarriedSlot(t *testing.T) {
-	agreeOnBothLanes(t,
+	requireLoudDecline(t,
 		`def f fn [[b:List xs:List][Integer][def t 0 for 2 [def t (t add 1) each b xs drop] t]] end f (quote [def t (t add 1) t]) [1 2 3]`,
-		"[8]")
+		"a computed body keeps its defs and undefs in the enclosing scope", "[8]")
 }
 
 // TestLoopRoundRollbackDropsArgsProjection pins Rollback's trim of the `args`

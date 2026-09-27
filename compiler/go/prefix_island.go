@@ -293,7 +293,9 @@ func (es *EmitState) runOperand(op EmitOperand, events []EmitEvent, depth int) b
 	if op.kind != opEvent || depth > 8 {
 		return false
 	}
-	if f := es.eventInfo[op.idx]; f.dynBodyRun && !f.zeroOut {
+	// A run a single-value seat demoted (dyn_body_one.go) is one
+	// runtime-checked value, not the run's count.
+	if f := es.eventInfo[op.idx]; f.dynBodyRun && !f.zeroOut && !f.dynBodyOne {
 		return true
 	}
 	ev := eventBySeq(events, op.idx)

@@ -9,6 +9,66 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## The merge of main's #514: two closes of NUR207 and NUR210 composed (2026-09-26)
+
+**What main brought.** Main's #514 closed NUR207 and NUR210/NUR211 its own
+way, and recorded NUR213 and NUR216–NUR218; the branch's colliding NUR213
+and NUR216–NUR218 were renumbered NUR277–NUR280 before the merge (main keeps
+its numbers). For NUR207: a parking member folds to its lambda behind an
+escape fence, a gradual carrier claims a shape where the pass can prove one,
+`apply` over a gradual lead is the pending apply, and a proven fn at an
+`Any` parameter declines. For NUR210: a computed `do` run is a variadic
+REGION, a single-value seat takes one runtime-checked value (the VM's
+`vm:dyn-body-one` defer on any other run), and a keep-defs word over a
+computed body arms the KEPT-DEFS LATCH, whose first later observer declines.
+For NUR211: a decline (`rematchWindowMatches`).
+
+**How they were measured.** Nine textual conflicts, but the merge was
+semantic: both sides had closed the same records. 199 probe programs — every
+row of both sides' tests for these records, and the merge's own probes of
+the soundness boundary — ran on the branch, on main and on the merged tree.
+Main's rules turned out SOUND where the branch's closes were not:
+- a NAMED 0-arg fn value in a computed run fires across the statement's
+  `end` (`do (mk) end x` over `[g/v]`: [7 5] interpreted, the branch's
+  [fn g 5], silent), which NUR266's statement-boundary seat missed;
+- a list or map literal over a name a computed keep-defs body leaked bakes
+  the pre-body value (`… each b xs drop [t]`: [[3]] interpreted, the
+  branch's [[0]], silent), which NUR203's live seat missed;
+- a parameter or a fn a computed body rebinds is read stale (`do b drop
+  do b` over a body rebinding `b`; `def h …` rebinding a root fn);
+- `9 do (mk) drop` seated the 9 above the run.
+Main's rules decline every one. So they stand, and the branch's mechanisms
+stay where main's rules do not fire.
+
+**The composition.** Three seams, each measured:
+- The branch's split-aware rematch replaces main's NUR211 decline: `3 for
+  (mk)` raises the interpreter's signature_error on both lanes (main's core
+  test adapted to `TestS5BTrapCarrierWindowMatchRecordsTheSplit`,
+  `rematchWindowMatches` retired).
+- The branch's prefix island seats a run it can re-step whole: the lowering
+  drops the single-value check a list literal's demotion armed on the
+  island's own region, so `[9 do (mk 5)]` over `[n n]` is [[9 5 5]] and
+  `[9 do (mk)]` over `[g/v]` is [[10]], where main deferred; `9 do (mk)`
+  and `[9 do (mk)]` compile where main declined.
+- A demoted run is one checked value to the island's list-literal decline
+  (`runOperand`), so a fn body's `[9 do b]` compiles as main's does; and a
+  member read's own `/v` (`m.f/v`, noted with no name by the branch's
+  NUR280) does not trip the fold's fence.
+One more seam was tried and backed out: exempting from the latch the reads
+the branch seats live (a unit's own def, a root read). It re-opened the
+literal bake above, silently, so the latch stands whole.
+
+**The result.** The merged tree answers every probe the interpreter's way
+or declines loudly, except NUR213's four residual shapes (silent on both
+sides) and a new find, NUR281 (silent on both sides: a MAP literal's value
+at the root after a computed `each` is never noted to the latch). What the
+composed tree declines that the branch answered is NUR282. Ledgers, measured
+on the merged tree: compile declines 342 = 342 (two reasons swap), bails
+36 -> 31 (main's claim compiles three of the branch's NUR207 guard rows with
+parity and declines two), the sweep's failing seeds 2 -> 1 (`if` × container
+graduates) and its failing call forms 292 -> 290. Both sides' tests were
+adapted to the composed behaviour, each change named in its doc comment.
+
 ## NUR222's fragment bails made loud declines; a static-zero division is a definite raise (2026-09-26)
 
 **The divergence (main's NUR222).** A value-less `do` body inside a branch

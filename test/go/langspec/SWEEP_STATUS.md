@@ -11,7 +11,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `behave` | ✓ 13/14 | n/a | ✓ 13/14 | ✓ 12/14 | ✓ 13/14 | ✓ 12/14 | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | F | ✓ 14/14 |
 | `codequote` | ✓ 14/14 | ✓ 14/14 | n/a | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
-| `def` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 10/14 | ✓ 6/14 | ✓ 12/14 | ✓ 13/14 |
+| `def` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 10/14 | ✓ 12/14 | ✓ 12/14 | ✓ 13/14 |
 | `del` | ✓ 14/14 | — | — | — | — | — | — |
 | `describe` | ✓ 14/14 | — | — | — | — | — | — |
 | `do` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
@@ -27,11 +27,11 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `fnsig` | ✓ 13/14 | n/a | n/a | n/a | n/a | ✓ 7/14 | ✓ 13/14 |
 | `fold` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
 | `for` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
-| `for-each` | ✓ 14/14 | ✓ 14/14 | ✓ 12/14 | ✓ 7/14 | ✓ 8/14 | ✓ 7/14 | ✓ 14/14 |
+| `for-each` | ✓ 14/14 | ✓ 14/14 | ✓ 12/14 | ✓ 7/14 | ✓ 7/14 | ✓ 7/14 | ✓ 14/14 |
 | `force-arity` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 8/14 | ✓ 8/14 | ✓ 12/14 | n/a |
 | `forward-args` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 8/14 | ✓ 8/14 | ✓ 12/14 | n/a |
 | `gen` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
-| `if` | ✓ 14/14 | ✓ 10/14 | ✓ 13/14 | ✓ 13/14 | F | ✓ 12/14 | ✓ 14/14 |
+| `if` | ✓ 14/14 | ✓ 10/14 | ✓ 13/14 | ✓ 13/14 | ✓ 11/14 | ✓ 12/14 | ✓ 14/14 |
 | `import` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
 | `inner` | I | n/a | n/a | n/a | n/a | n/a | I |
 | `inspect` | ✓ 14/14 | — | — | — | — | — | — |
@@ -61,8 +61,8 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells
 
-- pass: 186
-- failed: 2
+- pass: 187
+- failed: 1
 - islanded: 2
 - DIVERGED: 0
 - PANIC: 0
@@ -76,7 +76,6 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 ## Cells that are not green
 
 - `case` module-export — **failed**: `import module [def cl fn [[][List][[1 'one' 2 'two' 'many']]] export "M" {cl: cl/v}] end case 2 M.cl` — code-body word case (Stage 2)
-- `if` container — **failed**: `def m {f: ([] => [1])} end if true m.f [2]` — fn value read from a container auto-dispatches (Stage 3): 0-arg landing not modelable at fn value
 - `inner` literal — **islanded**: `inner [add] [mul] [1 2] [3 4]` — program embeds an OpFallback island
 - `inner` computed — **islanded**: `def c (quote [add]) end inner c [mul] [1 2] [3 4]` — program embeds an OpFallback island
 
@@ -121,14 +120,8 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `def` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` container · fn-body — **declined** — dynamic value precedes residual args (fn-value-call boundary)
 - `def` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` container · if-then — **declined** — if: then-branch result of unknown provenance
-- `def` container · if-else — **declined** — if: else-branch result of unknown provenance
-- `def` container · for-body — **declined** — for: body nets multiple values per iteration
-- `def` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` container · module-body — **declined** — fn-value application bounded by a paren (dynamic value precedes args)
 - `def` module-export · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` computed · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -217,6 +210,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `for-each` container · lambda-body — **declined** — unannotated or opaque word dot
 - `for-each` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `for-each` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `for-each` container · for-body — **declined** — for-each: a computed body keeps its defs and undefs in the enclosing scope, and the read of `acc` after it would read th…
 - `for-each` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `for-each` container · module-body — **declined** — unannotated or opaque word dot
 - `for-each` module-export · fn-body — **declined** — operand of unknown provenance or not statically materialisable at dot
@@ -264,6 +258,9 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `if` lambda · suffix-def — **declined** — a call: a fn-typed result is re-stepped into a dispatch the model cannot make (NUR124)
 - `if` named-fn · for-body — **declined** — fn 'one' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `if` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `if` container · do-body — **declined** — a container member read folded to its parking lambda reaches a code body's or a lambda's result, where the fold's parity…
+- `if` container · do-catch — **declined** — a container member read folded to its parking lambda reaches a code body's or a lambda's result, where the fold's parity…
+- `if` container · each-body — **declined** — a container member read folded to its parking lambda reaches a code body's or a lambda's result, where the fold's parity…
 - `if` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `if` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `import` literal · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
