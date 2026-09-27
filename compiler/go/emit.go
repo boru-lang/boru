@@ -699,6 +699,12 @@ type EmitTrap struct {
 	rematchWord    string
 	rematchOps     []EmitOperand
 	rematchWritten []int
+	// rematchPrefix is DispatchSpec.Prefix: the rematchOps indices, top
+	// first, of the stack prefix the interpreter's report reads when a
+	// written operand stops its tuple; rematchPrefixKnown marks it noted
+	// (NoteRematchPrefix, NUR311).
+	rematchPrefix      []int
+	rematchPrefixKnown bool
 	// rematchNFwd is how many of the trailing rematchOps were written
 	// after the word (DispatchSpec.NFwd): the window lists the stack run
 	// first, top down, then the forward operands in written order.
@@ -1656,6 +1662,10 @@ type EmitState struct {
 	// Finalize ends the program at the trap. seqs start at 1, so 0 is a safe
 	// "none" sentinel.
 	trapAt int
+	// lastRematch is the seq of the trap the latest RecordDispatchRematch
+	// recorded, for NoteRematchPrefix; 0 when it recorded none (a trap was
+	// already latched).
+	lastRematch int
 	// markWindowSeq is the REGION-ANCHOR event seq of a planned mark-window
 	// island (plan Phase 5, L-DO part 2b), or 0 for none: Finalize's
 	// pre-lowering probe (markWindowShape) sets it alongside
@@ -9533,6 +9543,7 @@ func (es *EmitState) RecordDispatchRematch(word string, ops []EmitOperand, nFwd 
 		return false
 	}
 	if es.trapAt != 0 {
+		es.lastRematch = 0
 		return true
 	}
 	es.trapAt = es.appendEvent(EmitEvent{kind: evTrap, trap: EmitTrap{
@@ -9542,7 +9553,23 @@ func (es *EmitState) RecordDispatchRematch(word string, ops []EmitOperand, nFwd 
 		rematchNFwd:    nFwd,
 		pos:            pos,
 	}})
+	es.lastRematch = es.trapAt
 	return true
+}
+
+// NoteRematchPrefix attaches prefix — the rematch window's indices, top
+// first, of the stack prefix the interpreter's no-match report reads when a
+// written operand stops its tuple — to the rematch trap the latest
+// RecordDispatchRematch recorded (DispatchSpec.Prefix, NUR311). A call that
+// recorded none (a trap was already latched) takes no note.
+func (es *EmitState) NoteRematchPrefix(prefix []int) {
+	ev := es.eventBySeq(es.lastRematch)
+	if ev == nil {
+		return
+	}
+	ev.trap.rematchPrefix = append([]int(nil), prefix...)
+	ev.trap.rematchPrefixKnown = true
+	es.lastRematch = 0
 }
 
 // RecordTypedBind records the runtime validate/reparent step of a typed

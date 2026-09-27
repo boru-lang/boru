@@ -22,6 +22,13 @@ type PolyNoMatchSpec struct {
 	// position i, the callPoly layout) to rebuild the two tape tuples.
 	Written    []int
 	StackTuple []int
+	// NFwd counts Written's leading entries the report took from the
+	// operands written after the word; the rest came from the stack
+	// beneath. The interpreter's walk over the written ones stops at a value
+	// that is not concrete, so where one is a type literal or None at run
+	// time its report renders fewer, and the VM keeps its defer (NUR311).
+	// Zero: no written entries to check.
+	NFwd int
 	// NSigs pins the record-time signature-table length: a table that grew or
 	// shrank between the record and the run invalidates the record-time arity
 	// screen (an other-arity overload could now match where this raise claims

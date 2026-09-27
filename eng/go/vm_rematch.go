@@ -61,6 +61,7 @@ func (vc *vmContext) dispatchRematch(ds *compiler.DispatchSpec, stack []core.Val
 	if !ok || len(written) == 0 {
 		return vmErrAt(curDebug, pc, "DISPATCH_REMATCH written tuple out of range at "+ds.Word)
 	}
+	written = rematchStoppedTuple(ds, fn, window, written)
 	ae := core.RuntimeNoMatch(r, ds.Word, written)
 	ae.Row, ae.Col = ds.Pos.Row, ds.Pos.Col
 	return stampAt(ae, curDebug, pc, r)
@@ -134,4 +135,28 @@ func planSplitOver(reg *core.Registry, word string, fn *core.FnDefInfo, beneath,
 	}
 	sig, positions, _ := core.PlanMatch(h, h.win, reg, fn, w, toks[:at], at, false, false, false)
 	return h, sig, positions, true
+}
+
+// rematchStoppedTuple is the tuple the interpreter's no-match report renders
+// over the live window. The render tuple leads with the operands written
+// after the word, which the check pass held as carriers and rendered; the
+// interpreter's walk over them stops at the first that is no concrete value
+// at run time — a type literal, None — so its report takes the written
+// operands before it, filled from the stack prefix beneath the word
+// (core.AttemptedTuple): `mini m.e 'ab'` over `{e: Function}` supplied none
+// where the compiled report listed both (NUR311). Without a recorded prefix
+// the recorded tuple stands.
+func rematchStoppedTuple(ds *compiler.DispatchSpec, fn *core.FnDefInfo, window, written []core.Value) []core.Value {
+	nStack := ds.NArgs - ds.NFwd
+	for i, at := range ds.Written {
+		if at < nStack || core.IsConcrete(written[i]) {
+			continue
+		}
+		prefix, ok := tupleAt(window, ds.Prefix)
+		if !ds.PrefixKnown || !ok {
+			return written
+		}
+		return core.AttemptedTuple(fn, append([]core.Value(nil), written[:i]...), prefix)
+	}
+	return written
 }

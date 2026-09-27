@@ -187,9 +187,9 @@ func joinedElementCarrier(data core.Value) (core.Value, bool) {
 	if !mixed {
 		return core.Value{}, false
 	}
-	out := core.NewCarrier(elems[0].Parent)
+	out := elementJoinCarrier(elems[0])
 	for i := 1; i < len(elems); i++ {
-		out = core.JoinCarriers(out, core.NewCarrier(elems[i].Parent))
+		out = core.JoinCarriers(out, elementJoinCarrier(elems[i]))
 	}
 	return out, true
 }
@@ -248,6 +248,9 @@ func DataListElemTypeFromValue(data core.Value) *core.Type {
 		var t *core.Type
 		for _, k := range mp.M.Keys() {
 			v, _ := mp.M.Get(k)
+			if core.IsTypeLiteral(v) {
+				return core.TAny // a type VALUE is no value of its Parent (NUR323)
+			}
 			if t == nil {
 				t = v.Parent
 			} else {
@@ -266,6 +269,14 @@ func DataListElemTypeFromValue(data core.Value) *core.Type {
 	if err != nil || list.IsNil() || list.Len() == 0 {
 		return core.TAny
 	}
+	// A type literal element is a type VALUE, no value of its Parent: the
+	// element is unknown (TAny — NewElementCarrier makes it gradual), where
+	// its Parent committed a body's `add` over the type (NUR323).
+	for i := 0; i < list.Len(); i++ {
+		if core.IsTypeLiteral(list.Get(i)) {
+			return core.TAny
+		}
+	}
 	t := list.Get(0).Parent
 	for i := 1; i < list.Len(); i++ {
 		t = core.CommonAncestorType(t, list.Get(i).Parent)
@@ -274,6 +285,16 @@ func DataListElemTypeFromValue(data core.Value) *core.Type {
 		}
 	}
 	return t
+}
+
+// elementJoinCarrier is one concrete element's carrier for the element
+// join: its type's, or core.ValueCarrier's Type carrier for a type literal,
+// which is no value of its Parent (NUR323).
+func elementJoinCarrier(el core.Value) core.Value {
+	if core.IsTypeLiteral(el) {
+		return core.ValueCarrier(el)
+	}
+	return core.NewCarrier(el.Parent)
 }
 
 // toCarrier converts a concrete Value to its carrier form. Control /

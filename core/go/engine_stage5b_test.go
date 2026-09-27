@@ -31,6 +31,7 @@ type s5bEmit struct {
 	leadEligible     bool
 	trapOK           bool
 	rematchOK        bool
+	prefixNotes      [][]int
 
 	uncompilable []string
 	trailing     []string
@@ -92,6 +93,9 @@ func (s *s5bEmit) RecordDispatchRematchValues(word string, vals []Value, nFwd in
 	s.rematches++
 	s.rematchNFwd = nFwd
 	return s.rematchOK
+}
+func (s *s5bEmit) NoteRematchPrefix(prefix []int) {
+	s.prefixNotes = append(s.prefixNotes, prefix)
 }
 
 func installS5BEmit(t *testing.T, r *Registry, es EmitRecorder) {
@@ -1473,6 +1477,24 @@ func TestS5BTrapCarrierRematchRecords(t *testing.T) {
 	}
 	if es.rematches != 1 {
 		t.Errorf("RecordDispatchRematchValues calls = %d", es.rematches)
+	}
+	// The stack prefix the interpreter's report reads — none beneath the
+	// word here — rides on the record (NUR311).
+	if len(es.prefixNotes) != 1 || len(es.prefixNotes[0]) != 0 {
+		t.Errorf("want one empty prefix note, got %v", es.prefixNotes)
+	}
+}
+
+func TestS5BTrapRematchRefusedNotesNothing(t *testing.T) {
+	// The recorder refusing the rematch leaves the caller's failure, and
+	// no prefix note.
+	e, es := trapEngine(t, []Value{NewWord("hd"), NewCarrier(TInteger), NewInteger(5)}, 0, []int{1, 2})
+	es.rematchOK = false
+	if e.TryRecordUnmatchedDispatchTrap(WordInfo{Name: "trapw"}, trapFn(), SrcPos{Row: 1}) {
+		t.Fatal("a refused rematch must not record")
+	}
+	if len(es.prefixNotes) != 0 {
+		t.Errorf("a refused rematch notes no prefix, got %v", es.prefixNotes)
 	}
 }
 

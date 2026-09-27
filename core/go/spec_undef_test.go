@@ -81,6 +81,15 @@ func TestGeneraliseSpecUndef(t *testing.T) {
 	if _, leaked := r.Check.SpecUndefCarriers["z"]; leaked {
 		t.Fatal("Clone must deep-copy SpecUndefCarriers")
 	}
+	// A binding to a type VALUE generalises to a Type carrier, not a
+	// value of the node's Parent (NUR323).
+	r.Defs.Push("tv", NewTypeLiteral(TInteger))
+	if !GeneraliseSpecUndef(r, "tv") {
+		t.Fatal("a type-value binding generalises")
+	}
+	if tv, _ := r.Defs.Top("tv"); !tv.Carrier || !tv.Parent.Equal(TType) {
+		t.Fatalf("a type value generalises to a Type carrier, got %v", tv)
+	}
 }
 
 // PopLiveBinding: the run-time pop every placed or replayed undef takes —

@@ -58,11 +58,22 @@ func TestW8DispatchRematchDeclines(t *testing.T) {
 		es.RecordDispatchRematch("w", []EmitOperand{ConstOperand(0)}, 2, []int{0}, core.SrcPos{}) {
 		t.Error("a forward count outside the window must decline")
 	}
+	es.NoteRematchPrefix([]int{0}) // nothing recorded yet: no note
 	if !es.RecordDispatchRematch("w", []EmitOperand{ConstOperand(0)}, 0, []int{0}, core.SrcPos{}) {
 		t.Fatal("the first rematch record must land")
 	}
+	// The stack prefix the interpreter's report reads rides on the trap the
+	// record just made (DispatchSpec.Prefix, NUR311).
+	es.NoteRematchPrefix([]int{0})
+	if tr := es.eventBySeq(es.trapAt).trap; !tr.rematchPrefixKnown || len(tr.rematchPrefix) != 1 {
+		t.Errorf("the recorded trap carries its prefix, got %+v", tr)
+	}
 	if !es.RecordDispatchRematch("w2", []EmitOperand{ConstOperand(1)}, 0, []int{0}, core.SrcPos{}) {
 		t.Error("a second record after the latch must report owned (true), not re-record")
+	}
+	es.NoteRematchPrefix([]int{0, 1}) // the latched trap is the first word's
+	if tr := es.eventBySeq(es.trapAt).trap; tr.rematchWord != "w" || len(tr.rematchPrefix) != 1 {
+		t.Errorf("a latched record notes nothing, got %+v", tr)
 	}
 
 	// The promoted-operand rewrite reaches a rematch trap's window.

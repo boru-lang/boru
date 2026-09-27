@@ -110,6 +110,10 @@ func (es *EmitState) keptReadSeatedLive(v *core.Value) {
 		es.noteKeptDefsObserver("the read of `" + name + "`")
 		return
 	}
+	if core.IsTypeLiteral(*v) {
+		*v = core.WithPos(core.ValueCarrier(*v), *v) // a type VALUE (NUR323)
+		return
+	}
 	*v = core.WithPos(core.NewCarrier(v.Parent), *v)
 }
 

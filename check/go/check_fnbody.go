@@ -514,6 +514,12 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					genArgs[i] = g
 					continue
 				}
+				if core.IsTypeLiteral(a) {
+					// A type literal's Parent is its supertype, not its type
+					// (NUR323): core.ValueCarrier widens it to a Type carrier.
+					genArgs[i] = core.ValueCarrier(a)
+					continue
+				}
 				genArgs[i] = core.NewCarrier(a.Parent)
 			}
 			// Key the compiled unit on the GENERALISED args, matching the body

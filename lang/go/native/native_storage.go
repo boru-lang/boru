@@ -1641,10 +1641,12 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 //
 // Fixing the modality does not fix a stale bound — a wrong dynamic(T) is
 // still wrong. It stops the read from upgrading the claim.
+//
+// A stored TYPE (`{e: Integer}`) is no value of its Parent: it reads as
+// core.ValueCarrier's Type carrier, so `sub m.e 3` re-matches at run time
+// where it committed sub's Number handler over the type literal (NUR323).
 func elementReadCarrier(el Value) Value {
-	c := NewCarrier(el.Parent)
-	c.Dynamic = el.Dynamic
-	return c
+	return core.ValueCarrier(el)
 }
 
 // getIntKeyReturns narrows an INTEGER-key read over a CONCRETE list to the

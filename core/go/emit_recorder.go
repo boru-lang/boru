@@ -321,6 +321,11 @@ type EmitRecorder interface {
 	// (NUR134: a module export's no-match inside a `do` body).
 	RecordUnitTrapErr(ae *BoruError, pos SrcPos) bool
 	RecordDispatchRematchValues(word string, vals []Value, nFwd int, written []int, pos SrcPos) bool
+	// NoteRematchPrefix attaches to the rematch RecordDispatchRematchValues
+	// just recorded the window indices (top first) of the stack prefix the
+	// interpreter's no-match report reads when a written operand stops its
+	// tuple (DispatchSpec.Prefix, NUR311).
+	NoteRematchPrefix(prefix []int)
 	RecordTypedBind(spec TypedBindSpec, in, out Value, pos SrcPos) (Value, bool)
 	RecordMakeList(r *Registry, ins []Value, out Value, pos SrcPos) bool
 	RecordMakeListInner(r *Registry, ins []Value, out Value, pos SrcPos) bool
@@ -740,6 +745,7 @@ func (inactiveEmit) RecordUnitTrapErr(*BoruError, SrcPos) bool                { 
 func (inactiveEmit) RecordDispatchRematchValues(string, []Value, int, []int, SrcPos) bool {
 	return false
 }
+func (inactiveEmit) NoteRematchPrefix([]int) {}
 func (inactiveEmit) RecordTypedBind(_ TypedBindSpec, _, out Value, _ SrcPos) (Value, bool) {
 	return out, false
 }

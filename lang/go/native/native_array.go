@@ -1817,6 +1817,8 @@ func foldAccCarrier(init Value) Value {
 		out = CarrierTypedListOf(ElementCarrierOf(init))
 	case init.Parent.ConformsTo(TMap):
 		out = NewCarrier(TMap)
+	case core.IsTypeLiteral(init):
+		out = core.ValueCarrier(init) // a type VALUE seed (NUR323)
 	default:
 		out = NewCarrier(init.Parent)
 	}

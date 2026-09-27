@@ -1270,7 +1270,11 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// the accumulator carries the seed's type, the entry rides as a KeyVal.
 		if isMap && len(args) > spec.BodyPos+2 {
 			acc := args[spec.BodyPos+2]
-			return []core.Value{core.NewCarrier(acc.Parent), keyValCarrier(r, elem)}, ClosureInKeyVal, true
+			accC := core.NewCarrier(acc.Parent)
+			if core.IsTypeLiteral(acc) {
+				accC = core.ValueCarrier(acc) // a type VALUE seed (NUR323)
+			}
+			return []core.Value{accC, keyValCarrier(r, elem)}, ClosureInKeyVal, true
 		}
 		// A LIST fold's lambda declares (element, accumulator) — the
 		// interpreter's top-down assignment over the stack InvokeBody hands it

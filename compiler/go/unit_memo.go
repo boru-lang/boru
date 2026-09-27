@@ -420,6 +420,8 @@ func bindCarrier(v core.Value) core.Value {
 		return core.NewDynamicCarrier(core.TAny)
 	}
 	switch {
+	case core.IsTypeLiteral(v):
+		return core.ValueCarrier(v) // a type VALUE, no value of its Parent (NUR323)
 	case v.Parent.ConformsTo(core.TList):
 		return core.NewCarrier(core.TList)
 	case v.Parent.ConformsTo(core.TMap):

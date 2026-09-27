@@ -95,6 +95,17 @@ func FlattenAlternatives(v Value) []Value {
 // failing no_signature (the tst/radix node-rebuild walkers). Looser, never
 // tighter — a guard discharges the modality back to strict downstream.
 func JoinCarriers(a, b Value) Value {
+	// An arm that yields a type literal yields a type VALUE, which the
+	// parent arithmetic below would read as a value of the node's supertype
+	// (`if c [Integer] [5]` joined to a Number carrier, and `add` committed
+	// over the type the run held — NUR323): it joins as ValueCarrier's
+	// Type carrier. None keeps its own arm handling.
+	if IsTypeLiteral(a) {
+		a = ValueCarrier(a)
+	}
+	if IsTypeLiteral(b) {
+		b = ValueCarrier(b)
+	}
 	out := JoinCarriersInner(a, b)
 	if a.Dynamic || b.Dynamic {
 		out.Carrier = true

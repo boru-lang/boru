@@ -48,6 +48,16 @@ func (vc *vmContext) polyNoMatchRaise(r *core.Registry, pr *compiler.PolyRef, fn
 	if !ok {
 		return nil
 	}
+	// A written operand that is no concrete value at run time — a type
+	// literal, None — ends the interpreter's walk over the written operands,
+	// where the check pass's carrier did not: its report takes the ones
+	// before it, filled from the stack prefix (NUR311).
+	for i, v := range written[:min(spec.NFwd, len(written))] {
+		if !core.IsConcrete(v) {
+			written = core.AttemptedTuple(fn, append([]core.Value(nil), written[:i]...), stackTuple)
+			break
+		}
+	}
 	// sigError's two-probe cascade: the value-based reorder probe over the
 	// written tuple first, the stack-prefix tuple second (engine.go:sigError).
 	reorder := core.ReorderHintFor(pr.Word, fn, written)

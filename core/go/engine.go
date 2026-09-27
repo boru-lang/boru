@@ -506,6 +506,13 @@ func isEngineMarker(v Value) bool {
 // the runtime-rematch record to prove its operand window IS the tuple the
 // interpreter's error renders.
 func (e *Engine) rematchWritten(fn *FnDefInfo) []Value {
+	win, _ := e.rematchWrittenSplit(fn)
+	return win
+}
+
+// rematchWrittenSplit is rematchWritten with the count of its leading
+// entries written after the word (attemptedWindowSplit).
+func (e *Engine) rematchWrittenSplit(fn *FnDefInfo) ([]Value, int) {
 	var written []Value
 	for i := e.Pointer + 1; i < e.Tape.Len() && len(written) < 4; i++ {
 		v := e.Tape.At(i)
@@ -525,7 +532,7 @@ func (e *Engine) rematchWritten(fn *FnDefInfo) []Value {
 	// lanes). The Atom the bare-word rule mints carries no value ID, so a
 	// tuple that needs it declines the spec (mapTupleToWindow) and the
 	// runtime keeps its best-effort report.
-	return attemptedWindowOver(e.Tape, e.Pointer, fn, written, e.runPrefix())
+	return attemptedWindowSplit(e.Tape, e.Pointer, fn, written, e.runPrefix())
 }
 
 // runPrefix is the stack prefix beneath the pointer a no-match report
@@ -573,6 +580,9 @@ type polyNoMatchProbe struct {
 	// tuple (reorderCandidates over the stack prefix).
 	written   []Value
 	stackVals []Value
+	// nFwd counts written's leading entries written after the word
+	// (attemptedWindowSplit), PolyNoMatchSpec.NFwd.
+	nFwd int
 	// reach over-estimates how many operands ANY signature's collection could
 	// claim at this state; reachOK marks the bound trustworthy. Used to prove
 	// a WIDER-arity overload can never match at run time (it fails on operand
@@ -594,7 +604,7 @@ func (e *Engine) PolyNoMatchProbe(name string, pos SrcPos) polyNoMatchProbe {
 		return p
 	}
 	p.ok = true
-	p.written = e.rematchWritten(e.Registry.Lookup(name))
+	p.written, p.nFwd = e.rematchWrittenSplit(e.Registry.Lookup(name))
 	p.stackVals = ReorderCandidates(e.Tape.Prefix(e.Pointer))
 	p.reach, p.reachOK = e.polyReachBound()
 	return p
@@ -742,7 +752,7 @@ func (p polyNoMatchProbe) Spec(fn *FnDefInfo, window []Value) *PolyNoMatchSpec {
 			}
 		}
 	}
-	return &PolyNoMatchSpec{Written: written, StackTuple: stackTuple, NSigs: len(fn.Signatures), Pos: pos}
+	return &PolyNoMatchSpec{Written: written, NFwd: p.nFwd, StackTuple: stackTuple, NSigs: len(fn.Signatures), Pos: pos}
 }
 
 // Uncalled reports whether the probe is a fn VALUE's recovery
@@ -987,6 +997,16 @@ func (e *Engine) sigError(name string, fn *FnDefInfo, pos SrcPos) *BoruError {
 // pass's carrier-aware ones (rematchWritten), so the two derive one window —
 // and prefix the stack prefix beneath as the run holds it (runPrefix).
 func attemptedWindowOver(tape *Tape, pointer int, fn *FnDefInfo, written, prefix []Value) []Value {
+	win, _ := attemptedWindowSplit(tape, pointer, fn, written, prefix)
+	return win
+}
+
+// attemptedWindowSplit is attemptedWindowOver with the count of the window's
+// leading entries written after the word (the forward candidates, or the
+// word a /q slot captures), before the stack prefix fills it. The
+// interpreter's walk over those stops at a value that is not concrete, so a
+// run whose written operand is a type literal renders fewer (NUR311).
+func attemptedWindowSplit(tape *Tape, pointer int, fn *FnDefInfo, written, prefix []Value) ([]Value, int) {
 	if len(written) == 0 && pointer+1 < tape.Len() && fn != nil {
 		if w, err := AsWord(tape.At(pointer + 1)); err == nil && !w.ForceVal {
 			for i := range fn.Signatures {
@@ -1000,6 +1020,15 @@ func attemptedWindowOver(tape *Tape, pointer int, fn *FnDefInfo, written, prefix
 			}
 		}
 	}
+	return AttemptedTuple(fn, written, prefix), len(written)
+}
+
+// AttemptedTuple is the attempted window's tape-free rule: the operands
+// written after the word, filled from the stack prefix (top first) up to the
+// smallest overload's arity — or, when none was written, the prefix alone.
+// The VM's no-match raises rebuild the interpreter's tuple with it where a
+// written operand stops its walk (NUR311).
+func AttemptedTuple(fn *FnDefInfo, written, prefix []Value) []Value {
 	if len(written) == 0 {
 		return prefix
 	}
@@ -10545,7 +10574,16 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 				nFwd++
 			}
 		}
-		return es.RecordDispatchRematchValues(w.Name, vals, nFwd, idx, pos)
+		if !es.RecordDispatchRematchValues(w.Name, vals, nFwd, idx, pos) {
+			return false
+		}
+		// The stack prefix the interpreter's report reads when a written
+		// operand stops its tuple (a type literal at run time — NUR311):
+		// noted when every value is a window operand.
+		if prefix, ok := mapTupleToWindow(e.runPrefix(), vals); ok {
+			es.NoteRematchPrefix(prefix)
+		}
+		return true
 	}
 	// Serialise the FULL interpreter error into the trap so the compiled
 	// OpTrap raises byte-identical to the interpreter (Detail + spans +

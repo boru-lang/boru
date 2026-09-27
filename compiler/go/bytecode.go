@@ -1440,7 +1440,16 @@ type DispatchSpec struct {
 	NArgs   int
 	NFwd    int
 	Written []int
-	Pos     core.SrcPos
+	// Prefix is the window indices, top first, of the stack prefix beneath
+	// the word the interpreter's report reads, and PrefixKnown marks it
+	// recorded (every value a window operand). The check pass renders a
+	// written operand it holds as a carrier; the interpreter's walk over the
+	// written operands stops at one that is no concrete value at run time — a
+	// type literal, None — and its report then falls to this prefix
+	// (core.AttemptedTuple), which the VM rebuilds (NUR311).
+	Prefix      []int
+	PrefixKnown bool
+	Pos         core.SrcPos
 	// OnMatch, when set, is what a MATCH raises in place of the defer: the
 	// error a trap recorded under this word's OPTIMISTIC match carries
 	// (NUR264) — the interpreter evaluates the word's arguments only once it

@@ -1,10 +1,6 @@
 package lang
 
-import (
-	"errors"
-	"strings"
-	"testing"
-)
+import "testing"
 
 // TestNUR229To231OnTheMergedTree pins main's NUR229, NUR230 and NUR231
 // (recorded on main by #515's merged cover-gate pass) as they stand on the
@@ -24,17 +20,9 @@ func TestNUR229To231OnTheMergedTree(t *testing.T) {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
 	// NUR231's bail is gone: both lanes raise the interpreter's
-	// signature_error at mini. The no-match NOTES still differ (NUR311): the
-	// compiled report names the window the pass matched, the interpreter's
-	// forward collection stopped at the reach and supplied none.
-	const mini = `import "boru:minilang" end def m {e: Function} end mini m.e 'ab'`
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, mini)
-	var ec, ei *BoruError
-	if !compiled || len(gotC) != 0 || len(gotI) != 0 || firstErrLine(errC) != firstErrLine(errI) ||
-		!errors.As(errC, &ec) || !errors.As(errI, &ei) || ec.Row != ei.Row || ec.Col != ei.Col ||
-		!strings.Contains(firstErrLine(errI), "cannot call `mini`") {
-		t.Errorf("%s: compiled %v / %v, interpreter %v / %v", mini, gotC, errC, gotI, errI)
-	}
+	// signature_error at mini, notes and all — the report's tuple stops at
+	// the reach's type value as the interpreter's does (NUR311).
+	agreeOnBothLanes(t, `import "boru:minilang" end def m {e: Function} end mini m.e 'ab'`, "ERROR:cannot call `mini`")
 }
 
 // TestNUR233PromotedSplitBind pins NUR233's close: a def of a static

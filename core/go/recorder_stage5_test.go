@@ -103,6 +103,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.RecordDispatchRematchValues("w", nil, 0, nil, SrcPos{}) {
 		t.Fatal("inactive RecordDispatchRematchValues must decline")
 	}
+	e.NoteRematchPrefix([]int{0}) // a no-op
 	out := NewInteger(7)
 	if got, ok := e.RecordTypedBind(TypedBindSpec{}, Value{}, out, SrcPos{}); ok || !ValuesEqual(got, out) {
 		t.Fatal("inactive RecordTypedBind must pass out through and decline")

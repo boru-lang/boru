@@ -561,9 +561,14 @@ func positionalMatch(values []Value, sig *Signature) bool {
 		}
 		// Reject type literals (Data==nil) for concrete Map/List
 		// signatures — including the FlexMap/FlexList subtypes —
-		// unless this slot explicitly wants a type literal.
+		// unless this slot explicitly wants a type literal. Elsewhere a
+		// type literal is refused exactly where the interpreter's plan
+		// refuses it (rejectsTypeLiteral, PlanMatch and the collection
+		// kernel): a type is no value of its Parent, so the VM's poly
+		// re-match took `add` over the Integer node where the interpreter
+		// raises (NUR323).
 		isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[i]
-		if !isTypeArg && IsBareTypeNode(v) && (t.ConformsTo(TMap) || t.ConformsTo(TList)) {
+		if !isTypeArg && IsBareTypeNode(v) && (t.ConformsTo(TMap) || t.ConformsTo(TList) || rejectsTypeLiteral(v, t)) {
 			return false
 		}
 	}
