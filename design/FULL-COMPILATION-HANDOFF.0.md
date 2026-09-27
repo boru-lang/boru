@@ -15944,15 +15944,24 @@ specialised param, the fn the unit was compiled for; `CALL_USER` /
 `TAIL_CALL_USER` checks each guarded arg's identity (`core.ExactEqual`,
 what `eq` compares — the `FnDefInfo.ident` token) at entry, before any of
 the body runs, and on a failed guard applies `SpecFallback` — the fn
-itself, single-signature — through `InvokeCallbackFn`, the dispatch the
-interpreter makes; a tail call then re-dispatches as `RET` so the frame
-leaves exactly as the tail-called unit's would. Nothing has run when the
-guard decides, so there is no deoptimisation — design §6's "no
-speculation, no deopt" rule holds.
+itself, single-signature — to the call's signature args, the dispatch the
+interpreter makes: an island (`runIslandResolved`) that steps only the fn
+over the args laid out as resolved stack data (`specFallbackInputs`, so a
+fn VALUE among them is never re-applied). A break/continue the fn's body
+escapes with is the enclosing loop's, resolved as at every island seam
+(`resolveEscapedFlow`); otherwise a tail call re-dispatches as `RET` so the
+frame leaves exactly as the tail-called unit's would. (It first went through
+`InvokeCallbackFn`, whose callback sub-engine is a loop barrier: a fallback
+body's `break` raised `flow_error` where the interpreter exits the caller's
+loop — Codex review of #516.) Nothing has run when the guard decides, so
+there is no deoptimisation — design §6's "no speculation, no deopt" rule
+holds.
 
 **Admission** (`check/go/call_site_spec.go`). A named `Function` param of
-a single-signature, non-generic callee whose home is the dispatching
-registry; a constant fn arg with an identity, no captures, no generic
+a single-signature, non-generic, capture-free callee whose home is the
+dispatching registry (a capturing callee's captures ride `CALL_USER` as
+per-construction trailing slots, which one fallback fn value cannot carry —
+Codex review of #516); a constant fn arg with an identity, no captures, no generic
 spec, no macro splice, no modifier wrap, homed there too (a module's fn
 values are re-minted per import instance — the check pass's are not the
 run's; a module callee's fallback would not run where its body resolves:
@@ -15976,6 +15985,19 @@ interpreter's written tuple, NUR172's class); or a fn VALUE the body
 constructs captures the param (`ComputeFnValueCaptures` — its body is
 analysed outside the specialised window). `boru:vm`'s module compile and
 runtime stamps run with specialisation off (no retry to contain it).
+
+**The retry does not repeat an effect.** A compile pass is the program's own
+execution of what the check pass runs for real — a RunInCheckMode word, an
+imported module's body (the VM never re-imports) — so re-running it would
+reopen the duplicate-effect class (L-DUP) that removing the interpreter
+re-run closed. The first pass's output is therefore HELD
+(`lang/go/compile_effect_hold.go`, both writers in written order): a kept
+pass writes it, a retried pass drops it for the retry's own. What cannot
+be held — a counted effect (a file write, a network send: the effect
+ledger) or a stdin read (`native.StdinReads`) — makes the first pass
+unrepeatable, and a pass that needed the retry then does not compile
+(NUR236). Codex review of #516 found the repeat (`zz-emit` before a
+declining call printed `EE`).
 
 **One general fix on the way.** A `CALL_USER` / `TAIL_CALL_USER`
 instruction now carries the DISPATCHING WORD's position

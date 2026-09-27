@@ -256,6 +256,11 @@ func TestCallSiteSpecialisationGuardFallback(t *testing.T) {
 		{specInc + `def h fn [[g:Function][Integer][(g 2) add 10]] end  h inc/v`, "[13]"},
 		{specInc + `def h fn [[g:Function][Integer][(g 2) add 10]] end  def k fn [[][Integer][h inc/v]] end  k`, "[13]"},
 		{specInc + `def h fn [[g:Function][Integer][(g 2) add 10]] end  (h inc/v) mul 2`, "[26]"},
+		// every signature arg reaches the fn, each in its own position
+		{specInc + `def h fn [[g:Function n:Integer m:Integer][Integer][(g n) sub m]] end  h inc/v 10 3`, "[8]"},
+		// a break/continue the fn's body escapes with is the enclosing loop's
+		{specInc + `def h fn [[g:Function][][(g 1) drop break]] end  for 3 [h inc/v]  7`, "[7]"},
+		{specInc + `def h fn [[g:Function][][(g 1) drop continue]] end  def k fn [[][][h inc/v]] end  for 3 [k]  7`, "[7]"},
 	} {
 		a := mustNew(t)
 		prog := failSpecGuards(t, a, tc.src)
@@ -270,6 +275,26 @@ func TestCallSiteSpecialisationGuardFallback(t *testing.T) {
 	if _, err := eng.RunProgram(prog, a.NativeRegistry()); err == nil || !strings.Contains(err.Error(), "arith_error") {
 		t.Errorf("the fallback's own error must surface, got %v", err)
 	}
+	// An escaped break with no loop anywhere is the loop-less flow signal,
+	// raised (the interpreter's `break outside loop` on the compiled lane's
+	// defer), never a silent return.
+	src = specInc + `def h fn [[g:Function][][(g 1) drop break]] end  h inc/v`
+	a = mustNew(t)
+	prog = failSpecGuards(t, a, src)
+	if _, err := eng.RunProgram(prog, a.NativeRegistry()); err == nil {
+		t.Errorf("%q: a loop-less escaped break must raise", src)
+	}
+}
+
+// A capturing callee is not specialised: its captures ride CALL_USER as
+// per-construction trailing slots, which one fallback fn value cannot carry.
+// It compiles generically and answers per construction.
+func TestCallSiteSpecialisationSkipsCapturingCallee(t *testing.T) {
+	src := specInc + `def mk fn [[n:Integer][Integer][def h fn [[g:Function][Integer][(g 1) add n]] end  h inc/v]] end  (mk 2) add (mk 5)`
+	if s := specUnits(compileDisasm(t, src)); len(s) != 0 {
+		t.Errorf("a capturing callee must not specialise, got %v", s)
+	}
+	requireEngineParity(t, src, true)
 }
 
 // A call THROUGH the specialised param over an argument the callee's

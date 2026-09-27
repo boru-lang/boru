@@ -18,17 +18,15 @@ func specGuardsHold(guards []compiler.SpecGuard, args []core.Value) bool {
 	return true
 }
 
-// specFallbackFn is a specialised unit's fallback fn payload (the fn the unit
-// specialises — compiler.CompiledFn.SpecFallback).
-func specFallbackFn(fn *compiler.CompiledFn) *core.FnDefInfo {
-	fd, _ := fn.SpecFallback.Data.(core.FnDefInfo)
-	return &fd
-}
-
-// specFallbackSig is the fallback fn's one signature: the checker specialises
-// single-signature fns only, and CALL_USER's param contract has already
-// passed the args, so this is the signature the interpreter's dispatch picks.
-func specFallbackSig(fn *compiler.CompiledFn) *core.Signature {
-	sigs := specFallbackFn(fn).OwnSigs()
-	return &sigs[0]
+// specFallbackInputs lays a failed guard's signature args (sig order) out as
+// the fallback island's resolved stack: the value stack fills a signature's
+// positions top first, so param 0 goes on top. The island steps only the fn
+// itself (compiler.CompiledFn.SpecFallback) over them — never an arg, so a fn
+// VALUE among them stays the value it was, as in the frame's param slot.
+func specFallbackInputs(args []core.Value) []core.Value {
+	out := make([]core.Value, len(args))
+	for i, v := range args {
+		out[len(args)-1-i] = v
+	}
+	return out
 }

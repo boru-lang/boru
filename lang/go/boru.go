@@ -482,16 +482,31 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	// with none records. Specialisation acts on a Function-typed param, and
 	// a source that never names the type declares none: it compiles in one
 	// pass with specialisation off and pays for no snapshot.
+	//
+	// The first pass's effects are the program's (a module body imported,
+	// a RunInCheckMode word run), so a retry must not repeat them: its
+	// output is held until the pass is kept or discarded, and a pass that
+	// did what cannot be held — a file write, a network send, a stdin read —
+	// is not retried (checkPassHold). Where it needed the retry, the program
+	// does not compile: a program the first pass declined is owed the
+	// retry's recording, which only a repeat of the effect can make.
 	if a.noCallSiteSpec || !strings.Contains(src, "Function") {
 		return a.compilePass(src, values, true)
 	}
 	snap := a.registry.SnapshotForCompile()
+	hold := holdCheckPass(a.registry)
 	prog, reason, res, err := a.compilePass(src, values, false)
-	if a.registry.Check.SpecTried && (prog == nil || a.registry.Check.SpecDeclined) {
-		a.registry.RestoreForCompile(snap)
-		prog, reason, res, err = a.compilePass(src, values, true)
+	if !a.registry.Check.SpecTried || (prog != nil && !a.registry.Check.SpecDeclined) {
+		hold.release(true)
+		return prog, reason, res, err
 	}
-	return prog, reason, res, err
+	if hold.unrepeatable() {
+		hold.release(true)
+		return nil, "call-site specialisation declined after an unrepeatable check-pass effect (uncompilable)", res, nil
+	}
+	hold.release(false)
+	a.registry.RestoreForCompile(snap)
+	return a.compilePass(src, values, true)
 }
 
 // compilePass is one CompileCheck recording pass over parsed values;

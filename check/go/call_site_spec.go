@@ -56,12 +56,14 @@ const FnSpecQuota = 4
 func specialiseCallSite(r *core.Registry, es core.EmitRecorder, compileUnit func([]core.Value, string) int, fnDef core.FnDefInfo, foreign bool, name string, body []core.Value, params []core.FnParam, args, genArgs []core.Value) int {
 	// A generic fn instantiates per call already (its type bindings key the
 	// unit), a stored-handler compile generalises gradually on purpose, a
-	// multi-signature fn's runtime pick is not one fallback signature, and a
-	// fn whose home is not the dispatching registry — a module's, resolved or
-	// inline — runs in a registry whose fn values are minted per instance:
-	// the check pass's are not the run's, and a fallback applied from the
-	// caller does not run where the module's body resolves.
-	if r.Check.SpecOff || fnDef.Gen != nil || es.StoredGradualActive() || len(fnDef.OwnSigs()) != 1 || foreign {
+	// multi-signature fn's runtime pick is not one fallback signature, a
+	// capturing fn's captures are per construction (they ride CALL_USER as
+	// trailing slots, and the fallback's fn value would carry the check
+	// pass's), and a fn whose home is not the dispatching registry — a
+	// module's, resolved or inline — runs in a registry whose fn values are
+	// minted per instance: the check pass's are not the run's, and a fallback
+	// applied from the caller does not run where the module's body resolves.
+	if r.Check.SpecOff || fnDef.Gen != nil || es.StoredGradualActive() || len(fnDef.OwnSigs()) != 1 || len(fnDef.Captured) > 0 || foreign {
 		return -1
 	}
 	specArgs, specParams, specFns, suffix := specialisedArgs(r, params, args, genArgs)

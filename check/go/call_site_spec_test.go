@@ -119,7 +119,9 @@ func TestSpecialiseCallSiteAdmission(t *testing.T) {
 	multi.Signatures = []core.Signature{{}, {}}
 	generic := fd
 	generic.Gen = &core.GenSpecInfo{}
-	for name, f := range map[string]core.FnDefInfo{"multi-signature": multi, "generic": generic} {
+	capturing := fd
+	capturing.Captured = []core.CapturedBinding{{Name: "n"}}
+	for name, f := range map[string]core.FnDefInfo{"multi-signature": multi, "generic": generic, "capturing": capturing} {
 		if call(f, []core.Value{inc}) != -1 {
 			t.Errorf("%s callee: no specialisation", name)
 		}

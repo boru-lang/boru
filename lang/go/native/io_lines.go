@@ -7,6 +7,7 @@ import (
 	"reflect"
 	"strings"
 	"sync"
+	"sync/atomic"
 
 	core "github.com/boru-lang/boru/core/go"
 )
@@ -81,6 +82,23 @@ type stdinLines struct {
 	mu  sync.Mutex
 	src io.Reader     // the r.Input this buffer was built over
 	buf *bufio.Reader // the one reader both read-line and read use
+	// reads counts the reads served (StdinReads): consuming stdin cannot be
+	// repeated, so a caller that would re-run work must know one happened.
+	reads atomic.Uint64
+}
+
+// StdinReads reports how many stdin reads the registry's shared reader has
+// served — 0 for a registry with no holder. lang's CompileCheck reads it
+// across a compile pass: a pass that consumed input cannot be re-run, since a
+// second run would read what comes AFTER the input the first one took. Only a
+// read through the shared holder counts, which every stdin word makes; a
+// registry assembled without the standard setup reads unshared and uncounted.
+func StdinReads(r *Registry) uint64 {
+	holder, _, _ := core.Cap[*stdinLines](r, CapStdinLines)
+	if holder == nil {
+		return 0
+	}
+	return holder.reads.Load()
 }
 
 // installStdinLines puts the shared-reader holder in its slot. Called once
@@ -168,6 +186,7 @@ func (h *stdinLines) reader(src io.Reader) *bufio.Reader {
 
 // bufLocked is reader's body without the locking; the caller holds h.mu.
 func (h *stdinLines) bufLocked(src io.Reader) *bufio.Reader {
+	h.reads.Add(1)
 	if h.buf == nil || !sameReader(h.src, src) {
 		h.src = src
 		h.buf = bufio.NewReader(src)
