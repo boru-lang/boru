@@ -11,6 +11,9 @@
 # shards in 95–165 s of test time, so nine is what the three-minute
 # ceiling needs with the job's setup, not a preference). Rebalance when
 # one shard drifts past the others by more than a minute.
+# TestRealProgramsRun (2026-09-27) runs the repo's own suites on both lanes
+# in subprocesses, about 75 s on four cores; shard 1 had the most headroom
+# (83 s on CI for #517's head).
 1	TestDiagnosticSurfaceParity
 1	TestPropertyDifferential
 1	TestCompiledCombinationParity
@@ -84,3 +87,4 @@
 9	TestGeneratedSweep
 9	TestSweepMiscompilePinsTheDivergence
 1	TestGenericDispatchBench
+1	TestRealProgramsRun
