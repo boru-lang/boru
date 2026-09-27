@@ -15870,3 +15870,42 @@ shards pass).
 `9 do (mk)` over `quote [5]` moved to the compiling list); lang/go/test
 `TestStampDynEnvLateArmDrift` / `TestStampDynEnvDriftParity`; compiler
 `dyn_body_one_test.go`; eng `TestCheckDynBodyOne`.
+
+## The merged cover-gate pass — main's full test and gate, the 131 uncovered statements, a Go panic (2026-09-27)
+
+**The run.** Every `scripts/ci-steps.sh` step, one at a time, then the
+merged ADR-008 gate (`make cover-gate`), on main at cd188a2. Eleven of the
+CI steps pass (the whole langspec corpus among them). `parser-parity`
+failed only because the local run skipped the `npm ci` of core/ts and
+parser/ts that CI's setup action performs; with them installed every leg
+passes (`test-ts-parser` at 100%, the package smoke, `parser-crossdiff`
+IDENTICAL over 1765 rows). The merged gate stood at 99.8%: 131 statements
+uncovered (compiler 77, eng 24, lang 17, check 9, basic 4) and one stale
+`//covergate:allow` (compiler/go/emit.go, `trailingApply`). GATE_STATUS.md
+was stale and is regenerated.
+
+**The statements.** Four passes, one per module group, each verified by
+the touched packages' own suites run with `-coverpkg` over the files
+concerned (never by re-gating), and cross-checked block by block against
+main's merged profile: every target block is covered or removed, no
+previously covered block lost its tests, and every block still uncovered in
+the touched files sits on a proof-carrying pragma. Dead arms removed
+(provably unreachable, behaviour-neutral): `RecordArgsProjection`'s lookup
+miss (emit.go), the shortfall fill's `len(positions) >= n` break and the
+nil-type skip (check_recovery.go), `method_shape`'s def-miss lookup, the
+`dynApplyEnter` probe and the placeholder invoker (vm.go). No pragma was
+added.
+
+**Divergences fixed on the way** (all present on main at cd188a2):
+NUR225 (a Go panic out of `RunCompiled` — the scalar fold over a window
+shorter than the assumed signature; the fold now declines a window that
+is not the signature's arity), NUR226 (a split-bound name's branch join,
+silent), NUR227 (the macro fn dispatch's Function-family lead and a
+capturing parser's empty return), NUR228 (two `case` scrutinee
+miscompiles, now loud declines). Found and recorded, not fixed: NUR229
+(a `case` clause body's def, silent), NUR230, NUR231, NUR232, NUR233, and
+NUR224's message-order sibling.
+
+**Ceilings.** None moves: lang `compileDefectCeiling` 301 and
+`bailDefectCeiling` 38, the compile-failure site census 91, the aritygate
+pins.
