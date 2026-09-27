@@ -472,7 +472,8 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 		return nil, "parse error", CheckResult{}, err
 	}
 	// A call-site specialisation (check's specialiseCallSite) is only ever a
-	// faster path. A pass that tried one and did not produce a program is
+	// faster path. A pass that tried one and did not produce a program — or
+	// whose specialised analysis declined one (CheckState.SpecDeclined) — is
 	// re-run once without them, from the registry as it was before the
 	// first pass (the check pass leaves real side effects — defs, minted
 	// types, loaded modules — that the program's replay base would
@@ -486,7 +487,7 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	}
 	snap := a.registry.SnapshotForCompile()
 	prog, reason, res, err := a.compilePass(src, values, false)
-	if prog == nil && a.registry.Check.SpecTried {
+	if a.registry.Check.SpecTried && (prog == nil || a.registry.Check.SpecDeclined) {
 		a.registry.RestoreForCompile(snap)
 		prog, reason, res, err = a.compilePass(src, values, true)
 	}

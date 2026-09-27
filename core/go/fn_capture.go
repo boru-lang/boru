@@ -370,7 +370,8 @@ func ComputeCaptures(r *Registry, sig *FnSig) []CapturedBinding {
 // specialiseCallSite, CheckState.SpecParamNames): a fn value's body is
 // analysed — and its calls through the capture compiled — outside the
 // specialised analysis, where the refusal check on a call through the param
-// cannot see them. The retry compiles the call site generically. A code
+// cannot see them (CheckState.SpecDeclined — the retry compiles the call
+// site generically). A code
 // body's closure (each, fold, …) is analysed inside the specialised analysis
 // and takes plain ComputeCaptures. The decline is a no-op outside a
 // specialised analysis.
@@ -378,7 +379,7 @@ func ComputeFnValueCaptures(r *Registry, sig *FnSig) []CapturedBinding {
 	out := ComputeCaptures(r, sig)
 	for _, cb := range out {
 		if r.Check.SpecParamNames[cb.Name] {
-			r.analysisRecorder().MarkUncompilable("a fn constructed in a call-site specialised body captures the specialised param `" + cb.Name + "`")
+			r.Check.SpecDeclined = true
 		}
 	}
 	return out

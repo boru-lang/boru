@@ -353,7 +353,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		call := callSite{word: caller.Check.CurCallWord, pos: caller.Check.CurCallPos}
 		checkRecordShapeArgs(r, nameCopy, paramPatterns, args)
 		if r.Check.SpecParamNames[call.word] && specParamCallMayRefuse(sigParams, args) {
-			r.Check.Recorder().MarkUncompilable("fn " + nameCopy + ": a call through a call-site specialised param over an argument its contract may refuse at run time")
+			r.Check.SpecDeclined = true
 		}
 		// Generic fns (Phase 5): infer the parameter bindings from the
 		// call's arg carriers and install them around the body
@@ -579,7 +579,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					r.Check.SpecKeySuffix = keySuffix
 					stkGen := AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, unitArgs, capturesCopy, declaredReturns, fnDef.Anonymous)
 					if keySuffix != "" && !specResidualMeetsReturns(stkGen, compileReturns) {
-						es.MarkUncompilable("fn " + nameCopy + ": a call-site specialised body's residual misses its declared returns")
+						r.Check.SpecDeclined = true
 					}
 					finish(stkGen)
 				}

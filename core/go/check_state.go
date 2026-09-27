@@ -153,6 +153,12 @@ type CheckState struct {
 	// to it. Both reset by Begin; a driver sets SpecOff after it.
 	SpecOff   bool
 	SpecTried bool
+	// SpecDeclined records that the pass's specialised analysis found a
+	// shape a specialisation must not compile (a residual missing the
+	// declared returns, a call through the param its contract may refuse, a
+	// fn value capturing the param). It is not a compile failure of the
+	// program: CompileCheck discards the pass and re-runs it with SpecOff.
+	SpecDeclined bool
 
 	// SpecParamNames are the constant-fn params a call-site specialised
 	// body analysis has bound (check's runFnBodyOnce), live for that
@@ -1120,6 +1126,7 @@ func (c *CheckState) Begin() func() {
 	c.SpecKeySuffix = ""
 	c.SpecOff = false
 	c.SpecTried = false
+	c.SpecDeclined = false
 	c.SpecParamNames = nil
 	c.FnBodyChecked = nil
 	c.PendingFnBodies = nil
