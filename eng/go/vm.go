@@ -3767,6 +3767,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				args[i] = core.StripAscribed(stack[len(stack)-1-i])
 			}
 			stack = stack[:len(stack)-n]
+			// An optimistic bake's no-match arm reads the operands after the
+			// handler, whose body runs may reuse the scratch buffer: keep a
+			// copy (SigRef.Split, NUR263).
+			var splitArgs []core.Value
+			if s.Split != nil {
+				splitArgs = append([]core.Value(nil), args...)
+			}
 			// A GUARDED native call (recovered single-overload dispatch the checker
 			// could not statically commit): re-check the concrete args against the
 			// committed sig — dispatch on a match (== the interpreter's sole-overload
@@ -3789,6 +3796,11 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				results, err = vc.hostedSpliceRun(curReg, results)
 			}
 			if err != nil {
+				if splitArgs != nil {
+					if raise := nativeSplitRaise(curReg, s.Word, s.Split, splitArgs, curDebug, pc); raise != nil {
+						return nil, raise
+					}
+				}
 				return nil, stampAt(err, curDebug, pc, curReg)
 			}
 			// Belt-and-braces: a handler that returns tape tokens (to

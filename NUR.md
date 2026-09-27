@@ -185,7 +185,7 @@ keep the two in sync in the same commit.
 | [NUR260](#nur260) | FIXED 2026-09-25 (numbered NUR210 until the merge of main's #512, where main's NUR210 kept the number; the reach group's survivor — the handoff log's entry of that date): A module fn returning a NAMED fn value, read through its reach group with a value beneath — `import module [def ff fn [[][Function][inc/v]] def inc fn [[n:Integer][Integer][n add 1]] export "M" {ff: ff/v}] end 5 M.ff` — is 6 on the interpreter (the reach group `( M dot ff )` never parks, its collapse re-steps the lone survivor, a NAMED fn at the pointer, and a name always calls: ADR-011) and `[5 fn inc(Integer)]` on the compiled lane, which seats the returned value as data; `M.ff 5` the same. The main-registry twin `5 ff` parks on both lanes, and so does `5 (M.ff)`. Present on main; found closing NUR191. Fence: `TestModuleFnNamedValueThroughReachPending` | probing NUR191's neighbours, 2026-09-25 |
 | [NUR261](#nur261) | FIXED 2026-09-25 (numbered NUR211 until the merge of main's #512, where main's NUR211 kept the number; the named value's no-match on the seam — the handoff log's entry of that date): the token seam's unmatched-lambda arm (`unmatchedLambdaBody`) raises the word's `uncalled_function` for a closure that carries a def's name (`ClosurePayload.RetName`) and keeps the anonymous value's data rule otherwise; `0 fold h/v [1 2]` raises at step 1 on both lanes. The original text: A NAMED fn value driving `fold` whose signature stops matching PAST THE FIRST STEP is parked as data on the compiled lane where the interpreter raises `uncalled_function`: `def h fn [[a:Integer b:Integer] [List] [[a b]]] end 0 fold h/v [1 2]` — step 0 answers `[0 1]`, so step 1 offers a List accumulator to `a:Integer` and no signature matches — is `fold: step 1: [boru/uncalled_function]: call to 'h' matched no signature` interpreted and `[fn (Integer, Integer)]` compiled (the value itself, as the closure-body data fork leaves an unmatched TYPED LAMBDA — NUR155's rule for an anonymous value, applied to a NAMED one). A no-match at step 0 raises on both lanes; `scan` over a no-match parks on both lanes. Pre-existing at the merge base (measured 2026-09-25 on `wt-head`); silent — a value where the interpreter raises | closing NUR166, 2026-09-25 |
 | [NUR262](#nur262) | FIXED 2026-09-25 (numbered NUR212 until the merge of main's #512, where main's NUR212 kept the number; the marker is no argument — the handoff log's entry of that date): the forward claim probe (`ForwardClaimProbeOn`) answers no claim for a dispatch-modifier marker, which fell to its literal arm where an `Any` parameter matched it; `def g M.up1/v end g 1` is `UP` on both lanes. The original text: A `/v`-marked module member read whose export takes an `Any` FIRST parameter cannot be collected as `def`'s forward argument: `import module [ def up1 fn [[value:Any] [String] ['UP']] export "M" {up1: up1/v} ] end def g M.up1/v` raises `signature_error: cannot call def — no signature matches the arguments … none were supplied` on both lanes, where `def g M.up2/v` (an `Integer` first parameter), `def g (M.up1/v)`, `def g up1/v` (no module) and the bare `M.up1/v` (data) all bind. The parser emits the reach followed by a dispatch-modifier marker (`Word/__DM`, Val); inside `def`'s forward window the reach's fn value reaches the pointer ahead of the marker and, with an `Any` parameter, the window's plan collects nothing. Interpreter-side (both lanes agree), loud | closing NUR163, 2026-09-25 |
-| [NUR263](#nur263) | OPEN (recorded 2026-09-26, probing NUR242's `fold`; proposed verdict: resolve by fix): a code-body word's closure bake over a declared-Any operand runs the overload the check pass picked, and a run-time value that overload refuses raises a signature_error without the interpreter's report. `def mk fn [[][Any]["s"]] end 0 fold [add] (mk)` is `fold`'s no-match on both lanes; compiled it carries none of the notes (the attempted window, the candidates) or the help. Loud; a List or Map result answers on both lanes | probing NUR242's `fold`, 2026-09-26 |
+| [NUR263](#nur263) | FIXED 2026-09-27 (the handoff log's entry of that date): an optimistic dispatch's exact layout rides to its committed bake (core `optimisticLayout`, `SigRef.Split`), and on the handler's refusal the VM lays the operands out as the interpreter's tape — the body slot as its token list — and raises the plan's report; every exact position agrees, notes and help included. An inexact layout keeps the bare refusal: NUR283. Was: a code-body word's closure bake over a declared-Any operand runs the overload the check pass picked, and a run-time value that overload refuses raises a signature_error without the interpreter's report. `def mk fn [[][Any]["s"]] end 0 fold [add] (mk)` is `fold`'s no-match on both lanes; compiled it carries none of the notes (the attempted window, the candidates) or the help. Loud; a List or Map result answers on both lanes | probing NUR242's `fold`, 2026-09-26 |
 | [NUR264](#nur264) | FIXED 2026-09-27 (the handoff log's entry of that date): a trap recorded while an optimistically matched word's arguments are evaluated is that word's RUNTIME REMATCH (core `CheckState.OptimisticOuter`, compiler `recordGuardedTrap`) — its no-match raises the outer word's error, a match the recorded inner one (`DispatchSpec.OnMatch`); all seven witnesses agree, message, notes and caret. Was: an error inside a matched signature's data list, which the check pass auto-evaluates under an OPTIMISTIC static match over a declared-Any operand, is recorded as a static trap that raises unconditionally — the run evaluates the list only when the outer dispatch matches. `def mk fn [[][Any][5]] end each (mk) [dup]` is `each`'s no-match interpreted and `dup`'s compiled; `filter (mk) [gt 1]` over 5 is `filter`'s and `gt`'s. Loud, the wrong error; over a List both lanes raise the inner one | probing NUR242's `fold`, 2026-09-26 |
 | [NUR265](#nur265) | FIXED 2026-09-26 (the handler runs over its arity — the handoff log's entry of that date): the check pass PANICKED — index out of range, recovered as an internal engine error — on `def mk fn [[][Any][5]] end filter (mk) [gt 1]`: the auto-evaluated `[gt 1]` recovered `gt` over one operand, and the const fold ran `gt`'s handler over that short window, which indexes its second argument. A compile-time handler run declines a window shorter than its signature (`concreteHandlerEval`) | probing NUR242's `fold`, 2026-09-26 |
 | [NUR266](#nur266) | SUPERSEDED at the merge of main's #514 (2026-09-26 — the handoff log's entry of that date) by main's region rule: a computed run that may leave a callable seats only as the residual's last entries, so every witness declines loudly (`TestNUR266RunLeadStopsAtTheStatementEnd`). The branch's statement-boundary seat (each read's position kept) answered the anonymous lambda's rows but not a NAMED 0-arg fn value, which fires across the `end` (`… [g/v] … do (mk) end x` is [7 5] interpreted and was [fn g 5] on the branch, silent). Was: a computed `do` body's run whose last value is a fn was APPLIED to a def-bound read written after the statement's `end` — `def mk fn [[][List][quote [([n:Integer] => [n add 1])]]] end def x 5 end do (mk) end x` answered 6 compiled for the interpreter's `[fn (Integer) 5]`, silent | probing NUR210, 2026-09-26 |
@@ -205,6 +205,7 @@ keep the two in sync in the same commit.
 | [NUR280](#nur280) | FIXED 2026-09-26 (numbered NUR218 until the merge of main's #514, where main's NUR218 kept the number; a member reference is its word twin — the handoff log's entry of that date): the peek that consumes a group's `/v` marker DELIVERS the value — pushed and stepped past, unquoted, noted as a value read — as `stepWordVal` delivers `inc/v`; the check pass reads a quoted fn-possible binding as the word, a code body's `/v` member takes no replay, and a DYNAMIC branch arm (a flex member, bare or `/v`) is landed on the computed-arm merge as NUR159 lands a named one (`if true m.h [2]` compiled to the member for the interpreter's 1, pre-existing). Every shape answers what the word twin answers, for a map, a flex and a module member, on both lanes; a body's `[m.f/v]` declines loudly where it compiled to the applied value. The original text: A `/v`-quoted MEMBER read is not the value its word twin is: inside a paren, as a def's value, or as a code body's result the quote rides on — `each (m.f/v) [1 2 3]` is `[fn fn fn]` interpreted and `[2 3 4]` compiled (`each (inc/v) [1 2 3]` is `[2 3 4]` on both), `fold (m.f/v) …`, `if true (m.f/v) [2]` and `(m.f/v 5)` the same way; `def g (m.f/v) end g 4` is 5 interpreted and `[fn 4]` compiled, `[1 2 3] each [m.f/v]` `[fn fn fn]` interpreted and `[2 3 4]` compiled. Silent both ways, pre-existing (measured on the committed head, 2026-09-26) | closing NUR078, 2026-09-26 |
 | [NUR281](#nur281) | FIXED 2026-09-27 (the handoff log's entry of that date): when the kept-defs latch arms at the program level the pass generalises root value bindings (compiler generaliseRootValues, the speculative undef's transition), so the map literal's fold stands aside and the read reaches the latch, which declines. Was: A MAP literal's value read after a computed keep-defs body at the ROOT bakes the pre-body binding: `def x 99 end def mk fn [[][List][quote [def x 5 1]]] end [1 2] each (mk) end {a: x}` is the interpreter's `[[1 1] {a:5}]` and the compiled lane's `[[1 1] {a:99}]`, silent — main's kept-defs latch declines the list twin `[x]` and the same map read inside a fn body, but the root map literal's value read never reaches it. Present on main at cd188a2 (#514) and on the branch before the merge | the merge of main's #514, 2026-09-26 |
 | [NUR282](#nur282) | OPEN, three shapes FIXED 2026-09-27 (the handoff log's entries of that date): a run of zero-argument anonymous lambdas is no callable region; a run that may leave a callable compiles under the plain-run check (NUR213); and a read the recorder seats LIVE passes the kept-defs latch as a carrier (the root's reads after a root computed body, a unit's own defs after one in the unit), so NUR203's and NUR210's rebinding witnesses compile with the interpreter's answers again. Open: a run holding an arg-taking lambda (the plain check defers where the interpreter parks or applies it), the wrong-count single-value seat, a parameter or a fn the body may rebind, and `j j`. Recorded 2026-09-26 at the merge of main's #514 | the merge of main's #514, 2026-09-26 |
+| [NUR283](#nur283) | OPEN (recorded 2026-09-27, closing NUR263; proposed verdict: resolve by fix): an optimistic closure bake whose layout is not exact — a value beneath its operands, or a token after them — raises the handler's bare signature_error where the interpreter raises the word's report. `def mk fn [[][Any][5]] end 1 2 fold [add] (mk)`, `… 0 scan [add] (mk)` and `… 0 fold [add] (mk) drop` carry no notes compiled. Loud: the same code, head and caret | closing NUR263, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -9620,8 +9621,9 @@ def Box class {data: Any} end def b (make Box {data: "s"}) end 0 fold [add] b.da
 
 ## NUR263 — a code-body word's closure bake over a declared-Any operand raises without the interpreter's report {#nur263}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** probing NUR242's `fold` program.
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date; the
+inexact layouts are NUR283) · **Recorded:** 2026-09-26 · **Surfaced by:**
+probing NUR242's `fold` program.
 
 **Rule:** the compiled lane's diagnostics are the interpreter's (the
 diagnostic-parity gate); a raise carries the same notes and help.
@@ -9649,6 +9651,34 @@ the backstop's poly, whose no-match now plans the layout; the declared-Any
 fn result does not. A fix records the backstop's poly for a closure bake
 over a declared-Any operand at a non-body slot, or raises the dispatch's
 report at the baked call's refusal.
+
+**The fix (2026-09-27): the report at the baked call's refusal.** The
+backstop's poly was not an option — routing these words to the dyn-body seat
+was measured and rejected when NUR165 made the handler raise
+signature_error (it arms DynEnv program-wide). So the bake stays, and the
+dispatch's exact layout rides to it. `execMatch` publishes the layout of an
+optimistic match for its own record (core `optimisticLayout`, over
+`CheckState.CurLayout`, NUR242's channel): after `rearrangeForForward`
+signature position i sits i+1 beneath the word, the written count is the
+rearrangement's record (NUR264's), and exactness is `exactLayout`'s — the
+tape's own values, a boundary on both sides, a plain word, neither
+tape-only report layer. `RecordClosureCall` attaches it to the committed
+call for a token-list body with no extra hook slot (`SigRef.Split`: the
+count, the body's slot and its token list), and the call takes its own
+SigRef. When the handler refuses, the VM puts the token list back in the
+closure's slot, lays the operands out as the interpreter's tape and plans
+them (`nativeSplitRaise`, sharing `splitNoMatch` with NUR242's poly arm):
+no signature, and it raises the interpreter's report; a plan that finds one
+leaves the handler's error, which the interpreter would meet too. The
+operands are copied before the handler runs, since the body's own calls
+reuse the scratch buffer. The recorded row and five more exact positions
+(grouped, in a list literal, def-bound, all written, stack-led) agree
+byte for byte; the List and Map results still fold. A value beneath the
+operands, or a token after them, is not an exact layout, and keeps the bare
+refusal — NUR283. Pinned by lang `TestNUR263CommittedBakeRaisesTheReport`,
+eng `TestNativeSplitRaiseIsTheInterpretersPlan`, core
+`TestOptimisticLayoutIsExactOrNothing` and
+`TestExecMatchPublishesTheOptimisticRecords`.
 
 ## NUR264 — a trap recorded under an assumed signature raises before the outer dispatch's no-match {#nur264}
 
@@ -15263,4 +15293,37 @@ consumed through its live lookup, never folded into a literal, may pass the
 latch (the unit's own def, a root bare read). A single-value seat whose
 wrong count the interpreter answers with its own error can raise that error
 instead of deferring.
+
+## NUR283 — an optimistic closure bake with an inexact layout raises without the interpreter's report {#nur283}
+
+**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
+2026-09-27 · **Surfaced by:** closing NUR263.
+
+**Rule:** the compiled lane's diagnostics are the interpreter's; a raise
+carries the same notes and help.
+
+**Divergence** (measured on the NUR263 tree):
+
+```
+def mk fn [[][Any][5]] end 1 2 fold [add] (mk)
+  interp    signature_error: cannot call `fold` — … = note: the arguments were [word(add)] (a List) and 5 (an Integer) … (the candidates, the help)
+  compiled  signature_error: cannot call `fold` — no signature matches the arguments   (no notes, no help)
+def mk fn [[][Any][5]] end 0 scan [add] (mk)            the same pair, for scan
+def mk fn [[][Any][5]] end 0 fold [add] (mk) drop       the same pair
+```
+
+**Mechanism.** NUR263's close raises the report by planning the operands as
+the interpreter's tape, which it can only do when that tape is exactly
+[stack operands, word, written operands] between two boundaries (NUR242's
+exactness). A value the dispatch did not take beneath its operands, or a
+token after them, is on the interpreter's tape and not in the call's
+operands, so no layout is published and the committed handler's bare
+refusal stands. The report's head, code and caret agree; its notes do not.
+
+**What a fix needs.** The plan must see what the interpreter's plan could
+reach: the unevaluated tokens after the written operands up to the next
+boundary (they are source tokens on both lanes at the dispatch, so they
+can ride as constants), and a proof that nothing beneath the operands is
+reachable by any overload's stack collection — or those values, which the
+VM stack does not hold in tape order in general.
 

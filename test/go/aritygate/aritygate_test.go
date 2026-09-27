@@ -127,11 +127,19 @@ var pinnedAritySites = map[string]int{
 	// a modifier overrides the forward limit the plan reads — the token's
 	// syntax, not a function's parameter count.
 	"core/go/dispatch_layout.go": 1,
-	"core/go/collect_plan.go":    8, // 5 -> 8 (NUR228): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
-	"core/go/signature.go":       12,
-	"core/go/match.go":           1,
-	"core/go/fnsig.go":           3,
-	"core/go/word_extend.go":     6,
+	// NUR264/NUR263 (2026-09-27): an optimistic dispatch's window and layout
+	// are published only when the match's positions cover its operands
+	// (`len(indices) != len(match.Args)`, an empty match) and, for the
+	// layout, for a PLAIN dispatching word (`w.ArgCount != -1`, the `/N`
+	// modifier's syntax, as NUR242's layout) — reading the window the
+	// matcher's own rule collected, never deciding what a fn does by its
+	// count.
+	"core/go/optimistic_match.go": 3,
+	"core/go/collect_plan.go":     8, // 5 -> 8 (NUR228): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
+	"core/go/signature.go":        12,
+	"core/go/match.go":            1,
+	"core/go/fnsig.go":            3,
+	"core/go/word_extend.go":      6,
 	// 4 -> 2 (2026-09-25, NUR099 closed): PredicateInputType lost the
 	// parameter-COUNT route (`!info.Predicate && len(sig.Params) != 1`) —
 	// ADR-016's arity-keyed exception, a fn body read as a membership test

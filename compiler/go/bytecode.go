@@ -1139,6 +1139,25 @@ type SigRef struct {
 	// or modifier) — a plain run is data on both lanes wherever it lands —
 	// and otherwise defers loudly at this call (vm:dyn-body-plain).
 	DynBodyPlain bool
+	// Split, when non-nil, marks the committed CALL_NATIVE of a code-body
+	// word the pass matched OPTIMISTICALLY — a declared-Any collection at a
+	// Map slot — with the dispatch's exact operand layout (NUR263). The
+	// handler is robust to the sibling collection, but a live value no
+	// overload takes makes it refuse; the interpreter raises the word's
+	// signature_error there, report and all. On a handler error the VM lays
+	// the operands out as the interpreter's tape (the body slot as its token
+	// list) and plans them: no signature, and it raises that report.
+	Split *NativeSplit
+}
+
+// NativeSplit is SigRef.Split: how many of the call's operands, in
+// signature order from position 0, were written after the word, and the
+// body operand the program passes as a compiled closure — its signature
+// position and the token list the interpreter's tape holds there.
+type NativeSplit struct {
+	NFwd   int
+	BodyAt int
+	Body   core.Value
 }
 
 // TypeRef names one type operand: the canonical type ID (resolved

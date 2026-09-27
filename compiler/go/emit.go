@@ -316,6 +316,7 @@ type emitCall struct {
 	polyReg           *core.Registry        // the sub-registry to re-match a module poly word in (nil = main registry)
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)
 	polySplit         *PolySplit            // the dispatch's exact operand layout, for the poly's runtime no-match arm (PolyRef.Split, NUR242)
+	nativeSplit       *NativeSplit          // an optimistic closure bake's exact operand layout, for the committed call's no-match arm (SigRef.Split, NUR263)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
 	dynApply          int                   // >0: apply the TOP operand (a runtime fn value) to the `dynApply` trailing args below it (OpCallDynTrailTop) — a paren-bounded trailing fn-value apply recorded as an EVENT so it seats like any computed result
 	dynApplyUnquote   bool                  // the dynApply event came through the `apply` WORD (a consumed pendingApply): lower to OpCallDynApplyTop, which unquotes like applyHandler (Stage M2a)
@@ -9025,6 +9026,15 @@ func (es *EmitState) RecordTrap(code, detail, word, hint string, pos core.SrcPos
 	return true
 }
 
+// layoutFor is the bound registry's published dispatch layout for args
+// (core CheckState.LayoutFor); nil before a registry is bound.
+func (es *EmitState) layoutFor(args []core.Value) *core.DispatchLayout {
+	if es.reg == nil {
+		return nil
+	}
+	return es.reg.Check.LayoutFor(args)
+}
+
 // optimisticOuter is the dispatch the pass matched OPTIMISTICALLY that a
 // top-level trap is recorded under (core CheckState.OptimisticOuter,
 // NUR264), or nil.
@@ -13631,7 +13641,16 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 		ops[i] = op
 	}
 	es.SiteCounts[SiteMono]++
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos}})
+	call := emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos}
+	// An optimistic match's exact layout (core optimisticLayout): the
+	// committed handler refuses a live value no overload takes, and the
+	// call then raises the interpreter's report over the laid-out tape,
+	// the body slot as the token list it holds there (NUR263). A lambda
+	// body or an extra hook slot keeps the handler's own refusal.
+	if l := es.layoutFor(args); l != nil && len(extraOps) == 0 && core.IsConcrete(args[bodyPos]) && args[bodyPos].Parent.ConformsTo(core.TList) {
+		call.nativeSplit = &NativeSplit{NFwd: l.NFwd, BodyAt: bodyPos, Body: args[bodyPos]}
+	}
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	// A fallible multi-value catch body (the ReturnsFn latched it): the
 	// runtime count is N on no-raise but 1 on the caught path, so the
 	// result region is VARIADIC — the residual absorbs it; a fixed-arity
@@ -15931,17 +15950,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		if dynOp == OpCallDynMixedFromMark {
 			arg = 0 // the mark is the boundary; the op takes no count
 		}
-		// A leading apply over a root def READ is the interpreter's word
-		// dispatch of the binding (NUR275): the op carries the binding's name
-		// and raises at the read's token — its no-match and the entered
-		// frame's contract name the binding, as installFnDef renames the
-		// value to it — where it named the value's own fn and its def site.
-		if dynOp == OpCallDynamic && len(residual) > 0 {
-			if r, read := rootResidualReads[residual[0].ID]; read && len(r.reads) > 0 && r.reads[0].Row > 0 {
-				lw.seatDynApplyName(DynApplyHead{Name: r.name, Pos: r.reads[0], NWritten: len(residual) - 1, Leading: true})
-				dynOpPos = r.reads[0]
-			}
-		}
+		dynOpPos = lw.rootLeadHead(dynOp, residual, rootResidualReads, dynOpPos)
 		lw.emit(dynOp, arg, dynOpPos)
 		lw.sealLandingSkip(dynOp, ops)
 	}
@@ -16176,6 +16185,24 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	stampLandingRet(lw.p.LandingWords, len(lw.p.Code))
 	stampRootDeopts(lw.p, es.rootBody)
 	return lw.p, "", true
+}
+
+// rootLeadHead seats a named head at the root's leading apply when its lead
+// is a root def READ — the interpreter's word dispatch of the binding
+// (NUR275): the op carries the binding's name and raises at the read's
+// token, its no-match and the entered frame's contract naming the binding
+// as installFnDef renames the value to it, where it named the value's own
+// fn and its def site. It returns the op's position: the read's, or pos.
+func (lw *lowerer) rootLeadHead(dynOp Opcode, residual []core.Value, reads map[string]rootWordRead, pos core.SrcPos) core.SrcPos {
+	if dynOp != OpCallDynamic || len(residual) == 0 {
+		return pos
+	}
+	r, read := reads[residual[0].ID]
+	if !read || len(r.reads) == 0 || r.reads[0].Row == 0 {
+		return pos
+	}
+	lw.seatDynApplyName(DynApplyHead{Name: r.name, Pos: r.reads[0], NWritten: len(residual) - 1, Leading: true})
+	return r.reads[0]
 }
 
 // planRootWordReads plans the program root's gradual def reads (NUR207,

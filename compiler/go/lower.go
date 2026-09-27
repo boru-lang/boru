@@ -3713,13 +3713,13 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		pi := len(lw.p.PolyRefs)
 		lw.p.PolyRefs = append(lw.p.PolyRefs, PolyRef{Word: c.word, Arity: n, NOut: c.nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk})
 		lw.emit(OpCallNativePoly, pi, c.pos)
-	} else if c.hostSplice || dynOne || plainChk {
+	} else if c.hostSplice || dynOne || plainChk || c.nativeSplit != nil {
 		// A hosted splice (a computed `for` body): its own SigRef, never
 		// shared with a plain call of the same signature — the flag is the
 		// call site's, and the VM runs the handler's tokens on its island.
-		// A runtime-checked single value (dynOne) takes its own SigRef for
-		// the same reason.
-		lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk})
+		// A runtime-checked single value (dynOne) and an optimistic bake's
+		// layout (nativeSplit) take their own SigRef for the same reason.
+		lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit})
 		lw.emit(OpCallNative, len(lw.p.Sigs)-1, c.pos)
 	} else {
 		si, ok := lw.sigIdx[c.sig]

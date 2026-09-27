@@ -3440,6 +3440,20 @@ func (e *Engine) recordRuntimeDispatch(match *MatchResult, results []Value) {
 }
 
 // execMatch executes a matched signature, splicing args and results.
+// sortedPositions returns a copy of a dispatch's tape positions in
+// ascending order — execMatch's splice order. An insertion sort: a
+// dispatch has few operands.
+func sortedPositions(indices []int) []int {
+	out := make([]int, len(indices))
+	copy(out, indices)
+	for i := 1; i < len(out); i++ {
+		for j := i; j > 0 && out[j] < out[j-1]; j-- {
+			out[j], out[j-1] = out[j-1], out[j]
+		}
+	}
+	return out
+}
+
 func (e *Engine) execMatch(match *MatchResult) error {
 	// A dispatch commit may move a predicate's basis: forget the memoised
 	// verdicts (RunPredicate, NUR102).
@@ -3462,13 +3476,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		indices = e.ResolvedIndicesBefore(n)
 	}
 	// Sort indices ascending for splice operations.
-	sortedIndices := make([]int, len(indices))
-	copy(sortedIndices, indices)
-	for i := 1; i < len(sortedIndices); i++ {
-		for j := i; j > 0 && sortedIndices[j] < sortedIndices[j-1]; j-- {
-			sortedIndices[j], sortedIndices[j-1] = sortedIndices[j-1], sortedIndices[j]
-		}
-	}
+	sortedIndices := sortedPositions(indices)
 	if outer := e.optimisticOuter(match, indices); outer != nil {
 		e.Registry.Check.OptimisticOuter = outer
 		defer func() { e.Registry.Check.OptimisticOuter = nil }()
@@ -3686,7 +3694,12 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		}
 		tailConsumed := callEnd+1 < e.Tape.Len() &&
 			(IsCloseParen(e.Tape.At(callEnd+1)) || e.dynShuffleConsumerAt(callEnd+1))
+		// An optimistic dispatch's exact layout rides to its own record, so a
+		// committed call can raise the interpreter's report when the live
+		// value matches no overload (NUR263).
+		restoreLayout := e.publishOptimisticLayout(match, indices)
 		results := e.Registry.analysisCarrierResults(name, match.Sig, match.Args, pos, match.Reg, tailConsumed)
+		restoreLayout()
 		// Stamp a positionless FUNCTION result with this call's position,
 		// AFTER the recorder has re-IDed the outputs — the interpreter's
 		// stampResultPos equivalent for the check pass. A module export
@@ -10537,55 +10550,4 @@ func SigTypeSummary(sig *Signature) string {
 		parts[i] = t.Leaf()
 	}
 	return strings.Join(parts, " ")
-}
-
-// optimisticOuter is the OuterMatch execMatch publishes (NUR264) when a
-// compile pass matched this dispatch OPTIMISTICALLY — a carrier operand
-// whose type does not conform to its slot's — and no outer one is already
-// published (the outermost is the first the run re-matches). indices are the
-// match's tape positions, in signature order. Nil otherwise, and whenever a
-// position is unknown.
-func (e *Engine) optimisticOuter(match *MatchResult, indices []int) *OuterMatch {
-	r := e.Registry
-	if !r.analysisActive() || !r.Check.Compiling || r.Check.OptimisticOuter != nil || match.Sig == nil ||
-		match.Name == "" || len(indices) != len(match.Args) || len(match.Args) == 0 {
-		return nil
-	}
-	optimistic := false
-	for i, a := range match.Args {
-		if slot := SigArgType(match.Sig, i); slot != nil && (a.Carrier || a.Dynamic) && a.Parent != nil && !a.Parent.ConformsTo(slot) {
-			optimistic = true
-		}
-	}
-	if !optimistic {
-		return nil
-	}
-	// The split: the operands written after the word fill the leading
-	// signature positions. rearrangeForForward has laid every operand out
-	// beneath the word, so the tape no longer shows it; its record does.
-	n, nFwd := len(match.Args), 0
-	if e.fwdSplitAt == e.Pointer && e.Pointer < e.Tape.Len() && e.Tape.At(e.Pointer).Pos() == e.fwdSplitPos {
-		nFwd = e.fwdSplitN
-	}
-	if nFwd > n {
-		return nil
-	}
-	// The window as the rematch reads it: the stack run beneath the word
-	// top down (positions nFwd..n-1), then the written operands in written
-	// order (positions 0..nFwd-1). The render tuple lists the window in
-	// source order: the stack run bottom up, then the written operands.
-	nStack := n - nFwd
-	vals := append(append(make([]Value, 0, n), match.Args[nFwd:]...), match.Args[:nFwd]...)
-	written := make([]int, 0, n)
-	for i := nStack - 1; i >= 0; i-- {
-		written = append(written, i)
-	}
-	for i := nStack; i < n; i++ {
-		written = append(written, i)
-	}
-	pos := SrcPos{}
-	if e.Pointer < e.Tape.Len() {
-		pos = e.Tape.At(e.Pointer).Pos()
-	}
-	return &OuterMatch{Word: match.Name, Vals: vals, NFwd: nFwd, Written: written, Pos: pos}
 }

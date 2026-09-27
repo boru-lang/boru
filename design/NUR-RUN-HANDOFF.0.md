@@ -9,6 +9,28 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR263 closed: an optimistic closure bake raises the interpreter's report (2026-09-27)
+
+**The divergence.** `def mk fn [[][Any]["s"]] end 0 fold [add] (mk)` raised
+fold's no-match on both lanes, but compiled without the notes or help: the
+pass bakes the overload it picked over the compiled body closure, and the
+handler's refusal of a value no overload takes is a bare signature_error
+(NUR165's). The dyn-body seat, which would re-match, arms DynEnv program-wide
+and was rejected for these words.
+
+**The fix, as recorded.** `execMatch` publishes an optimistic match's exact
+layout for its own record (core `optimisticLayout`, over NUR242's
+`CurLayout`); `RecordClosureCall` attaches it to the committed call as
+`SigRef.Split` for a token-list body. On the handler's refusal the VM puts
+the body's token list back in the closure's slot, plans the operands as the
+interpreter's tape (`nativeSplitRaise` / `splitNoMatch`, shared with
+NUR242's poly arm) and raises the report when no signature fits. The
+operands are copied first — the body's calls reuse the scratch buffer.
+`optimisticOuter` moved to core `optimistic_match.go` beside it (the
+aritygate pins its three window reads). An inexact layout — a value beneath
+the operands, a token after them — keeps the bare refusal: recorded as
+NUR283.
+
 ## NUR264 closed: a trap under an optimistic match is the outer word's rematch (2026-09-27)
 
 **The divergence.** `def mk fn [[][Any][5]] end each (mk) [dup]` raised

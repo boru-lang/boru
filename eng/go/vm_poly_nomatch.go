@@ -126,10 +126,21 @@ func bestEffortNoMatch(r *core.Registry, fn *core.FnDefInfo, word string, window
 // this host cannot drive returns nil too.
 func polySplitRaise(r *core.Registry, pr *compiler.PolyRef, fn *core.FnDefInfo, window []core.Value, curDebug []core.SrcPos, pc int) error {
 	sp := pr.Split
-	if sp == nil || fn == nil || sp.NFwd < 0 || sp.NFwd > len(window) {
+	if sp == nil {
 		return nil
 	}
-	h, sig, _, ok := planSplit(r, pr.Word, fn, window[sp.NFwd:], window[:sp.NFwd])
+	return splitNoMatch(r, pr.Word, fn, window, sp.NFwd, curDebug, pc)
+}
+
+// splitNoMatch lays window (signature order, the nFwd written operands
+// first) out as the interpreter's tape at word and raises its
+// signature_error over that tape when its plan finds no signature; nil when
+// the plan finds one or cannot be driven, and for a layout out of range.
+func splitNoMatch(r *core.Registry, word string, fn *core.FnDefInfo, window []core.Value, nFwd int, curDebug []core.SrcPos, pc int) error {
+	if fn == nil || nFwd < 0 || nFwd > len(window) {
+		return nil
+	}
+	h, sig, _, ok := planSplit(r, word, fn, window[nFwd:], window[:nFwd])
 	if !ok || (sig != nil && !sig.Fallback) {
 		return nil
 	}
@@ -137,5 +148,20 @@ func polySplitRaise(r *core.Registry, pr *compiler.PolyRef, fn *core.FnDefInfo, 
 	if pc >= 0 && pc < len(curDebug) {
 		pos = curDebug[pc]
 	}
-	return stampAt(core.NoMatchOverWindow(r.Source, h.win, len(window)-sp.NFwd, pr.Word, fn, pos), curDebug, pc, r)
+	return stampAt(core.NoMatchOverWindow(r.Source, h.win, len(window)-nFwd, word, fn, pos), curDebug, pc, r)
+}
+
+// nativeSplitRaise is the no-match arm of a committed CALL_NATIVE the pass
+// matched optimistically (SigRef.Split, NUR263), run when its handler
+// refused. The program passed the body as a compiled closure; the
+// interpreter's tape holds the token list there, so the window takes it
+// back before the plan. A plan that finds a signature returns nil, and the
+// handler's own error stands — the interpreter dispatched and ran it too.
+func nativeSplitRaise(r *core.Registry, word string, sp *compiler.NativeSplit, args []core.Value, curDebug []core.SrcPos, pc int) error {
+	if sp.BodyAt < 0 || sp.BodyAt >= len(args) {
+		return nil
+	}
+	window := append([]core.Value(nil), args...)
+	window[sp.BodyAt] = sp.Body
+	return splitNoMatch(r, word, r.Lookup(word), window, sp.NFwd, curDebug, pc)
 }
