@@ -233,9 +233,10 @@ func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []i
 	if len(sig.NoEvalArgs) > 0 {
 		return
 	}
-	// Find the top-of-stack matched arg (highest tape position) and whether any
-	// deeper matched arg is non-dynamic.
-	topPos, deeperConcrete := -1, false
+	// Find the top-of-stack matched arg (highest tape position). Its operands
+	// beneath may be dynamic too: the match over carriers reached past the
+	// top either way (NUR287, `mk mk add 1` over two Any results).
+	topPos := -1
 	for _, p := range positions {
 		if p < 0 || p >= e.Tape.Len() {
 			return
@@ -244,12 +245,7 @@ func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []i
 			topPos = p
 		}
 	}
-	for _, p := range positions {
-		if p != topPos && !e.Tape.At(p).Dynamic {
-			deeperConcrete = true
-		}
-	}
-	if !e.Tape.At(topPos).Dynamic || !deeperConcrete {
+	if !e.Tape.At(topPos).Dynamic {
 		return
 	}
 	nxt := e.Pointer + 1

@@ -9,6 +9,32 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR287 found and closed: a forward-drift window over dynamic operands only (2026-09-27)
+
+**The divergence.** Probing NUR282's `j j` found `def j (mk) end j j add
+1` answering `[84 1]` compiled for `[42 43]`, and the shape needs no fn at
+all: `def mk fn [[][Any][42]] end mk mk add 1`. The check pass's match over
+two dynamic carriers took `add (Bytes, Bytes)` all-stack (it precedes
+`[Number Number]` in the overload list), so the poly re-match never saw the
+written 1; over three carriers it took `add (Map, Any, Service)` and the
+claim failed at run time. Silent, present on main.
+
+**The fix, as recorded.** The forward-drift window already models a
+forward-eligible word matched all-stack under a dynamic top with a literal
+after it (the island re-steps the verbatim tokens), and the decline it
+mirrors fires where the window cannot; both required a concrete operand
+beneath the top. A dynamic top is the whole precondition now. Probing the
+window's reach found `[7 mk add 1]` answering `[7 [43]]` (present before):
+a list literal's element run passes the TERMINAL gate on its own tape, but
+the literal assembles a fixed count, so the window stands aside inside an
+inline context region (`InInlineCtxBoundary`) and the decline answers.
+
+**Measured.** Ten shapes agree (two and three carriers, `sub`, `add` with
+nothing written, a concrete operand on either side, `if` and `do` bodies, a
+String pair, `j j add 1`); `[mk mk add 1]`, `[7 mk add 1]` and `mk mk add 1
+drop` decline. The check suite, the compiler suite and the commit gate's
+lanes pass.
+
 ## NUR284 closed: a folded member fn applied in a binder's frame reads its dynamic scope (2026-09-27)
 
 **The divergence.** `def m {c: ([x:Any] => [k])} end def h fn [[][Any]

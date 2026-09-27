@@ -209,6 +209,7 @@ keep the two in sync in the same commit.
 | [NUR284](#nur284) | FIXED 2026-09-27 (recorded the same day, probing NUR257; the handoff log's entry of that date): a folded map member's anonymous fn APPLIED inside a fn whose frame binds a name the member reads — `def m {c: ([x:Any] => [k])} end def h fn [[][Any] [def k 7 m.c 1]] end h`, and with `k` h's parameter — raised `undefined word: k` compiled for the interpreter's `[7]`; passed to a fn that applies it (`def run fn [[f:Any][Any] [f 1]] end … run m.c`) it raised a count error, and after NUR218's close `is still waiting for 1 argument(s)`. The stored unit reads the name live, and a read some fn that binds it reaches (NUR257's binder model over the value's reader identity) now joins the dynamic-scope names, so every binder installs it where the lookup finds it (`seatStoredLiveReads`); NUR218's interpreter route seats its arguments as resolved values beneath the call word | probing NUR257, 2026-09-27 |
 | [NUR285](#nur285) | FIXED 2026-09-27 (recorded and closed together, closing NUR217; the handoff log's entry of that date): a root def bound to a factory's argument-taking fn, read inside a code body at the root over values the body pushed beneath it, was a slot push — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (mk) end do [10 j]` answered `[10 fn j(Integer)]` for `[11]`, `[1 2] each [j]` `[[fn j(Integer) fn j(Integer)]]` for `[[2 3]]` (silent); read in a fn body it raised `dynamic-scope read of a dispatching binding` (loud); and `def j (do [(mk)]) end j/v` rendered `fn` for `fn j` (silent). The body's deopt point stands with the root as its parent and installs the captured fn for its island (`DeoptSpec.Install`), the frame replay's word reads take the data lookup, and a def's rename reaches the value's frame local (`GlobalBindSpec.WriteSlot`). Present on main | closing NUR217, 2026-09-27 |
 | [NUR286](#nur286) | OPEN — its silent root half made LOUD 2026-09-27 (recorded the same day, closing NUR217; the handoff log's entry of that date; proposed verdict: resolve by fix): a paren whose `do` run lands an argument-taking fn over the paren's own values, taken by a def or a later word — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (5 do [(mk)]) end j` is `[6]` interpreted and was `[fn (Integer) 5]` compiled; so were `(5 do [(mk)]) typeof`, `(5 do [(mk)]) 9` and a list member's lambda (`def j (5 do [l.0]) end j`). A root landing whose own step had values beneath it now carries a guard (`LandingBeneathGuard`) unless the interpreter parks the value (a user call's result), the residual's apply re-steps it as the interpreter does, or an event applies it; the VM raises a designed defer where the landed fn takes an argument. Open: the compile (answering 6), and a fn body's form, which fails on the unit's return count (a `type_error` the interpreter does not raise) | closing NUR217, 2026-09-27 |
+| [NUR287](#nur287) | FIXED 2026-09-27 (recorded and closed together, probing NUR282's `j j`; the handoff log's entry of that date): two results the check pass holds as dynamic carriers under a forward-eligible word with a literal after it — `def mk fn [[][Any][42]] end mk mk add 1` — answered `[84 1]` compiled for the interpreter's `[42 43]` (silent): the match over two carriers took `add (Bytes, Bytes)` all-stack and the poly re-match over that window could not collect the 1; three carriers took `add (Map, Any, Service)` and raised a claim failure. The forward-drift window (and the decline it mirrors) required a concrete operand beneath the dynamic top; a dynamic top is the whole precondition now. Inside a list literal the window met a fixed-count assembly (`[7 mk add 1]` was `[7 [43]]` for `[[7 43]]`, present before): it stands aside there and the decline answers | probing NUR282, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -13796,7 +13797,9 @@ rebind (`each b xs drop xs`) and a fn it may redefine still decline. Over the
 Open: a run holding an arg-taking lambda (the plain check defers where the
 interpreter parks or applies it — wants the statement-boundary proof), the
 wrong-count single-value seat, a parameter or fn the body may rebind, and
-`j j`.
+`j j` (the first read's shaped-method result is a dynamic lead the
+residual declines to seat above the second read). Probing `j j` found
+NUR287: `j j add 1` answered `[84 1]` silently, FIXED 2026-09-27.
 **Found:** the merge of main's #514 with the reverse-order NUR run —
 measured over 199 probe programs on the branch, on main and on the merged
 tree (the handoff log's entry of that date).
@@ -14092,3 +14095,54 @@ g`): the unit's return-count check raises `g: expected 1 return value(s),
 got 2` where the interpreter answers `[Integer]` — loud, but as the
 program's own error; the guard is the root's, and a unit's residual has
 its own apply arms.
+
+## NUR287 — a forward-drift window over dynamic operands only {#nur287}
+
+**Status:** FIXED 2026-09-27 (recorded and closed together; the handoff
+log's entry of that date) · **Surfaced by:** probing NUR282's `j j`
+(`def j (mk) end j j add 1`), present on main.
+
+**Rule:** a program the compiler admits, the compiled runtime runs, and
+answers as the interpreter does.
+
+**Divergence:**
+
+```
+def mk fn [[][Any][42]] end mk mk add 1
+  interpreted   [42 43]
+  compiled      [84 1]                                     (silent)
+def mk fn [[][Any][42]] end mk mk mk add 1
+  interpreted   [42 42 43]
+  compiled      internal_error: poly dispatch add: result count 1 differs from the recorded claim 0
+def mk fn [[][Any][42]] end [7 mk add 1]
+  interpreted   [[7 43]]
+  compiled      [7 [43]]                                   (silent, before)
+```
+
+**Cause.** `add`'s overloads run `[Map Any Service]`, `[Map Any Patrun]`,
+`[Bytes Bytes]`, `[String Scalar]`, `[Number Number]`, … The interpreter,
+over concrete values, reaches `[Number Number]` with the written 1 as its
+forward operand. The check pass holds two carriers, and its optimistic
+match accepts `[Bytes Bytes]` from the stack first, with no forward
+operand; the poly re-match then re-matches over that window alone, and the
+1 is a separate residual. The forward-drift window (COMPILE
+FAILURE-CLOSURE §1) models exactly this — a forward-eligible word matched
+all-stack under a DYNAMIC top with a forward literal after it, islanded as
+the verbatim tokens — and the decline it mirrors fires when the window
+cannot take the shape; both required a CONCRETE operand beneath the top,
+which a program whose operands are all call results never has.
+
+Inside a list literal the window's element run is a tape of its own, so its
+TERMINAL gate passed, but the literal assembles a fixed count of elements
+and the window's result is variadic: the list took the island's top value
+and the rest leaked out.
+
+**Fix.** A dynamic top is the whole precondition of the window and of the
+decline (`tryRecordDriftWindow`, `DeclineForwardStackDrift`): the operands
+beneath may be dynamic too. The window stands aside inside a literal's
+element run (`InInlineCtxBoundary`), where the decline answers. `mk mk add
+1`, three carriers, `sub`, a String pair, `if` and `do` bodies and the
+fn-valued `j j add 1` answer as the interpreter does; `[mk mk add 1]`, `[7
+mk add 1]` and a non-terminal `mk mk add 1 drop` decline. Pinned by
+`lang/go/nur287_test.go`.
+

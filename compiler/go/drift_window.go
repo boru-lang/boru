@@ -33,6 +33,15 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	if es == nil || !es.Active() || es.SuspendedNow() {
 		return false
 	}
+	// A list or map literal's element run (an inline context region of this
+	// unit) ends its own tape at the literal's last element, so the TERMINAL
+	// gate below would pass there — but the literal assembles a FIXED count
+	// of its elements, and the window's variadic result is not the program
+	// residual: `[7 mk add 1]` answered `[7 [43]]` for `[[7 43]]` (NUR287).
+	// The shape keeps the compile failure.
+	if es.InInlineCtxBoundary() {
+		return false
+	}
 	// The compile failure-site preconditions (mirrors declineForwardStackDrift): a
 	// forward-eligible non-full-stack sig, no code-body positions, at least
 	// a dynamic top + one deeper operand.
@@ -51,13 +60,14 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 			minPos = p
 		}
 	}
-	deeperConcrete := false
-	for _, p := range positions {
-		if p != topPos && !e.Tape.At(p).Dynamic {
-			deeperConcrete = true
-		}
-	}
-	if !e.Tape.At(topPos).Dynamic || !deeperConcrete {
+	// A DYNAMIC top is the whole precondition: the operands beneath it may
+	// be dynamic too. The check-mode match over carriers reached past the
+	// top to its deeper operands either way, and the interpreter, seeing
+	// concrete runtime values, may forward-collect the literal instead —
+	// `def mk fn [[][Any][42]] end mk mk add 1` is `[42 43]`, where the
+	// match over two carriers took `add (Bytes, Bytes)` all-stack and the
+	// poly re-match answered `[84 1]` (NUR287).
+	if !e.Tape.At(topPos).Dynamic {
 		return false
 	}
 	fwdIdx := e.Pointer + 1
