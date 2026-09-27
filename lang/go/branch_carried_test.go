@@ -46,6 +46,18 @@ func TestBranchCarriedDefParity(t *testing.T) {
 		`def z 0 end for 2 [if (i eq 0) [def z 9] [] end z]`,
 		// a loop-carried and a branch-carried name share one cell
 		`def acc 0 end for 3 [if (i eq 1) [def acc (acc add 10)] [def acc (acc add 1)]] end acc`,
+		// a loop rebinding a name whose PRE-loop binding is itself possibly
+		// unbound (an arm-only def, no pre of its own): the loop may run zero
+		// times, so its joined binding inherits the bound check — the read
+		// after the loop, and the loop body's own read, raise undefined_word
+		// exactly where the interpreter does when no arm and no iteration bound
+		// the name, and read the cell when one did
+		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z (z add 1)] end z]]  f true 2`,
+		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z (z add 1)] end z]]  f true 0`,
+		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z (z add 1)] end z]]  f false 0`,
+		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z (z add 1)] end z]]  f false 2`,
+		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z 7] end z]]  f false 0`,
+		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z 7] end z]]  f false 3`,
 		// the branch result and the carried name are different things
 		`def f fn [[c:Boolean] [Integer] [def out (if c [def t2 5 end t2 add 1] [0]) end out]]  f true`,
 		// a computed condition the checker cannot fold, at the top level

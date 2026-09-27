@@ -78,9 +78,19 @@ func TestBranchOfLambdasCompiles(t *testing.T) {
 		`def c false end 5 if c ([] => [1]) ([x:Integer] => [x add 2])`,
 		`if true (fn [[][Integer][1]]) (fn [[][Integer][2]])`,
 		`def c true end [if c ([] => [1]) ([] => [2])] size`,
+		// CODE-BODY arms whose value is the lambda (hasThenOut / hasElsOut
+		// rather than a value arm): the same render claim, arm by arm.
+		`def c true end if c [([] => [1])] [([] => [2])]`,
+		`def c false end if c [([x:Integer] => [x add 1])] [([x:Integer] => [x add 2])]`,
+		`def g fn [[n:Integer][Boolean][n gt 5]] end if (g 9) ([] => [1]) [([] => [2])]`,
 	} {
 		requireEngineParity(t, src, true)
 	}
+	// An arm whose value is a CALL RESULT (a factory's returned closure) is
+	// not a render the claim knows, so the branch keeps its decline.
+	requireLoudDecline(t,
+		`def mk fn [[n:Integer][Function][([x:Integer] => [x add n])]] end def g fn [[n:Integer][Boolean][n gt 5]] end if (g 9) [(mk 1)] [(mk 2)]`,
+		"closure render", "[fn (Integer)]")
 	// A NAMED fn arm fires at the landing: the render claim is the anonymous
 	// const's alone, so the mixed branch keeps its decline — and so does a
 	// def-bound branch value, whose NAME read dispatches.

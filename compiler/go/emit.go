@@ -11983,14 +11983,13 @@ func (es *EmitState) RecordArgsProjection(r *core.Registry, ins []core.Value, ou
 	if !es.RecordMakeListInner(r, ins, out, pos) {
 		return false
 	}
-	pr, ok := es.producedBy[out.ID]
-	if !ok {
-		return false
-	}
 	if es.argsProjSeq == nil {
 		es.argsProjSeq = map[string]int{}
 	}
-	es.argsProjSeq[out.ID] = pr.seq
+	// No lookup miss to guard: RecordMakeListInner's one success path
+	// registers out at its OpMakeList event (setProduced), and out has the
+	// identity setProduced keys on (checked above).
+	es.argsProjSeq[out.ID] = es.producedBy[out.ID].seq
 	return true
 }
 
@@ -13906,7 +13905,7 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 	if !isEvent || pr.idx != 0 || !es.fnLikeResidual(fnv) {
 		return residual, false
 	}
-	if len(lw.vm) < 1 || lw.vm[len(lw.vm)-1].seq != pr.seq || lw.vm[len(lw.vm)-1].idx != 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+	if len(lw.vm) < 1 || lw.vm[len(lw.vm)-1].seq != pr.seq || lw.vm[len(lw.vm)-1].idx != 0 {
 		return residual, false
 	}
 	arg := residual[0]
