@@ -2950,6 +2950,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 		// (untagged units — the ordinary case — cost one branch, no atomic load)
 		// and is small enough to inline, so the hot loop keeps its complexity.
 		curReg.NoteVMCoverage(curDebug, pc)
+	dispatch:
 		switch in.Op {
 		case compiler.OpPushConst:
 			stack = append(stack, p.Consts[in.Arg])
@@ -3541,6 +3542,23 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// declared type. Raises the same signature_error the interpreter raises.
 			if err := checkParamContract(r, fn, nl); err != nil {
 				return nil, stampAt(err, curDebug, pc, curReg)
+			}
+			// A call-site SPECIALISED unit is valid only while each guarded
+			// arg is the fn it was compiled for. Decided before any of the
+			// body runs: a failed guard applies the fn itself instead (the
+			// interpreter's own dispatch of the call), and a tail call then
+			// leaves this frame exactly as the tail-called unit's RET would.
+			if len(fn.SpecGuards) > 0 && !specGuardsHold(fn.SpecGuards, nl) {
+				res, err := core.InvokeCallbackFn(curReg, specFallbackFn(fn), specFallbackSig(fn), nl)
+				if err != nil {
+					return nil, stampAt(err, curDebug, pc, curReg)
+				}
+				stack = append(stack, res...)
+				if in.Op == compiler.OpTailCallUser {
+					in = compiler.Instr{Op: compiler.OpRet}
+					goto dispatch
+				}
+				continue
 			}
 			if in.Op == compiler.OpCallUser {
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})

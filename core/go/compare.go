@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"math"
 	"reflect"
+	"strconv"
 )
 
 // ErrNoComparer is returned by Comparer.Compare implementations that
@@ -1164,6 +1165,23 @@ func closureIdentSeqOf(v Value) (seq uint64, isClosure bool) {
 		}
 	}
 	return 0, false
+}
+
+// FnIdentityKey renders the identity token ExactEqual compares for a fn
+// value as a string — for a memo key that must separate two functions of one
+// type (a call-site specialised fn unit, keyed on the constant fn it was
+// compiled for). Two values with one key are one function by ExactEqual. ok
+// is false for anything that is not an identified FnDefInfo — data, a
+// carrier, a hand-built payload with no token — which has no identity to key.
+func FnIdentityKey(v Value) (string, bool) {
+	fd, isFn := v.Data.(FnDefInfo)
+	if !isFn || fd.ident == nil {
+		return "", false
+	}
+	if fd.ident.closure != 0 {
+		return "c" + strconv.FormatUint(fd.ident.closure, 10), true
+	}
+	return fmt.Sprintf("p%p", fd.ident), true
 }
 
 func sameFnIdentity(a, b FnDefInfo) bool {

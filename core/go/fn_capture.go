@@ -364,6 +364,26 @@ func ComputeCaptures(r *Registry, sig *FnSig) []CapturedBinding {
 	return out
 }
 
+// ComputeFnValueCaptures is ComputeCaptures for the construction of a fn
+// VALUE (`fn`, `=>`, a macro fn), which also declines a call-site
+// specialisation whose constant-fn param the value captures (check's
+// specialiseCallSite, CheckState.SpecParamNames): a fn value's body is
+// analysed — and its calls through the capture compiled — outside the
+// specialised analysis, where the refusal check on a call through the param
+// cannot see them. The retry compiles the call site generically. A code
+// body's closure (each, fold, …) is analysed inside the specialised analysis
+// and takes plain ComputeCaptures. The decline is a no-op outside a
+// specialised analysis.
+func ComputeFnValueCaptures(r *Registry, sig *FnSig) []CapturedBinding {
+	out := ComputeCaptures(r, sig)
+	for _, cb := range out {
+		if r.Check.SpecParamNames[cb.Name] {
+			r.analysisRecorder().MarkUncompilable("a fn constructed in a call-site specialised body captures the specialised param `" + cb.Name + "`")
+		}
+	}
+	return out
+}
+
 // collectBodyLocalDefs gathers the names a body binds for ITSELF — `def NAME …`
 // at any non-closure depth, plus `var [[NAME …] …]` temporaries — into locals.
 // These are frame-locals of the body being analysed, NOT captures (see

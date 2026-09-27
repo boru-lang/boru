@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
@@ -166,6 +167,18 @@ type Boru struct {
 	registry *native.Registry
 	options  Options
 	manager  *udk.UniversalManager
+	// noCallSiteSpec turns call-site specialisation off for this instance
+	// (SetCallSiteSpecialisation).
+	noCallSiteSpec bool
+}
+
+// SetCallSiteSpecialisation turns call-site specialisation on (the default)
+// or off for this instance's compiles. Off, a call passing a constant fn to
+// a Function param records the generic unit, exactly as a call passing any
+// other value does — the switch a host uses to compare the two, and the one
+// the tests pinning the generic compile path use.
+func (a *Boru) SetCallSiteSpecialisation(on bool) {
+	a.noCallSiteSpec = !on
 }
 
 // New creates a new boru instance with built-in functions.
@@ -458,11 +471,36 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	if err != nil {
 		return nil, "parse error", CheckResult{}, err
 	}
+	// A call-site specialisation (check's specialiseCallSite) is only ever a
+	// faster path. A pass that tried one and did not produce a program is
+	// re-run once without them, from the registry as it was before the
+	// first pass (the check pass leaves real side effects — defs, minted
+	// types, loaded modules — that the program's replay base would
+	// otherwise inherit), so specialisation never costs a program the
+	// compilation it has without it: the retry records exactly what a pass
+	// with none records. Specialisation acts on a Function-typed param, and
+	// a source that never names the type declares none: it compiles in one
+	// pass with specialisation off and pays for no snapshot.
+	if a.noCallSiteSpec || !strings.Contains(src, "Function") {
+		return a.compilePass(src, values, true)
+	}
+	snap := a.registry.SnapshotForCompile()
+	prog, reason, res, err := a.compilePass(src, values, false)
+	if prog == nil && a.registry.Check.SpecTried {
+		a.registry.RestoreForCompile(snap)
+		prog, reason, res, err = a.compilePass(src, values, true)
+	}
+	return prog, reason, res, err
+}
 
+// compilePass is one CompileCheck recording pass over parsed values;
+// specOff disables call-site specialisation for it.
+func (a *Boru) compilePass(src string, values []Value, specOff bool) (*Program, string, CheckResult, error) {
 	a.registry.Source = src
 	// BeginCompilePass arms the shared compile-pass ritual (fresh
 	// EmitState, Compiling flag, fn-memo drop) in one place.
 	defer a.registry.Check.BeginCompilePass()()
+	a.registry.Check.SpecOff = specOff
 	native.ResetModuleExportGrowth(a.registry)
 	native.ResetCheckFnCarrierBinds(a.registry)
 

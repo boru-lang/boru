@@ -3876,11 +3876,11 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 		return lw.lowerUserCallResult(ev, uc)
 	}
 	if uc.tail {
-		lw.emit(OpTailCallUser, uc.unit, uc.pos)
+		lw.emit(OpTailCallUser, uc.unit, uc.callPos())
 		lw.vm = lw.vm[:len(lw.vm)-n]
 		return ""
 	}
-	lw.emit(OpCallUser, uc.unit, uc.pos)
+	lw.emit(OpCallUser, uc.unit, uc.callPos())
 	lw.vm = lw.vm[:len(lw.vm)-n]
 	return lw.lowerUserCallResult(ev, uc)
 }

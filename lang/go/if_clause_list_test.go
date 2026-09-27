@@ -101,7 +101,9 @@ func TestClauseListIfCompilesWithParity(t *testing.T) {
 // shapes it cannot place exactly, pinned where they used to compile and die.
 func requireLoudDecline(t *testing.T, src, wantReason, want string) {
 	t.Helper()
-	prog, reason, _, err := mustNew(t).CompileCheck(src)
+	// A loud decline is a GENERIC-path pin: a constant fn arg would take a
+	// call-site specialised unit instead.
+	prog, reason, _, err := mustNewNoSpec(t).CompileCheck(src)
 	if prog != nil || err != nil {
 		t.Errorf("%q: want a compile decline, got prog=%v err=%v", src, prog != nil, err)
 		return
@@ -109,7 +111,7 @@ func requireLoudDecline(t *testing.T, src, wantReason, want string) {
 	if !strings.Contains(reason, wantReason) {
 		t.Errorf("%q: decline reason %q, want substring %q", src, reason, wantReason)
 	}
-	if _, _, errC := mustNew(t).RunCompiled(src); codeOf(errC) != "compile_failed" {
+	if _, _, errC := mustNewNoSpec(t).RunCompiled(src); codeOf(errC) != "compile_failed" {
 		t.Errorf("%q: the compiled lane must fail loudly as compile_failed, got %v", src, errC)
 	}
 	got, errI := mustNew(t).RunInterp(src)

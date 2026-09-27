@@ -390,7 +390,7 @@ func macroHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 	fnDef := FnDefInfo{
 		Signatures: []FnSig{sig},
 		Macro:      true,
-		Captured:   core.ComputeCaptures(r, &sig),
+		Captured:   core.ComputeFnValueCaptures(r, &sig),
 		// Home registry, as FnConstruct stamps it for `fn` and `=>`.
 		Registry: r,
 	}

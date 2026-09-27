@@ -61,6 +61,9 @@ func TestArmTailApplySoundCompileFailures(t *testing.T) {
 		if err != nil {
 			t.Fatal(err)
 		}
+		// The GENERIC path's pin (a constant arg specialises instead —
+		// TestCallSiteSpecialisationGraduatedShapes).
+		a.SetCallSiteSpecialisation(false)
 		prog, reason, _, cerr := a.CompileCheck(c.src)
 		if cerr != nil {
 			t.Fatalf("%q: check: %v", c.src, cerr)

@@ -72,7 +72,10 @@ func TestApplyShapesBareFnWordArgDeclines(t *testing.T) {
 		// a bare read of a Function-typed PARAM is a word dispatch too (NUR123)
 		`def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function g:Function] [Integer] [(k g)]] end def inc fn [[n:Integer] [Integer] [n add 1]] end h app/v inc/v`,
 	} {
-		prog, _, _, cerr := mustNew(t).CompileCheck(src)
+		// The GENERIC path's pin: a constant lead compiles through a
+		// call-site specialised unit instead, which answers what the
+		// interpreter answers (TestCallSiteSpecialisationGraduatedShapes).
+		prog, _, _, cerr := mustNewNoSpec(t).CompileCheck(src)
 		if cerr == nil && prog != nil {
 			t.Errorf("%s: compiled — a bare fn word at the lead's argument position must decline", src)
 		}
@@ -102,7 +105,10 @@ func TestApplyShapesZeroArgLeadIsLoud(t *testing.T) {
 		if fmt.Sprint(gotI) != tc.wantI || codeOf(errI) != tc.wantICode {
 			t.Errorf("%s: interpreter oracle moved: got %v err=[%s], want %s err=[%s] — re-derive NUR176", tc.src, gotI, codeOf(errI), tc.wantI, tc.wantICode)
 		}
-		gotC, compiled, errC := mustNew(t).RunCompiled(tc.src)
+		// The GENERIC path's bar. A constant lead the first row passes
+		// compiles through a call-site specialised unit instead, which
+		// answers the interpreter's 8 (TestCallSiteSpecialisationGraduatedShapes).
+		gotC, compiled, errC := mustNewNoSpec(t).RunCompiled(tc.src)
 		if noteCompileDefect(t, tc.src, gotC, errC) {
 			continue // a loud decline satisfies the bar
 		}

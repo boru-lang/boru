@@ -542,6 +542,12 @@ type EmitRecorder interface {
 	// SetUnitBody seats a fn unit's source body tokens (the sig's Boru body)
 	// — what a per-read deopt hands to the interpreter (compiler DeoptSpec).
 	SetUnitBody(unit int, body []Value)
+	// SetUnitSpecialisation marks unit as a CALL-SITE SPECIALISATION: it was
+	// compiled with param params[i] bound to the constant fn fns[i], so it is
+	// valid only for a call whose runtime arg at that param IS that fn
+	// (ExactEqual — fn identity). The VM checks the guards at CALL_USER entry
+	// and, when one fails, applies fallback — the fn itself — instead.
+	SetUnitSpecialisation(unit int, params []int, fns []Value, fallback Value)
 	SetUnitDecl(unit int, decl DeclSite)
 	UnitVariadic(unit int) bool
 	UnitNetsZero(unit int) bool
@@ -718,14 +724,15 @@ func (inactiveEmit) CanSeatAcrossFragment(Value) bool     { return false }
 func (inactiveEmit) StartFnCompile(string, string, *Registry, []Value, []*Type, []string, []CapturedBinding, bool, SrcPos) (int, func([]Value), bool) {
 	return -1, nil, false
 }
-func (inactiveEmit) SetUnitParamTypes(int, []*Type, []*Value) {}
-func (inactiveEmit) SetUnitReturnPatterns(int, []*Value)      {}
-func (inactiveEmit) SetUnitBody(int, []Value)                 {}
-func (inactiveEmit) SetUnitDecl(int, DeclSite)                {}
-func (inactiveEmit) UnitVariadic(int) bool                    { return false }
-func (inactiveEmit) UnitNetsZero(int) bool                    { return false }
-func (inactiveEmit) UnitTailApply(int) (int, bool)            { return 0, false }
-func (inactiveEmit) ArmTailApply(stk []Value) []Value         { return stk }
+func (inactiveEmit) SetUnitParamTypes(int, []*Type, []*Value)         {}
+func (inactiveEmit) SetUnitReturnPatterns(int, []*Value)              {}
+func (inactiveEmit) SetUnitBody(int, []Value)                         {}
+func (inactiveEmit) SetUnitSpecialisation(int, []int, []Value, Value) {}
+func (inactiveEmit) SetUnitDecl(int, DeclSite)                        {}
+func (inactiveEmit) UnitVariadic(int) bool                            { return false }
+func (inactiveEmit) UnitNetsZero(int) bool                            { return false }
+func (inactiveEmit) UnitTailApply(int) (int, bool)                    { return 0, false }
+func (inactiveEmit) ArmTailApply(stk []Value) []Value                 { return stk }
 
 // EmitCheckpoint is the opaque handle for a recording-pool snapshot: the
 // checker holds and returns it without any knowledge of the compiler's

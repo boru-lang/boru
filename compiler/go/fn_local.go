@@ -28,10 +28,16 @@ import core "github.com/boru-lang/boru/core/go"
 // event would install the ORIGINAL where the interpreter runs the
 // redefinition; it declines.
 func (es *EmitState) placeFnLocalDef(name string, v core.Value) bool {
-	if es == nil || !es.Active() || name == "" || len(es.openUnitRecs) == 0 || !fnSigsDeclared(v) {
+	if es == nil || !es.Active() || name == "" || len(es.openUnitRecs) == 0 {
 		return false
 	}
 	if fd, ok := v.Data.(core.FnDefInfo); !ok || len(fd.Captured) > 0 {
+		return false
+	}
+	if es.placeFnParam(name, v) {
+		return true
+	}
+	if !fnSigsDeclared(v) {
 		return false
 	}
 	for fi := len(es.frames) - 1; fi >= 0; fi-- {
@@ -75,4 +81,34 @@ func sameFnDecls(a, b core.Value) bool {
 		}
 	}
 	return true
+}
+
+// placeFnParam places a fn-valued PARAM an open unit binds as a constant fn —
+// a call-site specialised unit's (check's specialiseCallSite): a code body
+// naming it (`fold [drop g] xs` with `g` specialised to `inc`) declined
+// exactly as a body-local fn def did, for the same reason — the body's paths
+// resolve the NAME, and a unit's params live in slots. The placement is the
+// param twin of the def's: the unit binds the param registry-visible at
+// entry (emitDynParamBinds, the interpreter's own InstallFrameBinding of
+// every named param), torn down at its RET, so the name resolves to the
+// slot's runtime value — the guarded fn itself — wherever the body looks it
+// up. v is the binding the body sees, and it must be that unit's param: the
+// param named name whose compiled-against value is v's fn (core.ExactEqual —
+// fn identity, which the interpreter-faithful re-install under the param's
+// name keeps).
+func (es *EmitState) placeFnParam(name string, v core.Value) bool {
+	for k := len(es.openUnitRecs) - 1; k >= 0; k-- {
+		rec := es.fnRecs[es.openUnitRecs[k]]
+		for i := range rec.nParams {
+			if rec.locals[i] != name || !core.ExactEqual(rec.paramVals[i], v) {
+				continue
+			}
+			if rec.placedParams == nil {
+				rec.placedParams = map[string]bool{}
+			}
+			rec.placedParams[name] = true
+			return true
+		}
+	}
+	return false
 }

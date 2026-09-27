@@ -352,6 +352,9 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// not args[0]'s, the blame position the call event carries.
 		call := callSite{word: caller.Check.CurCallWord, pos: caller.Check.CurCallPos}
 		checkRecordShapeArgs(r, nameCopy, paramPatterns, args)
+		if r.Check.SpecParamNames[call.word] && specParamCallMayRefuse(sigParams, args) {
+			r.Check.Recorder().MarkUncompilable("fn " + nameCopy + ": a call through a call-site specialised param over an argument its contract may refuse at run time")
+		}
 		// Generic fns (Phase 5): infer the parameter bindings from the
 		// call's arg carriers and install them around the body
 		// analysis, so body-internal `of [T]` / `make (Box of [T])`
@@ -415,7 +418,6 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		releaseRegion := es.HoldRegion(call.word, call.pos)
 		defer releaseRegion()
 		fnUnit := -1
-		var finishFn func([]core.Value)
 		polyPlan, polyBarred := dispatchPlanUserPoly(r, es, nameCopy, args, declaredReturns)
 		// A /q (quote-capture) param binds only a bare Word collected forward
 		// at the runtime pointer — a plain stack value never matches it
@@ -515,12 +517,10 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 			// empty RET → sub-specs silently skipped). Keying on genArgs makes the
 			// recursive call REUSE the in-flight unit (the generalised body that
 			// handles any arg shape at run time).
-			key := FnAnalysisKey(r.AnalysisScopeID(), nameCopy, genArgs, capturesCopy, bodyCopy)
 			paramNames := make([]string, len(sigParams))
 			for i, p := range sigParams {
 				paramNames[i] = p.Name
 			}
-			var okFn bool
 			// The body's first-token position locates the compiled unit for
 			// a return-type error stamped at the VM's RET. It cannot equal
 			// the interpreter's call-site column (one unit serves every call
@@ -530,11 +530,16 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 			if len(bodyCopy) > 0 {
 				fnPos = bodyCopy[0].Pos()
 			}
-			fnUnit, finishFn, okFn = es.StartFnCompile(key, nameCopy, r, genArgs, compileReturns, paramNames, capturesCopy, genSpec != nil, fnPos)
-			if !okFn {
-				fnUnit = -1
-			}
-			if fnUnit >= 0 {
+			// compileUnit compiles — or, on a memo hit, reuses — the unit for
+			// one arg vector and returns its index (-1 when the recorder
+			// declines). keySuffix separates a call-site specialisation's unit
+			// key and body summary from the generic unit's (SpecKeySuffix).
+			compileUnit := func(unitArgs []core.Value, keySuffix string) int {
+				key := FnAnalysisKey(r.AnalysisScopeID(), nameCopy, unitArgs, capturesCopy, bodyCopy) + keySuffix
+				unit, finish, ok := es.StartFnCompile(key, nameCopy, r, unitArgs, compileReturns, paramNames, capturesCopy, genSpec != nil, fnPos)
+				if !ok {
+					return -1
+				}
 				// Record the declared PARAM types so the VM enforces them at
 				// CALL_USER entry (the gradual-Any param-guard, mirroring the RET
 				// return-check). A gradual (Dynamic) arg optimistically matched a
@@ -546,34 +551,42 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 					pts[i] = sigParams[i].Type
 					pats[i] = sigParams[i].Pattern
 				}
-				es.SetUnitParamTypes(fnUnit, pts, pats)
+				es.SetUnitParamTypes(unit, pts, pats)
 				// The body tokens: what a per-read deopt hands to the
 				// interpreter (compiler planDeopts, NUR123).
-				es.SetUnitBody(fnUnit, bodyCopy)
+				es.SetUnitBody(unit, bodyCopy)
 				// The RET-side twin: a declared union return degrades its
 				// *Type to Any, so without the pattern the compiled path —
 				// the DEFAULT path — enforces nothing while the interpreter
 				// and the check pass both reject.
-				es.SetUnitReturnPatterns(fnUnit, declaredReturnPatterns)
+				es.SetUnitReturnPatterns(unit, declaredReturnPatterns)
 				// The return-contract declaration site, so a compiled RET
 				// return error labels the declaration exactly as the
 				// interpreter's ReturnCheck does.
-				es.SetUnitDecl(fnUnit, declSite)
+				es.SetUnitDecl(unit, declSite)
+				if finish != nil {
+					// A fresh compilation must RECORD the body into THIS unit — drop any
+					// summary cached by a prior analysis (the install-time synthetic
+					// example eval, or a DISCARDED closure PROBE compile that shares
+					// r.Check.FnSummaries) so AnalyseFnBody re-runs and re-records the
+					// body's events instead of returning the cached residual with an
+					// empty fragment. The cache (and the AnalyseFnBody call below) is
+					// keyed on the unit's args, NOT the call's — deleting the args key
+					// left the genArgs-keyed probe summary live, so a fn dispatched under
+					// a recursive closure probe (boru:test run-case) compiled to an EMPTY
+					// stub unit in the real pass (silent 0-cases miscompile).
+					delete(r.Check.FnSummaries, key)
+					r.Check.SpecKeySuffix = keySuffix
+					stkGen := AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, unitArgs, capturesCopy, declaredReturns, fnDef.Anonymous)
+					if keySuffix != "" && !specResidualMeetsReturns(stkGen, compileReturns) {
+						es.MarkUncompilable("fn " + nameCopy + ": a call-site specialised body's residual misses its declared returns")
+					}
+					finish(stkGen)
+				}
+				return unit
 			}
-			if finishFn != nil {
-				// A fresh compilation must RECORD the body into THIS unit — drop any
-				// summary cached by a prior analysis (the install-time synthetic
-				// example eval, or a DISCARDED closure PROBE compile that shares
-				// r.Check.FnSummaries) so AnalyseFnBody re-runs and re-records the
-				// body's events instead of returning the cached residual with an
-				// empty fragment. The cache (and the AnalyseFnBody call below) is
-				// keyed on genArgs, NOT args — deleting the args key left the
-				// genArgs-keyed probe summary live, so a fn dispatched under a
-				// recursive closure probe (boru:test run-case) compiled to an EMPTY
-				// stub unit in the real pass (silent 0-cases miscompile).
-				delete(r.Check.FnSummaries, FnAnalysisKey(r.AnalysisScopeID(), nameCopy, genArgs, capturesCopy, bodyCopy))
-				stkGen := AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, genArgs, capturesCopy, declaredReturns, fnDef.Anonymous)
-				finishFn(stkGen)
+			if fnUnit = specialiseCallSite(r, es, compileUnit, fnDef, core.FnHomeForeign(caller, &fnDef), nameCopy, bodyCopy, sigParams, args, genArgs); fnUnit < 0 {
+				fnUnit = compileUnit(genArgs, "")
 			}
 		}
 		stk := AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, narrowArgsToParams(args, sigParams), capturesCopy, declaredReturns, fnDef.Anonymous)
