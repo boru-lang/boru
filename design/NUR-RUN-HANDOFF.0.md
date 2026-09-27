@@ -9,6 +9,75 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## A type value is no value of its Parent: NUR323 found and closed, NUR311 closed (2026-09-27)
+
+Probing NUR311's reach-led windows over other type-valued members found
+silent wrong answers, recorded as NUR323 (silent on main too). `def m {e:
+Integer} end sub m.e 3` answered `[3]` compiled for the interpreter's
+`signature_error`; so did `m.e add 1`, `f Integer` into an Any or Type
+parameter, `if c [Integer] [5]`, `[m.e] get 0 add 1` and an `each` element.
+
+- **The model.** A type literal's Parent is its supertype: the `Integer`
+  node's is Number. Every check-mode widening of a value to "a carrier of
+  its Parent" made the type a Number value, and `sub` committed its Number
+  handler over it. `core.ValueCarrier` widens a type literal to a Type
+  carrier and the None literal to the None carrier. The member and element
+  reads, the generic unit's argument, the join, the list element type and
+  element join, the typed list, the fold seed, clone, the spec undef, the
+  unit memo and the kept read take it.
+- **Strict, not gradual.** A gradual Type reached `mini`'s Function slot
+  (Function is a Type), and `mini`'s check model then errored. A strict
+  Type carrier takes exactly the Type and Any slots, as the run's type
+  literal does. `is` and `typeof` fold nothing over it, as over `typeof`'s
+  own Type carrier: `m.e is Number` stays true.
+- **The VM's matcher.** `core.MatchSignature`'s positionalMatch refused a
+  type literal only at Map and List slots; the interpreter's plan refuses
+  it wherever `rejectsTypeLiteral` does. So `x add 1` over `f Integer`
+  re-matched add's Number overload at run time. It now refuses the same
+  slots. A poly in a fn unit that meets a type with no faithful raise plan
+  is the loud `vm:poly-no-match` defer; compiling its raise is owed.
+- **NUR311.** The interpreter's report walks the written operands and stops
+  at the first that is no concrete value, then falls to the stack prefix.
+  The VM rebuilds that tuple (`core.AttemptedTuple`) from the rematch's
+  recorded prefix (`NoteRematchPrefix`, `DispatchSpec.Prefix`) and from the
+  poly plan's `StackTuple` (`PolyNoMatchSpec.NFwd`). `mini m.e 'ab'` agrees
+  byte for byte. The first cut deferred instead, which surfaced an
+  `internal_error` where users had the right error with different notes.
+  The plan-less best-effort report keeps its full window (`9 sub m.e 3`).
+- **Pins.** lang `TestNUR323TypeValueIsNoValueOfItsParent`,
+  `TestNUR311TupleStopsAtATypeOperand`, `TestNUR229To231OnTheMergedTree`;
+  eng `TestRematchStoppedTuple`, `TestPolyNoMatchRaiseStopsAtATypeOperand`;
+  core `TestValueCarrier`; compiler `TestW8DispatchRematchDeclines`.
+
+## The merge of main's #517: guarded fast paths over the branch's dispatch (2026-09-27)
+
+Main's #517 added a poly inline cache, seeded picks, shape specialisation
+of Map/List params, and proven narrower returns under a declared `Any`. Six
+conflicts, each resolved to keep both sides:
+
+- **CALL_NATIVE_POLY** takes the seeded pick and the cache first. A window
+  none of them matches still asks the interpreter's plan (NUR242's
+  `polySplitRaise`), then NUR147's arity retry. `polyDispatch` takes the
+  window size it pops, since the retry narrows it below `pr.Arity`.
+- **PolyRef** keeps `Split` and `DynBodyPlain` beside `Seed`/`SeedTags`, and
+  the region's `PolyNOutRegion` count.
+- **Probes** over the new fast paths agreed or declined loudly: fn values
+  nested in shaped Maps and Lists, the cache across operand types, and
+  seeded picks over fn units.
+
+Gate63 on the merge was red on four checks:
+
+- **Three branch pins** met shape specialisation. `f {k: …}` specialises m on
+  the map's shape, so `do m.k` lowers as a checked `CALL_NATIVE`, and a
+  gradual read is strict there. The disassembly pins run with
+  specialisation off and also pin the specialised form. The two-value map
+  run keeps its generic-unit defer and agrees on the specialised lane.
+- **Type soundness 7 -> 8.** Main's narrowing made `def rpt fn [[] [Any] [do
+  [def Big Integer 15 is Big]]]` Boolean, but a `do` traps its body's raise
+  into an Error value, and rpt's second call answers one. A fn body
+  holding a `do` narrows nothing (`bodyTrapsErrors`). Main has the same
+  hole; no row of its corpus reaches it.
+
 ## NUR317 closed: an undecided condition's union takes the re-step (2026-09-27)
 
 The second half's re-step left one form silent. Over an undecided condition

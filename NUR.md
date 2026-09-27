@@ -153,7 +153,7 @@ keep the two in sync in the same commit.
 | [NUR228](#nur228) | FIXED 2026-09-27 (the merged cover-gate pass): a `case` over a CARRIER scrutinee compiled to its terminal trap (`case_error` for the interpreter's `[two]`), and a `case` scrutinee's bindings were missing from the model inside an islanded body (`def x 1 end do [case [def x 5] …] end x` answered `…1` for `…5`, silent). Both decline loudly now | the merged cover-gate pass (2026-09-27) |
 | [NUR229](#nur229) | FIXED on the merged tree (the merge of main's #515, 2026-09-27): a def inside a `case` clause body is joined past the case — `def x 1 end do [case [1] [1 [def x 5 "one"] "other"]] end x` is `[1 one 5]` on both lanes (it was `[1 one 1]` compiled on main, silent) — through the run's case work. Pinned by lang `TestNUR229To231OnTheMergedTree` |
 | [NUR230](#nur230) | FIXED on the merged tree (the merge of main's #515, 2026-09-27): a value-less `case` scrutinee inside a `do` body is the interpreter's trapped error value on both lanes (main's compiled lane bailed `CALL_DYNAMIC underflow`) |
-| [NUR231](#nur231) | FIXED on the merged tree for the bail (the merge of main's #515, 2026-09-27): `mini` over a member holding the Function TYPE raises the interpreter's `signature_error` on both lanes, same message and caret (main bailed `DISPATCH_REMATCH`); the no-match notes still differ — [NUR311](#nur311) |
+| [NUR231](#nur231) | FIXED on the merged tree for the bail (the merge of main's #515, 2026-09-27): `mini` over a member holding the Function TYPE raises the interpreter's `signature_error` on both lanes, same message and caret (main bailed `DISPATCH_REMATCH`); the no-match notes agree since [NUR311](#nur311)'s close |
 | [NUR232](#nur232) | FIXED 2026-09-27 (the root arm's install — the handoff log's entry of that date): a ROOT def inside an `if` arm installs its binding beside the branch-carried slot store (`rootArmInstall`, main's NUR226 split-name install generalised), so the next request on the instance reads what the interpreter's arm left — `def x 5 if (g 9) [def x 9] [] end x` left 5 for the interpreter's 9, `if (g 9) [def y 9] [] end 0` left no y |
 | [NUR233](#nur233) | FIXED 2026-09-27 (the promoted split bind — the handoff log's entry of that date): a static region's first-value bind whose results the planner promoted to frame locals binds from its local, where the splice found the stack empty — `def x (5 dup) x add 1` bailed `BIND_GLOBAL splice underflow` for the interpreter's `[5 6]` |
 | [NUR234](#nur234) | LOUD on this branch (the merge of main's #516, 2026-09-27 — the handoff log's entry of that date): this branch's NUR123 close models the bare read of a fn-valued frame binding as its call, so the generic unit declines (`unmatched dispatch recovered at h`) where `main` answered `[20]`; the compile of the interpreter's `signature_error` is owed. The original text: A `Function` param passed on BARE to a recursive call — `(h g (n sub 1))` inside `h`'s own body — is a word dispatch of `g` on the interpreter (the bare-name-calls rule), so `h inc/v 5` raises `signature_error`; the generic compiled unit passes the value and answers `[20]` — SILENT, present on `main` at c8bce66 | call-site specialisation (2026-09-27) |
@@ -233,7 +233,7 @@ keep the two in sync in the same commit.
 | [NUR308](#nur308) | FIXED 2026-09-26 (value half: Bytes a refinement base, a computed bound the run's; type half: the run-time type install — the handoff log's entries of that date): a refinement constructor over a bound the check pass does not know latches a run-time construct and the dispatch records as the call it is, so the run builds the refinement; a refinement bakes only over const bounds, `between` decides no empty interval from an unknown one, and a membership check over one decides nothing in the pass (an intersection keeps the unknown bound, a complement admits). A TYPE over one compiles to the run-time install: the run installs it from the body it computed (OpBindTypeRun) and the pass's node forwards to the run's, a typed def records the run's own membership check, and an overload set over one re-matches at run time. An inline parameter or return type over one compiles too: its pattern is an anonymous node the run forwards to the refinement it computed. An inline interval over one (which the run may find empty), a typed container's child and a fn body's per-call type def decline through the existing compile-time-word site. The original text: `3 is (Integer gt (size "abc"))` was false interpreted and true compiled — the check pass built the refinement over its carrier for the computed bound and the recorder baked it; a carrier orders below every value, so a lower bound admitted everything, an upper one refused everything (a false check-time type_error too), `between` over one was Never, and a type over one bound or dispatched unchecked compiled. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR309](#nur309) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the return-pattern check defers a refinement's value-level membership over an abstract residual not provably outside its base, the named return type's rule. The original text: `def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5` was a check-time type_error ("expected (Integer gt 3), got Integer") that both lanes then returned 5 for; the named twin (`[Big]`) is check-clean. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR310](#nur310) | FIXED 2026-09-26 (a make field's refusal is a type_error — the handoff log's entry of that date): a make field the run refuses raises a type_error on both lanes; a refusal already structured keeps its code. The original text: the refusal was a plain error, which the interpreter printed bare and a compiled run booked as a compiler defect (internal_error with its "please report it" note) — `def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}`. Pre-existing | compiling NUR308's type half, 2026-09-26 |
-| [NUR311](#nur311) | Pending, loud (recorded 2026-09-27, the merge of main's #515): a reach-led forward window's no-match NOTES name the window the check pass matched — `mini m.e 'ab'` over `{e: Function}` reports `the arguments were Function … and 'ab'` and `2 were supplied` compiled, where the interpreter's forward collection stopped at the reach and supplied none; the error, message and caret agree |
+| [NUR311](#nur311) | FIXED 2026-09-27 (the VM rebuilds the interpreter's stopped tuple — the handoff log's entry of that date; recorded at the merge of main's #515): a reach-led forward window's no-match NOTES named the window the check pass matched — `mini m.e 'ab'` over `{e: Function}` reported `the arguments were Function … and 'ab'` and `2 were supplied` compiled, where the interpreter's walk over the written operands stopped at the type value and supplied none; the error, message and caret agreed |
 | [NUR312](#nur312) | FIXED 2026-09-27 (the island starts after a placed value — the handoff log's entry of that date): a forward-drift window's PLACED fn value that takes nothing fired inside the paren the recorder wrapped it in — `2 (mkf) add 3` over a factory of a no-argument g answered [2 10] for the interpreter's signature_error; present on main |
 | [NUR313](#nur313) | FIXED 2026-09-27 (a body arm places its value — the handoff log's entry of that date): an `if` body arm's one fn value, which the arm's paren parks, was re-stepped by the landing or applied by the residual — `def c true if c [(mkf)] [0]` answered 7 for `fn g`, `if c [(mkl)] [0] 5` 6 for `fn l 5`; a split branch leading a residual apply declines; present on main |
 | [NUR314](#nur314) | FIXED 2026-09-27 (an isolated loop re-steps its results; elsewhere a designed defer — the handoff log's entry of that date): a loop's fn-valued results, which the loop's end re-steps, stayed data — `for 2 [(mkf)]` answered `[fn g fn g]` for [7 7], `for 1 [(mka)] 5` `[fn 5]` for [6]; present on main |
@@ -245,6 +245,7 @@ keep the two in sync in the same commit.
 | [NUR320](#nur320) | FIXED 2026-09-26 (numbered NUR234 until the merge of main's #516, where main's NUR234 kept the number; the call carries the interpreter's window — the handoff log's entry of that date): a compiled user call's param-contract no-match reports the window the interpreter's failed dispatch reports — the written run, which a bare read ends, filled from the stack beneath. The original text: a compiled direct call's param-contract no-match reported every argument, where the interpreter reports its attempted window: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` noted "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Pre-existing | compiling NUR308's type half, 2026-09-26 |
 | [NUR321](#nur321) | FIXED 2026-09-26 (numbered NUR235 until the merge of main's #516, where main's NUR235 kept the number; a named fn value's push carries its name — the handoff log's entry of that date): a member read of a nullary fn value from a `fn` literal fires on both lanes; the closure's unit is shared with anonymous values over the same body, so the name rides on the push. The original text: a fn-body-local fn def bound into a returned map: the member read returns the fn compiled, calls it interpreted — `def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g` answers `[fn g]` compiled, `[5]` interpreted. A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR322](#nur322) | FIXED 2026-09-26 (numbered NUR236 until the merge of main's #516, where main's NUR236 kept the number; a spliced consumer is ordered by the stream — the handoff log's entry of that date): a gradual def read consumed by a spliced word's expansion carries its deopt, so a read that holds a fn at run time dispatches it on both lanes. The original text: a word splice over a def-bound gradual read of a fn: `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}` answers `[Function]` compiled (typeof over the fn value) and `[Integer]` interpreted (`j` calls the fn). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR323](#nur323) | FIXED 2026-09-27 (a type value widens to a Type carrier, and the VM's re-match refuses it at a value slot — the handoff log's entry of that date): a type literal's Parent is its supertype, not its type, and every check-mode widening to a carrier of its Parent claimed a value of it — `def m {e: Integer} end sub m.e 3` answered `[3]` compiled for the interpreter's `signature_error`, as did `m.e add 1`, `f Integer` into an Any or Type parameter, `if c [Integer] [5]` and a list element; silent on main too |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14121,9 +14122,10 @@ needed.
 
 ## NUR311 — a reach-led forward window's no-match notes name the pass's window {#nur311}
 
-**Status:** Pending · **Recorded:** 2026-09-27 · **Surfaced by:** the merge
-of main's #515 (NUR231's witness on the merged tree). Loud: both lanes
-raise the same error at the same caret.
+**Status:** FIXED 2026-09-27 (the VM rebuilds the interpreter's stopped
+tuple — the handoff log's entry of that date) · **Recorded:** 2026-09-27 ·
+**Surfaced by:** the merge of main's #515 (NUR231's witness on the merged
+tree). Loud: both lanes raised the same error at the same caret.
 
 ```
 import "boru:minilang" end def m {e: Function} end mini m.e 'ab'
@@ -14150,6 +14152,33 @@ derives the tuple from the interpreter's failure point (or declines the
 rematch when the two disagree, since an empty tuple cannot be rebuilt); the
 rematch and its values are otherwise right, and both lanes raise the same
 error at the same caret.
+
+**What it was (2026-09-27).** Not the forward collection: at both failure
+points the tape is `mini <type> 'ab'`. The interpreter's report walks the
+operands written after the word (`ReorderForwardCandidates`) and stops at
+the first that is no concrete value, here the `Function` type the reach
+read. With nothing written before it and nothing beneath the word, the tuple
+is empty. The check pass held the reach's value as a carrier, which its own
+walk (`rematchWritten`) renders, so it recorded both operands. A None the
+read finds, or a `typeof` result, stops the walk the same way: `sub m.x 3`
+over a missing member, `mini (typeof 5) 'ab'`.
+
+**Fix.** The VM rebuilds the interpreter's tuple from the live values.
+Where a written operand the render tuple holds is no concrete value at run
+time, the report takes the written operands before it, filled from the
+stack prefix beneath the word (`core.AttemptedTuple`, the attempted
+window's tape-free rule). The rematch record notes the run prefix's window
+indices (`NoteRematchPrefix`, `DispatchSpec.Prefix`), and the poly's
+faithful raise counts its written entries (`PolyNoMatchSpec.NFwd`) and
+fills from its `StackTuple`. Without a recorded prefix the recorded tuple
+stands. The poly's best-effort report over a plan-less window
+(`bestEffortNoMatch`) keeps its documented full-window tuple:
+`9 sub m.e 3` names both operands there, where the interpreter names 9.
+Pinned: lang `TestNUR311TupleStopsAtATypeOperand` (eight rows),
+`TestNUR229To231OnTheMergedTree`; eng `TestRematchStoppedTuple`,
+`TestPolyNoMatchRaiseStopsAtATypeOperand`; compiler
+`TestW8DispatchRematchDeclines`; core `TestS5BTrapCarrierRematchRecords`,
+`TestS5BTrapRematchRefusedNotesNothing`.
 
 ## NUR312 — a placed fn in a forward-drift window fires inside its paren {#nur312}
 
@@ -14623,3 +14652,53 @@ body event after the read runs before the consumer, else before that
 event, as the in-body case. Pinned: lang `TestNUR322SplicedConsumerDeopts`
 (six rows, an intervening event among them). The general "best effort"
 remains where a point cannot be placed at all.
+
+## NUR323 — a type value is no value of its Parent {#nur323}
+
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-27 · **Surfaced by:** probing NUR311's reach-led
+windows over other type-valued members. Present on main (91e97dd), silent
+there too.
+
+**Rule:** a type is a value of type `Type`; it is no value of its lattice
+parent. The interpreter's dispatch refuses a type literal at a value slot
+(`rejectsTypeLiteral`), while `is` and `typeof` read the node's own place
+in the lattice (`Integer is Number` is true, `typeof Integer` is Number).
+
+**Divergence.** Silent wrong answers:
+
+```
+def m {e: Integer} end sub m.e 3                    interp: signature_error   compiled: [3]
+def m {e: Integer} end m.e add 1                    interp: signature_error   compiled: [1]
+def m {e: String} end m.e add "x"                   interp: signature_error   compiled: [Stringx]
+def m {e: Integer} end [m.e] get 0 add 1            interp: signature_error   compiled: [1]
+def f fn [[x:Any][Any][x add 1]] end f Integer      interp: signature_error   compiled: [1]
+def f fn [[x:Type][Any][x add 1]] end f Integer     interp: signature_error   compiled: [1]
+def c true end def t (if c [Integer] [5]) t add 1   interp: signature_error   compiled: [1]
+each ([e:Any] => [e add 1]) [Integer]               interp: signature_error   compiled: [[1]]
+```
+
+**Cause.** Two gaps, one rule. (1) The check pass widened a value to "a
+carrier of its Parent" at about a dozen sites (a member or element read, a
+generic unit's argument, a branch join, a list's element type, a fold seed,
+clone, a spec undef, the unit memo, a kept read). For a type literal that
+Parent is its supertype: the `Integer` node became a `Number` value, and
+`sub` committed its Number handler over the type. (2) The VM's poly
+re-match, `core.MatchSignature`, refused a type literal only at Map and List
+slots (`positionalMatch`), where the interpreter's plan refuses it at every
+value slot. So `x add 1` over `f Integer` re-matched add's Number overload
+at run time.
+
+**Fix.** `core.ValueCarrier` widens a type literal to a Type carrier, and
+the None literal to the None carrier. A value slot refuses a Type carrier
+as it refuses the run's type literal, a Type or Any slot takes it, and
+`is` / `typeof` fold nothing over it (as over `typeof`'s own Type carrier).
+A gradual Type would reach a Function slot, since Function is a Type. Every
+widening site above routes a type literal through it. `positionalMatch`
+refuses a type literal wherever `rejectsTypeLiteral` does. A poly in a fn
+unit whose operand is a type at run time, with no faithful raise plan, is
+now the loud `vm:poly-no-match` defer (`(f) add 1` over `def f fn [[][Any]
+[Integer]]`). Compiling its raise is owed. A stored None reads as the None
+value, where the check pass halted on a Parent-less carrier. Pinned: lang
+`TestNUR323TypeValueIsNoValueOfItsParent` (19 agreeing rows, three loud
+defers); core `TestValueCarrier`, `TestGeneraliseSpecUndef`.
