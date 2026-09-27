@@ -2411,8 +2411,12 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 // unit reads bare (CompiledFn.FnReadParams, NUR218) as the interpreter runs
 // it: its word dispatched over the arguments, laid out as the stack the call
 // takes them from (the last pushed is the first parameter), in the unit's
-// own dispatch registry. ran is false when no argument is refused, and the
-// unit runs.
+// own dispatch registry. The arguments are RESOLVED values beneath the word,
+// never tokens the island steps: a lambda taking an argument stepped there
+// began a forward collection the word's barrier then refused (NUR284: `run
+// m.c` inside h raised `is still waiting for 1 argument(s)` for the
+// interpreter's 7). ran is false when no argument is refused, and the unit
+// runs.
 func (vc *vmContext) fnReadCallUser(reg *core.Registry, fn *compiler.CompiledFn, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
 	n := fn.NParams
 	args := make([]core.Value, n)
@@ -2423,13 +2427,11 @@ func (vc *vmContext) fnReadCallUser(reg *core.Registry, fn *compiler.CompiledFn,
 		return nil, false, nil
 	}
 	callReg := dispatchRegistry(fn.Reg, reg)
-	island := append(make([]core.Value, 0, n+1), stack[len(stack)-n:]...)
 	w := core.NewWordModified(fn.Name, -1, true, false)
 	if pc >= 0 && pc < len(curDebug) {
 		w = core.WithPosAt(w, curDebug[pc])
 	}
-	island = append(island, w)
-	results, err := vc.islandRun(callReg, island)
+	results, err := runIslandResolved(callReg, stack[len(stack)-n:], []core.Value{w})
 	if err != nil {
 		return nil, true, stampAt(err, curDebug, pc, reg)
 	}

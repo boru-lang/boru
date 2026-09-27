@@ -1629,6 +1629,10 @@ type EmitState struct {
 	// liveReadNames is every module-scope value a stored-ref unit reads
 	// bare, seated live (NoteLiveRead's stored-dep arm).
 	liveReadNames map[string]bool
+	// storedLiveReads are those reads' names and positions: a fn frame
+	// that binds the name and reaches the reading value must install its
+	// binding where the lookup finds it (seatStoredLiveReads, NUR284).
+	storedLiveReads []storedLiveRead
 	// condBoundNames is every name a bound-checked cell carries
 	// (Program.CondBoundNames, noteCondBound).
 	condBoundNames   map[string]bool
@@ -6851,6 +6855,7 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		}
 		es.liveReadNames[name] = true
 		es.noteUnitLive(name)
+		es.storedLiveReads = append(es.storedLiveReads, storedLiveRead{name: name, pos: pos})
 	} else if keepLive || es.mutableRefCarrierRead(*v) || rootLive {
 		// A name a KEEP-DEFS body leaked (NoteKeepDefsLeak), or a mutable
 		// reference — a flex, a store — the pass now holds as a CARRIER
@@ -15980,6 +15985,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		return nil, "no emit state", false
 	}
 	es.flushGradualRead()
+	es.seatStoredLiveReads()
 	if reason, refused := es.finalizeRefused(residual); refused {
 		return nil, reason, false
 	}

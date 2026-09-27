@@ -206,7 +206,7 @@ keep the two in sync in the same commit.
 | [NUR281](#nur281) | FIXED 2026-09-27 (the handoff log's entry of that date): when the kept-defs latch arms at the program level the pass generalises root value bindings (compiler generaliseRootValues, the speculative undef's transition), so the map literal's fold stands aside and the read reaches the latch, which declines. Was: A MAP literal's value read after a computed keep-defs body at the ROOT bakes the pre-body binding: `def x 99 end def mk fn [[][List][quote [def x 5 1]]] end [1 2] each (mk) end {a: x}` is the interpreter's `[[1 1] {a:5}]` and the compiled lane's `[[1 1] {a:99}]`, silent — main's kept-defs latch declines the list twin `[x]` and the same map read inside a fn body, but the root map literal's value read never reaches it. Present on main at cd188a2 (#514) and on the branch before the merge | the merge of main's #514, 2026-09-26 |
 | [NUR282](#nur282) | OPEN, three shapes FIXED 2026-09-27 (the handoff log's entries of that date): a run of zero-argument anonymous lambdas is no callable region; a run that may leave a callable compiles under the plain-run check (NUR213); and a read the recorder seats LIVE passes the kept-defs latch as a carrier (the root's reads after a root computed body, a unit's own defs after one in the unit), so NUR203's and NUR210's rebinding witnesses compile with the interpreter's answers again. Open: a run holding an arg-taking lambda (the plain check defers where the interpreter parks or applies it), the wrong-count single-value seat, a parameter or a fn the body may rebind, and `j j`. Recorded 2026-09-26 at the merge of main's #514 | the merge of main's #514, 2026-09-26 |
 | [NUR283](#nur283) | OPEN (recorded 2026-09-27, closing NUR263; proposed verdict: resolve by fix): an optimistic closure bake whose layout is not exact — a value beneath its operands, or a token after them — raises the handler's bare signature_error where the interpreter raises the word's report. `def mk fn [[][Any][5]] end 1 2 fold [add] (mk)`, `… 0 scan [add] (mk)` and `… 0 fold [add] (mk) drop` carry no notes compiled. Loud: the same code, head and caret | closing NUR263, 2026-09-27 |
-| [NUR284](#nur284) | OPEN (recorded 2026-09-27, probing NUR257; proposed verdict: resolve by fix): a folded map member's anonymous fn APPLIED inside a fn whose frame binds a name the member reads — `def m {c: ([x:Any] => [k])} end def h fn [[][Any] [def k 7 m.c 1]] end h`, and with `k` h's parameter — raises `undefined word: k` compiled for the interpreter's `[7]`; passed to a fn that applies it (`def run fn [[f:Any][Any] [f 1]] end … run m.c`) it raises `run: expected 1 return value(s), got 2` compiled. Loud, the wrong error; present on the base | probing NUR257, 2026-09-27 |
+| [NUR284](#nur284) | FIXED 2026-09-27 (recorded the same day, probing NUR257; the handoff log's entry of that date): a folded map member's anonymous fn APPLIED inside a fn whose frame binds a name the member reads — `def m {c: ([x:Any] => [k])} end def h fn [[][Any] [def k 7 m.c 1]] end h`, and with `k` h's parameter — raised `undefined word: k` compiled for the interpreter's `[7]`; passed to a fn that applies it (`def run fn [[f:Any][Any] [f 1]] end … run m.c`) it raised a count error, and after NUR218's close `is still waiting for 1 argument(s)`. The stored unit reads the name live, and a read some fn that binds it reaches (NUR257's binder model over the value's reader identity) now joins the dynamic-scope names, so every binder installs it where the lookup finds it (`seatStoredLiveReads`); NUR218's interpreter route seats its arguments as resolved values beneath the call word | probing NUR257, 2026-09-27 |
 | [NUR285](#nur285) | FIXED 2026-09-27 (recorded and closed together, closing NUR217; the handoff log's entry of that date): a root def bound to a factory's argument-taking fn, read inside a code body at the root over values the body pushed beneath it, was a slot push — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (mk) end do [10 j]` answered `[10 fn j(Integer)]` for `[11]`, `[1 2] each [j]` `[[fn j(Integer) fn j(Integer)]]` for `[[2 3]]` (silent); read in a fn body it raised `dynamic-scope read of a dispatching binding` (loud); and `def j (do [(mk)]) end j/v` rendered `fn` for `fn j` (silent). The body's deopt point stands with the root as its parent and installs the captured fn for its island (`DeoptSpec.Install`), the frame replay's word reads take the data lookup, and a def's rename reaches the value's frame local (`GlobalBindSpec.WriteSlot`). Present on main | closing NUR217, 2026-09-27 |
 | [NUR286](#nur286) | OPEN — its silent root half made LOUD 2026-09-27 (recorded the same day, closing NUR217; the handoff log's entry of that date; proposed verdict: resolve by fix): a paren whose `do` run lands an argument-taking fn over the paren's own values, taken by a def or a later word — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (5 do [(mk)]) end j` is `[6]` interpreted and was `[fn (Integer) 5]` compiled; so were `(5 do [(mk)]) typeof`, `(5 do [(mk)]) 9` and a list member's lambda (`def j (5 do [l.0]) end j`). A root landing whose own step had values beneath it now carries a guard (`LandingBeneathGuard`) unless the interpreter parks the value (a user call's result), the residual's apply re-steps it as the interpreter does, or an event applies it; the VM raises a designed defer where the landed fn takes an argument. Open: the compile (answering 6), and a fn body's form, which fails on the unit's return count (a `type_error` the interpreter does not raise) | closing NUR217, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
@@ -13866,9 +13866,9 @@ VM stack does not hold in tape order in general.
 
 ## NUR284 — a folded member fn applied in a binder's frame reads its dynamic scope interpreted and raises compiled {#nur284}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-27 · **Surfaced by:** probing NUR257's matrix (present on the base,
-0a2f60a, before NUR257's close).
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-27 · **Surfaced by:** probing NUR257's matrix
+(present on the base, 0a2f60a, before NUR257's close).
 
 **Rule:** a program the compiler admits, the compiled runtime runs, and
 answers as the interpreter does.
@@ -13895,6 +13895,35 @@ program's call graph nor h's frame bindings, so its read of `k` is not a
 dynamic-scope lookup. The third row is the parameter-bound application's
 count: `f 1` inside `run` leaves the value and its argument where the
 interpreter applies it.
+
+**The fix (2026-09-27).** Traced, the first guess was half wrong: the
+stored unit DID read `k` live (`LOOKUP_DYN_SCOPE`, NoteLiveRead's stored-dep
+arm — from the value's home registry the name looked module-scope), but
+h bound `k` as a frame local (its `def k 7` did not even lower, and its
+param stayed a slot), so the lookup missed.
+
+- **The binder installs the name.** Each stored-dep live read keeps its
+  name and read-token position (`storedLiveReads`); before any unit is
+  lowered, `Finalize` asks the check's binder model whether some fn that
+  binds the name reaches the value the read is in — its reader identity is
+  the body's position (NUR257's `AnonScopeReachable`) — and such a name
+  joins `dynScopeNames`, as a unit's dynamic-scope read does through the
+  rescue. Every binder then installs it registry-visibly (`BIND_DYN_SCOPE`
+  after h's `def k 7`, and at entry for its param k), where the unit's
+  lookup finds it. A read no binder reaches — a typo, or a binding h made
+  and dropped before the read — is the interpreter's `undefined_word`, and
+  the check pass stops at it.
+- **The third row was NUR218's route.** After NUR218, `run m.c` runs the
+  CALL_USER on the interpreter (a fn in the bare-read slot `f`), and the
+  island stepped the arguments as TOKENS ahead of the word: the lambda's
+  forward collection met `run`'s barrier and raised `is still waiting for
+  1 argument(s)`. The arguments are resolved values beneath the word now
+  (`runIslandResolved`), as the call takes them from the stack.
+
+All three witnesses answer `[7]` on both lanes; so do a root `k` shadowed
+by h's, `each [m.c]` and `each m.c/v` inside h, a call through a fn g that
+h calls, a list member's lambda, and a lambda over `k add x`. Pinned by
+`lang/go/nur284_test.go` and `compiler/go/nur284_test.go`.
 
 ## NUR285 — a root def-bound fn read inside a body over values beneath it {#nur285}
 

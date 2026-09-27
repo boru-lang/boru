@@ -9,6 +9,29 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR284 closed: a folded member fn applied in a binder's frame reads its dynamic scope (2026-09-27)
+
+**The divergence.** `def m {c: ([x:Any] => [k])} end def h fn [[][Any]
+[def k 7 m.c 1]] end h` is 7 interpreted — the member's lambda reads `k`
+from the def stack where it is applied, inside h — and was `undefined
+word: k` compiled; so was the param form, and `run m.c` (a fn that applies
+its argument) raised a count error, then NUR218's `is still waiting for 1
+argument(s)`.
+
+**The fix, as recorded.** The stored unit read `k` live already
+(`LOOKUP_DYN_SCOPE`), but h bound `k` as a frame local. Each stored-dep
+live read keeps its name and read position (`storedLiveReads`), and
+`Finalize` (`seatStoredLiveReads`) puts a name into `dynScopeNames` when
+some fn that binds it reaches the reading value (`AnonScopeReachable`,
+NUR257's binder model), so every binder installs it registry-visibly.
+NUR218's interpreter route (`fnReadCallUser`) seats the CALL_USER's
+arguments as resolved values beneath the word (`runIslandResolved`), where
+it stepped them as tokens.
+
+**Measured.** The three witnesses and eight neighbours agree; a typo and a
+dropped binding stay the interpreter's `undefined_word`, where the check
+pass stops. The lang root, compiler and eng suites pass.
+
 ## NUR286's silent root half made loud: a landing over its own values that nothing compiled re-steps (2026-09-27)
 
 **The divergence.** A paren whose `do` run lands an argument-taking fn
