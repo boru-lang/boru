@@ -3557,7 +3557,7 @@ func (es *EmitState) resolveOperand(v core.Value) (EmitOperand, bool) {
 	// unit open, i.e. an enclosing scope constructed it once and the body
 	// merely reads it. Compounds are never pooled (intern), so idx belongs
 	// to exactly this materialise context.
-	if len(es.units) > 1 && freshenableConst(lit) &&
+	if len(es.units) > 1 && (freshenableConst(lit) || freshFnLiteral(lit)) &&
 		!es.units[len(es.units)-1].enclosingIDs[v.ID] {
 		// A body literal EMBEDDING an enclosing binding's container is
 		// neither deep-freshened nor shared: the interpreter constructs the
@@ -14589,6 +14589,18 @@ func freshenableConst(v core.Value) bool {
 		return true
 	}
 	return false
+}
+
+// freshFnLiteral reports whether v is a fn value a literal written in a fn
+// body constructs on every evaluation — an unbound fn or lambda (no binding
+// name yet) with no captures (a capturing one is a closure, minted per
+// push already): the interpreter mints a new function each time the literal
+// runs, so its pooled const is re-identified per push (OpPushConstFresh,
+// NUR288). A named fn — a binding's value read by `/v`, a module export —
+// is one function however often it is read.
+func freshFnLiteral(v core.Value) bool {
+	fd, ok := v.Data.(core.FnDefInfo)
+	return ok && !v.Carrier && !v.Dynamic && fd.Name == "" && len(fd.Captured) == 0
 }
 
 // planMarkWindow arms the mark-window island (L-DO part 2b) when the

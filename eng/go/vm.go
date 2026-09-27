@@ -1634,6 +1634,14 @@ func (vc *vmContext) landingFire(reg *core.Registry, v core.Value, fnDef core.Fn
 func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.FnDefInfo, lword compiler.LandingWord, stack []core.Value, top int, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
 	own := fnDef
 	own.Signatures = fnDef.OwnSigs()
+	// The walk plans over the signatures the interpreter dispatches — a fn
+	// value's authored `BarrierAllForward` resolved to its arity, as
+	// compileFnDef resolves it before execFnDefLiteral matches. Planned raw,
+	// the sentinel's -1 forward limit scanned nothing, so a lambda's Any
+	// slot never met the function word it strands on (`do [mk] typeof` over
+	// `([x:Any] => [x])` answered `[Function]` for the interpreter's
+	// strict-rule signature_error, NUR289).
+	own = installedSigView(own)
 	h := newRegionHostOver(reg, []core.Value{v, core.NewWord(lword.Name)})
 	w := core.WordInfo{Name: fnDef.Name, ArgCount: -1}
 	if err := h.Collected(core.CollectForward(h, &own, w, 1)); err != nil { //covergate:allow the window is the value and one plain word: the pre-walk evaluates only parens, lists and sugar markers, and a Word token is none of them, so it returns nil; kept as the honest arm for a kernel change (§compiler)
@@ -3376,7 +3384,7 @@ func (vc *vmContext) unwindDynBinds(base int) {
 // per call, shared within a call, fresh across calls.
 func seatConstLocal(p *compiler.Program, locals []core.Value, cl compiler.ConstLocalRef) core.Value {
 	if locals[cl.Slot].Parent == nil {
-		locals[cl.Slot] = core.CloneValueKeeping(p.Consts[cl.ConstIdx], p.ConstKeep[cl.ConstIdx])
+		locals[cl.Slot] = core.WithFreshFnIdentity(core.CloneValueKeeping(p.Consts[cl.ConstIdx], p.ConstKeep[cl.ConstIdx]))
 	}
 	return locals[cl.Slot]
 }
@@ -3498,7 +3506,9 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// for `(mk) eq (mk)` (see OpPushConstFresh in bytecode.go); the
 			// enclosing bindings' containers the literal embeds stay shared
 			// (Program.ConstKeep).
-			stack = append(stack, core.CloneValueKeeping(p.Consts[in.Arg], p.ConstKeep[int(in.Arg)]))
+			// A fn literal the body constructs per evaluation is a new
+			// function per push (NUR288).
+			stack = append(stack, core.WithFreshFnIdentity(core.CloneValueKeeping(p.Consts[in.Arg], p.ConstKeep[int(in.Arg)])))
 		case compiler.OpPushConstFreshLocal:
 			// A multi-read compound body literal: construct ONE fresh instance per
 			// call, seated in a frame local, shared by every read site (see

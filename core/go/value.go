@@ -1143,6 +1143,22 @@ func NewFunctionIdentified(info FnDefInfo, id FnIdentity) Value {
 	return NewFunction(info)
 }
 
+// WithFreshFnIdentity returns v with the identity one more CONSTRUCTION of
+// its fn would mint (NewFunction's own token) when v is a fn value, and v
+// itself otherwise. A fn literal written in a fn body is a new function on
+// every evaluation, so a compiled push of its pooled const re-identifies it
+// per push (OpPushConstFresh) — `def mk fn [[][Any][([x:Any] => [x])]] end
+// mk mk eq` is false on both lanes (NUR288).
+func WithFreshFnIdentity(v Value) Value {
+	fd, ok := v.Data.(FnDefInfo)
+	if !ok {
+		return v
+	}
+	fd.ident = &fnIdent{}
+	v.Data = fd
+	return v
+}
+
 // CapturedBinding is one lexically-captured name in a closure. The
 // list is sorted by Name for deterministic install order so that two
 // captures with the same name (impossible today but cheap to keep

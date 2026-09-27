@@ -9,6 +9,26 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR288 and NUR289 found and closed by a probe sweep (2026-09-27)
+
+**How they were found.** After NUR287, three combinatorial sweeps ran over
+both lanes, printing only programs that compile and answer differently:
+3360 word × prefix × forward-operand programs, 736 fn-valued factories in
+landing and apply contexts, and 180 control-flow and shuffle shapes over
+dynamic values. The first two came back clean once NUR287's halves landed;
+the third found two silent divergences, both present on main.
+
+**NUR288.** A fn literal in a fn body is a new function per evaluation,
+and the compiled body pushed one pooled const (`mk mk eq` true for false).
+An unbound, capture-free fn literal materialised in a fn unit is
+freshened like a compound body literal, and the VM's fresh pushes
+re-identify a fn value (`WithFreshFnIdentity`).
+
+**NUR289.** The landing's walk planned a fn value's authored signature,
+whose `BarrierAllForward` scanned nothing forward, so `do [mk] typeof`
+over an Any-slot lambda parked the fn where the interpreter strands it
+(strict rule). The walk plans over `installedSigView`.
+
 ## NUR287 found and closed: a forward-drift window over dynamic operands only (2026-09-27)
 
 **The divergence.** Probing NUR282's `j j` found `def j (mk) end j j add

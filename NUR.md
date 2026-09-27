@@ -210,6 +210,8 @@ keep the two in sync in the same commit.
 | [NUR285](#nur285) | FIXED 2026-09-27 (recorded and closed together, closing NUR217; the handoff log's entry of that date): a root def bound to a factory's argument-taking fn, read inside a code body at the root over values the body pushed beneath it, was a slot push — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (mk) end do [10 j]` answered `[10 fn j(Integer)]` for `[11]`, `[1 2] each [j]` `[[fn j(Integer) fn j(Integer)]]` for `[[2 3]]` (silent); read in a fn body it raised `dynamic-scope read of a dispatching binding` (loud); and `def j (do [(mk)]) end j/v` rendered `fn` for `fn j` (silent). The body's deopt point stands with the root as its parent and installs the captured fn for its island (`DeoptSpec.Install`), the frame replay's word reads take the data lookup, and a def's rename reaches the value's frame local (`GlobalBindSpec.WriteSlot`). Present on main | closing NUR217, 2026-09-27 |
 | [NUR286](#nur286) | OPEN — its silent root half made LOUD 2026-09-27 (recorded the same day, closing NUR217; the handoff log's entry of that date; proposed verdict: resolve by fix): a paren whose `do` run lands an argument-taking fn over the paren's own values, taken by a def or a later word — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (5 do [(mk)]) end j` is `[6]` interpreted and was `[fn (Integer) 5]` compiled; so were `(5 do [(mk)]) typeof`, `(5 do [(mk)]) 9` and a list member's lambda (`def j (5 do [l.0]) end j`). A root landing whose own step had values beneath it now carries a guard (`LandingBeneathGuard`) unless the interpreter parks the value (a user call's result), the residual's apply re-steps it as the interpreter does, or an event applies it; the VM raises a designed defer where the landed fn takes an argument. Open: the compile (answering 6), and a fn body's form, which fails on the unit's return count (a `type_error` the interpreter does not raise) | closing NUR217, 2026-09-27 |
 | [NUR287](#nur287) | FIXED 2026-09-27 (recorded and closed together, probing NUR282's `j j`; the handoff log's entry of that date): two results the check pass holds as dynamic carriers under a forward-eligible word with a literal after it — `def mk fn [[][Any][42]] end mk mk add 1` — answered `[84 1]` compiled for the interpreter's `[42 43]` (silent): the match over two carriers took `add (Bytes, Bytes)` all-stack and the poly re-match over that window could not collect the 1; three carriers took `add (Map, Any, Service)` and raised a claim failure. The forward-drift window (and the decline it mirrors) required a concrete operand beneath the dynamic top; a dynamic top is the whole precondition now. Inside a list literal the window met a fixed-count assembly (`[7 mk add 1]` was `[7 [43]]` for `[[7 43]]`, present before): it stands aside there and the decline answers. A word bound to a literal after the word (`def k 1 end mk mk add k`, `[84 1]` too) is the forward operand as well (`ForwardOperandValue`) | probing NUR282, 2026-09-27 |
+| [NUR288](#nur288) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): a fn literal written in a fn body is a new function every time the body runs — `def mk fn [[][Any][([x:Any] => [x])]] end mk mk eq` is `[false]` interpreted — and the compiled body pushed the literal's pooled const, one identity across calls: `[true]` (silent). An unbound, capture-free fn literal in a fn body is re-identified per push now (`OpPushConstFresh`, core's `WithFreshFnIdentity`), as a compound body literal is re-constructed; a named fn read by `/v` stays one function | probe sweep, 2026-09-27 |
+| [NUR289](#nur289) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): an anonymous fn whose Any slot meets a function word where a `do` body's result lands — `def mk fn [[][Any][([x:Any] => [x])]] end do [mk] typeof` — is the interpreter's strict-rule `signature_error`, and the compiled landing's walk answered `[Function]` (silent): it planned over the value's AUTHORED signature, whose `BarrierAllForward` scanned nothing forward. It plans over the installed view now (`installedSigView`). The caret still points at the word where the interpreter points at the fn (the landed value carries no position) | probe sweep, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14168,4 +14170,70 @@ sweeps together, 4676 programs, find no silent divergence after it. `mk mk add 1
 the bound-word forms answer as the interpreter does; `[mk mk add 1]`, `[7
 mk add 1]` and a non-terminal `mk mk add 1 drop` decline. Pinned by
 `lang/go/nur287_test.go` and `core/go/forward_operand_value_test.go`.
+
+## NUR288 — a fn literal in a fn body keeps one identity across calls compiled {#nur288}
+
+**Status:** FIXED 2026-09-27 (recorded and closed together; the handoff
+log's entry of that date) · **Surfaced by:** a probe sweep of control-flow
+and shuffle shapes over dynamic values (present on main).
+
+**Rule:** a program the compiler admits, the compiled runtime runs, and
+answers as the interpreter does.
+
+**Divergence:**
+
+```
+def mk fn [[][Any][([x:Any] => [x])]] end mk mk eq
+  interpreted   [false]
+  compiled      [true]                                    (silent)
+def mk fn [[][Any][fn [[x:Any][Any][x]]]] end mk mk eq    the same pair
+```
+
+**Cause and fix.** Each evaluation of a fn literal mints a new function
+(NewFunction's identity token), so two calls of `mk` return two functions
+the interpreter's `eq` tells apart. The compiled body pushed the literal's
+pooled const — one FnDefInfo, one identity, however many calls. A compound
+body literal already gets per-call identity (`OpPushConstFresh`,
+freshenFnUnitConsts, miscompile mechanism A); a fn literal now joins it:
+an unbound (`Name == ""`), capture-free fn value materialised in a fn unit
+is marked for freshening (`freshFnLiteral`), and the VM's fresh pushes
+re-identify a fn value (core's `WithFreshFnIdentity`) after the clone,
+which shares functions. A named fn read by `/v` — `def g … end def mk fn
+[[][Any][g/v]] end mk mk eq` — stays one function, and a capturing lambda
+was fresh already (a closure mints its identity per push). Pinned by
+`lang/go/nur288_test.go` and `core/go/fresh_fn_identity_test.go`.
+
+## NUR289 — the landing's walk planned a fn value's authored signature {#nur289}
+
+**Status:** FIXED 2026-09-27 (recorded and closed together; the handoff
+log's entry of that date) · **Surfaced by:** the same probe sweep (present
+on main).
+
+**Rule:** a program the compiler admits, the compiled runtime runs, and
+answers as the interpreter does.
+
+**Divergence:**
+
+```
+def mk fn [[][Any][([x:Any] => [x])]] end do [mk] typeof
+  interpreted   signature_error:  is still waiting for 1 argument(s) when `typeof` begins its own dispatch — … (strict rule)
+  compiled      [Function]                                (silent)
+def l [([x:Any] => [x])] end do [l.0] typeof               the same pair
+```
+
+**Cause and fix.** A `do` body's result is re-stepped where it lands; an
+anonymous fn with an Any slot claims the function word after it
+speculatively and then strands when the word begins its own dispatch.
+The compiled landing walks the fn's overloads over the word (NUR190) with
+the region planner, but over the value's AUTHORED signatures: a fn
+literal's `BarrierAllForward` (-1) is resolved to the arity only when the
+interpreter installs or dispatches it (compileFnDef), and the planner's
+forward limit read the raw -1 and scanned nothing, so the plan matched
+nothing and the walk parked the fn. The walk plans over the installed
+view now (`installedSigView`, the VM's existing reconciliation). A typed
+slot the word does not fit, a `/q` capture, a Function slot and a value
+written after the result answer as before. The caret differs: the
+interpreter reports at the fn's own token, and the landed value (and the
+landing op) carry no position, so the compiled lane points at the word.
+Pinned by `lang/go/nur289_test.go`.
 
