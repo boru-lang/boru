@@ -380,11 +380,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			return "def of the enclosing for loop's own index `" + d.name + "` inside its body (NUR204)"
 		}
 	}
-	// A KEEP-DEFS unit (`do`'s body) installs EVERY value def: the
-	// interpreter runs the body in the caller's frame and the binding
-	// leaks, so each is registry-visible — a kept OpBindDynScope the VM
-	// leaves standing past this unit's RET (CompiledFn.KeepsDefs).
-	needDyn := lw.es != nil && ((lw.keepsDefs && !d.keepSkip) || lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]) || lw.es.routedBindsDyn(d))
+	needDyn := lw.needDynInstall(d)
 	if needDyn && d.root && lw.twinInstalls(twin) {
 		// A ROOT def whose bind twin REPLAYS at this very site (a concrete
 		// captured entry, not written back) is registry-visible by that
@@ -545,6 +541,22 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		}
 	}
 	return ""
+}
+
+// needDynInstall reports whether def d lowers the registry-visible
+// OpBindDynScope install: every def under DynEnv, and a def of a deopt name,
+// of a name some OpLookupDynScope reads (dynScopeNames) or of a routed
+// read's name (routedBindsDyn). A KEEP-DEFS unit (`do`'s body) installs
+// EVERY value def: the interpreter runs the body in the caller's frame and
+// the binding leaks, so each is registry-visible — a kept OpBindDynScope the
+// VM leaves standing past this unit's RET (CompiledFn.KeepsDefs). A root
+// arm's store of a split-bound name installs too (splitArmInstall).
+// collectDynBindSources promotes the computed source of each such install
+// for its re-push.
+func (lw *lowerer) needDynInstall(d *emitDynBind) bool {
+	es := lw.es
+	return es != nil && ((lw.keepsDefs && !d.keepSkip) || es.dynEnv || lw.deoptNames[d.name] || es.dynScopeNames[d.name] ||
+		es.routedBindsDyn(d) || es.splitArmInstall(d))
 }
 
 // storeArmBind lowers a branch-carried def's store (emitDynBind.armCarried):
@@ -2958,11 +2970,30 @@ func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[st
 			// sit under later pushes at the second install site. Same
 			// store-once / re-push-per-use discipline as the dyn-bound
 			// sources above.
-			es.armResidentDepth > 0 {
+			es.armResidentDepth > 0 ||
+			// A root arm's store of a split-bound name re-pushes its value
+			// for the registry install beside the slot store.
+			es.splitArmInstall(ev.dyn) {
 			dynBindSrc[ev.dyn.srcSeq] = true
 		}
 	}
 	return dynBindSrc
+}
+
+// splitArmInstall reports whether a def is a ROOT arm's branch-carried store
+// of a top-level SPLIT-bound name (EmitState.rootSplitBind) that needs its
+// registry install beside the slot store: the slot serves this run's reads
+// after the merge, and the install leaves the binding in the def stack as the
+// interpreter's arm does. A split-bound name is the one a root read resolves
+// LIVE, through the registry (dynScopeRescue's split arm), so a binding kept
+// only in the slot is the wrong one for every reader the slot does not reach
+// — a live read, the next request. A def that writes back
+// (rootBindWritesBack) already installs at its own depth; a second install
+// beside it would stack the value twice. The whole name is deliberately NOT
+// committed to dynamic scope (dynScopeNames): that would move the split
+// def's own lowering too.
+func (es *EmitState) splitArmInstall(d *emitDynBind) bool {
+	return d.armCarried && d.root && es.loopSplitBinds[d.name] && !rootBindWritesBack(d)
 }
 
 // collectBranchCarriedSources returns the producing seqs of every
