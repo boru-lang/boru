@@ -9,6 +9,30 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR301 found and closed: an error handler's caught run seated as one value (2026-09-27)
+
+Probing NUR300 found its literal and nested twins, silent on main and here.
+`[do [raise oops 'x'] error [drop 5 6]]` answered `[5 [6]]` for `[[5 6]]`, a
+def's group bound the top value, a value beneath went above the run, and
+`[do [do [raise oops 'x'] error (mk)] error (mk)]` answered `[5 [6]]` too.
+
+- **The island.** A literal handler the closure path refuses runs as an
+  interpreter island (`TryRecordFallback`), which appends whatever the
+  interpreter left. A strip word's island is a region and a run now
+  (`variadicRegion`, `regionMayBeFn`, `dynBodyRun`), so a fixed consumer
+  declines loudly.
+- **The nested do.** A computed handler's run is a run (`dynBodyRun`), so
+  a `do` whose literal body ends in one is a region. Where the closure path
+  sees the run but declines the shape, it notes the run for the dyn-body
+  backstop (`noteBodyRun`), as its capture arm did. A strip over a growing
+  region stays one.
+- **Compiled on the way.** A value beneath a computed handler's run takes
+  the prefix island: `3 do [raise oops 'x'] error (mk)` is `[3 5 6]`, and a
+  handler's fn value re-steps over the 3 (`[103]`). NUR300's value-beneath
+  pin, a loud decline, now agrees.
+- **Pins.** `lang/go/nur301_handler_island_test.go` (13 agreeing rows, 7
+  loud declines); NUR300's value-beneath row flipped.
+
 ## A call run over its stack operands: NUR296's and NUR222's owed forms (2026-09-27)
 
 An effect before a stop that took its operand off the stack (`"x" print/s`)

@@ -1025,8 +1025,10 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 		// A COMPUTED body's run (NUR210): a literal body the backstop took
 		// was modelled exactly by the pass, and its layouts stand — unless
 		// its residual holds a run itself.
+		// A computed error handler's run is one too (NUR301): a `do` whose
+		// body ends in it leaves the run's count, not one seat.
 		cs := sig.Callable
-		f.dynBodyRun = cs != nil && cs.BodyOut == core.BodyOutResidual && cs.BodyOnceKeepsDefs &&
+		f.dynBodyRun = cs != nil && (cs.BodyOut == core.BodyOutResidual && cs.BodyOnceKeepsDefs || cs.StripsUnconsumedInput) &&
 			(!core.IsConcrete(body) || body.Dynamic || litRun)
 	}
 	// A COMPUTED whole-residual body (`do (mk)`, `do b`) leaves 0-or-MORE
@@ -1372,7 +1374,22 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 		}
 		span = ns
 	}
-	return es.RecordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, outs[0], pos)
+	real, isReal := es.(*EmitState)
+	if !isReal || sig.Callable == nil || !sig.Callable.StripsUnconsumedInput {
+		return es.RecordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, outs[0], pos)
+	}
+	// A strip-input word's island (`error`) runs a handler the closure path
+	// refused, whose caught run is the handler's own count — `[drop 5 6]`
+	// leaves two — where the pass modelled one (NUR301). Its run is a
+	// region, of anything the interpreter left, and a run a `do` whose body
+	// ends in it carries (runOperand, as a dyn-body run's).
+	seq, ok := real.recordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, outs[0], pos)
+	if ok {
+		f := real.eventInfo[seq]
+		f.variadicResult, f.variadicRegion, f.regionMayBeFn, f.dynBodyRun = true, true, true, true
+		real.eventInfo[seq] = f
+	}
+	return ok
 }
 
 // tryRecordDeferredList makes a deferred-list-body user fn TRANSPARENT in the

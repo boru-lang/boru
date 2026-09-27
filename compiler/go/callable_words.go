@@ -920,6 +920,14 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	if spec.BodyOut == core.BodyOutResidual &&
 		((len(outs) > 1 && !closureResidualExact(probe, probeUnit, len(outs))) || closureResidualRuns(probe, probeUnit)) {
 		if !closureResidualRegion(probe, probeUnit) {
+			// The dyn-body backstop takes the body next, and it trusts a
+			// LITERAL body's modelled count; a residual holding a run is not
+			// that (NUR301: `do [do [raise oops 'x'] error (mk)]` seated a
+			// handler's two values as one), so it takes a computed body's
+			// marks, as the capture arm above leaves it.
+			if closureResidualRuns(probe, probeUnit) {
+				real.noteBodyRun(args[spec.BodyPos])
+			}
 			return false
 		}
 		regionResidual = true

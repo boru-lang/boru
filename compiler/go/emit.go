@@ -8897,14 +8897,20 @@ func (es *EmitState) setLoopBodyApply(body *EmitFragment, bodyStk []core.Value) 
 // when an input's provenance is unknown — the caller then lets the
 // normal failure stand.
 func (es *EmitState) RecordFallback(span core.FallbackSpan, ins []core.Value, out core.Value, pos core.SrcPos) bool {
+	_, ok := es.recordFallback(span, ins, out, pos)
+	return ok
+}
+
+// recordFallback is RecordFallback, with the island event's seq.
+func (es *EmitState) recordFallback(span core.FallbackSpan, ins []core.Value, out core.Value, pos core.SrcPos) (int, bool) {
 	if !es.Active() {
-		return false
+		return 0, false
 	}
 	ops := make([]EmitOperand, len(ins))
 	for i, in := range ins {
 		op, ok := es.resolveOperand(in)
 		if !ok {
-			return false
+			return 0, false
 		}
 		ops[i] = op
 	}
@@ -8938,7 +8944,7 @@ func (es *EmitState) RecordFallback(span core.FallbackSpan, ins []core.Value, ou
 		es.eventInfo[seq] = f
 	}
 	es.setProduced(out, seq)
-	return true
+	return seq, true
 }
 
 // RememberOriginal records a CONCRETE value against its own ID so that
@@ -14140,6 +14146,14 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 				// the region beneath it is (a RET-pinned count carries
 				// through the strip; a loop / branch region's does not).
 				f.callVariadic = es.retPinnedVariadic(pr.seq)
+				// A GROWING region beneath stays one (NUR301): the strip
+				// replaces its top, and the values under it are still the
+				// run's, so a fixed consumer — a list literal's element —
+				// declines rather than seat the top alone. Its values may
+				// be anything the run left.
+				if es.eventInfo[pr.seq].variadicRegion {
+					f.variadicRegion, f.regionMayBeFn = true, true
+				}
 				es.eventInfo[seq] = f
 				break
 			}

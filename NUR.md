@@ -223,6 +223,7 @@ keep the two in sync in the same commit.
 | [NUR298](#nur298) | FIXED 2026-09-27 (recorded and closed together, probing NUR286's compile; the handoff log's entry of that date): inside a def's operand group the interpreter's re-step applies a landed fn to the literal after it before the def takes the group's first value, and the compiled lane left the fn to the residual arms, which met it only after the def: `def j (5 do [(mk)] 7) end 1 j` answered `[fn (Integer) 7 1 5]` for `[8 1 5]`, as did a string or list after the fn (silent, on main); the plain `end j` form regressed on the branch at 51b1a62 (NUR266's crossing rule). The crossing counts only the entry right after the lead, and a def group's collecting landing (`LandingCollects`) is guarded and takes its statement island; with an effect before the stop it defers (`vm:landing-collects`) | probing NUR286, 2026-09-27 |
 | [NUR299](#nur299) | FIXED 2026-09-27 by a loud decline (recorded and closed together, probing the statement island's barriers; the handoff log's entry of that date; by the scope ruling a refusal is no answer divergence): a one-operand word over a gradual value beneath it and a literal after it splits at run time by the value — `(mk) do [5]` over a factory of `[1 2]` is `[[1 2] 5]` interpreted (the List misses do's Map overload, and the List one takes the `[5]`), and the check pass filled the Map overload from the stack: the branch answered `[1 2 [5]]` (silent since 13aa881's region claim) and main bailed; over a fn value (`m.f do [(g)]`) the compiled lane raised `cannot call do` on both. the forward-drift guard now asks an all-stack window neither of its models answers (NUR228's question at fwd 0, keyed on the drift window and its decline, not on arity — ADR-016), so the compile declines | probing NUR296, 2026-09-27 |
 | [NUR300](#nur300) | FIXED 2026-09-27 (recorded and closed together, probing NUR282's owed compile of a computed error handler's count; the handoff log's entry of that date): a computed error handler's run leaves 0-or-more values the interpreter splices onto its tape and steps, and the compiled lane seated it as one plain value — silent on main and on this branch: `[do [raise oops 'x'] error (mk)]` over a handler of `[drop 5 6]` answered `[5 [6]]` for `[[5 6]]`, a def's group bound the top value where the interpreter binds the first, a value beneath was seated above the run (`[5 3 6]` for `[3 5 6]`), a map literal and print's operand took one value, and a handler's fn value stayed data (`[fn g]` for `[7]`). The run is a variadic region now, as a computed `do` body's is: a residual seats it whole, a single-value seat takes it under the runtime count check, and a layout that cannot place it declines. Where the check refuses a run, the error's count island re-runs the statement with the do, its body, the word and the handler written as the run, so every witness above answers as the interpreter does; a map literal's value, which no island reaches, defers | probing NUR282, 2026-09-27 |
+| [NUR301](#nur301) | FIXED 2026-09-27 (recorded and closed together, probing NUR300; the handoff log's entry of that date): an error handler's run on the caught path is the handler's own count, and the compiled lane seated it as one value — silent on main and on this branch. A literal handler the closure path refused ran as an interpreter island whose values were no region (`[do [raise oops 'x'] error [drop 5 6]]` answered `[5 [6]]` for `[[5 6]]`; a def's group bound the top, a value beneath went above the run, and a fn's list raised a return-count error for `[[[5 6] [7]]]`), and a `do` whose literal body ends in a handler's run took one seat (`[do [do [raise oops 'x'] error (mk)] error (mk)]`, the same). The island's run is a region and a run now, a computed handler's run is a run (`dynBodyRun`), a literal body holding a run the closure path declines takes a computed body's marks (`noteBodyRun`), and a strip over a growing region stays one; a value beneath a computed handler's run takes the prefix island. The literal forms decline loudly | probing NUR300, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -13788,3 +13789,70 @@ A map literal's value is a seat no island reaches (the island's token path
 does not enter map literals), and it defers. Pinned by
 `lang/go/nur300_handler_run_test.go` and compiler
 `TestErrorCountPoint` / `TestInSpan`.
+
+## NUR301 — an error handler's caught run seated as one value {#nur301}
+
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date): the
+silent forms answer as the interpreter does or decline loudly ·
+**Recorded:** 2026-09-27 · **Surfaced by:** probing NUR300. Present on main,
+silent there too.
+
+**Rule:** a program the compiler admits, the compiled runtime runs, and
+answers as the interpreter does.
+
+**Divergence** (main and this branch before the fix; `mk` returns
+`quote [drop 5 6]`):
+
+```
+[do [raise oops 'x'] error [drop 5 6]]
+  interpreted   [[5 6]]
+  compiled      [5 [6]]
+def r (do [raise oops 'x'] error [drop 5 6]) r
+  interpreted   [6 5]
+  compiled      [5 6]
+3 do [raise oops 'x'] error [drop 5 6]
+  interpreted   [3 5 6]
+  compiled      [5 3 6]
+def f fn [[b:Boolean][Any][[do [if b [raise oops 'x'] [7]] error [drop 5 6]]]] end [f true f false]
+  interpreted   [[[5 6] [7]]]
+  compiled      type_error: f: expected 1 return value(s), got 2
+[do [do [raise oops 'x'] error (mk)] error (mk)]
+  interpreted   [[5 6]]
+  compiled      [5 [6]]
+[do [do [raise oops 'x'] error (mk)] error [drop 9]]
+  interpreted   [[5 6]]
+  compiled      [5 [6]]
+```
+
+**Cause.** An `error` handler's run on the caught path is the handler's
+own count, and the pass models one value. Three paths seated it as one:
+
+- A literal handler the closure path refuses (its residual nets other than
+  one: `[drop 5 6]`) runs as an interpreter island (`TryRecordFallback`).
+  The island appends whatever the interpreter left, but it was marked a
+  region only when the model was a variadic spread, and a handler's is not.
+- A computed handler's run (NUR300's region) was no RUN to the closure
+  path's residual test (`runOperand` reads `dynBodyRun`, which only a `do`
+  body's run carried). So a `do` whose literal body ends in it took one
+  seat.
+- When the closure path saw a run but declined the body's shape, the
+  dyn-body backstop took the literal body as exactly modelled; only the
+  capture arm noted the run for it (`noteBodyRun`). And a strip (`error`)
+  over a growing region kept only the shrinking variadic mark.
+
+**Fix.** A strip word's island run is a region and a run (`variadicRegion`,
+`regionMayBeFn`, `dynBodyRun`). A computed handler's run is a run. The
+closure path notes a declined body's run for the backstop. A strip over a
+growing region stays one. So a fixed consumer of a literal two-value
+handler declines loudly ("consumes loop results"), and a nested computed
+handler compiles as the region it is: `[do [do [raise oops 'x'] error
+(mk)] error (mk)]` is `[[5 6]]` on both lanes. The prefix island takes a
+value beneath a computed handler's run (`3 do [raise oops 'x'] error (mk)`
+is `[3 5 6]`, and a handler's fn value re-steps over it, `[103]`). The
+handlers that net one value (`[dot code]`, `['fallback']`, `[drop 42]`)
+compile as before. Pinned by `lang/go/nur301_handler_island_test.go`.
+
+**Owed (loud).** A literal handler whose run is not one value, at a fixed
+seat: `[do [raise oops 'x'] error [drop 9 8]]`, `def r (do … error [drop 5
+6]) r`, `(do … error [drop 5 6]) add 1`. The error's count island
+(NUR300's) covers computed handlers only.

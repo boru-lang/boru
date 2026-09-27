@@ -49,6 +49,7 @@ func TestNUR300ComputedHandlerRun(t *testing.T) {
 	// A seat no island reaches (a map literal's value) takes the runtime
 	// check's loud defer.
 	requireCheckedOneDefer(t, two+`{a: (do [raise oops 'x'] error (mk))}`, "[{a:[5 6]}]")
-	// A value beneath the run: main answered [5 3 6].
-	requireLoudDecline(t, two+`3 do [raise oops 'x'] error (mk)`, "residual shape beyond Stage 1", "[3 5 6]")
+	// A value beneath the run, which main answered [5 3 6]: the prefix
+	// island re-steps it with the run (NUR301 made the run one).
+	agreeOnBothLanes(t, two+`3 do [raise oops 'x'] error (mk)`, "[3 5 6]")
 }
