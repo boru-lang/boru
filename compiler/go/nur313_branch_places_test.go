@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"strings"
 	"testing"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -68,5 +69,122 @@ func TestSplitArmMayBeFn(t *testing.T) {
 	}
 	if es.branchPlacesAt(99) {
 		t.Error("no event at the seq places nothing")
+	}
+}
+
+// TestBranchLeadDecline pins the apply arms' NUR313 declines: a lead its
+// placing branch delivered once, and a split branch whose body arm may leave
+// a fn, decline; a lead delivered again (an enclosing re-step) or with no
+// branch behind it applies.
+func TestBranchLeadDecline(t *testing.T) {
+	es := NewEmitState()
+	lead := core.Value{Parent: core.TAny, ID: "lead"}
+	if why := es.branchLeadDecline(lead); why != "" {
+		t.Errorf("no producer: %q", why)
+	}
+	body := &EmitFragment{residualN: 1}
+	es.frames[0] = append(es.frames[0], EmitEvent{seq: 7, kind: evBranch, br: &emitBranch{
+		then: body, els: body, hasThenOut: true, hasElsOut: true,
+	}})
+	es.producedBy[lead.ID] = producer{seq: 7}
+	es.NoteDelivery(lead)
+	if why := es.branchLeadDecline(lead); !strings.Contains(why, "a branch's placed fn value leads") {
+		t.Errorf("a placed lead delivered once: %q", why)
+	}
+	es.NoteDelivery(lead)
+	if why := es.branchLeadDecline(lead); why != "" || es.deliveries[lead.ID] != 2 {
+		t.Errorf("a lead delivered again is re-stepped: %q (%d)", why, es.deliveries[lead.ID])
+	}
+	es.frames[0][0].br = &emitBranch{then: body, hasThenOut: true, elsIsVal: true, hasElsOut: true, thenOut: EventOperand(2, 0)}
+	if why := es.branchLeadDecline(lead); !strings.Contains(why, "whose value arm is re-stepped") {
+		t.Errorf("a split branch's body arm: %q", why)
+	}
+	es.NoteDelivery(core.Value{})
+	if _, ok := es.deliveries[""]; ok {
+		t.Error("a value with no ID is not counted")
+	}
+}
+
+// TestNUR317PlacementUndone pins NUR317's undoing re-steps: an enclosing
+// paren's re-step or a `do` body's caller undoes a branch's placement, and a
+// union lead a paren re-stepped is a conditional apply.
+func TestNUR317PlacementUndone(t *testing.T) {
+	es := NewEmitState()
+	body := &EmitFragment{residualN: 1}
+	es.frames[0] = append(es.frames[0], EmitEvent{seq: 7, kind: evBranch, br: &emitBranch{
+		then: body, els: body, hasThenOut: true, hasElsOut: true,
+	}})
+	u := core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TFunction)})
+	u.Carrier, u.ID = true, "u"
+	if !es.branchPlacedHere(u, 7) || es.unionLeadReStepped(u, 7) {
+		t.Error("no re-step: the branch places its join")
+	}
+	es.reg = &core.Registry{Check: &core.CheckState{ParenReSteppedFnIDs: map[string]bool{"u": true}}}
+	if es.branchPlacedHere(u, 7) || !es.unionLeadReStepped(u, 7) {
+		t.Error("a paren's re-step undoes the placement and applies the union")
+	}
+	if es.unionLeadReStepped(core.NewCarrier(core.TInteger), 7) {
+		t.Error("a lead with no fn alternative is no apply")
+	}
+	es.reg = nil
+	if es.inResidualToCallerUnit() {
+		t.Error("no open unit")
+	}
+	es.fnRecs = append(es.fnRecs, &fnUnitRec{residualToCaller: true})
+	es.openUnitRecs = []int{len(es.fnRecs) - 1}
+	if !es.inResidualToCallerUnit() || es.branchPlacedHere(u, 7) {
+		t.Error("a do body's caller re-steps its residual: nothing is placed")
+	}
+	es.openUnitRecs = []int{99}
+	if es.inResidualToCallerUnit() {
+		t.Error("an unknown record is no do body")
+	}
+}
+
+// TestPlacedArmsMayBeFn pins the lead decline's fn test (NUR313): a placed
+// branch whose arms leave data consts is no fn lead, one with an event's
+// value or a fn const may be.
+func TestPlacedArmsMayBeFn(t *testing.T) {
+	es := NewEmitState()
+	if es.placedArmsMayBeFn(7) {
+		t.Error("no event: no fn")
+	}
+	body := &EmitFragment{residualN: 1}
+	zero, nine := ConstOperand(es.intern(core.NewInteger(0))), ConstOperand(es.intern(core.NewInteger(9)))
+	es.frames[0] = append(es.frames[0], EmitEvent{seq: 7, kind: evBranch, br: &emitBranch{
+		then: body, els: body, hasThenOut: true, hasElsOut: true, thenOut: zero, elsOut: nine,
+	}})
+	if es.placedArmsMayBeFn(7) {
+		t.Error("two data consts leave no fn")
+	}
+	es.frames[0][0].br.elsOut = EventOperand(2, 0)
+	if !es.placedArmsMayBeFn(7) {
+		t.Error("an event's value may be a fn")
+	}
+	es.frames[0][0].br.elsOut = ConstOperand(es.intern(core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "g"}}))
+	if !es.placedArmsMayBeFn(7) {
+		t.Error("a fn const is a fn")
+	}
+}
+
+// TestDynBodySettledOp pins NUR317's settled-lead op: a dyn body's lead
+// under its own sibling re-steps from the mark where the window is armed,
+// and seats as it stands where it is not; any other residual is not settled.
+func TestDynBodySettledOp(t *testing.T) {
+	es := NewEmitState()
+	lead, sib := core.NewCarrier(core.TAny), core.NewInteger(5)
+	lead.Dynamic, lead.ID, sib.ID = true, "lead", "sib"
+	res := []core.Value{lead, sib}
+	if _, settled := es.dynBodySettledOp(res); settled {
+		t.Error("no producer: not settled")
+	}
+	es.producedBy[lead.ID], es.producedBy[sib.ID] = producer{seq: 3}, producer{seq: 3, idx: 1}
+	es.eventInfo[3] = eventFlags{dynBodyResult: true}
+	if op, settled := es.dynBodySettledOp(res); !settled || op != 0 {
+		t.Errorf("no mark window: seats as it stands, got %v %v", op, settled)
+	}
+	es.markWindowSeq = 3
+	if op, settled := es.dynBodySettledOp(res); !settled || op != OpCallDynMixedFromMark {
+		t.Errorf("an armed window re-steps from the mark, got %v %v", op, settled)
 	}
 }

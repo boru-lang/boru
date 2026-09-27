@@ -904,6 +904,9 @@ type EmitFragment struct {
 // Finalize afterwards. All methods are nil-receiver-safe so hook
 // sites need no guards.
 type EmitState struct {
+	// deliveries counts each value's step-loop deliveries by ID
+	// (NoteDelivery, branchPlacedHere, NUR313).
+	deliveries map[string]int
 	// bodyRuns holds the LITERAL bodies whose residual a closure probe found
 	// to hold a run although the closure itself declined (a capture with no
 	// operand home), for the dyn-body backstop that takes them (NUR294):
@@ -9741,6 +9744,25 @@ func (es *EmitState) dynBodySettledLead(residual []core.Value) bool {
 	return false
 }
 
+// dynBodySettledOp is the residual op for a dyn body's settled lead
+// (dynBodySettledLead): the whole residual re-stepped from the mark
+// (OpCallDynMixedFromMark) where Finalize armed the mark window, else no op —
+// the residual seats as it stands. The model cannot tell a lead the body's
+// own step applied (`do [m.f 5]` is 6; a body whose value expression raised
+// leaves the `do`'s one error value) from one the body PARKED, which the
+// caller re-steps over the results above it (`do [if c [(mkf)] [0] 5]` is 7
+// 5; NUR317). The window's island steps the body's ACTUAL results as the
+// caller's re-step does, so both answer as the interpreter does.
+func (es *EmitState) dynBodySettledOp(residual []core.Value) (Opcode, bool) {
+	if !es.dynBodySettledLead(residual) {
+		return 0, false
+	}
+	if es.markWindowSeq != 0 {
+		return OpCallDynMixedFromMark, true
+	}
+	return 0, true
+}
+
 // regionValsMayBeCallable reports whether any value a region's run is modelled
 // to leave could be CALLABLE at run time. A fn value or a Function-typed
 // carrier plainly can; so can a DYNAMIC one, whose runtime type the model does
@@ -10812,7 +10834,7 @@ func (es *EmitState) NoteReStepLanding(v core.Value, pos core.SrcPos) {
 		return
 	}
 	pr, ok := es.producedBy[v.ID]
-	if !ok || pr.idx != 0 || es.branchPlacesAt(pr.seq) {
+	if !ok || pr.idx != 0 || es.branchPlacedHere(v, pr.seq) {
 		return
 	}
 	// A VARIADIC producer (a loop, a variadic branch, a call to an already-
@@ -10883,11 +10905,79 @@ func (es *EmitState) splitArmMayBeFn(seq int) bool {
 	return out.kind != opConst || core.IsFnValueResidual(es.consts[out.idx])
 }
 
+// placedArmsMayBeFn reports whether a branch's arms may leave a fn value:
+// an arm's output that is not a data const — an event's value, which may be
+// a fn, or a fn const (`[0] [9]` leaves data on both paths; NUR313).
+func (es *EmitState) placedArmsMayBeFn(seq int) bool {
+	ev := es.eventBySeq(seq)
+	if ev == nil || ev.kind != evBranch {
+		return false
+	}
+	for _, a := range []struct {
+		has bool
+		out EmitOperand
+	}{{ev.br.hasThenOut, ev.br.thenOut}, {ev.br.hasElsOut, ev.br.elsOut}} {
+		if a.has && (a.out.kind != opConst || core.IsFnValueResidual(es.consts[a.out.idx])) {
+			return true
+		}
+	}
+	return false
+}
+
 // branchPlacesAt is branchPlaces for the event seq, false for any other
 // kind of event.
 func (es *EmitState) branchPlacesAt(seq int) bool {
 	ev := es.eventBySeq(seq)
 	return ev != nil && ev.kind == evBranch && branchPlaces(ev.br)
+}
+
+// branchPlacedHere reports whether v, the value of branch event seq, is
+// still placed: the branch places it (branchPlacesAt) and the step loop has
+// delivered it no further than the branch's own delivery. A word that splices
+// it back again — a `do` over the branch, whose results the loop re-steps —
+// re-steps the fn there, and the placement is undone (`do [if c [(mkl)] [0]
+// 5]` is 6 interpreted).
+//
+// Two re-steps undo the placement without a second delivery the count
+// sees (NUR317): an enclosing paren that re-steps two or more survivors
+// (recordParenReStep — `(if c [g/v] [0] 5)` is 7 5), and a word that hands
+// its body's whole residual back to the caller's tape (residualToCaller —
+// `do [if c [g/v] [0]]` is 7, where the branch's own step inside the body
+// ran suspended).
+func (es *EmitState) branchPlacedHere(v core.Value, seq int) bool {
+	return es.deliveries[v.ID] <= 1 && !es.parenReSteppedFn(v) && !es.inResidualToCallerUnit() && es.branchPlacesAt(seq)
+}
+
+// unionLeadReStepped reports a placed branch's join (branchPlacesAt), one
+// of whose alternatives is a fn, that an enclosing paren re-stepped with the
+// values after it (NUR317): `(if c [g/v] [0] 5)` is 7 5, the arm's parked g
+// fired by the paren's rewind. The union is callable on that alternative,
+// so the lead is a runtime-conditional apply.
+func (es *EmitState) unionLeadReStepped(v core.Value, seq int) bool {
+	return core.UnionMayBeFn(v) && es.parenReSteppedFn(v) && es.branchPlacesAt(seq)
+}
+
+// inResidualToCallerUnit reports whether the innermost open unit is a code
+// body whose driving word returns its whole residual to the caller's tape
+// (fnRec.residualToCaller — `do`), where the interpreter re-steps it.
+func (es *EmitState) inResidualToCallerUnit() bool {
+	if es == nil || len(es.openUnitRecs) == 0 {
+		return false
+	}
+	rec := es.openUnitRecs[len(es.openUnitRecs)-1]
+	return rec >= 0 && rec < len(es.fnRecs) && es.fnRecs[rec].residualToCaller
+}
+
+// NoteDelivery counts one step-loop delivery of v (EmitRecorder,
+// branchPlacedHere).
+func (es *EmitState) NoteDelivery(v core.Value) {
+	if !es.Active() || v.ID == "" {
+		return
+	}
+	if es.deliveries == nil {
+		es.deliveries = map[string]int{}
+	}
+	es.deliveries[v.ID]++
 }
 
 // NoteStatementEnd records a statement boundary's position (EmitRecorder;
@@ -10909,7 +10999,7 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 		return
 	}
 	pr, ok := es.producedBy[v.ID]
-	if !ok || pr.idx != 0 || es.branchPlacesAt(pr.seq) {
+	if !ok || pr.idx != 0 || es.branchPlacedHere(v, pr.seq) {
 		return
 	}
 	// A VARIADIC result has no landing to describe (NoteReStepLanding stands
@@ -15454,6 +15544,28 @@ func eventBySeq(events []EmitEvent, seq int) *EmitEvent {
 	return nil
 }
 
+// branchLeadDecline names why a branch result an apply arm chose must not be
+// applied over the values above it (NUR313), or "" when the apply stands.
+// `if` splices a body arm inside its own paren (spliceArg), and a
+// one-survivor paren parks a fn value: the apply is wrong where nothing
+// re-steps it (`if c [(mkl)] [0] 5` is `fn l 5`) and right where an
+// enclosing `do` splices it back (`do [if c [(mkl)] [0] 5]` is 6), and the
+// residual cannot tell the two apart. A SPLIT branch (splitLanding)
+// re-steps its value arm and places its body arm's value, and the one apply
+// after the merge cannot tell those paths apart either: `if c [(mkf)] one/v
+// 5` applied the placed g (7 5 for `fn g 5`).
+func (es *EmitState) branchLeadDecline(lead core.Value) string {
+	if pr, ok := es.producedBy[lead.ID]; ok {
+		if es.branchPlacedHere(lead, pr.seq) && es.placedArmsMayBeFn(pr.seq) {
+			return "a branch's placed fn value leads the residual; whether a word re-steps it is not modelled (NUR313)"
+		}
+		if es.splitArmMayBeFn(pr.seq) {
+			return "a branch whose body arm places a fn value and whose value arm is re-stepped leads the residual (NUR313)"
+		}
+	}
+	return ""
+}
+
 // resolveDynamicApply classifies the residual's fn-value-call boundary (report
 // §9.1) and returns the residual (rotated for a trailing apply), the apply
 // opcode to emit once the residual is on the stack (0 = none), and a failure
@@ -15505,8 +15617,11 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// lead — it is a count. Asked of one, the scan answered yes for the
 	// zero-netting handler's 0-or-1 run and declined a program that has no
 	// fn value in it at all.
-	if es.residualHasVariadicRegion(residual) || es.dynBodySettledLead(residual) {
+	if es.residualHasVariadicRegion(residual) {
 		return residual, 0, ""
+	}
+	if op, settled := es.dynBodySettledOp(residual); settled {
+		return residual, op, ""
 	}
 	// A fn-value lead a later dispatch collected past, ANYWHERE in the
 	// residual (NUR121: `g x add 1` — the model's `add` took `x`, so the
@@ -15640,21 +15755,17 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// is data where it sits, as its sibling arms ask (leadPlacedNotRead):
 	// `(if c ([x:Integer] => [x]) ([x:Integer] => [0])) 5` is `[fn 5]` on
 	// the interpreter, and applied here it was `[5]` (NUR208).
+	// A union lead a re-step reaches is a conditional apply the same way
+	// (unionLeadReStepped, NUR317).
 	if !applyDynamic && !leadCrossed && len(residual) >= 2 && !residual[0].Quoted && !es.leadPlacedNotRead(residual[0]) {
-		if pr, ok := es.producedBy[residual[0].ID]; ok && es.eventInfo[pr.seq].mayBeFn {
+		if pr, ok := es.producedBy[residual[0].ID]; ok && (es.eventInfo[pr.seq].mayBeFn || es.unionLeadReStepped(residual[0], pr.seq)) {
 			applyDynamic = !anyFnOrDynamicTail(residual)
 		}
 	}
-	// A SPLIT branch (splitLanding, NUR313) re-steps its value arm and places
-	// its body arm's value, and the one apply after the merge cannot tell the
-	// paths apart: `if c [(mkf)] one/v 5` applied the placed g (7 5 for `fn g
-	// 5`), so a body arm that may leave a fn declines the apply.
 	if applyDynamic {
-		if pr, ok := es.producedBy[residual[0].ID]; ok && es.splitArmMayBeFn(pr.seq) {
-			return residual, 0, "a branch whose body arm places a fn value and whose value arm is re-stepped leads the residual (NUR313)"
+		if why := es.branchLeadDecline(residual[0]); why != "" {
+			return residual, 0, why
 		}
-	}
-	if applyDynamic {
 		return residual, OpCallDynamic, ""
 	}
 	if rot, ok := es.trailingApply(lw, residual); ok {
@@ -19888,13 +19999,6 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 	switch ev.kind {
 	case evCallUser:
 		if ev.uc.nout != 1 {
-			return false
-		}
-	case evBranch:
-		// A branch whose body arms each net one value: the arm's paren
-		// parks it (branchPlaces, NUR313) — a question only for a value
-		// that may be a fn; data sits where it lands either way.
-		if !branchPlaces(ev.br) || !(core.IsFnTypedCarrier(v) || (v.Dynamic && core.SigTypeMatches(v, core.TFunction)) || core.IsFnValueResidual(v)) {
 			return false
 		}
 	case evCall:

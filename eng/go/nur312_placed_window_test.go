@@ -28,3 +28,28 @@ func TestPlacedWindowSplit(t *testing.T) {
 		t.Error("two placed values: the island starts after the last")
 	}
 }
+
+// TestNamedDispatchingFn pins loopExitReStep's frame-tail test (NUR314): a
+// named fn value the pointer would dispatch, as a definition or a compiled
+// closure, and nothing else — a lambda, a quoted fn, data.
+func TestNamedDispatchingFn(t *testing.T) {
+	fnv := func(p core.Payload, quoted bool) core.Value {
+		return core.Value{Parent: core.TFunction, Data: p, Quoted: quoted}
+	}
+	for _, c := range []struct {
+		why  string
+		v    core.Value
+		want bool
+	}{
+		{"a named definition", fnv(core.FnDefInfo{Name: "g"}, false), true},
+		{"a named lambda", fnv(core.FnDefInfo{Name: "g", Anonymous: true}, false), false},
+		{"a quoted definition", fnv(core.FnDefInfo{Name: "g"}, true), false},
+		{"a named closure", fnv(core.ClosurePayload{Named: true}, false), true},
+		{"an anonymous closure", fnv(core.ClosurePayload{}, false), false},
+		{"data", core.NewInteger(7), false},
+	} {
+		if got := namedDispatchingFn(c.v); got != c.want {
+			t.Errorf("%s: namedDispatchingFn = %v, want %v", c.why, got, c.want)
+		}
+	}
+}

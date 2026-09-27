@@ -349,6 +349,23 @@ func IsFnTypedCarrier(v Value) bool {
 		(v.Parent.ConformsTo(TFunction) || TypeIsFnShape(v.Parent))
 }
 
+// UnionMayBeFn reports whether v is a union carrier one of whose
+// alternatives is a fn — a branch join that may hold the fn value an arm
+// left (NUR317). The static tests miss it: the join's own type is the
+// union, which conforms to no fn type, and it is neither dynamic nor the
+// branch's value once a word hands it back under a fresh ID.
+func UnionMayBeFn(v Value) bool {
+	if !v.Carrier || !IsDisjunct(v) {
+		return false
+	}
+	for _, alt := range FlattenAlternatives(v) {
+		if IsFnTypedCarrier(CarrierOfLiteral(alt)) {
+			return true
+		}
+	}
+	return false
+}
+
 // TypeIsFnShape reports whether t is a function-SHAPE type — a type whose
 // concrete inhabitants are function values: the anonymous fn-shape type
 // itself (`fnsig …`, FunctionSignature) or a named fn-shape node minted

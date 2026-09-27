@@ -4995,7 +4995,26 @@ func (vc *vmContext) loopExitReStep(reg *core.Registry, lp vmLoop, stack []core.
 	if err != nil {
 		return nil, stampAt(err, debug, pc, reg)
 	}
+	// In a fn unit the interpreter's re-step meets the frame's tail markers,
+	// where a named fn that matched nothing raises uncalled_function (NUR186);
+	// the island's tape simply ends, and it stays data there.
+	if lp.unit >= 0 && slices.ContainsFunc(out, namedDispatchingFn) {
+		return nil, vmDefer(vc.r, debug, pc, "vm:loop-result-restep", "a loop's named fn result meets its fn frame's tail, where the interpreter raises and the island's tape simply ends (NUR314); the compiled runtime cannot execute it")
+	}
 	return append(stack[:base], out...), nil
+}
+
+// namedDispatchingFn reports whether v is a NAMED fn value the step loop
+// would dispatch at the pointer (loopExitReStep's frame-tail test).
+func namedDispatchingFn(v core.Value) bool {
+	if !core.FnValueDispatchesAtPointer(v) {
+		return false
+	}
+	if fd, ok := v.Data.(core.FnDefInfo); ok {
+		return fd.NamedDef()
+	}
+	cl, ok := v.Data.(core.ClosurePayload)
+	return ok && cl.Named
 }
 
 // flowSignal resolves a cross-frame break/continue (OpFlowBreak /

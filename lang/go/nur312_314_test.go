@@ -74,9 +74,6 @@ func TestNUR313BodyArmPlacesItsValue(t *testing.T) {
 		{`if false [0] [(mkf)]`, "[fn g]"},
 		{`def c true if c [(mkf)] [0]`, "[fn g]"},
 		{`def c true if c [(mkf)] [(mkf)]`, "[fn g]"},
-		{`def c true if c [(mkl)] [0] 5`, "[fn l(Integer) 5]"},
-		{`if true [(mkl)] [0] 5`, "[fn l(Integer) 5]"},
-		{`if true [(mkf)] [0] 5`, "[fn g 5]"},
 		{`def c true [if c [(mkf)] [0]]`, "[[fn g]]"},
 		// A bare read of a def bound to it dispatches, on both lanes.
 		{`def c true def r (if c [(mkf)] [0]) r`, "[7]"},
@@ -98,6 +95,13 @@ func TestNUR313BodyArmPlacesItsValue(t *testing.T) {
 	}
 	requireLoudDecline(t, nur312Pre+one+`def c true if c [(mkf)] one/v 5`,
 		"a branch whose body arm places a fn value and whose value arm is re-stepped leads the residual (NUR313)", "[fn g 5]")
+	// A placed value leading a residual apply: wrong where nothing re-steps
+	// it, right where an enclosing do does (NUR317), and the residual cannot
+	// tell them apart, so the apply declines.
+	const led = "a branch's placed fn value leads the residual; whether a word re-steps it is not modelled (NUR313)"
+	requireLoudDecline(t, nur312Pre+`def c true if c [(mkl)] [0] 5`, led, "[fn l(Integer) 5]")
+	requireLoudDecline(t, nur312Pre+`if true [(mkl)] [0] 5`, led, "[fn l(Integer) 5]")
+	requireLoudDecline(t, nur312Pre+`if true [(mkf)] [0] 5`, led, "[fn g 5]")
 }
 
 // TestNUR314LoopResultsReStep pins NUR314. A loop's end splices its results
@@ -130,4 +134,8 @@ func TestNUR314LoopResultsReStep(t *testing.T) {
 	requireLoudDefer(t, nur312Pre+`for 1 [(mkf)] 5`, why, "[7 5]")
 	requireLoudDefer(t, nur312Pre+`for 2 [(mkl)] 5`, why, "ERROR:call to 'l' matched no signature")
 	requireLoudDefer(t, nur312Pre+`for 1 [(mka)] 5`, why, "[6]")
+	// In a fn unit the interpreter's re-step meets the frame's tail, where a
+	// named fn that matches nothing raises; the island's tape just ends.
+	requireLoudDefer(t, nur312Pre+`def f fn [[][Any][for 1 [(mkl)]]] end f`,
+		"a loop's named fn result meets its fn frame's tail", "ERROR:call to 'l' matched no signature")
 }

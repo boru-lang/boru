@@ -307,6 +307,12 @@ type EmitRecorder interface {
 	// event, and a producer whose result is a runtime-variable REGION, are both
 	// shapes no landing op can express: they are left alone, on today's paths.
 	NoteReStepLanding(v Value, pos SrcPos)
+	// NoteDelivery records that the step loop re-steps v where it lands — a
+	// DELIVERY: the one its producer made, and each later one an enclosing
+	// word makes (a `do` splicing its body's results back, NUR313). A value
+	// its producer's own paren placed is placed only while that first
+	// delivery is its only one.
+	NoteDelivery(v Value)
 	RecordFallback(span FallbackSpan, ins []Value, out Value, pos SrcPos) bool
 	RecordTrap(code, detail, word, hint string, pos SrcPos) bool
 	RecordTrapErr(ae *BoruError, pos SrcPos) bool
@@ -720,6 +726,7 @@ func (inactiveEmit) RecordDynMethod(Value, []Value, []Value, string, SrcPos) boo
 	return false
 }
 func (inactiveEmit) NoteReStepLanding(Value, SrcPos)                          {}
+func (inactiveEmit) NoteDelivery(Value)                                       {}
 func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }

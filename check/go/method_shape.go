@@ -896,6 +896,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	if v.Quoted || v.ID == "" || core.IsConcrete(v) {
 		return
 	}
+	es.NoteDelivery(v)
 	// CALLABLE-OR-NOTHING. The pass is standing exactly where the interpreter
 	// stands: noteReStepLanding is called FROM stepLiteral, in the branch whose
 	// very next act is execFnDefLiteral on a Function value. A value the loop
@@ -913,7 +914,13 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	// so neither static test above sees it, and the interpreter re-steps
 	// whatever `if` returned — `if true one/v [2]` fires the named 0-arg fn
 	// and answers 1 (NUR159).
-	if !core.IsFnTypedCarrier(v) && !(v.Dynamic && core.SigTypeMatches(v, core.TFunction)) && !es.MayBeFn(v.ID) {
+	//
+	// A UNION carrier one of whose alternatives is a fn is callable on that
+	// alternative too: a word that hands a branch's join back to the loop
+	// (`do [if c [g/v] [0]]`, whose re-step fires g — 7) returns it where
+	// the branch's own MayBeFn, which only a value arm sets, does not say so
+	// (NUR317).
+	if !core.IsFnTypedCarrier(v) && !(v.Dynamic && core.SigTypeMatches(v, core.TFunction)) && !es.MayBeFn(v.ID) && !core.UnionMayBeFn(v) {
 		return
 	}
 	// ALONE INSIDE A LIVE REACH GROUP is not the landing — it is the step

@@ -9827,15 +9827,17 @@ func (e *Engine) markReStepped(v Value) {
 
 // mightBeCallable is the "might be callable" gate the collapse marks share
 // (markReStepped, markForwardLeftover): a genuine fn-typed carrier, a
-// dynamic value whose static bound does not exclude Function, or a BRANCH
+// dynamic value whose static bound does not exclude Function, a BRANCH
 // result one of whose arms is a fn value (the recorder's MayBeFn — the
 // merge widened the fn arm's type to Word, so the static tests miss it;
-// NUR159). Requires a registry with check state.
+// NUR159), or a union carrier with a fn alternative (a body arm's join,
+// which a re-step dispatches where the arm's own paren parked it; NUR317).
+// Requires a registry with check state.
 func (e *Engine) mightBeCallable(v Value) bool {
 	if IsFnTypedCarrier(v) || (v.Dynamic && SigTypeMatches(v, TFunction)) {
 		return true
 	}
-	return e.recorderMayBeFn(v)
+	return e.recorderMayBeFn(v) || UnionMayBeFn(v)
 }
 
 // recorderMayBeFn asks the installed recorder whether v is a branch result
