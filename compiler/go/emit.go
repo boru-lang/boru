@@ -2058,6 +2058,9 @@ type fnUnitRec struct {
 	// bails are the unit's GUARD points (deoptPoint.bail): gradual reads
 	// no island could take over, guarded at their value instead.
 	bails []deoptPoint
+	// rootCaptures marks a code body at the program root whose islands read
+	// the root's defs it captured (rootCapturesBound, NUR285).
+	rootCaptures bool
 }
 
 // deoptPoint is one gradual word read the unit lowers as a DEOPT
@@ -2097,6 +2100,9 @@ type deoptPoint struct {
 	// claim hands the rest of the body to, from the word's token (token)
 	// on. It shares the unit's island environment with the other points.
 	landing bool
+	// install marks a read of a root def captured by a code body at the
+	// program root (DeoptSpec.Install, NUR285).
+	install bool
 }
 
 // plainLambda reports a lambda VALUE unit (tryReturnedClosure's `fnval`
@@ -3281,6 +3287,14 @@ func (es *EmitState) SplitEventRegionBind(name string, v core.Value) (core.Value
 	if f.variadicResult || ev == nil || ev.kind != evCall || ev.call.nout != 2 {
 		return core.Value{}, false
 	}
+	// The rest must still be the event's to spill: a later event that
+	// consumed it (`(mk) dup drop` — the bound value is dup's first result,
+	// the drop took the second) left nothing above the bound value, and the
+	// splice would remove a value the stack does not hold (NUR217: `def j
+	// (1 dup drop) end j add 1` underflowed the splice).
+	if es.restConsumed(pr.seq) {
+		return core.Value{}, false
+	}
 	// The parked-fn screen: a Function among the SPILLED rest auto-applies in
 	// the interpreter when a later value lands above it — keep those declined
 	// (the same hazard the loop-region screens guard).
@@ -3294,6 +3308,24 @@ func (es *EmitState) SplitEventRegionBind(name string, v core.Value) (core.Value
 	elem := core.NewCarrier(elemType)
 	es.pendingLoopBind = &pendingLoopBind{seq: pr.seq, depth: ev.call.nout - 1}
 	return elem, true
+}
+
+// restConsumed reports whether an event recorded after the event seq in the
+// current frame consumes one of seq's results past its first.
+func (es *EmitState) restConsumed(seq int) bool {
+	consumed := false
+	frame := es.frames[len(es.frames)-1]
+	for i := range frame {
+		if frame[i].seq <= seq {
+			continue
+		}
+		forEachOperand(&frame[i], func(op EmitOperand) {
+			if op.kind == opEvent && op.idx == seq && op.resIdx > 0 {
+				consumed = true
+			}
+		})
+	}
+	return consumed
 }
 
 // eventBySeq finds the event with the given seq in the CURRENT frame (nil
@@ -7588,7 +7620,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 				ops = es.noteApplyLoopReplay(rec, ops)
 			}
 			rec.dynTrailArity = dynTrail
-			rec.outOps = ops
+			rec.outOps = replayWordLookups(ops, rec.dynFrameW, rec.dynFrameWords)
 			if applyChain != nil {
 				// The chain pushes its own operands (emitBodyTailApply);
 				// the residual seating and the single tail apply stand down.
@@ -12685,7 +12717,55 @@ func (es *EmitState) producerReturnedClosureShape(id string) (core.FnShape, bool
 	if !ok {
 		return core.FnShape{}, false
 	}
-	return es.eventProducedFnShape(pr.seq, 0)
+	seq := pr.seq
+	if src, copied := es.shuffledFrom(pr); copied {
+		seq = src
+	}
+	return es.eventProducedFnShape(seq, 0)
+}
+
+// shuffledFrom follows a value a stack shuffle copied back to the event
+// whose first result it is (`(mk) dup drop` — dup's copy is mk's closure,
+// NUR217): the shuffle hands its argument on, so the producer's claim is
+// the copy's. !ok when no shuffle stands between, or the chain ends
+// anywhere but an event's first result.
+func (es *EmitState) shuffledFrom(pr producer) (int, bool) {
+	seq, idx, copied := pr.seq, pr.idx, false
+	for depth := 0; depth < 8; depth++ {
+		src, ok := shuffleSource(es.eventInAnyFrame(seq), idx)
+		if !ok {
+			break
+		}
+		if src.kind != opEvent {
+			return 0, false
+		}
+		seq, idx, copied = src.idx, src.resIdx, true
+	}
+	return seq, copied && idx == 0
+}
+
+// shuffleSource is the operand a stack shuffle's result idx copies. A word
+// of the closed shuffle set (core.DynStackShuffleWords) returns its
+// arguments' copies in check mode (core.ReturnsIdentity); probing its
+// ReturnsFn over distinct markers reads which argument each result is.
+func shuffleSource(ev *EmitEvent, idx int) (EmitOperand, bool) {
+	if ev == nil || ev.kind != evCall || !core.DynStackShuffleWords[ev.call.word] || ev.call.sig == nil || ev.call.sig.ReturnsFn == nil {
+		return EmitOperand{}, false
+	}
+	n := len(ev.call.ops)
+	markers := make([]core.Value, n)
+	for i := range markers {
+		markers[i] = core.NewInteger(int64(i))
+	}
+	outs := ev.call.sig.ReturnsFn(markers, nil)
+	if idx < 0 || idx >= len(outs) {
+		return EmitOperand{}, false
+	}
+	k, ok := outs[idx].Data.(core.IntPayload)
+	if !ok || k.N < 0 || k.N >= int64(n) {
+		return EmitOperand{}, false
+	}
+	return ev.call.ops[k.N], true
 }
 
 // eventProducedFnShape is the shape of the fn value the event seq NETS
@@ -16276,9 +16356,10 @@ func (es *EmitState) planRootWordReads(lw *lowerer, residual []core.Value) map[s
 	var atResidual map[string]rootWordRead
 	for _, id := range ids {
 		r := es.rootWordReads[id]
-		seq := es.producedBy[id].seq
-		if ci, direct := rootReadConsumer(es.frames[0], r.name, seq, lw.promoted); ci >= 0 {
-			es.seatRootConsumedRead(lw, rec, r, seq, ci, direct, inResidual[id], residual)
+		pr := es.producedBy[id]
+		seq := pr.seq
+		if ci, direct := rootReadConsumer(es.frames[0], r.name, seq, pr.idx, lw.promoted); ci >= 0 {
+			es.seatRootConsumedRead(lw, rec, r, seq, pr.idx, ci, direct, inResidual[id], residual)
 		}
 		if inResidual[id] {
 			if atResidual == nil {
@@ -16301,7 +16382,7 @@ func (es *EmitState) planRootWordReads(lw *lowerer, residual []core.Value) map[s
 // token to the program's end: `j typeof` answers Integer, `[j]` `[[42]]`.
 // Otherwise, or when the value is read more than once, it is a GUARD
 // before the consuming event, loud where it answered wrong silently.
-func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWordRead, seq, ci int, direct, alsoResidual bool, residual []core.Value) {
+func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWordRead, seq, idx, ci int, direct, alsoResidual bool, residual []core.Value) {
 	if d, ok := es.deoptStatementStart(rec, seq, r.name, r.reads[0], ci, direct); ok && len(r.reads) == 1 && !alsoResidual &&
 		!es.deoptDeferred(es.units[0], rec, &d, ci) && !rootResidualBefore(residual, d.start) {
 		// Deferral is asked of a push-tested point too, as deoptPointFor
@@ -16315,7 +16396,16 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 			}
 			lw.deoptAtSlot[slot] = d
 			return
-		case !d.atPush:
+		case !d.atPush || readIsDeepestOperand(&es.frames[0][ci], seq, idx):
+			// A push-tested read whose value was never promoted has no
+			// push: it sits on the stack where its producer left it (`def j
+			// ((mk) dup drop) end j add 1`, NUR217). As its consumer's
+			// deepest operand every other operand is written after it, so
+			// the test before the statement's first op sees the read's own
+			// stack, found there by its producer — the island's prefix
+			// drops its entry, as it drops a pushed read's. An operand
+			// written before it (`3 j add 1`'s window) is pushed later and
+			// would be missing from the island's stack.
 			lw.deopts = append(lw.deopts, d)
 			return
 		}
@@ -16325,6 +16415,30 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 		start = r.reads[0]
 	}
 	lw.deopts = append(lw.deopts, deoptPoint{seq: seq, slot: -1, name: r.name, pos: r.reads[0], start: start, token: -1, bail: true})
+}
+
+// readIsDeepestOperand reports whether the value result idx of event seq is
+// the deepest operand of the plain call ev — its last signature position,
+// which the lowering seats first, every other operand pushed above it.
+func readIsDeepestOperand(ev *EmitEvent, seq, idx int) bool {
+	var ops []EmitOperand
+	switch ev.kind {
+	case evCall:
+		c := &ev.call
+		if c.dynMixed || c.makeList || c.makeMap || c.interp || c.xmlTmpl != nil || c.spliceDyn || c.live || c.dynApply > 0 {
+			return false
+		}
+		ops = c.ops
+	case evCallUser:
+		ops = ev.uc.ops
+	default:
+		return false
+	}
+	if len(ops) == 0 {
+		return false
+	}
+	last := ops[len(ops)-1]
+	return last.kind == opEvent && last.idx == seq && last.resIdx == idx
 }
 
 // rootResidualBefore reports whether a program residual entry was written
@@ -16343,12 +16457,15 @@ func rootResidualBefore(residual []core.Value, p core.SrcPos) bool {
 // rootReadConsumer is the first root event that consumes the value of a
 // root read of name — as an operand (direct), or inside one of its
 // fragments — other than the def that binds it (its binding, not a read);
-// -1 when only the program residual holds it. The value may be named by
-// its producing event or, once promoted, by its frame slot.
-func rootReadConsumer(events []EmitEvent, name string, seq int, promoted map[int]int) (int, bool) {
+// -1 when only the program residual holds it. The value is result idx of
+// its producing event seq, named by the event or, once promoted, by its
+// frame slot (a multi-result producer's result i at the base slot + i);
+// another result of the same event is another value (`(mk) dup drop` — the
+// drop consumes dup's second result, not the read's first, NUR217).
+func rootReadConsumer(events []EmitEvent, name string, seq, idx int, promoted map[int]int) (int, bool) {
 	slot, hasSlot := promoted[seq]
 	is := func(op EmitOperand) bool {
-		return (op.kind == opEvent && op.idx == seq) || (hasSlot && op.kind == opLocal && op.idx == slot)
+		return (op.kind == opEvent && op.idx == seq && op.resIdx == idx) || (hasSlot && op.kind == opLocal && op.idx == slot+idx)
 	}
 	for i := range events {
 		ev := &events[i]
@@ -17441,6 +17558,11 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 		es.dropDeoptChildren(rec)
 		return
 	}
+	if rec.rootCaptures {
+		for i := range rec.deopts {
+			rec.deopts[i].install = rec.deopts[i].slot >= 0
+		}
+	}
 	rec.lambdaDeopt = lambda
 	rec.deoptEnv = true
 	rec.deoptNames = names
@@ -17704,7 +17826,7 @@ func (es *EmitState) seedParentDeopt(rec *fnUnitRec, names map[string]bool) bool
 		return true
 	}
 	if len(es.openUnitRecs) < 2 {
-		return false
+		return es.rootCapturesBound(rec, captured)
 	}
 	parent := es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-2]]
 	if parent.rootFrame < 0 || parent.rootFrame >= len(es.frames) || !es.deoptDefsBindable(es.frames[parent.rootFrame], captured) {
@@ -17725,6 +17847,54 @@ func (es *EmitState) seedParentDeopt(rec *fnUnitRec, names map[string]bool) bool
 	}
 	parent.deoptChildren = append(parent.deoptChildren, es.openUnitRecs[len(es.openUnitRecs)-1])
 	return true
+}
+
+// rootCapturesBound is seedParentDeopt's arm for a code body at the program
+// root (`def j (mk) end do [10 j]`, NUR285): the root has no unit to seed,
+// and needs none — each root def writes its value to the registry (the
+// def's write-back or its twin's replay), which is where the island reads
+// it. Every captured name must be bound by the root's own statements: a def
+// in a branch arm or a loop body the run may skip, or one a frame between
+// the root and the body makes, is not the binding the capture holds. The
+// points then install the captured value (deoptPoint.install), which the
+// root's write left plain.
+func (es *EmitState) rootCapturesBound(rec *fnUnitRec, captured map[string]bool) bool {
+	for i := range es.frames[0] {
+		for _, f := range childFragments(&es.frames[0][i]) {
+			if fragmentBinds(f, captured) {
+				return false
+			}
+		}
+	}
+	for f := 1; f < len(es.frames); f++ {
+		for i := range es.frames[f] {
+			if ev := &es.frames[f][i]; ev.kind == evDynBind && ev.dyn != nil && captured[ev.dyn.name] {
+				return false
+			}
+		}
+	}
+	rec.rootCaptures = true
+	return true
+}
+
+// fragmentBinds reports whether a def of one of names is made inside frag,
+// at any depth.
+func fragmentBinds(frag *EmitFragment, names map[string]bool) bool {
+	if frag == nil {
+		return false
+	}
+	for i := range frag.events {
+		ev := &frag.events[i]
+		if ev.kind == evDynBind && ev.dyn != nil && names[ev.dyn.name] {
+			return true
+		}
+		for _, f := range childFragments(ev) {
+			if fragmentBinds(f, names) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // collectWordNames adds every word name spelled in tokens — inside lists,
@@ -18179,12 +18349,29 @@ func deoptAnyDeferred(events []EmitEvent, rec *fnUnitRec, d *deoptPoint, ci int,
 			return true
 		}
 	}
-	for _, op := range rec.outOps {
+	for _, op := range residualAfterRead(rec.outOps, d, ci) {
 		if op.kind != opEvent && deferred(op) {
 			return true
 		}
 	}
 	return false
+}
+
+// residualAfterRead is the residual operands a push-tested point's island
+// may lack: all of them, unless the read is a capture the residual itself
+// holds and nothing else consumes (`do [10 j]`, NUR217) — the residual is
+// laid out in its own order, so the entries before the read's are on the
+// stack at its push, and the island's tokens rebuild the ones after it.
+func residualAfterRead(outs []EmitOperand, d *deoptPoint, ci int) []EmitOperand {
+	if !d.atPush || ci >= 0 || d.slot < 0 {
+		return outs
+	}
+	for k, op := range outs {
+		if op.kind == opLocal && op.idx == d.slot {
+			return outs[k+1:]
+		}
+	}
+	return outs
 }
 
 // isCompoundValue reports a list or map value (never pooled as a const).
@@ -18362,6 +18549,24 @@ func writtenRun(rec *fnUnitRec, args []core.Value) int {
 		}
 	}
 	return len(args)
+}
+
+// replayWordLookups re-keys the live lookup of each word-read entry in a
+// whole-frame replay's window (the top w of ops) to its data twin: the
+// replay re-steps that entry as the WORD under its name, so the lookup only
+// hands the value on, where the dispatch lookup deferred on a fn binding —
+// `def g fn [[][Any][10 j]]` over a root `def j (mk)` holding a one-param
+// fn raised "dynamic-scope read of a dispatching binding" (NUR285).
+func replayWordLookups(ops []EmitOperand, w int, words []DynFrameWord) []EmitOperand {
+	if w <= 0 || len(words) != w || w > len(ops) {
+		return ops
+	}
+	for i, word := range words {
+		if k := len(ops) - w + i; word.Name != "" && ops[k].kind == opDynScope {
+			ops[k] = dataScopeOperand(ops[k].idx)
+		}
+	}
+	return ops
 }
 
 // dynFrameWordsFor is the replay's word table for a token region: index i

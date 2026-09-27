@@ -1272,6 +1272,13 @@ type GlobalBindSpec struct {
 	// as `fn f(String) or (String)` for the interpreter's `fn f(String)`
 	// (NUR168's second finding, 2026-09-25).
 	AfterDynScope bool
+	// WriteSlot marks a copy re-pushed from frame local Slot (Pop mode): the
+	// def's rename of a fn value (installDef names what it binds) goes back
+	// into the local too, the value's compiled home — later reads push it
+	// from there. Without it `def j (do [(mk)]) end j/v` read `fn` for the
+	// interpreter's `fn j` (NUR285).
+	WriteSlot bool
+	Slot      int
 }
 
 // ConstLocalRef backs OpPushConstFreshLocal (see the opcode doc): ConstIdx names
@@ -1965,6 +1972,12 @@ type DeoptSpec struct {
 	// no-match — which the value apply parks and the word raises — deopts
 	// (a Beneath island) or bails (a guard, Bail).
 	NoMatchOnly bool
+	// Install marks the read of a ROOT def a code body at the program root
+	// captured (`def j (mk) end do [10 j]`): the root's def wrote the value
+	// plainly (bindGlobal), where the interpreter's def installs it, so the
+	// island installs it under its name for its run, as a root read's
+	// island does (NUR285).
+	Install bool
 }
 
 // slotNames renders a CompiledFn's slot→name table for the

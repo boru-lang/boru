@@ -43,6 +43,7 @@ var eventKindSites = map[string]string{
 	"eventsBindValueWhere":    "emit.go  — does this event bind a registry-visible name? (no default)",
 	"callResultPlacedIn":      "emit.go  — where a call's result lands",
 	"forEachOperand":          "lower.go — every enclosing-scope operand the event references (a missing case drops values: unvisited is unreferenced, so a live producer is marked dead)",
+	"readIsDeepestOperand":    "emit.go  — is a root read its plain call's deepest operand? (default: no — the read keeps its guard, NUR217)",
 	"forEachFragmentOperand":  "lower.go — the same walk over a fragment's own events",
 	"eachClosureCap":          "lower.go — the event's CLOSURE captures (a missing case leaves captures stale)",
 	"childFragments":          "lower.go — the event's nested fragments (a missing case hides a whole subtree)",

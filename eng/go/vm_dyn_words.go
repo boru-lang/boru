@@ -81,6 +81,30 @@ func (vc *vmContext) nameStoredClosure(v core.Value, name string) core.Value {
 // (nameFrameFns — the interpreter's frame binding names a fn value bound
 // for a param exactly as installDef names a def, and a compiled closure
 // there rendered `fn (Any)` for the interpreter's `fn g(Any)`).
+// renamesAsData reports whether a def's rename of v changes its name alone,
+// so the value's frame home may take it (GlobalBindSpec.WriteSlot): a
+// boru-bodied fn value (one with a home) that is no delegation wrapper, or
+// a compiled closure. A Go-built value (a dispatch modifier's wrapper) and
+// a wrapper whose body is one word (a module parser's, which the
+// interpreter's def REBINDS to its inner native rather than renames) are
+// dispatched by what the payload rename would change, so their home keeps
+// them as the program's later uses need them (NUR285).
+func renamesAsData(v core.Value) bool {
+	if fd, ok := v.Data.(core.FnDefInfo); ok {
+		if !fd.HasHome() {
+			return false
+		}
+		for i := range fd.Signatures {
+			if b := fd.Signatures[i].Body(); len(b) == 1 && core.IsWord(b[0]) {
+				return false
+			}
+		}
+		return true
+	}
+	_, closure := v.Data.(core.ClosurePayload)
+	return closure
+}
+
 func nameClosureValue(v core.Value, name string) core.Value {
 	// A fn VALUE with its own definition — a factory's non-capturing lambda
 	// baked as a const, a `/v` reference — is renamed as installDef renames

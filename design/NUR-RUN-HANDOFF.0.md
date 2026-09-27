@@ -9,6 +9,37 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## Main's NUR217 closed, NUR285 found and closed, NUR286 recorded: a shuffled fn def and a fn def read inside a body (2026-09-27)
+
+**The divergences.** Of NUR217's six witnesses, four already agreed; the
+stack shuffle's (`def j ((mk) dup drop) end j`) was an internal error, and
+so was `def j (1 dup drop) end j add 1` over plain data (`BIND_GLOBAL splice
+underflow`). Probing it found NUR285, silent on main: a root def bound to a
+factory's argument-taking fn and read inside a root code body over values
+beneath it (`do [10 j]` answered `[10 fn j(Integer)]` for 11), loud in a fn
+body, and a `/v` read of a def whose value lives in a frame local rendered
+`fn` for `fn j`.
+
+**The fixes, as recorded.**
+- NUR217: `SplitEventRegionBind` declines when a later event consumed the
+  rest (`restConsumed`); a multi-output source's slots are promoted when
+  the def binds the first result and every other is consumed
+  (`restAllConsumed`); the root read's consumer matches the read's result
+  index; a push-tested read with no push is tested before its statement
+  when it is the consumer's deepest operand; and the shuffled copy carries
+  the factory's shape claim (`shuffledFrom`, probing the shuffle's
+  `ReturnsIdentity` over markers).
+- NUR285: a code body at the root keeps its deopt points when the root's
+  own statements bind every captured name (`rootCapturesBound`), and the
+  island installs the captured fn (`DeoptSpec.Install`); a push-tested read
+  the residual holds counts only the residual entries after it as deferred
+  (`residualAfterRead`); the frame replay's word reads take the data lookup
+  (`replayWordLookups`); a def's rename reaches the value's frame local
+  (`GlobalBindSpec.WriteSlot`).
+- The fold's fence for a code body's result stays: lifting it was measured
+  after NUR285, and the reads agree, but the def of a paren over a `do` run
+  answers wrong in the fence's non-folded twin (NUR286, silent, open).
+
 ## Main's NUR216 and NUR218 closed: a def read's island dispatches the name, and a fn argument in a bare-read slot runs on the interpreter (2026-09-27)
 
 **The divergences, both silent.** On the branch (and at the pushed head), a

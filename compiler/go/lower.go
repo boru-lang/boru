@@ -583,6 +583,9 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			lw.binding = true
 			lw.pushOperand(src, d.pos)
 			lw.binding = false
+			if src.kind == opLocal && src.bound == "" {
+				lw.p.GlobalBinds[gi].WriteSlot, lw.p.GlobalBinds[gi].Slot = true, src.idx
+			}
 		}
 		lw.emit(OpBindGlobal, gi, d.pos)
 		lw.markTwinWrittenBack(twin)
@@ -1058,7 +1061,7 @@ func (lw *lowerer) pushOperand(op EmitOperand, pos core.SrcPos) {
 				*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Name: d.name, Pos: d.pos, Slot: op.idx, Depth: -1, Token: -1, RetPC: -1, Bail: true})
 				lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
 			} else if prefix, ok := lw.deoptPrefix(); ok {
-				*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Name: d.name, Pos: d.pos, Slot: op.idx, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1})
+				*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Name: d.name, Pos: d.pos, Slot: op.idx, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1, Install: d.install})
 				lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
 			}
 		}
@@ -1124,7 +1127,7 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 				continue
 			}
 		}
-		spec := DeoptSpec{Name: d.name, Pos: d.pos, Slot: -1, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1, Bail: d.bail}
+		spec := DeoptSpec{Name: d.name, Pos: d.pos, Slot: -1, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1, Bail: d.bail, Install: d.install}
 		if d.slot >= 0 {
 			spec.Slot = d.slot
 		} else if slot, ok := lw.promoted[d.seq]; ok {
@@ -2508,7 +2511,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 			// linearisation single-output events use. Only the forceOrder trigger
 			// applies (a multi-output result is never a named value-def nor a
 			// >=2-ref operand in Stage 1); a user fn's multi-return stays Stage 3.
-			if !isUser && nout > 1 && forceOrder[ev.seq] {
+			if !isUser && nout > 1 && es.promotesMultiOut(ev.seq, nout, forceOrder, allEvents) {
 				if promoted == nil {
 					promoted = map[int]int{}
 				}
@@ -2629,6 +2632,40 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 		}
 	}
 	return promoted, dead
+}
+
+// promotesMultiOut reports whether a multi-output native word's results go
+// to consecutive frame slots: an out-of-order residual (forceOrder), or a
+// def binding its FIRST result whose rest a later event consumed (`def j
+// ((mk) dup drop)` — SplitEventRegionBind declines it, NUR217), a named
+// value-def like a single-output one: a capture or a later operand reads it
+// from a slot, and the rest's consumers re-push theirs. A variadic region's
+// count is the run's, which no fixed slots hold.
+func (es *EmitState) promotesMultiOut(seq, nout int, forceOrder map[int]bool, events []*EmitEvent) bool {
+	if forceOrder[seq] {
+		return true
+	}
+	f := es.eventInfo[seq]
+	return f.valueDef && !f.variadicResult && restAllConsumed(events, seq, nout)
+}
+
+// restAllConsumed reports whether every result of the nout-result event seq
+// past its first is some event's operand.
+func restAllConsumed(events []*EmitEvent, seq, nout int) bool {
+	used := make([]bool, nout)
+	for _, ev := range events {
+		forEachOperand(ev, func(op EmitOperand) {
+			if op.kind == opEvent && op.idx == seq && op.resIdx > 0 && op.resIdx < nout {
+				used[op.resIdx] = true
+			}
+		})
+	}
+	for _, u := range used[1:] {
+		if !u {
+			return false
+		}
+	}
+	return true
 }
 
 // layoutMsgs holds the call-site-specific diagnostic wording for

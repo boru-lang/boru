@@ -705,7 +705,10 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	if len(rec3.deopts) != 0 || parent3.deoptNames["j"] {
 		t.Errorf("a rebind in the parent's open arm declines: %+v parent=%v", rec3.deopts, parent3.deoptNames)
 	}
-	// No enclosing unit: a top-level code body declines.
+	// No enclosing unit: a code body at the program root keeps its point,
+	// which installs the captured value — the root's defs are in the
+	// registry already (NUR285) — unless the root binds the name in an arm
+	// the run may skip.
 	es2 := NewEmitState()
 	top, _, _ := es2.StartFnCompile("c", "each$body", nil, nil, nil, nil, []core.CapturedBinding{cap}, false, core.SrcPos{})
 	u2 := es2.units[len(es2.units)-1]
@@ -716,8 +719,22 @@ func TestPlanDeoptsCaptureSeedsParent(t *testing.T) {
 	es2.NoteWordRead(j, "j", deoptAt(45))
 	es2.NoteLocalRead(j.ID, deoptAt(45))
 	es2.planDeopts(u2, rec2)
-	if len(rec2.deopts) != 0 {
-		t.Errorf("a code body with no enclosing unit declines: %+v", rec2.deopts)
+	if len(rec2.deopts) != 1 || !rec2.deopts[0].install || !rec2.rootCaptures {
+		t.Errorf("a code body at the root keeps its installing point: %+v", rec2.deopts)
+	}
+	es4 := NewEmitState()
+	es4.appendEvent(EmitEvent{kind: evBranch, br: &emitBranch{then: &EmitFragment{events: []EmitEvent{{kind: evDynBind, dyn: &emitDynBind{name: "j"}}}}}})
+	top4, _, _ := es4.StartFnCompile("c", "each$body", nil, nil, nil, nil, []core.CapturedBinding{cap}, false, core.SrcPos{})
+	u4 := es4.units[len(es4.units)-1]
+	rec4 := es4.fnRecs[top4]
+	rec4.closure = true
+	rec4.frag = &EmitFragment{events: []EmitEvent{{seq: 5, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(47), ops: []EmitOperand{localOperand(0)}}}}}
+	es4.SetUnitBody(top4, []core.Value{deoptTok("j", 45), deoptTok("typeof", 47)})
+	es4.NoteWordRead(j, "j", deoptAt(45))
+	es4.NoteLocalRead(j.ID, deoptAt(45))
+	es4.planDeopts(u4, rec4)
+	if len(rec4.deopts) != 0 {
+		t.Errorf("a root binding made in an arm is not the capture's: %+v", rec4.deopts)
 	}
 }
 

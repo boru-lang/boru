@@ -3085,18 +3085,21 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, body []core.Value, root bool,
 	// for the island's run, as the whole-frame replay installs its word
 	// reads (callDynFrameWords), and popped after unless the island bound
 	// the name again (NUR207).
-	unbind := vc.bindRootRead(reg, root, spec.Name, v)
+	// A code body's capture of a root def (DeoptSpec.Install, NUR285) is
+	// the same plain write, installed the same way.
+	unbind := vc.bindRootRead(reg, root || spec.Install, spec.Name, v)
 	// The frame's def-cleanup duty, done by hand: a def the island makes
 	// tears down at its end, as the interpreter's __dc marker would (the
 	// marker itself is a frame-tape token, not an island residual). A ROOT
 	// island's defs outlive it, as a top-level def does (NUR207; the root
-	// landing's rule, landingDeopt).
+	// landing's rule, landingDeopt). The install comes off after the
+	// teardown, which the snapshot taken over it would otherwise keep.
 	snapshot := reg.Defs.Snapshot()
 	results, err := runIslandResolved(reg, prefix, tokens)
-	unbind()
 	if !root {
 		core.TruncateFrameDefs(reg, snapshot)
 	}
+	unbind()
 	if err != nil {
 		return nil, false, stampAt(err, curDebug, pc, reg)
 	}
@@ -4175,11 +4178,17 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			stack = ns
 		case compiler.OpBindGlobal:
-			ns, err := vc.bindGlobal(curReg, &p.GlobalBinds[in.Arg], stack, curDebug, pc)
+			gb := &p.GlobalBinds[in.Arg]
+			ns, err := vc.bindGlobal(curReg, gb, stack, curDebug, pc)
 			if err != nil { //covergate:allow bindGlobal's only error path is its own allow-listed defensive underflow guard, unreachable without a bytecode-level fault (§compiler)
 				return nil, err
 			}
 			stack = ns
+			if gb.WriteSlot && gb.Slot < len(locals) && renamesAsData(locals[gb.Slot]) {
+				// The def's rename reaches the value's frame home too
+				// (GlobalBindSpec.WriteSlot, NUR285).
+				locals[gb.Slot] = nameClosureValue(locals[gb.Slot], gb.Name)
+			}
 		case compiler.OpBindTwin:
 			// The installs were rolled back before this run
 			// (RestoreBindingsForReplay), so the op re-performs its recorded
