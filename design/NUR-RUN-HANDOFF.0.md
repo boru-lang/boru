@@ -9,6 +9,27 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## The register resolved: NUR296 and NUR282 by the scope ruling (2026-09-27)
+
+With NUR296's effect form compiled, the two records still OPEN were NUR296
+and NUR282, and neither holds a silent form. Re-probed on be11252: NUR282's
+arg-taking lambda runs and its wrong-count seat defer loudly, `j j`
+declines, and every NUR296 form either compiles or defers. By the scope
+ruling a refusal is no answer divergence, so both are FIXED by their loud
+declines and defers, as NUR250 and NUR223 were. The compiles stay owed and
+are listed in each record.
+
+- **NUR296.** A stop on a later iteration of a counted loop or in a
+  condition loop, a paren substituted inside a loop, and an effect that took
+  an operand off the stack. `for`'s `[start end step]` range makes a later
+  iteration's continuation expressible.
+- **NUR282.** The arg-taking lambda run, the wrong-count single-value seat,
+  a computed error handler's count, a rebound parameter or fn, and `j j`.
+
+NUR255's Status line read OPEN beside a FIXED index row and a fix
+paragraph; it reads FIXED now. No record in NUR.md or the archive reads
+OPEN.
+
 ## NUR296's effect form compiles; NUR299 asks the top operand (2026-09-27)
 
 **NUR296's effect form.** An effect before the stop in its statement (`print
