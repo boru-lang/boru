@@ -2012,9 +2012,24 @@ func (e *Engine) Window() CollectWindow { return e.Tape }
 
 func (e *Engine) EvalGroupAt(i int) error { return e.evalParenGroupAt(i) }
 
-func (e *Engine) EvalInterp(tok Value) (Value, error) { return e.evalInterpString(tok) }
+func (e *Engine) EvalInterp(tok Value) (Value, error) {
+	result, err := e.evalInterpString(tok)
+	if err == nil {
+		e.Registry.analysisRecorder().NoteInPlaceSlot(tok, result)
+	}
+	return result, err
+}
 
-func (e *Engine) EvalXml(tok Value) (Value, error) { return e.EvalXmlInterp(tok) }
+// EvalXml, like EvalInterp, hands the recorder the link between the token the
+// kernel evaluated in place and the value it produced (NoteInPlaceSlot), so a
+// region completion recognises the value as that slot's operand.
+func (e *Engine) EvalXml(tok Value) (Value, error) {
+	result, err := e.EvalXmlInterp(tok)
+	if err == nil {
+		e.Registry.analysisRecorder().NoteInPlaceSlot(tok, result)
+	}
+	return result, err
+}
 
 func (e *Engine) ExpandSugarAt(tok Value, pos, i int, viable []ViableSig) (bool, error) {
 	return e.expandScanSugar(tok, pos, i, viable)

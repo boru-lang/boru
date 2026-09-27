@@ -27,6 +27,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.DeclineSpeculativeUndef("x")
 	e.RecordSpeculativeUndef("x", SrcPos{})
 	e.NoteLiveRead(nil, "x", SrcPos{})
+	e.NoteInPlaceSlot(NewString("t"), NewString("r"))
 	e.FnBodyGuard()()
 
 	// --- compile failure + site accounting.

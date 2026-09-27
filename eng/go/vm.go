@@ -388,14 +388,24 @@ func (vc *vmContext) enterCallbackUnit(reg *core.Registry, unit int, locals []co
 // call at all and no seam function can ever cover it. Anything claiming to
 // bracket "every body" has to say something about both.
 //
-// This function deliberately does NOT change behaviour: it is the place a
-// later per-body concern can be added once, not the addition itself.
+// It is the place a per-body concern is added once. Two live here: the
+// context frame, and the STEP BUDGET. The interpreter runs a nested body on a
+// sub-engine (core.New) with a budget of its own — DefaultSubStepLimit, or
+// the registry's StepLimit — so a body's steps are never charged to the run
+// that invoked it. The VM ran every nested body against the one program
+// counter, so a callback-heavy program exhausted a budget the interpreter's
+// run of it never approached: kg/main.boru's folds inside an `each` raised
+// evaluation_limit compiled after 10s, where the interpreter finishes the
+// pipeline (2026-09-27). The caller's count resumes where it was.
 // TestVMBodyEntryIsFunnelled keeps the funnel from re-fragmenting.
 func (vc *vmContext) enterBodyUnit(reg *core.Registry, unit int, locals []core.Value) ([]core.Value, error) {
 	if reg != nil {
 		reg.Contexts.Push(reg.Contexts.Top())
 		defer reg.Contexts.Pop()
 	}
+	outer := vc.steps
+	vc.steps = 0
+	defer func() { vc.steps = outer }()
 	return vc.run(unit, locals, nil)
 }
 

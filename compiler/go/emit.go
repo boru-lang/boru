@@ -1511,6 +1511,12 @@ type EmitState struct {
 	// bare, seated live (NoteLiveRead's stored-dep arm).
 	liveReadNames    map[string]bool
 	livePlaceholders map[int]bool
+	// inPlaceFrom maps the identity of a value the collection kernel produced
+	// by evaluating a forward-slot token IN PLACE (NoteInPlaceSlot — an
+	// interpolated template string or XML literal) to that token's identity,
+	// so a region completion recognises the value as the slot's operand
+	// (slotIsOperand) and the claim covers it. Nil until first use.
+	inPlaceFrom map[string]string
 }
 
 // routedBindsDyn reports whether a def event owes the routed-read channel a
@@ -12255,6 +12261,20 @@ func (es *EmitState) RecordMakeMap(r *core.Registry, keys []string, vals []core.
 	return true
 }
 
+// NoteInPlaceSlot links a value the collection kernel produced by evaluating
+// forward-slot token tok in place to that token (EmitState.inPlaceFrom). An
+// empty identity on either side links nothing: an empty id never corresponds
+// (slotIsOperand), and a link through one would admit a coincidental match.
+func (es *EmitState) NoteInPlaceSlot(tok, result core.Value) {
+	if !es.Active() || tok.ID == "" || result.ID == "" {
+		return
+	}
+	if es.inPlaceFrom == nil {
+		es.inPlaceFrom = map[string]string{}
+	}
+	es.inPlaceFrom[result.ID] = tok.ID
+}
+
 // RecordInterp records the assembly of a template string whose holes are
 // computed — “ `got ${x}` “, “ `n=${1 add 2}` “, “ `t=${typeof x}` “ —
 // into an OpInterp dispatch. The hole expressions ran in evalInterpParts (their
@@ -13555,6 +13575,30 @@ func eventBySeq(events []EmitEvent, seq int) *EmitEvent {
 	return nil
 }
 
+// variadicSiblingLead reports whether the residual's lead and the entry above
+// it are two results of ONE runtime-variable call (eventFlags.callVariadic —
+// a fallible multi-value `do` body, catchVariadicFor — or a dyn-body code-body
+// dispatch, whose handler re-runs the body: dynBodyResult with
+// variadicResult). The body's own stepping
+// already applied anything its residual would (a fn value the body leaves ran
+// over the tokens after it inside the body), so the pair is settled data; and
+// the call's count is N on the happy path but ONE caught Error value when the
+// body raises, so an apply laid over the pair underflowed on the caught path
+// (`def g h/v  do [(g "1") 2]` with h raising: the interpreter's
+// `[error(x)]`, the compiled CALL_DYNAMIC's underflow).
+func (es *EmitState) variadicSiblingLead(residual []core.Value) bool {
+	if len(residual) < 2 {
+		return false
+	}
+	lead, ok := es.producedBy[residual[0].ID]
+	above, ok2 := es.producedBy[residual[1].ID]
+	if !ok || !ok2 || lead.seq != above.seq {
+		return false
+	}
+	f := es.eventInfo[lead.seq]
+	return f.callVariadic || (f.dynBodyResult && f.variadicResult)
+}
+
 // resolveDynamicApply classifies the residual's fn-value-call boundary (report
 // §9.1) and returns the residual (rotated for a trailing apply), the apply
 // opcode to emit once the residual is on the stack (0 = none), and a failure
@@ -13641,6 +13685,10 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// arg-taking overload could claim the word neither the apply nor a data
 	// seat is faithful — the pending NUR190, wordFollowsLanding.
 	leadCrossed := len(residual) >= 2 && es.crossesStatementEnd(residual[0], residual[1:])
+	// Two results of ONE runtime-variable call are settled where they sit
+	// (variadicSiblingLead): the lead arms stand aside for them as for a
+	// crossed statement end.
+	leadCrossed = leadCrossed || es.variadicSiblingLead(residual)
 	if !leadCrossed && len(residual) >= 2 && residual[0].Dynamic && !es.methodShapeAnnotated(residual[0].ID) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
 		applyDynamic = !anyDynamicTail(residual)
@@ -14762,28 +14810,33 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 				seatDynFrameWords(&cf, len(cf.Code), rec.dynFrameWords)
 				flw.emit(OpCallDynFrame, rec.dynFrameW, rec.pos)
 			}
-			// spillSeat may have allocated frame-local temps during lowering,
-			// and so may the RESIDUAL seating just above
-			// (seatResidualRebuild): grow NLocals (and the debug name table)
-			// so the VM frame holds them all.
-			//
-			// AFTER the reconciliation, not before it — the same ordering the
-			// program residual's own write-back documents, and for the same
-			// reason. Growing it before the seating left the rebuild's temps
-			// outside the frame, and the VM crashed reading past the end of a
-			// frame it had sized without them ("index out of range" —
-			// measured the moment the body-unit rebuild first fired).
-			if flw.numLocals > cf.NLocals {
-				cf.NLocals = flw.numLocals
-				for len(cf.LocalNames) < cf.NLocals {
-					cf.LocalNames = append(cf.LocalNames, "")
-				}
-			}
 			cf.RetReplay = rec.retReplay
 			stampDeoptRet(&cf, flw.emit(OpRet, 0, rec.pos))
 		}
 		// A fully diverging body (every path tail-calls) emits no RET —
 		// control leaves via the callee's eventual RET.
+		//
+		// spillSeat may have allocated frame-local temps during lowering,
+		// and so may the RESIDUAL seating above (seatResidualRebuild): grow
+		// NLocals (and the debug name table) so the VM frame holds them all.
+		//
+		// AFTER the reconciliation, not before it — the same ordering the
+		// program residual's own write-back documents, and for the same
+		// reason. Growing it before the seating left the rebuild's temps
+		// outside the frame, and the VM crashed reading past the end of a
+		// frame it had sized without them ("index out of range" — measured
+		// the moment the body-unit rebuild first fired).
+		//
+		// And on BOTH paths: a fully diverging body spills too (a paren
+		// operand reordered beneath a constant before the tail call), and
+		// sizing only the returning path wrote its temp past the frame —
+		// kg/tests/digest_test.boru's `am {… n:(x add 1) …}` tail call.
+		if flw.numLocals > cf.NLocals {
+			cf.NLocals = flw.numLocals
+			for len(cf.LocalNames) < cf.NLocals {
+				cf.LocalNames = append(cf.LocalNames, "")
+			}
+		}
 		freshenFnUnitConsts(&cf, es, rec, p)
 		p.Fns = append(p.Fns, cf)
 	}
