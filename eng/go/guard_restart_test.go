@@ -268,3 +268,19 @@ func TestStopRestartResults(t *testing.T) {
 		t.Errorf("the statement runs again over the run: `1 7`: %v %+v %v", res, ent, err)
 	}
 }
+
+// TestSubstIslandNone pins the effect run (NUR296): a call run before the
+// stop that left nothing is written as no token — the word and its
+// arguments gone from the island, so the island never runs it again — and
+// a zero-argument one as well; nothing is written, so there is no fn value
+// to park.
+func TestSubstIslandNone(t *testing.T) {
+	r := seam7Reg(t)
+	vc := &vmContext{p: &compiler.Program{}, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	island := []core.Value{core.NewWord("print"), core.NewString("a"), core.NewInteger(5), core.NewWord("nl")}
+	none := compiler.RestartSrc{Kind: compiler.RestartNone}
+	got, err := vc.substIsland(island, []compiler.RestartSubst{{Path: []int{0}, Span: 2, Src: none}, {Path: []int{3}, Span: 1, Src: none}}, nil, 0, nil, seam7Dbg, 0)
+	if err != nil || len(got) != 1 || got[0].String() != "5" || len(island) != 4 {
+		t.Errorf("the effects' runs are gone from a copy of the island: %v %v", got, err)
+	}
+}

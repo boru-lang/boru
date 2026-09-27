@@ -33,13 +33,14 @@ func TestNUR298DefGroupCollectingLanding(t *testing.T) {
 		{`def l [([x:Integer] => [x add 1])] end def j (5 do [l.0] 7) end j`, "[8 5]"},
 		{`def m {f: ([x:Integer] => [x add 1])} end def j (5 m.f 7) end j`, "[8 5]"},
 		{mk + `(5 do [(mk)] 7)`, "[5 8]"},
+		{mk + `def j (print "x" 5 do [(mk)] 7) end j`, "[8 5]"},
 		{mk + `def g fn [[][Any][def j (5 do [(mk)] 7) end 1 j]] end g`, "ERROR:expected 1 return value(s), got 3"},
 		{`def g fn [[x:Integer][Integer][x mul 3]]  def m {f: g/v}  [5 6] each [m get "f" drop]`, "ERROR:body produced no result"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
 	for _, src := range []string{
-		mk + `def j (print "x" 5 do [(mk)] 7) end j`,
+		mk + `def j ("x" print/s 5 do [(mk)] 7) end j`,
 		mk + `def j (5 do [(mk) print "y"] 7) end j`,
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)

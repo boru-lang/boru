@@ -69,10 +69,10 @@ func TestNUR222ValuelessDoSeatedDeclines(t *testing.T) {
 // run time (SigRef.CountCheck). A miss re-runs the do's statement on the
 // interpreter from its first token, with the do word and its body written as
 // the run the call left (RestartResults), so the body never runs twice. A
-// seat no island can take — a trap before the statement, a paren the do's
-// level cannot write as inert, a loop — defers loudly (vm:do-count). The
-// formerly silent `(g) 1 do [...] drop` is among them: it answered `[1]`
-// for `[5]`.
+// paren before the do is written as its value (`(g) 1 do [...] drop`, which
+// answered `[1]` for `[5]` silently until the island took it). A seat no
+// island can take — a trap before the statement, a call before the do that
+// took an operand off the stack, a loop — defers loudly (vm:do-count).
 func TestNUR222ConsumedPhantomCountIsland(t *testing.T) {
 	const g = `def g fn [[][Any][5]] end `
 	for _, c := range []struct{ src, want string }{
@@ -90,13 +90,16 @@ func TestNUR222ConsumedPhantomCountIsland(t *testing.T) {
 		{`1 do [(0 div 0) drop] typeof`, "[1 Error]"},
 		// The island's own run raises the interpreter's error.
 		{`do [(1 add 1) drop] drop`, "ERROR:cannot call `drop`"},
+		// A paren before the do, and an effect, are written as their
+		// runs (NUR296's call run): neither runs twice.
+		{g + `(g) 1 do [(1 add 1) drop] drop`, "[5]"},
+		{g + `[(g) 1 do [(1 add 1) drop] drop]`, "[[5]]"},
+		{`print "p" 1 do [(1 add 1) drop] drop`, "[]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
 	for _, c := range []struct{ src, want, loud string }{
 		{`1 2 do [(1 add 1) drop] add`, "[3]", "DISPATCH_REMATCH underflow"},
-		{g + `(g) 1 do [(1 add 1) drop] drop`, "[5]", "a caught body's run left 0 value(s)"},
-		{g + `[(g) 1 do [(1 add 1) drop] drop]`, "[[5]]", "a caught body's run left 0 value(s)"},
 		// A top-level list literal's token carries no position, so no
 		// statement island can find the do inside it; nor can one re-run a
 		// bare call before the do.

@@ -5034,6 +5034,8 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 		switch {
 		case sp.results:
 			src = RestartSrc{Kind: RestartResults}
+		case sp.none:
+			src = RestartSrc{Kind: RestartNone}
 		case guarded.kind == opEvent && guarded.idx == sp.seq:
 		case sp.seq == landed && landed >= 0:
 			src = RestartSrc{Kind: RestartStack, Idx: lw.landedIdx(landed)}

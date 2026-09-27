@@ -1878,6 +1878,7 @@ func (vc *vmContext) substIsland(island []core.Value, substs []compiler.RestartS
 		switch {
 		case sb.Src.Kind == compiler.RestartResults && stop != nil:
 			vs = stop
+		case sb.Src.Kind == compiler.RestartNone:
 		case sb.Src.Kind == compiler.RestartGuard && len(stop) == 1:
 			vs = stop
 		case sb.Src.Kind == compiler.RestartLocal && i >= 0 && i < len(vc.restartLocals):
@@ -1887,7 +1888,7 @@ func (vc *vmContext) substIsland(island []core.Value, substs []compiler.RestartS
 		default:
 			return nil, vmErrAt(curDebug, pc, "bad statement-island substitution")
 		}
-		if sb.Src.Kind != compiler.RestartResults && sb.Span == 1 && core.FnValueDispatchesAtPointer(vs[0]) {
+		if sb.Src.Kind != compiler.RestartResults && len(vs) == 1 && sb.Span == 1 && core.FnValueDispatchesAtPointer(vs[0]) {
 			return nil, vmDefer(vc.r, curDebug, pc, "vm:restart-parked-fn", "a statement island would write a fn value where the interpreter parks it, and the island's step would apply it (NUR297); the compiled runtime cannot execute it")
 		}
 		var ok bool

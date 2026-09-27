@@ -75,6 +75,23 @@ func TestNUR299OneOperandAllStackWindow(t *testing.T) {
 	})); flagged {
 		t.Error("no later candidate at all: no ambiguity")
 	}
+	// A concrete top beneath the word: a later candidate's stack slot meets
+	// it too, so the all-stack match is the interpreter's.
+	cr := covRegistry(t, nil)
+	cr.Check.Mode, cr.Check.Compiling, cr.Check.Emit = true, true, &nur299Recorder{}
+	t.Cleanup(func() { cr.Check.Mode, cr.Check.Compiling, cr.Check.AmbiguousGradualSplit = false, false, false })
+	ce := NewTop(cr)
+	ce.Tape = NewTape([]Value{NewDynamicCarrier(TAny), NewInteger(0), NewWord("w"), NewList(nil)}, StackHeadroom)
+	ce.Pointer = 2
+	pair := norm([]Signature{{Args: []*Type{TInteger, TMap}, BarrierPos: 1}, {Args: []*Type{TList}, BarrierPos: 1}})
+	ce.declineForwardStackDrift(&FnDefInfo{Name: "w", Signatures: pair}, WordInfo{Name: "w", ArgCount: -1}, &pair[0], []int{1, 0})
+	if cr.Check.AmbiguousGradualSplit {
+		t.Error("an unproven operand beneath a concrete top is no ambiguity")
+	}
+	ce.declineForwardStackDrift(&FnDefInfo{Name: "w", Signatures: pair}, WordInfo{Name: "w", ArgCount: -1}, &pair[1], nil)
+	if cr.Check.AmbiguousGradualSplit {
+		t.Error("a window of no operand is no ambiguity")
+	}
 	r := covRegistry(t, nil)
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewDynamicCarrier(TAny), NewWord("w"), NewList(nil)}, StackHeadroom)

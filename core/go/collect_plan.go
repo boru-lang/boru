@@ -392,14 +392,22 @@ func gradualWindowAmbiguous(h CollectHost, fn *FnDefInfo, si int, w WordInfo, po
 }
 
 // allStackWindowAmbiguous is NUR228's split at an all-stack window (fwd 0):
-// the match hangs on an unproven stack operand while a LATER candidate
+// the match hangs on an unproven TOP operand while a LATER candidate
 // forward-collects past the word. `(mk) do [5]` over an Any result fills
 // do's Map overload from the stack, while at run time a List value misses it
-// and the List overload takes the `[5]` written after the word (NUR299).
+// and the List overload takes the `[5]` written after the word (NUR299). A
+// concrete top is what a later candidate's stack slot meets too, so the
+// all-stack match is the interpreter's (the check side's drift rule):
+// `Log.dump 0 get "trace-id" get` over dump's Any result.
 func allStackWindowAmbiguous(e *Engine, fn *FnDefInfo, w WordInfo, sig *Signature, positions []int) bool {
-	gradual := false
+	top, at := -1, -1
 	for i, p := range positions {
-		gradual = gradual || unprovenStackOperand(e.Tape.At(p), SigArgType(sig, i))
+		if p > top {
+			top, at = p, i
+		}
+	}
+	if at < 0 || !unprovenStackOperand(e.Tape.At(top), SigArgType(sig, at)) {
+		return false
 	}
 	si := len(fn.Signatures)
 	for k := range fn.Signatures {
@@ -407,7 +415,7 @@ func allStackWindowAmbiguous(e *Engine, fn *FnDefInfo, w WordInfo, sig *Signatur
 			si = k
 		}
 	}
-	return gradual && laterCandidateCollectsPast(e, fn, si, w, e.Pointer, 0, true, true)
+	return laterCandidateCollectsPast(e, fn, si, w, e.Pointer, 0, true, true)
 }
 
 // declineForwardStackDrift is the forward-drift guard of a compile pass's

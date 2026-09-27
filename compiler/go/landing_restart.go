@@ -65,6 +65,9 @@ type substPlan struct {
 	// results marks the stop's own call, written as the run it left
 	// (RestartResults) rather than a value it holds.
 	results bool
+	// none marks a call run that left nothing (callRun over an effect,
+	// `print "a"`): the island writes no token in its place (RestartNone).
+	none bool
 }
 
 // covers reports whether path lies in the run of tokens p replaces: it
@@ -331,7 +334,7 @@ func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Val
 	}
 	tok := statementToken(body, c.pos)
 	path := tokenPath(body, c.pos)
-	if tok < 0 || len(path) == 0 || !inertBefore(body, tok, path) {
+	if tok < 0 || len(path) == 0 {
 		return 0, nil, false
 	}
 	toks := body
@@ -351,7 +354,7 @@ func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Val
 	}
 	sort.Ints(pending)
 	substs, ok := es.restartSubsts(tree, body, tok, pending)
-	if !ok {
+	if !ok || !inertBefore(body, tok, path, substs...) {
 		return 0, nil, false
 	}
 	return tok, append(substs, substPlan{path: path, span: 2, seq: seq, results: true}), true
@@ -372,10 +375,13 @@ func (es *EmitState) restartSubsts(tree map[int]treeEvent, body []core.Value, to
 		if restartRead(ev) {
 			continue
 		}
-		if path, ok := parenOf(ev, body, tok); ok && (!wordAt(body, path) || inertBefore(body, tok, path)) {
+		if path, ok := parenOf(ev, body, tok); ok && (!wordAt(body, path) || inertBefore(body, tok, path, cands...)) {
 			cands = append(cands, substPlan{path: path, span: 1, seq: s})
-		} else if sub, whole, ok := es.doBody(ev, body, tok); ok && !whole && inertBefore(body, tok, sub) {
+		} else if sub, whole, ok := es.doBody(ev, body, tok); ok && !whole && inertBefore(body, tok, sub, cands...) {
 			cands = append(cands, substPlan{path: sub, span: 2, seq: s})
+		} else if run, span, ok := es.callRun(tree, ev, body, tok); ok && inertBefore(body, tok, run, cands...) {
+			_, nout := callShape(ev)
+			cands = append(cands, substPlan{path: run, span: span, seq: s, none: nout == 0})
 		}
 	}
 	var kept []substPlan
@@ -509,18 +515,78 @@ func wordAt(body []core.Value, path []int) bool {
 // barrier no longer: a function word stops a forward phase and a value does
 // not, so nothing before it may be collecting — `[(m.f y)]` over a 0-arg y
 // calls m.f with nothing, where `[(m.f 42)]` would take the 42.
-func inertBefore(body []core.Value, tok int, path []int) bool {
+func inertBefore(body []core.Value, tok int, path []int, written ...substPlan) bool {
 	toks, from := body, tok
 	for _, at := range path[:len(path)-1] {
 		toks, _ = nestedToks(toks[at])
 		from = 0
 	}
-	for _, t := range toks[from:path[len(path)-1]] {
-		if !core.IsSteplessValue(t) {
+	level := path[:len(path)-1]
+	for i := from; i < path[len(path)-1]; i++ {
+		if !barrierFree(toks[i]) && !writtenOver(written, append(append([]int(nil), level...), i)) {
 			return false
 		}
 	}
 	return true
+}
+
+// barrierFree reports a token no forward collection passes through: a
+// scalar literal, or a list literal, which places a List whatever its
+// elements do (`[(l.0 true)] print "z"`). A paren's value may be a fn that
+// dispatches at the pointer, and a word may be one.
+func barrierFree(t core.Value) bool {
+	return core.IsSteplessValue(t) || (!core.IsParenExpr(t) && t.Parent != nil && t.Parent.Equal(core.TList))
+}
+
+// writtenOver reports whether one of the runs an island writes covers the
+// token at path: gone from the island, it is no barrier (NUR296 — `print
+// "a" print "b"` before the stop).
+func writtenOver(written []substPlan, path []int) bool {
+	for _, w := range written {
+		if w.covers(path) {
+			return true
+		}
+	}
+	return false
+}
+
+// callRun is the run of tokens a bare call took (NUR296): its word, at
+// path, and the tokens right after it on its level that hold its
+// arguments, every one taken forward (argSites) and in written order, the
+// run holding nothing else. An island writes the call's one result in the
+// run's place, or nothing for an effect (`print "a"`), so the call never
+// runs twice. ok is false for any other call.
+func (es *EmitState) callRun(tree map[int]treeEvent, ev *EmitEvent, body []core.Value, tok int) (path []int, span int, ok bool) {
+	ops, nout := callShape(ev)
+	sites, noted := es.argSites[ev.seq]
+	p := eventPos(*ev)
+	path = tokenPath(body, p)
+	if nout > 1 || !noted || len(sites) != len(ops) || len(path) == 0 || path[0] < tok {
+		return nil, 0, false
+	}
+	toks := body
+	for _, at := range path[:len(path)-1] {
+		toks, _ = nestedToks(toks[at])
+	}
+	at := path[len(path)-1]
+	if !core.IsWord(toks[at]) || toks[at].Pos() != p {
+		return nil, 0, false
+	}
+	last := at
+	for _, site := range sites {
+		q := site.pos
+		if te, in := tree[site.seq]; site.seq >= 0 && in {
+			q = eventPos(*te.ev)
+		} else if site.seq >= 0 {
+			return nil, 0, false
+		}
+		j := bodyTokenContaining(toks, q)
+		if j < last || j > last+1 || (j == last && j == at) {
+			return nil, 0, false
+		}
+		last = j
+	}
+	return path, last - at + 1, true
 }
 
 // tokenPath is the path of token indexes from body down to the token that

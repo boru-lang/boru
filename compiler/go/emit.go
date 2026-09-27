@@ -142,6 +142,33 @@ func typeOperand(idx int) EmitOperand { return EmitOperand{kind: opType, idx: id
 // stay distinguishable when a downstream operand resolves one of them.
 type producer struct{ seq, idx int }
 
+// argSite is where one argument of a call was written: pos, a read's own
+// site or a literal's token, or — seq not -1 — the event whose value it is.
+type argSite struct {
+	pos core.SrcPos
+	seq int
+}
+
+// noteArgSites keeps where each argument of call event seq was written
+// (EmitState.argSites): a read by its own site (readPos, the last read of
+// the value, which a forward operand's is when its call records), a
+// computed value by the event that left it, a literal by its token.
+func (es *EmitState) noteArgSites(seq int, args []core.Value) {
+	sites := make([]argSite, len(args))
+	for i, a := range args {
+		sites[i] = argSite{pos: a.Pos(), seq: -1}
+		if p, read := es.readPos[a.ID]; read && a.ID != "" {
+			sites[i].pos = p
+		} else if pr, produced := es.producedBy[a.ID]; produced && a.ID != "" {
+			sites[i].seq = pr.seq
+		}
+	}
+	if es.argSites == nil {
+		es.argSites = map[int][]argSite{}
+	}
+	es.argSites[seq] = sites
+}
+
 // eventFlags are the per-event compile flags, keyed by event seq in
 // EmitState.eventInfo. Each is a property of the producing event:
 //   - zeroOut:  branch seq → 0-output statement guard (residual skips it)
@@ -1253,6 +1280,10 @@ type EmitState struct {
 	// bake ignores it.
 	storedFnProbeReason string
 	producedBy          map[string]producer // value ID → producing (event seq, result idx)
+	// argSites is where each argument of a call event was written, by event
+	// seq (noteArgSites): the tokens a statement island may write the call's
+	// run over (callRun, NUR296).
+	argSites map[int][]argSite
 	// appliedByWord holds the value IDs a trailing `apply` WORD dispatched,
 	// recorded PROGRAM-wide rather than per unit.
 	//
@@ -7949,6 +7980,7 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 	}
 	window := es.callWindowOps(word, wordPos, args)
 	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, region: region, generic: generic, window: window}})
+	es.noteArgSites(seq, args)
 	es.SiteCounts[SiteMono]++
 	// A call to an ALREADY-variadic fn yields a runtime-variable count itself, so
 	// the result propagates variadic (a branch arm / body residual carrying it is
@@ -8027,6 +8059,7 @@ func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, si
 		unit: -1, ops: ops, nout: len(outs), pos: pos, region: region,
 		poly: &emitUserPolySpec{word: word, reg: ownerReg, sigIdx: sigIdx, units: units, impls: impls, sigs: sigs},
 	}})
+	es.noteArgSites(seq, args)
 	es.SiteCounts[SiteDynamic]++
 	for i := range outs {
 		es.setProducedAt(outs[i], seq, i)
@@ -9526,6 +9559,7 @@ func (es *EmitState) RecordCall(word string, sig *core.Signature, args, outs []c
 	diverges := sig.CompileEffect.Has(core.CompileDiverges) ||
 		(sig.CompileEffect.Has(core.CompileValueDiverges) && len(outs) == 0)
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, sig: sig, ops: ops, nout: len(outs), pos: pos, diverges: diverges, region: region, generic: generic}})
+	es.noteArgSites(seq, args)
 	// A fallible multi-value catch body reaching the generic path (the
 	// closure probe declined): same variadic mark as RecordClosureCall —
 	// the caught path nets 1 where the static seat expects N (L-DO).
@@ -10582,6 +10616,7 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		return true
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, region: region, generic: generic}})
+	es.noteArgSites(seq, args)
 	switch len(outs) {
 	case 0:
 		// A 0-output poly (a side-effect word like the test framework's

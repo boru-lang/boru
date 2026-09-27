@@ -1856,6 +1856,10 @@ const (
 	// in the call's place (a RestartSubst of SigRef.Count only: a `do` whose
 	// run's count the program's seat does not hold, NUR222).
 	RestartResults
+	// RestartNone is no value: a call run before the stop that left nothing
+	// (`print "a"`) is written as no token, so the island never runs it
+	// again (a RestartSubst only, NUR296).
+	RestartNone
 )
 
 // CallWindowKind names where one CallWindowOperand's value lives when the

@@ -9,6 +9,32 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR296's effect form compiles; NUR299 asks the top operand (2026-09-27)
+
+**NUR296's effect form.** An effect before the stop in its statement (`print
+"a" 5 if (mk) ["big"] ["small"]`, `print "a" [(l.0 true)]`) ran in the
+compiled code and would have run again in the statement's island, so the
+island deferred. The recorder now keeps where each argument of a call was
+written (`argSites`: a read by its site, a computed value by its event, a
+literal by its token). A bare call whose arguments fill the tokens right
+after its word, in written order and nothing else, is a call run
+(`callRun`). The island writes it as the run it left: an effect as no token
+(`RestartNone`), a one-value call as that value. The effect prints once on
+both lanes, output compared. A written run is no collection barrier to a
+later one (`writtenOver`), and a list literal never collects forward
+(`barrierFree`). The first also let NUR222's count island take `(g) 1 do
+[...] drop`, which is `[5]` on both lanes now. A call that took an operand
+off the stack (`"x" print/s`) is no run and still defers; the pins that had
+held `print "x"` as their loud row hold that now.
+
+**NUR299 asks the top operand.** gate48 (0475f76) was green but for one
+corpus row: `Log.dump 0 get "trace-id" get` (module-log.tsv) declined, since
+the drift guard's all-stack latch asked whether any stack operand was
+unproven, and dump's Any result lies beneath the `0`. A concrete top is
+what a later candidate's stack slot meets too, as the check side's drift
+rule has it, so the latch now asks the top operand only. The row compiles
+again; the one-operand window is its own top.
+
 ## NUR222's consumer compiles; NUR299 keyed on the drift models (2026-09-27)
 
 **NUR222's consumer.** A word that consumed a caught body's phantom as its
