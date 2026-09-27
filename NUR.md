@@ -214,6 +214,7 @@ keep the two in sync in the same commit.
 | [NUR289](#nur289) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): an anonymous fn whose Any slot meets a function word where a `do` body's result lands — `def mk fn [[][Any][([x:Any] => [x])]] end do [mk] typeof` — is the interpreter's strict-rule `signature_error`, and the compiled landing's walk answered `[Function]` (silent): it planned over the value's AUTHORED signature, whose `BarrierAllForward` scanned nothing forward. It plans over the installed view now (`installedSigView`). The caret still points at the word where the interpreter points at the fn (the landed value carries no position) | probe sweep, 2026-09-27 |
 | [NUR290](#nur290) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): a typed def over a body the check pass holds as a carrier — `def mk fn [[][Any][42]] end def x:Integer (mk) end x` — bound the ANNOTATION: Unify over a wider carrier takes the narrower side, the annotation's own type content, so the compiled run answered `[Integer]` where the interpreter answers 42 (and `[String]` where it refuses), and a membership unifier that cannot inspect a carrier (a fn shape, a negation) admitted it, binding the run's value unchecked (silent; 127 of 420 probed typed defs, in an arm unchanged from main). Unless the carrier's own type proves membership, the run decides it now: OpBindTyped over TypedBindRunMembership. A value that may be a fn under an annotation a fn may inhabit declines | probe sweep, 2026-09-27 |
 | [NUR291](#nur291) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): `case` RUNS a list scrutinee as a code body and dispatches on its last result, whatever produced the list — `def mk fn [[][Any][[1 2]]] end case (mk) [Integer "i" String "s" "o"]` is "i" — and the compiled desugar matched the value itself when the pass held it abstractly: "o" (silent; also a fn parameter's `case v […]`, on main). The forward form records case's own scrutinee rule ahead of the chain (`__casesubject`); the stack form, where a list makes the clause list the scrutinee, guards the chain with `__casestack`, which defers on a list (loud) and passes every other value | probe sweep, 2026-09-27 |
+| [NUR292](#nur292) | OPEN — its silent half made LOUD 2026-09-27 (recorded the same day, found by a probe sweep; the handoff log's entry of that date; proposed verdict: resolve by fix): `if` runs a list condition INLINE — its words take the values beneath the if — and splices a list arm in parens, whatever produced the list, and the compiled branch held a computed list as a value: `def mk fn [[][Any][[false]]] end if (mk) ["t"] ["f"]` is "f" interpreted and was "t" compiled; `5 if (mk) …` over `quote [gt 3]` took the 5 interpreted; an Any arm over `[1 2]` answered `[[1 2]]` for `[1 2]` (silent, on main). A condition or arm the pass holds abstractly that may be a list now runs a guard (`__codeguard`) that passes any other value and defers on a list. Open: compiling the list forms (the condition's inline run over the live stack, the arm's paren splice) | probe sweep, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14351,3 +14352,62 @@ record is the existing poly path's. The two words are internal
 `lang/go/nur291_test.go`; the sweep after the fix: 0 silent of 231, one
 loud (the stack form over a list, by design), and 49 declines where
 there were 56.
+
+## NUR292 — a computed if condition or arm that is a list ran as data {#nur292}
+
+**Status:** OPEN — its silent half made LOUD 2026-09-27 (recorded the same
+day; the handoff log's entry of that date) · **Surfaced by:** a probe
+sweep of conditionals over dynamic values (present on main) · **Proposed
+verdict:** resolve by fix.
+
+**Rule:** a program the compiler admits, the compiled runtime runs, and
+answers as the interpreter does.
+
+**Divergence:**
+
+```
+def mk fn [[][Any][[false]]] end if (mk) ["t"] ["f"]
+  interpreted   [f]
+  compiled      [t]                                       (silent, before)
+def mk fn [[][Any][quote [gt 3]]] end 5 if (mk) ["big"] ["small"]
+  interpreted   [big]                  (the condition's gt took the 5)
+  compiled      [5 big]                                   (silent, before)
+def mk fn [[][Any][[1 2]]] end if true (mk) ["f"]
+  interpreted   [1 2]
+  compiled      [[1 2]]                                   (silent, before)
+def mk fn [[][Any][[]]] end if (mk) ["t"] ["f"]
+  interpreted   runtime_error:  if: condition produced no value
+  compiled      [f]                                       (silent, before)
+```
+
+The same over a def-bound value and a fn parameter; a List-typed
+computed condition too.
+
+**Cause.** `if` runs a list condition INLINE: `ifMarkMoveTokens` splices
+its tokens between a mark and a move on the live tape, so its words take
+the values beneath the `if`, and the branch reads its last value. A list
+arm is spliced in parens (`spliceArg`) and its values land. That holds
+whatever produced the list. The compile pass models a condition or arm
+it holds as a carrier as a value — a truthiness test, a push — which is
+the interpreter's reading only when the value is not a list. A
+List-typed computed arm already compiles as `[do <arm>]`
+(`computedArmDoBody`).
+
+**What landed (the silent half made loud).** Under the recording pass, a
+condition or arm the pass holds abstractly whose type admits a list —
+not an arm it types List, which keeps its own path — becomes the body
+`[v __codeguard]` (`guardedComputedCode`): the value, then a guard that
+passes it unless it is a list, on which it raises a designed defer (the
+compiler defect's report). A value that is not a list answers as before;
+a list is loud, never an answer the interpreter does not give. The guard
+sits inside the arm's own fragment, so an arm the branch does not take
+is never checked, as the interpreter never splices it. After: the sweeps
+(366 programs) found 0 silent; the list forms are the 40 loud rows.
+
+**What is open.** Compiling the list forms. The condition's run is
+inline over the live stack (`5 if (quote [gt 3]) …` takes the 5), so a
+faithful compile needs the interpreter's own splice at that point of the
+tape — the prefix island's machinery, `CALL_DYN_MIXED_FROM_MARK`, is the
+candidate — and a list arm's paren splice is the runtime-variadic region
+`[do <arm>]` already compiles for a List-typed arm, once the arm's
+list-or-value choice is made at run time.

@@ -182,6 +182,18 @@ var ControlNatives = []NativeFunc{
 		}},
 	},
 	{
+		// __codeguard is the compiled `if`'s guard over a condition or arm
+		// the pass holds abstractly: a value that is not a code body passes,
+		// and a list defers (CodeGuardHandler, NUR292). Not user-facing.
+		Name: "__codeguard",
+		Signatures: []Signature{{
+			Args:       []*Type{TAny},
+			Impl:       Go(CodeGuardHandler),
+			Returns:    []*Type{TAny},
+			BarrierPos: 0,
+		}},
+	},
+	{
 		Name: "for",
 
 		Signatures: []Signature{
@@ -778,6 +790,7 @@ func if2Handler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 func if3ReturnsFn(args []Value, r *Registry) []Value {
 	es := r.Check
 	pos := branchRecordPos(r, args[0])
+	args = []Value{guardedComputedCode(r, args[0], false), guardedComputedCode(r, args[1], true), guardedComputedCode(r, args[2], true)}
 	// Plain-check static reduction (the else-less-if soundness fix,
 	// forward-barrier.tsv:83): a paren comparison folds to a bare concrete
 	// Boolean, so reduce to the taken arm and return a bare-VALUE arm as-is,
@@ -1301,6 +1314,7 @@ func installArmJoins(r *Registry, cond Value, thenDefs, elseDefs map[string]Valu
 func If2ReturnsFn(args []Value, r *Registry) []Value {
 	pos := branchRecordPos(r, args[0])
 	es := r.Check
+	args = []Value{guardedComputedCode(r, args[0], false), guardedComputedCode(r, args[1], true)}
 	// Plain-check static reduction (else-less if): a folded bare-Boolean
 	// condition reduces to the then residual (true) or nothing (false),
 	// instead of the phantom Disjunct(then, None) the join path produces.
@@ -1442,6 +1456,25 @@ func CaseStackHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 	err := r.BoruError("internal_error",
 		"case: the stack-form value is a list, so the interpreter runs the clause list as the scrutinee "+
 			"and dispatches over the value's elements; the compiled chain over the written clauses cannot (NUR291)", "case")
+	if ae, ok := err.(*BoruError); ok {
+		ae.VMDefer = true
+	}
+	return nil, err
+}
+
+// CodeGuardHandler is the runtime of __codeguard, the guard the compiled
+// `if` records over a condition or arm the pass holds abstractly
+// (guardedComputedCode, NUR292): a value that is not a code body passes; a
+// list — which the interpreter runs as code there — is a designed defer
+// (the compiler defect's report), never an answer the interpreter does not
+// give.
+func CodeGuardHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	if !isCodeBody(args[0]) {
+		return []Value{args[0]}, nil
+	}
+	err := r.BoruError("internal_error",
+		"if: a computed condition or arm is a list at run time, which the interpreter runs as code; "+
+			"the compiled branch holds it as a value (NUR292)", "if")
 	if ae, ok := err.(*BoruError); ok {
 		ae.VMDefer = true
 	}

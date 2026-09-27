@@ -9,6 +9,28 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR292 found by a probe sweep of conditionals; its silent half made loud (2026-09-27)
+
+**How it was found.** A sweep of conditionals and code-body words over a
+user fn's Any result (240 programs), then of computed `if` arms (126):
+eight silent rows, all a list where `if` runs code. The arm is main's.
+
+**The divergence.** `if` runs a list condition inline — its words take the
+values beneath the if — and splices a list arm in parens, whatever
+produced the list; the compiled branch held the list as a value (`if
+(mk) …` over `[false]` answered "t" for "f"; an Any arm over `[1 2]`
+answered `[[1 2]]` for `[1 2]`).
+
+**What landed.** A condition or arm the pass holds abstractly that may be a
+list (not an arm typed List, which keeps its `[do <arm>]` path) becomes
+`[v __codeguard]`: any other value passes and answers as before; a list
+raises a designed defer. The guard sits inside the arm's fragment, so an
+untaken arm is never checked. After: 0 silent; the list forms are loud.
+
+**What is open.** Compiling the list forms: the condition's inline run
+over the live stack, and the arm's paren splice once its list-or-value
+choice is made at run time.
+
 ## NUR291 found and closed by a probe sweep of type words (2026-09-27)
 
 **How it was found.** A sweep of type words over a user fn's Any result

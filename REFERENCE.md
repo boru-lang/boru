@@ -1067,6 +1067,10 @@ justification weight as a new init-time panic — NUR023):
   the stack form, passes a value that is not a list and defers on one.
   Each takes the value the chain already holds, so they are stack-only
   for the reason `__casematch` is; internal in the same way.
+- `__codeguard` — the compiled `if`'s guard over a condition or arm the
+  compile pass holds abstractly that may be a list at run time
+  (NUR292): it passes any other value and defers on a list, which the
+  interpreter runs as code there. Stack-only and internal as above.
 
 ### Arithmetic
 

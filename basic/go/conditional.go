@@ -362,7 +362,7 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	// lowering.
 	es := r.Check.Recorder()
 	seatable := es.CanSeatAcrossFragment(v)
-	if seatable && caseScrutineeMayRun(v) {
+	if seatable && mayRunAsCode(v) {
 		v, seatable = recordCaseSubject(r, v, swapped, r.Check.CurCallPos)
 	}
 	if seatable {
@@ -389,18 +389,35 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	return CaseBranchJoin(r, v, elems)
 }
 
-// caseScrutineeMayRun reports whether a scrutinee the pass holds abstractly
-// may be a list at run time — a carrier or dynamic value whose type admits
-// one. CaseHandler RUNS a list scrutinee as a code body and dispatches on
-// its last result, whatever produced the list (`case (mk) […]` over mk's
-// `[1 2]` dispatches on 2), where a chain over the value would match the
-// list itself (NUR291).
-func caseScrutineeMayRun(v Value) bool {
+// mayRunAsCode reports whether a value the pass holds abstractly may be a
+// list at run time — a carrier or dynamic value whose type admits one. The
+// interpreter RUNS a list in a code-body slot, whatever produced it: case
+// dispatches on a list scrutinee's last result (`case (mk) […]` over mk's
+// `[1 2]` dispatches on 2, NUR291), and if runs a list condition inline and
+// splices a list arm (NUR292), where a compiled chain or branch over the
+// value would hold the list itself.
+func mayRunAsCode(v Value) bool {
 	if !v.Carrier && !v.Dynamic {
 		return false
 	}
 	p := v.Parent
 	return p != nil && (TList.ConformsTo(p) || p.ConformsTo(TList))
+}
+
+// guardedComputedCode hands back, for a condition or arm of `if` the pass
+// holds abstractly that may be a list at run time (NUR292), the synthesized
+// body `[v __codeguard]`: the value, then a guard that passes it unless it is
+// a list, on which it raises a designed defer. The interpreter runs a list
+// condition INLINE (its words may take the values beneath the if) and
+// splices a list arm in parens, and no branch over the value is either; any
+// other value is the branch's as before. Recording pass only. An arm the
+// pass types List keeps its own path (computedArmDoBody's `[do <arm>]`),
+// since its value is always a list.
+func guardedComputedCode(r *Registry, v Value, arm bool) Value {
+	if !r.Check.Recorder().Active() || !mayRunAsCode(v) || (arm && v.Parent.ConformsTo(TList)) {
+		return v
+	}
+	return NewList([]Value{v, NewWord("__codeguard")})
 }
 
 // recordCaseSubject records case's own scrutinee rule over a scrutinee that
