@@ -5519,7 +5519,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	if sig == nil && e.fnValueNoMatchRecovers(valIdx, fnDef, fn) {
 		rfn := *fn
 		rfn.Registry, _ = FnHome(e.Registry, &fnDef)
-		pos := uncalledRaisePos(e.Tape.At(valIdx).Pos(), append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...))
+		pos := UncalledRaisePos(e.Tape.At(valIdx).Pos(), append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...))
 		e.fnValueRecovery = true
 		err := CheckBraid.CheckModeAssumeSig(e, w, &rfn, &rfn.Signatures[0], pos)
 		e.fnValueRecovery = false
@@ -5955,6 +5955,79 @@ func (e *Engine) upcomingArgs(valIdx int) []Value {
 	return out
 }
 
+// stackMatchSig is ExecFnDefSigStackMatch's selection: the index of the first
+// own signature the legacy pure-stack path dispatches over resolved (a 0-param
+// signature always; otherwise one whose params the stack's top values
+// satisfy), or -1 when none does. named reports the binding order the match
+// used — a signature with a named param reads the stack top-down (param 0 is
+// the top), an all-unnamed one reads its window bottom-up — which is the order
+// the caller seats the args in.
+func stackMatchSig(ownSigs []Signature, resolved []Value) (int, bool) {
+	for i := range ownSigs {
+		sig := &ownSigs[i]
+		nArgs := len(sig.Params)
+		if nArgs == 0 {
+			return i, false
+		}
+		if len(resolved) < nArgs {
+			continue
+		}
+		named := false
+		for _, p := range sig.Params {
+			if p.Name != "" {
+				named = true
+				break
+			}
+		}
+		match := true
+		for j, p := range sig.Params {
+			v := resolved[len(resolved)-nArgs+j]
+			if named {
+				v = resolved[len(resolved)-1-j]
+			}
+			if !stackParamMatches(v, p) {
+				match = false
+				break
+			}
+		}
+		if match {
+			return i, named
+		}
+	}
+	return -1, false
+}
+
+// stackParamMatches is the legacy pure-stack path's per-param test: the
+// declared type, then a structural pattern (an open unify for a concrete map
+// pattern that is not an options type, Unify otherwise).
+func stackParamMatches(v Value, p FnParam) bool {
+	if !SigTypeMatches(v, p.Type) {
+		return false
+	}
+	if p.Pattern == nil {
+		return true
+	}
+	pat := *p.Pattern
+	if pat.Parent.Equal(TMap) && v.Parent.Equal(TMap) &&
+		pat.Data != nil && v.Data != nil &&
+		!IsOptionsType(pat) {
+		return OpenUnifyMap(pat, v)
+	}
+	_, ok := Unify(v, pat)
+	return ok
+}
+
+// FnValueStackMatches reports whether the interpreter's legacy pure-stack
+// dispatch of the fn VALUE fnDef (ExecFnDefSigStackMatch — the path a value at
+// the pointer takes when the plan matched nothing) would dispatch one of its
+// own signatures over resolved, the stack beneath it. The VM's no-match park
+// asks it (eng vm_fnvalue_park.go) so that the park it performs is the one
+// this path's no-match tail performs, never a dispatch it skipped.
+func FnValueStackMatches(fnDef FnDefInfo, resolved []Value) bool {
+	i, _ := stackMatchSig(fnDef.OwnSigs(), resolved)
+	return i >= 0
+}
+
 // ExecFnDefSigStackMatch is the legacy pure-stack dispatch path for
 // boru-defined functions whose signatures carry named params. Used as a
 // fallback when matchSignature's aggregate match returns nothing.
@@ -5979,108 +6052,31 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 		!FnHomeForeign(e.Registry, &fnDef) &&
 		e.Registry.analysisRecorder().Active()
 	ownSigs := fnDef.OwnSigs()
-	for i := range ownSigs {
+	if i, named := stackMatchSig(ownSigs, resolved); i >= 0 {
 		sig := &ownSigs[i]
 		nArgs := len(sig.Params)
-		if nArgs == 0 {
-			if checkMode {
-				return CheckBraid.SpliceAnonCheckResult(e, valIdx, 0, sig, nil, fnDef.Captured)
-			}
-			if checkFnValue && len(sig.Body()) > 0 {
-				return CheckBraid.SpliceFnValueCheckResult(e, valIdx, 0, fnDef, sig, nil)
-			}
-			return e.execFnDefSig(valIdx, sig, nil, fnDef.Registry, fnDef.Anonymous)
-		}
-		if len(resolved) < nArgs {
-			continue
-		}
-
-		hasNamed := false
-		for _, p := range sig.Params {
-			if p.Name != "" {
-				hasNamed = true
-				break
-			}
-		}
-
-		match := true
-		if hasNamed {
-			for j, p := range sig.Params {
-				ri := len(resolved) - 1 - j
-				if !SigTypeMatches(resolved[ri], p.Type) {
-					match = false
-					break
-				}
-				if p.Pattern != nil {
-					pat := *p.Pattern
-					if pat.Parent.Equal(TMap) && resolved[ri].Parent.Equal(TMap) &&
-						pat.Data != nil && resolved[ri].Data != nil &&
-						!IsOptionsType(pat) {
-						if !OpenUnifyMap(pat, resolved[ri]) {
-							match = false
-							break
-						}
-					} else {
-						if _, uOk := Unify(resolved[ri], pat); !uOk {
-							match = false
-							break
-						}
-					}
-				}
-			}
-			if match {
-				args := make([]Value, nArgs)
+		var args []Value
+		if nArgs > 0 {
+			args = make([]Value, nArgs)
+			if named {
 				for j := 0; j < nArgs; j++ {
 					ri := len(resolvedIdx) - 1 - j
 					args[j] = e.Tape.At(resolvedIdx[ri])
 				}
-				if checkMode {
-					return CheckBraid.SpliceAnonCheckResult(e, valIdx, nArgs, sig, args, fnDef.Captured)
-				}
-				if checkFnValue && len(sig.Body()) > 0 {
-					return CheckBraid.SpliceFnValueCheckResult(e, valIdx, nArgs, fnDef, sig, args)
-				}
-				return e.execFnDefSig(valIdx, sig, args, fnDef.Registry, fnDef.Anonymous)
-			}
-		} else {
-			candidate := resolved[len(resolved)-nArgs:]
-			for j, p := range sig.Params {
-				if !SigTypeMatches(candidate[j], p.Type) {
-					match = false
-					break
-				}
-				if p.Pattern != nil {
-					pat := *p.Pattern
-					if pat.Parent.Equal(TMap) && candidate[j].Parent.Equal(TMap) &&
-						pat.Data != nil && candidate[j].Data != nil &&
-						!IsOptionsType(pat) {
-						if !OpenUnifyMap(pat, candidate[j]) {
-							match = false
-							break
-						}
-					} else {
-						if _, uOk := Unify(candidate[j], pat); !uOk {
-							match = false
-							break
-						}
-					}
-				}
-			}
-			if match {
-				args := make([]Value, nArgs)
+			} else {
 				startIdx := len(resolvedIdx) - nArgs
 				for j := 0; j < nArgs; j++ {
 					args[j] = e.Tape.At(resolvedIdx[startIdx+j])
 				}
-				if checkMode {
-					return CheckBraid.SpliceAnonCheckResult(e, valIdx, nArgs, sig, args, fnDef.Captured)
-				}
-				if checkFnValue && len(sig.Body()) > 0 {
-					return CheckBraid.SpliceFnValueCheckResult(e, valIdx, nArgs, fnDef, sig, args)
-				}
-				return e.execFnDefSig(valIdx, sig, args, fnDef.Registry, fnDef.Anonymous)
 			}
 		}
+		if checkMode {
+			return CheckBraid.SpliceAnonCheckResult(e, valIdx, nArgs, sig, args, fnDef.Captured)
+		}
+		if checkFnValue && len(sig.Body()) > 0 {
+			return CheckBraid.SpliceFnValueCheckResult(e, valIdx, nArgs, fnDef, sig, args)
+		}
+		return e.execFnDefSig(valIdx, sig, args, fnDef.Registry, fnDef.Anonymous)
 	}
 
 	// A NAMED function reached as a call — args on the stack
@@ -6110,7 +6106,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 		valIdx < e.Tape.Len() && !e.Tape.At(valIdx).Quoted {
 		candidates := append(append([]Value{}, resolved...), e.upcomingArgs(valIdx)...)
 		if len(candidates) > 0 {
-			pos := uncalledRaisePos(e.Tape.At(valIdx).Pos(), candidates)
+			pos := UncalledRaisePos(e.Tape.At(valIdx).Pos(), candidates)
 			// The detail no longer says "was left on the stack as data" — that
 			// described what the OLD contract did with the value, and saying it
 			// while raising would tell the reader the opposite of what happened.
@@ -6171,13 +6167,13 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 	return nil
 }
 
-// uncalledRaisePos is where a named fn value's no-match raises
+// UncalledRaisePos is where a named fn value's no-match raises
 // uncalled_function: the value's own position, or — when the FnDef value
 // carries none — the nearest argument's, so the report points somewhere
 // real. Shared by the raise itself and the check pass's recovery of the same
 // dispatch (fnValueNoMatchRecovers), whose replayed raise must land on the
 // identical position.
-func uncalledRaisePos(pos SrcPos, candidates []Value) SrcPos {
+func UncalledRaisePos(pos SrcPos, candidates []Value) SrcPos {
 	if pos.Row == 0 {
 		for _, c := range candidates {
 			if c.Pos().Row > 0 {

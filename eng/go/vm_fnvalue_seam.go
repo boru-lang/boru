@@ -28,7 +28,9 @@ import (
 //     2026-09-19). A value with no matching own sig declines: the stepping
 //     path decides between data (an anonymous lambda stays on the stack, the
 //     element's result — NUR155's interpreter rule) and uncalled_function (a
-//     named fn), and this arm must not re-implement that fork.
+//     named fn), and this arm must not re-implement that fork: the seam's
+//     caller asks the step's own matchers for it (invokeClosureOn →
+//     fnValueNoMatchVerdict, vm_fnvalue_park.go) before the stepping path.
 //   - The unit is the sig's compiled ref — stamped at compile time, at module
 //     load, or right now by the lazy detached stamp (compiler.LazyStampFnSig),
 //     memoised on the value. A stale detached ref re-stamps (the JIT box); a
