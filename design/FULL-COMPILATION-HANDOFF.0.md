@@ -15984,9 +15984,11 @@ at the call; it carried the first argument's, which a param-slot argument
 does not have ("source position unknown" — NUR171's class, pre-existing
 for every named call over a param-slot argument).
 
-**Measured** (200 000-iteration `fold [drop g]` loop through `g:Function`,
-compiled, one run each on an idle box): see the PR description for the
-final numbers.
+**Measured** (a 200 000-iteration `0 fold [drop g] (range 0 n)` loop,
+compiled, best of three on an idle box, specialisation off → on): through
+`g:Function` passed `inc/v` 1.152 s → 0.548 s; passed a lambda literal
+0.859 s → 0.488 s; the direct `inc` call it now matches, 0.532 s → 0.541 s
+(unchanged — nothing to specialise).
 
 **Tests that pinned the generic path over a constant fn arg** now run it
 with `SetCallSiteSpecialisation(false)` — the generic pins hold unchanged
