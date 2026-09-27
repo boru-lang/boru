@@ -1017,13 +1017,17 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// A code-body slot (NoEvalArgs at the body position — walk's hook) is a
 	// CODE body whatever the word's other flags say.
 	fixedValueEval := core.IsConcrete(body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
+	// A LITERAL body a closure probe found to leave a run (noteBodyRun,
+	// NUR294) is not modelled exactly: it takes a computed body's marks.
+	litRun := core.IsConcrete(body) && es.takeBodyRun(body)
 	if !fixedValueEval {
 		f.variadicResult = true
 		// A COMPUTED body's run (NUR210): a literal body the backstop took
-		// was modelled exactly by the pass, and its layouts stand.
+		// was modelled exactly by the pass, and its layouts stand — unless
+		// its residual holds a run itself.
 		cs := sig.Callable
 		f.dynBodyRun = cs != nil && cs.BodyOut == core.BodyOutResidual && cs.BodyOnceKeepsDefs &&
-			(!core.IsConcrete(body) || body.Dynamic)
+			(!core.IsConcrete(body) || body.Dynamic || litRun)
 	}
 	// A COMPUTED whole-residual body (`do (mk)`, `do b`) leaves 0-or-MORE
 	// values where the check pass models one dynamic(Any) out: record the
@@ -1037,10 +1041,12 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// check pass models. A region that may leave a callable is demoted to a
 	// runtime-checked single value where a fixed seat consumes it
 	// (dyn_body_one.go), rather than declined.
-	if !fixedValueEval && sig.Callable != nil && sig.Callable.BodyOut == core.BodyOutResidual && !core.IsConcrete(body) && len(outs) == 1 {
+	if !fixedValueEval && sig.Callable != nil && sig.Callable.BodyOut == core.BodyOutResidual && (!core.IsConcrete(body) || litRun) && len(outs) == 1 {
 		if n, plain := es.bodyPlainCount(body); !plain || n != 1 {
 			f.variadicRegion = true
 			f.regionMayBeFn = regionValsMayBeCallable(outs) && !plain && !es.bodyParksFnValues(body)
+		} else {
+			f.plainOne = true
 		}
 	}
 	// The dyn-body backstop already marks every code-body result variadic

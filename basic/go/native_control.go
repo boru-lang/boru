@@ -204,11 +204,21 @@ var ControlNatives = []NativeFunc{
 		}},
 	},
 	{
-		// __codeguard is the compiled `if`'s guard over a condition or arm
-		// the pass holds abstractly: a value that is not a code body passes,
-		// and a list defers (CodeGuardHandler, NUR292). Not user-facing.
+		// __codeguard is the compiled `if`'s guard over an arm the pass
+		// holds abstractly: a value that is not a code body passes, a list
+		// of one plain value is that value (the paren splice places it), and
+		// any other list defers (CodeGuardHandler, NUR292). Not user-facing.
 		Name:       "__codeguard",
 		Signatures: []Signature{codeGuardSignature},
+	},
+	{
+		// __condguard is the compiled `if`'s guard over a condition the pass
+		// holds abstractly: a value that is not a code body passes, a list of
+		// plain values is its last one (the inline run's), an empty list
+		// raises the interpreter's "no value", and any other list defers
+		// (CondGuardHandler, NUR292). Not user-facing.
+		Name:       "__condguard",
+		Signatures: []Signature{condGuardSignature},
 	},
 	{
 		Name: "for",
@@ -758,7 +768,7 @@ func DoEvalMapValue(r *Registry, v Value) (Value, error) {
 // selects the branch via the IfCont. Returns (nil, false) when cond is not a
 // runnable plain list, so the caller falls back to scalar-condition
 // coercion. Shared by if2Handler (elseBranch=nil) and if3Handler.
-func ifMarkMoveTokens(cond Value, thenBranch, elseBranch []Value) ([]Value, bool) {
+func ifMarkMoveTokens(cond Value, thenBranch, elseBranch []Value, pos SrcPos) ([]Value, bool) {
 	if !(cond.Parent.Equal(TList) && cond.Data != nil && !IsTypedList(cond) && !IsTableType(cond)) {
 		return nil, false
 	}
@@ -768,19 +778,21 @@ func ifMarkMoveTokens(cond Value, thenBranch, elseBranch []Value) ([]Value, bool
 	tokens := make([]Value, 0, len(condSlice)+2)
 	tokens = append(tokens, NewMark(id, condSlice...))
 	tokens = append(tokens, condSlice...)
-	tokens = append(tokens, NewMoveIf(id, "if", &IfCont{
+	// The move carries the `if`'s position: a condition that nets no value
+	// raises there (stepMoveIf), as the compiled guard does (NUR292).
+	tokens = append(tokens, WithPosAt(NewMoveIf(id, "if", &IfCont{
 		Then: thenBranch,
 		Else: elseBranch,
-	}))
+	}), pos))
 	return tokens, true
 }
 
-func if3Handler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+func if3Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	cond := args[0]
 	thenBranch := spliceArg(args[1])
 	elseBranch := spliceArg(args[2])
 
-	if tokens, ok := ifMarkMoveTokens(cond, thenBranch, elseBranch); ok {
+	if tokens, ok := ifMarkMoveTokens(cond, thenBranch, elseBranch, r.Check.CurWordPos); ok {
 		return tokens, nil
 	}
 
@@ -790,11 +802,11 @@ func if3Handler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 	return elseBranch, nil
 }
 
-func if2Handler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+func if2Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	cond := args[0]
 	thenBranch := spliceArg(args[1])
 
-	if tokens, ok := ifMarkMoveTokens(cond, thenBranch, nil); ok {
+	if tokens, ok := ifMarkMoveTokens(cond, thenBranch, nil, r.Check.CurWordPos); ok {
 		return tokens, nil
 	}
 
@@ -1393,7 +1405,7 @@ func IfListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 		return nil, r.BoruError("if_error", "if: clause-list argument must be a concrete list, got a type literal", "if")
 	}
 	_lst, _ := AsList(args[0])
-	return ifClause(_lst.Slice()), nil
+	return ifClause(_lst.Slice(), r.Check.CurWordPos), nil
 }
 
 // CaseHandler implements both call shapes of `case`:
@@ -1450,12 +1462,15 @@ func caseSubject(r *Registry, v Value) (Value, error) {
 // ArmSpliceHandler is the runtime of __arm: spliceArg's reading of a
 // computed arm — a code body runs (InvokeBody, as `do` runs it) and its
 // error propagates, where `do` would trap it as a value (NUR293); a typed
-// list, a table or any other value is the arm's one value.
+// list or a table is the arm's one value. The body slot takes a List, so the
+// one other value that reaches it is the compiled closure the VM hands in
+// place of a LITERAL body, which runs as that body.
 func ArmSpliceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	if !isCodeBody(args[0]) {
-		return []Value{args[0]}, nil
+	v := args[0]
+	if !isCodeBody(v) && v.Parent != nil && v.Parent.ConformsTo(TList) {
+		return []Value{v}, nil
 	}
-	return InvokeBody(r, args[0], nil)
+	return InvokeBody(r, v, nil)
 }
 
 // CaseSubjectHandler is the runtime of __casesubject: case's scrutinee rule
@@ -1491,22 +1506,80 @@ func CaseStackHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 }
 
 // CodeGuardHandler is the runtime of __codeguard, the guard the compiled
-// `if` records over a condition or arm the pass holds abstractly
-// (codeGuards, NUR292): a value that is not a code body passes; a
-// list — which the interpreter runs as code there — is a designed defer
-// (the compiler defect's report), never an answer the interpreter does not
-// give.
+// `if` records over an arm the pass holds abstractly (codeGuards, NUR292):
+// a value that is not a code body passes. The interpreter splices a list
+// arm in parens, which places its values, so a list of ONE plain value
+// (plainElems) is that value — the branch's one merge value; any other list
+// leaves a count or a dispatch the merge's one seat cannot hold, a designed
+// defer (the compiler defect's report), never an answer the interpreter does
+// not give.
 func CodeGuardHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	if !isCodeBody(args[0]) {
 		return []Value{args[0]}, nil
 	}
+	if elems, plain := plainElems(args[0]); plain && len(elems) == 1 {
+		return []Value{elems[0]}, nil
+	}
+	return nil, listGuardDefer(r)
+}
+
+// CondGuardHandler is the runtime of __condguard, the guard the compiled
+// `if` records over a condition the pass holds abstractly (codeGuards,
+// NUR292): a value that is not a code body passes. The interpreter runs a
+// list condition INLINE — its tokens between a mark and a move — and
+// branches on the LAST value the run leaves, dropping the rest
+// (stepMoveIf); over a list of plain values (plainElems) that run places
+// them, so the condition is the last one, and an empty list is the
+// interpreter's own "no value" error. A list holding anything the run
+// would dispatch (a word, a fn value) may take the values beneath the `if`,
+// a designed defer.
+func CondGuardHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	if !isCodeBody(args[0]) {
+		return []Value{args[0]}, nil
+	}
+	elems, plain := plainElems(args[0])
+	switch {
+	case !plain:
+		return nil, listGuardDefer(r)
+	case len(elems) == 0:
+		return nil, r.BoruError("runtime_error", "if: condition produced no value", "if")
+	}
+	return []Value{elems[len(elems)-1]}, nil
+}
+
+// listGuardDefer is the designed defer of a guard over a list the compiled
+// branch cannot run as the interpreter does.
+func listGuardDefer(r *Registry) error {
 	err := r.BoruError("internal_error",
 		"if: a computed condition or arm is a list at run time, which the interpreter runs as code; "+
 			"the compiled branch holds it as a value (NUR292)", "if")
 	if ae, ok := err.(*BoruError); ok {
 		ae.VMDefer = true
 	}
-	return nil, err
+	return err
+}
+
+// plainElems returns a code body's (isCodeBody) elements when every one is DATA the
+// interpreter's tape pushes as itself when it steps it — a number, a
+// string, a boolean, an atom or a plain list — so running the body only
+// places them, in order; ok is false for any other body (a word, a fn
+// value, a map, which may carry pending entries, …).
+func plainElems(v Value) ([]Value, bool) {
+	l, _ := AsList(v)
+	elems := l.Slice()
+	for _, e := range elems {
+		if !IsConcrete(e) || e.Parent == nil {
+			return nil, false
+		}
+		switch {
+		case e.Parent.ConformsTo(TNumber), e.Parent.ConformsTo(TString),
+			e.Parent.ConformsTo(TBoolean), e.Parent.ConformsTo(TAtom),
+			e.Parent.Equal(TList):
+		default:
+			return nil, false
+		}
+	}
+	return elems, true
 }
 
 // IfListReturnsFn type-checks the clause-list form: the result is the

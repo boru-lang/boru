@@ -34,6 +34,15 @@ type BranchRecord struct {
 	// other value and defers on a list. Nil when no guard is owed.
 	Guard                           *Signature
 	CondGuard, ThenGuard, ElseGuard bool
+	// CondCheck is the condition's guard (basic's __condguard) when
+	// CondGuard is set: the interpreter runs a list condition INLINE and
+	// branches on the last value it leaves, so a list of plain values
+	// answers its last element, an empty one raises the interpreter's "no
+	// value", and any other list defers.
+	CondCheck *Signature
+	// CondCheckPos is where the condition's guard runs: the `if` word's
+	// position, where the interpreter's inline run raises "no value".
+	CondCheckPos SrcPos
 	// Uncaptured says WHY an arm the record leaves nil was not captured —
 	// the clause-list `if` records an element its lowering cannot place
 	// (a condition it cannot decide, an arm the tape would re-step) as an

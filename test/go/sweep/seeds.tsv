@@ -18,6 +18,13 @@
 # actually exercised (the callback runs, the body is entered) — a seed that
 # merely mentions the word proves nothing about its lowering.
 
+__arm	literal	__arm [1 add 2]
+__arm	lambda	__arm ([] => [1 add 2])	n/a
+__arm	named-fn	def three fn [[][Integer][1 add 2]] end __arm three/v	n/a
+__arm	factory	def mk fn [[][Function][([] => [1 add 2])]] end __arm (mk)	n/a
+__arm	container	def m {f: ([] => [1 add 2])} end __arm m.f	n/a
+__arm	module-export	import module [def three fn [[][Integer][1 add 2]] export "M" {three: three/v}] end __arm M.three	n/a
+__arm	computed	def body (quote [1 add 2]) end __arm body
 __varundef	literal	def x 5 end __varundef x end 1
 afn	literal	def f ([x:Integer] afn [x mul 2]) end f 5
 afn	lambda	def f ([x:Integer] => [x mul 2]) end f 5

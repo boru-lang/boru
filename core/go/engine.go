@@ -8684,11 +8684,14 @@ func (e *Engine) stepMoveIf(markIdx, moveIdx int, info MoveInfo) error {
 	// Remove mark from hash table.
 	delete(e.marks, info.To)
 
-	// Check if condition produced a value.
+	// Check if condition produced a value. The error is the `if`'s, at the
+	// position its move carries — read before the splice removes it, which
+	// otherwise left whatever token followed the if (or none) at the pointer.
 	if condResult.Parent == nil {
+		movePos := e.Tape.At(moveIdx).Pos()
 		e.Tape.Splice(markIdx, moveIdx-markIdx+1)
 		e.Pointer = markIdx
-		return e.runtimeError("runtime_error", "if: condition produced no value", "if", "")
+		return makeBoruErrorAt("runtime_error", "if: condition produced no value", "if", e.effectiveSource(), "", movePos)
 	}
 
 	// Evaluate truthiness and choose branch.

@@ -1067,10 +1067,19 @@ justification weight as a new init-time panic — NUR023):
   the stack form, passes a value that is not a list and defers on one.
   Each takes the value the chain already holds, so they are stack-only
   for the reason `__casematch` is; internal in the same way.
-- `__codeguard` — the compiled `if`'s guard over a condition or arm the
-  compile pass holds abstractly that may be a list at run time
-  (NUR292): it passes any other value and defers on a list, which the
-  interpreter runs as code there. Stack-only and internal as above.
+- `__arm` — the compiled `if`'s reading of a computed List arm
+  (NUR293): the arm's splice, which runs a code body and propagates its
+  error where `do` would trap it, and passes a typed list or a table as
+  the arm's one value. Internal as above.
+- `__codeguard` and `__condguard` — the compiled `if`'s guards over an
+  arm and a condition the compile pass holds abstractly that may be a
+  list at run time (NUR292). Each passes any other value. The
+  interpreter runs such a list as code there: `__condguard` answers a
+  list of plain values (numbers, strings, booleans, atoms, lists) with
+  its last one, as the condition's inline run does, and raises the
+  interpreter's "no value" on an empty one; `__codeguard` answers a
+  one-value plain list with that value, as the arm's paren splice
+  places it. Any other list defers. Stack-only and internal as above.
 
 ### Arithmetic
 

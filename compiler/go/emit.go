@@ -296,6 +296,17 @@ type eventFlags struct {
 	// own. Set by demoteDynRegion (dyn_body_one.go); variadicRegion and
 	// regionMayBeFn are cleared with it, so every region rule stands down.
 	dynBodyOne bool
+	// closureRun marks a whole-residual closure call (`do [ … ]` compiled to
+	// a unit) whose unit's residual is a region of its own runtime count
+	// (recordClosureDispatch's regionResidual). At the call site its values
+	// are the run's, never the seat the pass modelled: `9 do [do (mk)]` over
+	// [1 2] promoted the one seat and answered [1 9 2] (NUR294). runOperand
+	// reads it.
+	closureRun bool
+	// plainOne marks a computed body's run proven to be ONE plain value
+	// (recordDynBodyCall's bodyPlainCount): no region, and no run — it seats
+	// as the one value the check pass models (runOperand).
+	plainOne bool
 	// splitBound marks a variadic loop region whose FIRST value an S5 split
 	// bind consumed (SplitLoopRegionBind → RecordDynBind): the remaining
 	// regionN-1 values are the statically-counted rest. Inside a LOOP BODY
@@ -401,6 +412,10 @@ type emitBranch struct {
 	// a value arm on the path that takes it (thenGuard / elsGuard).
 	guard                          *core.Signature
 	condGuard, thenGuard, elsGuard bool
+	// condCheck is the condition's guard (BranchRecord.CondCheck) when
+	// condGuard is set.
+	condCheck    *core.Signature
+	condCheckPos core.SrcPos
 	// carried seeds the branch-carried def slots (a name an arm rebinds,
 	// read after the merge — branch_carried.go) with the PRE-branch binding,
 	// lowered once per execution before the arms (after a list-form
@@ -842,6 +857,11 @@ type EmitFragment struct {
 // Finalize afterwards. All methods are nil-receiver-safe so hook
 // sites need no guards.
 type EmitState struct {
+	// bodyRuns holds the LITERAL bodies whose residual a closure probe found
+	// to hold a run although the closure itself declined (a capture with no
+	// operand home), for the dyn-body backstop that takes them (NUR294):
+	// keyed by the body value's ID, read once by takeBodyRun.
+	bodyRuns map[string]bool
 	// Compilable latches false at the first construct Stage 1 cannot
 	// lower; Reason names the first offender.
 	Compilable bool
@@ -4987,7 +5007,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	b.ElsStk = es.stripZeroOutPhantoms(b.ElsStk)
 	ev := EmitEvent{kind: evBranch, br: &emitBranch{
 		constCond: b.ConstCond, hasElse: b.HasElse, pos: b.Pos,
-		guard: b.Guard, condGuard: b.CondGuard, thenGuard: b.ThenGuard, elsGuard: b.ElseGuard,
+		guard: b.Guard, condGuard: b.CondGuard, thenGuard: b.ThenGuard, elsGuard: b.ElseGuard, condCheck: b.CondCheck, condCheckPos: b.CondCheckPos,
 	}}
 	resolveArm := func(frag *EmitFragment, stk []core.Value, name string) (EmitOperand, bool, bool) {
 		if frag == nil {
@@ -13910,6 +13930,15 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 		f.callVariadic = true
 		f.catchVariadic = caught
 		f.catchPhantom = caught && len(outs) == 1
+		f.closureRun = regionResidual
+		// ONE seat over a run is the region's one slot (NUR294): the
+		// region rules — no promotion, no dead drop, no fixed-arity
+		// consumer, the prefix seat and the collect — apply as they do to
+		// the dyn-body run the unit ends in. Several seats keep the do-catch
+		// model above.
+		if regionResidual && len(outs) == 1 {
+			f.variadicRegion = true
+		}
 		es.eventInfo[seq] = f
 	}
 	// VARIADIC PROPAGATION through a strip-input dispatch (L-DO part 2):
@@ -15519,11 +15548,15 @@ func (es *EmitState) trailingApply(lw *lowerer, residual []core.Value) ([]core.V
 	}
 	fnv := residual[1]
 	pr, isEvent := es.producedBy[fnv.ID]
-	if !isEvent || pr.idx != 0 || fnv.Quoted || !es.fnLikeResidual(fnv) || es.eventInfo[pr.seq].dynBodyRun {
+	if !isEvent || pr.idx != 0 || fnv.Quoted || !es.fnLikeResidual(fnv) || es.eventInfo[pr.seq].dynBodyRun ||
+		es.runOperand(EmitOperand{kind: opEvent, idx: pr.seq}, es.frames[0], 0) {
 		// A QUOTED trailing value is data (`5 m.f/v` — the marker's intent,
 		// which the pass records on the value; NUR277). A dyn-body RUN is
 		// not one value: the rotation split `9 do (mk)` over [1 2] into
-		// [1 9 2] (NUR210); the prefix island seats the ones it can.
+		// [1 9 2] (NUR210); the prefix island seats the ones it can. Nor is
+		// a branch result an arm of which is one — a computed List arm's
+		// splice (`9 if b (mk) ["f"]` over [1 2] rotated to [1 9 2] as well,
+		// NUR294): the region's seat takes it.
 		return residual, false
 	}
 	if len(lw.vm) < 1 || lw.vm[len(lw.vm)-1].seq != pr.seq || lw.vm[len(lw.vm)-1].idx != 0 {

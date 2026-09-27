@@ -42,7 +42,7 @@ func isCodeBody(v Value) bool {
 // Empty slice → no tokens. One element → just that element's tokens (a
 // lone else). The else branch of clause k is, recursively, ifClause of
 // elems[2k+2:].
-func ifClause(elems []Value) []Value {
+func ifClause(elems []Value, pos SrcPos) []Value {
 	switch len(elems) {
 	case 0:
 		return nil
@@ -52,7 +52,7 @@ func ifClause(elems []Value) []Value {
 
 	cond := elems[0]
 	thenBranch := spliceArg(elems[1])
-	elseBranch := ifClause(elems[2:])
+	elseBranch := ifClause(elems[2:], pos)
 
 	if isCodeBody(cond) {
 		_lst, _ := AsList(cond)
@@ -61,7 +61,7 @@ func ifClause(elems []Value) []Value {
 		tokens := make([]Value, 0, len(condSlice)+2)
 		tokens = append(tokens, NewMark(id, condSlice...))
 		tokens = append(tokens, condSlice...)
-		tokens = append(tokens, NewMoveIf(id, "if", &IfCont{Then: thenBranch, Else: elseBranch}))
+		tokens = append(tokens, WithPosAt(NewMoveIf(id, "if", &IfCont{Then: thenBranch, Else: elseBranch}), pos))
 		return tokens
 	}
 
@@ -430,8 +430,18 @@ func codeGuardRecord(r *Registry, rec BranchRecord) BranchRecord {
 	c, t, e := codeGuards(r, rec.Cond, rec.ThenValue, rec.ElsValue)
 	if c || t || e {
 		rec.Guard, rec.CondGuard, rec.ThenGuard, rec.ElseGuard = &codeGuardSignature, c, t, e
+		rec.CondCheck, rec.CondCheckPos = &condGuardSignature, r.Check.CurCallPos
 	}
 	return rec
+}
+
+// condGuardSignature is __condguard's one signature, the one the lowering's
+// condition guard runs (BranchRecord.CondCheck).
+var condGuardSignature = Signature{
+	Args:       []*Type{TAny},
+	Impl:       Go(CondGuardHandler),
+	Returns:    []*Type{TAny},
+	BarrierPos: 0,
 }
 
 // codeGuardSignature is __codeguard's one signature, the one the lowering's

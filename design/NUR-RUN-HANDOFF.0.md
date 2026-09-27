@@ -9,6 +9,47 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR292's plain list forms compile; NUR294 found and closed (2026-09-27)
+
+**How it was found.** Gate39 (the NUR290–293 batch) went red in two
+places. The bail ledger: module-sift.tsv L112 compiled and then hit
+NUR292's guard — boru:sift's column dedupe, `if (ArrayUtil.member [k]
+acc) [acc] [push k acc]`, whose condition is `member`'s Boolean MASK
+(`[true]` / `[false]`). The interpreter runs it inline and branches on
+its last value; the compiled branch had read the mask's truthiness,
+always true, so the dedupe never pushed a column — silent on main, the
+row's `size` hiding it. And the generated sweep: `__arm`'s seven cells
+had no seeds (a code-body word is a sweep row, internal or not).
+
+**NUR292's plain forms.** The inline run over a list of plain values
+(numbers, strings, booleans, atoms, lists) only places them: the branch
+reads the last and drops the rest, and an empty list raises "if:
+condition produced no value". The condition's guard became its own word,
+`__condguard` (`BranchRecord.CondCheck`), answering exactly that; an arm's
+one-value plain list is that value (the paren splice places it), which
+`__codeguard` answers. The "no value" error had no position on the
+interpreter (`stepMoveIf` spliced the move out before the error read the
+pointer); both lanes raise it at the `if` now. A list that dispatches (a
+word, a fn value) keeps the defer, and so does an arm list of another
+count.
+
+**NUR294.** Probing the arm forms: `9 if true (mk) ["f"]` over a
+List-typed `[1 2]` answered `[1 9 2]` — the root's trailing apply rotated
+the arm's run as one value. Wider: `9 do [do (mk)]` the same, `[9 do [do
+(mk)]]` `[1 [9 2]]`, `do [do (mk)] add` a signature_error for 3, a
+literal body taken by the backstop with the same results — a RUN (a
+computed body's values) was one value wherever it was not the dyn-body
+call's own result. `runOperand` now names a run wherever it surfaces (a
+dyn-body run not proven one plain value, a closure call whose unit leaves
+one — `closureRun`, a branch an arm of which is one, `error` over one);
+the trailing apply declines it; a closure body holding one is a region
+(one out: `variadicRegion`, so the region rules — prefix seat, collect,
+the fixed-count declines — apply) or declines; a closure that declines
+before its probe (a homeless capture) probes anyway and tells the
+backstop (`noteBodyRun`), which records the literal body as a computed
+one. `__arm` runs the compiled closure the VM hands it for a literal body
+(its sweep seed answered the closure). Sweep: 377 run shapes, 0 silent.
+
 ## NUR282's gradual-body region: `do (mk)` over an Any result compiles (2026-09-27)
 
 The sweeps' loud rows included `do (mk)` over a declared-Any result that

@@ -649,6 +649,7 @@ var (
 	ValidateTypeNameParts  = core.ValidateTypeNameParts
 	ValuesEqual            = core.ValuesEqual
 	WithPos                = core.WithPos
+	WithPosAt              = core.WithPosAt
 	// `make` helpers, ported alongside the make word in eng/go/core_make.go.
 	ResolveFieldType = core.ResolveFieldType
 

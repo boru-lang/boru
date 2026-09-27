@@ -5,6 +5,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 | word | literal | lambda | named-fn | factory | container | module-export | computed |
 |---|---|---|---|---|---|---|---|
+| `__arm` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
 | `__varundef` | ✓ 13/14 | — | — | — | — | — | — |
 | `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 11/14 | ✓ 12/14 | n/a | ✓ 13/14 |
 | `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 4/14 | ✓ 14/14 | ✓ 12/14 | n/a |
@@ -61,7 +62,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells
 
-- pass: 187
+- pass: 189
 - failed: 1
 - islanded: 2
 - DIVERGED: 0
@@ -69,7 +70,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - HUNG: 0
 - check-reject: 0
 - invalid: 0
-- n/a: 115
+- n/a: 120
 - n/a-STALE: 0
 - empty: 0
 

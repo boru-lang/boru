@@ -293,22 +293,62 @@ func (lw *lowerer) scopeEvents(op EmitOperand) []EmitEvent {
 	return nil
 }
 
-// runOperand reports whether op, produced in events, is a dyn-body run or a
-// branch result an arm of which is one, through nested branches.
+// noteBodyRun records that a literal body's residual holds a run
+// (EmitState.bodyRuns): the closure that would have compiled it declined,
+// and the dyn-body backstop takes it next (NUR294).
+func (es *EmitState) noteBodyRun(body core.Value) {
+	if es.bodyRuns == nil {
+		es.bodyRuns = map[string]bool{}
+	}
+	es.bodyRuns[body.ID] = true
+}
+
+// takeBodyRun reports and clears noteBodyRun's record for body. A body with
+// no ID shares the one empty key, which can only mark a body a run it is
+// not — conservative: the run's rules are faithful to one value too.
+func (es *EmitState) takeBodyRun(body core.Value) bool {
+	if !es.bodyRuns[body.ID] {
+		return false
+	}
+	delete(es.bodyRuns, body.ID)
+	return true
+}
+
+// runOperand reports whether op, produced in events, is a RUN — values whose
+// runtime count is their own, not the one seat the pass modelled: a dyn-body
+// run, a closure call whose unit leaves one (eventFlags.closureRun), a branch
+// result an arm of which is one, through nested branches, or a strip word's
+// (`error`) result over one, which pops the run's top and leaves the rest
+// (NUR294).
 func (es *EmitState) runOperand(op EmitOperand, events []EmitEvent, depth int) bool {
 	if op.kind != opEvent || depth > 8 {
 		return false
 	}
 	// A run a single-value seat demoted (dyn_body_one.go) is one
-	// runtime-checked value, not the run's count.
-	if f := es.eventInfo[op.idx]; f.dynBodyRun && !f.zeroOut && !f.dynBodyOne {
+	// runtime-checked value, not the run's count, and a run proven to be
+	// one plain value is that value.
+	if f := es.eventInfo[op.idx]; (f.dynBodyRun && !f.zeroOut && !f.dynBodyOne && !f.plainOne) || f.closureRun {
 		return true
 	}
 	ev := eventBySeq(events, op.idx)
-	if ev == nil || ev.kind != evBranch {
+	if ev == nil || (ev.kind != evBranch && ev.kind != evCall) {
 		return false
 	}
-	b := ev.br
-	return (b.hasThenOut && b.then != nil && es.runOperand(b.thenOut, b.then.events, depth+1)) ||
-		(b.hasElsOut && b.els != nil && es.runOperand(b.elsOut, b.els.events, depth+1))
+	if ev.kind == evBranch {
+		b := ev.br
+		return (b.hasThenOut && b.then != nil && es.runOperand(b.thenOut, b.then.events, depth+1)) ||
+			(b.hasElsOut && b.els != nil && es.runOperand(b.elsOut, b.els.events, depth+1))
+	}
+	for _, in := range ev.call.ops {
+		if stripsInput(ev.call.sig) && es.runOperand(in, events, depth+1) {
+			return true
+		}
+	}
+	return false
+}
+
+// stripsInput reports whether sig is a strip word's (`error`), whose result
+// over a run pops the run's top and leaves the rest.
+func stripsInput(sig *core.Signature) bool {
+	return sig != nil && sig.Callable != nil && sig.Callable.StripsUnconsumedInput
 }

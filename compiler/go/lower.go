@@ -4835,15 +4835,18 @@ func (lw *lowerer) seedCarried(br *emitBranch) {
 // guarded first when the pass held a value condition abstractly that may be
 // a list at run time (NUR292): the interpreter runs such a list as code.
 func (lw *lowerer) emitBranchJump(br *emitBranch) int {
-	lw.emitCodeGuard(br, br.condGuard)
+	if br.condGuard {
+		lw.emitGuardCall("__condguard", br.condCheck, br.condCheckPos)
+	}
 	return lw.emit(OpJmpIfFalse, 0, br.pos)
 }
 
-// emitCodeGuard calls the branch's run-time guard over the value on top when
-// on: a one-in, one-out native call, so the simulated stack is unchanged.
+// emitCodeGuard calls the branch's run-time arm guard over the value on top
+// when on: a one-in, one-out native call, so the simulated stack is
+// unchanged.
 func (lw *lowerer) emitCodeGuard(br *emitBranch, on bool) {
 	if on {
-		lw.emitGuardCall(br.guard, br.pos)
+		lw.emitGuardCall("__codeguard", br.guard, br.pos)
 	}
 }
 
@@ -4856,15 +4859,15 @@ func (lw *lowerer) armGuard(br *emitBranch, then bool) *core.Signature {
 	return nil
 }
 
-// emitGuardCall emits a CALL_NATIVE of the guard over the value on top (nil:
-// nothing), interning its SigRef as a plain call's.
-func (lw *lowerer) emitGuardCall(guard *core.Signature, pos core.SrcPos) {
+// emitGuardCall emits a CALL_NATIVE of the guard word over the value on top
+// (a nil signature: nothing), interning its SigRef as a plain call's.
+func (lw *lowerer) emitGuardCall(word string, guard *core.Signature, pos core.SrcPos) {
 	if guard == nil {
 		return
 	}
 	si, ok := lw.sigIdx[guard]
 	if !ok {
-		lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: "__codeguard", Sig: guard})
+		lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: word, Sig: guard})
 		si = len(lw.p.Sigs) - 1
 		lw.sigIdx[guard] = si
 	}
@@ -4885,7 +4888,7 @@ func (lw *lowerer) lowerArm(kind armKind, val EmitOperand, frag *EmitFragment, o
 		// (pushOperand tracked it; the merge slot owns the count), guarded
 		// on this path when the pass holds it abstractly (NUR292).
 		lw.pushOperand(val, pos)
-		lw.emitGuardCall(guard, pos)
+		lw.emitGuardCall("__codeguard", guard, pos)
 		lw.vm = lw.vm[:len(lw.vm)-1]
 		return ""
 	case armBodyOut:

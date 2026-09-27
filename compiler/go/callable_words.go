@@ -787,6 +787,14 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	for i, cb := range captures {
 		op, ok := real.resolveOperand(cb.Value)
 		if !ok {
+			// The dyn-body backstop takes the body instead, and it trusts a
+			// LITERAL body's modelled count; a residual holding a run is not
+			// that (NUR294), so the probe that would have found it runs here
+			// and leaves the backstop its answer.
+			if spec.BodyOut == core.BodyOutResidual && len(extraLamSlots) == 0 &&
+				probeResidualRuns(r, real, word, spec, bodyToks, inputs, paramNames, paramSpec, captures, shape, bodyInFrame, pos, env) {
+				real.noteBodyRun(args[spec.BodyPos])
+			}
 			return false
 		}
 		capOps[i] = op
@@ -900,8 +908,17 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// The dispatch's recorded seats then stand for a run of its own length —
 	// the do-catch model — so the event is marked VARIADIC below and the
 	// program residual absorbs it.
+	//
+	// A residual holding a RUN is never exact, whatever the seat count: the
+	// run's values are its own runtime count (runOperand). A one-out body
+	// ending in one — `do [do (mk)]`, `do [if c (mk) [3]]` over a List arm —
+	// took the one seat and was promoted or rotated as one value (NUR294:
+	// `9 do [do (mk)]` over [1 2] answered [1 9 2]); now it is a region or
+	// declines to the dyn-body strategy.
 	regionResidual := false
-	if spec.BodyOut == core.BodyOutResidual && len(outs) > 1 && !closureResidualExact(probe, probeUnit, len(outs)) {
+
+	if spec.BodyOut == core.BodyOutResidual &&
+		((len(outs) > 1 && !closureResidualExact(probe, probeUnit, len(outs))) || closureResidualRuns(probe, probeUnit)) {
 		if !closureResidualRegion(probe, probeUnit) {
 			return false
 		}
@@ -1005,6 +1022,44 @@ func closureResidualExact(es *EmitState, unit, want int) bool {
 	}
 	rec := es.fnRecs[unit]
 	return !rec.variadic && rec.dynTrailArity == 0 && rec.dynFrameW == 0 && len(rec.outOps) == want
+}
+
+// probeResidualRuns compiles a whole-residual body in a throwaway probe, as
+// recordClosureDispatch's own probe does, and reports whether its residual
+// holds a run (closureResidualRuns) — for a dispatch whose closure declines
+// before its probe, so the backstop that takes the body knows (NUR294).
+func probeResidualRuns(r *core.Registry, real *EmitState, word string, spec core.CallableSpec, bodyToks, inputs []core.Value, paramNames []string, paramSpec *ClosureParamSpec, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos, env *bodyRunEnv) bool {
+	diagBase := len(r.Check.Diagnostics)
+	defer r.Check.TruncateDiagnostics(diagBase)
+	// The environment refuses only a multi-run body's re-run; a failed enter
+	// returns no table, which exit leaves alone.
+	prev, ok := env.enter(r)
+	defer env.exit(r, prev)
+	return ok && probedResidualRuns(r, real, word, spec, bodyToks, inputs, paramNames, paramSpec, captures, shape, bodyInFrame, pos)
+}
+
+// probedResidualRuns is probeResidualRuns' probe compile, in the environment
+// it entered.
+func probedResidualRuns(r *core.Registry, real *EmitState, word string, spec core.CallableSpec, bodyToks, inputs []core.Value, paramNames []string, paramSpec *ClosureParamSpec, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos) bool {
+	probe := real.forkForProbe()
+	r.Check.Emit = probe
+	unit, probeOk := compileClosureBody(r, word, spec.BodyOut, spec.EmptyBodyErrors || spec.StripsUnconsumedInput, bodyToks, inputs, paramNames, paramSpecPatterns(paramSpec), captures, shape, bodyInFrame, pos)
+	r.Check.Emit = real
+	probe.undoProbeStamps()
+	return probeOk && closureResidualRuns(probe, unit)
+}
+
+// closureResidualRuns reports whether a probe-compiled closure unit's
+// residual holds a RUN (runOperand): values whose runtime count is their
+// own, which no seat count describes (NUR294).
+func closureResidualRuns(es *EmitState, unit int) bool {
+	rec := es.fnRecs[unit]
+	for _, op := range rec.outOps {
+		if rec.frag != nil && es.runOperand(op, rec.frag.events, 0) {
+			return true
+		}
+	}
+	return false
 }
 
 // closureResidualRegion reports whether a probe-compiled closure unit's
