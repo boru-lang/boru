@@ -388,6 +388,7 @@ type emitCall struct {
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)
 	polySplit         *PolySplit            // the dispatch's exact operand layout, for the poly's runtime no-match arm (PolyRef.Split, NUR242)
 	nativeSplit       *NativeSplit          // an optimistic closure bake's exact operand layout, for the committed call's no-match arm (SigRef.Split, NUR263)
+	polySeed          *polySeed             // the checker's guarded pick (PolyRef.Seed; nil = none)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
 	listReStep        *ListReStepSpec       // a makeList whose elements the interpreter may re-step (OpMakeListReStep, NUR295)
 	dynApply          int                   // >0: apply the TOP operand (a runtime fn value) to the `dynApply` trailing args below it (OpCallDynTrailTop) — a paren-bounded trailing fn-value apply recorded as an EVENT so it seats like any computed result
@@ -941,6 +942,9 @@ type EmitState struct {
 	// outputs shows, for the dyn-body backstop that takes them (NUR317):
 	// keyed by the body value's ID, read once by takeBodyReStep.
 	bodyReSteps map[string]bool
+	// pendingPolySeed is the guarded pick tryRecordPoly derived for the poly
+	// call it is about to record (poly_seed.go); RecordPolyCall takes it.
+	pendingPolySeed *polySeed
 	// Compilable latches false at the first construct Stage 1 cannot
 	// lower; Reason names the first offender.
 	Compilable bool
@@ -10790,7 +10794,7 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		es.declineUndef(n, fwdReadAfterSpecUndef)
 		return true
 	}
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, region: region, generic: generic}})
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, polySeed: es.takePolySeed(), region: region, generic: generic}})
 	es.noteArgSites(seq, args)
 	switch len(outs) {
 	case 0:

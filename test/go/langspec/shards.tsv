@@ -84,3 +84,4 @@
 9	TestGeneratedSweep
 9	TestSweepMiscompilePinsTheDivergence
 6	TestLedgerStaleConsultsFullBreadth
+1	TestGenericDispatchBench

@@ -3952,7 +3952,11 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 			// do for the CALL_NATIVE twin, so the op commits no claim.
 			nout = PolyNOutRegion
 		}
-		lw.p.PolyRefs = append(lw.p.PolyRefs, PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk})
+		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk}
+		if c.polySeed != nil && (c.polySeed.tags == nil || len(c.polySeed.tags) == n) {
+			pref.Seed, pref.SeedTags = c.polySeed.sig, c.polySeed.tags
+		}
+		lw.p.PolyRefs = append(lw.p.PolyRefs, pref)
 		lw.emit(OpCallNativePoly, pi, c.pos)
 	} else if lw.es != nil && lw.es.phantomConsumed[ev.seq] && !dynOne && !plainChk && !c.hostSplice && c.nativeSplit == nil {
 		// A do whose run's count the seat may miss (NUR222): its own SigRef

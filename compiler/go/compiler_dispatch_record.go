@@ -855,7 +855,17 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 	// looked the word up in the main registry, found 0 sigs, and deferred. Safe for
 	// core words too: poly only ever records BUILTINS (guarded above), which exist
 	// identically in every registry instance, so matchReg.Lookup always resolves.
-	return es.RecordPolyCall(word, args, outs, pos, matchReg, noMatch)
+	ems, _ := es.(*EmitState)
+	if ems != nil && !disjunctStraddle && !dynamicRecovery && noMatch == nil && !coreDefaultCarrier {
+		ems.pendingPolySeed = polySeedFor(fn.Signatures, sig, args)
+	}
+	recorded := es.RecordPolyCall(word, args, outs, pos, matchReg, noMatch)
+	if ems != nil {
+		// A declined record leaves the seed untaken; it must not reach the
+		// next poly call.
+		ems.pendingPolySeed = nil
+	}
+	return recorded
 }
 
 // tryRecordDynBody is the universal `do` backstop (the always-compile goal):

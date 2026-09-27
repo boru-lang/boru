@@ -675,3 +675,44 @@ func RankSignatures(sigs []Signature) []int {
 	})
 	return indices
 }
+
+// TagDeterminedSigs reports whether MatchSignature's first match over the
+// n-argument signatures of sigs is decided by each runtime argument's
+// construction tag (its Parent) alone — so two argument windows with the
+// same tags, none of them a bare type node, an ascribed view, a carrier or
+// a dynamic value, always pick the same signature. It holds when no
+// n-argument signature declares a structural pattern (Unify on the value)
+// or a type-literal slot (sigTypeMatchesAsType reads the type's content),
+// and every argument type is a builtin (no runtime `behave` can install a
+// Behavior on it) whose Behavior decides membership by tag, not content
+// (behaviorIsContent) and is not Options (which accepts any concrete map).
+// The VM's poly inline cache keys on the tags under exactly this proof.
+func TagDeterminedSigs(sigs []Signature, n int) bool {
+	for i := range sigs {
+		s := &sigs[i]
+		if s.TotalArgs() != n {
+			continue
+		}
+		for idx := 0; idx < n; idx++ {
+			if _, ok := SigPattern(s, idx); ok {
+				return false
+			}
+			if s.TypeArgs != nil && s.TypeArgs[idx] {
+				return false
+			}
+			t := SigArgType(s, idx)
+			if t == nil || t.Origin != OriginBuiltin || t.Equal(TOptions) || behaviorIsContent(t.Behavior()) {
+				return false
+			}
+		}
+	}
+	return true
+}
+
+// TagKeyable reports whether v's signature match is decided by its tag
+// under TagDeterminedSigs: a concrete runtime value — not a bare type node
+// (whose own node, not its Parent, is what matches), not an ascribed view,
+// not a carrier or a dynamic value.
+func TagKeyable(v Value) bool {
+	return v.Parent != nil && !v.Carrier && !v.Dynamic && !IsBareTypeNode(v) && v.AscribedType() == nil
+}

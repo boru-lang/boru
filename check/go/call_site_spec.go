@@ -102,6 +102,16 @@ func specialisedArgs(r *core.Registry, params []core.FnParam, args, genArgs []co
 	suffix := ""
 	for i := range min(len(params), len(args), len(genArgs)) {
 		a := args[i]
+		if shape, key, ok := specialisableShapeArg(params[i], a); ok {
+			if specArgs == nil {
+				specArgs = append([]core.Value(nil), genArgs...)
+			}
+			specArgs[i] = shape
+			specParams = append(specParams, i)
+			specFns = append(specFns, shape)
+			suffix += "!shape" + strconv.Itoa(i) + "=" + key
+			continue
+		}
 		id, ok := specialisableFnArg(r, params[i], a)
 		if !ok {
 			continue
@@ -117,6 +127,41 @@ func specialisedArgs(r *core.Registry, params []core.FnParam, args, genArgs []co
 		suffix += "!spec" + strconv.Itoa(i) + "=" + id
 	}
 	return specArgs, specParams, specFns, suffix
+}
+
+// ShapeSpecMaxFields caps the fields a shape specialisation keys on: the
+// entry guard compares every field, so a wide map buys less than it costs.
+const ShapeSpecMaxFields = 8
+
+// specialisableShapeArg returns the shape (and its key) a plain Map or List
+// arg to a NAMED, untyped `Map` / `List` param specialises on — a Map's
+// strict record carrier (core.ShapeOf), a List's concrete list of element
+// carriers (core.ListShapeOf). The param declares no pattern (a record- or
+// element-typed List param is already typed at entry; a record-typed Map
+// param is admitted, see below) and is exactly Map / List
+// (a Node or Any param admits other containers the shape guard would only
+// ever send to the fallback).
+func specialisableShapeArg(p core.FnParam, a core.Value) (core.Value, string, bool) {
+	if p.Name == "" || p.Type == nil || p.Pattern != nil {
+		return core.Value{}, "", false
+	}
+	// A RECORD-typed param (`m:R`, R a record type — its node carries the
+	// field schema) specialises too: CALL_USER's param contract still checks
+	// R at entry, the shape guard adds the exact key set and tags, and the
+	// record's reads — gradual under the schema carrier alone — read strict
+	// under the shape.
+	isRecord := isRecordType(p.Type)
+	switch {
+	case p.Type.Equal(core.TMap) || isRecord:
+		if s, ok := core.ShapeOf(a, ShapeSpecMaxFields); ok {
+			return s, core.ShapeKey(s), true
+		}
+	case p.Type.Equal(core.TList):
+		if s, ok := core.ListShapeOf(a, ShapeSpecMaxFields); ok {
+			return s, core.ListShapeKey(s), true
+		}
+	}
+	return core.Value{}, "", false
 }
 
 // specialisableFnArg reports whether arg a to param p warrants a
@@ -197,6 +242,26 @@ func specParamCallMayRefuse(params []core.FnParam, args []core.Value) bool {
 		if p.Pattern != nil || a.Parent == nil || (p.Type != nil && !a.Parent.ConformsTo(p.Type)) {
 			return true
 		}
+	}
+	return false
+}
+
+// isRecordType reports whether t is a record type (`def R {a:Integer}`): a
+// minted node under Map whose declared body is the field map (or a
+// RecordTypeInfo schema).
+func isRecordType(t *core.Type) bool {
+	if t.Parent == nil || !t.Parent.Equal(core.TMap) {
+		return false
+	}
+	body, ok := t.TypeBody()
+	if !ok {
+		return false
+	}
+	switch b := body.Data.(type) {
+	case core.MapPayload:
+		return b.M != nil
+	case core.RecordTypeInfo:
+		return b.Fields != nil
 	}
 	return false
 }
