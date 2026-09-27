@@ -287,15 +287,32 @@ func behaveTarget(name string, fnVal Value, r *Registry) (behaviorEntry, *core.T
 // computed name — and a call the handler would refuse note nothing; the run
 // raises the refusal where it happens.
 func behaveReturns(args []Value, r *Registry) []Value {
-	if r == nil || !r.Check.IsActive() || !IsConcrete(args[0]) || !IsConcrete(args[1]) {
+	if r == nil || !r.Check.IsActive() || !IsConcrete(args[0]) {
 		return nil
+	}
+	fnVal := args[1]
+	if !IsConcrete(fnVal) {
+		// A container member's fn read as a gradual carrier: the pass
+		// tagged the value the read resolved (NoteFnMemberRead), which the
+		// run installs — seen through for the call graph alone (NUR257).
+		member, ok := r.Check.FnMemberRead(fnVal.ID)
+		if !ok {
+			return nil
+		}
+		fnVal = member
 	}
 	name := defName(args[0])
-	if name != "make" {
+	_, target, _, err := behaveTarget(name, fnVal, r)
+	if err != nil {
 		return nil
 	}
-	if _, target, _, err := behaveTarget(name, args[1], r); err == nil {
-		r.Check.NoteBehaveMaker(core.CanonicalType(r, target))
+	target = core.CanonicalType(r, target)
+	// Every slot's fn runs where a value of the target is handled, so a
+	// frame that handles one reaches it: the dynamic-scope rescue asks the
+	// call graph about it (NUR257).
+	r.Check.NoteBehaveReader(target, fnVal.Data.(core.FnDefInfo))
+	if name == "make" && IsConcrete(args[1]) {
+		r.Check.NoteBehaveMaker(target)
 	}
 	return nil
 }

@@ -9,6 +9,27 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR257 closed: an anonymous fn value's reader identity (2026-09-27)
+
+**The divergence.** The dynamic-scope rescue keeps an undefined-word finding
+unless a binder of the name reaches the reading fn. An anonymous fn value
+had no name to be reached by: a list member run as a callback inside the
+binder (`def m [([x:Any] => [k])] end def h fn [[][List] [def k 7 [1] each
+m.0]] end h`) or a behaviour exercised there was a false finding and
+declined, and main's #511 merge had made the folded map member answer
+optimistically, a false negative at the root.
+
+**The fix, as recorded.** The value's body position is its identity (core
+`anon_reader.go`): registered at queueing with its span, a finding inside it
+names it, and the rescue and the compiler's dynamic-scope operand ask the
+call graph under it. `AnalyseFnBody` adds an edge from the named fn under
+analysis whenever it enters a registered body; `behave`'s check-mode half
+notes the value per capability, seeing a member carrier through the tag
+the pass now keeps for get-family reads (`FnMemberReads`), and a dispatch
+over a value of the target in a named fn adds one. The interim folded rule
+is gone. Found probing, pre-existing: NUR284 (a folded member applied in a
+binder's frame raises compiled).
+
 ## NUR263 closed: an optimistic closure bake raises the interpreter's report (2026-09-27)
 
 **The divergence.** `def mk fn [[][Any]["s"]] end 0 fold [add] (mk)` raised

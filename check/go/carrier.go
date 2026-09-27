@@ -3052,6 +3052,9 @@ func AnalyseFnBody(r *core.Registry, name string, paramNames []string, body []co
 			r.Check.RecordCallEdge(r.Check.FnNameStack[n-1], name)
 		}
 	}
+	// An anonymous fn value's body entered in a named fn's frame — a callback
+	// or an application run there — is reached from it (NUR257).
+	r.Check.NoteAnonDispatch(body[0].Pos())
 	// A FORWARD-referenced fn name that isn't defined yet leaks into this
 	// per-call-site analysis as a concrete Undefined Atom argument. Gradualize
 	// it to a dynamic Any carrier at the analysis boundary — copy-on-write so

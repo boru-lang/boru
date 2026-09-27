@@ -11625,7 +11625,9 @@ func (es *EmitState) dynScopeRescue(v core.Value) (EmitOperand, bool) {
 			}
 		}
 	}
-	if !enclosing && !c.DynamicScopeReachable(name, reader) {
+	// A read inside an anonymous fn value's body (a stored unit, a closure)
+	// has the value as its reader, named by the read's position (NUR257).
+	if !enclosing && !c.DynamicScopeReachable(name, reader) && !c.AnonScopeReachable(name, v.Pos()) {
 		return EmitOperand{}, false
 	}
 	if es.dynScopeNames == nil {

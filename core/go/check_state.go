@@ -197,6 +197,20 @@ type CheckState struct {
 	// type whose own constructor builds it, from the `behave` call on, as it
 	// does for a Go-side Maker. Reset per pass.
 	BehaveMakers map[*Type]bool
+	// AnonFnBodies maps the reader identity of each ANONYMOUS fn value
+	// queued for its body check — its body's first-token position — to the
+	// last position the body covers (NoteAnonFnBody). A finding inside the
+	// span names the value as its reader by position, and the dynamic-scope
+	// rescue asks the call graph about it (AnonScopeReachable, NUR257).
+	AnonFnBodies map[SrcPos]SrcPos
+	// BehaveReaders are the fn values a `behave` call this pass reached
+	// installed as a type's capability (NoteBehaveReader): a frame that
+	// handles a value of the target may run one (NoteBehaveDispatch).
+	BehaveReaders []BehaveReader
+	// FnMemberReads maps a get-family read's result carrier to the fn value
+	// it resolved from a concrete container (NoteFnMemberRead): `behave`'s
+	// check-mode half sees through the carrier to it (NUR257).
+	FnMemberReads map[string]Value
 
 	// SlotBoundReads are the word tokens, by name and position, that a
 	// pattern's binding slot binds for the handler whose body holds them
@@ -1042,15 +1056,10 @@ type PendingMethodApply struct {
 }
 
 // PendingFnBody is one queued construction-time body check: the fn value and
-// the REGISTRY whose scope its body was written in. Folded marks a fn value
-// found inside a folded constant (noteFoldedFnBodies — a map literal's member,
-// built by a concrete sub-run the pass never saw construct it), whose drained
-// run answers the dynamic-scope question optimistically
-// (dropAnonymousBinderReads).
+// the REGISTRY whose scope its body was written in.
 type PendingFnBody struct {
-	Reg    *Registry
-	Fn     FnDefInfo
-	Folded bool
+	Reg *Registry
+	Fn  FnDefInfo
 }
 
 // Clone returns a deep copy of the analysis state: scalar fields are
@@ -1097,6 +1106,9 @@ func (c *CheckState) Clone() *CheckState {
 	cp.FnInflight = cloneMap(c.FnInflight)
 	cp.FnBodyChecked = cloneMap(c.FnBodyChecked)
 	cp.BehaveMakers = cloneMap(c.BehaveMakers)
+	cp.AnonFnBodies = cloneMap(c.AnonFnBodies)
+	cp.BehaveReaders = append([]BehaveReader(nil), c.BehaveReaders...)
+	cp.FnMemberReads = cloneMap(c.FnMemberReads)
 	cp.SlotBoundReads = cloneMap(c.SlotBoundReads)
 	if c.PendingFnBodies != nil {
 		cp.PendingFnBodies = append([]PendingFnBody(nil), c.PendingFnBodies...)
@@ -1190,6 +1202,9 @@ func (c *CheckState) Begin() func() {
 	c.FnBodyChecked = nil
 	c.PendingFnBodies = nil
 	c.BehaveMakers = nil
+	c.AnonFnBodies = nil
+	c.BehaveReaders = nil
+	c.FnMemberReads = nil
 	c.SlotBoundReads = nil
 	c.Emit = TheInactiveEmit
 	c.CodeEffectDepth = 0
@@ -1741,23 +1756,6 @@ func (c *CheckState) RecordFnBinder(name string) {
 	m[fn] = true
 }
 
-// dropAnonymousBinderReads drops, from the findings a folded anonymous fn
-// value's drained run added past before, each undefined-word finding whose
-// name some fn binds (FnBinders) — the optimistic answer to a reachability
-// question the run cannot ask, where the alternative is a false positive on
-// the dynamic-scope idiom (NUR257). A name no fn binds keeps its finding (a
-// genuine typo, NUR105's map-member row), and so does every other finding.
-func (c *CheckState) dropAnonymousBinderReads(before int) {
-	kept := c.Diagnostics[:before]
-	for _, d := range c.Diagnostics[before:] {
-		if d.Code == "undefined_word" && len(c.FnBinders[d.Word]) > 0 {
-			continue
-		}
-		kept = append(kept, d)
-	}
-	c.Diagnostics = kept
-}
-
 // dynamicScopeReachable reports whether some fn that binds `name` can reach
 // `reader` (the fn whose body referenced it) through the recorded call graph
 // — i.e. a runtime call stack exists where `reader` executes while a binder
@@ -2068,6 +2066,13 @@ func (r *Registry) RescueForwardRefDiagnostics() {
 			// calls the reader (`def f fn [[] [x]] def g fn [[x:Integer] [1]] f`)
 			// stays flagged: it genuinely errors at run time.
 			if r.Check.DynamicScopeReachable(d.Word, d.FnName) {
+				continue
+			}
+			// A read inside an ANONYMOUS fn value's body has the value as its
+			// reader, named by position whatever analysis made the finding
+			// (the end-of-pass drain, a stored unit's compile): the same
+			// question under the value's identity (NUR257).
+			if r.Check.AnonScopeReachable(d.Word, SrcPos{Row: d.Row, Col: d.Col}) {
 				continue
 			}
 		}

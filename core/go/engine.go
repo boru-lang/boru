@@ -3698,8 +3698,12 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// committed call can raise the interpreter's report when the live
 		// value matches no overload (NUR263).
 		restoreLayout := e.publishOptimisticLayout(match, indices)
+		// A behave-installed capability may run in this frame over a value
+		// of its type (NUR257).
+		e.Registry.Check.NoteBehaveDispatch(match.Args)
 		results := e.Registry.analysisCarrierResults(name, match.Sig, match.Args, pos, match.Reg, tailConsumed)
 		restoreLayout()
+		e.Registry.Check.NoteFnMemberRead(name, match.Args, results)
 		// Stamp a positionless FUNCTION result with this call's position,
 		// AFTER the recorder has re-IDed the outputs — the interpreter's
 		// stampResultPos equivalent for the check pass. A module export
@@ -5726,10 +5730,10 @@ func (e *Engine) constFoldContainerVal(items []Value) (Value, bool) {
 
 // noteFoldedFnBodies queues every fn value inside a folded constant for the
 // end-of-pass body check (NoteFnBodyPending), walking lists and maps the way
-// containsCapturingFn does. Each entry is marked Folded (PendingFnBody).
+// containsCapturingFn does.
 func noteFoldedFnBodies(r *Registry, v Value) {
 	if fd, ok := v.Data.(FnDefInfo); ok {
-		noteFnBodyPending(r, r, fd, true)
+		noteFnBodyPending(r, r, fd)
 		return
 	}
 	if !IsConcrete(v) {
