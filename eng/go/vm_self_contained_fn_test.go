@@ -62,7 +62,7 @@ func TestSelfContainedGoFnAppliesOnOwnSigs(t *testing.T) {
 	}
 	got, _, err := vc.callDynamic(vc.r, 1, false, []core.Value{seven, core.NewInteger(99)}, seam7Dbg, 0)
 	want7(got, err, "callDynamic leading")
-	got, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "k", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(99), seven}, seam7Dbg, 0)
+	got, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "k", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(99), seven}, seam7Dbg, 0)
 	want7(got, err, "callDynMethod")
 	// An arg count the own signature does not take declines the fast path;
 	// the caller islands, where the value collects its own arity.
@@ -112,7 +112,7 @@ func TestCallDynMethodUnwrapsModifierWrapper(t *testing.T) {
 	}
 	vc := seam7VC(r)
 	// (fs 3 10): sig order [3, 10] — the fn on top, the first arg at top-1.
-	got, _, err := vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "fs", NArgs: 2, NOut: 1}, []core.Value{core.NewInteger(10), core.NewInteger(3), flipped}, seam7Dbg, 0)
+	got, _, err := vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "fs", NArgs: 2, NOut: 1}, 0, []core.Value{core.NewInteger(10), core.NewInteger(3), flipped}, seam7Dbg, 0)
 	if err != nil {
 		t.Fatalf("flipped apply: %v", err)
 	}
@@ -120,7 +120,7 @@ func TestCallDynMethodUnwrapsModifierWrapper(t *testing.T) {
 		t.Errorf("flipped scsub(3, 10) = %v, want [7] (scsub 10 3)", got)
 	}
 	boom, _ := core.UsurpFunction(deleg("scboom"))
-	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "fb", NArgs: 2, NOut: 1}, []core.Value{core.NewInteger(10), core.NewInteger(3), boom}, seam7Dbg, 0)
+	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "fb", NArgs: 2, NOut: 1}, 0, []core.Value{core.NewInteger(10), core.NewInteger(3), boom}, seam7Dbg, 0)
 	wantErr(t, err, "scboom: boom")
 }
 

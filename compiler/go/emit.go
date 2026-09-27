@@ -2138,6 +2138,9 @@ type deoptPoint struct {
 	// claim hands the rest of the body to, from the word's token (token)
 	// on. It shares the unit's island environment with the other points.
 	landing bool
+	// restart marks a STATEMENT island (landing_restart.go): a landing's or
+	// a shaped apply's statement, run again from its first token (token).
+	restart bool
 	// install marks a read of a root def captured by a code body at the
 	// program root (DeoptSpec.Install, NUR285).
 	install bool
@@ -16210,6 +16213,8 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// seated for the walk below, a residual read's test for after the
 	// residual is laid out (seatRootResidualReads).
 	rootResidualReads := es.planRootWordReads(lw, residual)
+	// The root landings a statement island takes over (NUR242, NUR219).
+	es.planLandingRestarts(lw, residual)
 	// Seed the lowerer's frame-local counter from the unit's planned locals;
 	// spillSeat bumps it for spill temps. Written back below so Program.NumLocals
 	// covers them.
@@ -16462,7 +16467,13 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 				}
 			}
 			cf.RetReplay = rec.retReplay
-			stampDeoptRet(&cf, flw.emit(OpRet, 0, rec.pos))
+			retPC := flw.emit(OpRet, 0, rec.pos)
+			stampDeoptRet(&cf, retPC)
+			// A shaped apply's statement island continues at the RET too.
+			for _, di := range flw.restartMethods {
+				p.DynMethods[di].RetPC = retPC
+				cf.RetReplay = true
+			}
 		}
 		// A fully diverging body (every path tail-calls) emits no RET —
 		// control leaves via the callee's eventual RET.
@@ -16525,6 +16536,9 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// A top-level landing island (NUR190) continues at the program's end:
 	// its residual is the program's. So does a root read's island (NUR207).
 	stampLandingRet(lw.p.LandingWords, len(lw.p.Code))
+	for _, di := range lw.restartMethods {
+		lw.p.DynMethods[di].RetPC = len(lw.p.Code)
+	}
 	stampRootDeopts(lw.p, es.rootBody)
 	return lw.p, "", true
 }
@@ -17617,6 +17631,15 @@ func seatUnitDeopts(flw *lowerer, rec *fnUnitRec, cf *CompiledFn, diverged bool)
 // re-step after its event (NUR124), a push-tested point at its slot, any
 // other before its statement's first root op.
 func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
+	if d.restart {
+		// Seated on the landing or the shaped apply it serves, its depth by
+		// the walk (landing_restart.go).
+		if flw.landingRestarts == nil {
+			flw.landingRestarts = map[int]*landingRestart{}
+		}
+		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1}
+		return
+	}
 	if d.landing {
 		// Seated where the landing is emitted (seatLandingWord).
 		if flw.landingDeopts == nil {
@@ -17673,12 +17696,12 @@ func stampDeoptRet(cf *CompiledFn, retPC int) {
 }
 
 // stampLandingRet seats retPC — where the run continues with a landing
-// island's residual (NUR190) — on every landing word that carries a deopt,
-// and reports whether any did.
+// island's residual (NUR190) — on every landing word that carries a deopt
+// or a statement island (NUR242), and reports whether any did.
 func stampLandingRet(words map[int]LandingWord, retPC int) bool {
 	seated := false
 	for pc, w := range words {
-		if w.Deopt {
+		if w.Deopt || w.Restart {
 			w.RetPC = retPC
 			words[pc] = w
 			seated = true
@@ -17706,6 +17729,7 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	if len(rec.body) > 0 {
 		es.planReStepDeopts(u, rec)
 		es.planLandingDeopts(rec)
+		es.planUnitRestarts(u, rec)
 	}
 	if len(rec.body) == 0 || (len(rec.wordReadNames) == 0 && len(rec.deopts) == 0) {
 		es.planDeoptsEnv(u, rec)

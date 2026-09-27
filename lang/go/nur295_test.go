@@ -84,14 +84,34 @@ func TestNUR219QuoteCapturesCollectedWord(t *testing.T) {
 		// A fn that collects the word's value is untouched.
 		{`def b fn [[x:Boolean] [Any] [x not]] end def mk fn [[] [Map] [{b: b/v}]] end def m (mk) end m.b true`, "[false]"},
 		{`def b fn [[x:Boolean] [Any] [x not]] end def mk fn [[] [Map] [{b: b/v}]] end def m (mk) end [m.b true]`, "[[false]]"},
+		// No claim is sealed, and the statement's island runs the capture
+		// (landing_restart.go): values beneath, a wider residual, a paren,
+		// a def's paren, an earlier statement's constant, a fn body.
+		{pre + `m.f true 5`, "[true 5]"},
+		{pre + `7 m.f true`, "[7 true]"},
+		{pre + `(m.f true)`, "[true]"},
+		{pre + `def k (m.f true) end k`, "[true]"},
+		{pre + `5 end 7 m.f true`, "[5 7 true]"},
+		{pre + `def f fn [[][Any][m.f true]] end f`, "[true]"},
+		{pre + `def f fn [[][Any][if true [(m.f true)] [0]]] end f`, "[true]"},
+		// An earlier statement's result, which the root keeps in a slot, is
+		// seated from there; a loop over a loop-invariant read restarts on its
+		// first iteration; a code body's statement restarts in its frame.
+		{pre + `(mk) end 7 m.f true`, "[{f:fn h(Atom)} 7 true]"},
+		{pre + `for 2 [[(m.f true)]]`, "[[true] [true]]"},
+		{pre + `[1 2] each [drop [(m.f true)]]`, "[[[true] [true]]]"},
+		// The caret sibling: a named fn no window fits raises at its own
+		// token on both lanes (`h/v` in the factory's map).
+		{`def h fn [[x:Atom/q y:Integer] [Any] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f true`,
+			"ERROR:call to 'h' matched no signature"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	for _, tail := range []string{`m.f true 5`, `7 m.f true`, `(m.f true)`, `def f fn [[][Any][m.f true]] end f`} {
-		src := pre + tail
-		gotC, compiled, errC, _, errI := runBothEngines(t, src)
-		if !compiled || errI != nil || errC == nil || !strings.Contains(errC.Error(), "NUR219") || len(gotC) != 0 {
-			t.Errorf("%s: an unsealed capture defers compiled; got %v %v (interpreter %v)", src, gotC, errC, errI)
-		}
+	// A user call the statement made before the landing would run twice in
+	// the statement's island: that capture stays a designed defer.
+	src := pre + `def g fn [[] [Any] [7]] end [(g) (m.f true)]`
+	gotC, compiled, errC, _, errI := runBothEngines(t, src)
+	if !compiled || errI != nil || errC == nil || !strings.Contains(errC.Error(), "NUR219") || len(gotC) != 0 {
+		t.Errorf("%s: an unsealed capture defers compiled; got %v %v (interpreter %v)", src, gotC, errC, errI)
 	}
 }

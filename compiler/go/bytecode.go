@@ -1464,6 +1464,18 @@ type DynMethodSpec struct {
 	// word rather than the value, which the interpreter would park as data
 	// when it is an anonymous lambda (NUR216).
 	DefRead bool
+	// Restart is a root apply's STATEMENT island (compiler's
+	// landing_restart.go, LandingWord.Restart's twin): where the method is
+	// no fn at run time the interpreter's paren places the values instead,
+	// a stack shape this program cannot express, so the VM runs the
+	// statement again from its first token — Island, over the Depth values
+	// of the frame region beneath it — and continues at RetPC.
+	Restart   bool
+	Root      bool
+	Depth     int
+	Island    []core.Value
+	RetPC     int
+	PrefixSrc []RestartSrc
 }
 
 // Program is a compiled unit: code, interned constants, the signature
@@ -1716,7 +1728,46 @@ type LandingWord struct {
 	// the atom the word spells. Its claim target (Skip) seals over the
 	// folded value's push instead of the word's call.
 	Collected bool
+	// Restart marks a root landing whose claim has no compiled answer but
+	// whose STATEMENT the interpreter can run again from its first token
+	// (NUR242, NUR219 — compiler's landing_restart.go): Island is the
+	// program from that token on, Depth how many values of the frame region
+	// lie beneath the statement. On such a claim the VM hands the
+	// interpreter those values as the resolved prefix and the tokens, and
+	// continues at RetPC with the island's residual — the program's.
+	Restart bool
+	Depth   int
+	// PrefixSrc lists, in the interpreter's stack order, the values the
+	// root's island seats beneath the statement (RestartSrc): the program
+	// residual's earlier entries. Empty, the prefix is the frame region's
+	// Depth values.
+	PrefixSrc []RestartSrc
 }
+
+// RestartSrc is one value a root statement island seats beneath the
+// statement's tokens (LandingWord.PrefixSrc, DynMethodSpec.PrefixSrc,
+// compiler's landing_restart.go): an earlier entry of the program residual,
+// found where the compiled root keeps it.
+type RestartSrc struct {
+	Kind RestartSrcKind
+	Idx  int
+	Val  core.Value
+}
+
+// RestartSrcKind names where a RestartSrc's value lives when the island runs.
+type RestartSrcKind uint8
+
+const (
+	// RestartConst is Val itself: a literal the root pushes only at the
+	// program's end.
+	RestartConst RestartSrcKind = iota
+	// RestartLocal is the frame's local Idx: an earlier result the root
+	// promoted to a slot.
+	RestartLocal
+	// RestartStack is the frame region's entry Idx, 0 at its bottom: an
+	// earlier result the root left on the stack.
+	RestartStack
+)
 
 // CallWindowKind names where one CallWindowOperand's value lives when the
 // call runs.

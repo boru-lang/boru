@@ -395,10 +395,10 @@ func TestSeam7CallDynApplyTopArms(t *testing.T) {
 
 func TestSeam7CallDynMethodArms(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
-	_, _, err := vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, nil, seam7Dbg, 0)
+	_, _, err := vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, 0, nil, seam7Dbg, 0)
 	wantInternal(t, err, "CALL_DYN_METHOD underflow at m")
 	// non-appliable value on top: shape claim failed → defer.
-	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), core.NewInteger(9)}, seam7Dbg, 0)
+	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), core.NewInteger(9)}, seam7Dbg, 0)
 	wantInternal(t, err, "is not an appliable function at run time")
 }
 
@@ -583,7 +583,7 @@ func TestSeam7DelegationApplySuccess(t *testing.T) {
 		t.Errorf("leading delegation cinc(5) = %d, want 6", n)
 	}
 	// callDynMethod: fn ON TOP, shape claim {NArgs:1, NOut:1}.
-	got, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cinc", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), inc}, seam7Dbg, 0)
+	got, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cinc", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), inc}, seam7Dbg, 0)
 	if err != nil {
 		t.Fatalf("method delegation apply: %v", err)
 	}
@@ -602,7 +602,7 @@ func TestSeam7DelegationApplyError(t *testing.T) {
 	wantErr(t, err, "cfail: boom")
 	_, _, err = vc.callDynamic(vc.r, 1, false, []core.Value{fail, core.NewInteger(5)}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
-	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cfail", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), fail}, seam7Dbg, 0)
+	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cfail", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), fail}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
 }
 
@@ -688,7 +688,7 @@ func TestSeam7IslandApplyErrorArms(t *testing.T) {
 	wantErr(t, err, "cfail: boom")
 	_, _, err = vc.callDynApplyTop(vc.r, 1, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
-	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cuserfail", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0)
+	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cuserfail", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
 	// callDynamicMixed islands its window verbatim — a window that calls cfail
 	// errors through the island (the mixed island error arm).

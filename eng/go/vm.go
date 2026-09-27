@@ -129,6 +129,11 @@ type vmContext struct {
 	// and runVMEntry's exit restore truncates to it on EVERY path (error
 	// unwind included), so a failed run never leaks args entries.
 	argsFloor int
+	// restartLocals are the running frame's locals while an op of the
+	// dynamic family runs (the run loop sets and clears them around it): a
+	// root statement island seats an earlier result the root promoted from
+	// its slot (compiler.RestartLocal).
+	restartLocals []core.Value
 	// landingSkip is a landing's CLAIM jump (NUR190): set by landingQuoteClaim when
 	// the re-step claimed the word after the landed value, and read — then
 	// cleared — by the run loop right after the op, which resumes at that pc
@@ -1418,7 +1423,7 @@ func (vc *vmContext) callDynFamily(reg *core.Registry, op compiler.Opcode, arg, 
 	case compiler.OpCallDynFrame:
 		return vc.callDynFrame(reg, arg, frameBase, stack, curDebug, pc, words)
 	case compiler.OpCallDynMethod:
-		return vc.callDynMethod(reg, &vc.p.DynMethods[arg], stack, curDebug, pc)
+		return vc.callDynMethod(reg, &vc.p.DynMethods[arg], frameBase, stack, curDebug, pc)
 	case compiler.OpReStepLanding:
 		return vc.reStepLanding(reg, arg, frameBase, stack, curDebug, pc, lword)
 	default:
@@ -1459,6 +1464,12 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 	}
 	v := stack[top]
 	if v.Quoted || !core.IsAppliableFn(v) {
+		if lword.Restart && lword.SkipTo > 0 {
+			// The paren apply after the word takes the value as its method
+			// (LandingWord.SkipTo), and data is none: the statement's own
+			// island answers what the paren places (NUR242).
+			return vc.landingRestart(reg, lword, frameBase, stack, curDebug, pc)
+		}
 		return stack, nil, nil // data on both lanes — stepLiteral pushes it
 	}
 	// A root landing over its OWN values beneath whose value a later event
@@ -1511,6 +1522,9 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		// body's apply: the compiled code would apply the fn over the word's
 		// folded value, which the interpreter's re-step never does (NUR219).
 		if lword.Collected && anyQuotesFirstSlot(fnDef) {
+			if lword.Restart {
+				return vc.landingRestart(reg, lword, frameBase, stack, curDebug, pc)
+			}
 			return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-quote-collected", "RESTEP_LANDING at "+fnDef.Name+": the re-step may CAPTURE the word `"+lword.Name+"` (a `/q` slot) where the compiled code applies the fn over its folded value (NUR219); the compiled runtime cannot execute it")
 		}
 		// No signature satisfiable with ZERO arguments: the re-step leaves the
@@ -1531,7 +1545,7 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 			// With values beneath the residual arm decides (an island raises
 			// the same way over a mismatch, NUR175's rule).
 			if arg&1 != 0 && top == frameBase && fnDef.NamedDef() && !fnDef.Macro {
-				return nil, nil, stampAt(uncalledFunctionError(reg, fnDef), curDebug, pc, reg)
+				return nil, nil, stampAt(landedUncalledError(reg, fnDef, v), curDebug, pc, reg)
 			}
 			return stack, nil, nil
 		}
@@ -1664,7 +1678,7 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 	switch {
 	case sig == nil || sig.Fallback:
 		if fnDef.NamedDef() && !fnDef.Macro {
-			return nil, nil, stampAt(uncalledFunctionError(reg, fnDef), curDebug, pc, reg)
+			return nil, nil, stampAt(landedUncalledError(reg, fnDef, v), curDebug, pc, reg)
 		}
 		parked := v
 		parked.Quoted = true
@@ -1688,6 +1702,12 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 		if (fnDef.Anonymous && !fnDef.Applied) || fnDef.Macro {
 			return stack, nil, nil
 		}
+		if lword.Restart && lword.SkipTo > 0 {
+			// The fire would hand the paren apply after the word its result
+			// as the method it applies (LandingWord.SkipTo): the statement's
+			// own island fires it and places the word's value (NUR242).
+			return vc.landingRestart(reg, lword, top, stack, curDebug, pc)
+		}
 		return vc.landingFire(reg, v, fnDef, stack, top, curDebug, pc)
 	}
 	// What is left is a `/q` slot CAPTURING the word as an atom (`m.q z` is
@@ -1709,6 +1729,13 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 		// The walk runs only over an empty frame region (top == frameBase):
 		// the island's prefix is empty and its residual replaces the value.
 		return vc.landingDeopt(reg, v, lword, top, stack, top, curDebug, pc)
+	}
+	if lword.Restart {
+		// No island from the word, but the statement's own (NUR242): tried
+		// before the skip, whose capture runs the fn first and may then find
+		// a count the apply did not claim — the statement's second run would
+		// repeat it.
+		return vc.landingRestart(reg, lword, top, stack, curDebug, pc)
 	}
 	if lword.SkipTo > 0 {
 		return vc.landingSkipCapture(reg, v, lword, stack, top, curDebug, pc)
@@ -1770,6 +1797,57 @@ func (vc *vmContext) landingDeopt(reg *core.Registry, v core.Value, lword compil
 	return append(stack[:frameBase], results...), &dynEnter{jump: true, jumpPC: lword.RetPC}, nil
 }
 
+// landingRestart runs a root landing's STATEMENT again on the interpreter
+// (LandingWord.Restart, NUR242, NUR219): the Depth values of the frame region
+// beneath the statement as the resolved prefix — everything above them is
+// the statement's own, which its tokens produce again — then the program
+// from the statement's first token. The island's residual is the program's:
+// it replaces the frame region, and the run continues at the program's end.
+func (vc *vmContext) landingRestart(reg *core.Registry, lword compiler.LandingWord, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	return vc.statementRestart(reg, lword.PrefixSrc, lword.Island, lword.Depth, lword.RetPC, lword.Root, frameBase, stack, curDebug, pc)
+}
+
+// statementRestart is the statement island itself (landingRestart's, and a
+// shaped apply's): island is the body from the statement's first token and
+// depth how many values of the frame region lie beneath the statement. The
+// prefix is those values, or — at the root, where the program residual's
+// earlier entries may live elsewhere — srcs, each where the compiled root
+// keeps it. A unit's island tears its own defs down, as the frame's cleanup
+// would; a top-level one's outlive it (landingDeopt's rule).
+func (vc *vmContext) statementRestart(reg *core.Registry, srcs []compiler.RestartSrc, island []core.Value, depth, retPC int, root bool, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	if len(island) == 0 || retPC < 0 || depth < 0 || frameBase+depth > len(stack) {
+		return nil, nil, vmErrAt(curDebug, pc, "bad statement-island entry")
+	}
+	prefix := append([]core.Value(nil), stack[frameBase:frameBase+depth]...)
+	if len(srcs) > 0 {
+		prefix = prefix[:0]
+		for _, src := range srcs {
+			switch {
+			case src.Kind == compiler.RestartConst:
+				prefix = append(prefix, src.Val)
+			case src.Kind == compiler.RestartLocal && src.Idx < len(vc.restartLocals):
+				prefix = append(prefix, vc.restartLocals[src.Idx])
+			case src.Kind == compiler.RestartStack && src.Idx < depth:
+				prefix = append(prefix, stack[frameBase+src.Idx])
+			default:
+				return nil, nil, vmErrAt(curDebug, pc, "bad statement-island prefix source")
+			}
+		}
+	}
+	snapshot := reg.Defs.Snapshot()
+	results, err := runIslandResolved(reg, prefix, append([]core.Value(nil), island...))
+	if !root {
+		core.TruncateFrameDefs(reg, snapshot)
+	}
+	if err != nil {
+		return nil, nil, stampAt(err, curDebug, pc, reg)
+	}
+	if err := vc.screenResults(results, "statement island result", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (the island's results are interpreter residuals, tape-coupled only on a compiler bug) (§compiler)
+		return nil, nil, err
+	}
+	return append(stack[:frameBase], results...), &dynEnter{jump: true, jumpPC: retPC}, nil
+}
+
 // landingQuoteClaim enters the landed fn over the word its re-step CAPTURED
 // — the plan's own `/q` overload, sig, over the word as an atom at the word's
 // position (the interpreter's arrival converts it so, CollectArrival) — and
@@ -1795,6 +1873,14 @@ func (vc *vmContext) landingQuoteClaim(v core.Value, fnDef core.FnDefInfo, sig *
 // is stamped from the op's debug entry (the noted landing's token).
 func uncalledFunctionError(reg *core.Registry, fnDef core.FnDefInfo) error {
 	return uncalledFunctionErrorAt(reg, fnDef.Name, core.SrcPos{})
+}
+
+// landedUncalledError is the landing's uncalled_function raise, at the landed
+// VALUE's own token where it carries one — the interpreter's re-step raises
+// at the fn on its tape, whose position is the token it was written at
+// (`{f: h/v}`'s `h/v`, NUR219's caret sibling) — and at the op's otherwise.
+func landedUncalledError(reg *core.Registry, fnDef core.FnDefInfo, v core.Value) *core.BoruError {
+	return uncalledFunctionErrorAt(reg, fnDef.Name, v.Pos())
 }
 
 // uncalledFunctionErrorAt is uncalledFunctionError at an explicit position —
@@ -2295,7 +2381,7 @@ func (vc *vmContext) closureUnit(cl core.ClosurePayload) (*compiler.CompiledFn, 
 // interpreter's forward auto-dispatch of the same window. A genuine boru
 // error from the method surfaces as-is (the interpreter raises the same,
 // prior side effects included).
-func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodSpec, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodSpec, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
 	if err := vc.gateWord(reg, spec.Word); err != nil {
 		return nil, nil, err
 	}
@@ -2345,7 +2431,11 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		// The shape claim failed outright: the read did not surface a live
 		// method value. The interpreter would leave it as data and continue
 		// with a DIFFERENT stack shape, which this program cannot express —
-		// defer wholesale.
+		// its statement's island runs it (DynMethodSpec.Restart, NUR242),
+		// and with none the apply defers wholesale.
+		if spec.Restart {
+			return vc.statementRestart(reg, spec.PrefixSrc, spec.Island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
+		}
 		return nil, nil, vmDefer(vc.r, curDebug, pc, "vm:shaped-method-not-appliable", "shaped method apply "+spec.Word+
 			": value is not an appliable function at run time; the compiled runtime cannot execute it")
 	}
@@ -4007,7 +4097,9 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				fb = frames[len(frames)-1].stackBase
 			}
 			head := dynApplyNameAt(p, curUnit, pc)
+			vc.restartLocals = locals
 			ns, ent, err := vc.callDynFamily(curReg, in.Op, int(in.Arg), fb, stack, curDebug, pc, dynFrameWordsAt(p, curUnit, pc), head, landingWordAt(p, curUnit, pc))
+			vc.restartLocals = nil
 			if err != nil {
 				return nil, err
 			}

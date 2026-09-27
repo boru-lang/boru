@@ -795,6 +795,15 @@ type lowerer struct {
 	landingBody   []core.Value
 	landingRoot   bool
 	landingDeopts map[int]deoptPoint
+	// landingRestarts are the root landings whose `/q` claim has no compiled
+	// answer and whose STATEMENT the interpreter can run again from its
+	// first token (planLandingRestarts), keyed by the landed event; the
+	// walk seats each one's depth at the statement's first op
+	// (noteRestartDepths) and the landing op carries it (seatLandingWord).
+	landingRestarts map[int]*landingRestart
+	// restartMethods are the DynMethods entries this lowerer seated a
+	// statement island on, whose RetPC its finish stamps.
+	restartMethods []int
 	// collectedApplies are the fn-value applies a planned collect takes as
 	// regions (planRegionCollectOver, NUR247/NUR249): lowered count-agnostic,
 	// never in a one-result form.
@@ -1243,7 +1252,10 @@ func (lw *lowerer) seatLandingWord(w LandingWord, seq int) {
 	}
 	if opens, island, ok := lw.landingDeoptIsland(seq, w); ok {
 		w.Deopt, w.Root, w.Opens, w.Island, w.RetPC = true, lw.landingRoot, opens, island, -1
-	} else if lw.es.landingWalkArmed(seq) {
+	} else if r := lw.restartAt(seq); r != nil {
+		w.Restart, w.Root, w.Depth, w.Island, w.RetPC, w.PrefixSrc = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs
+	}
+	if !w.Deopt && lw.es.landingWalkArmed(seq) {
 		if lw.landingSkips == nil {
 			lw.landingSkips = map[int]int{}
 		}
@@ -1588,6 +1600,9 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 		ev := &events[i]
 		if lw.depth == 0 && len(lw.deopts) > 0 {
 			lw.emitDeoptsBefore(eventPos(*ev))
+		}
+		if lw.depth == 0 {
+			lw.noteRestartDepths(eventPos(*ev))
 		}
 		if lw.markBefore[ev.seq] {
 			lw.emit(OpStackMark, 0, eventPos(*ev))
@@ -3737,7 +3752,12 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// failure raises internal_error → interpreter re-run (never a wrong
 		// stack). The spec rides in DynMethods like a trap/map spec.
 		di := len(lw.p.DynMethods)
-		lw.p.DynMethods = append(lw.p.DynMethods, *c.dynMethod)
+		spec := *c.dynMethod
+		if r := lw.restartAt(ev.seq); r != nil {
+			spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs
+			lw.restartMethods = append(lw.restartMethods, di)
+		}
+		lw.p.DynMethods = append(lw.p.DynMethods, spec)
 		lw.seatLandingSkip(c)
 		lw.emit(OpCallDynMethod, di, c.pos)
 	} else if c.makeList {

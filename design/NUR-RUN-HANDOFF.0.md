@@ -9,6 +9,40 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR242 and NUR219 closed: the statement island; NUR296 recorded (2026-09-27)
+
+**The mechanism.** A root landing whose `/q` claim has no compiled answer
+— nested in a list literal or a branch arm, over values beneath, before a
+wider residual — or a paren apply whose method is data at run time
+deferred. The interpreter can run the whole STATEMENT again from its first
+token whenever the compiled code ran nothing a second run would repeat, so
+such a stop restarts its statement (compiler's `landing_restart.go`,
+`LandingWord.Restart`, `DynMethodSpec.Restart`, the VM's
+`statementRestart`). The plan is made at Finalize for the root and at a
+unit's finish through the deopt environment every point shares: the
+statement's first token (`statementToken`), no operand deferred past it
+(NUR207's `deoptDeferred`), only re-runnable events before the stop
+(`restartRead`: member reads, shuffles, a literal's assembly, island-pure
+words). The walk seats the stack's depth at the statement's first op
+(`noteRestartDepths`); a unit's island seats its unnamed params from their
+slots, and the root's the program residual's earlier entries from wherever
+it keeps them (`RestartSrc`: a constant, a slot, a stack entry).
+
+**What it took, measured by the probes.** A fire before the paren apply,
+and data before it, restart at the landing, before the word's call runs.
+Code bodies restart in their parent's frame; loops only over a
+loop-invariant stop — a read of constants or slots no enclosing loop steps,
+no bind in the span — which fires on the first iteration or never. Two
+wrong turns the probes caught before they landed: a promoted earlier result
+dropped from the island's prefix (`(mk) end 7 m.f true` answered `[7
+true]`, silent), and an each body's `drop` re-run without the element (a
+unit's unnamed params are read at the statement's start, not the stop's).
+
+**Also.** The landing's `uncalled_function` raises at the value's own
+token (NUR219's caret sibling). What no island can run again — a user call
+before the stop, an index-dependent read in a loop, a bind in the loop's
+span — is NUR296, loud.
+
 ## NUR283 closed: the report over an inexact layout; the shuffle-only body counts its depth (2026-09-27)
 
 **NUR283.** A committed optimistic bake (and a poly) raised the word's

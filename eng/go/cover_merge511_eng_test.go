@@ -68,7 +68,7 @@ func TestCallDynMethodWrapperOverRaisingClosure(t *testing.T) {
 		Impl: core.Boru([]core.Value{core.NewWord("x")}),
 	}}})
 	spec := &compiler.DynMethodSpec{Word: "f", NArgs: 1, NOut: 1}
-	_, _, err := vc.callDynMethod(r, spec, []core.Value{core.NewInteger(5), wrapper}, seam7Dbg, 0)
+	_, _, err := vc.callDynMethod(r, spec, 0, []core.Value{core.NewInteger(5), wrapper}, seam7Dbg, 0)
 	if err == nil || !strings.Contains(err.Error(), "zz boom") {
 		t.Fatalf("the wrapped closure's raise is the method's error, got %v", err)
 	}
