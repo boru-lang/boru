@@ -15,7 +15,7 @@ func shapeTestMap(kv ...any) Value {
 func TestShapeOfAndHolds(t *testing.T) {
 	v := shapeTestMap("a", NewInteger(1), "b", NewString("s"))
 	shape, ok := ShapeOf(v, 8)
-	if !ok || !IsShapeCarrier(shape) || ShapeKey(shape) != "{a:Integer b:"+NewString("s").Parent.String()+" }" {
+	if !ok || !IsShapeCarrier(shape) || ShapeKey(shape) == "" {
 		t.Fatalf("want a shape carrier, got %v %v %q", shape, ok, ShapeKey(shape))
 	}
 	if !ShapeHolds(shape, shapeTestMap("a", NewInteger(7), "b", NewString("x"))) {
@@ -32,6 +32,13 @@ func TestShapeOfAndHolds(t *testing.T) {
 		if ShapeHolds(shape, w) {
 			t.Errorf("%s: must not hold", name)
 		}
+	}
+	// Keys are injective: a field name holding the separator is not two
+	// fields, and another shape keys differently.
+	odd, _ := ShapeOf(shapeTestMap("a:Integer b", NewInteger(1)), 8)
+	two, _ := ShapeOf(shapeTestMap("a", NewInteger(1), "b", NewInteger(2)), 8)
+	if ShapeKey(odd) == ShapeKey(two) {
+		t.Error("distinct shapes share a key")
 	}
 	if ShapeHolds(NewInteger(1), v) || ShapeKey(NewInteger(1)) != "" {
 		t.Error("a non-shape guard never holds and has no key")
@@ -68,7 +75,7 @@ func TestShapeOfAndHolds(t *testing.T) {
 // element tags.
 func TestListShape(t *testing.T) {
 	shape, ok := ListShapeOf(NewList([]Value{NewInteger(1), NewInteger(2)}), 4)
-	if !ok || !IsListShapeGuard(shape) || ListShapeKey(shape) != "[Integer Integer ]" {
+	if !ok || !IsListShapeGuard(shape) || ListShapeKey(shape) == "" {
 		t.Fatalf("want a list shape, got %v %v", shape, ok)
 	}
 	if !ListShapeHolds(shape, NewList([]Value{NewInteger(5), NewInteger(6)})) {

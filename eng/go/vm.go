@@ -873,11 +873,6 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	if len(stack) < n {
 		return nil, vmErrAt(curDebug, pc, "CALL_NATIVE_POLY underflow at "+pr.Word)
 	}
-	// The seeded pick (PolyRef.Seed, vm_poly_seed.go): the checker's own
-	// overload, dispatched without a lookup or a match when its guard holds.
-	if window := polySeedWindow(pr, stack); window != nil {
-		return vc.polyDispatch(dispReg, pr, pr.Seed, window, stack, curDebug, pc)
-	}
 	// A MODULE poly word (`StructUtil.getpath`) re-matches over its OWN
 	// sub-registry's signatures; a core word over the dispatch registry
 	// (the active unit's — module scope for a module fn's body).
@@ -897,7 +892,11 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	// site's last pick was made for takes that pick without re-matching.
 	ic := vc.polyCacheFor(pr)
 	var mr *core.MatchResult
-	if sig := ic.hit(fn, window); sig != nil {
+	if sig := ic.seeded(pr, fn, sigs, window); sig != nil {
+		// The seeded pick (PolyRef.Seed, vm_poly_seed.go): the checker's own
+		// overload, revalidated against the LIVE aggregate, without a match.
+		mr = &core.MatchResult{Sig: sig, Args: window}
+	} else if sig := ic.hit(fn, window); sig != nil {
 		mr = &core.MatchResult{Sig: sig, Args: window}
 	} else {
 		mr = core.MatchSignature(sigs, window, core.WordInfo{ArgCount: n})

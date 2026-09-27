@@ -49,10 +49,10 @@ var benchSuites = []string{
 	"utils/tests/uniq_test.boru",
 }
 
-func benchInstance(base string) *lang.Boru {
+func benchInstance(base string) (*lang.Boru, error) {
 	a, err := lang.New()
 	if err != nil {
-		panic(err)
+		return nil, err
 	}
 	a.SetClock(specClock)
 	a.SetOutput(io.Discard)
@@ -60,15 +60,18 @@ func benchInstance(base string) *lang.Boru {
 	if base != "" {
 		a.NativeRegistry().BaseDir = base
 	}
-	return a
+	return a, nil
 }
 
 // benchRun compiles src on a fresh instance and times the RUN alone
 // (eng.RunProgram — compilation is reported separately, it is not what the
-// guarded fast paths change); it returns the result, the error and, for a
-// suite, its Test.summary, then the error.
+// guarded fast paths change); it returns the result and, for a suite, its
+// Test.summary, then the error.
 func benchRun(src, base string) (time.Duration, time.Duration, string, string, error) {
-	a := benchInstance(base)
+	a, err := benchInstance(base)
+	if err != nil {
+		return 0, 0, "", "", err
+	}
 	defer a.ArmRuntimeStamping()()
 	c0 := time.Now()
 	prog, reason, _, err := a.CompileCheck(src)
@@ -97,6 +100,7 @@ func TestGenericDispatchBench(t *testing.T) {
 		reps = n
 	}
 	only := os.Getenv("BORU_BENCH_ONLY")
+	cases := len(benchMicros) + len(benchSuites)
 	type row struct {
 		name          string
 		best, compile time.Duration
@@ -111,20 +115,31 @@ func TestGenericDispatchBench(t *testing.T) {
 		note := ""
 		for i := 0; i < reps; i++ {
 			d, c, res, sum, err := benchRun(src, base)
+			// Every repetition is checked, and a failed one never becomes
+			// the reported minimum.
+			n := check(res, err, sum)
 			if i == 0 {
-				note = check(res, err, sum)
+				note = n
 			}
-			if i == 0 || d < best {
+			if err != nil {
+				continue
+			}
+			if best == 0 || d < best {
 				best = d
 			}
-			if i == 0 || c < compile {
+			if compile == 0 || c < compile {
 				compile = c
 			}
 		}
+		t.Logf("[%d/%d] %s: run %.2fms", len(rows)+1, cases, name, float64(best.Microseconds())/1000)
 		rows = append(rows, row{name, best, compile, note})
 	}
 	for _, m := range benchMicros {
-		want, werr := benchInstance("").RunInterp(m.src)
+		ref, err := benchInstance("")
+		if err != nil {
+			t.Fatal(err)
+		}
+		want, werr := ref.RunInterp(m.src)
 		measure(m.name, m.src, "", func(res string, err error, _ string) string {
 			if fmt.Sprint(err) != fmt.Sprint(werr) || res != fmt.Sprint(want) {
 				t.Errorf("%s: compiled %s [%v], interpreted %v [%v]", m.name, res, err, want, werr)
@@ -160,6 +175,8 @@ func TestGenericDispatchBench(t *testing.T) {
 	fmt.Fprintf(&sb, "%-30s %9.2fms %9.2fms\n", "TOTAL", ms(total), ms(totalC))
 	t.Log(sb.String())
 	if out := os.Getenv("BORU_BENCH_OUT"); out != "" {
-		_ = os.WriteFile(out, []byte(sb.String()), 0o644)
+		if err := os.WriteFile(out, []byte(sb.String()), 0o644); err != nil {
+			t.Fatalf("BORU_BENCH_OUT %s: %v", out, err)
+		}
 	}
 }

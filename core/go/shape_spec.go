@@ -1,5 +1,11 @@
 package core
 
+import (
+	"fmt"
+	"strconv"
+	"strings"
+)
+
 // Shape specialisation (check's call-site specialisation over a Map arg): a
 // fn called with a plain Map compiles a unit whose Map param is a STRICT
 // record carrier — ShapeCarrier — whose schema is the arg's exact key set
@@ -64,18 +70,24 @@ func ShapeHolds(shape, v Value) bool {
 	return true
 }
 
-// ShapeKey renders a shape carrier's schema for a specialisation key.
+// ShapeKey renders a shape carrier's schema for a specialisation key:
+// INJECTIVE, since two shapes with one key share one compiled unit — each
+// field name quoted (so `{"a:Integer b": …}` cannot read as two fields)
+// and each tag by its node's identity, not its display name (two scopes can
+// mint distinct types of one name).
 func ShapeKey(shape Value) string {
 	rt, ok := shape.Data.(RecordTypeInfo)
 	if !ok || rt.Fields == nil {
 		return ""
 	}
-	s := "{"
+	var b strings.Builder
+	b.WriteString("{")
 	for _, k := range rt.Fields.Keys() {
 		fv, _ := rt.Fields.Get(k)
-		s += k + ":" + fv.Parent.String() + " "
+		fmt.Fprintf(&b, "%s:%p ", strconv.Quote(k), fv.Parent)
 	}
-	return s + "}"
+	b.WriteString("}")
+	return b.String()
 }
 
 // ListShapeOf is ShapeOf for a plain List (tag List, an ordinary list
@@ -137,14 +149,17 @@ func ListShapeHolds(shape, v Value) bool {
 	return true
 }
 
-// ListShapeKey renders a list shape for a specialisation key.
+// ListShapeKey renders a list shape for a specialisation key, each element
+// tag by its node's identity (ShapeKey's rule).
 func ListShapeKey(shape Value) string {
 	sp, _ := shape.Data.(ListPayload)
-	s := "["
+	var b strings.Builder
+	b.WriteString("[")
 	for _, e := range sp.Elems {
-		s += e.Parent.String() + " "
+		fmt.Fprintf(&b, "%p ", e.Parent)
 	}
-	return s + "]"
+	b.WriteString("]")
+	return b.String()
 }
 
 // shapeData reports whether v may key a shape: a tag-keyable plain DATA

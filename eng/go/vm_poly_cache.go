@@ -30,6 +30,11 @@ type polyCacheEntry struct {
 	eligible bool            // core.TagDeterminedSigs over fn's sigs
 	sig      *core.Signature // the last pick (nil: none yet)
 	tags     []*core.Type    // the window's tags at the last pick
+	// The seed's revalidation (vm_poly_seed.go): the live aggregate it was
+	// checked against and the live overload that is the seed there (nil:
+	// the seed does not hold in seedFn).
+	seedFn  *core.FnDefInfo
+	seedSig *core.Signature
 }
 
 // polyCacheFor returns pr's entry, creating it.
