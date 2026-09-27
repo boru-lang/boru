@@ -873,6 +873,11 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	if len(stack) < n {
 		return nil, vmErrAt(curDebug, pc, "CALL_NATIVE_POLY underflow at "+pr.Word)
 	}
+	// The seeded pick (PolyRef.Seed, vm_poly_seed.go): the checker's own
+	// overload, dispatched without a lookup or a match when its guard holds.
+	if window := polySeedWindow(pr, stack); window != nil {
+		return vc.polyDispatch(dispReg, pr, pr.Seed, window, stack, curDebug, pc)
+	}
 	// A MODULE poly word (`StructUtil.getpath`) re-matches over its OWN
 	// sub-registry's signatures; a core word over the dispatch registry
 	// (the active unit's — module scope for a module fn's body).
@@ -921,19 +926,28 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 			"CALL_NATIVE_POLY no match for "+pr.Word+"; the compiled runtime cannot execute it for the canonical signature_error",
 			bestEffortNoMatch(r, fn, pr.Word, window, curDebug, pc))
 	}
+	return vc.polyDispatch(dispReg, pr, mr.Sig, mr.Args, stack, curDebug, pc)
+}
+
+// polyDispatch runs the overload a poly site picked — by re-match, by the
+// inline cache or by its seed — over args (sig order, the window popped off
+// stack) and lands the results.
+func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, sig *core.Signature, args []core.Value, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	r := dispReg
+	n := pr.Arity
 	// Per-export module policy gate (NUR045): a module poly word's
 	// re-match resolved a stamped sub-registry sig — the same identity
 	// the interpreter's execMatch gate reads, checked AFTER the match so
 	// the gate applies to the overload that actually dispatches.
-	if err := vc.gateModuleCall(dispReg, mr.Sig.ModuleCall); err != nil {
+	if err := vc.gateModuleCall(dispReg, sig.ModuleCall); err != nil {
 		return nil, err
 	}
 	// StripAscribed at delivery: the re-match above consumed the ascribed
 	// view; the handler receives the REAL values (execMatch parity).
-	for i := range mr.Args {
-		mr.Args[i] = core.StripAscribed(mr.Args[i])
+	for i := range args {
+		args[i] = core.StripAscribed(args[i])
 	}
-	results, err := mr.Sig.DispatchHandler()(mr.Args, r.Contexts.TopData(), nil, r)
+	results, err := sig.DispatchHandler()(args, r.Contexts.TopData(), nil, r)
 	if err != nil {
 		return nil, stampAt(err, curDebug, pc, r)
 	}

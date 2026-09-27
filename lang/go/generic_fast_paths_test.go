@@ -36,3 +36,31 @@ func TestPolyInlineCacheParity(t *testing.T) {
 		requireCompiledParity(t, src)
 	}
 }
+
+// #2 the seeded poly pick: the checker's own overload, dispatched directly
+// while the runtime operands carry the checked tags (or match a word's only
+// overload); a FlexMap/FlexList where a Map/List was checked misses the
+// guard and re-matches.
+func TestPolySeedParity(t *testing.T) {
+	for _, src := range []string{
+		`def f fn [[m:Map][Any][m.a]]  [(f {a:1}) (f (flex {a:2}))]`,
+		`def f fn [[m:Node][Any][m get "a"]]  [(f {a:1}) (f (flex {a:2}))]`,
+		`def f fn [[xs:List][Any][xs get 0]]  [(f [1 2]) (f (flex [3 4]))]`,
+		`def f fn [[m:Map][Any][m.a is None]]  [(f {a:1}) (f {b:2})]`,
+	} {
+		prog, reason, _, err := mustNew(t).CompileCheck(src)
+		if prog == nil || err != nil {
+			t.Fatalf("%q: %s %v", src, reason, err)
+		}
+		seeds := 0
+		for _, pr := range prog.PolyRefs {
+			if pr.Seed != nil {
+				seeds++
+			}
+		}
+		if seeds == 0 {
+			t.Errorf("%q: want a seeded poly site", src)
+		}
+		requireCompiledParity(t, src)
+	}
+}
