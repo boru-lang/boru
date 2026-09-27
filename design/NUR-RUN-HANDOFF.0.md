@@ -9,6 +9,49 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## Fn values the interpreter parks or re-steps: NUR312, NUR313, NUR314 (2026-09-27)
+
+A differential sweep over factories that return fn values through `Any`
+(a named no-argument `g`, an argument-taking `l`, an anonymous lambda)
+found three silent answers, all present on main, where the compiled lane
+and the interpreter disagreed about whether a fn value is stepped:
+
+- **NUR312.** A forward-drift window's placed value rode into the island
+  inside a paren (NUR287), and a fn that takes nothing fired inside it
+  before the paren could park it: `2 (mkf) add 3` answered [2 10] for the
+  interpreter's signature_error. The island starts after the last placed
+  value now, over the window beneath it as resolved inputs
+  (`placedWindowSplit`, `runIslandResolved`); a value beneath it that is
+  not plain data is a designed defer (`vm:mixed-placed-fn`).
+- **NUR313.** `if` splices a body arm inside its own paren, which parks a
+  one-survivor fn; the check pass re-stepped the joined value and the
+  lowering landed or applied it (`def c true if c [(mkf)] [0]` was 7 for
+  `fn g`). A branch whose value-yielding arms are all one-value bodies is
+  placed (`branchPlaces`: no landing note, `callResultPlaced` for a
+  fn-capable value); a branch with one such body and a value arm lands on
+  the value arm's own path (`splitLanding`, `lowerArms`,
+  `lowerComputedBranch`); a split branch whose placed arm may leave a fn
+  declines where it leads a residual apply (`splitArmMayBeFn`, through
+  the residual lowering's own reason, no new site).
+- **NUR314.** A loop's end splices its results back and steps them; the
+  compiled loop kept a dynamic fn result as data (`for 2 [(mkf)]` was `[fn
+  g fn g]` for [7 7]). At the loop's exit (`FOR_NEXT` done, a break's
+  `flowSignal`) a result that would dispatch is settled as the interpreter
+  settles it (`loopExitReStep`): an isolated loop — nothing beneath its
+  results in the frame, its exit the end of its unit — steps them on the
+  island; any other is a designed defer (`vm:loop-result-restep`). `for 1
+  [(mk0)] 5` defers where it answered before (loud; its compile is owed).
+
+The first cut of NUR313 counted every body-armed branch result as parked,
+and `TestNUR292StatementIslandRunsTheList` declined (a string result "above
+a literal"); placement is a question only for a value that may be a fn, and
+the rule asks exactly that. A research sweep of container element typing
+the same day found two more silent records, pending: NUR315 (a FlexList
+written through a fn parameter's alias) and NUR316 (`each` drops its body
+value's gradual mark, so a later body commits a direct op). Pinned by
+`lang/go/nur312_314_test.go`, compiler `TestBranchPlaces` /
+`TestSplitArmMayBeFn`, and eng `TestPlacedWindowSplit`.
+
 ## A handler island's do over a computed or def-bound body (2026-09-27)
 
 NUR301's and NUR300's count islands took the do before the handler only

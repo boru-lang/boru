@@ -234,6 +234,11 @@ keep the two in sync in the same commit.
 | [NUR309](#nur309) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the return-pattern check defers a refinement's value-level membership over an abstract residual not provably outside its base, the named return type's rule. The original text: `def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5` was a check-time type_error ("expected (Integer gt 3), got Integer") that both lanes then returned 5 for; the named twin (`[Big]`) is check-clean. Pre-existing | closing NUR009, 2026-09-26 |
 | [NUR310](#nur310) | FIXED 2026-09-26 (a make field's refusal is a type_error — the handoff log's entry of that date): a make field the run refuses raises a type_error on both lanes; a refusal already structured keeps its code. The original text: the refusal was a plain error, which the interpreter printed bare and a compiled run booked as a compiler defect (internal_error with its "please report it" note) — `def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}`. Pre-existing | compiling NUR308's type half, 2026-09-26 |
 | [NUR311](#nur311) | Pending, loud (recorded 2026-09-27, the merge of main's #515): a reach-led forward window's no-match NOTES name the window the check pass matched — `mini m.e 'ab'` over `{e: Function}` reports `the arguments were Function … and 'ab'` and `2 were supplied` compiled, where the interpreter's forward collection stopped at the reach and supplied none; the error, message and caret agree |
+| [NUR312](#nur312) | FIXED 2026-09-27 (the island starts after a placed value — the handoff log's entry of that date): a forward-drift window's PLACED fn value that takes nothing fired inside the paren the recorder wrapped it in — `2 (mkf) add 3` over a factory of a no-argument g answered [2 10] for the interpreter's signature_error; present on main |
+| [NUR313](#nur313) | FIXED 2026-09-27 (a body arm places its value — the handoff log's entry of that date): an `if` body arm's one fn value, which the arm's paren parks, was re-stepped by the landing or applied by the residual — `def c true if c [(mkf)] [0]` answered 7 for `fn g`, `if c [(mkl)] [0] 5` 6 for `fn l 5`; a split branch leading a residual apply declines; present on main |
+| [NUR314](#nur314) | FIXED 2026-09-27 (an isolated loop re-steps its results; elsewhere a designed defer — the handoff log's entry of that date): a loop's fn-valued results, which the loop's end re-steps, stayed data — `for 2 [(mkf)]` answered `[fn g fn g]` for [7 7], `for 1 [(mka)] 5` `[fn 5]` for [6]; present on main |
+| [NUR315](#nur315) | Pending, SILENT (recorded 2026-09-27): a FlexList written through a fn parameter's alias keeps the check pass's element join — `poke fl drop def j (fl get 0) j`, where poke sets a fn `h/v` at 0, answered `fn j` compiled for the interpreter's 42; present on main |
+| [NUR316](#nur316) | Pending, SILENT (recorded 2026-09-27): `each`'s result type drops the gradual mark of its body's value, so a later body commits a direct op over an element the run may not hold — `[0] each [drop (fl get 0)]` then `each [add 1]` over a flex holding "s" answered [[1]] for [['s1']], and over a typed list's out-of-range read [[1]] for the interpreter's signature_error; present on main |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14192,3 +14197,137 @@ rematch when the two disagree, since an empty tuple cannot be rebuilt); the
 rematch and its values are otherwise right, and both lanes raise the same
 error at the same caret.
 
+## NUR312 — a placed fn in a forward-drift window fires inside its paren {#nur312}
+
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-27 · **Surfaced by:** a differential sweep over
+fn-valued factories (`mkf` returns a named no-argument fn through `Any`).
+Present on main, silent there too.
+
+```
+def g fn [[][Integer][7]] end def mkf fn [[][Any][g/v]] end 2 (mkf) add 3
+  interpreted   signature_error: cannot call `add` — no signature matches the arguments
+  compiled      [2 10]
+```
+
+**Cause.** `add` over a dynamic top with a literal after it is a
+forward-drift window (`tryRecordDriftWindow`): the VM islands the window
+verbatim. A value the interpreter parks — a user call's result, a paren's
+placed survivor — rides into the island inside its own paren, so the
+island's one-survivor rule parks it again (NUR287). That holds for data and
+for a fn the paren leaves with nothing to take. A fn that takes nothing
+fires INSIDE the paren, before the paren can park it.
+
+**Fix.** Where a placed value would dispatch at the pointer, the island
+starts after the last placed value, over the window beneath it as resolved
+inputs (`placedWindowSplit`, `runIslandResolved`): exactly the interpreter's
+tape when the word steps. A value beneath the last placed one that is not
+plain data (the verbatim island would step it) is a designed defer
+(`vm:mixed-placed-fn`). Pinned by `lang/go/nur312_314_test.go` and eng
+`TestPlacedWindowSplit`.
+
+## NUR313 — an `if` body arm's one fn value is placed, not re-stepped {#nur313}
+
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-27 · **Surfaced by:** the same sweep. Present on main,
+silent there too.
+
+```
+def c true if c [(mkf)] [0]
+  interpreted   [fn g]
+  compiled      [7]
+def c true if c [(mkl)] [0] 5
+  interpreted   [fn l(Integer) 5]
+  compiled      [6]
+```
+
+**Cause.** `if` splices a body arm inside its own paren (`spliceArg`), and a
+one-survivor paren parks a fn value (`fnReturnPark`). The check pass hands
+the joined value back to the step loop, which re-steps it, and the lowering
+took that step as a guarded landing (`RESTEP_LANDING`), or the residual's
+dynamic lead as an apply. A value arm (`if c one/v [2]`, NUR159) is spliced
+bare and does re-step, so the two kinds of arm need different answers.
+
+**Fix.** A branch whose every value-yielding arm is a body netting one value
+is placed (`branchPlaces`): it notes no landing, and `callResultPlaced`
+counts its fn-capable value as parked. A branch with one such body and one
+value arm lands on the value arm's own path (`splitLanding`, in `lowerArms`
+and `lowerComputedBranch`). A split branch whose placed arm may leave a fn
+and that leads a residual apply declines, since one apply after the merge
+cannot tell the paths apart (`splitArmMayBeFn`). Pinned by
+`lang/go/nur312_314_test.go` and compiler `TestBranchPlaces` /
+`TestSplitArmMayBeFn`.
+
+## NUR314 — a loop's fn-valued results are re-stepped at the loop's end {#nur314}
+
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-27 · **Surfaced by:** the same sweep. Present on main,
+silent there too.
+
+```
+for 2 [(mkf)]
+  interpreted   [7 7]
+  compiled      [fn g fn g]
+def mka fn [[][Any][[x:Integer] => [x add 1]]] end for 1 [(mka)] 5
+  interpreted   [6]
+  compiled      [fn (Integer) 5]
+```
+
+**Cause.** The interpreter's loop end splices the collected results back
+where the loop stood and steps them (`stepMoveCont`'s done arm,
+`handleLoopBreak`): a named fn fires or collects, an anonymous one collects
+what it reaches. NUR129 declines a CONCRETE named fn result; a dynamic
+result — a factory's, a handler's run, a branch's — compiled, and the
+compiled loop kept it as data.
+
+**Fix.** At the loop's exit (`FOR_NEXT`'s done arm and a break's
+`flowSignal`), a result that would dispatch at the pointer is settled as the
+interpreter settles it (`loopExitReStep`). An ISOLATED loop — nothing beneath
+its results in the frame, its exit the end of its unit — steps its results on
+the island, exactly. Anywhere else the re-step may reach a value the island
+does not hold (a forward operand the compiled code pushes after the loop, a
+value beneath it), and the run is a designed defer (`vm:loop-result-restep`),
+loud: `for 1 [(mkf)] 5` and `for 1 [(mk0)] 5` defer where the second
+answered before. Pinned by `lang/go/nur312_314_test.go`.
+
+## NUR315 — a FlexList written through a fn parameter's alias {#nur315}
+
+**Status:** Pending, SILENT · **Recorded:** 2026-09-27 · **Surfaced by:** a
+research sweep of container element typing. Present on main.
+
+```
+def h fn [[] [Integer] [42]] def poke fn [[l:FlexList] [Any] [set 0 h/v l]]
+def fl (flex [1 2 3]) poke fl drop def j (fl get 0) j
+  interpreted   [42]
+  compiled      [fn j]
+```
+
+The check pass joins a flex container's element type over the writes it
+sees on the container's own name (`check/go/store_shape.go`); a write
+through a parameter that aliases it is not one of them, so `fl get 0` reads
+as `Integer` and the bare read `j` of the fn stored there is lowered as
+data where the interpreter dispatches it. The write `set 0 h/v fl` at the
+root, on the name, agrees.
+
+## NUR316 — `each` drops its body value's gradual mark {#nur316}
+
+**Status:** Pending, SILENT · **Recorded:** 2026-09-27 · **Surfaced by:** the
+same sweep. Present on main.
+
+```
+def poke fn [[l:FlexList] [Any] [set 0 "s" l]] def fl (flex [1 2 3]) poke fl drop
+def ys ([0] each [drop (fl get 0)]) ys each [add 1]
+  interpreted   [['s1']]
+  compiled      [[1]]
+def f fn [[xs:[:Integer]] [Any] [def ys ([0] each [drop (xs get 5)]) ys each [add 1]]] f [1 2 3]
+  interpreted   each: element 0: signature_error: cannot call `add`
+  compiled      [[1]]
+```
+
+`each`'s check-mode result type is the typed list of its body value's
+parent (`eachReturnsFn`), which keeps the parent and drops the value's
+DYNAMIC mark: a gradual read (a flex element, a typed container's element
+at its supertype, a read that may be None) becomes a strict element type,
+and the next `each` body commits a direct native op over it. The run holds
+a String or a None there, and the direct op answers over it where the
+interpreter's dispatch raises or concatenates.
