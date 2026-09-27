@@ -329,6 +329,7 @@ type emitCall struct {
 	polySplit         *PolySplit            // the dispatch's exact operand layout, for the poly's runtime no-match arm (PolyRef.Split, NUR242)
 	nativeSplit       *NativeSplit          // an optimistic closure bake's exact operand layout, for the committed call's no-match arm (SigRef.Split, NUR263)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
+	listReStep        *ListReStepSpec       // a makeList whose elements the interpreter may re-step (OpMakeListReStep, NUR295)
 	dynApply          int                   // >0: apply the TOP operand (a runtime fn value) to the `dynApply` trailing args below it (OpCallDynTrailTop) — a paren-bounded trailing fn-value apply recorded as an EVENT so it seats like any computed result
 	dynApplyUnquote   bool                  // the dynApply event came through the `apply` WORD (a consumed pendingApply): lower to OpCallDynApplyTop, which unquotes like applyHandler (Stage M2a)
 	dynApplyOne       bool                  // the lead is GRADUAL (apply over a Dynamic value): lower to OpCallDynApplyOne, exactly one result or defer
@@ -10765,12 +10766,12 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 		}
 		es.landingOwn[pr.seq] = landingStep{next: next, beneath: beneath, id: v.ID}
 	}
-	if w, err := core.AsWord(word); err == nil && w.Name != "" {
+	if w, err := core.AsWord(word); err == nil && w.Name != "" && !defRead {
 		if es.landingWord == nil {
 			es.landingWord = map[int]LandingWord{}
 		}
 		if _, noted := es.landingWord[pr.seq]; !noted {
-			es.landingWord[pr.seq] = LandingWord{Name: w.Name, Pos: word.Pos()}
+			es.landingWord[pr.seq] = LandingWord{Name: w.Name, Pos: word.Pos(), Collected: next == core.LandingNextValue}
 		}
 	}
 }
@@ -10906,13 +10907,13 @@ func (es *EmitState) residualApplies(dynOp Opcode, residual []core.Value, seq in
 
 // eventApplies reports whether an event of events, or one inside a fragment
 // of any of them, dynamically applies the value the event seq produced (a
-// dynamic apply or a mixed window over it as an operand, by the event or,
-// once promoted, by its frame slot).
+// dynamic apply, a mixed window or a list literal's re-stepped window over
+// it as an operand, by the event or, once promoted, by its frame slot).
 func eventApplies(events []EmitEvent, seq int, promoted map[int]int) bool {
 	slot, hasSlot := promoted[seq]
 	for i := range events {
 		ev := &events[i]
-		if ev.kind == evCall && (ev.call.dynApply > 0 || ev.call.dynMixed) {
+		if ev.kind == evCall && (ev.call.dynApply > 0 || ev.call.dynMixed || (ev.call.listReStep != nil && ev.call.listReStep.Island)) {
 			applies := false
 			forEachOperand(ev, func(op EmitOperand) {
 				applies = applies || (op.kind == opEvent && op.idx == seq && op.resIdx == 0) || (hasSlot && op.kind == opLocal && op.idx == slot)
@@ -13678,9 +13679,59 @@ func (es *EmitState) RecordMakeListInner(r *core.Registry, ins []core.Value, out
 		ops[len(ins)-1-i] = op
 	}
 	es.SiteCounts[SiteMono]++
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordMakeList, ops: ops, nout: 1, pos: pos, makeList: true}})
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordMakeList, ops: ops, nout: 1, pos: pos, makeList: true, listReStep: es.listReStepSpec(ins, ops)}})
 	es.setProduced(out, seq)
 	return true
+}
+
+// islandCollects reports whether a list element after a re-stepped one is a
+// token the interpreter's forward collection takes as the island takes its
+// value: a literal, a paren group's placed result, or a word bound to a
+// value — a local or a def read, whose value the VM checks is data (a fn
+// value in it would stop the collection as a function word).
+func (es *EmitState) islandCollects(v core.Value, op EmitOperand) bool {
+	return op.kind == opConst || op.kind == opType || op.kind == opLocal || es.isDefRead(v) || es.placedNotReStepped(v)
+}
+
+// listReStepSpec is the re-step plan of a list literal's elements (NUR295),
+// nil when none needs one. The interpreter EVALUATES a list literal, so an
+// element that is a fn value where the tape steps it — a gradual member read
+// (`[m.g 5]`), a word's fn result (`[m get "g" 5]`) — applies over its
+// neighbours, `[6]` where the assembly baked `[fn 5]`. Such an element is an
+// EVENT's value the pass holds as possibly a fn (fnLikeResidual) that nothing
+// placed: a user paren's placement and a user call's parked result are data
+// where they sit, a def read is its binding's own dispatch (NUR207's), and a
+// param or local read is a slot — `h/v` is data, and a bare `h` the bare-read
+// rule's own decline. The island
+// re-steps the whole window: an element AFTER a re-stepped one must be one
+// a fn's forward collection takes as the token did (islandCollects) — a
+// bare word call's result is not, the collection stopping at the word —
+// and every element must step as itself, which the VM checks. ops are in
+// sig order (ops[0] the last element).
+func (es *EmitState) listReStepSpec(ins []core.Value, ops []EmitOperand) *ListReStepSpec {
+	if len(ins) < 2 {
+		return nil
+	}
+	spec := &ListReStepSpec{N: len(ins), Island: true}
+	for i, v := range ins {
+		if ops[len(ins)-1-i].kind == opEvent && es.fnLikeResidual(v) && !es.placedNotReStepped(v) && !es.callResultPlaced(v) && !es.isDefRead(v) {
+			spec.Fn = append(spec.Fn, i)
+			// The literal after it written as a word: a `/q` slot takes the
+			// word (NUR219), which the landing noted.
+			if pr, ok := es.producedBy[v.ID]; ok && i+1 < len(ins) && es.landingWord[pr.seq].Collected && ops[len(ins)-2-i].kind == opConst {
+				if spec.Words == nil {
+					spec.Words = map[int]LandingWord{}
+				}
+				spec.Words[i+1] = es.landingWord[pr.seq]
+			}
+		} else if len(spec.Fn) > 0 && !es.islandCollects(v, ops[len(ins)-1-i]) {
+			spec.Island = false
+		}
+	}
+	if len(spec.Fn) == 0 {
+		return nil
+	}
+	return spec
 }
 
 // RecordMakeMap records the assembly of a COMPUTED map literal whose values are

@@ -509,6 +509,15 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 		// below) rather than seat the one Error a no-raise run never makes
 		// (NUR242: a promoted seat underflowed, STORE_LOCAL).
 		if bl, err := AsList(body); err == nil && !bl.IsNil() && bl.Len() > 0 {
+			// A body of literals and plain stack shuffles that ran to nothing
+			// without a raise cannot raise at run time either: `do` runs it
+			// isolated (InvokeBody), so each shuffle meets the values the
+			// body itself pushed, exactly as it did here — `do [1 drop]` nets
+			// nothing, and there is no Error to latch (NUR222: `1 do [1 drop]
+			// drop` is [] on both lanes; its consumer had bailed).
+			if shuffleOnlyBody(bl.Slice(), r) {
+				return nil
+			}
 			if r.Check.Compiling {
 				r.Check.Recorder().SetCatchVariadic(true)
 			}
@@ -597,6 +606,35 @@ func generaliseRootValues(r *Registry) {
 // arity (a raise makes `do` net ONE Error instead of the N-value residual). See
 // tokensMayRaise for the fallibility rule. A non-list / nil body is conservative
 // (fallible).
+// shuffleOnlyBody reports whether a body's tokens are only scalar or list
+// literals and plain words of the closed stack-shuffle set that still name
+// the registered all-Any native (a user's redefinition may raise) — a body
+// whose run, over only the values it pushes itself, cannot raise.
+func shuffleOnlyBody(toks []Value, r *Registry) bool {
+	for _, t := range toks {
+		if IsConcrete(t) && t.Parent != nil && (t.Parent.ConformsTo(TScalar) || t.Parent.Equal(TList)) {
+			continue
+		}
+		w, err := AsWord(t)
+		if err != nil || w.ForceVal || w.ForceStack || w.ForceForward || w.ForceUsurp || !DynStackShuffleWords[w.Name] {
+			return false
+		}
+		fd := r.Lookup(w.Name)
+		if fd == nil || len(fd.Signatures) != 1 || fd.Signatures[0].BarrierPos != 0 {
+			return false
+		}
+		if _, native := fd.Signatures[0].Impl.(*GoImpl); !native {
+			return false
+		}
+		for _, a := range fd.Signatures[0].Args {
+			if a != TAny {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 func doBodyMayRaise(body Value, r *Registry) bool {
 	bl, err := AsList(body)
 	if err != nil || bl.IsNil() { //covergate:allow do's TList sig + the len(stk)>1 caller guard guarantee a concrete non-empty list body

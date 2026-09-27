@@ -685,6 +685,16 @@ const (
 	// twin is written back: this op is the one install. Arg indexes
 	// Program.TypeRuns.
 	OpBindTypeRun
+	// OpMakeListReStep is OpMakeList for a list literal an element of which
+	// the interpreter's own evaluation may RE-STEP over its neighbours (a
+	// gradual member read, a word's fn result — NUR295): `[m.g 5]` is `[6]`
+	// interpreted, and OpMakeList assembled `[fn 5]`. Arg indexes
+	// Program.ListReSteps. Elements that hold no value the tape dispatches
+	// assemble as OpMakeList's do; otherwise, where the spec proves the
+	// window (Island), the elements re-step through the interpreter as the
+	// list's evaluation would and the list holds what it leaves, and
+	// elsewhere the op is a designed defer.
+	OpMakeListReStep
 )
 
 // opcodeNames is the single source of each opcode's disassembler mnemonic,
@@ -754,6 +764,7 @@ var opcodeNames = [...]string{
 	OpReStepLanding:        "RESTEP_LANDING",
 	OpBindDynScopePeek:     "BIND_DYN_SCOPE_PEEK",
 	OpBindTypeRun:          "BIND_TYPE_RUN",
+	OpMakeListReStep:       "MAKE_LIST_RESTEP",
 }
 
 func (o Opcode) String() string {
@@ -1194,6 +1205,27 @@ type TypeRef struct {
 // i-th value (deepest popped = value 0). The keys ride here rather than as
 // stack operands so OpMakeMap only handles the VALUE operands (which may be
 // computed event results), reusing the same operand-layout engine as a call.
+// ListReStepSpec is one OpMakeListReStep's list (NUR295): N elements, the
+// ones (Fn, element indices in source order) the interpreter's evaluation of
+// the literal re-steps when they hold a fn value, and whether re-stepping the
+// window's VALUES is its evaluation of the TOKENS (Island): every element
+// after the first Fn one is another Fn one or one a fn's forward collection
+// takes as the token's value — a literal, a paren's placed result, a word
+// bound to a value; a bare word call's result is not (the collection stops
+// at the word). An element that is not an Fn one must step as itself (the
+// VM checks: a placed fn would be re-stepped, a fn in a word stops the
+// collection).
+type ListReStepSpec struct {
+	N      int
+	Fn     []int
+	Island bool
+	// Words holds, for a literal written as a WORD right after an Fn
+	// element (a reserved `true`, a value-bound word — LandingWord.Collected),
+	// that word: a fn whose `/q` slot captures the next token takes it, not
+	// its folded value (NUR219).
+	Words map[int]LandingWord
+}
+
 type MakeMapSpec struct {
 	Keys     []string
 	Implicit bool
@@ -1447,6 +1479,9 @@ type Program struct {
 	Regions []RegionDesc
 	// Generics backs OpDispatchGeneric: one entry per routed dispatch.
 	Generics []GenericSpec
+	// ListReSteps backs OpMakeListReStep: one entry per list literal whose
+	// elements the interpreter may re-step (NUR295).
+	ListReSteps []ListReStepSpec
 	// ClosureRet carries a pushed closure's CALLBACK return contract, keyed by
 	// the pc of its OpPushClosure. Keyed by pc rather than by unit because the
 	// unit is SHARED across fn values with identical bodies and inputs — the
@@ -1666,6 +1701,12 @@ type LandingWord struct {
 	// SkipTo, where it is 0 or the overload has no unit of this program; with
 	// none of the three the claim defers.
 	Skip int
+	// Collected marks a word the ordinary re-step COLLECTS as its value — a
+	// word bound to a value, or the reserved `true` / `false` — which the
+	// pass folded to that value (NUR219): only a `/q` slot captures it, as
+	// the atom the word spells. Its claim target (Skip) seals over the
+	// folded value's push instead of the word's call.
+	Collected bool
 }
 
 // CallWindowKind names where one CallWindowOperand's value lives when the
@@ -2134,6 +2175,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			fmt.Fprintf(sb, " /%d ; replay frame residual (dynamic apply)", in.Arg)
 		case OpMakeList:
 			fmt.Fprintf(sb, " n%-3d ; assemble %d into a list", in.Arg, in.Arg)
+		case OpMakeListReStep:
+			ls := p.ListReSteps[in.Arg]
+			fmt.Fprintf(sb, " l%-3d ; assemble %d into a list, re-stepping elements %v (island %v)", in.Arg, ls.N, ls.Fn, ls.Island)
 		case OpMakeMap:
 			mm := p.MakeMaps[in.Arg]
 			fmt.Fprintf(sb, " m%-3d ; assemble {%s}", in.Arg, strings.Join(mm.Keys, " "))

@@ -9,6 +9,48 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR222's witnesses compile: a shuffle-only `do` body has no phantom (2026-09-27)
+
+A value-less `do` body is latched as the one Error a caught raise would
+leave, because the pass cannot prove the body never raises — and a clean
+run leaves nothing, so a consumer of the phantom bailed (`1 do [1 drop]
+drop`, CALL_NATIVE underflow) and its fixed seats declined. A blanket
+consumer decline had been reverted: it also declined a loop that always
+raises. The body of the witnesses, though, is literals and plain stack
+shuffles, and `do` runs it isolated: each shuffle meets only the values
+the body pushed, exactly as in the pass's run, which raised nothing. Such
+a body (`shuffleOnlyBody`: the closed shuffle set, still the registered
+all-Any natives) nets what the pass saw, so no latch is armed. The
+consumer answers `[]` and the two fragment witnesses `[2]`, compiled. A
+body with any other word keeps the latch (`1 do [(1 add 1) drop] drop`
+still bails — the open part).
+
+## NUR219's root and list forms closed; NUR295 found and closed (2026-09-27)
+
+**How it was found.** Probing NUR219 (`m.f true`, a `/q` fn read from a
+factory's map) in the shapes around it: `[m.f true]` answered `[[fn h(Atom)
+true]]` — and so did `[m.g 5]` for a plain `g`, `[[fn g(Integer) 5]]` for
+`[[6]]`. Any gradual fn element of a list literal was assembled as data;
+a folded literal map's member was the one shape that answered.
+
+**NUR295.** The interpreter evaluates a list literal, so a fn element
+re-steps over its neighbours. The recorder flags such an element
+(`listReStepSpec`: possibly a fn, not placed, not a def read) and the list
+lowers to `OpMakeListReStep`: data assembles as before; a fn re-steps the
+window through the island when the elements after it are literals and the
+others step as themselves (the island over the VALUES is then the list's
+evaluation of the TOKENS); anything else defers. The element's landing
+stands aside for the list (`eventApplies`, `listOwnsLandings`) — without
+it, NUR286's guard deferred `[5 m.g]`.
+
+**NUR219.** The landing now carries a COLLECTED word (value-bound, or the
+reserved `true` / `false`), whose claim target seals over the folded
+value's push. A fn quoting its first slot enters over the atom — `m.f
+true` is `[true]`, `def k 2 end m.f k` `[k]` — and a list's island takes
+the word (`ListReStepSpec.Words`). The unsealed forms (values beneath, a
+wider residual, a paren, a fn body) are a designed defer now instead of
+`uncalled_function`.
+
 ## NUR292's plain list forms compile; NUR294 found and closed (2026-09-27)
 
 **How it was found.** Gate39 (the NUR290–293 batch) went red in two

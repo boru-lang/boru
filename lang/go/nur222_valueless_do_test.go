@@ -13,14 +13,16 @@ import (
 // branch fragment, dropped under a condition's decision value — the phantom
 // compiled and bailed at run time (STORE_LOCAL / DROP underflow). Each such
 // seat declines now, loudly, and the program answers through the
-// interpreter. A word that CONSUMES the phantom as its operand (`1 do [1
-// drop] drop`) still bails: declining every such consumer also declined a
-// loop that always raises (`for 1 [do [for 2 [raise 'x']] drop i]`), which
-// the pass cannot prove; that half is NUR222's open part.
+// interpreter. A word that CONSUMES the phantom as its operand (`1 do
+// [(1 add 1) drop] drop`) still bails: declining every such consumer also
+// declined a loop that always raises (`for 1 [do [for 2 [raise 'x']] drop
+// i]`), which the pass cannot prove; that half is NUR222's open part. A body
+// of literals and plain stack shuffles has no phantom at all (2026-09-27):
+// run isolated, it cannot raise, so `do` nets what the pass saw — nothing.
 func TestNUR222ValuelessDoSeatedDeclines(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
-		{`if [do [1 drop] true] [2] [3]`, "[2]"},
-		{`if [true] [do [1 drop] 2] [3]`, "[2]"},
+		{`if [do [(1 add 1) drop] true] [2] [3]`, "[2]"},
+		{`if [true] [do [(1 add 1) drop] 2] [3]`, "[2]"},
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
 		if compiled || codeOf(errC) != "compile_failed" {
@@ -40,6 +42,14 @@ func TestNUR222ValuelessDoSeatedDeclines(t *testing.T) {
 		`do [1 drop] 2`,
 		`2 do [1 drop]`,
 		`if true [do [1 drop]] [3]`,
+		// A shuffle-only body nets nothing on both lanes, so its every seat
+		// holds: the consumer, the condition, the arm and the literal.
+		`1 do [1 drop] drop`,
+		`1 do [1 2 swap drop drop] add 1`,
+		`if [do [1 drop] true] [2] [3]`,
+		`if [true] [do [1 drop] 2] [3]`,
+		`[do [1 drop] 7]`,
+		`for 1 [do [for 2 [raise 'x']] drop i]`,
 		`(do [1 0 div]).code`,
 		`do [1 0 div] error [dot code]`,
 		`if [true] [do [raise 'x'] 2] [3]`,

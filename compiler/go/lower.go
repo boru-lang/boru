@@ -1259,6 +1259,23 @@ func (lw *lowerer) seatLandingWord(w LandingWord, seq int) {
 	lw.landingSeq[len(*lw.code)] = seq
 }
 
+// listOwnsLandings clears the COLLECTED mark (LandingWord.Collected) of each
+// landing whose value a list re-step event takes (OpMakeListReStep): the
+// list's island re-steps the element over the word itself (NUR295's
+// ListReStepSpec.Words), so the landing claims nothing and must not defer
+// the capture it leaves to the list (NUR219).
+func (lw *lowerer) listOwnsLandings(c *emitCall) {
+	for _, i := range c.listReStep.Fn {
+		op := c.ops[len(c.ops)-1-i]
+		for pc, seq := range lw.landingSeq {
+			if w := (*lw.landingWords)[pc]; op.kind == opEvent && seq == op.idx && w.Collected {
+				w.Collected = false
+				(*lw.landingWords)[pc] = w
+			}
+		}
+	}
+}
+
 // sealLandingSkip gives a landing its CLAIM target (LandingWord.Skip, NUR190)
 // when the residual apply just emitted is the one the lowering laid over the
 // word after it. The interpreter's re-step of a fn value plans over the live
@@ -1270,7 +1287,8 @@ func (lw *lowerer) seatLandingWord(w LandingWord, seq int) {
 // — and that is only sound when the three ops are exactly, contiguously:
 //
 //	pc     OpReStepLanding  over the landed event's one result (landingSeq)
-//	pc+1   the word's call  argument-free, one result (the residual's arg)
+//	pc+1   the word's call  argument-free, one result (the residual's arg);
+//	                        for a COLLECTED word, its folded value's push
 //	pc+2   OpCallDynamic /1 the landed value applied over that result
 //
 // Anything else — a promoted or dropped result, a word that collects, a
@@ -1282,10 +1300,12 @@ func (lw *lowerer) sealLandingSkip(dynOp Opcode, ops []EmitOperand) {
 		return
 	}
 	w, seated := (*lw.landingWords)[at]
-	if !seated || ops[0].kind != opEvent || ops[0].idx != lw.landingSeq[at] || ops[0].resIdx != 0 || ops[1].kind != opEvent {
+	if !seated || ops[0].kind != opEvent || ops[0].idx != lw.landingSeq[at] || ops[0].resIdx != 0 {
 		return
 	}
-	if lw.isLandingWordCall(lw.es.eventBySeq(ops[1].idx), w.Name, (*lw.code)[at+1]) {
+	// A COLLECTED word (NUR219) is the folded value's push, not a call.
+	if (w.Collected && ops[1].kind == opConst && (*lw.code)[at+1].Op == OpPushConst) ||
+		(!w.Collected && ops[1].kind == opEvent && lw.isLandingWordCall(lw.es.eventBySeq(ops[1].idx), w.Name, (*lw.code)[at+1])) {
 		w.Skip = at + 3
 		(*lw.landingWords)[at] = w
 	}
@@ -3732,7 +3752,13 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		if lw.opsHaveCatchVariadic(c.ops) || lw.opsHaveDynBodyRun(c.ops) {
 			return "list literal over a result of runtime-variable count"
 		}
-		lw.emit(OpMakeList, n, c.pos)
+		if c.listReStep != nil {
+			lw.p.ListReSteps = append(lw.p.ListReSteps, *c.listReStep)
+			lw.emit(OpMakeListReStep, len(lw.p.ListReSteps)-1, c.pos)
+			lw.listOwnsLandings(c)
+		} else {
+			lw.emit(OpMakeList, n, c.pos)
+		}
 	} else if c.makeMap {
 		// Assemble the n laid-out VALUE operands into a map (a computed make
 		// body, `make Outer {i:(make Inner …)}`); the keys ride in MakeMaps.

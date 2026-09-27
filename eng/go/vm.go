@@ -1496,9 +1496,22 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 	if fnDef, ok := v.Data.(core.FnDefInfo); ok {
 		// A FUNCTION WORD follows and nothing sits beneath in the frame: the
 		// interpreter's re-step plans over that word, and the walk decides
-		// (NUR190) — the arms below are the wordless landing's.
-		if arg&2 != 0 && top == frameBase && lword.Name != "" && len(fnDef.OwnSigs()) > 0 {
+		// (NUR190) — the arms below are the wordless landing's. So does a
+		// COLLECTED word (a value-bound word, a reserved `true`) before a fn
+		// every signature of which quotes its first slot: the re-step
+		// captures the word as an atom, where the compiled code pushed its
+		// folded value and applies the fn over it (NUR219); the sealed claim
+		// target enters the fn over the atom.
+		if top == frameBase && lword.Name != "" && len(fnDef.OwnSigs()) > 0 &&
+			(arg&2 != 0 || (lword.Collected && lword.Skip > 0 && quotesFirstSlot(fnDef))) {
 			return vc.landingWalk(reg, v, fnDef, lword, stack, top, curDebug, pc)
+		}
+		// A collected word a first-slot `/q` may capture where no claim was
+		// sealed — values beneath the value, a wider residual, a paren's or a
+		// body's apply: the compiled code would apply the fn over the word's
+		// folded value, which the interpreter's re-step never does (NUR219).
+		if lword.Collected && anyQuotesFirstSlot(fnDef) {
+			return nil, nil, vmDefer(reg, curDebug, pc, "vm:landing-quote-collected", "RESTEP_LANDING at "+fnDef.Name+": the re-step may CAPTURE the word `"+lword.Name+"` (a `/q` slot) where the compiled code applies the fn over its folded value (NUR219); the compiled runtime cannot execute it")
 		}
 		// No signature satisfiable with ZERO arguments: the re-step leaves the
 		// fn as DATA (`m.g` alone, where g takes one), so there is nothing to
@@ -3572,6 +3585,11 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			stack = stack[:len(stack)-n]
 			stack = append(stack, core.NewList(elems))
+		case compiler.OpMakeListReStep:
+			var err error
+			if stack, err = vc.makeListReStep(curReg, p.ListReSteps[in.Arg], stack, curDebug, pc); err != nil {
+				return nil, err
+			}
 		case compiler.OpMakeMap:
 			// Assemble the top values into a map paired with the spec's keys (a
 			// computed make-construction body, `make Outer {i:(make Inner …)}`).

@@ -138,10 +138,13 @@ func TestNoteReStepLandingNotesNext(t *testing.T) {
 		if rec.next[0] != tc.next || rec.beneath[0] != tc.beneath {
 			t.Errorf("%s: next = %v beneath = %v, want %v %v", tc.name, rec.next[0], rec.beneath[0], tc.next, tc.beneath)
 		}
-		// The function word itself rides with the note (the VM's landing
-		// walks the run-time fn's overloads over it, NUR190); nothing else does.
+		// The word itself rides with the note: a function word is what the
+		// VM's landing walks the run-time fn's overloads over (NUR190), and a
+		// collected one is what a `/q` slot captures in place of the value
+		// the pass folds it to (NUR219). A boundary or the tape's end carries
+		// none.
 		wantWord := ""
-		if tc.next == core.LandingNextWord {
+		if tc.next == core.LandingNextWord || tc.next == core.LandingNextValue {
 			w, _ := core.AsWord(tc.tape[1])
 			wantWord = w.Name
 		}
