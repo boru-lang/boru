@@ -9,6 +9,27 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR282's wrong-count single seat compiles (2026-09-27)
+
+`(do b) add 1` over a two-value body raises the interpreter's return-count
+error. The compiled seat took the run as one value under a runtime check
+and deferred on any other. The do's count island (NUR222's) now covers a
+computed body too. Where the check refuses a run and the island seats, the
+statement runs again with the run written in the do's place, and it answers
+the interpreter's error.
+
+- **The body.** `countPoint` takes a computed body, a read or a paren,
+  whose one argument site is the token right after the do (`doBodyAfter`).
+  The dyn-body backstop now notes its call's argument sites.
+- **The check.** The VM uses a pure check (`dynBodyOneRefuses`), since the
+  defer's own check notes a bail.
+- **A regression on the way.** The stop's own run marked its do for the
+  stash (`substSeq`), which stashed a region's result and broke NUR210's
+  `do (mk) end x` shapes. The stop's own run is written from the stop, so
+  `substSeq` skips it.
+- **Pins.** Two rows of `TestComputedDoBodyCheckedOneDefers` agree now, and
+  NUR207's `j j` row compiles (af33f18).
+
 ## NUR282's `j j` compiles (2026-09-27)
 
 A def-bound name over a factory's fn value dispatches at each read, and the

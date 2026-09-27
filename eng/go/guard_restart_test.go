@@ -329,3 +329,24 @@ func TestParksResult(t *testing.T) {
 		t.Errorf("a native callee under the claim defers: %v", err)
 	}
 }
+
+// TestDynBodyOneRefuses pins the single seat's pure check (NUR282): the
+// runs checkDynBodyOne refuses, without the bail note its defer makes — the
+// count island takes those instead.
+func TestDynBodyOneRefuses(t *testing.T) {
+	fn := core.NewFunction(core.FnDefInfo{Anonymous: true, Signatures: []core.Signature{{}}})
+	for _, c := range []struct {
+		name string
+		vs   []core.Value
+		want bool
+	}{
+		{"one plain value", []core.Value{core.NewInteger(5)}, false},
+		{"none", nil, true},
+		{"two", []core.Value{core.NewInteger(5), core.NewInteger(6)}, true},
+		{"a fn value the tape re-steps", []core.Value{fn}, true},
+	} {
+		if dynBodyOneRefuses(c.vs) != c.want {
+			t.Errorf("%s: dynBodyOneRefuses = %v", c.name, !c.want)
+		}
+	}
+}

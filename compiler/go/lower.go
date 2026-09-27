@@ -3882,21 +3882,14 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// A do whose run's count the seat may miss (NUR222): its own SigRef
 		// checks the count, and carries the statement island a miss takes
 		// where the walk seated one (planCountRestarts).
-		ref := SigRef{Word: c.word, Sig: c.sig, CountCheck: true, CountClaim: c.nout}
-		ref.Count = lw.countIsland(ev.seq)
-		lw.p.Sigs = append(lw.p.Sigs, ref)
-		if ref.Count != nil {
-			lw.restartSigs = append(lw.restartSigs, len(lw.p.Sigs)-1)
-		}
-		lw.emit(OpCallNative, len(lw.p.Sigs)-1, c.pos)
+		lw.emitCountedSig(SigRef{Word: c.word, Sig: c.sig, CountCheck: true, CountClaim: c.nout}, ev.seq, c.pos)
 	} else if c.hostSplice || dynOne || plainChk || c.nativeSplit != nil {
 		// A hosted splice (a computed `for` body): its own SigRef, never
 		// shared with a plain call of the same signature — the flag is the
 		// call site's, and the VM runs the handler's tokens on its island.
 		// A runtime-checked single value (dynOne) and an optimistic bake's
 		// layout (nativeSplit) take their own SigRef for the same reason.
-		lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit})
-		lw.emit(OpCallNative, len(lw.p.Sigs)-1, c.pos)
+		lw.emitCountedSig(SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit}, ev.seq, c.pos)
 	} else {
 		si, ok := lw.sigIdx[c.sig]
 		if !ok {
@@ -5061,6 +5054,22 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 	return out, true
 }
 
+// emitCountedSig appends ref and emits its CALL_NATIVE, carrying the do's
+// count island (SigRef.Count) where its call checks the run's count: a
+// caught body's phantom consumed (CountCheck, NUR222), or a computed body's
+// run a single seat takes (DynBodyOne, NUR282) — a run the check refuses
+// then re-runs its statement over the run instead of deferring.
+func (lw *lowerer) emitCountedSig(ref SigRef, seq int, pos core.SrcPos) {
+	if ref.CountCheck || (ref.DynBodyOne && !ref.HostSplice && !ref.DynBodyPlain && ref.Split == nil) {
+		ref.Count = lw.countIsland(seq)
+	}
+	lw.p.Sigs = append(lw.p.Sigs, ref)
+	if ref.Count != nil {
+		lw.restartSigs = append(lw.restartSigs, len(lw.p.Sigs)-1)
+	}
+	lw.emit(OpCallNative, len(lw.p.Sigs)-1, pos)
+}
+
 // countIsland is the count island of the do event seq (SigRef.Count), when
 // the walk seated one: the statement from its first token, its prefix, and
 // the runs it writes — the do's own run last. nil when none is.
@@ -5104,7 +5113,9 @@ func (lw *lowerer) substSeq(seq int) bool {
 	for _, plans := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts} {
 		for _, r := range plans {
 			for _, sp := range r.substs {
-				if sp.seq == seq {
+				// The stop's own run is written from the stop, never read
+				// from a slot (RestartResults).
+				if sp.seq == seq && !sp.results {
 					return true
 				}
 			}

@@ -46,6 +46,13 @@ func checkDynBodyPlain(r *core.Registry, word string, results []core.Value, curD
 	return nil
 }
 
+// dynBodyOneRefuses reports whether checkDynBodyOne would refuse results,
+// without its defer's bail note: a single seat's count island takes such a
+// run instead (SigRef.Count, NUR282).
+func dynBodyOneRefuses(results []core.Value) bool {
+	return len(results) != 1 || dynBodyValueReSteps(results[0])
+}
+
 // dynBodyValueReSteps reports whether the interpreter's tape DISPATCHES v
 // when it steps it, rather than pushing it as data.
 func dynBodyValueReSteps(v core.Value) bool {

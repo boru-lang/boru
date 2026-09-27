@@ -4215,7 +4215,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil {
 				return nil, err
 			}
-			if s.CountCheck && len(results) != s.CountClaim {
+			if (s.CountCheck && len(results) != s.CountClaim) || (s.DynBodyOne && s.Count != nil && dynBodyOneRefuses(results)) {
 				// A do whose run's count the program's seat does not hold
 				// (SigRef.CountCheck, NUR222): its statement runs again, the
 				// run written in the do's place — or, with no island, a

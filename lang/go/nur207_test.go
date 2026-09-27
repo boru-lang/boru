@@ -68,11 +68,12 @@ func TestNUR207RootGradualDefRead(t *testing.T) {
 	}
 	// Main's claim declines what the program-level paths got wrong (#514:
 	// a written token the parameter does not take, a read a pending word
-	// collects — NUR216) and the shape it cannot seat after a claimed read
-	// (`j j`); the branch's island answered these, and at the merge the
-	// claim, which runs first, stands. Loud either way.
+	// collects — NUR216); the branch's island answered these, and at the
+	// merge the claim, which runs first, stands. Loud either way. `j j`, the
+	// shape it could not seat after a claimed read, compiles since its first
+	// result is placed (NUR282, claimParked).
+	agreeOnBothLanes(t, mk0+`j j`, "[42 42]")
 	for _, r := range []struct{ src, reason string }{
-		{mk0 + `j j`, "dynamic value precedes residual args"},
 		{mk2 + `r 'x' 3`, "a written argument does not fit the wrapper's parameter"},
 		{ms + `r 'x' 3`, "a written argument does not fit the wrapper's parameter"},
 		{mk0 + `def k j end k`, "is collected where the interpreter dispatches the name as a word (NUR216)"},

@@ -303,8 +303,6 @@ func TestComputedDoBodyCheckedOneDefers(t *testing.T) {
 		// A run of the wrong count.
 		{risky + `risky [true true]`, "error:type_error"},
 		{risky + `risky []`, "error:signature_error"},
-		{`def f fn [[b:List][Any][(do b) add 1]] end f (quote [5 6])`, "error:type_error"},
-		{`def f fn [[b:List][Any][(do b) add 1]] end f (quote [])`, "error:signature_error"},
 		{`def f fn [[b:List][Any][def ok (do b) ok]] end f (quote [])`, "error:undefined_word"},
 		{`def f fn [[m:Map][Any][(do m.k) add 1]] end f {k: (quote [5 6])}`, "error:type_error"},
 		// One value the interpreter re-steps: a fn value. (A list literal
@@ -313,6 +311,15 @@ func TestComputedDoBodyCheckedOneDefers(t *testing.T) {
 		{`def g fn [[][Integer][7]] end def f fn [[b:List][Any][def h (do b) h]] end f (quote [g/v])`, "[7]"},
 	} {
 		requireCheckedOneDefer(t, c.src, c.wantI)
+	}
+	// A seat whose statement the do's count island can re-run (NUR282):
+	// the run is written in the do's place, and the interpreter's own
+	// error answers on both lanes.
+	for _, c := range []struct{ src, want string }{
+		{`def f fn [[b:List][Any][(do b) add 1]] end f (quote [5 6])`, "ERROR:expected 1 return value(s), got 2"},
+		{`def f fn [[b:List][Any][(do b) add 1]] end f (quote [])`, "ERROR:cannot call `add`"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
 	}
 }
 

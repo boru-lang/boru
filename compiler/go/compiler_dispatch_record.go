@@ -991,6 +991,7 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 		}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
+	es.noteArgSites(seq, args)
 	if call.hostSplice {
 		es.hostSplices = append(es.hostSplices, seq)
 	}

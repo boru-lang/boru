@@ -266,7 +266,7 @@ func (es *EmitState) planCountRestarts(lw *lowerer, residual []core.Value) {
 	}
 	tree := rootTreeEvents(es.frames[0], false)
 	for seq, te := range tree {
-		if te.inLoop || !es.phantomConsumed[seq] {
+		if te.inLoop || !es.countSeat(seq) {
 			continue
 		}
 		tok, substs, ok := es.countPoint(tree, seq, es.rootBody)
@@ -332,7 +332,7 @@ func (es *EmitState) notePhantomConsumersIn(events []EmitEvent) {
 func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Value) (int, []substPlan, bool) {
 	ev := tree[seq].ev
 	c := &ev.call
-	if ev.kind != evCall || c.word != "do" || len(c.ops) != 1 || c.ops[0].kind != opClosure {
+	if ev.kind != evCall || c.word != "do" || len(c.ops) != 1 {
 		return 0, nil, false
 	}
 	tok := statementToken(body, c.pos)
@@ -345,7 +345,7 @@ func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Val
 		toks, _ = nestedToks(toks[at])
 	}
 	at := path[len(path)-1]
-	if at+1 >= len(toks) || !core.IsWord(toks[at]) || toks[at].Pos() != c.pos || !toks[at+1].Eval || toks[at+1].Quoted || !toks[at+1].Parent.Equal(core.TList) {
+	if at+1 >= len(toks) || !core.IsWord(toks[at]) || toks[at].Pos() != c.pos || !es.doBodyAfter(tree, seq, toks, at) {
 		return 0, nil, false
 	}
 	first := statementFirstSeq(tree, seq, body[tok].Pos())
@@ -361,6 +361,38 @@ func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Val
 		return 0, nil, false
 	}
 	return tok, append(substs, substPlan{path: path, span: 2, seq: seq, results: true}), true
+}
+
+// doBodyAfter reports whether the do at toks[at] took its body from the
+// token written right after it: a literal list, its closure (NUR222's caught
+// body), or a computed body — a read, a paren — whose one argument site
+// (argSites) is that token (`(do b) add 1`, NUR282's single seat).
+func (es *EmitState) doBodyAfter(tree map[int]treeEvent, seq int, toks []core.Value, at int) bool {
+	ev := tree[seq].ev
+	if ev.call.ops[0].kind == opClosure {
+		return toks[at+1].Eval && !toks[at+1].Quoted && toks[at+1].Parent.Equal(core.TList)
+	}
+	sites := es.argSites[seq]
+	if len(sites) != 1 {
+		return false
+	}
+	q := sites[0].pos
+	if te, in := tree[sites[0].seq]; sites[0].seq >= 0 && in {
+		q = eventPos(*te.ev)
+	} else if sites[0].seq >= 0 {
+		return false
+	}
+	return bodyTokenContaining(toks, q) == at+1
+}
+
+// countSeat reports whether event seq's call checks its run's count, so a
+// miss may take the do's count island: a caught body's phantom a call
+// consumes (NUR222), or a computed body's run a single-value seat takes
+// (eventFlags.dynBodyOne, or a region Finalize may still demote to one —
+// dynRegionCheckable; NUR282).
+func (es *EmitState) countSeat(seq int) bool {
+	fi := es.eventInfo[seq]
+	return es.phantomConsumed[seq] || fi.dynBodyOne || dynRegionCheckable(fi)
 }
 
 // restartSubsts plans the runs of tokens a statement island writes values in
@@ -781,7 +813,7 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 	// root's (planCountRestarts).
 	es.notePhantomConsumersIn(rec.frag.events)
 	for _, seq := range sortedSeqs(tree) {
-		if te := tree[seq]; te.inLoop || !es.phantomConsumed[seq] {
+		if te := tree[seq]; te.inLoop || !es.countSeat(seq) {
 			continue
 		}
 		tok, substs, ok := es.countPoint(tree, seq, rec.body)

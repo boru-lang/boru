@@ -149,3 +149,47 @@ func TestCountIsland(t *testing.T) {
 		t.Errorf("the count island continues at the stamped pc: %d", is.RetPC)
 	}
 }
+
+// TestDoBodyAfterAndCountSeat pins the count island's reach past a caught
+// body (NUR282's single seat): a do's body written right after it — its
+// literal list, or a computed body's one argument site — and the seats that
+// check a run's count.
+func TestDoBodyAfterAndCountSeat(t *testing.T) {
+	es := NewEmitState()
+	es.argSites = map[int][]argSite{}
+	toks := []core.Value{gtok(core.NewWord("do"), 1), gtok(core.NewWord("b"), 4), gtok(core.NewParenExpr([]core.Value{gtok(core.NewWord("mk"), 7)}), 6)}
+	computed := EmitEvent{kind: evCall, seq: 10, call: emitCall{word: "do", pos: gpos(1), ops: []EmitOperand{{kind: opLocal}}}}
+	mk := EmitEvent{kind: evCallUser, seq: 8, uc: emitUserCall{pos: gpos(7), nout: 1}}
+	tree := map[int]treeEvent{10: {ev: &computed}, 8: {ev: &mk}}
+	if es.doBodyAfter(tree, 10, toks, 0) {
+		t.Error("a computed body with no argument site is none the island can place")
+	}
+	es.argSites[10] = []argSite{{pos: gpos(4), seq: -1}}
+	if !es.doBodyAfter(tree, 10, toks, 0) {
+		t.Error("a read written right after the do is its body")
+	}
+	es.argSites[10] = []argSite{{pos: gpos(9), seq: 8}}
+	if es.doBodyAfter(tree, 10, toks, 0) {
+		t.Error("a paren past the token after the do is not its body")
+	}
+	es.argSites[10] = []argSite{{seq: 3}}
+	if es.doBodyAfter(tree, 10, toks, 0) {
+		t.Error("an event the tree does not hold places nothing")
+	}
+	es.argSites[10] = []argSite{{pos: gpos(4), seq: -1}, {pos: gpos(4), seq: -1}}
+	if es.doBodyAfter(tree, 10, toks, 0) {
+		t.Error("a do takes one body")
+	}
+	es.argSites[10] = []argSite{{seq: 8}}
+	if !es.doBodyAfter(tree, 10, []core.Value{toks[0], toks[2]}, 0) {
+		t.Error("a paren right after the do, by its event")
+	}
+	es.eventInfo[1] = eventFlags{dynBodyOne: true}
+	es.eventInfo[2] = eventFlags{dynBodyResult: true, variadicRegion: true, regionMayBeFn: true}
+	es.phantomConsumed = map[int]bool{3: true}
+	for seq, want := range map[int]bool{1: true, 2: true, 3: true, 4: false} {
+		if es.countSeat(seq) != want {
+			t.Errorf("seq %d: countSeat = %v", seq, !want)
+		}
+	}
+}
