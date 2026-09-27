@@ -1161,3 +1161,67 @@ func TestZZCoverFallbackPositionsForwardFirst(t *testing.T) {
 		t.Error("fallbackTokenCompatible: a raw word and an Any carrier are wildcards, a String against Number is not")
 	}
 }
+
+// TestZZCoverFallbackPositionsForwardCrossesGroupsAndMarkers: the forward
+// run walks exactly as the plain gatherer does (pinned for that walk by
+// TestZZCoverFallbackPositionsSkipNestedGroup) — a NESTED group after the
+// word is entered and left without its close stopping the run, and the
+// engine's tape markers (a mark, a frame's def-cleanup / return-check tail)
+// are stepped over rather than taken as operands — so a call whose written
+// arguments straddle a raw group or a marker is recovered over the same
+// tokens the interpreter's forward phase would reach.
+func TestZZCoverFallbackPositionsForwardCrossesGroupsAndMarkers(t *testing.T) {
+	three := &core.Signature{Args: []*core.Type{core.TNumber, core.TNumber, core.TNumber}, BarrierPos: core.BarrierAllForward}
+	// tape: [zzw ( 1 ) <mark> 2 <def-cleanup> <return-check> 3 4], pointer on zzw
+	e := engWithTape(t, []core.Value{
+		core.NewWord("zzw"),
+		core.NewOpenParen(), core.NewInteger(1), core.NewCloseParen(),
+		core.NewMark("zzm"),
+		core.NewInteger(2),
+		core.NewDefCleanup(core.DefCleanupInfo{SkipCleanup: true}),
+		core.NewReturnCheck(core.ReturnCheckInfo{FuncName: "zzf"}),
+		core.NewInteger(3), core.NewInteger(4),
+	}, 0)
+	pos, nStack := checkModeFallbackPositionsFor(e, three, core.WordInfo{Name: "zzw"})
+	if len(pos) != 3 || pos[0] != 2 || pos[1] != 5 || pos[2] != 8 || nStack != 0 {
+		t.Errorf("positions = %v nStack = %d, want [2 5 8] 0 (the group is crossed, the markers skipped, the fourth token left)", pos, nStack)
+	}
+	// A forward run that stops SHORT (a String the second position rejects)
+	// is a prefix of what the plain gatherer takes past the empty stack, so
+	// the shortfall fill skips the taken token and appends exactly the
+	// missing one — the window is n, never more.
+	two := &core.Signature{Args: []*core.Type{core.TNumber, core.TNumber}, BarrierPos: core.BarrierAllForward}
+	e = engWithTape(t, []core.Value{core.NewWord("zzw"), core.NewInteger(1), core.NewString("s"), core.NewInteger(9)}, 0)
+	pos, nStack = checkModeFallbackPositionsFor(e, two, core.WordInfo{Name: "zzw"})
+	if len(pos) != 2 || pos[0] != 1 || pos[1] != 2 || nStack != 0 {
+		t.Errorf("shortfall after a partial run: positions = %v nStack = %d, want [1 2] 0", pos, nStack)
+	}
+}
+
+// TestZZCoverWidestSatisfiableOverloadSkipsFallback: the dyn-body recovery's
+// window is the widest REAL overload whose operands exist at the site. The
+// aggregate's synthetic 0-arg catch-all (a boru-bodied overload beside the
+// natives brings one) must never be that window: its empty window is always
+// "satisfiable", so without the skip a site with no operands would recover
+// over the fallback instead of declining, and a site with some would still
+// land on a real overload only by width.
+func TestZZCoverWidestSatisfiableOverloadSkipsFallback(t *testing.T) {
+	fn := &core.FnDefInfo{Name: "zzw", Signatures: []core.Signature{
+		{Args: []*core.Type{core.TNumber, core.TNumber}, BarrierPos: core.BarrierAllForward},
+		{Args: []*core.Type{core.TNumber}, BarrierPos: core.BarrierAllForward},
+		{Fallback: true, BarrierPos: 0},
+	}}
+	w := core.WordInfo{Name: "zzw"}
+	// One written operand: the 2-arg window does not exist, the 1-arg one does.
+	e := engWithTape(t, []core.Value{core.NewWord("zzw"), core.NewInteger(7)}, 0)
+	sig, pos, nStack := widestSatisfiableOverload(e, fn, w)
+	if sig != &fn.Signatures[1] || len(pos) != 1 || pos[0] != 1 || nStack != 0 {
+		t.Errorf("one operand: got sig %p pos %v nStack %d, want the 1-arg overload over [1]", sig, pos, nStack)
+	}
+	// No operand at all: no real overload is satisfiable, and the fallback is
+	// not a candidate — nothing is chosen.
+	e = engWithTape(t, []core.Value{core.NewWord("zzw")}, 0)
+	if sig, pos, _ := widestSatisfiableOverload(e, fn, w); sig != nil || pos != nil {
+		t.Errorf("no operands: got sig %p pos %v, want none (the 0-arg fallback is never the window)", sig, pos)
+	}
+}

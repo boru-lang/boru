@@ -168,6 +168,19 @@ func (es *EmitState) carryBranchJoin(ev *EmitEvent, b core.BranchRecord, u *emit
 	// pre, and every other fn binding a `k` then had to lower a dyn-scope
 	// install it could not. The name is left unseated; its read after the
 	// merge declines exactly as before.
+	//
+	// The one pre binding with no compiled home whose read does NOT decline
+	// is a top-level SPLIT bind's (rootSplitBind): its reads resolve live,
+	// by name, through the registry, so an unseated join left the read
+	// looking up a binding the arm's def never reached — the def lowers to
+	// its registry install only when the name was committed to dynamic
+	// scope before the lowering, and a read that is only the program's
+	// residual commits it after (Finalize lowers the events first). `def x
+	// (for [1 4] [i])  if (g 9) [def x 9] [] end x` answered `2 3 1` for the
+	// interpreter's `2 3 9`, silently. Such a join is seated like any other,
+	// its seed the registry read of the name the split's own splice bind
+	// installed — the same frame's binding, in the one place it lives, and
+	// no dynamic-scope commitment is made for it.
 	var seed *EmitOperand
 	if j.HasPre && !j.Taken {
 		if len(es.units) > 1 && (u.enclosingBindIDs[j.Pre.ID] || u.enclosingIDs[j.Pre.ID]) {
@@ -175,8 +188,11 @@ func (es *EmitState) carryBranchJoin(ev *EmitEvent, b core.BranchRecord, u *emit
 		}
 		had := es.dynScopeNames[j.Name]
 		init, ok := es.resolveOperand(j.Pre)
-		if ok && (init.kind == opDynScope || init.kind == opDataScope) {
+		switch {
+		case ok && (init.kind == opDynScope || init.kind == opDataScope):
 			ok = false
+		case !ok && es.rootSplitBind(j.Name):
+			init, ok = dynScopeOperand(es.intern(core.NewString(j.Name))), true
 		}
 		if !ok {
 			if !had {
@@ -248,6 +264,16 @@ func (es *EmitState) carryBranchJoin(ev *EmitEvent, b core.BranchRecord, u *emit
 		}
 		es.storeHazard[slotKey{slot, fid}] = true
 	}
+}
+
+// rootSplitBind reports whether name is a top-level SPLIT bind — a def that
+// took the first value of a loop or static multi-value region
+// (SplitLoopRegionBind / SplitEventRegionBind): its binding has no compiled
+// home by construction, and a top-level read of the name resolves live
+// through the registry (dynScopeRescue's split arm), where the split's
+// splice bind installed it.
+func (es *EmitState) rootSplitBind(name string) bool {
+	return len(es.units) == 1 && es.loopSplitBinds[name]
 }
 
 // unitNameSlot is the frame slot unit u carries name in — a live armed loop's

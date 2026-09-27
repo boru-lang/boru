@@ -784,12 +784,14 @@ func checkModeFallbackPositionsFor(e *core.Engine, s *core.Signature, w core.Wor
 	if len(positions) < n {
 		// The stack is short: fill from the tokens after the forward run,
 		// exactly as the plain gatherer fills its shortfall (positions past
-		// the last taken forward token, the same walk).
+		// the last taken forward token, the same walk). The fill cannot
+		// overrun n: the plain gatherer takes the same stack run (nStack
+		// indices, all the stack holds) and then at most n-nStack tokens of
+		// the SAME walk, of which the forward run is a prefix — this walk only
+		// adds the compatibility stop — so skipping the taken tokens appends
+		// at most what is missing, never more.
 		rest := checkModeFallbackPositions(e, n)
 		for _, p := range rest[nStack:] {
-			if len(positions) >= n {
-				break
-			}
 			taken := false
 			for _, q := range forward {
 				if q == p {
@@ -1661,10 +1663,9 @@ func soleSigParamsNominal(sig *core.Signature, fn *core.FnDefInfo) bool {
 		// census row); it keeps the decline.
 		return false
 	}
+	// HasConstraintUnify is nil-safe (an absent type carries no constraint),
+	// so every position is asked directly.
 	for _, t := range sig.ArgTypes() {
-		if t == nil {
-			continue
-		}
 		if core.HasConstraintUnify(t) {
 			return false
 		}

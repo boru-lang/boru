@@ -24,6 +24,17 @@ func tryFoldScalarConst(r *core.Registry, sig *core.Signature, args []core.Value
 		sig.DispatchHandler() == nil || len(sig.NoEvalArgs) > 0 || len(args) == 0 {
 		return core.Value{}, false
 	}
+	// The handler runs on args in sig order, one per declared param. A window
+	// of another length never reaches a real dispatch — the check pass's
+	// no-match recovery (checkModeAssumeSig) records its best-fit overload
+	// over the args the real match REJECTED, which can be fewer than the sig
+	// declares (`n div 0 gt 0` inside a fn body assumed `gt`'s two-slot
+	// DepScalar constructor over a one-value window) — and the handler indexes
+	// its params unguarded: the fold panicked with an index out of range, out
+	// of RunPendingFnBodyChecks and through RunCompiled to the caller.
+	if len(args) != sig.TotalArgs() {
+		return core.Value{}, false
+	}
 	for _, a := range args {
 		if !check.ScalarFoldOperand(a) {
 			return core.Value{}, false

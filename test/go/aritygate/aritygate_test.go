@@ -272,7 +272,16 @@ var pinnedAritySites = map[string]int{
 	//    Lower stakes than §1 (compile-coverage conservatism, not an answer
 	//    change — the lane falls back and the results agree), but the same
 	//    shape.
-	"compiler/go/compiler_dispatch_record.go": 2,
+	//    2 -> 3 (2026-09-27, NUR225) is NOT a third divergence:
+	//    tryFoldScalarConst's `len(args) != sig.TotalArgs()` refuses to CALL a
+	//    handler over a window that is not its declared positions (the
+	//    no-match recovery handed it gt's two-slot constructor over one value,
+	//    and the handler's unguarded read panicked out of RunCompiled). That
+	//    is the argument rule's own contract — a handler reads the params it
+	//    declares — and a sig of any arity takes the same path; only the fold
+	//    is skipped, the dispatch records as it would. The two NUR100 §2 sites
+	//    are unchanged.
+	"compiler/go/compiler_dispatch_record.go": 3,
 
 	// ── Compiler: recording and lowering against declared signatures.
 	// 3 -> 4: the `apply` word's two overloads differ in arity — [Function]

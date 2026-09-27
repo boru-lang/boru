@@ -194,6 +194,7 @@ func TestS6aTryFoldScalarConstNondeterministicDeclines(t *testing.T) {
 	sig := statefulSig(core.CompileScalarFold, func(n int) []core.Value {
 		return []core.Value{core.NewInteger(int64(n))}
 	})
+	sig.Args = []*core.Type{core.TAny} // one declared param for the one arg the fold is handed
 	if _, ok := tryFoldScalarConst(r, sig, []core.Value{core.NewInteger(1)}); ok {
 		t.Error("a nondeterministic handler must not const-fold")
 	}
@@ -204,6 +205,7 @@ func TestS6aTryFoldScalarConstNonInertResultDeclines(t *testing.T) {
 	sig := statefulSig(core.CompileScalarFold, func(int) []core.Value {
 		return []core.Value{core.NewTypeLiteral(core.TInteger)} // bare type node: not inert
 	})
+	sig.Args = []*core.Type{core.TAny} // one declared param for the one arg the fold is handed
 	if _, ok := tryFoldScalarConst(r, sig, []core.Value{core.NewInteger(1)}); ok {
 		t.Error("a non-inert-const result must not fold")
 	}
@@ -211,12 +213,43 @@ func TestS6aTryFoldScalarConstNonInertResultDeclines(t *testing.T) {
 	sig2 := statefulSig(core.CompileScalarFold, func(int) []core.Value {
 		return []core.Value{core.NewInteger(7)}
 	})
+	sig2.Args = []*core.Type{core.TAny} // one declared param for the one arg the fold is handed
 	folded, ok := tryFoldScalarConst(r, sig2, []core.Value{core.NewInteger(1)})
 	if !ok {
 		t.Fatal("deterministic inert const should fold")
 	}
 	if n, err := core.AsInteger(folded); err != nil || n != 7 {
 		t.Errorf("folded = %v, want 7", folded)
+	}
+}
+
+// TestTryFoldScalarConstArityMismatchDeclines pins the fold's arity guard:
+// the check pass's no-match recovery records its best-fit overload over the
+// args the real match rejected, which can be fewer than the sig declares
+// (`n div 0 gt 0` in a fn body assumed gt's two-slot DepScalar constructor
+// over one value). The handler indexes its params unguarded, so the fold must
+// decline before calling it — it panicked through RunCompiled before.
+func TestTryFoldScalarConstArityMismatchDeclines(t *testing.T) {
+	r := newTestRegistry(t)
+	called := false
+	sig := &core.Signature{
+		Args:          []*core.Type{core.TScalar, core.TScalar},
+		CompileEffect: core.CompileScalarFold,
+		Impl: core.Go(func(a []core.Value, _ map[string]core.Value, _ []core.Value, _ *core.Registry) ([]core.Value, error) {
+			called = true
+			return []core.Value{a[1]}, nil // indexes the second slot, as the DepScalar constructor does
+		}),
+	}
+	if _, ok := tryFoldScalarConst(r, sig, []core.Value{core.NewInteger(1)}); ok || called {
+		t.Errorf("a one-value window over a two-param sig must decline without calling the handler (ok=%v called=%v)", ok, called)
+	}
+	if _, ok := tryFoldScalarConst(r, sig, []core.Value{core.NewInteger(1), core.NewInteger(2), core.NewInteger(3)}); ok || called {
+		t.Errorf("a window wider than the sig must decline too (ok=%v called=%v)", ok, called)
+	}
+	if v, ok := tryFoldScalarConst(r, sig, []core.Value{core.NewInteger(1), core.NewInteger(2)}); !ok || !called {
+		t.Fatalf("a window of the sig's arity folds: ok=%v called=%v", ok, called)
+	} else if n, err := core.AsInteger(v); err != nil || n != 2 {
+		t.Errorf("folded = %v, want 2", v)
 	}
 }
 
