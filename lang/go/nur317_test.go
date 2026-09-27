@@ -61,6 +61,9 @@ func TestNUR317DoReStepsItsResults(t *testing.T) {
 		{`def c false do [if c [g/v] [0] 5]`, "[0 5]"},
 		{`def c true do [if c [l/v] [0] 5 6]`, "[6 6]"},
 		{`def c true (do [if c [g/v] [0] 5])`, "[7 5]"},
+		// A nested do, and a do under an error handler (both silent before).
+		{`def c true do [do [if c [g/v] [0] 5]]`, "[7 5]"},
+		{`def c true do [if c [g/v] [0] 5] error [drop 9]`, "[7 5]"},
 		// A fn that takes nothing fires over nothing, whatever lies around it.
 		{`def c true 1 do [if c [g/v] [0] 5]`, "[1 7 5]"},
 		{`def c true do [if c [g/v] [0] 5] add 1`, "[7 6]"},
@@ -72,6 +75,20 @@ func TestNUR317DoReStepsItsResults(t *testing.T) {
 		// lone union the closure's own landing re-steps.
 		{`def c true def h fn [[][Integer Integer][do [if c [g/v] [0] 5]]] end h`, "[7 5]"},
 		{`def h fn [[c:Boolean][Any][do [if c [g/v] [0]]]] end h true`, "[7]"},
+		// An undecided condition's union, which nothing else re-steps: in
+		// a fn unit whose residual applies nothing, and at the program when
+		// its residual resolves to no apply.
+		{`def h fn [[c:Boolean][Integer][do [if c [l/v] [0] 5]]] end h true`, "[6]"},
+		{`def h fn [[c:Boolean][Integer][do [if c [l/v] [0] 5]]] end h false`, "ERROR:got 2 — [0 5]"},
+		{`def h fn [[c:Boolean][Any][do [if c [g/v] [0] 5]]] end h true`, "ERROR:got 2 — [7 5]"},
+		{`def h fn [[c:Boolean][Any][(do [if c [g/v] [0] 5])]] end h true`, "ERROR:got 2 — [7 5]"},
+		{`def m {c: true} def c m.c do [if c [g/v] [0] 5]`, "[7 5]"},
+		{`def m {c: true} def c m.c do [if c [l/v] [0] 5]`, "[6]"},
+		{`def m {c: false} def c m.c do [if c [g/v] [0] 5]`, "[0 5]"},
+		{`def m {c: true} def c m.c do [if c [g/v] [0] 5] add 1`, "[7 6]"},
+		// A residual's own apply of the union keeps it: no second re-step.
+		{`def m {c: true} def c m.c do [if c [l/v] [0]] 5`, "[6]"},
+		{`def h fn [[c:Boolean][Any][do [if c [l/v] [0]] 5]] end h true`, "[6]"},
 	} {
 		agreeOnBothLanes(t, nur312Pre+c.src, c.want)
 	}
@@ -81,6 +98,7 @@ func TestNUR317DoReStepsItsResults(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
 		{`def c true do [if c [l/v] [0] 5] add 1`, "[7]"},
 		{`def c true 1 do [if c [l/v] [0] 5]`, "[1 6]"},
+		{`def h fn [[c:Boolean][Integer][do [if c [l/v] [0] 5] add 1]] end h true`, "[7]"},
 	} {
 		requireLoudDefer(t, nur312Pre+c.src, "re-steps where the `do` stood", c.want)
 	}

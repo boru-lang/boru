@@ -193,6 +193,14 @@ type eventFlags struct {
 	// none of the modelled outputs shows, so nothing recorded after the call
 	// applies it. The call's SigRef carries SigRef.ReStep.
 	reStepResults bool
+	// unionReStep marks a `do` call whose compiled body may leave a fn value
+	// where the modelled outputs hold only a union with a Function
+	// alternative for it — a fn body's `do` over an undecided condition
+	// (NUR317). A union's landing records no apply, but a unit's or the
+	// program's residual apply may take it, so the lowering flags the call
+	// (SigRef.ReStep) only in a fn unit whose residual applies nothing
+	// (lowerer.reStepsResults).
+	unionReStep bool
 	// outsMayBeFn marks a dyn-body call a modelled output of which may be a
 	// fn value at run time (valueMayBeFn): a region seated beneath its
 	// prefix (planRegionPrefix) re-steps such a run, which nothing else does
@@ -16741,6 +16749,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// shapes the static residual cannot reproduce. dynOp is emitted after the
 	// residual is laid out below.
 	residual, dynOp, dynReason := es.resolveDynamicApply(lw, residual)
+	lw.flagRootUnionReSteps(dynOp)
 	if dynReason != "" {
 		return nil, dynReason, false
 	}
@@ -16888,7 +16897,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		}
 		cf.KeepsDefs = rec.keepsDefs
 		seatSpecGuards(&cf, rec)
-		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, callWindows: &cf.CallWindows, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs}
+		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, callWindows: &cf.CallWindows, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs, rec: rec}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).

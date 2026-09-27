@@ -9,6 +9,31 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR317 closed: an undecided condition's union takes the re-step (2026-09-27)
+
+The second half's re-step left one form silent. Over an undecided condition
+the pass keeps the join's union carrier in the `do`'s outputs, and nothing
+re-stepped it: `h true` over `[[c:Boolean][Integer][do [if c [l/v] [0] 5]]]`
+raised the frame's count error over `fn l 5` for the interpreter's 6, and
+`def c m.c do [if c [g/v] [0] 5]` over a map member was `fn g 5`.
+
+- **A candidate, not a flag.** The program may take a union output itself,
+  through a residual's runtime-conditional apply (`do [if c [l/v] [0]] 5`
+  lowers `CALL_DYNAMIC /1`) or a guarded landing after the call (`do [if c
+  [l/v] [0]]`). So a union output makes the call a candidate
+  (`eventFlags.unionReStep`), and the lowering decides.
+- **In a fn unit** whose residual takes no apply of its own (no body-tail
+  apply, frame replay or `apply` chain), the call takes `SigRef.ReStep`.
+- **At the program** the residual's apply is resolved only after the
+  events lower. The call takes its own SigRef, and `flagRootUnionReSteps`
+  flags it once the residual resolves to no apply.
+- **A noted landing** after the call (`landingAfter`) keeps every re-step
+  flag off: the landing re-steps the one value itself. The first cut missed
+  this and deferred `def c true do [if c [l/v] [0]]`, one of NUR317's
+  closed-half rows.
+- **Pins.** The union rows of `TestNUR317DoReStepsItsResults`; compiler
+  `TestUnionReStepCandidates`.
+
 ## A `do`'s results re-stepped where it stood: NUR317's second half (2026-09-27)
 
 The interpreter's `do` hands its body's whole residual back to the step

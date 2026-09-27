@@ -903,6 +903,12 @@ type lowerer struct {
 	// consuming half — planRegionPrefix armed it and put an OpStackMark in
 	// markBefore). 0 = not armed. Read once, by seatRegionPrefix.
 	regionPrefixSeq int
+	// rootUnionSigs are the program's union candidates' own SigRefs and the
+	// counts their re-steps must keep (rootUnionCandidate).
+	rootUnionSigs []rootUnionSig
+	// rec is the fn unit this lowerer drives (nil for the program's own):
+	// reStepsResults reads whether its residual takes an apply of its own.
+	rec *fnUnitRec
 	// regionPrefixSig is one past the index in Program.Sigs of the region's
 	// own call SigRef, when its run may hold a fn value
 	// (regionReStepCandidate); seatRegionPrefix flags it. 0 = none.
@@ -3955,9 +3961,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		lw.emitCountedSig(SigRef{Word: c.word, Sig: c.sig, CountCheck: true, CountClaim: c.nout}, ev.seq, c.pos)
 	} else if ref, own := lw.siteSigRef(ev.seq, c, dynOne, plainChk); own {
 		lw.emitCountedSig(ref, ev.seq, c.pos)
-		if lw.regionReStepCandidate(ev.seq) {
-			lw.regionPrefixSig = len(lw.p.Sigs)
-		}
+		lw.noteReStepCandidate(ev.seq, c.nout)
 	} else {
 		si, ok := lw.sigIdx[c.sig]
 		if !ok {
@@ -3994,6 +3998,12 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	return lw.seatCallResults(ev, c)
 }
 
+// rootUnionSig is one program-level union candidate's SigRef index and the
+// count its re-step must keep (lowerer.rootUnionSigs).
+type rootUnionSig struct {
+	sig, out int
+}
+
 // siteSigRef is the call's OWN SigRef, when it needs one (own): a hosted
 // splice (a computed `for` body) is never shared with a plain call of the
 // same signature — the flag is the call site's, and the VM runs the
@@ -4004,7 +4014,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 // (regionReStepCandidate) take their own for the same reason.
 func (lw *lowerer) siteSigRef(seq int, c *emitCall, dynOne, plainChk bool) (SigRef, bool) {
 	reStep := lw.reStepsResults(seq)
-	if !c.hostSplice && !dynOne && !plainChk && c.nativeSplit == nil && !reStep && !lw.regionReStepCandidate(seq) {
+	if !c.hostSplice && !dynOne && !plainChk && c.nativeSplit == nil && !reStep && !lw.regionReStepCandidate(seq) && !lw.rootUnionCandidate(seq) {
 		return SigRef{}, false
 	}
 	ref := SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit}
@@ -4016,9 +4026,64 @@ func (lw *lowerer) siteSigRef(seq int, c *emitCall, dynOne, plainChk bool) (SigR
 
 // reStepsResults reports whether the call seq's results take the step
 // loop's re-step at the call (SigRef.ReStep, NUR317): a `do` whose model had
-// stepped them already (eventFlags.reStepResults).
+// stepped them already (eventFlags.reStepResults), or whose modelled union
+// nothing re-steps — in a fn unit whose residual takes no apply of its own
+// (a body-tail apply, a frame replay, an `apply` chain), so the union reaches
+// the RET as the data the model left (eventFlags.unionReStep). The program's
+// residual apply is resolved only after its events lower, so a root union
+// takes no flag.
 func (lw *lowerer) reStepsResults(seq int) bool {
-	return lw.es != nil && lw.es.eventInfo[seq].reStepResults
+	if lw.es == nil || lw.landingNoted(seq) {
+		return false
+	}
+	f := lw.es.eventInfo[seq]
+	return f.reStepResults || (f.unionReStep && lw.rec != nil && lw.rec.rebuildableResidual() && len(lw.rec.applyChain) == 0)
+}
+
+// landingNoted reports whether the call seq's result takes a guarded
+// landing after it (EmitState.landingAfter, emitLandingAfter): the landing
+// re-steps the one value itself (`do [if c [l/v] [0]]` lands its union), so
+// the call takes no re-step of its own.
+func (lw *lowerer) landingNoted(seq int) bool {
+	_, noted := lw.es.landingAfter[seq]
+	return noted
+}
+
+// noteReStepCandidate remembers the call seq's own SigRef, just emitted, for
+// the decision the residual's lowering makes: the region's prefix seat
+// (regionPrefixSig) and the program residual's apply (rootUnionSigs).
+func (lw *lowerer) noteReStepCandidate(seq, nout int) {
+	if lw.regionReStepCandidate(seq) {
+		lw.regionPrefixSig = len(lw.p.Sigs)
+	}
+	if lw.rootUnionCandidate(seq) {
+		lw.rootUnionSigs = append(lw.rootUnionSigs, rootUnionSig{sig: len(lw.p.Sigs) - 1, out: lw.reStepOut(seq, nout)})
+	}
+}
+
+// rootUnionCandidate reports whether the call seq is a program-level `do`
+// whose modelled union may hold the fn its compiled body leaves
+// (eventFlags.unionReStep): the program residual's apply may take the union
+// (`do [if c [l/v] [0]] 5` applies it over the 5), and it is resolved only
+// after the events lower, so the call takes its own SigRef here and
+// flagRootUnionReSteps decides.
+func (lw *lowerer) rootUnionCandidate(seq int) bool {
+	return lw.es != nil && lw.rec == nil && lw.es.eventInfo[seq].unionReStep && !lw.landingNoted(seq)
+}
+
+// flagRootUnionReSteps flags the program's union candidates for the step
+// loop's re-step at their calls (SigRef.ReStep, NUR317) when the residual
+// takes no apply of its own (dynOp 0): nothing else re-steps the union, which
+// the interpreter's `do` re-stepped where it stood — `def c m.c do [if c
+// [g/v] [0] 5]` over a map member was `fn g 5` for `7 5`.
+func (lw *lowerer) flagRootUnionReSteps(dynOp Opcode) {
+	if dynOp != 0 {
+		return
+	}
+	for _, u := range lw.rootUnionSigs {
+		s := &lw.p.Sigs[u.sig]
+		s.ReStep, s.ReStepOut = true, u.out
+	}
 }
 
 // regionReStepCandidate reports whether the call seq is a run the region

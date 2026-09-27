@@ -239,7 +239,7 @@ keep the two in sync in the same commit.
 | [NUR314](#nur314) | FIXED 2026-09-27 (an isolated loop re-steps its results; elsewhere a designed defer — the handoff log's entry of that date): a loop's fn-valued results, which the loop's end re-steps, stayed data — `for 2 [(mkf)]` answered `[fn g fn g]` for [7 7], `for 1 [(mka)] 5` `[fn 5]` for [6]; present on main |
 | [NUR315](#nur315) | FIXED 2026-09-27 (a flex container passed to a user fn loses its claims — the handoff log's entry of that date): a FlexList written through a fn parameter's alias kept the check pass's element join — `poke fl drop def j (fl get 0) j`, where poke sets a fn `h/v` at 0, answered `fn j` compiled for the interpreter's 42; present on main |
 | [NUR316](#nur316) | FIXED 2026-09-27 (a gradual element stays gradual — the handoff log's entry of that date): `each`'s result type dropped the gradual mark of its body's value, so a later body committed a direct op over an element the run may not hold — `[0] each [drop (fl get 0)]` then `each [add 1]` over a flex holding "s" answered [[1]] for [['s1']], and over a typed list's out-of-range read [[1]] for the interpreter's signature_error (now a loud defer); present on main |
-| [NUR317](#nur317) | PARTLY FIXED 2026-09-27 (an enclosing re-step undoes a branch's placement — the handoff log's entry of that date): an `if` body arm's placed fn value that a `do` or a two-survivor paren re-steps stayed data — `def c true do [if c [g/v] [0]]` answered `fn g` for 7, `(if c [g/v] [0] 5)` `fn g 5` for `7 5`, and a dyn body's parked lead (`do [if c [(mkf)] [0] 5]`) `fn g 5` too; present on main except the last, which NUR271's settled lead made silent. Its second half FIXED the same day (a `do`'s results re-stepped at the call, SigRef.ReStep): `do [if c [g/v] [0] 5]` is `7 5`, `do [if c [l/v] [0] 5]` 6 and `do [if c [g/v] [g/v]]` 7 on both lanes, and a value beneath the run no longer hides a dyn body's re-step (`1 do [if c [(mkf)] [0] 5]` was `1 fn g 5`). OPEN, silent: in a fn body over an undecided condition, the union the join models is re-stepped by nothing (`h true` over `[[c:Boolean][Integer][do [if c [l/v] [0] 5]]]` raises the frame's count error compiled for the interpreter's 6) |
+| [NUR317](#nur317) | FIXED 2026-09-27, in three steps (an enclosing re-step undoes a branch's placement; a `do`'s results re-stepped where it stood; an undecided condition's union — the handoff log's entries of that date): an `if` body arm's placed fn value that a `do` or a two-survivor paren re-steps stayed data — `def c true do [if c [g/v] [0]]` answered `fn g` for 7, `(if c [g/v] [0] 5)` `fn g 5` for `7 5`, and a dyn body's parked lead (`do [if c [(mkf)] [0] 5]`) `fn g 5` too; present on main except the last, which NUR271's settled lead made silent. Its second half FIXED the same day (a `do`'s results re-stepped at the call, SigRef.ReStep): `do [if c [g/v] [0] 5]` is `7 5`, `do [if c [l/v] [0] 5]` 6 and `do [if c [g/v] [g/v]]` 7 on both lanes, and a value beneath the run no longer hides a dyn body's re-step (`1 do [if c [(mkf)] [0] 5]` was `1 fn g 5`). The undecided condition's union, which nothing else re-stepped, takes the re-step too — in a fn unit whose residual applies nothing, and at the program once its residual resolves to no apply: `h true` over `[[c:Boolean][Integer][do [if c [l/v] [0] 5]]]` is 6, `def c m.c do [if c [g/v] [0] 5]` `7 5` |
 | [NUR318](#nur318) | FIXED 2026-09-27 (a `/v` after a member read says data — the handoff log's entry of that date): a 0-arg member of a map read with `/v` fired — `def m {f: g/v} m.f/v` answered 7 for `fn g`, `m.f/v typeof` Integer for Function, ten forms in all; present on main. `5 m.f/v` and `m.f/v dup` decline, loud |
 | [NUR319](#nur319) | FIXED 2026-09-27 (a def read of a branch's union dispatches — the handoff log's entry of that date): a bare read of a def bound to a placed branch's join was data before a value — `def r (if c [g/v] [0]) r 5` answered `fn r 5` for `7 5`, `3 r 5` `3 fn r 5` for `3 7 5`; present on main. An arg-taking arm's read declines, loud |
 | [NUR320](#nur320) | FIXED 2026-09-26 (numbered NUR234 until the merge of main's #516, where main's NUR234 kept the number; the call carries the interpreter's window — the handoff log's entry of that date): a compiled user call's param-contract no-match reports the window the interpreter's failed dispatch reports — the written run, which a bare read ends, filled from the stack beneath. The original text: a compiled direct call's param-contract no-match reported every argument, where the interpreter reports its attempted window: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` noted "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Pre-existing | compiling NUR308's type half, 2026-09-26 |
@@ -14321,9 +14321,9 @@ the loud defer it always is for a no-match. Pinned by
 
 ## NUR317 — an enclosing re-step undoes a branch arm's placement {#nur317}
 
-**Status:** PARTLY FIXED 2026-09-27 (the handoff log's entries of that
-date); its second half FIXED the same day; one fn-body form stays open,
-silent · **Recorded:** 2026-09-27 · **Surfaced by:** probing
+**Status:** FIXED 2026-09-27 (the handoff log's entries of that date), in
+three steps: the placement undone, the `do`'s results re-stepped, and an
+undecided condition's union · **Recorded:** 2026-09-27 · **Surfaced by:** probing
 NUR313's placement rule under the words that re-step a value. Present on
 main, except the dyn-body form, which NUR271 made silent on the branch.
 
@@ -14403,16 +14403,21 @@ eng `TestDoReStep` / `TestTakesArgsAtPointer` and compiler
 `TestNoteClosureReStep`, `TestValueMayBeFn`, `TestBodyReStepNote`,
 `TestReStepsResults` and `TestDisassembleReStep`.
 
-**Open, silent.** In a fn body over an UNDECIDED condition the pass keeps
-the join's union carrier in the `do`'s outputs, and nothing re-steps it:
-`def h fn [[c:Boolean][Integer][do [if c [l/v] [0] 5]]] end h true` raises
-the frame's count error over `fn l 5` compiled for the interpreter's 6, and
-`[Any]` over `[do [if c [g/v] [0] 5]]` names `[fn g 5]` in the count error
-for `[7 5]`. A union output cannot take the re-step as the decided forms
-do: the program records a runtime-conditional apply over one in other
-layouts (`do [if c [l/v] [0]] 5` lowers `CALL_DYNAMIC /1` after the call),
-and the residual's apply is resolved only after the events are lowered, so
-the call's own lowering cannot tell the two apart.
+**The undecided condition's union — FIXED 2026-09-27.** Over an undecided
+condition the pass keeps the join's union carrier in the `do`'s outputs, and
+nothing re-stepped it: `def h fn [[c:Boolean][Integer][do [if c [l/v] [0]
+5]]] end h true` raised the frame's count error over `fn l 5` for the
+interpreter's 6, and `def c m.c do [if c [g/v] [0] 5]` over a map member was
+`fn g 5`. A union output may still be taken by the program itself — a
+residual's runtime-conditional apply (`do [if c [l/v] [0]] 5` lowers
+`CALL_DYNAMIC /1`) or a guarded landing after the call (`do [if c [l/v]
+[0]]`) — so such a call is a candidate (`eventFlags.unionReStep`) the
+lowering decides: in a fn unit whose residual takes no apply of its own
+(`rebuildableResidual`, no `apply` chain) it takes `SigRef.ReStep`, and at the
+program its own SigRef is flagged once the residual resolves to no apply
+(`flagRootUnionReSteps`). A call with a noted landing takes none
+(`landingNoted`). Pinned by the union rows of `TestNUR317DoReStepsItsResults`
+and compiler `TestUnionReStepCandidates`.
 
 ## NUR318 — a `/v` after a member read did not keep a 0-arg member as data {#nur318}
 

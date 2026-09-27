@@ -38,6 +38,16 @@ func TestNoteClosureReStep(t *testing.T) {
 			t.Errorf("%s: reStepResults = %v, want %v", c.why, got, c.want)
 		}
 	}
+	// A modelled union is only a candidate: a residual's apply may take it.
+	union := core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TFunction)})
+	union.Carrier = true
+	es.noteClosureReStep(resid, 0, []core.Value{union, core.NewInteger(5)}, 20)
+	if f := es.eventInfo[20]; !f.unionReStep || f.reStepResults {
+		t.Errorf("a union output is a candidate, got %+v", f)
+	}
+	if applyRecorded(union) || !applyRecorded(fn[0]) {
+		t.Error("the program records a fn value's apply itself, not a union's")
+	}
 }
 
 // TestValueMayBeFn pins the modelled-value test the re-step flag reads: a fn
@@ -112,6 +122,45 @@ func TestReStepsResults(t *testing.T) {
 	}
 	if got := lw.reStepOut(3, 2); got != -1 {
 		t.Errorf("a variadic result takes any count, got %d", got)
+	}
+}
+
+// TestUnionReStepCandidates pins where a modelled union takes the re-step:
+// in a fn unit whose residual takes no apply of its own, and at the program
+// once its residual has resolved to no apply (flagRootUnionReSteps).
+func TestUnionReStepCandidates(t *testing.T) {
+	es := NewEmitState()
+	es.eventInfo[1] = eventFlags{unionReStep: true}
+	unit := &lowerer{es: es, rec: &fnUnitRec{}}
+	if !unit.reStepsResults(1) || unit.rootUnionCandidate(1) {
+		t.Error("a fn unit whose residual applies nothing re-steps its union")
+	}
+	for why, rec := range map[string]*fnUnitRec{
+		"a body-tail apply": {dynTrailArity: 1},
+		"a frame replay":    {dynFrameW: 1},
+		"an apply chain":    {applyChain: []applyStep{{}}},
+	} {
+		if (&lowerer{es: es, rec: rec}).reStepsResults(1) {
+			t.Errorf("%s takes the union itself", why)
+		}
+	}
+	root := &lowerer{es: es, p: &Program{Sigs: []SigRef{{Word: "do"}}}}
+	if root.reStepsResults(1) || !root.rootUnionCandidate(1) {
+		t.Error("the program's union is a candidate its residual decides")
+	}
+	root.noteReStepCandidate(1, 2)
+	root.flagRootUnionReSteps(OpCallDynamic)
+	if root.p.Sigs[0].ReStep {
+		t.Error("a residual apply takes the union: no re-step")
+	}
+	root.flagRootUnionReSteps(0)
+	if s := root.p.Sigs[0]; !s.ReStep || s.ReStepOut != 2 {
+		t.Errorf("a residual with no apply flags the candidate, got %+v", s)
+	}
+	// A guarded landing after the call re-steps its one value itself.
+	es.landingAfter = map[int]core.SrcPos{1: {}}
+	if unit.reStepsResults(1) || root.rootUnionCandidate(1) {
+		t.Error("a landed call takes no re-step of its own")
 	}
 }
 

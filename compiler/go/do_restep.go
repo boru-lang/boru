@@ -21,19 +21,34 @@ import (
 // its results where nothing the program records does (NUR317): a `do` — its
 // native hands the body's whole residual back to the step loop — whose
 // compiled body may leave a fn value (fnUnitRec.mayReturnFn) while none of
-// the modelled outputs may be one: a modelled fn value, fn-typed or gradual
-// carrier, or union is one the program's own re-step records reach — a
-// landing, or a runtime-conditional apply (`do [if c [l/v] [0]] 5`).
+// the modelled outputs is one whose re-step the program records wherever it
+// lands (applyRecorded). Where an output is a union with a Function
+// alternative the call is only a candidate (unionReStep): a residual's
+// runtime-conditional apply may take the union (`do [if c [l/v] [0]] 5`),
+// which only the lowering knows.
 func (es *EmitState) noteClosureReStep(sig *core.Signature, unit int, outs []core.Value, seq int) {
 	if sig.Callable == nil || sig.Callable.BodyOut != core.BodyOutResidual || unit < 0 || unit >= len(es.fnRecs) || !es.fnRecs[unit].mayReturnFn {
 		return
 	}
-	if slices.ContainsFunc(outs, valueMayBeFn) {
+	if slices.ContainsFunc(outs, applyRecorded) {
 		return
 	}
 	f := es.eventInfo[seq]
-	f.reStepResults = true
+	if slices.ContainsFunc(outs, core.UnionMayBeFn) {
+		f.unionReStep = true
+	} else {
+		f.reStepResults = true
+	}
 	es.eventInfo[seq] = f
+}
+
+// applyRecorded reports whether the caller's re-step of a modelled output v
+// is one the program records itself wherever the value lands — a fn value, a
+// fn-typed carrier or a gradual value that may be one. A union with a
+// Function alternative is not: its landing records no apply, and only a
+// residual's apply may take it (eventFlags.unionReStep).
+func applyRecorded(v core.Value) bool {
+	return valueMayBeFn(v) && !core.UnionMayBeFn(v)
 }
 
 // valueMayBeFn reports whether a modelled value may be a fn at run time: a
