@@ -9,6 +9,29 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR300 found and closed: a computed error handler's run is a region (2026-09-27)
+
+Probing NUR282's owed handler count found it silent, on main and here. A
+computed error handler's run leaves 0-or-more values the interpreter splices
+and steps; the compiled lane marked the result with the shrinking variadic
+mark and seated it as one value. `[do [raise oops 'x'] error (mk)]` over a
+handler of `[drop 5 6]` answered `[5 [6]]` for `[[5 6]]`. A def's group
+bound the top value, a value beneath was seated above the run, a map
+literal took one value, and a handler's fn value stayed data.
+
+- **The fix.** `recordDynBodyCall` records a computed handler's run as a
+  variadic region, as it does a computed `do` body's
+  (`StripsUnconsumedInput` joins `BodyOutResidual` in the region test). A
+  residual seats the run whole, a single-value seat takes it under the
+  runtime count check, and a layout that cannot place it declines.
+- **What stays.** A run of one plain value answers as before, and so do a
+  loop's and a branch's arms and a fn's return-count error.
+- **Owed (loud).** `(do [raise oops 'x'] error (mk)) add 1` over two values
+  is `[5 7]` interpreted; the old lowering reached it by accident, and it
+  defers now. An `error` count island would compile it.
+- **Pins.** `lang/go/nur300_handler_run_test.go`: ten agreeing rows, seven
+  checked defers, and the value-beneath decline.
+
 ## NUR282's def-group seat compiles (2026-09-27)
 
 `def f fn [[b:List][Any][def ok (do b) ok]] end f (quote [5 6])` raises f's

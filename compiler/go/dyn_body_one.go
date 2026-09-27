@@ -37,9 +37,9 @@ package compiler
 // cannot (a value beneath the run, entries above it) the decline is the
 // NUR210 witnesses' own answer.
 
-// dynRegionCheckable reports whether fi is a computed `do` body's region
-// whose run may leave a callable — the one region demoteDynRegion may turn
-// into a runtime-checked single value.
+// dynRegionCheckable reports whether fi is a computed `do` body's region, or
+// a computed error handler's (NUR300), whose run may leave a callable — the
+// one region demoteDynRegion may turn into a runtime-checked single value.
 func dynRegionCheckable(fi eventFlags) bool {
 	return fi.dynBodyResult && fi.variadicRegion && fi.regionMayBeFn
 }

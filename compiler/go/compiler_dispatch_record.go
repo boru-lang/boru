@@ -917,10 +917,9 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// An error HANDLER (`error`, StripsUnconsumedInput) takes the dyn-body
 	// path only for a COMPUTED body (a List param, a fn's result — code-
 	// bodies.tsv L152): its run-time result count is the handler body's own
-	// (0 for `[drop]`, 1 for a pass-through), which the variadic mark does
-	// not yet fence at every consumer (a list literal's MAKE_LIST, a
-	// trailing apply), so a CONCRETE handler body the closure path declined
-	// keeps its decline (region_stack_read_test.go's two witnesses).
+	// (0 for `[drop]`, 1 for a pass-through), a region below (NUR300). A
+	// CONCRETE handler body the closure path declined keeps its decline
+	// (region_stack_read_test.go's two witnesses).
 	if sig.Callable.StripsUnconsumedInput && core.IsConcrete(body) {
 		return false
 	}
@@ -1031,7 +1030,10 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 			(!core.IsConcrete(body) || body.Dynamic || litRun)
 	}
 	// A COMPUTED whole-residual body (`do (mk)`, `do b`) leaves 0-or-MORE
-	// values where the check pass models one dynamic(Any) out: record the
+	// values where the check pass models one dynamic(Any) out, and so does a
+	// computed error handler's run (`error (mk)`, NUR300: the shrinking
+	// variadic mark alone let a list literal, a def's group and a value
+	// beneath seat two values as one, silently): record the
 	// run as a variadic REGION (NUR067's growing direction), so every rule a
 	// region obeys applies — a consumer of a fixed count declines, a value
 	// beneath it seats through the mark or declines, never after the run
@@ -1042,7 +1044,7 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// check pass models. A region that may leave a callable is demoted to a
 	// runtime-checked single value where a fixed seat consumes it
 	// (dyn_body_one.go), rather than declined.
-	if !fixedValueEval && sig.Callable != nil && sig.Callable.BodyOut == core.BodyOutResidual && (!core.IsConcrete(body) || litRun) && len(outs) == 1 {
+	if !fixedValueEval && sig.Callable != nil && (sig.Callable.BodyOut == core.BodyOutResidual || sig.Callable.StripsUnconsumedInput) && (!core.IsConcrete(body) || litRun) && len(outs) == 1 {
 		if n, plain := es.bodyPlainCount(body); !plain || n != 1 {
 			f.variadicRegion = true
 			f.regionMayBeFn = regionValsMayBeCallable(outs) && !plain && !es.bodyParksFnValues(body)
