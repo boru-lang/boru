@@ -175,11 +175,8 @@ func specResidualMeetsReturns(residual []core.Value, returns []*core.Type) bool 
 // value inside its param's type is refused only where its bound was wrong,
 // the exposure every compiled named call's contract check already carries.
 func specParamCallMayRefuse(params []core.FnParam, args []core.Value) bool {
-	for i, a := range args {
-		if i >= len(params) {
-			return true
-		}
-		p := params[i]
+	for i := range min(len(params), len(args)) {
+		a, p := args[i], params[i]
 		if p.Pattern != nil || a.Parent == nil || (p.Type != nil && !a.Parent.ConformsTo(p.Type)) {
 			return true
 		}

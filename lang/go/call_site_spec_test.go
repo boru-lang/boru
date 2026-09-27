@@ -134,6 +134,8 @@ func TestCallSiteSpecialisationParity(t *testing.T) {
 		`def h fn [[g:Function][Any][g]] end  h ([] => [42])`,
 		// A /v read of the param is the fn as data.
 		`def h fn [[g:Function][Any][g/v]] end  h ([] => [42])`,
+		// The specialised param second: the placement finds it past `n`.
+		specInc + `def h fn [[n:Integer g:Function][Integer][0 fold [drop g] (range 0 n)]] end  h 20 inc/v`,
 		// Recursion passing the param along reuses the in-flight unit.
 		specInc + `def h fn [[g:Function n:Integer][Integer][if (n lte 0) [0] [h g/v (n sub 1)]]] end  h inc/v 3`,
 		// The fn raises inside the specialised body.
