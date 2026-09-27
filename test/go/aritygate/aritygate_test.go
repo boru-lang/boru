@@ -175,6 +175,12 @@ var pinnedAritySites = map[string]int{
 	// matcher's own ArgCount filter. A failed guard re-matches exactly as
 	// before; no function behaves differently by its count.
 	"compiler/go/poly_seed.go": 2,
+	// The seed's revalidation against the LIVE aggregate (2026-09-27, Codex
+	// review of #517) finds the live overload standing for the seed among
+	// the window's-arity overloads (`sigs[i].TotalArgs() != len(window)`) —
+	// MatchSignature's own ArgCount filter, the argument rule. A seed that
+	// does not validate takes the same full match every arity takes.
+	"eng/go/vm_poly_seed.go": 1,
 	// 10 -> 11: nameFrameFns bounds its loop by `i < fn.NParams` to visit the
 	// NAMED PARAM slots of a frame — which slots are params, so a fn value
 	// bound for one takes the binding's name as the interpreter's frame
