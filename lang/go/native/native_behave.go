@@ -310,7 +310,9 @@ func behaveReturns(args []Value, r *Registry) []Value {
 	// Every slot's fn runs where a value of the target is handled, so a
 	// frame that handles one reaches it: the dynamic-scope rescue asks the
 	// call graph about it (NUR257).
-	r.Check.NoteBehaveReader(target, fnVal.Data.(core.FnDefInfo))
+	if fd, isFn := fnVal.Data.(core.FnDefInfo); isFn {
+		r.Check.NoteBehaveReader(target, fd)
+	}
 	if name == "make" && IsConcrete(args[1]) {
 		r.Check.NoteBehaveMaker(target)
 	}
