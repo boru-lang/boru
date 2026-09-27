@@ -1485,6 +1485,9 @@ type DynMethodSpec struct {
 	// Substs are the parens the island writes the compiled code's values in
 	// place of (RestartSubst).
 	Substs []RestartSubst
+	// FirstIter is the loops' first-iteration check the island takes at run
+	// time (RestartFirst); empty outside loops.
+	FirstIter []RestartFirst
 }
 
 // Program is a compiled unit: code, interned constants, the signature
@@ -1694,6 +1697,13 @@ type DynFrameWord struct {
 type LandingWord struct {
 	Name string
 	Pos  core.SrcPos
+	// ValPos is where the landed value stands on the interpreter's tape when
+	// the compiled value carries no token of its own: the position the
+	// recording pass saw it at (a read's own token — `do [l.0]` lands at the
+	// `l.0`), else the call whose result it is (a `do` lands its body's
+	// lambda at the `do`) — NUR289's caret. Zero for a branch's merge
+	// landing, whose raise stays at the word.
+	ValPos core.SrcPos
 	// Deopt marks a landing whose walk may meet a `/q` slot CAPTURING the
 	// word (NUR190): the interpreter's re-step takes the word as an atom and
 	// never runs it, where the compiled code calls it and the residual arm
@@ -1754,6 +1764,9 @@ type LandingWord struct {
 	// Substs are the parens the island writes the compiled code's values in
 	// place of (RestartSubst).
 	Substs []RestartSubst
+	// FirstIter is the loops' first-iteration check the island takes at run
+	// time (RestartFirst); empty outside loops.
+	FirstIter []RestartFirst
 }
 
 // StmtIsland is a guard's statement island (SigRef.Restart): Island is the
@@ -1770,6 +1783,17 @@ type StmtIsland struct {
 	Root      bool
 	PrefixSrc []RestartSrc
 	Substs    []RestartSubst
+	FirstIter []RestartFirst
+}
+
+// RestartFirst is one loop's first-iteration check a statement island takes
+// at run time (compiler's firstIterGuard): the island runs the loop from its
+// start, so it may take the statement over only while the loop's index slot
+// Slot still holds the loop's start Val — no earlier iteration ran what it
+// runs again.
+type RestartFirst struct {
+	Slot int
+	Val  int64
 }
 
 // RestartSubst is one paren a statement island writes a value in place of

@@ -824,9 +824,10 @@ type lowerer struct {
 	// op's pc (seatLandingWord): the residual apply reads it to tell that
 	// its fn operand IS the landed value (sealLandingSkip).
 	landingSeq map[int]int
-	// rootBeneathLandings are the root landing ops, {pc, landed event seq},
-	// whose own step had values beneath (noteRootBeneathLanding): Finalize
-	// guards the ones no apply re-steps (guardRootLandings, NUR286).
+	// rootBeneathLandings are the body's own-depth landing ops, {pc, landed
+	// event seq}, whose own step had values beneath (noteRootBeneathLanding):
+	// Finalize guards the ones no apply re-steps (guardRootLandings, and
+	// guardUnitLandings in a fn unit, NUR286).
 	rootBeneathLandings [][2]int
 	// storeNames is the emission target's def-name table for promoted
 	// stores of produced fn values (Program.StoreNames / CompiledFn.StoreNames),
@@ -1231,17 +1232,23 @@ func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) {
 	if c.nout != 1 {
 		return
 	}
-	lw.seatLandingWord(lw.es.landingWordAt(ev.seq), ev.seq)
+	w := lw.es.landingWordAt(ev.seq)
+	w.ValPos = lw.es.landingValPos[ev.seq]
+	if w.ValPos.Row == 0 {
+		w.ValPos = c.pos
+	}
+	lw.seatLandingWord(w, ev.seq)
 	lw.noteRootBeneathLanding(lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos), ev.seq)
 }
 
-// noteRootBeneathLanding records the landing op at pc when it lands a ROOT
-// event's value whose own step had values beneath it (landingOwn):
-// once the residual's apply is known, guardRootLandings decides whether it
-// owes LandingBeneathGuard (NUR286). A landing inside a fragment or a unit
-// keeps today's arms.
+// noteRootBeneathLanding records the landing op at pc when it lands an event's
+// value at the body's own depth — the program's root or a fn unit's — whose
+// own step had values beneath it (landingOwn): once the residual's apply is
+// known, guardRootLandings (guardUnitLandings in a unit) decides whether it
+// owes LandingBeneathGuard (NUR286). A landing inside a fragment keeps
+// today's arms.
 func (lw *lowerer) noteRootBeneathLanding(pc, seq int) {
-	if lw.landingRoot && lw.depth == 0 && lw.es.landingOwn[seq].beneath {
+	if (lw.landingRoot || lw.isFnUnit) && lw.depth == 0 && lw.es.landingOwn[seq].beneath {
 		lw.rootBeneathLandings = append(lw.rootBeneathLandings, [2]int{pc, seq})
 	}
 }
@@ -1261,7 +1268,7 @@ func (lw *lowerer) seatLandingWord(w LandingWord, seq int) {
 		w.Deopt, w.Root, w.Opens, w.Island, w.RetPC = true, lw.landingRoot, opens, island, -1
 	} else if r := lw.restartAt(seq); r != nil {
 		if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}); ok {
-			w.Restart, w.Root, w.Depth, w.Island, w.RetPC, w.PrefixSrc, w.Substs = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs
+			w.Restart, w.Root, w.Depth, w.Island, w.RetPC, w.PrefixSrc, w.Substs, w.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
 		}
 	}
 	if !w.Deopt && lw.es.landingWalkArmed(seq) {
@@ -3764,7 +3771,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		spec := *c.dynMethod
 		if r := lw.restartAt(ev.seq); r != nil {
 			if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}); ok {
-				spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc, spec.Substs = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs
+				spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc, spec.Substs, spec.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
 				lw.restartMethods = append(lw.restartMethods, di)
 			}
 		}
@@ -4956,7 +4963,7 @@ func (lw *lowerer) emitGuardCallAt(word string, guard *core.Signature, pos core.
 		return
 	}
 	lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: word, Sig: guard, Restart: &StmtIsland{
-		Island: lw.landingBody[r.token:], Depth: r.depth, RetPC: -1, Root: lw.landingRoot, PrefixSrc: r.srcs, Substs: substs,
+		Island: lw.landingBody[r.token:], Depth: r.depth, RetPC: -1, Root: lw.landingRoot, PrefixSrc: r.srcs, Substs: substs, FirstIter: r.first,
 	}})
 	lw.restartSigs = append(lw.restartSigs, len(lw.p.Sigs)-1)
 	lw.emit(OpCallNative, len(lw.p.Sigs)-1, pos)

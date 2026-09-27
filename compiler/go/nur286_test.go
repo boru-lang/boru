@@ -41,12 +41,44 @@ func TestNoteRootBeneathLanding(t *testing.T) {
 	lw.depth, lw.landingRoot = 0, false
 	lw.noteRootBeneathLanding(7, 3)
 	if len(lw.rootBeneathLandings) != 0 {
-		t.Error("a fragment's or a unit's landing keeps today's arms")
+		t.Error("a fragment's landing keeps today's arms")
 	}
 	lw.landingRoot = true
 	lw.noteRootBeneathLanding(7, 3)
 	if len(lw.rootBeneathLandings) != 1 || lw.rootBeneathLandings[0] != [2]int{7, 3} {
 		t.Errorf("a root landing over its own values is recorded: %v", lw.rootBeneathLandings)
+	}
+	unit := &lowerer{es: es, isFnUnit: true}
+	unit.noteRootBeneathLanding(8, 3)
+	if len(unit.rootBeneathLandings) != 1 {
+		t.Errorf("a fn unit's own-depth landing over its own values is recorded: %v", unit.rootBeneathLandings)
+	}
+}
+
+// TestGuardUnitLandings pins the fn unit's twin of the root guard (NUR286's
+// fn-body form): a landing over the unit's own values is guarded unless an
+// event applies the value, the unit's whole-frame replay re-steps it (by the
+// event, or by the slot it was promoted to), or the unit carries a tail apply
+// of its own, which keeps today's arms.
+func TestGuardUnitLandings(t *testing.T) {
+	es := NewEmitState()
+	es.landingOwn = map[int]landingStep{3: {beneath: true, id: "a"}, 4: {beneath: true, id: "b"}, 5: {beneath: true, id: "c"}}
+	code := []Instr{{Op: OpReStepLanding}, {Op: OpReStepLanding}, {Op: OpReStepLanding}}
+	flw := &lowerer{es: es, isFnUnit: true, code: &code, promoted: map[int]int{4: 2},
+		rootBeneathLandings: [][2]int{{0, 3}, {1, 4}, {2, 5}}}
+	rec := &fnUnitRec{frag: &EmitFragment{}, dynFrameW: 2,
+		outOps: []EmitOperand{{kind: opConst}, {kind: opLocal, idx: 2}, {kind: opEvent, idx: 5}}}
+	es.guardUnitLandings(flw, rec)
+	if code[0].Arg&LandingBeneathGuard == 0 || code[1].Arg&LandingBeneathGuard != 0 || code[2].Arg&LandingBeneathGuard != 0 {
+		t.Errorf("only the landing no replay re-steps is guarded: %+v", code)
+	}
+	code = []Instr{{Op: OpReStepLanding}, {Op: OpReStepLanding}, {Op: OpReStepLanding}}
+	es.guardUnitLandings(flw, &fnUnitRec{frag: &EmitFragment{}, dynTrailArity: 1})
+	if code[0].Arg != 0 {
+		t.Error("a unit with a trailing apply of its own keeps today's arms")
+	}
+	if frameReplays(&fnUnitRec{dynFrameW: 1, outOps: []EmitOperand{{kind: opEvent, idx: 3}, {kind: opConst}}}, 3, nil) {
+		t.Error("an entry below the replayed top is not re-stepped by it")
 	}
 }
 

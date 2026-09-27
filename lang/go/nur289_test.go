@@ -1,6 +1,11 @@
 package lang
 
-import "testing"
+import (
+	"errors"
+	"testing"
+
+	core "github.com/boru-lang/boru/core/go"
+)
 
 // TestNUR289LandingWalkPlansTheInstalledSigs pins NUR289's close. A `do`
 // body's result is re-stepped where it lands, and an anonymous fn whose
@@ -23,6 +28,16 @@ func TestNUR289LandingWalkPlansTheInstalledSigs(t *testing.T) {
 		gotC, _, errC, gotI, errI := runBothEngines(t, src)
 		if codeOf(errI) != "signature_error" || codeOf(errC) != codeOf(errI) || detailOf(errC) != detailOf(errI) || len(gotC) != 0 {
 			t.Errorf("%s: the strict-rule strand on both lanes; got %v %v / %v %v", src, gotC, errC, gotI, errI)
+		}
+	}
+	// The caret: the interpreter raises where the landed fn stands on its
+	// tape — a `do` lands its body's lambda at the `do` — and so does the
+	// walk (LandingWord.ValPos).
+	for _, src := range []string{mk + `do [mk] typeof`, mk + `do [(mk)] typeof`} {
+		_, _, errC, _, errI := runBothEngines(t, src)
+		var bc, bi *core.BoruError
+		if !errors.As(errC, &bc) || !errors.As(errI, &bi) || bc.Row == 0 || bc.Row != bi.Row || bc.Col != bi.Col {
+			t.Errorf("%s: the strand raises at the landed fn's position on both lanes; compiled %v, interpreted %v", src, errC, errI)
 		}
 	}
 	for _, c := range []struct{ src, want string }{

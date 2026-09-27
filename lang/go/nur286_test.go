@@ -34,6 +34,9 @@ func TestNUR286LandingBeneathIsLoud(t *testing.T) {
 		`def mk fn [[n:Integer][Any][([x:Integer] => [x add n])]] end def j (5 do [(mk 1)]) end j`,
 		`def l [([x:Integer] => [x add 1])] end def j (5 do [l.0]) end j`,
 		`def l [([x:Integer] => [x add 1])] end (5 do [l.0]) typeof`,
+		// A fn body's form: its RET counted the fn and the 5 as two results
+		// where the interpreter answers `[Integer]` (guardUnitLandings).
+		mk + `def g fn [[][Any][(5 do [(mk)]) typeof]] end g`,
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 		if !compiled || !strings.Contains(fmt.Sprint(errC), "NUR286") {
@@ -47,6 +50,12 @@ func TestNUR286LandingBeneathIsLoud(t *testing.T) {
 		{mk + `3 (5 do [(mk)])`, "[3 6]"},
 		{mk2 + `3 (5 do [(mk)])`, "[2]"},
 		{mk + `def g fn [[][Any][def j (5 do [(mk)]) j]] end g`, "[6]"},
+		// A fn body's whole-frame replay re-steps the landed value as the
+		// interpreter does, so its guard stands aside.
+		{mk + `def g fn [[][Any][(5 do [(mk)])]] end g`, "[6]"},
+		{mk + `def g fn [[][Any][5 do [(mk)]]] end g`, "[6]"},
+		{mk + `def g fn [[][Any][(5 do [(mk)]) add 1]] end g`, "[7]"},
+		{`def tbl {inc: ([n:Integer] => [n add 1])} end def g fn [[][Any][def f tbl.inc 5 f]] end g`, "[6]"},
 		{`def mk fn [[][Any][(7)]] end def j (5 do [(mk)]) end j`, "[7 5]"},
 		{`def mk fn [[][Any][(7)]] end (5 do [(mk)]) add 1`, "[5 8]"},
 		{`def mk fn [[][Any][(7)]] end (5 do [(mk)]) 9`, "[5 7 9]"},

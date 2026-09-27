@@ -9,6 +9,41 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR296's loop forms, NUR286's fn-body form and NUR289's caret (2026-09-27)
+
+**NUR296's loops.** A stop inside a counted loop restarts the loop's
+statement when it fires on the loop's FIRST iteration: the island runs the
+loop from its start, so no earlier iteration may have run. The VM checks
+it at run time (`RestartFirst`, `firstIteration`): each enclosing loop's
+index slot still holds its constant start (`firstIterGuard`; a condition
+loop keeps the invariant-read rule, `restartSpanReruns`). On that first
+iteration an event WRITTEN after the stop has not run, whatever order the
+pass recorded it in — a body's `def q 1` after the landing was recorded
+first (`restartRunsReadsOnly`'s position filter). A paren substituted
+inside a loop would carry one iteration's value into every other, so a
+loop's call still blocks the island (`loopFree`). `for 2 [[(l.(i) true)]]`
+and `for 2 [[(l.0 true)] def q 1 end]` compile; a branch guard in a counted
+loop takes the same island; a stop on the second iteration is the designed
+defer `vm:restart-later-iteration`.
+
+**NUR286's fn-body form.** `def g fn [[][Any][(5 do [(mk)]) typeof]] end
+g` failed on the unit's return count — an error the interpreter does not
+raise. A fn unit's own-depth landing over its own values takes the root's
+guard (`guardUnitLandings`) unless an event applies the value, its call's
+frame parks it, or the unit's whole-frame replay re-steps it — an entry of
+the residual's top `dynFrameW`, by the event or by its promoted slot
+(`frameReplays`; the first cut missed the promotion and broke two forms
+that answered 6). A unit with a tail apply chain or a trailing apply keeps
+today's arms.
+
+**NUR289's caret.** The walk raised the strict-rule strand at the word
+after the landing; the interpreter raises where the landed fn stands on
+its tape. `LandingWord.ValPos` carries the position the recording pass saw
+the value at, else the landed call's (`landedPos`): `do [mk] typeof` and
+`do [(mk)] typeof` agree to the column. `do [l.0] typeof` lands at the
+read on the interpreter, whose value carries the read's token, where the
+pass holds a carrier: the caret there points at the `do`.
+
 ## NUR292 closed: a branch guard's statement island, and the paren substitution (2026-09-27)
 
 **The mechanism.** A branch guard (`__condguard`, `__codeguard`) defers on

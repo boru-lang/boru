@@ -41,8 +41,8 @@ func TestBranchGuardsAndKeys(t *testing.T) {
 		5: {ev: &EmitEvent{kind: evCall, seq: 5}},
 	}
 	got := branchGuards(tree)
-	if len(got) != 3 || got[0].kind != guardCond || got[1].kind != guardThen || got[2].kind != guardElse || got[2].op.idx != 2 {
-		t.Errorf("a branch outside any loop lists its guarded operands in order: %+v", got)
+	if len(got) != 4 || got[0].seq != 3 || got[1].kind != guardCond || got[2].kind != guardThen || got[3].kind != guardElse || got[3].op.idx != 2 {
+		t.Errorf("every branch lists its guarded operands in order, a loop's too: %+v", got)
 	}
 	if guardKey(7, guardCond) == guardKey(7, guardThen) || guardKey(7, guardElse) == guardKey(8, guardCond) {
 		t.Error("guardKey keys each guard of each branch apart")
@@ -328,5 +328,89 @@ func TestGuardSeatAndEmit(t *testing.T) {
 	br.elsGuard = true
 	if g := lw.armGuard(br, false); g.sig != sig || g.kind != guardElse {
 		t.Errorf("the else arm's guard: %+v", g)
+	}
+}
+
+// TestFirstIterGuard pins the loops' first-iteration check a statement island
+// takes at run time (NUR296): each enclosing counted loop's index slot and
+// its constant start; a condition loop, or a start that is no constant
+// integer, cannot be checked. A paren the island substitutes inside a loop
+// would carry one iteration's value into every other.
+func TestFirstIterGuard(t *testing.T) {
+	es := NewEmitState()
+	es.consts = []core.Value{core.NewInteger(0), core.NewString("s")}
+	counted := &emitLoop{iterSlot: 4, start: EmitOperand{kind: opConst, idx: 0}}
+	first, ok := es.firstIterGuard([]*emitLoop{counted})
+	if !ok || len(first) != 1 || first[0].Slot != 4 || first[0].Val != 0 {
+		t.Errorf("a counted loop's check is its slot and start: %+v %v", first, ok)
+	}
+	for _, c := range []struct {
+		name string
+		lp   *emitLoop
+	}{
+		{"a condition loop", &emitLoop{cond: &EmitFragment{}, start: EmitOperand{kind: opConst, idx: 0}}},
+		{"a computed start", &emitLoop{start: EmitOperand{kind: opLocal, idx: 0}}},
+		{"a start past the constants", &emitLoop{start: EmitOperand{kind: opConst, idx: 9}}},
+		{"a start that is no integer", &emitLoop{start: EmitOperand{kind: opConst, idx: 1}}},
+	} {
+		if _, ok := es.firstIterGuard([]*emitLoop{counted, c.lp}); ok {
+			t.Errorf("%s: no first-iteration check", c.name)
+		}
+	}
+	tree := map[int]treeEvent{1: {inLoop: true}, 2: {}}
+	if loopFree(tree, []substPlan{{seq: 2}, {seq: 1}}) || !loopFree(tree, []substPlan{{seq: 2}}) {
+		t.Error("loopFree")
+	}
+}
+
+// TestRestartRerunsInLoop pins a loop's statement island (NUR296): over
+// counted loops it takes the first-iteration check, and an event written
+// after the stop — which the pass may have recorded before it — is not the
+// first iteration's run; over a condition loop the stop must be
+// loop-invariant (restartSpanReruns).
+func TestRestartRerunsInLoop(t *testing.T) {
+	es := NewEmitState()
+	es.consts = []core.Value{core.NewInteger(0)}
+	read := EmitEvent{kind: evCall, seq: 9, call: emitCall{word: "dot", ops: []EmitOperand{{kind: opLocal, idx: 5}}, pos: gpos(10)}}
+	bind := EmitEvent{kind: evDynBind, seq: 8, dyn: &emitDynBind{pos: gpos(20)}}
+	loop := EmitEvent{kind: evLoop, seq: 12, loop: &emitLoop{iterSlot: 5, start: EmitOperand{kind: opConst, idx: 0}, pos: gpos(1),
+		body: &EmitFragment{events: []EmitEvent{bind, read}}}}
+	tree := rootTreeEvents([]EmitEvent{loop}, false)
+	body := []core.Value{gtok(core.NewWord("for"), 1), gtok(core.NewEvalList([]core.Value{gtok(core.NewWord("l"), 10), gtok(core.NewWord("q"), 20)}), 8)}
+	substs, first, ok := es.restartReruns(tree, tree[9], 9, body, 0)
+	if !ok || len(substs) != 0 || len(first) != 1 || first[0].Slot != 5 {
+		t.Errorf("a counted loop's stop restarts on its first iteration, the bind written after it aside: %+v %+v %v", substs, first, ok)
+	}
+	tree[12].ev.loop.cond = &EmitFragment{}
+	if _, first, ok := es.restartReruns(tree, tree[9], 9, body, 0); ok || first != nil {
+		t.Error("a condition loop's stop over the loop's index is no invariant read")
+	}
+}
+
+// TestGuardPointInLoop pins a branch guard's island inside loops (NUR296):
+// over a counted loop it takes the first-iteration check; a condition loop,
+// or a paren substituted inside the loop, takes none.
+func TestGuardPointInLoop(t *testing.T) {
+	es := NewEmitState()
+	es.consts = []core.Value{core.NewInteger(0)}
+	body := guardBody()
+	br := EmitEvent{kind: evBranch, seq: 10, br: &emitBranch{condGuard: true, cond: EmitOperand{kind: opLocal}, pos: gpos(11), condCheckPos: gpos(7)}}
+	mk := func(cond *EmitFragment, extra ...EmitEvent) map[int]treeEvent {
+		lp := EmitEvent{kind: evLoop, seq: 12, loop: &emitLoop{iterSlot: 3, start: EmitOperand{kind: opConst, idx: 0}, cond: cond, pos: gpos(5),
+			body: &EmitFragment{events: append(extra, br)}}}
+		return rootTreeEvents([]EmitEvent{lp}, false)
+	}
+	rec := &fnUnitRec{frag: &EmitFragment{}, body: body}
+	g := guardCand{seq: 10, kind: guardCond, op: EmitOperand{kind: opLocal}}
+	d, ok := es.guardPoint(es.units[0], rec, mk(nil), g)
+	if !ok || len(d.first) != 1 || d.first[0].Slot != 3 {
+		t.Errorf("a guard in a counted loop takes the first-iteration check: %+v %v", d, ok)
+	}
+	if _, ok := es.guardPoint(es.units[0], rec, mk(&EmitFragment{}), g); ok {
+		t.Error("a guard in a condition loop takes no island")
+	}
+	call := EmitEvent{kind: evCallUser, seq: 6, uc: emitUserCall{pos: gpos(11), nout: 1}}
+	if _, ok := es.guardPoint(es.units[0], rec, mk(nil, call), guardCand{seq: 10, kind: guardCond, op: EmitOperand{kind: opEvent, idx: 6}}); ok {
+		t.Error("a paren substituted inside the loop would carry one iteration's value into every other")
 	}
 }

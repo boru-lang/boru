@@ -49,6 +49,9 @@ type landingRestart struct {
 	// substs are the parens the island writes the compiled code's values in
 	// place of (restartSubsts).
 	substs []substPlan
+	// first is the loops' first-iteration check the island takes at run
+	// time (firstIterGuard); empty outside loops.
+	first []RestartFirst
 }
 
 // substPlan is one paren a statement island writes a value in place of: its
@@ -96,7 +99,7 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 		if d.start.Row == 0 || es.deoptDeferred(es.units[0], rec, &d, -1) {
 			continue
 		}
-		substs, reruns := restartReruns(tree, at, seq, es.rootBody, tok)
+		substs, first, reruns := es.restartReruns(tree, at, seq, es.rootBody, tok)
 		if !reruns {
 			continue
 		}
@@ -107,7 +110,7 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 		if lw.landingRestarts == nil {
 			lw.landingRestarts = map[int]*landingRestart{}
 		}
-		lw.landingRestarts[seq] = &landingRestart{token: tok, start: d.start, depth: -1, srcs: srcs, held: held, substs: substs}
+		lw.landingRestarts[seq] = &landingRestart{token: tok, start: d.start, depth: -1, srcs: srcs, held: held, substs: substs, first: first}
 	}
 }
 
@@ -131,12 +134,12 @@ type guardCand struct {
 	op        EmitOperand
 }
 
-// branchGuards lists the guarded operands of the tree's branches outside any
-// loop, in seq order.
+// branchGuards lists the guarded operands of the tree's branches, in seq
+// order.
 func branchGuards(tree map[int]treeEvent) []guardCand {
 	var out []guardCand
 	for seq, te := range tree {
-		if te.ev.kind != evBranch || te.inLoop {
+		if te.ev.kind != evBranch {
 			continue
 		}
 		br := te.ev.br
@@ -182,7 +185,7 @@ func (es *EmitState) planGuardRestarts(lw *lowerer, residual []core.Value) {
 		if lw.guardRestarts == nil {
 			lw.guardRestarts = map[int]*landingRestart{}
 		}
-		lw.guardRestarts[guardKey(g.seq, g.kind)] = &landingRestart{token: d.token, start: d.start, depth: -1, srcs: srcs, held: held, substs: d.substs}
+		lw.guardRestarts[guardKey(g.seq, g.kind)] = &landingRestart{token: d.token, start: d.start, depth: -1, srcs: srcs, held: held, substs: d.substs, first: d.first}
 	}
 }
 
@@ -203,6 +206,15 @@ func (es *EmitState) guardPoint(u *emitUnit, rec *fnUnitRec, tree map[int]treeEv
 	substs, ok := guardReruns(tree, g.seq, rec.body, tok)
 	if !ok {
 		return deoptPoint{}, false
+	}
+	// A guard inside loops restarts only over counted ones, on their first
+	// iteration, and substitutes no paren inside one (restartReruns' rule).
+	if te := tree[g.seq]; te.inLoop {
+		first, counted := es.firstIterGuard(te.loops)
+		if !counted || !loopFree(tree, substs) {
+			return deoptPoint{}, false
+		}
+		d.first = first
 	}
 	d.substs = substs
 	return d, true
@@ -444,11 +456,11 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 		if d.start.Row == 0 || es.deoptDeferred(u, rec, &d, -1) || outsProducedBefore(rec.outOps, statementFirstSeq(tree, seq, d.start)) {
 			continue
 		}
-		substs, reruns := restartReruns(tree, at, seq, rec.body, tok)
+		substs, first, reruns := es.restartReruns(tree, at, seq, rec.body, tok)
 		if !reruns {
 			continue
 		}
-		d.substs = substs
+		d.substs, d.first = substs, first
 		rec.deopts = append(rec.deopts, d)
 	}
 	// The unit's branch guards (NUR292), as the root's (planGuardRestarts).
@@ -531,39 +543,74 @@ func restartAnchor(ev *EmitEvent) core.SrcPos {
 }
 
 // treeEvent is one event of the root's tree: the event, whether a loop
-// fragment holds it, and the index slots of the counted loops that do.
+// fragment holds it, the index slots of the loops that do, and those loops.
 type treeEvent struct {
 	ev        *EmitEvent
 	inLoop    bool
 	loopSlots []int
+	loops     []*emitLoop
 }
 
 // rootTreeEvents indexes events and every event of their nested fragments
 // by seq, marking the ones a loop's fragment holds.
 func rootTreeEvents(events []EmitEvent, inLoop bool) map[int]treeEvent {
-	return treeEventsUnder(events, inLoop, nil)
+	return treeEventsUnder(events, inLoop, nil, nil)
 }
 
-// treeEventsUnder is rootTreeEvents under the enclosing loops' index slots.
-func treeEventsUnder(events []EmitEvent, inLoop bool, slots []int) map[int]treeEvent {
+// treeEventsUnder is rootTreeEvents under the enclosing loops and their
+// index slots.
+func treeEventsUnder(events []EmitEvent, inLoop bool, slots []int, loops []*emitLoop) map[int]treeEvent {
 	out := map[int]treeEvent{}
 	for i := range events {
 		ev := &events[i]
-		out[ev.seq] = treeEvent{ev: ev, inLoop: inLoop, loopSlots: slots}
-		inner := slots
+		out[ev.seq] = treeEvent{ev: ev, inLoop: inLoop, loopSlots: slots, loops: loops}
+		inner, innerLoops := slots, loops
 		if ev.kind == evLoop {
 			inner = append(append([]int(nil), slots...), ev.loop.iterSlot)
+			innerLoops = append(append([]*emitLoop(nil), loops...), ev.loop)
 		}
 		for _, frag := range childFragments(ev) {
 			if frag == nil {
 				continue
 			}
-			for seq, te := range treeEventsUnder(frag.events, inLoop || ev.kind == evLoop, inner) {
+			for seq, te := range treeEventsUnder(frag.events, inLoop || ev.kind == evLoop, inner, innerLoops) {
 				out[seq] = te
 			}
 		}
 	}
 	return out
+}
+
+// firstIterGuard is the check a statement island inside loops takes at run
+// time (RestartFirst): every enclosing loop on its FIRST iteration — its
+// index slot holding its start — so no earlier iteration ran what the
+// island runs again. ok is false for a loop the check cannot read: a
+// condition loop, or a start that is no constant integer.
+func (es *EmitState) firstIterGuard(loops []*emitLoop) ([]RestartFirst, bool) {
+	out := make([]RestartFirst, 0, len(loops))
+	for _, lp := range loops {
+		if lp.cond != nil || lp.start.kind != opConst || lp.start.idx < 0 || lp.start.idx >= len(es.consts) {
+			return nil, false
+		}
+		n, ok := es.consts[lp.start.idx].Data.(core.IntPayload)
+		if !ok {
+			return nil, false
+		}
+		out = append(out, RestartFirst{Slot: lp.iterSlot, Val: n.N})
+	}
+	return out, true
+}
+
+// loopFree reports whether no paren the island substitutes runs inside a
+// loop: its value is one iteration's, where the island runs every iteration
+// from its tokens.
+func loopFree(tree map[int]treeEvent, substs []substPlan) bool {
+	for _, sp := range substs {
+		if tree[sp.seq].inLoop {
+			return false
+		}
+	}
+	return true
 }
 
 // statementToken is the program token the statement holding position p
@@ -582,17 +629,26 @@ func statementToken(body []core.Value, p core.SrcPos) int {
 }
 
 // restartReruns reports whether the statement at body token tok may run
-// again from its first token when event seq (at) stops it, and the parens
-// its island substitutes: every event the compiled code ran before the stop
-// is re-runnable or ran inside one (restartRunsReadsOnly). A stop inside a
-// loop's body ran earlier iterations WHOLE — the body's events after the
-// stop too — so there every event of the statement's span must be
-// re-runnable, the branches and loops that hold them aside
-// (restartSpanReruns), and none is substituted.
-func restartReruns(tree map[int]treeEvent, at treeEvent, seq int, body []core.Value, tok int) ([]substPlan, bool) {
+// again from its first token when event seq (at) stops it, the parens its
+// island substitutes, and the loops' first-iteration check it takes: every
+// event the compiled code ran before the stop is re-runnable or ran inside
+// a substituted paren (restartRunsReadsOnly). A stop inside a loop's body
+// may have run earlier iterations WHOLE — the body's events after the stop
+// too. Inside counted loops the island checks at run time that each is on
+// its first iteration (firstIterGuard), and no paren inside one is
+// substituted; otherwise every event of the statement's span must be
+// re-runnable, the branches and loops that hold them aside, over a stop
+// that fires on the first iteration or never (restartSpanReruns).
+func (es *EmitState) restartReruns(tree map[int]treeEvent, at treeEvent, seq int, body []core.Value, tok int) ([]substPlan, []RestartFirst, bool) {
 	start := body[tok].Pos()
 	if !at.inLoop {
-		return restartRunsReadsOnly(tree, seq, body, tok)
+		substs, ok := restartRunsReadsOnly(tree, seq, body, tok, core.SrcPos{})
+		return substs, nil, ok
+	}
+	if first, counted := es.firstIterGuard(at.loops); counted {
+		if substs, ok := restartRunsReadsOnly(tree, seq, body, tok, eventPos(*at.ev)); ok && loopFree(tree, substs) {
+			return substs, first, true
+		}
 	}
 	end := len(body)
 	for i := tok + 1; i < len(body); i++ {
@@ -606,7 +662,7 @@ func restartReruns(tree map[int]treeEvent, at treeEvent, seq int, body []core.Va
 	if at.ev.kind == evCall && at.ev.call.dynMethod != nil {
 		landed = methodSeq(at.ev)
 	}
-	return nil, restartSpanReruns(tree, start, end, body, landed)
+	return nil, nil, restartSpanReruns(tree, start, end, body, landed)
 }
 
 // restartSpanReruns reports whether a stop inside a loop may restart the
@@ -668,12 +724,16 @@ func containsInt(xs []int, x int) bool {
 // code's run in the statement, from its start (body token tok) up to event
 // seq, is every event recorded in that span. A shaped apply's own event has
 // not run when it restarts; a landed event has, and is planned like the
-// others.
-func restartRunsReadsOnly(tree map[int]treeEvent, seq int, body []core.Value, tok int) ([]substPlan, bool) {
+// others. On a loop's first iteration (after set), an event written after
+// the stop has not run either, whatever order the pass recorded it in — the
+// tape runs left to right — so it is not the run's.
+func restartRunsReadsOnly(tree map[int]treeEvent, seq int, body []core.Value, tok int, after core.SrcPos) ([]substPlan, bool) {
 	first := statementFirstSeq(tree, seq, body[tok].Pos())
 	var pending []int
 	for s, te := range tree {
-		if s >= first && s <= seq && (s != seq || te.ev.kind != evCall || te.ev.call.dynMethod == nil) {
+		written := eventPos(*te.ev)
+		if s >= first && s <= seq && (s != seq || te.ev.kind != evCall || te.ev.call.dynMethod == nil) &&
+			(after.Row == 0 || written.Row == 0 || !posAfter(written, after)) {
 			pending = append(pending, s)
 		}
 	}

@@ -1691,7 +1691,7 @@ func (vc *vmContext) landingWalk(reg *core.Registry, v core.Value, fnDef core.Fn
 				nf++
 			}
 		}
-		return nil, nil, stampAt(core.StrandedForwardDiag(reg.Source, fnDef.Name, nf-specAt, lword.Name, core.BarrierReceiverWord(reg, lword.Name), lword.Pos), curDebug, pc, reg)
+		return nil, nil, stampAt(core.StrandedForwardDiag(reg.Source, fnDef.Name, nf-specAt, lword.Name, core.BarrierReceiverWord(reg, lword.Name), landedPos(v, lword)), curDebug, pc, reg)
 	case sig.TotalArgs() == 0:
 		// The interpreter's ANONYMOUS-0-ARG PARK (execFnDefLiteral): a lambda
 		// or macro VALUE whose plan matched nothing is data — the wordless
@@ -1804,11 +1804,36 @@ func (vc *vmContext) landingDeopt(reg *core.Registry, v core.Value, lword compil
 // from the statement's first token. The island's residual is the program's:
 // it replaces the frame region, and the run continues at the program's end.
 func (vc *vmContext) landingRestart(reg *core.Registry, lword compiler.LandingWord, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	if !vc.firstIteration(lword.FirstIter) {
+		return nil, nil, laterIterationDefer(reg, curDebug, pc)
+	}
 	island, err := vc.substIsland(lword.Island, lword.Substs, nil, frameBase, stack, curDebug, pc)
 	if err != nil {
 		return nil, nil, err
 	}
 	return vc.statementRestart(reg, lword.PrefixSrc, island, lword.Depth, lword.RetPC, lword.Root, frameBase, stack, curDebug, pc)
+}
+
+// firstIteration reports whether every loop a statement island's stop sits
+// in is on its first iteration (compiler.RestartFirst): its index slot
+// holds its start. The island runs the loop from its start, so on a later
+// iteration the earlier ones would run twice.
+func (vc *vmContext) firstIteration(first []compiler.RestartFirst) bool {
+	for _, f := range first {
+		if f.Slot < 0 || f.Slot >= len(vc.restartLocals) {
+			return false
+		}
+		if n, ok := vc.restartLocals[f.Slot].Data.(core.IntPayload); !ok || n.N != f.Val {
+			return false
+		}
+	}
+	return true
+}
+
+// laterIterationDefer is the designed defer of a statement island whose loop
+// is past its first iteration (firstIteration).
+func laterIterationDefer(reg *core.Registry, curDebug []core.SrcPos, pc int) error {
+	return vmDefer(reg, curDebug, pc, "vm:restart-later-iteration", "a statement island's loop is past its first iteration, whose effects its run would repeat (NUR296); the compiled runtime cannot execute it")
 }
 
 // substIsland is island with each substituted paren written as the value the
@@ -1961,6 +1986,20 @@ func uncalledFunctionError(reg *core.Registry, fnDef core.FnDefInfo) error {
 // (`{f: h/v}`'s `h/v`, NUR219's caret sibling) — and at the op's otherwise.
 func landedUncalledError(reg *core.Registry, fnDef core.FnDefInfo, v core.Value) *core.BoruError {
 	return uncalledFunctionErrorAt(reg, fnDef.Name, v.Pos())
+}
+
+// landedPos is where the interpreter's re-step of a landed value raises: the
+// value's own token when it carries one, else where it landed — the call
+// whose result it is (LandingWord.ValPos: `do [mk]` lands mk's lambda at
+// the `do`, NUR289's caret) — else the word after it.
+func landedPos(v core.Value, lword compiler.LandingWord) core.SrcPos {
+	if p := v.Pos(); p.Row > 0 {
+		return p
+	}
+	if lword.ValPos.Row > 0 {
+		return lword.ValPos
+	}
+	return lword.Pos
 }
 
 // uncalledFunctionErrorAt is uncalledFunctionError at an explicit position —
@@ -2514,6 +2553,9 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		// its statement's island runs it (DynMethodSpec.Restart, NUR242),
 		// and with none the apply defers wholesale.
 		if spec.Restart {
+			if !vc.firstIteration(spec.FirstIter) {
+				return nil, nil, laterIterationDefer(reg, curDebug, pc)
+			}
 			island, err := vc.substIsland(spec.Island, spec.Substs, nil, frameBase, stack, curDebug, pc)
 			if err != nil {
 				return nil, nil, err
@@ -4071,20 +4113,24 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				}
 				if s.Restart != nil && core.IsVMDefer(err) {
 					// A branch guard deferred on a list the interpreter runs as
-					// code: its statement island takes the rest of the body.
-					fb := 0
-					if len(frames) > 0 {
-						fb = frames[len(frames)-1].stackBase
-					}
+					// code: its statement island takes the rest of the body —
+					// inside loops, on their first iteration only.
 					vc.restartLocals = locals
-					ns, ent, rerr := vc.guardRestart(curReg, s.Restart, guarded, fb, stack, curDebug, pc)
-					vc.restartLocals = nil
-					if rerr != nil {
-						return nil, rerr
+					if vc.firstIteration(s.Restart.FirstIter) {
+						fb := 0
+						if len(frames) > 0 {
+							fb = frames[len(frames)-1].stackBase
+						}
+						ns, ent, rerr := vc.guardRestart(curReg, s.Restart, guarded, fb, stack, curDebug, pc)
+						vc.restartLocals = nil
+						if rerr != nil {
+							return nil, rerr
+						}
+						stack = ns
+						pc = ent.jumpPC - 1
+						break
 					}
-					stack = ns
-					pc = ent.jumpPC - 1
-					break
+					vc.restartLocals = nil
 				}
 				return nil, stampAt(err, curDebug, pc, curReg)
 			}

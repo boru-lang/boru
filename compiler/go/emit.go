@@ -1357,6 +1357,10 @@ type EmitState struct {
 	// OpReStepLanding right after the event's own op (emitLandingAfter).
 	// Keyed by event seq, valued by the read's position.
 	landingAfter map[int]core.SrcPos
+	// landingValPos is where each noted landing's value stood on the pass's
+	// tape (its own position, when it had one): the interpreter's re-step
+	// raises there (LandingWord.ValPos, NUR289's caret).
+	landingValPos map[int]core.SrcPos
 	// stmtEnds holds the source positions of every statement boundary (`;`
 	// / `end`) the pass stepped (NoteStatementEnd). The residual's fn-value
 	// apply arms ask crossesBoundary before laying a value's apply over the
@@ -2147,6 +2151,9 @@ type deoptPoint struct {
 	// place of (restartSubsts).
 	guard  int
 	substs []substPlan
+	// first, on a restart point inside loops, is the first-iteration check
+	// its island takes at run time (firstIterGuard).
+	first []RestartFirst
 	// install marks a read of a root def captured by a code body at the
 	// program root (DeoptSpec.Install, NUR285).
 	install bool
@@ -10709,8 +10716,12 @@ func (es *EmitState) NoteReStepLanding(v core.Value, pos core.SrcPos) {
 	}
 	if es.landingAfter == nil {
 		es.landingAfter = map[int]core.SrcPos{}
+		es.landingValPos = map[int]core.SrcPos{}
 	}
 	es.landingAfter[pr.seq] = pos
+	if p := v.Pos(); p.Row > 0 {
+		es.landingValPos[pr.seq] = p
+	}
 }
 
 // NoteStatementEnd records a statement boundary's position (EmitRecorder;
@@ -10876,6 +10887,43 @@ func (es *EmitState) guardRootLandings(lw *lowerer, dynOp Opcode, residual []cor
 		}
 		(*lw.code)[pc].Arg |= LandingBeneathGuard
 	}
+}
+
+// guardUnitLandings is guardRootLandings in fn unit rec (NUR286's fn-body
+// form): a landing over values beneath the unit re-steps nothing of its own,
+// so where no event applies the value, its call's frame does not park it,
+// and no residual apply of the unit re-steps it, the interpreter's re-step
+// over them has no compiled twin: `(5 do [(mk)]) typeof` in a fn body is
+// `[Integer]` interpreted, and the unit's RET counted the fn and the 5 as
+// two results. A unit with a tail apply chain or a trailing apply keeps
+// today's arms; its whole-frame replay re-steps the residual's top entries
+// (rec.dynFrameW), so a landed value among them is re-stepped, and any
+// other is not.
+func (es *EmitState) guardUnitLandings(flw *lowerer, rec *fnUnitRec) {
+	if len(rec.applyChain) > 0 || rec.dynTrailArity > 0 {
+		return
+	}
+	for _, l := range flw.rootBeneathLandings {
+		pc, seq := l[0], l[1]
+		if es.callResultPlaced(core.Value{ID: es.landingOwn[seq].id}) || eventApplies(rec.frag.events, seq, flw.promoted) || frameReplays(rec, seq, flw.promoted) {
+			continue
+		}
+		(*flw.code)[pc].Arg |= LandingBeneathGuard
+	}
+}
+
+// frameReplays reports whether unit rec's whole-frame replay re-steps the
+// value event seq produced: an entry of the residual's top dynFrameW, by the
+// event or, once promoted, by its frame slot.
+func frameReplays(rec *fnUnitRec, seq int, promoted map[int]int) bool {
+	slot, hasSlot := promoted[seq]
+	for i := len(rec.outOps) - rec.dynFrameW; i >= 0 && i < len(rec.outOps); i++ {
+		op := rec.outOps[i]
+		if (op.kind == opEvent && op.idx == seq && op.resIdx == 0) || (hasSlot && op.kind == opLocal && op.idx == slot) {
+			return true
+		}
+	}
+	return false
 }
 
 // residualApplies reports whether the residual's dynamic apply dynOp re-steps
@@ -16450,6 +16498,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			// seated as the full [args…, fn]; collapse them to the one applied
 			// value before the RET (emitBodyTailApply).
 			flw.emitBodyTailApply(rec)
+			es.guardUnitLandings(flw, rec)
 			// A whole-frame dynamic-apply replay: outOps seated the FULL residual
 			// (frame re-push prefix included); replay the top dynFrameW token-region
 			// entries against it and let the RET apply the RetReplay discipline.
@@ -17635,13 +17684,13 @@ func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 			if flw.guardRestarts == nil {
 				flw.guardRestarts = map[int]*landingRestart{}
 			}
-			flw.guardRestarts[guardKey(d.seq, d.guard)] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs}
+			flw.guardRestarts[guardKey(d.seq, d.guard)] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first}
 			return
 		}
 		if flw.landingRestarts == nil {
 			flw.landingRestarts = map[int]*landingRestart{}
 		}
-		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs}
+		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first}
 		return
 	}
 	if d.landing {

@@ -1,6 +1,7 @@
 package eng
 
 import (
+	"strings"
 	"testing"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
@@ -121,5 +122,58 @@ func TestSubstIsland(t *testing.T) {
 	spec.Substs[0].Src.Idx = 9
 	if _, _, err := vc.callDynMethod(r, spec, 0, []core.Value{core.NewInteger(5)}, seam7Dbg, 0); err == nil {
 		t.Error("a shaped apply's bad substitution raises")
+	}
+}
+
+// TestLandedPos pins where the landing's walk raises a strand (NUR289's
+// caret): the landed value's own token, else where the recording pass saw
+// it land (LandingWord.ValPos), else the word after it.
+func TestLandedPos(t *testing.T) {
+	at := func(col int) core.SrcPos { return core.SrcPos{Row: 1, Col: col} }
+	own := core.WithPosAt(core.NewInteger(1), at(3))
+	lword := compiler.LandingWord{Pos: at(9), ValPos: at(5)}
+	if got := landedPos(own, lword); got != at(3) {
+		t.Errorf("a value with a token raises there: %v", got)
+	}
+	if got := landedPos(core.NewInteger(1), lword); got != at(5) {
+		t.Errorf("a value without one raises where it landed: %v", got)
+	}
+	if got := landedPos(core.NewInteger(1), compiler.LandingWord{Pos: at(9)}); got != at(9) {
+		t.Errorf("with neither, at the word: %v", got)
+	}
+}
+
+// TestFirstIteration pins the loops' first-iteration check a statement island
+// takes before it runs (compiler.RestartFirst, NUR296): every enclosing
+// loop's index slot holds its start. Past the first iteration — or a slot the
+// frame lacks, or holding no integer — the island is a designed defer.
+func TestFirstIteration(t *testing.T) {
+	r := seam7Reg(t)
+	vc := &vmContext{p: &compiler.Program{}, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	vc.restartLocals = []core.Value{core.NewInteger(0), core.NewString("s")}
+	for _, c := range []struct {
+		name  string
+		first []compiler.RestartFirst
+		want  bool
+	}{
+		{"no loop", nil, true},
+		{"the first iteration", []compiler.RestartFirst{{Slot: 0, Val: 0}}, true},
+		{"a later iteration", []compiler.RestartFirst{{Slot: 0, Val: 1}}, false},
+		{"a slot holding no integer", []compiler.RestartFirst{{Slot: 1, Val: 0}}, false},
+		{"a slot past the frame", []compiler.RestartFirst{{Slot: 5, Val: 0}}, false},
+		{"a negative slot", []compiler.RestartFirst{{Slot: -1, Val: 0}}, false},
+	} {
+		if got := vc.firstIteration(c.first); got != c.want {
+			t.Errorf("%s: firstIteration = %v, want %v", c.name, got, c.want)
+		}
+	}
+	later := []compiler.RestartFirst{{Slot: 0, Val: 1}}
+	lword := compiler.LandingWord{Island: []core.Value{core.NewInteger(9)}, RetPC: 2, Root: true, FirstIter: later}
+	if _, _, err := vc.landingRestart(r, lword, 0, nil, seam7Dbg, 0); err == nil || !core.IsVMDefer(err) || !strings.Contains(err.Error(), "first iteration") {
+		t.Errorf("a landing's island past the first iteration defers: %v", err)
+	}
+	spec := &compiler.DynMethodSpec{Word: "f", NOut: 1, Restart: true, Root: true, RetPC: 2, Island: lword.Island, FirstIter: later}
+	if _, _, err := vc.callDynMethod(r, spec, 0, []core.Value{core.NewInteger(5)}, seam7Dbg, 0); err == nil || !core.IsVMDefer(err) || !strings.Contains(err.Error(), "first iteration") {
+		t.Errorf("a shaped apply's island past the first iteration defers: %v", err)
 	}
 }
