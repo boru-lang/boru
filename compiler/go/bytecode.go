@@ -1315,6 +1315,13 @@ type DispatchSpec struct {
 	NFwd    int
 	Written []int
 	Pos     core.SrcPos
+	// OnMatch, when set, is what a MATCH raises in place of the defer: the
+	// error a trap recorded under this word's OPTIMISTIC match carries
+	// (NUR264) — the interpreter evaluates the word's arguments only once it
+	// matches, so the run raises the word's no-match first, and the trap's
+	// own error, at OnMatchPos, only when it matches.
+	OnMatch    *TrapSpec
+	OnMatchPos core.SrcPos
 }
 
 // GenericSpec describes one OpDispatchGeneric (see the opcode doc): the

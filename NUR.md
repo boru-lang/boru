@@ -186,7 +186,7 @@ keep the two in sync in the same commit.
 | [NUR261](#nur261) | FIXED 2026-09-25 (numbered NUR211 until the merge of main's #512, where main's NUR211 kept the number; the named value's no-match on the seam — the handoff log's entry of that date): the token seam's unmatched-lambda arm (`unmatchedLambdaBody`) raises the word's `uncalled_function` for a closure that carries a def's name (`ClosurePayload.RetName`) and keeps the anonymous value's data rule otherwise; `0 fold h/v [1 2]` raises at step 1 on both lanes. The original text: A NAMED fn value driving `fold` whose signature stops matching PAST THE FIRST STEP is parked as data on the compiled lane where the interpreter raises `uncalled_function`: `def h fn [[a:Integer b:Integer] [List] [[a b]]] end 0 fold h/v [1 2]` — step 0 answers `[0 1]`, so step 1 offers a List accumulator to `a:Integer` and no signature matches — is `fold: step 1: [boru/uncalled_function]: call to 'h' matched no signature` interpreted and `[fn (Integer, Integer)]` compiled (the value itself, as the closure-body data fork leaves an unmatched TYPED LAMBDA — NUR155's rule for an anonymous value, applied to a NAMED one). A no-match at step 0 raises on both lanes; `scan` over a no-match parks on both lanes. Pre-existing at the merge base (measured 2026-09-25 on `wt-head`); silent — a value where the interpreter raises | closing NUR166, 2026-09-25 |
 | [NUR262](#nur262) | FIXED 2026-09-25 (numbered NUR212 until the merge of main's #512, where main's NUR212 kept the number; the marker is no argument — the handoff log's entry of that date): the forward claim probe (`ForwardClaimProbeOn`) answers no claim for a dispatch-modifier marker, which fell to its literal arm where an `Any` parameter matched it; `def g M.up1/v end g 1` is `UP` on both lanes. The original text: A `/v`-marked module member read whose export takes an `Any` FIRST parameter cannot be collected as `def`'s forward argument: `import module [ def up1 fn [[value:Any] [String] ['UP']] export "M" {up1: up1/v} ] end def g M.up1/v` raises `signature_error: cannot call def — no signature matches the arguments … none were supplied` on both lanes, where `def g M.up2/v` (an `Integer` first parameter), `def g (M.up1/v)`, `def g up1/v` (no module) and the bare `M.up1/v` (data) all bind. The parser emits the reach followed by a dispatch-modifier marker (`Word/__DM`, Val); inside `def`'s forward window the reach's fn value reaches the pointer ahead of the marker and, with an `Any` parameter, the window's plan collects nothing. Interpreter-side (both lanes agree), loud | closing NUR163, 2026-09-25 |
 | [NUR263](#nur263) | OPEN (recorded 2026-09-26, probing NUR242's `fold`; proposed verdict: resolve by fix): a code-body word's closure bake over a declared-Any operand runs the overload the check pass picked, and a run-time value that overload refuses raises a signature_error without the interpreter's report. `def mk fn [[][Any]["s"]] end 0 fold [add] (mk)` is `fold`'s no-match on both lanes; compiled it carries none of the notes (the attempted window, the candidates) or the help. Loud; a List or Map result answers on both lanes | probing NUR242's `fold`, 2026-09-26 |
-| [NUR264](#nur264) | OPEN (recorded 2026-09-26, probing NUR242's `fold`; proposed verdict: resolve by fix): an error inside a matched signature's data list, which the check pass auto-evaluates under an OPTIMISTIC static match over a declared-Any operand, is recorded as a static trap that raises unconditionally — the run evaluates the list only when the outer dispatch matches. `def mk fn [[][Any][5]] end each (mk) [dup]` is `each`'s no-match interpreted and `dup`'s compiled; `filter (mk) [gt 1]` over 5 is `filter`'s and `gt`'s. Loud, the wrong error; over a List both lanes raise the inner one | probing NUR242's `fold`, 2026-09-26 |
+| [NUR264](#nur264) | FIXED 2026-09-27 (the handoff log's entry of that date): a trap recorded while an optimistically matched word's arguments are evaluated is that word's RUNTIME REMATCH (core `CheckState.OptimisticOuter`, compiler `recordGuardedTrap`) — its no-match raises the outer word's error, a match the recorded inner one (`DispatchSpec.OnMatch`); all seven witnesses agree, message, notes and caret. Was: an error inside a matched signature's data list, which the check pass auto-evaluates under an OPTIMISTIC static match over a declared-Any operand, is recorded as a static trap that raises unconditionally — the run evaluates the list only when the outer dispatch matches. `def mk fn [[][Any][5]] end each (mk) [dup]` is `each`'s no-match interpreted and `dup`'s compiled; `filter (mk) [gt 1]` over 5 is `filter`'s and `gt`'s. Loud, the wrong error; over a List both lanes raise the inner one | probing NUR242's `fold`, 2026-09-26 |
 | [NUR265](#nur265) | FIXED 2026-09-26 (the handler runs over its arity — the handoff log's entry of that date): the check pass PANICKED — index out of range, recovered as an internal engine error — on `def mk fn [[][Any][5]] end filter (mk) [gt 1]`: the auto-evaluated `[gt 1]` recovered `gt` over one operand, and the const fold ran `gt`'s handler over that short window, which indexes its second argument. A compile-time handler run declines a window shorter than its signature (`concreteHandlerEval`) | probing NUR242's `fold`, 2026-09-26 |
 | [NUR266](#nur266) | SUPERSEDED at the merge of main's #514 (2026-09-26 — the handoff log's entry of that date) by main's region rule: a computed run that may leave a callable seats only as the residual's last entries, so every witness declines loudly (`TestNUR266RunLeadStopsAtTheStatementEnd`). The branch's statement-boundary seat (each read's position kept) answered the anonymous lambda's rows but not a NAMED 0-arg fn value, which fires across the `end` (`… [g/v] … do (mk) end x` is [7 5] interpreted and was [fn g 5] on the branch, silent). Was: a computed `do` body's run whose last value is a fn was APPLIED to a def-bound read written after the statement's `end` — `def mk fn [[][List][quote [([n:Integer] => [n add 1])]]] end def x 5 end do (mk) end x` answered 6 compiled for the interpreter's `[fn (Integer) 5]`, silent | probing NUR210, 2026-09-26 |
 | [NUR267](#nur267) | FIXED 2026-09-26 (a body that unbinds stays the interpreter's — the handoff log's entry of that date), found probing NUR210's rebinding half: a computed body's `undef` did not take effect on the compiled lane — `def mk fn [[][List][quote [undef x x]]] end def x 99 end do (mk)` answered `[99]` for the interpreter's caught `undefined word: x`, and `[def x 5 undef x x]` 5 for 99, silent. The run-time token-body stamp compiles the body as a detached fn unit, whose frame does not model an unbind of a binding it did not make; such a body is no longer stamped (`bodyUndefs`) | probing NUR210, 2026-09-26 |
@@ -9652,8 +9652,9 @@ report at the baked call's refusal.
 
 ## NUR264 — a trap recorded under an assumed signature raises before the outer dispatch's no-match {#nur264}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-26 · **Surfaced by:** probing NUR242's `fold` program.
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-26 · **Surfaced by:** probing NUR242's `fold`
+program.
 
 **Rule:** the compiled lane raises the interpreter's error, at the same
 step.
@@ -9691,6 +9692,31 @@ the outer word over its live operands and raises the outer no-match, or
 lets the inner trap fire (the shape of `DISPATCH_REMATCH`, with the match
 arm continuing instead of deferring). An optimistic match is one where some
 carrier operand's type does not conform to its slot's.
+
+**The fix (2026-09-27), the guard as proposed.** `execMatch` publishes the
+dispatch it matches optimistically — a carrier or dynamic operand whose
+type does not conform to its slot's — as `CheckState.OptimisticOuter` for
+the length of its argument evaluation and handler model, outermost first
+(an inner optimistic match does not replace it). The published window is
+what the runtime rematch reads: the stack run beneath the word top down,
+then the operands written after it in written order (`NFwd` of them), and
+the render tuple in source order. The written count comes from the last
+`rearrangeForForward`, which records the word it laid out (its pointer and
+position) and how many operands it collected forward — once the word is
+re-stepped every operand sits beneath it, so the tape no longer shows the
+split. A top-level trap recorded under a published outer word
+(`RecordTrap`, `RecordTrapErr`) becomes that word's `DISPATCH_REMATCH`
+(compiler `recordGuardedTrap`) with the trap's own error attached
+(`DispatchSpec.OnMatch`, its position `OnMatchPos`): the VM re-matches the
+outer word over the live values, raises its no-match when it does not
+match, as the interpreter's dispatch does before it evaluates anything, and
+raises the recorded inner error when it does. A split the VM cannot plan
+proves no match and defers, as before. A window operand with no compiled
+home, or a speculative fn family's word, declines the guard, and the trap
+stands unguarded as it was. All seven witnesses — the five above, and
+`each (mk) [1 add]` over 5 and over `[1 2]` — raise the same error on both
+lanes, message, notes and caret. Pinned by lang
+`TestNUR264TrapUnderAnOptimisticMatch`.
 
 ## NUR265 — the check pass panicked in a compile-time handler run over a recovery's short window {#nur265}
 

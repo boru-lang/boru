@@ -9,6 +9,28 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR264 closed: a trap under an optimistic match is the outer word's rematch (2026-09-27)
+
+**The divergence.** `def mk fn [[][Any][5]] end each (mk) [dup]` raised
+`each`'s no-match interpreted and `dup`'s compiled. The check pass matches
+`each` optimistically over the declared-Any result and evaluates the data
+list `[dup]` under the match, where the inner failure is definite and was
+recorded as an unconditional top-level trap. The interpreter evaluates the
+list only once `each` matches.
+
+**The fix, as recorded.** `execMatch` publishes an optimistic dispatch as
+`CheckState.OptimisticOuter` (outermost wins) around its argument
+evaluation; a trap recorded under it becomes the outer word's
+`DISPATCH_REMATCH` carrying the trap as `DispatchSpec.OnMatch`. The VM
+raises the outer no-match when the live values do not match and the inner
+error when they do; an unplannable split still defers. The window lists
+the stack run top down and the written operands in written order: the
+written count is recorded by `rearrangeForForward` (the word's pointer and
+position, the forward count), since a re-stepped word has every operand
+beneath it — reading the positions alone rendered `each 5 [1 add]`'s tuple
+reversed. Pinned by lang `TestNUR264TrapUnderAnOptimisticMatch` (seven
+witnesses, full-error parity).
+
 ## NUR275 closed: the root's leading apply over a def read is the binding's word dispatch (2026-09-27)
 
 **The divergence.** `def g m.f end g 5` over a member lambda `h` whose body

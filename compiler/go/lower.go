@@ -4125,11 +4125,13 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 			lw.emit(OpSwap, 0, ev.trap.pos)
 			idx := len(lw.p.Dispatches)
 			lw.p.Dispatches = append(lw.p.Dispatches, DispatchSpec{
-				Word:    ev.trap.rematchWord,
-				NArgs:   len(ops),
-				NFwd:    ev.trap.rematchNFwd,
-				Written: ev.trap.rematchWritten,
-				Pos:     ev.trap.pos,
+				Word:       ev.trap.rematchWord,
+				NArgs:      len(ops),
+				NFwd:       ev.trap.rematchNFwd,
+				Written:    ev.trap.rematchWritten,
+				Pos:        ev.trap.pos,
+				OnMatch:    ev.trap.rematchOnMatch,
+				OnMatchPos: ev.trap.onMatchPos,
 			})
 			lw.emit(OpDispatchRematch, idx, ev.trap.pos)
 			return ""
@@ -4152,11 +4154,13 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 		}
 		idx := len(lw.p.Dispatches)
 		lw.p.Dispatches = append(lw.p.Dispatches, DispatchSpec{
-			Word:    ev.trap.rematchWord,
-			NArgs:   len(ev.trap.rematchOps),
-			NFwd:    ev.trap.rematchNFwd,
-			Written: ev.trap.rematchWritten,
-			Pos:     ev.trap.pos,
+			Word:       ev.trap.rematchWord,
+			NArgs:      len(ev.trap.rematchOps),
+			NFwd:       ev.trap.rematchNFwd,
+			Written:    ev.trap.rematchWritten,
+			Pos:        ev.trap.pos,
+			OnMatch:    ev.trap.rematchOnMatch,
+			OnMatchPos: ev.trap.onMatchPos,
 		})
 		lw.emit(OpDispatchRematch, idx, ev.trap.pos)
 		return ""

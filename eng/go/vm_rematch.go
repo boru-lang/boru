@@ -28,17 +28,28 @@ func (vc *vmContext) dispatchRematch(ds *compiler.DispatchSpec, stack []core.Val
 	if fn != nil {
 		sigs = fn.Signatures
 	}
-	matched := false
+	matched, planned := false, true
 	if ds.NFwd > 0 && fn != nil {
 		// Operands written after the word: the interpreter's forward phase
 		// fills the leading positions from them, so the flat match below
 		// is not its match (NUR211) — plan the window as it does.
-		m, planned := vc.rematchSplitMatches(ds, fn, window)
+		var m bool
+		m, planned = vc.rematchSplitMatches(ds, fn, window)
 		matched = m || !planned
 	} else if mr := core.MatchSignature(sigs, window, core.WordInfo{ArgCount: -1}); mr != nil && mr.Sig != nil && !mr.Sig.Fallback {
 		matched = true
 	}
 	if matched {
+		if ds.OnMatch != nil && planned {
+			// A trap recorded under the word's optimistic match (NUR264):
+			// the word matches, so the run meets the trap's own error, as
+			// the interpreter's argument evaluation does. A split this host
+			// could not plan is no proof of a match, and defers.
+			ae := core.MakeBoruError(ds.OnMatch.Code, ds.OnMatch.Detail, ds.OnMatch.Word, r.Source, ds.OnMatch.Hint)
+			ae.Spans, ae.Notes, ae.Suggestions = ds.OnMatch.Spans, ds.OnMatch.Notes, ds.OnMatch.Suggestions
+			ae.Row, ae.Col = ds.OnMatchPos.Row, ds.OnMatchPos.Col
+			return stampAt(ae, curDebug, pc, r)
+		}
 		return vmDefer(r, curDebug, pc, "vm:rematch-matched",
 			"DISPATCH_REMATCH at "+ds.Word+" matched at run time where the static model failed; the compiled runtime cannot execute it")
 	}

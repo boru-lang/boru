@@ -615,6 +615,11 @@ type EmitTrap struct {
 	// after the word (DispatchSpec.NFwd): the window lists the stack run
 	// first, top down, then the forward operands in written order.
 	rematchNFwd int
+	// rematchOnMatch is DispatchSpec.OnMatch: the trap a guarded rematch
+	// raises when its word matches (recordGuardedTrap, NUR264); its position
+	// is spec's pos.
+	rematchOnMatch *TrapSpec
+	onMatchPos     core.SrcPos
 }
 
 // EmitEvent is one node of the recorded trace, tagged by kind. The two largest
@@ -9012,9 +9017,52 @@ func (es *EmitState) RecordTrap(code, detail, word, hint string, pos core.SrcPos
 	if es.trapAt != 0 {
 		return true
 	}
+	spec := TrapSpec{Code: code, Detail: detail, Word: word, Hint: hint}
+	if outer := es.optimisticOuter(); outer != nil {
+		return es.recordGuardedTrap(outer, spec, pos)
+	}
+	es.trapAt = es.appendEvent(EmitEvent{kind: evTrap, trap: EmitTrap{spec: spec, pos: pos}})
+	return true
+}
+
+// optimisticOuter is the dispatch the pass matched OPTIMISTICALLY that a
+// top-level trap is recorded under (core CheckState.OptimisticOuter,
+// NUR264), or nil.
+func (es *EmitState) optimisticOuter() *core.OuterMatch {
+	if es.reg == nil || es.reg.Check == nil {
+		return nil
+	}
+	return es.reg.Check.OptimisticOuter
+}
+
+// recordGuardedTrap records a trap met while an optimistically matched word's
+// arguments were evaluated (NUR264) as that word's RUNTIME REMATCH: the run
+// raises the word's no-match over its live window, as the interpreter does
+// before it evaluates the arguments, and the trap's own error only when the
+// word matches. `each (mk) [dup]` over a declared-Any result of 5 raised
+// dup's no-match compiled for the interpreter's each. A window with an
+// operand that has no compiled home declines: the caller's failure stands.
+func (es *EmitState) recordGuardedTrap(outer *core.OuterMatch, spec TrapSpec, pos core.SrcPos) bool {
+	if es.specFnNames[outer.Word] || !validRenderTuple(outer.Written, len(outer.Vals)) {
+		return false
+	}
+	ops := make([]EmitOperand, len(outer.Vals))
+	for i, v := range outer.Vals {
+		op, ok := es.resolveOperand(v)
+		if !ok {
+			return false
+		}
+		ops[i] = op
+	}
+	on := spec
 	es.trapAt = es.appendEvent(EmitEvent{kind: evTrap, trap: EmitTrap{
-		spec: TrapSpec{Code: code, Detail: detail, Word: word, Hint: hint},
-		pos:  pos,
+		rematchWord:    outer.Word,
+		rematchOps:     ops,
+		rematchWritten: append([]int(nil), outer.Written...),
+		rematchNFwd:    outer.NFwd,
+		rematchOnMatch: &on,
+		onMatchPos:     pos,
+		pos:            outer.Pos,
 	}})
 	return true
 }
@@ -9088,13 +9136,14 @@ func (es *EmitState) RecordTrapErr(ae *core.BoruError, pos core.SrcPos) bool {
 	if es.trapAt != 0 {
 		return true
 	}
-	es.trapAt = es.appendEvent(EmitEvent{kind: evTrap, trap: EmitTrap{
-		spec: TrapSpec{
-			Code: ae.Code, Detail: ae.Detail, Word: ae.Src, Hint: ae.Hint,
-			Spans: ae.Spans, Notes: ae.Notes, Suggestions: ae.Suggestions,
-		},
-		pos: pos,
-	}})
+	spec := TrapSpec{
+		Code: ae.Code, Detail: ae.Detail, Word: ae.Src, Hint: ae.Hint,
+		Spans: ae.Spans, Notes: ae.Notes, Suggestions: ae.Suggestions,
+	}
+	if outer := es.optimisticOuter(); outer != nil {
+		return es.recordGuardedTrap(outer, spec, pos)
+	}
+	es.trapAt = es.appendEvent(EmitEvent{kind: evTrap, trap: EmitTrap{spec: spec, pos: pos}})
 	return true
 }
 

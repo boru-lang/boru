@@ -64,6 +64,9 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"CurLayout": "scoped: published around one recovered dispatch's record and " +
 			"restored when it returns (PublishLayout), so it is nil outside a record and " +
 			"no pass can begin with one set; a reader asks for its own operand slice (LayoutFor)",
+		"OptimisticOuter": "scoped: published by execMatch around one optimistic " +
+			"dispatch's argument evaluation and cleared by its defer when that returns, " +
+			"so it is nil outside the dispatch and no pass can begin with one set",
 		"CurWordPos": "transient cursor overwritten per dispatch, and the write is " +
 			"unconditional and immediately adjacent: execMatch sets it from " +
 			"e.currentPos() on the line above the handler call, and a handler is the " +

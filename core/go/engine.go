@@ -104,6 +104,18 @@ type Engine struct {
 	// pooled sub-engine reuse (harmless: reset to [:0] on entry).
 	rrValues    []Value
 	rrReordered []Value
+	// fwdSplitAt / fwdSplitPos / fwdSplitN record the last completed
+	// rearrangeForForward: the pointer of the word it laid out, that word's
+	// source position, and how many of its operands were written after it —
+	// the leading signature positions. Once the word is re-stepped every
+	// operand sits beneath it, so the tape no longer shows the split;
+	// optimisticOuter reads it here to list the window as the runtime
+	// rematch does (NUR264). Consulted only when the pointer and the word's
+	// position both agree, so a stale record reads as no split — which is
+	// also what a dispatch that collected nothing forward has.
+	fwdSplitAt  int
+	fwdSplitPos SrcPos
+	fwdSplitN   int
 	// loopTokens is a reusable scratch buffer for stepMoveCont's per-
 	// iteration `mark + body + move` re-splice (for/each-style loops run
 	// their body in place on this tape — design/legacy/INTERPRETER-SPEED-PLAN.10.ignore
@@ -3457,6 +3469,10 @@ func (e *Engine) execMatch(match *MatchResult) error {
 			sortedIndices[j], sortedIndices[j-1] = sortedIndices[j-1], sortedIndices[j]
 		}
 	}
+	if outer := e.optimisticOuter(match, indices); outer != nil {
+		e.Registry.Check.OptimisticOuter = outer
+		defer func() { e.Registry.Check.OptimisticOuter = nil }()
+	}
 
 	// Process consumed arguments:
 	// - Maps with Eval=true: auto-evaluate their values now, so word
@@ -4127,6 +4143,10 @@ func (e *Engine) rearrangeForForward(stackArgs, forwardArgs int) {
 	// Write back.
 	for i, idx := range indices {
 		e.Tape.Set(idx, reordered[i])
+	}
+	e.fwdSplitAt, e.fwdSplitN, e.fwdSplitPos = e.Pointer, forwardArgs, SrcPos{}
+	if e.Pointer < e.Tape.Len() {
+		e.fwdSplitPos = e.Tape.At(e.Pointer).Pos()
 	}
 }
 
@@ -10517,4 +10537,55 @@ func SigTypeSummary(sig *Signature) string {
 		parts[i] = t.Leaf()
 	}
 	return strings.Join(parts, " ")
+}
+
+// optimisticOuter is the OuterMatch execMatch publishes (NUR264) when a
+// compile pass matched this dispatch OPTIMISTICALLY — a carrier operand
+// whose type does not conform to its slot's — and no outer one is already
+// published (the outermost is the first the run re-matches). indices are the
+// match's tape positions, in signature order. Nil otherwise, and whenever a
+// position is unknown.
+func (e *Engine) optimisticOuter(match *MatchResult, indices []int) *OuterMatch {
+	r := e.Registry
+	if !r.analysisActive() || !r.Check.Compiling || r.Check.OptimisticOuter != nil || match.Sig == nil ||
+		match.Name == "" || len(indices) != len(match.Args) || len(match.Args) == 0 {
+		return nil
+	}
+	optimistic := false
+	for i, a := range match.Args {
+		if slot := SigArgType(match.Sig, i); slot != nil && (a.Carrier || a.Dynamic) && a.Parent != nil && !a.Parent.ConformsTo(slot) {
+			optimistic = true
+		}
+	}
+	if !optimistic {
+		return nil
+	}
+	// The split: the operands written after the word fill the leading
+	// signature positions. rearrangeForForward has laid every operand out
+	// beneath the word, so the tape no longer shows it; its record does.
+	n, nFwd := len(match.Args), 0
+	if e.fwdSplitAt == e.Pointer && e.Pointer < e.Tape.Len() && e.Tape.At(e.Pointer).Pos() == e.fwdSplitPos {
+		nFwd = e.fwdSplitN
+	}
+	if nFwd > n {
+		return nil
+	}
+	// The window as the rematch reads it: the stack run beneath the word
+	// top down (positions nFwd..n-1), then the written operands in written
+	// order (positions 0..nFwd-1). The render tuple lists the window in
+	// source order: the stack run bottom up, then the written operands.
+	nStack := n - nFwd
+	vals := append(append(make([]Value, 0, n), match.Args[nFwd:]...), match.Args[:nFwd]...)
+	written := make([]int, 0, n)
+	for i := nStack - 1; i >= 0; i-- {
+		written = append(written, i)
+	}
+	for i := nStack; i < n; i++ {
+		written = append(written, i)
+	}
+	pos := SrcPos{}
+	if e.Pointer < e.Tape.Len() {
+		pos = e.Tape.At(e.Pointer).Pos()
+	}
+	return &OuterMatch{Word: match.Name, Vals: vals, NFwd: nFwd, Written: written, Pos: pos}
 }

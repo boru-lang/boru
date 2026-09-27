@@ -26,6 +26,15 @@ import (
 //     check-mode footprint at a glance instead of scanning ten
 //     adjacent declarations.
 type CheckState struct {
+	// OptimisticOuter is the OUTERMOST dispatch the pass matched
+	// OPTIMISTICALLY — a carrier operand whose type is wider than its slot's
+	// (`each (mk) [dup]` over a declared-Any result) — while execMatch
+	// auto-evaluates its arguments and models its handler (NUR264). The run
+	// evaluates those arguments only after the dispatch MATCHES, so a
+	// top-level trap recorded under it is conditional: the compiled lane
+	// re-matches the word over its live window first, raising its no-match,
+	// and raises the trap only on a match. Nil outside such a dispatch.
+	OptimisticOuter *OuterMatch
 	// CurCallPos is a TRANSIENT scratch: carrierResults writes the current
 	// call's source position here immediately before invoking a sig's
 	// ReturnsFn, so a ReturnsFn that needs the call site (e.g. `make Array`
@@ -2341,4 +2350,17 @@ func (r *Registry) NoteTypeInstall(name string, pos SrcPos) {
 	// it (OpBindFnType), where the root's twin replays it from the ledger.
 	entry, _ := r.Defs.TopEntry(name)
 	r.Check.Recorder().RecordTypeInstall(name, entry, bindSitePos(r, pos))
+}
+
+// OuterMatch is CheckState.OptimisticOuter: the optimistically matched
+// word, its window's values as the runtime rematch reads them (the stack run
+// beneath the word top down, then the operands written after it in written
+// order), how many were written after it, the render tuple (the window
+// indices in written order) and the dispatch's position.
+type OuterMatch struct {
+	Word    string
+	Vals    []Value
+	NFwd    int
+	Written []int
+	Pos     SrcPos
 }
