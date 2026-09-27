@@ -9,6 +9,50 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## Re-steps that undo a placement: NUR313, NUR314 and NUR317 (2026-09-27)
+
+Gate58 on 9835ff5 (NUR312–NUR314) was green except gocyclo: the NUR313
+declines had pushed `resolveDynamicApply` to 71. They now live in one
+helper, `branchLeadDecline`, called once after every apply arm; a placed
+branch's value leading a residual apply declines loud in the carrier and
+branch arms too, and the function sits at 69.
+
+Probing NUR313's placement under the words that re-step a value found
+NUR317 (present on main): a `do`, whose results the step loop re-steps at
+the call, and a paren with two or more survivors undo a body arm's
+placement. The pass's join of a data arm and a fn arm is a union carrier
+that no callable test read (`core.UnionMayBeFn` now does, at the landing
+and at the paren's re-step mark); the delivery count took a `do`'s re-step
+for the branch's own when the branch ran suspended inside the body
+(`branchPlacedHere` now also asks `parenReSteppedFn` and
+`inResidualToCallerUnit`); and NUR271's settled-lead rule seated every dyn
+body's dynamic lead under its own sibling as the body's to settle, where a
+lead the body parked is the caller's to re-step. No model fact separates
+the two (nor a body whose count differs from the model's), so a settled
+lead now re-steps from the mark where Finalize armed the window
+(`dynBodySettledOp`, `OpCallDynMixedFromMark`): the island steps the body's
+actual results as the caller does. A paren-re-stepped union lead applies
+conditionally (`unionLeadReStepped`), and the NUR313 lead decline asks for
+an arm that may leave a fn (`placedArmsMayBeFn` — `[0] [9]` never does). Twelve forms agree now; `(if c [(mkf)] [0] 5)`
+declines, loud.
+
+**Open, silent (NUR317's second half).** `do [if c [g/v] [0] 5]`, `do [if
+c [l/v] [0] 5]` and `do [if c [g/v] [g/v]]`: the closure compiles the
+body, the pass models the `do`'s outputs AFTER the caller's re-step (it
+dispatched the concrete g — `[Integer 5]`), and the compiled `do` returns
+them before it. The fix is the caller's re-step at run time, at the `do`'s
+return — NUR314's loop-exit shape: on the island where the results are
+isolated, a designed defer elsewhere.
+
+NUR314 gained one defer: in a fn unit a named fn result's re-step meets the
+frame's tail, where the interpreter raises for a no-match and the island's
+tape just ends (`def f fn [[][Any][for 1 [(mkl)]]] end f`,
+`namedDispatchingFn`). Pinned by `lang/go/nur312_314_test.go`,
+`lang/go/nur317_test.go`, core `TestUnionMayBeFn`, compiler
+`TestBranchLeadDecline` / `TestPlacedArmsMayBeFn` /
+`TestNUR317PlacementUndone` / `TestDynBodySettledOp` and eng
+`TestNamedDispatchingFn`.
+
 ## Container element typing: NUR315 and NUR316 (2026-09-27)
 
 A research sweep of how the check pass types container elements (asked:
