@@ -1461,6 +1461,15 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 	if v.Quoted || !core.IsAppliableFn(v) {
 		return stack, nil, nil // data on both lanes — stepLiteral pushes it
 	}
+	// A root landing over its OWN values beneath whose value a later event
+	// took (LandingBeneathGuard, NUR286): the interpreter's re-step applies
+	// an argument-taking fn over those values here — `def j (5 do [(mk)])
+	// end j` binds 6 — and the landing never consumes a stack operand, so a
+	// fn that could take one is a designed defer, loud where the lane bound
+	// the fn and left the 5.
+	if arg&compiler.LandingBeneathGuard != 0 && landedFnTakesArgs(v) {
+		return nil, nil, vmErrAt(curDebug, pc, "a landed fn value takes arguments: the interpreter re-steps it here over the values beneath it, and no compiled apply re-steps it (NUR286)")
+	}
 	if _, isClosure := v.Data.(core.ClosurePayload); isClosure {
 		// The interpreter's ANONYMOUS-0-ARG PARK in its closure representation.
 		// A fn-VALUE closure IS a `fn` / `=>` literal's value (ClosureIsFnValue

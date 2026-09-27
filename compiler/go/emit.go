@@ -1352,6 +1352,14 @@ type EmitState struct {
 	// matches over them first and the residual arms own the outcome — the
 	// landing never raises over such a value (NUR175's rule).
 	landingBeneath map[int]bool
+	// landingOwn is each landing's FIRST note at its own step, keyed like
+	// landingNext: what followed the value where its producer left it,
+	// whether values sat beneath it there, and its id — never a read of a
+	// def bound to it, whose re-step is the read's (`def f m.f end 5 f` — the
+	// whole-frame replay's), nor a later collapse's re-step of the same
+	// value. A root landing over values beneath that no apply re-steps is
+	// guarded (NUR286, guardRootLandings).
+	landingOwn map[int]landingStep
 	// landingWord is the FUNCTION WORD noted right after a landing
 	// (LandingNextWord), by the producing event's seq: the lowering seats it
 	// beside the landing op (LandingWords) so the VM's landing can walk the
@@ -7239,6 +7247,7 @@ func (es *EmitState) Rollback(h core.EmitCheckpoint) {
 	dropKeysAbove(es.landingAfter, cp.seq)
 	dropKeysAbove(es.landingNext, cp.seq)
 	dropKeysAbove(es.landingBeneath, cp.seq)
+	dropKeysAbove(es.landingOwn, cp.seq)
 	dropKeysAbove(es.landingWord, cp.seq)
 	for id, seq := range es.argsProjSeq {
 		if seq > cp.seq {
@@ -10700,7 +10709,8 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 	// under the binding's own name (`def j (m get "f") j` raises `cannot
 	// call j`), which the whole-frame replay seats (NUR123) — never the
 	// value's own re-step: no candidate for the landing to raise on.
-	if es.isDefRead(v) {
+	defRead := es.isDefRead(v)
+	if defRead {
 		next = core.LandingNextBoundary
 	}
 	if es.landingNext == nil {
@@ -10718,6 +10728,12 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 	}
 	es.landingNext[pr.seq] = next
 	es.landingBeneath[pr.seq] = es.landingBeneath[pr.seq] || beneath
+	if _, noted := es.landingOwn[pr.seq]; !noted && !defRead {
+		if es.landingOwn == nil {
+			es.landingOwn = map[int]landingStep{}
+		}
+		es.landingOwn[pr.seq] = landingStep{next: next, beneath: beneath, id: v.ID}
+	}
 	if w, err := core.AsWord(word); err == nil && w.Name != "" {
 		if es.landingWord == nil {
 			es.landingWord = map[int]LandingWord{}
@@ -10726,6 +10742,14 @@ func (es *EmitState) NoteLandingNext(v core.Value, next core.LandingNext, beneat
 			es.landingWord[pr.seq] = LandingWord{Name: w.Name, Pos: word.Pos()}
 		}
 	}
+}
+
+// landingStep is one noted step of a landed value (landingOwn): what followed
+// it, whether values sat beneath it in its frame, and the value's id.
+type landingStep struct {
+	next    core.LandingNext
+	beneath bool
+	id      string
 }
 
 // landingWordAt is the function word noted after the event seq's landing
@@ -10780,6 +10804,99 @@ func (es *EmitState) landingArg(seq int, frameTail bool) int {
 		}
 	}
 	return 0
+}
+
+// LandingBeneathGuard is the OpReStepLanding argument bit that GUARDS a root
+// landing whose own step had values beneath it in its frame when no apply
+// re-steps the landed value over them (guardRootLandings, NUR286). The
+// interpreter's re-step applies an argument-taking fn over those values —
+// `def j (5 do [(mk)]) end j` binds mk's lambda's result over the 5, 6 — and
+// the landing never consumes a stack operand (NUR175's rule: they may not
+// even be pushed yet), so where a def took the group's first value or a
+// later word took the fn, the lane cannot answer: the VM raises a designed
+// defer for a fn with an argument-taking signature; data and a nullary fn
+// pass.
+const LandingBeneathGuard = 4
+
+// guardRootLandings sets LandingBeneathGuard on each root landing whose own
+// step had values beneath it (lw.rootBeneathLandings) when the interpreter
+// re-steps the value there and nothing compiled does: a user call's result
+// the interpreter PARKS (callResultPlaced — `def r (mk3 1) end 2 r 3` is `[2
+// fn]` on both lanes) is not re-stepped at all, and neither the residual's
+// dynamic apply (residualApplies) nor an event (eventApplies) re-steps the
+// rest. The residual arms that do are the landing's partners (NUR175):
+// `(5 do [(mk)])` is the trailing apply's lead, `(5 do [(mk)]) add 1` an
+// entry of the window the island re-steps whole.
+func (es *EmitState) guardRootLandings(lw *lowerer, dynOp Opcode, residual []core.Value) {
+	for _, l := range lw.rootBeneathLandings {
+		pc, seq := l[0], l[1]
+		if es.callResultPlaced(core.Value{ID: es.landingOwn[seq].id}) || es.residualApplies(dynOp, residual, seq) || eventApplies(es.frames[0], seq, lw.promoted) {
+			continue
+		}
+		(*lw.code)[pc].Arg |= LandingBeneathGuard
+	}
+}
+
+// residualApplies reports whether the residual's dynamic apply dynOp re-steps
+// the value the event seq landed as the interpreter's own re-step does. The
+// re-step matches over the whole stack beneath the value — a paren does not
+// seal it: `3 (5 do [(mk)])` with a two-argument lambda takes the 3 too —
+// but collects nothing written after the group, whose close ended its
+// forward phase. So the lead of a trailing apply (residual[0] once
+// resolveDynamicApply rotated it) is it, and a leading apply's lead only
+// with nothing above it; an entry of a window the op islands whole is it
+// when the island's flat re-step collects what the interpreter's did — the
+// window's last entry, one under a function word (`(5 do [(mk)]) add 1` is
+// 7 on both lanes), or one whose own step collected a value-bound word
+// itself (`7 m.f k` is g over k's value on both) — and not one a group's
+// close ended (`(5 do [(mk)]) 9` is `[6 9]` interpreted, and the island
+// collected the 9). A read of a def bound to the value is not it: the read
+// re-steps over what sits beneath the READ.
+func (es *EmitState) residualApplies(dynOp Opcode, residual []core.Value, seq int) bool {
+	is := func(v core.Value) bool {
+		pr, ok := es.producedBy[v.ID]
+		return ok && pr.seq == seq && pr.idx == 0 && !es.isDefRead(v)
+	}
+	switch dynOp {
+	case 0:
+		return false
+	case OpCallDynamicTrailing:
+		return len(residual) > 0 && is(residual[0])
+	case OpCallDynamic:
+		return len(residual) == 1 && is(residual[0])
+	}
+	for i, rv := range residual {
+		if is(rv) {
+			return i == len(residual)-1 || core.IsWord(residual[i+1]) || es.landingOwn[seq].next == core.LandingNextValue
+		}
+	}
+	return false
+}
+
+// eventApplies reports whether an event of events, or one inside a fragment
+// of any of them, dynamically applies the value the event seq produced (a
+// dynamic apply or a mixed window over it as an operand, by the event or,
+// once promoted, by its frame slot).
+func eventApplies(events []EmitEvent, seq int, promoted map[int]int) bool {
+	slot, hasSlot := promoted[seq]
+	for i := range events {
+		ev := &events[i]
+		if ev.kind == evCall && (ev.call.dynApply > 0 || ev.call.dynMixed) {
+			applies := false
+			forEachOperand(ev, func(op EmitOperand) {
+				applies = applies || (op.kind == opEvent && op.idx == seq && op.resIdx == 0) || (hasSlot && op.kind == opLocal && op.idx == slot)
+			})
+			if applies {
+				return true
+			}
+		}
+		for _, f := range childFragments(ev) {
+			if f != nil && eventApplies(f.events, seq, promoted) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // srcPosBefore orders two known source positions (row, then column).
@@ -16010,6 +16127,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		return nil, dynReason, false
 	}
 	es.claimSpliceApplies(lw, dynOp, residual)
+	es.guardRootLandings(lw, dynOp, residual)
 	dynOpPos := lastPos
 	if dynOp == OpCallDynApplyTop && lw.dynOpPos != (core.SrcPos{}) {
 		dynOpPos = lw.dynOpPos // the op raises where the interpreter's `apply` does

@@ -208,7 +208,7 @@ keep the two in sync in the same commit.
 | [NUR283](#nur283) | OPEN (recorded 2026-09-27, closing NUR263; proposed verdict: resolve by fix): an optimistic closure bake whose layout is not exact — a value beneath its operands, or a token after them — raises the handler's bare signature_error where the interpreter raises the word's report. `def mk fn [[][Any][5]] end 1 2 fold [add] (mk)`, `… 0 scan [add] (mk)` and `… 0 fold [add] (mk) drop` carry no notes compiled. Loud: the same code, head and caret | closing NUR263, 2026-09-27 |
 | [NUR284](#nur284) | OPEN (recorded 2026-09-27, probing NUR257; proposed verdict: resolve by fix): a folded map member's anonymous fn APPLIED inside a fn whose frame binds a name the member reads — `def m {c: ([x:Any] => [k])} end def h fn [[][Any] [def k 7 m.c 1]] end h`, and with `k` h's parameter — raises `undefined word: k` compiled for the interpreter's `[7]`; passed to a fn that applies it (`def run fn [[f:Any][Any] [f 1]] end … run m.c`) it raises `run: expected 1 return value(s), got 2` compiled. Loud, the wrong error; present on the base | probing NUR257, 2026-09-27 |
 | [NUR285](#nur285) | FIXED 2026-09-27 (recorded and closed together, closing NUR217; the handoff log's entry of that date): a root def bound to a factory's argument-taking fn, read inside a code body at the root over values the body pushed beneath it, was a slot push — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (mk) end do [10 j]` answered `[10 fn j(Integer)]` for `[11]`, `[1 2] each [j]` `[[fn j(Integer) fn j(Integer)]]` for `[[2 3]]` (silent); read in a fn body it raised `dynamic-scope read of a dispatching binding` (loud); and `def j (do [(mk)]) end j/v` rendered `fn` for `fn j` (silent). The body's deopt point stands with the root as its parent and installs the captured fn for its island (`DeoptSpec.Install`), the frame replay's word reads take the data lookup, and a def's rename reaches the value's frame local (`GlobalBindSpec.WriteSlot`). Present on main | closing NUR217, 2026-09-27 |
-| [NUR286](#nur286) | OPEN (recorded 2026-09-27, closing NUR217; proposed verdict: resolve by fix): a def of a paren whose `do` run leaves an argument-taking fn above a value — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (5 do [(mk)]) end j` — is `[6]` interpreted (the paren re-steps the fn over the 5 and the def binds 6) and `[fn (Integer) 5]` compiled; so is the Function-declared factory's twin and a list member's lambda (`def l [([x:Integer] => [x add 1])] end def j (5 do [l.0]) end j`). The bare paren `(5 do [(mk)])` agrees. Silent, present on main | closing NUR217, 2026-09-27 |
+| [NUR286](#nur286) | OPEN — its silent root half made LOUD 2026-09-27 (recorded the same day, closing NUR217; the handoff log's entry of that date; proposed verdict: resolve by fix): a paren whose `do` run lands an argument-taking fn over the paren's own values, taken by a def or a later word — `def mk fn [[][Any][([x:Integer] => [x add 1])]] end def j (5 do [(mk)]) end j` is `[6]` interpreted and was `[fn (Integer) 5]` compiled; so were `(5 do [(mk)]) typeof`, `(5 do [(mk)]) 9` and a list member's lambda (`def j (5 do [l.0]) end j`). A root landing whose own step had values beneath it now carries a guard (`LandingBeneathGuard`) unless the interpreter parks the value (a user call's result), the residual's apply re-steps it as the interpreter does, or an event applies it; the VM raises a designed defer where the landed fn takes an argument. Open: the compile (answering 6), and a fn body's form, which fails on the unit's return count (a `type_error` the interpreter does not raise) | closing NUR217, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -13963,9 +13963,10 @@ fn's `do [10 j]` (compile declines). Pinned by lang
 
 ## NUR286 — a def of a paren whose `do` run leaves an argument-taking fn above a value {#nur286}
 
-**Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
-2026-09-27 · **Surfaced by:** closing NUR217, measuring the fold's fence
-(present on main).
+**Status:** OPEN — the silent root half made LOUD 2026-09-27 (the handoff
+log's entry of that date); the compile and a fn body's form open (proposed
+verdict: resolve by fix) · **Recorded:** 2026-09-27 · **Surfaced by:**
+closing NUR217, measuring the fold's fence (present on main).
 
 **Rule:** a program the compiler admits, the compiled runtime runs, and
 answers as the interpreter does.
@@ -14013,3 +14014,52 @@ curried factory (`def r ((mk3 1) 2) end r 3`), a fn-util wrapper under
 `each`. Six lang tests broke, and it was reverted. The rule must name the
 shape (a group whose gradual run lands over its own values, taken by a
 forward collection or a later word), not enumerate what covers a landing.
+
+**Silent → loud at the root (2026-09-27).** The cut that held names the
+landing's OWN step and asks what re-steps the value after it:
+
+- **The own step.** The check pass notes each re-step of a landed value,
+  and a read of a def bound to it re-steps it again over whatever sits
+  beneath the READ (`def f tbl.inc end 5 f`, `each [f] [1 2 3]` — the
+  whole-frame replay's, and every false positive above came from such a
+  merged note). The recorder keeps the value's FIRST note apart
+  (`landingOwn`): what followed it, whether values sat beneath it, and its
+  id; a def-bound read's note is never it.
+- **What re-steps it.** A root landing whose own step had values beneath
+  it is guarded unless one of three things holds. The interpreter PARKS
+  the value — a user call's returned fn, which its callee's frame placed
+  (`callResultPlaced`: `def r (mk3 1) end 2 r 3` is `[2 fn]` on both
+  lanes). The residual's dynamic apply re-steps it as the interpreter
+  does: the lead of a trailing apply (`(5 do [(mk)])` is 6, and `3 (5 do
+  [(mk)])` over a two-argument lambda takes the 3 as the interpreter's
+  re-step does, since a paren does not seal the stack beneath), a leading
+  lead with nothing above it, or an entry of a window the island
+  re-steps whole when the island's flat re-step collects what the
+  interpreter's did — the window's last entry, one under a function word
+  (`(5 do [(mk)]) add 1` is 7), or one whose own step collected a
+  value-bound word itself (`7 m.f k`). Or an event applies it (a dynamic
+  apply, a mixed window).
+- **The guard.** `LandingBeneathGuard` on the landing op: the VM raises a
+  designed defer when the landed value is a fn with an argument-taking
+  signature (`landedFnTakesArgs`: a FnDefInfo's real signature, a
+  fn-value closure's unit). Data and a nullary fn pass — `def j (5 do
+  [(mk)]) end j` over a factory of 7 is `[7 5]`, and over a nullary lambda
+  `[fn 5]`, on both lanes.
+
+`def j (5 do [(mk)]) end j`, `def j (5 do [(mk)]) end`, `(5 do [(mk)])
+typeof`, `5 do [(mk)] typeof`, `(5 do [(mk)]) 9`, the Function-declared
+factory, a capturing factory's closure and the list member's lambda raise
+compiled; every residual-arm shape above answers as before. The landing
+cannot see the values beneath (they are pushed at their consumer), so a fn
+that would not match them is loud too: `def j ("a" do [(mk)]) end j` is
+`[fn (Integer) a]` interpreted and raises compiled. Pinned by
+`lang/go/nur286_test.go` and `compiler/go/nur286_test.go`.
+
+**What stays open.** The compile: answering 6 wants the check pass to
+model the re-step over the values beneath as a runtime-variable region
+(the prefix island's, NUR210), which a def or a later word could then
+take. And a fn body's form (`def g fn [[][Any][(5 do [(mk)]) typeof]] end
+g`): the unit's return-count check raises `g: expected 1 return value(s),
+got 2` where the interpreter answers `[Integer]` — loud, but as the
+program's own error; the guard is the root's, and a unit's residual has
+its own apply arms.

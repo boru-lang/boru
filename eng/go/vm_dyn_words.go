@@ -461,3 +461,20 @@ func callWindowAt(p *compiler.Program, unit, pc int, args, stack, locals []core.
 	}
 	return win, true
 }
+
+// landedFnTakesArgs reports whether a landed fn value has an overload that
+// takes an argument (a FnDefInfo's real signature, a fn-value closure's
+// unit): the interpreter's re-step could apply it over values beneath it
+// (LandingBeneathGuard, NUR286).
+func landedFnTakesArgs(v core.Value) bool {
+	fnDef, ok := v.Data.(core.FnDefInfo)
+	if !ok {
+		return compiler.ClosureTakesArgs(v)
+	}
+	for i := range fnDef.Signatures {
+		if !fnDef.Signatures[i].Fallback && fnDef.Signatures[i].TotalArgs() != 0 {
+			return true
+		}
+	}
+	return false
+}

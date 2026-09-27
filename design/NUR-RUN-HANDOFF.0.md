@@ -9,6 +9,42 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR286's silent root half made loud: a landing over its own values that nothing compiled re-steps (2026-09-27)
+
+**The divergence.** A paren whose `do` run lands an argument-taking fn
+over the paren's own values is the interpreter's re-step of that fn over
+them: `def j (5 do [(mk)]) end j` binds 6. The landing never consumes a
+stack operand (NUR175's rule), and where a def took the group's first
+value (the 5, the fn spilling), a later word took the fn, or the island's
+flat window collected a value written after the group, no compiled apply
+re-stepped it: `[fn (Integer) 5]`, `[5 Function]`, `[5 10]` — silent,
+present on main.
+
+**The fix, as recorded.** The first guard (a root landing over values
+beneath that no apply takes) fired where a def-bound read's re-step had
+merged its own beneath into the value's note, and six lang tests broke.
+The cut that held keeps the value's FIRST note apart (`landingOwn`: what
+followed, beneath, the id; never a def-bound read's), records the root
+landings whose own step had values beneath (`noteRootBeneathLanding`),
+and once `Finalize` knows the residual's apply guards each one that the
+interpreter does not park (`callResultPlaced`), the residual apply does
+not re-step as the interpreter does (`residualApplies`: a trailing lead;
+a leading lead alone; a window entry last, under a function word, or
+whose own step collected a value-bound word), and no event applies
+(`eventApplies`). The VM's landing raises a designed defer under the
+guard when the fn takes an argument (`landedFnTakesArgs`,
+`compiler.ClosureTakesArgs`).
+
+**Measured.** The witnesses raise; `(5 do [(mk)])`, `5 do [(mk)]`, `(5 do
+[(mk)]) add 1`, `3 (5 do [(mk)])` (one- and two-argument lambdas), the
+factory of 7, the nullary lambda, `def j (5 (mk)) end j`, `7 m.f k` and
+the curried factory's `2 r 3` answer as before. The lang root suite, the
+compiler and eng suites pass. Over-approximation, pinned: a fn that would
+not match the values beneath is loud too (`("a" do [(mk)])`).
+
+**Open.** The compile (a runtime-variable region a def could take), and a
+fn body's form, which fails on the unit's return count.
+
 ## Main's NUR217 closed, NUR285 found and closed, NUR286 recorded: a shuffled fn def and a fn def read inside a body (2026-09-27)
 
 **The divergences.** Of NUR217's six witnesses, four already agreed; the

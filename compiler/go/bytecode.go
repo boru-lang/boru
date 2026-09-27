@@ -627,7 +627,9 @@ const (
 	// landing a fn that matches nothing is the interpreter's answer, not an
 	// error (`m.g` alone, where g takes one argument, is `fn a1(Integer)` on
 	// both lanes). The recorded landing claims ONE value, so a result count
-	// that differs is a claim failure and defers. Arg is unused.
+	// that differs is a claim failure and defers. Arg is a bit set
+	// (landingArg): a candidate follows (1), a function word the VM walks
+	// (2), and LandingBeneathGuard (4).
 	OpReStepLanding
 	// OpPushLocalBound is OpPushLocal for a BRANCH-CARRIED binding that may
 	// never have been stored on the path that reached it — a name bound only
@@ -935,6 +937,18 @@ func ClosureCallsAtLanding(v core.Value) bool {
 		return false
 	}
 	return prog.Fns[cl.Unit].NArgs == 0
+}
+
+// ClosureTakesArgs reports whether v is a fn-value closure (ClosureIsFnValue)
+// whose unit takes an argument: a landing over values beneath it is where
+// the interpreter's re-step could apply it over them (LandingBeneathGuard).
+func ClosureTakesArgs(v core.Value) bool {
+	cl, ok := v.Data.(core.ClosurePayload)
+	if !ok || !ClosureIsFnValue(v) {
+		return false
+	}
+	prog, _ := cl.Prog.(*Program)
+	return prog.Fns[cl.Unit].NArgs > 0
 }
 
 // ClosureIsFnValue reports whether v is a compiled closure minted from a fn
