@@ -9,6 +9,20 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## A handler island's do over a computed or def-bound body (2026-09-27)
+
+NUR301's and NUR300's count islands took the do before the handler only
+over a literal body, so `(do b error [drop 5 6]) add 1` deferred where the
+literal form answered. `doBefore` (shared by `handlerRun` and `islandRun`)
+admits any body whose token is the one after the do (`doBodyAfter`): a
+computed body by its argument site, and a closure the pass compiled from a
+def-bound list's read or a paren by the site `RecordClosureCall` now keeps
+in `closureBodySites`. Not in `argSites`: noting a closure call's argSites
+made `callRun` plan runs over literal do bodies, and NUR286's and NUR298's
+landing rows met NUR297's guard (measured, then scoped). Pinned by lang
+`TestNUR301HandlerRunsNotSeatedAsOne` (seven more agreeing rows) and
+compiler `TestDoBeforeComputedBody`.
+
 ## A root container's position: the whole-program list literal compiles (2026-09-27)
 
 A program that is one list, map or paren parsed to a container with no

@@ -12304,7 +12304,9 @@ do [(1 add 1) drop] add`, a DISPATCH_REMATCH underflow), a call before it
 whose operand lies beneath its statement (`1 end add 2 [1 do …]`; one over
 operands written right before its word is its call run since the same day,
 so `1 add 2 [1 do …]` is `[3 []]` on both lanes). A do inside a list
-literal that is the WHOLE program compiles since 2026-09-27: the parser
+literal that is the WHOLE program compiles since 2026-09-27, and so does a
+do over a def-bound body (`def b (quote [(1 add 1) drop]) end 1 do b drop`,
+cba2e34's `closureBodySites`): the parser
 had left a root container unsited (no position for an island to find),
 and both parsers now stamp it with its opening token's (parser/go
 `Parse`, parser/ts `convert.ts`; `shape.tsv`'s root rows). A paren before
@@ -13909,10 +13911,15 @@ island over a literal handler's interpreter island (`countPoint`'s island
 arm, `islandRun`; `Program.FallbackCounts`, the VM's refused run through
 `stopRestart`). `1 [do [raise oops 'x'] error [drop 9 8]]` is `[1 [9 8]]`,
 `(do … error [drop 5 6]) add 1` is `[5 7]`, the fn form is `[[[5 6] [7]]]`,
-on both lanes. Still loud: a list literal that is the program's first token
-(no position, NUR222's owed form), a do inside a loop (it plans no island),
-a statement that also binds (`def xs [0] [do … error [drop]]`), and the
-def's group and value-beneath declines above.
+on both lanes. Still loud: a do inside a loop (it plans no island), a
+statement that also binds (`def xs [0] [do … error [drop]]`), and the def's
+group and value-beneath declines above. A list literal that is the whole
+program compiles since the parsers site the root container, and the do
+before the handler may take a computed or def-bound body since cba2e34
+(`doBefore` over `doBodyAfter`: a computed body by its argument site, a
+closure the pass compiled from a read or a paren by `closureBodySites`) —
+`(do b error [drop 5 6]) add 1` over `def b (quote [raise oops 'x'])` is `[5
+7]` and the fn form over a List param answers, on both lanes.
 
 ## NUR225 — a Go panic through RunCompiled: the scalar fold over a short window {#nur225}
 
