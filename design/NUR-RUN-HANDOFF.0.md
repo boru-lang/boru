@@ -9,6 +9,38 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## Container element typing: NUR315 and NUR316 (2026-09-27)
+
+A research sweep of how the check pass types container elements (asked:
+could a container that only ever holds one type be read as `[:T]` and shed
+its deopts?) found two silent answers, both present on main, confirmed on
+the interpreter differential:
+
+- **NUR315.** A flex container's element types are joined over the writes
+  the pass sees on the container; a user fn it is passed to may write
+  through its parameter's alias, which the body analysis over a plain
+  carrier never records. Passing a shaped flex container to a user fn now
+  poisons its shape and every shape reachable from it
+  (`PoisonFlexShapes`, `StoreShapeInfo.Poison`, `KeysPoisoned`), so reads
+  after the call take the dynamic(Any) hatch.
+- **NUR316.** `each`'s result typed its elements by the body value's type
+  and dropped its gradual mark; so did `fold`, `for`, `while`, `window`,
+  `pairs`, and the closure compiler's list callback inputs, which read a
+  typed list's child strictly. A later body committed a direct op over a
+  String or a None. `core.CarrierTypedListOf` keeps a gradual element as a
+  dynamic child, and `check.ElementCarrierOf` hands a body that child
+  gradual; the body re-matches at run time.
+
+The same sweep's answer to the question itself: a known non-fn child type
+already drops the landing and `DEOPT_IF_FN` after a literal-key read of a
+declared `[:T]`, and a declared `[:T]` param's `each` body compiles its
+dispatch direct; a computed-key read discards the child type. Plain
+List/Map are immutable, so a per-value element join at construction is
+sound; flex containers need the alias analysis NUR315 stands in for. Pinned
+by `lang/go/nur315_316_test.go`, core `TestCarrierTypedListOf` /
+`TestStoreShapePoison`, check `TestElementCarrierOf` /
+`TestPoisonFlexShapes`.
+
 ## Fn values the interpreter parks or re-steps: NUR312, NUR313, NUR314 (2026-09-27)
 
 A differential sweep over factories that return fn values through `Any`

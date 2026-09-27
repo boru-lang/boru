@@ -237,8 +237,8 @@ keep the two in sync in the same commit.
 | [NUR312](#nur312) | FIXED 2026-09-27 (the island starts after a placed value — the handoff log's entry of that date): a forward-drift window's PLACED fn value that takes nothing fired inside the paren the recorder wrapped it in — `2 (mkf) add 3` over a factory of a no-argument g answered [2 10] for the interpreter's signature_error; present on main |
 | [NUR313](#nur313) | FIXED 2026-09-27 (a body arm places its value — the handoff log's entry of that date): an `if` body arm's one fn value, which the arm's paren parks, was re-stepped by the landing or applied by the residual — `def c true if c [(mkf)] [0]` answered 7 for `fn g`, `if c [(mkl)] [0] 5` 6 for `fn l 5`; a split branch leading a residual apply declines; present on main |
 | [NUR314](#nur314) | FIXED 2026-09-27 (an isolated loop re-steps its results; elsewhere a designed defer — the handoff log's entry of that date): a loop's fn-valued results, which the loop's end re-steps, stayed data — `for 2 [(mkf)]` answered `[fn g fn g]` for [7 7], `for 1 [(mka)] 5` `[fn 5]` for [6]; present on main |
-| [NUR315](#nur315) | Pending, SILENT (recorded 2026-09-27): a FlexList written through a fn parameter's alias keeps the check pass's element join — `poke fl drop def j (fl get 0) j`, where poke sets a fn `h/v` at 0, answered `fn j` compiled for the interpreter's 42; present on main |
-| [NUR316](#nur316) | Pending, SILENT (recorded 2026-09-27): `each`'s result type drops the gradual mark of its body's value, so a later body commits a direct op over an element the run may not hold — `[0] each [drop (fl get 0)]` then `each [add 1]` over a flex holding "s" answered [[1]] for [['s1']], and over a typed list's out-of-range read [[1]] for the interpreter's signature_error; present on main |
+| [NUR315](#nur315) | FIXED 2026-09-27 (a flex container passed to a user fn loses its claims — the handoff log's entry of that date): a FlexList written through a fn parameter's alias kept the check pass's element join — `poke fl drop def j (fl get 0) j`, where poke sets a fn `h/v` at 0, answered `fn j` compiled for the interpreter's 42; present on main |
+| [NUR316](#nur316) | FIXED 2026-09-27 (a gradual element stays gradual — the handoff log's entry of that date): `each`'s result type dropped the gradual mark of its body's value, so a later body committed a direct op over an element the run may not hold — `[0] each [drop (fl get 0)]` then `each [add 1]` over a flex holding "s" answered [[1]] for [['s1']], and over a typed list's out-of-range read [[1]] for the interpreter's signature_error (now a loud defer); present on main |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14292,8 +14292,9 @@ answered before. Pinned by `lang/go/nur312_314_test.go`.
 
 ## NUR315 — a FlexList written through a fn parameter's alias {#nur315}
 
-**Status:** Pending, SILENT · **Recorded:** 2026-09-27 · **Surfaced by:** a
-research sweep of container element typing. Present on main.
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-27 · **Surfaced by:** a research sweep of container
+element typing. Present on main.
 
 ```
 def h fn [[] [Integer] [42]] def poke fn [[l:FlexList] [Any] [set 0 h/v l]]
@@ -14309,10 +14310,18 @@ as `Integer` and the bare read `j` of the fn stored there is lowered as
 data where the interpreter dispatches it. The write `set 0 h/v fl` at the
 root, on the name, agrees.
 
+**Fix.** A shaped flex container passed to a user fn poisons its shape, and
+every shape reachable from it through its claims or a concrete list or map
+holding one (`PoisonFlexShapes`, `StoreShapeInfo.Poison`): a keyed or
+unkeyed read after the call keeps the dynamic(Any) hatch, so the bare read
+dispatches under its guard. A flex map passed the same way agrees too.
+Pinned by `lang/go/nur315_316_test.go` and check `TestPoisonFlexShapes`,
+core `TestStoreShapePoison`.
+
 ## NUR316 — `each` drops its body value's gradual mark {#nur316}
 
-**Status:** Pending, SILENT · **Recorded:** 2026-09-27 · **Surfaced by:** the
-same sweep. Present on main.
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-27 · **Surfaced by:** the same sweep. Present on main.
 
 ```
 def poke fn [[l:FlexList] [Any] [set 0 "s" l]] def fl (flex [1 2 3]) poke fl drop
@@ -14331,3 +14340,15 @@ at its supertype, a read that may be None) becomes a strict element type,
 and the next `each` body commits a direct native op over it. The run holds
 a String or a None there, and the direct op answers over it where the
 interpreter's dispatch raises or concatenates.
+
+**Fix.** A gradual element stays gradual through a typed list: the result
+types of `each`, `fold`, `for`, `while`, `window` and `pairs` build their
+element through `core.CarrierTypedListOf` (a dynamic child for a gradual
+value), and a body's element carrier — the check pass's
+(`check.ElementCarrierOf`) and the closure compiler's list callback inputs —
+reads that child as gradual. The next body re-matches its dispatch at run
+time: the flex form answers `[['s1']]` on both lanes, and the typed list's
+out-of-range read reaches add as None, where the compiled poly re-match is
+the loud defer it always is for a no-match. Pinned by
+`lang/go/nur315_316_test.go`, core `TestCarrierTypedListOf` and check
+`TestElementCarrierOf`.
