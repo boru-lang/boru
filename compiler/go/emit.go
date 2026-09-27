@@ -1122,6 +1122,14 @@ type EmitState struct {
 	// the latch arms, re-arms or disarms, and at every event that may run
 	// code the model did not see.
 	keptDefsFresh map[string]string
+	// pendingKeptRead is the value ID of a def read made while the kept-defs
+	// latch is armed that the recorder may yet seat LIVE (noteKeptDefsRead):
+	// the tag hook that follows the read clears it when it does
+	// (keptReadSeatedLive), and the next recorded event, dispatch or
+	// Finalize makes it an observer otherwise (flushKeptRead).
+	// pendingKeptName is its binding's name.
+	pendingKeptRead string
+	pendingKeptName string
 	// storedGradualDepth marks a DETACHED stamp compile (StampDetachedFn
 	// sets it on the fork's private EmitState). While non-zero,
 	// buildFnBodyReturnsFn generalises an Any arg into an Any param as a
@@ -6784,6 +6792,8 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		}
 		es.defReadPos[v.ID] = append(es.defReadPos[v.ID], pos)
 	}
+	keepLive := es.keepLeakNames[name] && (!es.readHasHome(*v) || es.dynLeakNames[name])
+	rootLive := es.rootDynLeak && es.TopFrameOnly() && !es.fnLikeResidual(*v)
 	// A stored-ref unit's bare read of a module-scope value is live too
 	// (the seventy-first increment): the unit is invoked by the host after
 	// the store, when the binding may have moved, so the read is seated
@@ -6795,8 +6805,7 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		}
 		es.liveReadNames[name] = true
 		es.noteUnitLive(name)
-	} else if (es.keepLeakNames[name] && (!es.readHasHome(*v) || es.dynLeakNames[name])) || es.mutableRefCarrierRead(*v) ||
-		(es.rootDynLeak && es.TopFrameOnly() && !es.fnLikeResidual(*v)) {
+	} else if keepLive || es.mutableRefCarrierRead(*v) || rootLive {
 		// A name a KEEP-DEFS body leaked (NoteKeepDefsLeak), or a mutable
 		// reference — a flex, a store — the pass now holds as a CARRIER
 		// with no compiled home (a body's check-mode mutation re-modelled
@@ -6824,6 +6833,9 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		// analysis order at root, the region has run, and the bake is the
 		// read — as it was before this name was ever generalised.
 		return
+	}
+	if keepLive || rootLive {
+		es.keptReadSeatedLive(v)
 	}
 	v.ID = core.GenerateID(core.IDPrefixForType(v.Parent))
 	if pos.Row > 0 {
@@ -11020,7 +11032,7 @@ func (es *EmitState) NoteDefRead(id, name string) {
 		es.pendingGradualRead = id
 	}
 	if !es.keptDefsFreshRead(id, name) {
-		es.noteKeptDefsObserver("the read of `" + name + "`")
+		es.noteKeptDefsRead(id, name)
 	}
 	if es.defReads == nil {
 		es.defReads = map[string]string{}
@@ -11074,6 +11086,7 @@ func (es *EmitState) DefReadName(id string) (string, bool) {
 // or its install renames the fn. The lowering would carry the value as
 // data (NUR216).
 func (es *EmitState) flushGradualRead() {
+	es.flushKeptRead()
 	if es.pendingFoldedFire != "" {
 		es.pendingFoldedFire = ""
 		es.foldedEscape("a def-bound read the model stood aside for")

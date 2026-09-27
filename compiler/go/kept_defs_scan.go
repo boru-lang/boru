@@ -215,24 +215,22 @@ func engineMarkerToken(tk core.Value) bool {
 }
 
 // bodyParksFnValues reports whether a computed body's tokens are proven
-// (provenBodyTokens) and leave only fn values that PARK: a lone anonymous
-// lambda literal (`([n:Integer] => [n add 1])`), or anonymous ZERO-argument
-// ones only (`([] => [42])`). Re-stepped with nothing to take, an anonymous fn
-// value parks as data on the interpreter (execFnDefLiteral's anonymous park),
-// where a NAMED zero-argument one fires — `do (mk) end x` over `[g/v]` is
-// [7 5], over `[([] => [42])]` [fn 5] (NUR282). An arg-taking lambda beside
-// another value takes it inside the run (`[5 ([n:Integer] => [n add 1])]`
-// is [6]), so a run holding one is not proven. Such a run is no
-// callable-bearing region to the residual's seat rule
-// (eventFlags.regionMayBeFn).
+// (provenBodyTokens) and every one is an anonymous ZERO-argument lambda
+// literal (`([] => [42])`). Re-stepped, such a value parks as data on the
+// interpreter (execFnDefLiteral's anonymous park) wherever it lands, where a
+// NAMED zero-argument one fires — `do (mk) end x` over `[g/v]` is [7 5], over
+// `[([] => [42])]` [fn 5] (NUR282). An arg-taking lambda is not proven: it
+// takes a value beside it in the run (`[5 ([n:Integer] => [n add 1])]` is
+// 6) or a token written after the run in its statement (`do (mk) x` over
+// the lone lambda is 6). Such a run is no callable-bearing region to the
+// seat rules (eventFlags.regionMayBeFn).
 func (es *EmitState) bodyParksFnValues(body core.Value) bool {
 	toks, ok := es.provenBodyTokens(body)
 	if !ok || len(toks) == 0 {
 		return false
 	}
 	for _, tk := range toks {
-		n, lambda := anonLambdaArity(tk)
-		if !lambda || (n > 0 && len(toks) > 1) {
+		if n, lambda := anonLambdaArity(tk); !lambda || n > 0 {
 			return false
 		}
 	}

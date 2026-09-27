@@ -9,6 +9,42 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR282's latch half: a live-seated read passes the kept-defs latch as a carrier (2026-09-27)
+
+**The problem.** Main's kept-defs latch declines the first observer of a
+binding after a computed keep-defs body — sound, but it also declined the
+reads the branch seats LIVE (a root read after a root computed body, a
+unit's own def after one in the unit), which observe nothing stale. The
+merge had tried exempting those reads and backed out: a list or map literal
+over the name folded the check model's pre-body value (`… each b xs drop
+[t]` answered [[0]] for [[3]]), because the live read's value stayed
+concrete.
+
+**The fix.** Both halves at once:
+- the latch's read check waits for the tag hook that follows a def read
+  that may be seated live (`noteKeptDefsRead`), and a read NoteLiveRead
+  seats live clears it (`keptReadSeatedLive`); anything else becomes an
+  observer at the next recorded event, dispatch or Finalize
+  (`flushKeptRead`), the pattern main's `flushGradualRead` uses;
+- the seated read's value becomes a CARRIER of its type, so every consumer
+  — a list or map literal, a def, a native call — assembles from the live
+  lookup instead of folding a constant. A read that may hold a fn stays an
+  observer: a fn value is interned as a const, which the carrier would not
+  stop.
+
+**The lambda proof narrowed.** A first cut of NUR282's parking proof
+admitted a LONE arg-taking lambda. With the latch passing the read after
+it, `do (mk) x` over `[([n:Integer] => [n add 1])]` went silent ([fn 5] for
+6): the lambda takes a token written after the run in its statement. Only
+zero-argument anonymous lambdas are proven now, and the lone arg-taking one
+is the plain check's loud defer.
+
+**Measured.** Over the 340 probe programs, 63 more answer the interpreter's
+way than on the merged tree, and none is silent. NUR203's and NUR210's
+rebinding witnesses compile again (`TestDynamicKeepDefsBodyLeaksToTheFn`,
+`TestKeptDefsLiveReadsCompile`, the restored NUR210 rows). A parameter the
+body may rebind, and a fn it may redefine, still decline.
+
 ## NUR213 and NUR281 closed, NUR282 narrowed: a computed run is re-stepped or checked plain (2026-09-27)
 
 **NUR281 (silent, on main and the branch).** A map literal's value after a

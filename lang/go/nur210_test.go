@@ -68,9 +68,9 @@ func TestNUR210ComputedDoRunBeneathAndCollected(t *testing.T) {
 // on the registry the body installed into (EmitState.rootDynLeak), a statement
 // boundary between the body's run and the read is proven (NUR266), and a body
 // that unbinds runs on the interpreter (NUR267). Since the merge of main's
-// #514 a body whose tokens are not proven binding-free declines instead: a
-// later read observes a binding the body may have changed (main's kept-defs
-// latch).
+// #514 main's kept-defs latch declines a later observer of a binding such a
+// body may have changed; a read seated live, as these are, observes nothing
+// stale and passes it (NUR282).
 func TestNUR210ComputedBodyRebindsTheRoot(t *testing.T) {
 	mk := func(body string) string { return `def mk fn [[][List][quote [` + body + `]]] end def x 99 end ` }
 	for _, src := range []string{
@@ -78,10 +78,10 @@ func TestNUR210ComputedBodyRebindsTheRoot(t *testing.T) {
 		mk(`def y 5`) + `do (mk) end x`,   // [99]: another name
 		mk(`undef x`) + `do (mk) end x`,   // undefined_word: the body's undef
 		mk(`def x 5 7`) + `do (mk) end x`, // [7 5]: the run, then the read
+		mk(`1 2`) + `do (mk) end x`,       // a body that binds nothing
 	} {
-		requireDeclineReason(t, src, keptDefsLatchReason)
+		requireEngineParity(t, src, true)
 	}
-	requireEngineParity(t, mk(`1 2`)+`do (mk) end x`, true) // a body that binds nothing
 	// Negative: the shapes the run's count still cannot seat stay loud —
 	// never the read's stale value.
 	for _, src := range []string{
@@ -106,23 +106,17 @@ func TestNUR210ComputedBodyRebindsTheRoot(t *testing.T) {
 // `[7 [5]]` over `[def x 5 7]`). The pass now stops knowing root values
 // there: each root value binding is generalised in place (the speculative
 // undef's transition), so every later read is live. Since the merge of main's
-// #514 the binding bodies decline (main's region rule and kept-defs latch —
-// see TestNUR210ComputedBodyRebindsTheRoot); a body proven to be one plain
-// value still compiles, its later reads live.
+// #514 main's kept-defs latch passes these reads because they are seated live
+// (NUR282); a read that is not — a fn unit's call, which the body may have
+// redefined — declines.
 func TestNUR210ComputedBodyGeneralisesTheRoot(t *testing.T) {
 	mk := func(body string) string { return `def x 99 end def mk fn [[][List][quote [` + body + `]]] end ` }
-	for _, src := range []string{
-		mk(`def x 5 7`) + `do (mk) end [x]`,
-		mk(`def x 5 7`) + `do (mk) end {a: x}`,
-		mk(`def x 5 7`) + `do (mk) end def y x end y`,
-		mk(`def x 5 7`) + `do (mk) end [x x]`,
-		mk(`def x 5 7`) + `def f fn [[][Any][[x]]] end do (mk) end f`,
-		mk(`undef x 7`) + `do (mk) end [x]`,
-	} {
-		requireDeclineReason(t, src, keptDefsLatchReason)
-	}
 	for _, c := range []struct{ src, want string }{
-		// A body that leaves x alone reads the pre-body value live.
+		{mk(`def x 5 7`) + `do (mk) end [x]`, "[7 [5]]"},
+		{mk(`def x 5 7`) + `do (mk) end {a: x}`, "[7 {a:5}]"},
+		{mk(`def x 5 7`) + `do (mk) end def y x end y`, "[7 5]"},
+		{mk(`def x 5 7`) + `do (mk) end [x x]`, "[7 [5 5]]"},
+		// Negative: a body that leaves x alone reads the pre-body value live.
 		{mk(`7`) + `do (mk) end [x]`, "[7 [99]]"},
 		{mk(`7`) + `do (mk) end def y x end y`, "[7 99]"},
 	} {
@@ -131,4 +125,10 @@ func TestNUR210ComputedBodyGeneralisesTheRoot(t *testing.T) {
 			t.Errorf("%s: the interpreter answers %s, got %v %v", c.src, c.want, got, err)
 		}
 	}
+	src := mk(`undef x 7`) + `do (mk) end [x]`
+	_, _, errC, _, errI := runBothEngines(t, src)
+	if codeOf(errI) != "undefined_word" || codeOf(errC) != codeOf(errI) {
+		t.Errorf("%s: undefined_word on both lanes, got compiled %v, interp %v", src, errC, errI)
+	}
+	requireDeclineReason(t, mk(`def x 5 7`)+`def f fn [[][Any][[x]]] end do (mk) end f`, keptDefsLatchReason)
 }

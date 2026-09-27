@@ -15,25 +15,28 @@ import (
 // a def read, whose reads share one value. The recorder kept each read's
 // position, and a read wholly past the boundary proved the crossing.
 //
-// At the merge of main's #514 main's rules superseded the compile: a run
-// whose tokens are not proven binding-free arms the kept-defs latch, which
-// declines the read after it; and a NAMED zero-argument fn value in the run
-// fires across the `end` (`do (mk) end x` over `[g/v]` is the interpreter's
-// [7 5], which the statement-boundary seat answered [fn g 5], silent). That
-// run now compiles under the plain-run check (NUR213) and defers loudly; a
-// lone anonymous lambda parks and seats as data (NUR282).
+// At the merge of main's #514 main's rules superseded that seat: a NAMED
+// zero-argument fn value in the run fires across the `end` (`do (mk) end x`
+// over `[g/v]` is the interpreter's [7 5], which the statement-boundary seat
+// answered [fn g 5], silent). A run whose tokens are not proven to leave only
+// parking values now compiles under the plain-run check (NUR213) and defers
+// loudly when it leaves a fn value, as the lambda here does.
 func TestNUR266RunLeadStopsAtTheStatementEnd(t *testing.T) {
 	const lam = `def mk fn [[][List][quote [([n:Integer] => [n add 1])]]] end def x 5 end `
-	for _, prog := range []string{
-		`do (mk) end x`,   // the run's fn stays data
-		`do (mk) end x x`, // every read past the end
-		`do (mk) ; x`,     // `;` ends the statement as `end` does
-		`do (mk) x`,       // no boundary: the fn takes x forward, 6
+	for _, c := range []struct{ prog, wantI string }{
+		{`do (mk) end x`, "[fn (Integer) 5]"},     // the run's fn stays data
+		{`do (mk) end x x`, "[fn (Integer) 5 5]"}, // every read past the end
+		{`do (mk) ; x`, "[fn (Integer) 5]"},       // `;` ends the statement as `end` does
+		{`do (mk) x`, "[6]"},                      // no boundary: the fn takes x forward
+		{`do (mk) end 7`, "[fn (Integer) 7]"},     // a literal after the end
 	} {
-		requireDeclineReason(t, lam+prog, keptDefsLatchReason)
+		requireCheckedPlainDefer(t, lam+c.prog, c.wantI)
 	}
-	requireEngineParity(t, lam+`do (mk) end 7`, true) // a literal after the end
 	requireCheckedPlainDefer(t, `def g fn [[][Integer][7]] end def mk fn [[][List][quote [g/v]]] end def x 5 end do (mk) end x`, "[7 5]")
+	// A run of zero-argument anonymous lambdas parks wherever it lands, and
+	// seats as data (NUR282).
+	requireEngineParity(t, `def mk fn [[][List][quote [([] => [42])]]] end def x 5 end do (mk) end x`, true)
+	requireEngineParity(t, `def mk fn [[][List][quote [([] => [42])]]] end def x 5 end do (mk) x`, true)
 	// A run of plain values and a paren's fn result are unchanged.
 	requireEngineParity(t, `def mk fn [[][List][quote [1 2]]] end def x 5 end do (mk) end x`, true)
 	requireEngineParity(t, `def mk fn [[][Any][([n:Integer] => [n add 1])]] end def x 5 end (mk) end x`, true)

@@ -53,7 +53,6 @@ func TestComputedDoBodyRegionDeclines(t *testing.T) {
 	const mk12 = `def mk fn [[][List][quote [1 2]]] end `
 	const above = "call result above a literal"
 	const region = "consumes loop results"
-	const kept = "a computed body keeps its defs and undefs in the enclosing scope"
 	for _, c := range []struct{ src, reason, want string }{
 		// NUR210's first witness and its neighbours — a value beneath the
 		// run, a list literal collecting it — compile through the branch's
@@ -63,11 +62,10 @@ func TestComputedDoBodyRegionDeclines(t *testing.T) {
 		// A fixed-count consumer of the run.
 		{mk12 + `9 do (mk) drop`, region, "[9 1]"},
 		{mk12 + `do (mk) add 9`, region, "[1 11]"},
-		// NUR210's second witness: a rebinding the run leaks, read after it.
-		{`def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x`, "(NUR210)", "[5]"},
+		// A fn the run may rebind, called after it: a call is no live read
+		// (NUR210's second witness and its value-read neighbours compile —
+		// TestKeptDefsLiveReadsCompile).
 		{`def h fn [[][Integer][1]] end def mk fn [[][List][quote [def h fn [[][Integer][7]] end]]] end do (mk) end h`, "(NUR210)", "[7]"},
-		{`def x 99 end def mk fn [[][List][quote [def x 5 1]]] end [1 2] each (mk) end x`, kept + ", and the read of `x`", "[[1 1] 5]"},
-		{`def x 99 end def mk fn [[][List][quote [def x 5 1]]] end def b (mk) end [1 2] each b end x`, kept + ", and the read of `x`", "[[1 1] 5]"},
 		// Inside a fn body the unit's residual declines first: the run may
 		// leave a fn value the unit would return unapplied.
 		{`def x 99 end def f fn [[b:List][Integer][do b x]] end f (quote [def x 5])`, "unapplied fn-value in body residual", "[5]"},
@@ -76,8 +74,6 @@ func TestComputedDoBodyRegionDeclines(t *testing.T) {
 	} {
 		requireLoudDecline(t, c.src, c.reason, c.want)
 	}
-	// The undef twins: the interpreter raises where the model still binds.
-	requireLoudDeclineErr(t, `def x 99 end def mk fn [[][List][quote [undef x]]] end do (mk) end x`, "(NUR210)", "undefined_word")
 	// The unit form: the latch re-arms at the call, where the root's value
 	// bindings are generalised (NUR281), so the read after it has no
 	// compiled home and the residual's provenance decline is met first.
@@ -303,10 +299,64 @@ func TestKeptDefsFreshReadStaysNarrow(t *testing.T) {
 		{`def f fn [[b:List c:Boolean][Any][def ok 1 do b drop if c [def ok 2] [] ok]] end f (quote [def ok 7 0]) false`, "[7]"},
 		// A second run between the def and the read.
 		{`def f fn [[b:List][Any][def ok (do b) do b drop ok]] end f (quote [def ok 3 4])`, "[3]"},
-		// A binding made before the run.
-		{`def x 99 end def mk fn [[][List][quote [def x 5 1]]] end def y (do (mk)) x`, "[5]"},
 	} {
 		requireLoudDecline(t, c.src, "(NUR210)", c.want)
+	}
+	// A binding made before the run, read bare at the root, is seated live
+	// (TestKeptDefsLiveReadsCompile): it reads what the run left.
+	requireEngineParity(t, `def x 99 end def mk fn [[][List][quote [def x 5 1]]] end def y (do (mk)) x`, true)
+}
+
+// TestKeptDefsLiveReadsCompile pins NUR282's latch half (the reverse-order
+// NUR run, after the merge of main's #514): a read the recorder seats LIVE —
+// a root read after a root computed keep-defs body (rootDynLeak), a unit's
+// own def after one in the unit (NUR203's leak) — observes nothing stale:
+// the lookup reads the registry the body installed into, raises the
+// interpreter's undefined_word on a miss and bails on a fn value. So the
+// kept-defs latch lets it through (compiler noteKeptDefsRead /
+// keptReadSeatedLive), and the read's value becomes a carrier of its type,
+// so no literal or fold downstream bakes the pre-body value (`… drop [t]`
+// is [[3]], where a concrete read folded [[0]]). A call of a fn the body may
+// rebind, and a parameter's read, are still observers.
+func TestKeptDefsLiveReadsCompile(t *testing.T) {
+	const mk = `def x 99 end def mk fn [[][List][quote [def x 5 1]]] end `
+	for _, c := range []struct{ src, want string }{
+		{`def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x`, "[5]"},
+		{mk + `[1 2] each (mk) end x`, "[[1 1] 5]"},
+		{mk + `def b (mk) end [1 2] each b end x`, "[[1 1] 5]"},
+		{mk + `[1 2] each (mk) end [x]`, "[[1 1] [5]]"},
+		{mk + `[1 2] each (mk) end {a: x}`, "[[1 1] {a:5}]"},
+		{mk + `[1 2] each (mk) end def y x end y`, "[[1 1] 5]"},
+		{mk + `[1 2] each (mk) end x add 1`, "[[1 1] 6]"},
+		{`def f fn [[b:List][Any][def t 0 do b drop [t]]] end f (quote [def t 5 1])`, "[[5]]"},
+		{`def f fn [[b:List][Any][def t 0 do b drop t add 1]] end f (quote [def t 5 1])`, "[6]"},
+	} {
+		requireEngineParity(t, c.src, true)
+		if got, err := mustNew(t).RunInterp(c.src); err != nil || fmt.Sprint(got) != c.want {
+			t.Errorf("%s: the interpreter answers %s, got %v / %v", c.src, c.want, got, err)
+		}
+	}
+	// An unbinding body: the live lookup raises the interpreter's error.
+	for _, src := range []string{
+		`def x 99 end def mk fn [[][List][quote [undef x]]] end do (mk) end x`,
+		`def x 99 end def mk fn [[][List][quote [undef x 1]]] end [1 2] each (mk) end x`,
+		`def f fn [[b:List][Any][def t 0 do b drop t]] end f (quote [undef t 1])`,
+	} {
+		_, _, errC, _, errI := runBothEngines(t, src)
+		if codeOf(errI) != "undefined_word" || codeOf(errC) != "undefined_word" {
+			t.Errorf("%s: undefined_word on both lanes, got compiled %v, interp %v", src, errC, errI)
+		}
+	}
+	// Negative: a parameter the body may rebind, and a fn it may redefine,
+	// are no live reads, and still decline.
+	for _, src := range []string{
+		`def f fn [[b:List xs:List][Any][each b xs drop xs]] end f (quote [def xs 5 0]) [1 2 3]`,
+		`def f fn [[b:List][Any][do b drop do b]] end f (quote [def b (quote [7]) 0])`,
+	} {
+		prog, why, _, err := mustNew(t).CompileCheck(src)
+		if prog != nil || err != nil || !strings.Contains(why, "(NUR210)") {
+			t.Errorf("%q: want the latch's decline, got prog=%v reason=%q err=%v", src, prog != nil, why, err)
+		}
 	}
 }
 
