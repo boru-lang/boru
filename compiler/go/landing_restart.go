@@ -329,10 +329,13 @@ func (es *EmitState) notePhantomConsumersIn(events []EmitEvent) {
 // as the do's own run. The body must be the list written right after the
 // word (its closure), and only scalar literals may stand before the word on
 // its level: written as values, the two tokens are no collection barrier.
+// An error call over a computed handler (NUR300) writes its run over four
+// tokens — the do before it, the do's body, the word and the handler
+// (handlerRun) — and the events inside them plan nothing of their own.
 func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Value) (int, []substPlan, bool) {
 	ev := tree[seq].ev
 	c := &ev.call
-	if ev.kind != evCall || c.word != "do" || len(c.ops) != 1 {
+	if ev.kind != evCall || !(c.word == "do" && len(c.ops) == 1 || c.word == "error" && len(c.ops) == 2) {
 		return 0, nil, false
 	}
 	tok := statementToken(body, c.pos)
@@ -345,13 +348,25 @@ func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Val
 		toks, _ = nestedToks(toks[at])
 	}
 	at := path[len(path)-1]
-	if at+1 >= len(toks) || !core.IsWord(toks[at]) || toks[at].Pos() != c.pos || !es.doBodyAfter(tree, seq, toks, at) {
+	if at+1 >= len(toks) || !core.IsWord(toks[at]) || toks[at].Pos() != c.pos {
+		return 0, nil, false
+	}
+	// The run the island writes: the do and its body, or — for a computed
+	// error handler (NUR300) — the do before the word, its body, the word
+	// and the handler, since the handler took the do's caught value.
+	span := 2
+	if c.word == "error" {
+		if !es.handlerRun(tree, seq, toks, at) {
+			return 0, nil, false
+		}
+		path, span = append(append([]int(nil), path[:len(path)-1]...), at-2), 4
+	} else if !es.doBodyAfter(tree, seq, toks, at) {
 		return 0, nil, false
 	}
 	first := statementFirstSeq(tree, seq, body[tok].Pos())
 	var pending []int
-	for s := range tree {
-		if s >= first && s < seq {
+	for s, te := range tree {
+		if s >= first && s < seq && !inSpan(body, eventPos(*te.ev), path, span) {
 			pending = append(pending, s)
 		}
 	}
@@ -360,7 +375,51 @@ func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Val
 	if !ok || !inertBefore(body, tok, path, substs...) {
 		return 0, nil, false
 	}
-	return tok, append(substs, substPlan{path: path, span: 2, seq: seq, results: true}), true
+	return tok, append(substs, substPlan{path: path, span: span, seq: seq, results: true}), true
+}
+
+// handlerRun reports whether the error call at toks[at] took its computed
+// handler from the token right after the word (its one argument site) and
+// its caught value from the do written right before it over a literal body
+// (`do [raise oops 'x'] error (mk)`, NUR300): the four tokens are one run.
+func (es *EmitState) handlerRun(tree map[int]treeEvent, seq int, toks []core.Value, at int) bool {
+	c := &tree[seq].ev.call
+	sites := es.argSites[seq]
+	if at < 2 || len(sites) != 2 || c.ops[1].kind != opEvent {
+		return false
+	}
+	do, in := tree[c.ops[1].idx]
+	if !in || do.ev.kind != evCall || do.ev.call.word != "do" || len(do.ev.call.ops) != 1 || do.ev.call.ops[0].kind != opClosure {
+		return false
+	}
+	lit := toks[at-1]
+	if !core.IsWord(toks[at-2]) || toks[at-2].Pos() != do.ev.call.pos || !lit.Eval || lit.Quoted || !lit.Parent.Equal(core.TList) {
+		return false
+	}
+	q := sites[0].pos
+	if te, in := tree[sites[0].seq]; sites[0].seq >= 0 && in {
+		q = eventPos(*te.ev)
+	} else if sites[0].seq >= 0 {
+		return false
+	}
+	return bodyTokenContaining(toks, q) == at+1
+}
+
+// inSpan reports whether position p stands inside the span tokens at path's
+// level, from path's last index on: an event there ran inside the run the
+// island writes, so no plan of its own writes it.
+func inSpan(body []core.Value, p core.SrcPos, path []int, span int) bool {
+	q := tokenPath(body, p)
+	n := len(path)
+	if len(q) < n {
+		return false
+	}
+	for i := 0; i < n-1; i++ {
+		if q[i] != path[i] {
+			return false
+		}
+	}
+	return q[n-1] >= path[n-1] && q[n-1] < path[n-1]+span
 }
 
 // doBodyAfter reports whether the do at toks[at] took its body from the

@@ -26,11 +26,16 @@ literal took one value, and a handler's fn value stayed data.
   runtime count check, and a layout that cannot place it declines.
 - **What stays.** A run of one plain value answers as before, and so do a
   loop's and a branch's arms and a fn's return-count error.
-- **Owed (loud).** `(do [raise oops 'x'] error (mk)) add 1` over two values
-  is `[5 7]` interpreted; the old lowering reached it by accident, and it
-  defers now. An `error` count island would compile it.
-- **Pins.** `lang/go/nur300_handler_run_test.go`: ten agreeing rows, seven
-  checked defers, and the value-beneath decline.
+- **The count island.** Where the check refuses a run, the statement
+  runs again with the run written over the do, its body, the word and the
+  handler (`handlerRun`); the events inside those four tokens plan nothing
+  (`inSpan`). The list literal, the def's group, `(do … error (mk)) add 1`
+  (`[5 7]`, which the old lowering reached by accident) and a handler's fn
+  value all answer as the interpreter does. A map literal's value, which
+  no island reaches, defers.
+- **Pins.** `lang/go/nur300_handler_run_test.go` (22 agreeing rows, the
+  map literal's checked defer, the value-beneath decline), compiler
+  `TestErrorCountPoint`, `TestCountPointNeedsARun` and `TestInSpan`.
 
 ## NUR282's def-group seat compiles (2026-09-27)
 

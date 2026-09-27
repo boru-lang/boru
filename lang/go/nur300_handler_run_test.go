@@ -10,7 +10,9 @@ import "testing"
 // was `[5 [6]]` for the interpreter's `[[5 6]]`. The run is a variadic
 // region now, as a computed `do` body's is (recordDynBodyCall): a residual
 // seats it whole, a single-value seat takes it under the runtime count
-// check, and a layout that cannot place it declines.
+// check, and a layout that cannot place it declines. Where the check
+// refuses a run, the error's count island re-runs the statement with the
+// do, its body, the word and the handler written as the run (handlerRun).
 func TestNUR300ComputedHandlerRun(t *testing.T) {
 	const g = `def g fn [[][Integer][7]] end `
 	const two = `def mk fn [[][List][quote [drop 5 6]]] end `
@@ -27,23 +29,26 @@ func TestNUR300ComputedHandlerRun(t *testing.T) {
 		{one + `def r (do [raise oops 'x'] error (mk)) r`, "[5]"},
 		{one + `(do [raise oops 'x'] error (mk)) add 1`, "[6]"},
 		{g + one + `do [g/v] error (mk)`, "[7]"},
-	} {
-		agreeOnBothLanes(t, c.src, c.want)
-	}
-	// The silent forms, loud now: the runtime check defers on a run that is
-	// not one plain value (a count other than one, or a fn value the
-	// interpreter steps).
-	for _, c := range []struct{ src, wantI string }{
+		// The silent forms, through the count island: the run is written in
+		// the do's place, and the interpreter steps it there.
 		{two + `[do [raise oops 'x'] error (mk)]`, "[[5 6]]"},
 		{two + `def r (do [raise oops 'x'] error (mk)) r`, "[6 5]"},
-		{two + `{a: (do [raise oops 'x'] error (mk))}`, "[{a:[5 6]}]"},
 		{two + `(do [raise oops 'x'] error (mk)) add 1`, "[5 7]"},
+		{two + `do [raise oops 'x'] error (mk) add 1`, "[5 7]"},
+		{two + `3 [do [raise oops 'x'] error (mk)]`, "[3 [5 6]]"},
+		{two + `(mk) drop [do [raise oops 'x'] error (mk)]`, "[[5 6]]"},
 		{g + fnv + `[do [raise oops 'x'] error (mk)]`, "[[7]]"},
 		{g + fnv + `(do [raise oops 'x'] error (mk)) typeof`, "[Integer]"},
 		{`def mk fn [[][List][quote [drop]]] end [do [raise oops 'x'] error (mk)]`, "[[]]"},
+		{`def f fn [[h:List][Any][[do [raise oops 'x'] error h]]] end f (quote [drop 5 6])`, "[[5 6]]"},
+		{`def f fn [[h:List][Any][(do [raise oops 'x'] error h) add 1]] end f (quote [drop 5 6])`, "ERROR:expected 1 return value(s), got 2"},
+		{`def f fn [[h:List][Any][def r (do [raise oops 'x'] error h) r]] end f (quote [drop 5 6])`, "ERROR:expected 1 return value(s), got 2"},
 	} {
-		requireCheckedOneDefer(t, c.src, c.wantI)
+		agreeOnBothLanes(t, c.src, c.want)
 	}
+	// A seat no island reaches (a map literal's value) takes the runtime
+	// check's loud defer.
+	requireCheckedOneDefer(t, two+`{a: (do [raise oops 'x'] error (mk))}`, "[{a:[5 6]}]")
 	// A value beneath the run: main answered [5 3 6].
 	requireLoudDecline(t, two+`3 do [raise oops 'x'] error (mk)`, "residual shape beyond Stage 1", "[3 5 6]")
 }
