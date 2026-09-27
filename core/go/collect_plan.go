@@ -264,7 +264,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 		allMatch := true
 		// gradualStack notes a stack operand this candidate took on an
 		// UNPROVEN match — a carrier whose static type does not conform to
-		// the slot, so the runtime value may miss it (NUR228, below).
+		// the slot, so the runtime value may miss it (NUR305, below).
 		gradualStack := false
 		for j := 0; j < remaining; j++ {
 			ri := len(resolvedIdx) - 1 - j
@@ -344,7 +344,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 		// and to v when v is a Pid). No static window is faithful, so the
 		// compile declines — the mirror of noteSplit's case, where the
 		// static choice forward-collects and the runtime one grabs the
-		// carrier (NUR228). An all-stack match (fwd 0) is the forward-drift
+		// carrier (NUR305). An all-stack match (fwd 0) is the forward-drift
 		// guard's (Engine.declineForwardStackDrift and its drift window).
 		if compiling && gradualWindowAmbiguous(h, fn, si, w, pointer, fwd, gradualStack, checkActive) {
 			reg.noteAmbiguousGradualSplit()
@@ -376,22 +376,22 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 // its own scan (the kernel's, over its own forward limit) claims the token the
 // selected candidate's scan stopped at. That candidate is the interpreter's
 // dispatch whenever the selected one's gradual stack operand misses its slot
-// at run time, and it binds a different window (NUR228).
+// at run time, and it binds a different window (NUR305).
 // unprovenStackOperand reports a stack operand matched on no proof — a
 // carrier whose static type does not conform to the slot, so the runtime
-// value may miss it (NUR228).
+// value may miss it (NUR305).
 func unprovenStackOperand(v Value, slot *Type) bool {
 	return !IsConcrete(v) && !v.Parent.ConformsTo(slot)
 }
 
 // gradualWindowAmbiguous reports a compile-pass window that took fwd forward
 // tokens and hangs on an unproven stack operand while a LATER candidate
-// forward-collects past the token this one's scan stopped at (NUR228).
+// forward-collects past the token this one's scan stopped at (NUR305).
 func gradualWindowAmbiguous(h CollectHost, fn *FnDefInfo, si int, w WordInfo, pointer, fwd int, gradualStack, checkActive bool) bool {
 	return fwd > 0 && gradualStack && laterCandidateCollectsPast(h, fn, si, w, pointer, fwd, checkActive, true)
 }
 
-// allStackWindowAmbiguous is NUR228's split at an all-stack window (fwd 0):
+// allStackWindowAmbiguous is NUR305's split at an all-stack window (fwd 0):
 // the match hangs on an unproven TOP operand while a LATER candidate
 // forward-collects past the word. `(mk) do [5]` over an Any result fills
 // do's Map overload from the stack, while at run time a List value misses it

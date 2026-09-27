@@ -19,7 +19,7 @@ func TestNoteLoopFreshNeedsALiveLoop(t *testing.T) {
 }
 
 // TestRecordRuntimeDispatchUnplaceableSigForward pins the decline of an
-// inline signature type's forward the compile cannot place (NUR231): a
+// inline signature type's forward the compile cannot place (NUR308): a
 // refinement with no compiled home makes the dispatch run-dependent, and
 // the dispatch goes to RecordCall as the compile-time word it is (no
 // install event); the latch is consumed.

@@ -1052,7 +1052,7 @@ func evalParenAnnotation(r *Registry, name string, constraint Value) (Value, err
 }
 
 // defRunMembershipArm is the typed def's arm for a constraint holding a
-// refinement whose bound the analysis pass does not know (NUR231): in a
+// refinement whose bound the analysis pass does not know (NUR308): in a
 // pass, the run decides membership (defRunMembershipBind), described as the
 // interpreter's typed def describes it — a named node by its name, an inline
 // constraint as the run renders it.
@@ -1070,7 +1070,7 @@ func defRunMembershipArm(r *Registry, name, typeName string, constraint, body Va
 // defRunMembershipBind binds a typed def whose constraint holds a refinement
 // over a bound the analysis pass does not know — a computed one, `def
 // x:(Integer gt (size s)) 2` or `def v:T 3` over such a T, whose bound is
-// the pass's carrier (NUR231). The membership is the run's: the pass admits
+// the pass's carrier (NUR308). The membership is the run's: the pass admits
 // gradually and records the run's check, OpBindTyped over
 // TypedBindRunMembership, against the named node (which forwards to the
 // node the run installed, core.RunTypeInstall) or, inline, against the

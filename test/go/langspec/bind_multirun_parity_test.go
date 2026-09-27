@@ -124,10 +124,10 @@ var parityShapes = []parityShape{
 	// against the top `ZB` and passes against the one below it. Replaying
 	// one captured node would answer that read wrongly, so the bridge
 	// declines and the whole program declines. Graduation = an op that
-	// REBUILDS the type per element instead of replaying one. Since NUR231
+	// REBUILDS the type per element instead of replaying one. Since NUR308
 	// (2026-09-26) the program declines one step earlier, for the same
 	// reason seen from the type: the bound READS the element — a computed
-	// bound only the run knows. NUR231's type half installs such a type at
+	// bound only the run knows. NUR308's type half installs such a type at
 	// run time (OpBindTypeRun), but only at the root, so inside the body the
 	// def declines as the compile-time word it is, failing the body's unit,
 	// and the each declines as the code-body word before the bridge is

@@ -7,7 +7,7 @@ import (
 )
 
 // TestPlacedTypeTwin pins the twin lookup the run-time type install pairs
-// with (NUR231's type half): the LATEST type-install twin of the name, and
+// with (NUR308's type half): the LATEST type-install twin of the name, and
 // only when it has a stream placement — an unplaced one, or none, is -1.
 func TestPlacedTypeTwin(t *testing.T) {
 	es := NewEmitState()
@@ -66,7 +66,7 @@ func TestRecordTypeRun(t *testing.T) {
 	}
 }
 
-// TestRuntimeLatchesNeedALiveRecorder pins the two NUR231 latches: a
+// TestRuntimeLatchesNeedALiveRecorder pins the two NUR308 latches: a
 // suspended recorder sets neither, so no later dispatch consumes a latch the
 // pass left while it was not recording.
 func TestRuntimeLatchesNeedALiveRecorder(t *testing.T) {
@@ -122,7 +122,7 @@ func TestRecordTypedBindRun(t *testing.T) {
 }
 
 // TestRecordSigForwards pins the record of an inline signature type's
-// run-time forwards (NUR231): one unnamed install event per anonymous node,
+// run-time forwards (NUR308): one unnamed install event per anonymous node,
 // over the refinement operand; all or nothing — a refinement with no
 // compiled home, or a signature built inside a fragment, records none. A
 // suspended recorder latches nothing.

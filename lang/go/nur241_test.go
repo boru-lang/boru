@@ -17,7 +17,7 @@ import (
 // m.path's slot and raised `cannot call append` where the interpreter
 // answers. Such an arrival — a compiling pass's deferred word-led window, a
 // value its slot cannot prove, a narrower window fitting the stack beneath
-// the word — flags the gradual split, NUR228's discipline, and the program
+// the word — flags the gradual split, NUR305's discipline, and the program
 // declines loudly. A window that is not word-led (`1 2 add (m.v)`), one with
 // nothing beneath the word for a narrower window (`add x (m.v)`), and one the
 // value is proven for compile as before.

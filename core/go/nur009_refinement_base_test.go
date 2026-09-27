@@ -5,7 +5,7 @@ import (
 )
 
 // constructRecorder is the inactive recorder keeping what the refinement
-// constructors and install sites tell the compile pass (NUR231): the run-time
+// constructors and install sites tell the compile pass (NUR308): the run-time
 // construct latch, the remembered consts, and the declines.
 type constructRecorder struct {
 	inactiveEmit
@@ -112,7 +112,7 @@ func TestRefinementRendersOverAFormatterBase(t *testing.T) {
 	}
 }
 
-// TestRefinementConstructorsNoteUnknownBounds pins NUR231 at the
+// TestRefinementConstructorsNoteUnknownBounds pins NUR308 at the
 // constructors: over a KNOWN bound the refinement is a const (remembered for
 // the stripped-operand recovery); over a bound the pass does not know (a
 // carrier — a computed one) the constructor latches a run-time construct and
@@ -153,7 +153,7 @@ func TestRefinementConstructorsNoteUnknownBounds(t *testing.T) {
 	}
 }
 
-// TestUnknownBoundDecidesNothing pins the membership half of NUR231: a
+// TestUnknownBoundDecidesNothing pins the membership half of NUR308: a
 // carrier bound orders below every value, so a verdict over it was the
 // lattice's — `Integer lte (size s)` refused 3 at check time whatever s
 // held. An unknown bound admits (gradually), and so does an interval whose
@@ -200,7 +200,7 @@ func TestRefinementConstOnlyOverKnownBounds(t *testing.T) {
 }
 
 // TestUnknownRefinementIsTheRuns pins what the install sites tell the
-// compile pass about a refinement over a bound it does not know (NUR231's
+// compile pass about a refinement over a bound it does not know (NUR308's
 // type half): a type install notes the run-time install — the run installs
 // the type, and the node minted here forwards to the run's — and so does a
 // union, a negation or a typed container's child holding one; an inline

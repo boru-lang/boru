@@ -6,7 +6,7 @@ import (
 	"testing"
 )
 
-// TestNUR228GradualStackWindowDeclines pins NUR228: `send`'s overloads split
+// TestNUR305GradualStackWindowDeclines pins NUR305: `send`'s overloads split
 // its operands by the runtime type of the value beneath it — a Pid there is
 // taken as the destination after ONE forward token, anything else leaves it
 // and both forward tokens go to `send (Any, String)`. The check pass saw a
@@ -15,7 +15,7 @@ import (
 // `{a: 1}` to None and raised signature_error where the interpreter sent it
 // to "nobody". The compile now declines loudly, the gradual-split reason
 // named, and the interpreter's answer stands.
-func TestNUR228GradualStackWindowDeclines(t *testing.T) {
+func TestNUR305GradualStackWindowDeclines(t *testing.T) {
 	for _, src := range []string{
 		`def v (whereis "x") v send {a: 1} "nobody"`,
 		`def v (whereis "x") def n "nobody" v send {a: 1} n`,
@@ -31,11 +31,11 @@ func TestNUR228GradualStackWindowDeclines(t *testing.T) {
 	}
 }
 
-// TestNUR228ProvenWindowsStillCompile is the paired negative: a window the
+// TestNUR305ProvenWindowsStillCompile is the paired negative: a window the
 // runtime value cannot change compiles and agrees with the interpreter — a
 // concrete value beneath, a token no other overload claims (both lanes raise
 // the same no-match), and a paren that seals the call off from the stack.
-func TestNUR228ProvenWindowsStillCompile(t *testing.T) {
+func TestNUR305ProvenWindowsStillCompile(t *testing.T) {
 	for _, src := range []string{
 		`"q" send {a: 1} "nobody"`,
 		`def v:Any 5 v send {a: 1} "nobody"`,

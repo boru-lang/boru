@@ -89,14 +89,14 @@ func TestNUR009BytesRefinementRefusesOtherBounds(t *testing.T) {
 	}
 }
 
-// TestNUR231ComputedBoundValuesCompile pins NUR231's value half: a
+// TestNUR308ComputedBoundValuesCompile pins NUR308's value half: a
 // refinement over a computed bound (`Integer gt (size s)`, a factory's
 // param) is built by the RUN — the compile pass records the constructor as
 // the call it is — so it agrees with the interpreter. The pass had baked
 // its own refinement, the bound a carrier that orders below every value:
 // `3 is (Integer gt (size "abc"))` was true compiled, and `between` over a
 // computed bound was Never whatever the bound.
-func TestNUR231ComputedBoundValuesCompile(t *testing.T) {
+func TestNUR308ComputedBoundValuesCompile(t *testing.T) {
 	const mk = `def mk fn [[n:Integer] [Any] [Integer gt n]] `
 	for _, tc := range []struct{ src, want string }{
 		{`3 is (Integer gt (size "abc"))`, "[false]"},
@@ -117,7 +117,7 @@ func TestNUR231ComputedBoundValuesCompile(t *testing.T) {
 	}
 }
 
-// TestNUR231ComputedBoundTypesCompile pins NUR231's type half: a TYPE over
+// TestNUR308ComputedBoundTypesCompile pins NUR308's type half: a TYPE over
 // a computed bound — a named type, a typed def, a fn parameter or return
 // typed by such a name, a class field, a generic bound — compiles to the
 // run-time install. The run installs the type from the body it computed
@@ -130,7 +130,7 @@ func TestNUR231ComputedBoundValuesCompile(t *testing.T) {
 // over an unknown bound admits every value). The check pass raises no
 // diagnostic of its own: it admits, gradually — `Integer lte (size s)` had
 // refused 3 whatever s held.
-func TestNUR231ComputedBoundTypesCompile(t *testing.T) {
+func TestNUR308ComputedBoundTypesCompile(t *testing.T) {
 	const tt = `def T (Integer gt (size "abc")) `
 	const bb = `def B (Bytes gt (convert Bytes (convert String (size "ab")))) `
 	for _, tc := range []struct{ src, want string }{
@@ -205,11 +205,11 @@ func TestNUR231ComputedBoundTypesCompile(t *testing.T) {
 	agreeOnBothLanes(t, `def g fn [[n:(Integer gt 3)] [Any] [n]] g 2`, "ERROR:no signature matches")
 }
 
-// TestNUR231OutsideTheBaseRefusesAtCheck: a value the refinement's BASE
+// TestNUR308OutsideTheBaseRefusesAtCheck: a value the refinement's BASE
 // refuses is refused whatever the run computes for the bound, so that verdict
 // is the pass's to give — the check pass flags it (a runtime mirror) and the
 // interpreter raises the same text.
-func TestNUR231OutsideTheBaseRefusesAtCheck(t *testing.T) {
+func TestNUR308OutsideTheBaseRefusesAtCheck(t *testing.T) {
 	const src = `def x:(Integer gt (size "abc")) "s" x`
 	const want = `def x: value 's' does not unify with declared type (Integer gt 3)`
 	_, _, _, gotI, errI := runBothEngines(t, src)
@@ -226,10 +226,10 @@ func TestNUR231OutsideTheBaseRefusesAtCheck(t *testing.T) {
 	}
 }
 
-// TestNUR231TypeRunDisassembles pins the run-time install's shape in the
+// TestNUR308TypeRunDisassembles pins the run-time install's shape in the
 // bytecode: the body the run computes, the def's twin (written back, so it
 // replays nothing) and BIND_TYPE_RUN at the def's position.
-func TestNUR231TypeRunDisassembles(t *testing.T) {
+func TestNUR308TypeRunDisassembles(t *testing.T) {
 	a, err := New()
 	if err != nil {
 		t.Fatal(err)
@@ -246,7 +246,7 @@ func TestNUR231TypeRunDisassembles(t *testing.T) {
 	}
 }
 
-// TestNUR231RunBuiltSignaturesDecline pins what NUR231's type half leaves:
+// TestNUR308RunBuiltSignaturesDecline pins what NUR308's type half leaves:
 // a signature slot the run may build as a different KIND — an inline
 // interval over a computed bound, which the run may find empty (the
 // interpreter's slot is then Never itself, where the compiled slot is the
@@ -254,8 +254,8 @@ func TestNUR231TypeRunDisassembles(t *testing.T) {
 // re-installs per call (a fn body's) decline as the compile-time word they
 // are, through the generic site, and the interpreter's answer stands. Every
 // other inline refinement, union and named type over the same bound
-// compiles (TestNUR231ComputedBoundTypesCompile).
-func TestNUR231RunBuiltSignaturesDecline(t *testing.T) {
+// compiles (TestNUR308ComputedBoundTypesCompile).
+func TestNUR308RunBuiltSignaturesDecline(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{`def g fn [[n:(between 5 (size "ab") Integer)] [Any] [n]] g 3`, "ERROR:expected Never, got 3"},
 		{`def g fn [[n:(between 1 (size "abc") Integer)] [Any] [n]] g 2`, "[2]"},
@@ -277,14 +277,14 @@ func TestNUR231RunBuiltSignaturesDecline(t *testing.T) {
 	}
 }
 
-// TestNUR232InlineRefinementReturnDefers pins NUR232: the check pass refused
+// TestNUR309InlineRefinementReturnDefers pins NUR309: the check pass refused
 // an abstract Integer returned against an inline refinement return type —
 // `def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5` was a check-time
 // type_error that both lanes then returned 5 for — where the named spelling
 // (`[Big]`) defers the value-level membership to the RET check. The inline
 // form now defers the same case; a residual provably outside the base, or a
 // compile-time-known scalar that fails, is still flagged, exactly as named.
-func TestNUR232InlineRefinementReturnDefers(t *testing.T) {
+func TestNUR309InlineRefinementReturnDefers(t *testing.T) {
 	for src, want := range map[string]string{
 		`def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5`:                 "",
 		`def g fn [[n:Integer] [((Integer gt 3) tor String)] [n]] g 5`:    "",

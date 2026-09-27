@@ -142,11 +142,11 @@ clipped at the form's closing delimiter.
 - A new `string_escape` matcher runs ahead of jsonic's string lexer and
   refuses a malformed escape in `"…"` / `'…'` the same way; a well-formed
   or unterminated string, or a raw control character, stays jsonic's. That
-  closed a cross-port split in the quoted form too (NUR229).
+  closed a cross-port split in the quoted form too (NUR306).
 - Measuring the vocabulary across forms found it NOT fully unified: the
   braced `\u{…}` form was live in a quoted string only, and Go's shared
   writer decoded a surrogate pair split across two escapes as two U+FFFD
-  where TS joined it (NUR230). `writeStringEscape` / `readStringEscape`
+  where TS joined it (NUR307). `writeStringEscape` / `readStringEscape`
   now read both, as jsonic does.
 
 Pinned: 34 `parse.tsv` rows (the escape matrix over all three forms,
@@ -3063,7 +3063,7 @@ except NUR213's four residual shapes (silent on both sides) and NUR281
 `TestComputedDoBodyIslandCompiles` and the adapted
 `TestNUR210ComputedBodyRebindsTheRoot` / `…GeneralisesTheRoot`.
 
-## NUR231 — a refinement over a computed bound: the compile pass baked a bound it did not know {#nur231}
+## NUR308 — a refinement over a computed bound: the compile pass baked a bound it did not know {#nur308}
 
 **Status:** FIXED 2026-09-26 (the value half: Bytes a refinement base, a computed bound the run's; the type half: the run-time type install — the handoff log's entries of that date) · **Recorded:** 2026-09-26 ·
 **Surfaced by:** closing NUR009 — every Bytes bound is computed, so pinning
@@ -3175,7 +3175,7 @@ false, compiled true — the union's install had no decline);
 `def T ((Integer lt (size "abcdefghij")) tand (Integer gt 5)) T` (interp
 `T`, compiled Never); `def T (Integer gt (size "abc"))` with `f [n:T]` and
 `f [n:Integer]`, `f 2` (interp 1, compiled signature_error). Found on the
-way: NUR233 (a make field's refusal was a plain error, a compiler defect
+way: NUR310 (a make field's refusal was a plain error, a compiler defect
 when compiled) and NUR234 (a direct call's contract no-match notes).
 
 Pinned by core's `TestRefinementConstructorsNoteUnknownBounds`,
@@ -3186,6 +3186,6 @@ Pinned by core's `TestRefinementConstructorsNoteUnknownBounds`,
 `TestTypedBindRunMembership` and `TestWrittenBackTypeTwinInstallsNothing`;
 compiler's `TestRecordTypeRun`, `TestPlacedTypeTwin`,
 `TestRuntimeLatchesNeedALiveRecorder` and `TestRecordTypedBindRun`; eng's
-`TestBindTypeRunRefusal`; and lang's `TestNUR231ComputedBoundValuesCompile`,
-`TestNUR231ComputedBoundTypesCompile` (with their known-bound twins),
-`TestNUR231TypeRunDisassembles` and `TestNUR231RunBuiltSignaturesDecline`.
+`TestBindTypeRunRefusal`; and lang's `TestNUR308ComputedBoundValuesCompile`,
+`TestNUR308ComputedBoundTypesCompile` (with their known-bound twins),
+`TestNUR308TypeRunDisassembles` and `TestNUR308RunBuiltSignaturesDecline`.

@@ -12,6 +12,6 @@
 # fold, the mini literal, the type bound, the group modifiers) all reach
 # their fixpoint; every row below is a kind that gate found.
 #
-# EMPTY since 2026-09-26: NUR225 (template strings, XML ${} holes), NUR226 (map
-# keys needing quotes) and NUR227 (a typed tag before an XML literal) closed
+# EMPTY since 2026-09-26: NUR302 (template strings, XML ${} holes), NUR303 (map
+# keys needing quotes) and NUR304 (a typed tag before an XML literal) closed
 # the 33 rows it landed with. A row added here needs a record that closes it.

@@ -363,7 +363,7 @@ export function canonValue(v: Value): string {
       .join(" tor ");
   }
   // A template string and an XML literal with `${}` holes render as the
-  // source they came from (NUR225) — the Go twin's canonTemplate /
+  // source they came from (NUR302) — the Go twin's canonTemplate /
   // canonXmlTmpl — where both fell to the debug `interp(…)` /
   // `interp-xml(…)` forms no parser accepts.
   if (v.isInterpString() && Array.isArray(v.data)) {
@@ -427,7 +427,7 @@ function canonXmlTmpl(t: XmlTmpl): string {
 }
 
 // canonKey spells a map key bare when it lexes back as the same key —
-// letters, decimal digits, `_`, `$`, `-`, `@` — and quoted otherwise (NUR226).
+// letters, decimal digits, `_`, `$`, `-`, `@` — and quoted otherwise (NUR303).
 // The Go twin's rule (unicode.IsLetter / unicode.IsDigit).
 function canonKey(k: string): string {
   return /^[\p{L}\p{Nd}_$@-]+$/u.test(k) ? k : canonString(k);
@@ -435,7 +435,7 @@ function canonKey(k: string): string {
 
 // joinCanonParts joins a sequence's parts with a space, or with a comma
 // where a bare capitalised token precedes a `<` — the angle-sugar gate would
-// fuse them (NUR227). The Go twin exactly.
+// fuse them (NUR304). The Go twin exactly.
 function joinCanonParts(parts: string[]): string {
   let out = "";
   parts.forEach((p, i) => {

@@ -84,7 +84,7 @@ func TestPlainHandlerErrorIsTheProgramsOwnOnBothLanes(t *testing.T) {
 func TestTypedDefMakeErrorKeepsTheDefWrap(t *testing.T) {
 	const box = `def Box gen [T] class {value:T} end `
 	for _, c := range []struct{ src, prefix string }{
-		// A make FIELD's refusal is a type_error on both lanes (NUR233, the
+		// A make FIELD's refusal is a type_error on both lanes (NUR310, the
 		// reverse-order NUR run), so the wrap carries its code.
 		{box + `def b:(Box of [Integer]) {value:'no'}`, "def b: [boru/type_error]: make: "},
 		{`def e:Entity { kind:'api' } e`, "def e: make: "},

@@ -2228,7 +2228,7 @@ type BindTransition struct {
 	// the ledger records what the check pass did, the flag what the
 	// program will do about it. A type-install twin is written back by the
 	// run's own install of a type over a bound only the run knows
-	// (OpBindTypeRun, NUR231).
+	// (OpBindTypeRun, NUR308).
 	WrittenBack bool
 }
 

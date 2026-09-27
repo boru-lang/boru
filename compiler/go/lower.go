@@ -3740,7 +3740,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		lw.p.TypedBinds = append(lw.p.TypedBinds, *c.typedBind)
 		lw.emit(OpBindTyped, ti, c.pos)
 	} else if c.typeRun != nil {
-		// A root type def's run-time install (NUR231): pop the body operand
+		// A root type def's run-time install (NUR308): pop the body operand
 		// (laid out above), install it as the interpreter does, forward the
 		// pass's node to the run's.
 		ti := len(lw.p.TypeRuns)

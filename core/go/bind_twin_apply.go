@@ -42,7 +42,7 @@ import "strings"
 // real value is elsewhere by construction.
 //
 // A TYPE twin is written back too when the def's body holds a refinement
-// over a bound the pass did not know (NUR231): the run installs the type
+// over a bound the pass did not know (NUR308): the run installs the type
 // itself (OpBindTypeRun, RunTypeInstall) from the body it computed, so the
 // twin re-installs nothing — neither the pass's node nor its name's parts,
 // which that install reserves.

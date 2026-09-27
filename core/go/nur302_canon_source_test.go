@@ -2,11 +2,11 @@ package core
 
 import "testing"
 
-// TestNUR225TemplateCanonIsSource pins NUR225's template half: a template
+// TestNUR302TemplateCanonIsSource pins NUR302's template half: a template
 // string canons as the backtick source it came from, literal text carrying
 // the template lexer's escapes and each hole rendering its tokens' canon —
 // where it used to fall to the debug `interp('a ' ${word(x)})`.
-func TestNUR225TemplateCanonIsSource(t *testing.T) {
+func TestNUR302TemplateCanonIsSource(t *testing.T) {
 	v := NewInterpString([]InterpPart{
 		{Lit: "a`b\\c ${d}\n\t\r$"},
 		{Expr: []Value{NewWord("x"), NewWord("add"), NewInteger(1)}},
@@ -18,11 +18,11 @@ func TestNUR225TemplateCanonIsSource(t *testing.T) {
 	}
 }
 
-// TestNUR225XmlTmplCanonIsSource pins the XML half: an XML literal with holes
+// TestNUR302XmlTmplCanonIsSource pins the XML half: an XML literal with holes
 // canons as its source — attribute and text holes over their tokens' canon,
 // literal text and attribute text escaped as a plain element's are, a nested
 // element recursing — where it used to wear the debug `interp-xml(…)`.
-func TestNUR225XmlTmplCanonIsSource(t *testing.T) {
+func TestNUR302XmlTmplCanonIsSource(t *testing.T) {
 	inner := XmlTmpl{Tag: "b"}
 	v := NewXmlInterp(XmlTmpl{
 		Tag: "a",
@@ -43,11 +43,11 @@ func TestNUR225XmlTmplCanonIsSource(t *testing.T) {
 	}
 }
 
-// TestNUR226MapKeysCanonAsTheirKey pins NUR226: a key that would not lex back
+// TestNUR303MapKeysCanonAsTheirKey pins NUR303: a key that would not lex back
 // as the same single key is quoted — whitespace, an empty key, a structural
 // character — and one that would stays bare, in a map, a typed map, a flex
 // map and a weak flex map alike.
-func TestNUR226MapKeysCanonAsTheirKey(t *testing.T) {
+func TestNUR303MapKeysCanonAsTheirKey(t *testing.T) {
 	for _, c := range []struct{ key, want string }{
 		{"a", "a"}, {"q k", "'q k'"}, {"", "''"}, {"@quit", "@quit"},
 		{"1.5", "'1.5'"}, {"é-x_$", "é-x_$"}, {"a?", "'a?'"},
@@ -70,10 +70,10 @@ func TestNUR226MapKeysCanonAsTheirKey(t *testing.T) {
 	}
 }
 
-// TestNUR227CommaSeparatesAnAngleReceiver pins NUR227: a bare capitalised
+// TestNUR304CommaSeparatesAnAngleReceiver pins NUR304: a bare capitalised
 // token before a part that opens `<` is joined with a comma — the angle gate
 // would fuse them — and nothing else is.
-func TestNUR227CommaSeparatesAnAngleReceiver(t *testing.T) {
+func TestNUR304CommaSeparatesAnAngleReceiver(t *testing.T) {
 	for _, c := range []struct {
 		parts []string
 		want  string

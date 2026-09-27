@@ -3465,7 +3465,7 @@ func (e *Engine) dynShuffleConsumerAt(idx int) bool {
 // run-time names (`unpack` over a source the pass cannot read — the
 // handler's NoteRuntimeBind), or a constructor whose value is built over an
 // operand the pass does not know (`Integer gt (size s)` — NoteRuntimeConstruct,
-// NUR231). The recorder's latch decides, so every other compile-time word
+// NUR308). The recorder's latch decides, so every other compile-time word
 // keeps its elision.
 func (e *Engine) recordRuntimeDispatch(match *MatchResult, results []Value) {
 	if e.Registry.analysisActive() && match.Sig.RunInCheckMode() {
@@ -4308,7 +4308,7 @@ func (e *Engine) insertForward(w WordInfo, sig *Signature, forwardNeeded, stackA
 // a window and prunes to the narrower one when the value misses the slot:
 // `acc "x" append acc (m.path) append` appends "x" to acc where the pass
 // committed acc into m.path's slot. No static window is faithful, so the
-// compile declines, NUR228's discipline. A proven arrival, and a window
+// compile declines, NUR305's discipline. A proven arrival, and a window
 // that is not word-led (`1 2 add (m.v)`), plan as before, as does the
 // word-led token's OWN arrival (slot 0): that is the gradual first operand
 // of every `f x`, the naive latch the record rules out. Only an operand the
@@ -6798,7 +6798,7 @@ func undecidedPatternWindow(ownSigs []Signature, resolved []Value) int {
 // the run's value meets the pattern, parked beside its window where it does
 // not, a variadic region under NUR246's rules — and collapses the window and
 // the value to its result. A window the recorder cannot seat flags the
-// gradual split instead, so the program declines (NUR228's discipline)
+// gradual split instead, so the program declines (NUR305's discipline)
 // rather than bake the park the check pass would otherwise leave.
 func (e *Engine) recordUndecidedApply(valIdx, n int, resolvedIdx []int) bool {
 	fnv := e.Tape.At(valIdx)

@@ -210,7 +210,7 @@ func (v Value) AsDepScalar() (DepScalarInfo, error) {
 // check time whatever s held), and a verdict the known side gives alone is
 // baked with the placeholder rendered (`(Integer gte 5 lte Integer)`, where
 // the run says `lte 2`). The pass admits, gradually; the run checks the
-// real bounds (NUR231).
+// real bounds (NUR308).
 func depScalarCheck(info DepScalarInfo, value Value) bool {
 	if info.Lo == nil && info.Hi == nil {
 		return false
@@ -382,7 +382,7 @@ func combineDepScalars(a, b DepScalarInfo) (DepScalarInfo, bool) {
 	// Verify the resulting interval is non-empty — decided only over KNOWN
 	// bounds: an unknown one is the analysis pass's carrier, which orders
 	// below every value, so `(Integer lt (size s)) tand (Integer gt 5)` was
-	// Never at compile time whatever s held (NUR231).
+	// Never at compile time whatever s held (NUR308).
 	if out.Lo != nil && out.Hi != nil && depBoundKnown(out.Lo) && depBoundKnown(out.Hi) {
 		cmp, err := CompareValues(out.Lo.Value, out.Hi.Value)
 		if err != nil {
@@ -400,7 +400,7 @@ func combineDepScalars(a, b DepScalarInfo) (DepScalarInfo, bool) {
 }
 
 // depBoundKnown reports whether a bound is a value the analysis pass knows
-// (not its carrier for a computed one, NUR231).
+// (not its carrier for a computed one, NUR308).
 func depBoundKnown(b *DepBound) bool { return IsConcrete(b.Value) }
 
 // unknownBound picks, of two same-side bounds at least one of which the
@@ -513,7 +513,7 @@ func MakeDepScalarSig(opName string, kind DepKind) Signature {
 // so a stripped operand recovers it); over a bound the pass does not know —
 // a computed one, `Integer gt (size s)`, whose bound is the pass's carrier —
 // the constructor call is recorded as the call it is, so the run builds the
-// refinement over the real bound (NUR231).
+// refinement over the real bound (NUR308).
 func noteRefinementConstruct(r *Registry, dep Value, bounds ...Value) {
 	if r == nil {
 		return
@@ -561,7 +561,7 @@ func BetweenHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 	// An empty interval is Never — decided only over KNOWN bounds: a
 	// computed one is the analysis pass's carrier, which orders below every
 	// value, so `between 1 (size s) Integer` was Never at compile time
-	// whatever s held (NUR231). Over an unknown bound the run decides.
+	// whatever s held (NUR308). Over an unknown bound the run decides.
 	if IsConcrete(args[0]) && IsConcrete(args[1]) {
 		cmp, err := CompareValues(args[0], args[1])
 		if err != nil { //covergate:allow shared-assertion / gate-guaranteed kernel guard (§kernel)

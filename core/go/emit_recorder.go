@@ -333,26 +333,26 @@ type EmitRecorder interface {
 	// NoteRuntimeConstruct records that the check-mode-run constructor
 	// dispatching now built its result over an operand the pass does not
 	// know — a refinement over a computed bound, `Integer gt (size s)`
-	// (NUR231): the result is no const, so the dispatch records as the call
+	// (NUR308): the result is no const, so the dispatch records as the call
 	// it is and the run builds the value over the real operand.
 	NoteRuntimeConstruct()
 	// NoteRuntimeTypeInstall records that the type installer minted name's
 	// node over a body holding a refinement whose bound the pass does not
-	// know (NUR231): the def's dispatch records the run-time install of the
+	// know (NUR308): the def's dispatch records the run-time install of the
 	// body the run computes, the node forwarding to the run's.
 	NoteRuntimeTypeInstall(name string, node *Type, body Value)
 	// NoteRuntimeSigForward records that a signature under construction
 	// carries an anonymous node minted over a refinement whose bound the
-	// pass does not know (NUR231): the building word's dispatch records the
+	// pass does not know (NUR308): the building word's dispatch records the
 	// run's forward of that node, from the refinement the run computes.
 	NoteRuntimeSigForward(node *Type, body Value)
 	// NoteRuntimeDependent records that the compile-time word now
 	// dispatching has an effect only the run knows, which the compile cannot
-	// record: the dispatch declines as the compile-time word it is (NUR231).
+	// record: the dispatch declines as the compile-time word it is (NUR308).
 	NoteRuntimeDependent()
 	// RecordTypedBindRun records a typed def's run-time membership check
 	// over a constraint only the run can decide (TypedBindRunMembership,
-	// NUR231), a concrete value included; with spec.ConsOperand the
+	// NUR308), a concrete value included; with spec.ConsOperand the
 	// constraint the run computed is an operand. ok=false leaves the def to
 	// its caller's decline.
 	RecordTypedBindRun(spec TypedBindSpec, cons, in, out Value, pos SrcPos) (Value, bool)

@@ -2,16 +2,16 @@ package core
 
 import "testing"
 
-// nur228Match runs MatchSignature for `dyn w {a:1} "s"` — a dynamic Any
+// nur305Match runs MatchSignature for `dyn w {a:1} "s"` — a dynamic Any
 // carrier on the stack, the word, then a Map and a String forward — over
 // sigs, on a check pass that is (or is not) compiling, and reports the
 // selected signature's forward count and whether the split was flagged.
-func nur228Match(t *testing.T, compiling bool, sigs []Signature) (int, bool) {
-	return nur228MatchStop(t, compiling, sigs, NewString("s"))
+func nur305Match(t *testing.T, compiling bool, sigs []Signature) (int, bool) {
+	return nur305MatchStop(t, compiling, sigs, NewString("s"))
 }
 
-// nur228MatchStop is nur228Match with stop as the second forward token.
-func nur228MatchStop(t *testing.T, compiling bool, sigs []Signature, stop Value) (int, bool) {
+// nur305MatchStop is nur305Match with stop as the second forward token.
+func nur305MatchStop(t *testing.T, compiling bool, sigs []Signature, stop Value) (int, bool) {
 	t.Helper()
 	r := covRegistry(t, nil)
 	r.Check.Mode = true
@@ -37,12 +37,12 @@ func nur228MatchStop(t *testing.T, compiling bool, sigs []Signature, stop Value)
 	return fwd, r.Check.AmbiguousGradualSplit
 }
 
-// TestNUR228GradualStackWindowIsAmbiguous pins NUR228: a candidate that takes
+// TestNUR305GradualStackWindowIsAmbiguous pins NUR305: a candidate that takes
 // one forward token and fills its next slot from the stack with a DYNAMIC
 // carrier — an unproven match — while a later candidate forward-collects the
 // token its scan stopped at, is a split the runtime value decides. A compiling
 // pass flags it; the selected window is unchanged.
-func TestNUR228GradualStackWindowIsAmbiguous(t *testing.T) {
+func TestNUR305GradualStackWindowIsAmbiguous(t *testing.T) {
 	sigs := []Signature{
 		{Args: []*Type{TAny, TBoolean}, BarrierPos: 2},
 		{Fallback: true},
@@ -54,7 +54,7 @@ func TestNUR228GradualStackWindowIsAmbiguous(t *testing.T) {
 	for i := range sigs {
 		NormalizeSig(&sigs[i])
 	}
-	fwd, flagged := nur228Match(t, true, sigs)
+	fwd, flagged := nur305Match(t, true, sigs)
 	if fwd != 1 {
 		t.Errorf("the selected candidate takes one forward token, took %d", fwd)
 	}
@@ -63,11 +63,11 @@ func TestNUR228GradualStackWindowIsAmbiguous(t *testing.T) {
 	}
 }
 
-// TestNUR228NoLaterClaimIsNoAmbiguity is the paired negative: with no later
+// TestNUR305NoLaterClaimIsNoAmbiguity is the paired negative: with no later
 // candidate claiming the stop token, the runtime takes the same window
 // whatever the value (and the poly re-match picks among the sigs it fits), so
 // nothing is flagged — and a plain check pass never flags at all.
-func TestNUR228NoLaterClaimIsNoAmbiguity(t *testing.T) {
+func TestNUR305NoLaterClaimIsNoAmbiguity(t *testing.T) {
 	sigs := []Signature{
 		{Args: []*Type{TAny, TBoolean}, BarrierPos: 2},
 		{Args: []*Type{TAny, TAtom}, BarrierPos: 2},
@@ -75,7 +75,7 @@ func TestNUR228NoLaterClaimIsNoAmbiguity(t *testing.T) {
 	for i := range sigs {
 		NormalizeSig(&sigs[i])
 	}
-	if _, flagged := nur228Match(t, true, sigs); flagged {
+	if _, flagged := nur305Match(t, true, sigs); flagged {
 		t.Error("no later candidate forwards past the stop token: no ambiguity")
 	}
 	withClaim := []Signature{
@@ -85,17 +85,17 @@ func TestNUR228NoLaterClaimIsNoAmbiguity(t *testing.T) {
 	for i := range withClaim {
 		NormalizeSig(&withClaim[i])
 	}
-	if _, flagged := nur228Match(t, false, withClaim); flagged {
+	if _, flagged := nur305Match(t, false, withClaim); flagged {
 		t.Error("a plain check pass must not flag the split")
 	}
 }
 
-// TestNUR228SpeculativeClaimIsNoWiderWindow: a later candidate that claims
+// TestNUR305SpeculativeClaimIsNoWiderWindow: a later candidate that claims
 // the stop token only SPECULATIVELY — a function word admitted at an Any slot
 // for its dispatch's result (a `var` body's `__varundef` cleanup after an
 // `and`, in kg/queries.boru) — offers no wider window of values, so nothing
 // is flagged.
-func TestNUR228SpeculativeClaimIsNoWiderWindow(t *testing.T) {
+func TestNUR305SpeculativeClaimIsNoWiderWindow(t *testing.T) {
 	sigs := []Signature{
 		{Args: []*Type{TAny, TBoolean}, BarrierPos: 2},
 		{Args: []*Type{TAny, TAny}, BarrierPos: 2},
@@ -103,7 +103,7 @@ func TestNUR228SpeculativeClaimIsNoWiderWindow(t *testing.T) {
 	for i := range sigs {
 		NormalizeSig(&sigs[i])
 	}
-	if _, flagged := nur228MatchStop(t, true, sigs, NewWord("cneg")); flagged {
+	if _, flagged := nur305MatchStop(t, true, sigs, NewWord("cneg")); flagged {
 		t.Error("a speculative claim of a function word must not flag the split")
 	}
 }

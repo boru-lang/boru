@@ -17,7 +17,7 @@ func passNode(r *Registry, name string) *Type {
 	return n
 }
 
-// TestRunTypeInstallForwards pins OpBindTypeRun's core (NUR231's type half):
+// TestRunTypeInstallForwards pins OpBindTypeRun's core (NUR308's type half):
 // the run installs the body it computed through the interpreter's own
 // installer, and the pass's node — the one every compiled reference names —
 // forwards to the node that install bound. Membership, unification and
@@ -264,7 +264,7 @@ func TestTypedBindRunMembership(t *testing.T) {
 	}
 }
 
-// TestMakeFieldErrorIsStructured pins NUR233: make's field refusal is a
+// TestMakeFieldErrorIsStructured pins NUR310: make's field refusal is a
 // type_error on both lanes — a plain error was the interpreter's raise, and a
 // compiled run books a plain error as a compiler defect. A refusal already
 // structured keeps its own code.
@@ -304,7 +304,7 @@ func TestWrittenBackTypeTwinInstallsNothing(t *testing.T) {
 }
 
 // TestAnonymousRunTypeInstall pins the unnamed OpBindTypeRun an inline
-// signature type compiles to (NUR231): the run mints a node from the value
+// signature type compiles to (NUR308): the run mints a node from the value
 // it computed — a refinement, union or negation; a bare node is itself —
 // and the pass's anonymous node forwards to it, renamed as the run renders
 // it (the no-match's declared pattern). A value of no type shape mints

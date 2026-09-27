@@ -135,7 +135,7 @@ var pinnedAritySites = map[string]int{
 	// matcher's own rule collected, never deciding what a fn does by its
 	// count.
 	"core/go/optimistic_match.go": 3,
-	"core/go/collect_plan.go":     8, // 5 -> 8 (NUR228): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
+	"core/go/collect_plan.go":     8, // 5 -> 8 (NUR305): laterCandidateCollectsPast compares FORWARD-WINDOW counts (a later candidate's limit and scan against the selected fill) — the argument rule over two candidates, not behaviour by arity
 	"core/go/signature.go":        12,
 	"core/go/match.go":            1,
 	"core/go/fnsig.go":            3,

@@ -225,7 +225,7 @@ shares this).
 **NUR299, keyed on the drift models.** gate47 on ebe6e34 was green but for
 the arity gate: NUR299's cut asked a one-operand all-stack match by its
 parameter count, which ADR-016 forbids. The case is the forward-drift
-guard's (NUR228's record says an all-stack match is that guard's), so the
+guard's (NUR305's record says an all-stack match is that guard's), so the
 guard now asks it directly. Where neither the drift window nor the check
 side's decline (`DeclineForwardStackDrift`, which now reports whether it
 declined) takes an all-stack dispatch, `allStackWindowAmbiguous` latches the
@@ -260,7 +260,7 @@ do's Map overload, and the List overload takes the `[5]`. The check pass
 filled the Map overload from the stack with its Any carrier. That answered
 `[1 2 [5]]` on the branch, silent since 13aa881's region seat dropped the
 poly claim, and bailed on main. Over a member fn it raised `cannot call
-do` on both. NUR228's guard skipped all-stack matches, leaving them to the
+do` on both. NUR305's guard skipped all-stack matches, leaving them to the
 forward-drift guard, which takes only multi-operand words. It now asks a
 one-operand all-stack match too, and the compile declines. A first cut
 that asked every all-stack match declined the drift window's own forms
@@ -1692,7 +1692,7 @@ The fix is the restriction the record asked for, at the arrival.
 signature's first slot). A compiling pass flags the gradual split when an
 unproven value arrives into such a window and a narrower window fits the
 stack beneath the word, over any of the word's signatures
-(`narrowerWindowFits`). The program declines loudly, NUR228's discipline.
+(`narrowerWindowFits`). The program declines loudly, NUR305's discipline.
 `1 2 add (m.v)` (not word-led), `add x (m.v)` over an empty frame (no
 narrower window), and a proven arrival compile as before.
 
@@ -1778,7 +1778,7 @@ sweep failures 13 → 3) conflicted with the run in eleven files.
 - **Main's tests over the run's fixes.** A predicate's refusal over a
   concrete candidate is a static check error (NUR141), so the plain-error
   test's predicate row is a run-time one now. A make field's refusal is a
-  type_error (NUR233), so the typed-def wrap carries the code. fn's
+  type_error (NUR310), so the typed-def wrap carries the code. fn's
   0-argument refusal (NUR091) adds two `gen`-chain `def` forms to the S2b
   census (32 → 34, 58 → 60).
 - **The ledgers, measured on the merged tree.** Unit-suite compile 335
@@ -2127,9 +2127,9 @@ found fifteen divergences, all measured and recorded OPEN as NUR235–NUR243:
 - eight compile-then-bail programs (NUR242);
 - three over-declines (NUR243).
 
-## NUR231's type half compiled — the run-time type install (2026-09-26)
+## NUR308's type half compiled — the run-time type install (2026-09-26)
 
-**The record.** NUR231's first cut left a TYPE over a refinement whose
+**The record.** NUR308's first cut left a TYPE over a refinement whose
 bound only the run knows declining the compile at its three sites (a
 named install, an inline typed def, an inline signature type:
 `DeclineUnknownRefinement`, one census site, 91 → 92), with the plan as its
@@ -2170,7 +2170,7 @@ The retired site takes both censuses back to 91. The frontier row and
 oracle row for a type def in an each body decline one step earlier, as
 the code-body word.
 
-Found on the way, both pre-existing. NUR233: a make field's refusal was a
+Found on the way, both pre-existing. NUR310: a make field's refusal was a
 plain error, bare interpreted and a compiler defect compiled; it is a
 type_error on both lanes now, CLOSED. NUR234: a compiled direct call's
 contract no-match reports every argument where the interpreter reports its
@@ -2191,11 +2191,11 @@ needed three more: the inline-signature resolver slots a refinement at its
 own base (a Bytes one was a wildcard), a refinement renders as one over
 Bytes' Formatter (every one printed `Bytes<?>`, and the const pool merged
 two by that key), and `convert Bytes <String>` folds over a const, since a
-Bytes bound is never a literal. Pinning it found NUR231 — the check pass
+Bytes bound is never a literal. Pinning it found NUR308 — the check pass
 built a refinement over a computed bound's CARRIER and the compiler baked
 it (`3 is (Integer gt (size "abc"))` true compiled): a constructor over an
 unknown bound now records as a run-time call, a type over one declines the
-compile loudly, and the pass decides no membership over one — and NUR232,
+compile loudly, and the pass decides no membership over one — and NUR309,
 an inline refinement return refusing an abstract residual at check time
 that the named twin defers. Both CLOSED.
 
@@ -2210,9 +2210,9 @@ for want of an error channel in the template's lex matcher.
 escape check in both ports with one definition (`escapeFault`): the
 template matcher and a new `string_escape` matcher ahead of jsonic's string
 lexer refuse a malformed escape alike, naming the escape. Probing the
-matrix also found the quoted form split between the ports (NUR229) and the
+matrix also found the quoted form split between the ports (NUR306) and the
 vocabulary short of the braced `\u{…}` form in templates and, in Go, of
-surrogate pairing (NUR230); the shared escape readers now read both. 34
+surrogate pairing (NUR307); the shared escape readers now read both. 34
 escape rows in parse.tsv, parser coverage 100% in both ports.
 
 ## NUR060 closed — the parser parity ledger is empty again (2026-09-26)
@@ -2265,7 +2265,7 @@ keep their own slots. The checker analyses the handler's fn literal before
 exactly those. Both lanes agree on every pinned shape; the handler's stamp is
 unaffected (a body the stamp declines interprets, per body).
 
-## NUR228 closed — the gradual window declines (2026-09-26)
+## NUR305 closed — the gradual window declines (2026-09-26)
 
 **The divergence.** Found probing `send` beside a `receive` (NUR064):
 `def v (whereis "x") v send {a: 1} "nobody"` answers `[None]` interpreted
@@ -2302,13 +2302,13 @@ question #7 is decided in design/STATE-MACHINES.0.md: the fn form declares
 the machine wraps in the same frozen payload, and takes the same
 diagnostics. Only the mapping inside the fn stays opaque.
 
-## NUR225, NUR226, NUR227 closed — the fixpoint ledger is empty (2026-09-26)
+## NUR302, NUR303, NUR304 closed — the fixpoint ledger is empty (2026-09-26)
 
 **The divergences.** The canon fixpoint gate that landed with NUR072
 ledgered 33 parse.tsv rows in three kinds: template strings and XML `${}`
-holes in the debug `interp(…)` / `interp-xml(…)` forms (NUR225, 30 rows), a
-map key needing quotes rendered bare (NUR226, 2), and a typed tag before an
-XML literal fusing into an angle sugar (NUR227, 1).
+holes in the debug `interp(…)` / `interp-xml(…)` forms (NUR302, 30 rows), a
+map key needing quotes rendered bare (NUR303, 2), and a typed tag before an
+XML literal fusing into an angle sugar (NUR304, 1).
 
 **The fixes.** Both ports: `canonTemplate` / `canonXmlTmpl` render the
 source (template escapes, XML escapes, holes over their tokens' canon);
@@ -2323,9 +2323,9 @@ empty hole — still a divergence, now spelled `\`\`` and `\`${}\``).
 asks); `FirstOwnSig` has its own core test now that core's predicate path no
 longer reads one overload; cover-gate-core is back at 100%.
 
-**Pins.** core `TestNUR225TemplateCanonIsSource`,
-`TestNUR225XmlTmplCanonIsSource`, `TestNUR226MapKeysCanonAsTheirKey`,
-`TestNUR227CommaSeparatesAnAngleReceiver`,
+**Pins.** core `TestNUR302TemplateCanonIsSource`,
+`TestNUR302XmlTmplCanonIsSource`, `TestNUR303MapKeysCanonAsTheirKey`,
+`TestNUR304CommaSeparatesAnAngleReceiver`,
 `TestNUR072SequenceRulesSpellMarkersAndFolds`,
 `TestNUR072DisjunctCanonSpellsItsMembers`, `TestCanonFallbackIsTheDebugForm`,
 `TestFirstOwnSig`; parser `TestParserCanonFixpoint` (Go and TS, empty
@@ -2351,8 +2351,8 @@ where the only difference was the new spelling.
 
 **The gate.** `TestParserCanonFixpoint` and its TS twin re-parse every
 parse.tsv row's canon; 33 rows fail it and are ledgered in
-parser/spec/canon-fixpoint.tsv against NUR225 (template strings, XML
-holes), NUR226 (map keys needing quotes) and NUR227 (a typed tag before an
+parser/spec/canon-fixpoint.tsv against NUR302 (template strings, XML
+holes), NUR303 (map keys needing quotes) and NUR304 (a typed tag before an
 XML literal) — none of them NUR072's kinds.
 
 **Also moved.** The lang bail ceiling 37 -> 36 (NUR273's refusal is no

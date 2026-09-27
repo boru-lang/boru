@@ -81,7 +81,7 @@ var bytesNatives = []NativeFunc{
 			// program writes a Bytes constant: over a const string the compile
 			// pass folds it (CompileScalarFold), so a refinement bounded by one
 			// (`def Hi (Bytes gte (convert Bytes "m"))`) has a KNOWN bound
-			// (NUR009, NUR231).
+			// (NUR009, NUR308).
 			{Args: []*Type{TBytes, TString}, TypeArgs: map[int]bool{0: true}, Impl: Go(convertStringToBytes), ReturnsFn: ReturnsFreshInstance(0), BarrierPos: -1, CompileEffect: CompileScalarFold},
 			{Args: []*Type{TString, TBytes}, TypeArgs: map[int]bool{0: true}, Impl: Go(convertBytesToString), ReturnsFn: ReturnsFreshInstance(0), BarrierPos: -1},
 			{Args: []*Type{TBytes, TList}, TypeArgs: map[int]bool{0: true}, Impl: Go(convertListToBytes), ReturnsFn: ReturnsFreshInstance(0), BarrierPos: -1},

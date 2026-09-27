@@ -693,7 +693,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 // noteRuntimeTypeInstall tells the analysis pass that the type it just
 // installed holds a refinement over a bound it does not know — a computed
 // one, `def T (Integer gte (size s))`, whose bound is the pass's carrier
-// (NUR231): replaying this install would bind the placeholder, so the run
+// (NUR308): replaying this install would bind the placeholder, so the run
 // installs the type itself from the body it computes (OpBindTypeRun), and
 // the node minted here forwards to the run's. A no-op outside a pass.
 func noteRuntimeTypeInstall(r *Registry, name string, body Value) {

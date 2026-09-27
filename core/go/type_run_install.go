@@ -1,6 +1,6 @@
 package core
 
-// The run-time type install — NUR231's type half.
+// The run-time type install — NUR308's type half.
 //
 // A type whose content holds a refinement over a bound the analysis pass
 // does not know (`def T (Integer gte (size s))`, `def T ((Integer gt n) tor
@@ -19,7 +19,7 @@ package core
 // the run computed — is the interpreter's too.
 
 // HasUnknownRefinement reports whether a type's content holds a refinement
-// whose bound the analysis pass does not know (NUR231) — a refinement, a
+// whose bound the analysis pass does not know (NUR308) — a refinement, a
 // union or negation holding one, reached through a named node's recorded
 // body, or a typed container's child. Such a type's membership is the run's
 // to decide: its install and every typed bind against it happen at run time.
@@ -147,7 +147,7 @@ func forwardedOperand(v Value) Value {
 
 // mintRunType mints the node a refinement, union or negation VALUE stands
 // for, bound to no name — what InstallTypeBody's kind branches mint, for an
-// inline signature type (NUR231). A bare node is the node it denotes (an
+// inline signature type (NUR308). A bare node is the node it denotes (an
 // empty interval is Never). Nil for any other shape.
 func mintRunType(r *Registry, body Value) *Type {
 	name := body.String()
@@ -176,7 +176,7 @@ func mintRunType(r *Registry, body Value) *Type {
 
 // runSigPattern is an inline signature type's pattern when it holds a
 // refinement over a bound the analysis pass does not know (`n:(Integer gt
-// (size s))`, NUR231): an anonymous node minted over the pass's placeholder,
+// (size s))`, NUR308): an anonymous node minted over the pass's placeholder,
 // which the compiled unit and the replayed signature both carry, and which
 // the run forwards to the node it mints from the refinement it computed
 // (RunTypeInstall over an unnamed spec, noted here for the word building

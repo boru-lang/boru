@@ -73,7 +73,7 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 			return Value{}, fmt.Errorf("bytecode: internal: typed bind %s has no constraint", spec.Name)
 		}
 		// Mirrors defTypedHandler's registry-armed Unify tail, over a
-		// constraint whose refinement only the run knows (NUR231): the named
+		// constraint whose refinement only the run knows (NUR308): the named
 		// node forwards to the node the run installed (RunTypeInstall); an
 		// inline constraint is the one the run computed (RunTypedBindCons).
 		unified, ok := UnifyR(v, *spec.Cons, r)
@@ -103,7 +103,7 @@ func RunTypedBind(r *Registry, spec *TypedBindSpec, v Value) (Value, error) {
 }
 
 // RunTypedBindCons is RunTypedBind over a constraint the run computed
-// (TypedBindSpec.ConsOperand, NUR231): the spec's Cons is the popped
+// (TypedBindSpec.ConsOperand, NUR308): the spec's Cons is the popped
 // constraint, and an empty Describe renders it.
 func RunTypedBindCons(r *Registry, spec *TypedBindSpec, cons, v Value) (Value, error) {
 	s := *spec

@@ -147,23 +147,23 @@ keep the two in sync in the same commit.
 | [NUR222](#nur222) | FIXED 2026-09-26 for the branch fragment as a loud decline (the handoff log's entry of that date), its witnesses compiling since 2026-09-27 — a body of literals and plain stack shuffles has no phantom, so `1 do [1 drop] drop` is `[]` on both lanes; the word consumer COMPILES since 2026-09-27 through the do's count island (`1 do [(1 add 1) drop] drop` is `[]` on both lanes), and `(g) 1 do [(1 add 1) drop] drop`, silent `[1]` for `[5]` until then, is `[5]` on both lanes (the paren written as its value); the seats no island takes defer loudly (`vm:do-count`): the value-less `do`'s catch-latched phantom is flagged (`eventFlags.catchPhantom`), and a promotion, a dead drop or a spill of it declines, where it compiled and underflowed; a static-zero division is a definite raise now, so its `do` nets the one Error and compiles. A word consuming the phantom (`1 do [1 drop] drop`) still bails. The original text: A VALUE-LESS `do` inside a branch fragment — `if [do [1 drop] true] [2] [3]`, `if [true] [do [1 drop] 2] [3]`, the same in a fn body or a loop — compiles and dies at run time (`internal_error: DROP stack underflow` / `STORE_LOCAL stack underflow`) where the interpreter answers `[2]`: the check pass models a non-empty `do` body with an empty residual as the Error a raise would leave, and inside a fragment the lowering drops or stores that value, which the compiled `do` never pushes. Top level and a fn body's straight line are unaffected. Recorded 2026-09-26 (NUR212's follow-up), present on `main` at 45c3bdb; a binding condition holding one declines (core `CheckState.ValuelessDoBodies`) | NUR212's follow-up (2026-09-26) |
 | [NUR223](#nur223) | FIXED 2026-09-26 by a loud decline (the handoff log's entry of that date; OPEN for the compile): a `while` whose condition binds a name declines the compile (`whileReturnsFn`, NUR212's binding-shape probe around the condition's analysis), so the program is a booked compile defect, not a silent wrong answer; the compile wants the two analyses in one carried scope at a joint fixed point. The original text: A `while` CONDITION that binds a name the BODY reads is read stale on the compiled lane: `def t 0 end while [def t (t add 1) (t lt 3)] [t] end t` is `[1 2 3]` interpreted and `[0 0 3]` compiled, SILENT — the loop's condition and body are analysed as two separate loop bodies, body first, so the body's read resolves the pre-loop binding. Recorded 2026-09-26 (NUR212's follow-up), present on `main` at 45c3bdb; the `if` condition's keep does not touch `while` | NUR212's follow-up (2026-09-26) |
 | [NUR224](#nur224) | FIXED on the merged tree (the merge of main's #513, 2026-09-26 — the handoff log's entry of that date), by this branch's NUR118 (2026-09-25, the same witness): a nested frame's contract error anchors at the CALL, so `def f fn [[][Integer][1 2]] end f` raises at 1:33 on both lanes. The original text: A fn's RETURN-COUNT error carries a different caret on the two lanes: `def f fn [[][Integer][1 2]] end f` raises `type_error: f: expected 1 return value(s), got 2 — [1 2]` on both, at the CALL (1:33) interpreted and at the body's first token (1:23) compiled. Position-only; the message, code and secondary note agree. Recorded 2026-09-26 (NUR212's follow-up, measuring its fn-body rows), present on `main` at 45c3bdb | NUR212's follow-up (2026-09-26) |
-| [NUR225](#nur225) | FIXED 2026-09-26 (templates and XML holes spell their source — the handoff log's entry of that date): canon renders a template string as backtick source (`canonTemplate`: literal text with the template lexer's escapes, each hole `${…}` over its tokens' canon) and an XML literal with holes as its XML (`canonXmlTmpl`: text and attribute text escaped as a plain element's), in both ports — TS keeps a tagged empty hole as `${}`. The original text: Template strings and XML literals with `${}` holes canon in DEBUG form — `interp('v ' ${1} ' w')`, `interp-xml(<a>${1}</a>)` — which no parser accepts (a template re-parses as a syntax error, an XML literal as the word `interp-xml` over a group): 30 of parse.tsv's rows fail the canon fixpoint on it, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
-| [NUR226](#nur226) | FIXED 2026-09-26 (the key canons as its key — the handoff log's entry of that date): a map key renders bare only when it lexes back as the same key (letters, digits, `_ $ - @`) and quoted otherwise (`canonKey`), in every canon map arm, both ports. The original text: A map key that needs quoting canons bare: `{'q k':2}` renders `{q k:2}`, which re-parses as two entries (`{q:q k:2}`) — ADR-015's round-trip broken on the key, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
-| [NUR227](#nur227) | FIXED 2026-09-26 (a comma before the angle — the handoff log's entry of that date): a sequence joins a part whose last token is a bare capitalised name to a part opening `<` with a comma (`joinCanonParts`), so `[:A, <a/>]` re-parses as the typed list it is, both ports. The original text: A typed tag before an XML literal re-lexes as the angle sugar: `<a/>:A` canons `[:A <a/>]`, which re-parses as `[:A<a/>]` — whitespace does not separate `A` from `<`, so the tag and the element fuse into `A<a/>` | the canon fixpoint gate, closing NUR072, 2026-09-26 |
-| [NUR228](#nur228) | FIXED 2026-09-26 (the gradual window declines — the handoff log's entry of that date): the matcher flags a split whose window hangs on a gradual stack operand while a later overload forward-collects past the token the selected one stopped at (`laterCandidateCollectsPast`), and the compile declines with the gradual-split reason — the mirror of the existing split flag. The original text: `def v (whereis "x") v send {a: 1} "nobody"` is `[None]` interpreted (v is None, so `send (Any, String)` takes both forward tokens) and raised signature_error compiled: the check pass matched `send (Any, Pid)` over ONE forward token and the dynamic v, and compiled that window — `{a: 1}` sent to None; `whereis "x" send {a: 1} (self)` declined as a "stack discipline" compiler defect. A wrong answer (a program error the interpreter does not raise), pre-existing (measured on main at 3b5db68) | closing NUR064, 2026-09-26 |
-| [NUR229](#nur229) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): a boru matcher refuses a malformed quoted-string escape before jsonic's lexer reads it, the escape itself named, in both ports. The original text: the two tabnas ports reported a malformed escape in a quoted string differently — `"a\x4"` an invalid ascii escape in Go and an unterminated string in TS, `"a\xZZb"` spanning `"a\xZZ` in Go and `\xZZ` in TS. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
-| [NUR230](#nur230) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): Go's shared escape writer pairs a UTF-16 surrogate split across two `\uXXXX` escapes into one code point, as jsonic does in a quoted string. The original text: in a template, `\ud83d\ude00` read as two U+FFFD in Go and as one code point in TS (whose UTF-16 strings pair the units); both ports read it as one in a quoted string. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
-| [NUR231](#nur231) | FIXED 2026-09-26 (value half: Bytes a refinement base, a computed bound the run's; type half: the run-time type install — the handoff log's entries of that date): a refinement constructor over a bound the check pass does not know latches a run-time construct and the dispatch records as the call it is, so the run builds the refinement; a refinement bakes only over const bounds, `between` decides no empty interval from an unknown one, and a membership check over one decides nothing in the pass (an intersection keeps the unknown bound, a complement admits). A TYPE over one compiles to the run-time install: the run installs it from the body it computed (OpBindTypeRun) and the pass's node forwards to the run's, a typed def records the run's own membership check, and an overload set over one re-matches at run time. An inline parameter or return type over one compiles too: its pattern is an anonymous node the run forwards to the refinement it computed. An inline interval over one (which the run may find empty), a typed container's child and a fn body's per-call type def decline through the existing compile-time-word site. The original text: `3 is (Integer gt (size "abc"))` was false interpreted and true compiled — the check pass built the refinement over its carrier for the computed bound and the recorder baked it; a carrier orders below every value, so a lower bound admitted everything, an upper one refused everything (a false check-time type_error too), `between` over one was Never, and a type over one bound or dispatched unchecked compiled. Pre-existing | closing NUR009, 2026-09-26 |
-| [NUR232](#nur232) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the return-pattern check defers a refinement's value-level membership over an abstract residual not provably outside its base, the named return type's rule. The original text: `def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5` was a check-time type_error ("expected (Integer gt 3), got Integer") that both lanes then returned 5 for; the named twin (`[Big]`) is check-clean. Pre-existing | closing NUR009, 2026-09-26 |
-| [NUR233](#nur233) | FIXED 2026-09-26 (a make field's refusal is a type_error — the handoff log's entry of that date): a make field the run refuses raises a type_error on both lanes; a refusal already structured keeps its code. The original text: the refusal was a plain error, which the interpreter printed bare and a compiled run booked as a compiler defect (internal_error with its "please report it" note) — `def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}`. Pre-existing | compiling NUR231's type half, 2026-09-26 |
-| [NUR234](#nur234) | FIXED 2026-09-26 (the call carries the interpreter's window — the handoff log's entry of that date): a compiled user call's param-contract no-match reports the window the interpreter's failed dispatch reports — the written run, which a bare read ends, filled from the stack beneath. The original text: a compiled direct call's param-contract no-match reported every argument, where the interpreter reports its attempted window: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` noted "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Pre-existing | compiling NUR231's type half, 2026-09-26 |
+| [NUR302](#nur302) | FIXED 2026-09-26 (templates and XML holes spell their source — the handoff log's entry of that date): canon renders a template string as backtick source (`canonTemplate`: literal text with the template lexer's escapes, each hole `${…}` over its tokens' canon) and an XML literal with holes as its XML (`canonXmlTmpl`: text and attribute text escaped as a plain element's), in both ports — TS keeps a tagged empty hole as `${}`. The original text: Template strings and XML literals with `${}` holes canon in DEBUG form — `interp('v ' ${1} ' w')`, `interp-xml(<a>${1}</a>)` — which no parser accepts (a template re-parses as a syntax error, an XML literal as the word `interp-xml` over a group): 30 of parse.tsv's rows fail the canon fixpoint on it, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
+| [NUR303](#nur303) | FIXED 2026-09-26 (the key canons as its key — the handoff log's entry of that date): a map key renders bare only when it lexes back as the same key (letters, digits, `_ $ - @`) and quoted otherwise (`canonKey`), in every canon map arm, both ports. The original text: A map key that needs quoting canons bare: `{'q k':2}` renders `{q k:2}`, which re-parses as two entries (`{q:q k:2}`) — ADR-015's round-trip broken on the key, in both ports | the canon fixpoint gate, closing NUR072, 2026-09-26 |
+| [NUR304](#nur304) | FIXED 2026-09-26 (a comma before the angle — the handoff log's entry of that date): a sequence joins a part whose last token is a bare capitalised name to a part opening `<` with a comma (`joinCanonParts`), so `[:A, <a/>]` re-parses as the typed list it is, both ports. The original text: A typed tag before an XML literal re-lexes as the angle sugar: `<a/>:A` canons `[:A <a/>]`, which re-parses as `[:A<a/>]` — whitespace does not separate `A` from `<`, so the tag and the element fuse into `A<a/>` | the canon fixpoint gate, closing NUR072, 2026-09-26 |
+| [NUR305](#nur305) | FIXED 2026-09-26 (the gradual window declines — the handoff log's entry of that date): the matcher flags a split whose window hangs on a gradual stack operand while a later overload forward-collects past the token the selected one stopped at (`laterCandidateCollectsPast`), and the compile declines with the gradual-split reason — the mirror of the existing split flag. The original text: `def v (whereis "x") v send {a: 1} "nobody"` is `[None]` interpreted (v is None, so `send (Any, String)` takes both forward tokens) and raised signature_error compiled: the check pass matched `send (Any, Pid)` over ONE forward token and the dynamic v, and compiled that window — `{a: 1}` sent to None; `whereis "x" send {a: 1} (self)` declined as a "stack discipline" compiler defect. A wrong answer (a program error the interpreter does not raise), pre-existing (measured on main at 3b5db68) | closing NUR064, 2026-09-26 |
+| [NUR306](#nur306) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): a boru matcher refuses a malformed quoted-string escape before jsonic's lexer reads it, the escape itself named, in both ports. The original text: the two tabnas ports reported a malformed escape in a quoted string differently — `"a\x4"` an invalid ascii escape in Go and an unterminated string in TS, `"a\xZZb"` spanning `"a\xZZ` in Go and `\xZZ` in TS. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
+| [NUR307](#nur307) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): Go's shared escape writer pairs a UTF-16 surrogate split across two `\uXXXX` escapes into one code point, as jsonic does in a quoted string. The original text: in a template, `\ud83d\ude00` read as two U+FFFD in Go and as one code point in TS (whose UTF-16 strings pair the units); both ports read it as one in a quoted string. Pre-existing, outside the corpus | closing NUR026, 2026-09-26 |
+| [NUR308](#nur308) | FIXED 2026-09-26 (value half: Bytes a refinement base, a computed bound the run's; type half: the run-time type install — the handoff log's entries of that date): a refinement constructor over a bound the check pass does not know latches a run-time construct and the dispatch records as the call it is, so the run builds the refinement; a refinement bakes only over const bounds, `between` decides no empty interval from an unknown one, and a membership check over one decides nothing in the pass (an intersection keeps the unknown bound, a complement admits). A TYPE over one compiles to the run-time install: the run installs it from the body it computed (OpBindTypeRun) and the pass's node forwards to the run's, a typed def records the run's own membership check, and an overload set over one re-matches at run time. An inline parameter or return type over one compiles too: its pattern is an anonymous node the run forwards to the refinement it computed. An inline interval over one (which the run may find empty), a typed container's child and a fn body's per-call type def decline through the existing compile-time-word site. The original text: `3 is (Integer gt (size "abc"))` was false interpreted and true compiled — the check pass built the refinement over its carrier for the computed bound and the recorder baked it; a carrier orders below every value, so a lower bound admitted everything, an upper one refused everything (a false check-time type_error too), `between` over one was Never, and a type over one bound or dispatched unchecked compiled. Pre-existing | closing NUR009, 2026-09-26 |
+| [NUR309](#nur309) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the return-pattern check defers a refinement's value-level membership over an abstract residual not provably outside its base, the named return type's rule. The original text: `def g fn [[n:Integer] [(Integer gt 3)] [n]] g 5` was a check-time type_error ("expected (Integer gt 3), got Integer") that both lanes then returned 5 for; the named twin (`[Big]`) is check-clean. Pre-existing | closing NUR009, 2026-09-26 |
+| [NUR310](#nur310) | FIXED 2026-09-26 (a make field's refusal is a type_error — the handoff log's entry of that date): a make field the run refuses raises a type_error on both lanes; a refusal already structured keeps its code. The original text: the refusal was a plain error, which the interpreter printed bare and a compiled run booked as a compiler defect (internal_error with its "please report it" note) — `def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}`. Pre-existing | compiling NUR308's type half, 2026-09-26 |
+| [NUR234](#nur234) | FIXED 2026-09-26 (the call carries the interpreter's window — the handoff log's entry of that date): a compiled user call's param-contract no-match reports the window the interpreter's failed dispatch reports — the written run, which a bare read ends, filled from the stack beneath. The original text: a compiled direct call's param-contract no-match reported every argument, where the interpreter reports its attempted window: `def f fn [[n:String] [Integer] [0]] each ([e:Any] => [f e]) [5]` noted "the argument was 5 (an Integer)" compiled and "takes 1 argument, but none were supplied" interpreted. Pre-existing | compiling NUR308's type half, 2026-09-26 |
 | [NUR235](#nur235) | FIXED 2026-09-26 (a named fn value's push carries its name — the handoff log's entry of that date): a member read of a nullary fn value from a `fn` literal fires on both lanes; the closure's unit is shared with anonymous values over the same body, so the name rides on the push. The original text: a fn-body-local fn def bound into a returned map: the member read returns the fn compiled, calls it interpreted — `def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g` answers `[fn g]` compiled, `[5]` interpreted. A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR236](#nur236) | FIXED 2026-09-26 (a spliced consumer is ordered by the stream — the handoff log's entry of that date): a gradual def read consumed by a spliced word's expansion carries its deopt, so a read that holds a fn at run time dispatches it on both lanes. The original text: a word splice over a def-bound gradual read of a fn: `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}` answers `[Function]` compiled (typeof over the fn value) and `[Integer]` interpreted (`j` calls the fn). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR237](#nur237) | FIXED 2026-09-26 (an S5 name's later root defs are registry-visible — the handoff log's entry of that date): a taken branch arm's rebind of a name an S5 loop bind bound is seen after the merge on both lanes. The original text: a def rebound in a taken branch after a loop-result def reads the pre-branch value compiled: `def x (for 2 [5]) def c true if c [def x 1] [] end x` answers `[5 5]` compiled, `[5 1]` interpreted (both arms binding x too; a read of x before the branch makes the lanes agree). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR238](#nur238) | FIXED 2026-09-26 (a trailing value is re-stepped as the interpreter re-steps it — the handoff log's entry of that date): a value applied as a trailing window it does not fit parks when anonymous and raises uncalled_function when named, at the top level and in a fn. The original text: a paren-bounded trailing apply that matches nothing: the interpreter parks an anonymous value as data and raises `uncalled_function` for a named fn; the compiled apply raises `signature_error` at the top level (`(5 ([s:String] => [s]))` is `[5 fn (String)]` interpreted) and leaves a named fn's window as residue inside a fn (`(5 f/v)` over a `g/v` argument: a count error compiled) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR239](#nur239) | FIXED 2026-09-26 (both halves — the anonymous `<fn>` earlier, the binding half by the island's word dispatch; the handoff log's entry of that date): an applied fn value's return-contract error names the fn's definition compiled and the binding it was called under interpreted: `(k 5)` over `h z/v` says `z:` compiled, `k:` interpreted; an anonymous class-field fn says `` compiled, `<fn>` interpreted (`each h.cb [1 2 3]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR240](#nur240) | FIXED 2026-09-26 (by NUR238's value-trail no-match — the handoff log's entry of that date): a trapped unmatched module-member call inside a branch arm raises `signature_error` compiled and `uncalled_function` interpreted — a value-level divergence where the code is caught (`do [if true [(true 5 M.dec)] [1] …] error [dot code]`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
-| [NUR241](#nur241) | FIXED 2026-09-26 as a sound decline (the word-led arrival — the handoff log's entry of that date): a compiling pass's DEFERRED word-led window (preferWordSig — `ForwardInfo.WordLed`) that takes an arriving value its slot cannot prove, while a narrower window fits the stack beneath the word, flags the gradual split (NUR228's discipline), and the program declines loudly where it raised a wrong `cannot call append`; a window that is not word-led, or with nothing beneath the word for a narrower window, or with a proven arrival, compiles as before. The original text: a capturing callback run by `walk`: `acc (tag) append acc (m.path) append` in a factory's lambda raises `signature_error: cannot call append` compiled (the arguments `[]` and `''`) where the interpreter answers `['x' '' 'x' 'a' 'x' 'b']` | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
+| [NUR241](#nur241) | FIXED 2026-09-26 as a sound decline (the word-led arrival — the handoff log's entry of that date): a compiling pass's DEFERRED word-led window (preferWordSig — `ForwardInfo.WordLed`) that takes an arriving value its slot cannot prove, while a narrower window fits the stack beneath the word, flags the gradual split (NUR305's discipline), and the program declines loudly where it raised a wrong `cannot call append`; a window that is not word-led, or with nothing beneath the word for a narrower window, or with a proven arrival, compiles as before. The original text: a capturing callback run by `walk`: `acc (tag) append acc (m.path) append` in a factory's lambda raises `signature_error: cannot call append` compiled (the arguments `[]` and `''`) where the interpreter answers `['x' '' 'x' 'a' 'x' 'b']` | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR242](#nur242) | FIXED 2026-09-27 (recorded 2026-09-26; the handoff log's entries of those dates): eight programs compiled and then failed inside the compiled runtime (internal_error) where the interpreter answers. The `do` pair, the shaped method apply's count and `fold` over a gradual class field closed on 2026-09-26; the last four — three `/q`-capturing member landings and an overloaded member's paren apply, each nested in a list literal or a branch arm — restart their STATEMENT on the interpreter from its first token where the landing has no compiled answer (compiler's `landing_restart.go`: `LandingWord.Restart`, `DynMethodSpec.Restart`) | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR243](#nur243) | FIXED 2026-09-26 (the three programs compile — the handoff log's entry of that date): a constant branch's taken arm with no value is a 0-value statement, a loop rebind of a branch-bound name is carried, and a parser dispatch declines over its parser operand only. The original text: three valid programs refused: a loop carrying a branch-bound name (`if c [def x 1] [] for 3 [def x 5] x`, "body result of unknown provenance"), a constant-true branch whose taken arm leaves no value (`def x 0 if [true] [def x 1] [2] end x`, "branch produces no value" — its guard carried a `//covergate:allow` whose proof was false, removed), and NUR109's bound-slot arm declining a parser dispatch over a branch-bound SOURCE operand | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR244](#nur244) | FIXED 2026-09-26 (an arm that may not run is speculative — the handoff log's entry of that date): a fn def in a branch arm the model knows is SKIPPED (a literal, def-bound or folded false condition — or true, for the else arm) or in an else-less if's arm was the join's own value, and a read past the merge ran it: `if false [def f fn [[a:Integer] [Any] [7]]] [] end 3 f` answered `[7]` compiled for undefined_word, and `import "boru:parselang" def c false if c [def p (fn [[source:String opts:Map] [Any] [7]])] [] end parse p 'x'` `[7]` for `parse_unknown_lang`. Silent wrong answers | closing NUR243, 2026-09-26 |
@@ -221,7 +221,7 @@ keep the two in sync in the same commit.
 | [NUR296](#nur296) | FIXED 2026-09-27 by its loud defers (recorded the same day, closing NUR242 and NUR219; the handoff log's entries of that date; by the scope ruling a refusal is no answer divergence — the compiles of the forms below that still defer stay owed, each a designed defer): a landing's `/q` claim, a paren apply over data or a branch guard over a list (NUR292) restarts its statement on the interpreter only where the compiled code ran nothing a second run would repeat — a call before the stop is written as its paren's value where the compiled code still holds it, or kept a copy in a slot of its own when the statement consumes it (the stash) — and, inside counted loops, only on their first iteration (checked at run time); otherwise it defers. A stop on a later iteration or in a condition loop, a paren substituted inside a loop, and an effect before the stop whose operand lies beneath its statement (`"x" end print/s …`) answer interpreted and defer compiled. `[(g) (l.0 true)]`, `[(g) drop (l.0 true)]`, `5 if (c) (mk) ["f"]`, `for 2 [[(l.(i) true)]]` and `for 2 [[(l.0 true)] def q 1 end]`, recorded here first, compile since the same day, and so does an effect before the stop written after its word (`print "a" 5 if (mk) ["big"] ["small"]`, the call run: written as no token, it prints once), or over operands it took off the stack written right before it (`"x" print/s`, `3 4 add print/s`: the producer's own run joins the call's). Loud | closing NUR242, 2026-09-27 |
 | [NUR297](#nur297) | FIXED 2026-09-27 (recorded and closed together, probing NUR286's compile; the branch's own NUR292 work, never on main; the handoff log's entry of that date): a statement island wrote the value a paren's call left as a token, which the island steps — the interpreter parks a paren's value that would dispatch at the pointer, so `[5 (g) (l.0 true)]` over a factory of a lambda answered `[[6 true]]` for `[[5 fn (Integer) true]]` (silent). A paren's or a bare word's fn value is a designed defer now (`vm:restart-parked-fn`); data is written as before. Loud | probing NUR286, 2026-09-27 |
 | [NUR298](#nur298) | FIXED 2026-09-27 (recorded and closed together, probing NUR286's compile; the handoff log's entry of that date): inside a def's operand group the interpreter's re-step applies a landed fn to the literal after it before the def takes the group's first value, and the compiled lane left the fn to the residual arms, which met it only after the def: `def j (5 do [(mk)] 7) end 1 j` answered `[fn (Integer) 7 1 5]` for `[8 1 5]`, as did a string or list after the fn (silent, on main); the plain `end j` form regressed on the branch at 51b1a62 (NUR266's crossing rule). The crossing counts only the entry right after the lead, and a def group's collecting landing (`LandingCollects`) is guarded and takes its statement island; with an effect before the stop it defers (`vm:landing-collects`) | probing NUR286, 2026-09-27 |
-| [NUR299](#nur299) | FIXED 2026-09-27 by a loud decline (recorded and closed together, probing the statement island's barriers; the handoff log's entry of that date; by the scope ruling a refusal is no answer divergence): a one-operand word over a gradual value beneath it and a literal after it splits at run time by the value — `(mk) do [5]` over a factory of `[1 2]` is `[[1 2] 5]` interpreted (the List misses do's Map overload, and the List one takes the `[5]`), and the check pass filled the Map overload from the stack: the branch answered `[1 2 [5]]` (silent since 13aa881's region claim) and main bailed; over a fn value (`m.f do [(g)]`) the compiled lane raised `cannot call do` on both. the forward-drift guard now asks an all-stack window neither of its models answers (NUR228's question at fwd 0, keyed on the drift window and its decline, not on arity — ADR-016), so the compile declines | probing NUR296, 2026-09-27 |
+| [NUR299](#nur299) | FIXED 2026-09-27 by a loud decline (recorded and closed together, probing the statement island's barriers; the handoff log's entry of that date; by the scope ruling a refusal is no answer divergence): a one-operand word over a gradual value beneath it and a literal after it splits at run time by the value — `(mk) do [5]` over a factory of `[1 2]` is `[[1 2] 5]` interpreted (the List misses do's Map overload, and the List one takes the `[5]`), and the check pass filled the Map overload from the stack: the branch answered `[1 2 [5]]` (silent since 13aa881's region claim) and main bailed; over a fn value (`m.f do [(g)]`) the compiled lane raised `cannot call do` on both. the forward-drift guard now asks an all-stack window neither of its models answers (NUR305's question at fwd 0, keyed on the drift window and its decline, not on arity — ADR-016), so the compile declines | probing NUR296, 2026-09-27 |
 | [NUR300](#nur300) | FIXED 2026-09-27 (recorded and closed together, probing NUR282's owed compile of a computed error handler's count; the handoff log's entry of that date): a computed error handler's run leaves 0-or-more values the interpreter splices onto its tape and steps, and the compiled lane seated it as one plain value — silent on main and on this branch: `[do [raise oops 'x'] error (mk)]` over a handler of `[drop 5 6]` answered `[5 [6]]` for `[[5 6]]`, a def's group bound the top value where the interpreter binds the first, a value beneath was seated above the run (`[5 3 6]` for `[3 5 6]`), a map literal and print's operand took one value, and a handler's fn value stayed data (`[fn g]` for `[7]`). The run is a variadic region now, as a computed `do` body's is: a residual seats it whole, a single-value seat takes it under the runtime count check, and a layout that cannot place it declines. Where the check refuses a run, the error's count island re-runs the statement with the do, its body, the word and the handler written as the run, so every witness above answers as the interpreter does; a map literal's value, which no island reaches, defers | probing NUR282, 2026-09-27 |
 | [NUR301](#nur301) | FIXED 2026-09-27 (recorded and closed together, probing NUR300; the handoff log's entry of that date): an error handler's run on the caught path is the handler's own count, and the compiled lane seated it as one value — silent on main and on this branch. A literal handler the closure path refused ran as an interpreter island whose values were no region (`[do [raise oops 'x'] error [drop 5 6]]` answered `[5 [6]]` for `[[5 6]]`; a def's group bound the top, a value beneath went above the run, and a fn's list raised a return-count error for `[[[5 6] [7]]]`), and a `do` whose literal body ends in a handler's run took one seat (`[do [do [raise oops 'x'] error (mk)] error (mk)]`, the same). The island's run is a region and a run now, a computed handler's run is a run (`dynBodyRun`), a literal body holding a run the closure path declines takes a computed body's marks (`noteBodyRun`), and a strip over a growing region stays one; a value beneath a computed handler's run takes the prefix island. The literal forms decline loudly | probing NUR300, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
@@ -250,7 +250,7 @@ keep the two in sync in the same commit.
 | [NUR112](#nur112) | FIXED 2026-09-25 (the plain check's stored member — the handoff log's entry of that date): on a PLAIN check a stored fn value read as a member is the value itself, so the pass applies it over what follows as the run does (`def m {a:size/v}  m.a [1 2 3]` checks [Integer]); the compile pass keeps its dynamic carrier and the shaped method model. The earlier text: NARROWED 2026-09-25 (the extension is irrelevant; the widening is the member read's designed model — the record's resolution line): The checker's residual for a parked native word applied after its name was EXTENDED does not match what runs: `def Pos (refine Integer)  def m {a:size/v}  def size fn [[n:Pos] [Integer] [200]] end  def v:Pos 3  m.a v` is checked `[dynamic(Any) Pos]` — two values, one of them the argument left behind — and actually leaves `[Integer]`. Both ENGINES agree on the answer (3); it is the static model that differs, so no differential can see it — TestCheckTypeSoundness can, and did | writing a corpus row for the parked-native apply gate, 2026-08-29 |
 | [NUR009](#nur009) | FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date): the refinement bases are DECLARED — `core.DeclareRefinementBase` stamps a type's capability where its owner registers it (core its six leaves, basic Bytes), and `canonicalBaseType` reads the declaration, hand-listing nothing; the inline-signature resolver slots a refinement at its own base (a Bytes one was a wildcard), a refinement renders as one over Bytes' Formatter, and `convert Bytes <String>` folds over a const so a named Bytes refinement compiles. The original text: Bytes excluded from the DepScalar refinement bases — VERDICT 2026-08-15: WAIT for the ADR-012 `types/go` consolidation to close this through the refinement-base capability; no narrow fix meanwhile | 2026-07-22 uniformity review |
 | [NUR026](#nur026) | FIXED 2026-09-26 (one escape vocabulary, one malformed-escape report — the handoff log's entry of that date): every string form reads every escape alike in both ports — the braced `\u{…}` form and split surrogate pairs are live in a template too — and a malformed `\x` / `\u` is refused alike, naming the escape: a template's literal matcher and a new quoted-string matcher answer to one definition (`escapeFault`). The original text: Escape sets diverge between quoted strings and templates — NARROWED 2026-08-15: the escape VOCABULARY is resolved by fix (templates take the quoted-string set: \b \f \v \xNN \uNNNN, and an unknown escape drops its backslash); what remains is the malformed-input REPORTING difference, which needs an error channel the template lexer seam does not have | 2026-07-22 uniformity review |
-| [NUR072](#nur072) | FIXED 2026-09-26 (canon spells the sugar and the word — the handoff log's entry of that date): canon renders a plain Word bare (ADR-015 settles the bare-word question: `word(foo)` re-parses as the `word` splice over a group, bare `foo` re-parses to the Word), the lambda marker `=>` and its fold group `A => B` without parens, a mini literal `+name'src'` in one canonical delimiter with the lexer's escapes, the type bound `name/t`, and a group modifier after its group (`(1 2) /s`) — in core/go and core/ts alike; the TS `/N` arity is a bigint, so `x/9223372036854775807` round-trips in both ports and left divergent.tsv for parse.tsv; a Go disjunct canon arm (missing, it spelled its members in the debug form) matches TS. A fixpoint gate over the parser corpus runs in both runners with a shrink-only ledger (parser/spec/canon-fixpoint.tsv) — NUR072's kinds all reach their fixpoint; the 33 ledgered rows are NUR225–NUR227. The original text: Three sugar kinds (mini, type-bound, lambda) still canon in DEBUG form after NUR059 — withdrawn there because the renders do not round-trip: SugarInfo does not retain the mini delimiter, and type-bound renders its Items rather than the bound's text; also carries the undecided bare-word question (`word(foo)` vs `foo`, 175 corpus rows) | NUR059's fix, 2026-08-15 |
+| [NUR072](#nur072) | FIXED 2026-09-26 (canon spells the sugar and the word — the handoff log's entry of that date): canon renders a plain Word bare (ADR-015 settles the bare-word question: `word(foo)` re-parses as the `word` splice over a group, bare `foo` re-parses to the Word), the lambda marker `=>` and its fold group `A => B` without parens, a mini literal `+name'src'` in one canonical delimiter with the lexer's escapes, the type bound `name/t`, and a group modifier after its group (`(1 2) /s`) — in core/go and core/ts alike; the TS `/N` arity is a bigint, so `x/9223372036854775807` round-trips in both ports and left divergent.tsv for parse.tsv; a Go disjunct canon arm (missing, it spelled its members in the debug form) matches TS. A fixpoint gate over the parser corpus runs in both runners with a shrink-only ledger (parser/spec/canon-fixpoint.tsv) — NUR072's kinds all reach their fixpoint; the 33 ledgered rows are NUR302–NUR304. The original text: Three sugar kinds (mini, type-bound, lambda) still canon in DEBUG form after NUR059 — withdrawn there because the renders do not round-trip: SugarInfo does not retain the mini delimiter, and type-bound renders its Items rather than the bound's text; also carries the undecided bare-word question (`word(foo)` vs `foo`, 175 corpus rows) | NUR059's fix, 2026-08-15 |
 | [NUR075](#nur075) | FIXED 2026-09-26 (eq's capability — the handoff log's entry of that date): `eq` is extensible per type on `deq`'s terms — `core.ExactEqualer`, consulted at ExactEqual's terminal `false` exactly where DeepEqualer sits in DeepEqual (so the two reach the same values: the pairs no kernel arm names), and a `behave eq/q` slot with deq's shape (`[[T T] [Boolean]]`) and deq's seam (delegate, decline, re-entry guard). Kernel identity arms are untouched — the capability is additive, as deq's is. The original text: `deq` is extensible per type (`DeepEqualer`), `eq` is not — the one part of the retired NUR031's verdict its fix did not take: the divergences closed by adding kernel arms rather than by routing through `Behavior`, so a type can define its own deep equality but not its own identity | NUR031's fix, 2026-08-16 |
 | [NUR076](#nur076) | FIXED 2026-09-26 (the check pass notes a behave make — the handoff log's entry of that date): `behave`'s check-mode half (its ReturnsFn) validates the call as the handler does and, for the `make` slot, notes the target in the pass's own state (`CheckState.BehaveMakers`), which `HasMaker` reads — so a construction after the call skips the schema validation the type's own constructor replaces, exactly as a Go-side Maker's does; one before it validates, as the run has it. Nothing is installed on the type, so no user body runs during analysis; the other seven slots change only what a program computes, which analysis does not evaluate. `def P class {a: Integer}  behave make/q (fn Any P [make P {a: 42}])  make P {bogus: 1}` checks clean and compiles (Class/P{a:42} on both lanes). The original text: A `behave`-installed capability is invisible to check mode, because `behave` does not run there — for `make` that turns a working program into a check FAILURE: a type whose Maker ignores the schema still has the schema's unknown/missing-field rules applied statically | NUR056's fix, 2026-08-17 (flagged by the PR #379 review, Codex P1) |
 | [NUR060](#nur060) | FIXED 2026-09-26 (the parity ledger is empty again — the handoff log's entry of that date): all nine classes fixed in both ports and moved to parse.tsv with neighbours — a bodiless `=>` where the arrow folds is refused on the arrow, a typed list child with no value is an empty element, a `]` never closes a list no `[` opened, the first fault in source order is reported, an unclosed member group is an unmatched paren, a bare `/` modifier is a syntax_error, an empty `${}` contributes nothing. The original text: The parser twins disagree on open-input sources beyond the corpus | PR #337 parity-probe sweep (flagged for NUR by Codex P1) |
@@ -2496,8 +2496,8 @@ needed to be whole:
   declares CompileScalarFold, and the fold admits a type literal at a
   declared type slot), so a named Bytes refinement compiles.
 
-Found on the way: NUR231 (a refinement over a computed bound, in the
-compiled lane) and NUR232 (an inline refinement return, at check time).
+Found on the way: NUR308 (a refinement over a computed bound, in the
+compiled lane) and NUR309 (an inline refinement return, at check time).
 Pinned by core's `nur009_refinement_base_test.go` and lang's
 `nur009_bytes_refinement_test.go` — value use, named type, typed def,
 parameter and return, positive and negative; the rendering; the pool
@@ -3430,8 +3430,8 @@ runner (`TestParserCanonFixpoint`) and the TS runner, against one
 shrink-only ledger (parser/spec/canon-fixpoint.tsv, pinned at 33 rows in
 both). Every row of NUR072's kinds reaches its fixpoint; the 33 ledgered rows
 were other kinds the gate found — template strings and XML `${}` holes
-(NUR225), a map key that needs quoting (NUR226), a typed tag before an XML
-literal (NUR227) — all fixed the same day, and the ledger is empty. Pinned also: core `TestNUR072SugarKindsSpellTheirSource`
+(NUR302), a map key that needs quoting (NUR303), a typed tag before an XML
+literal (NUR304) — all fixed the same day, and the ledger is empty. Pinned also: core `TestNUR072SugarKindsSpellTheirSource`
 and `TestNUR072UnspellableSugarKeepsTheFallback`.
 
 Two results changed along the way and are recorded where they belong: the
@@ -6781,7 +6781,7 @@ loop inside and around a fn frame, a callback raising inside the loop, a
 range loop's own iterator name, the `error` handler, the while twin; and
 control.tsv §3's row.
 
-## NUR229 — the two parser ports report a malformed quoted-string escape differently {#nur229}
+## NUR306 — the two parser ports report a malformed quoted-string escape differently {#nur306}
 
 **Status:** FIXED 2026-09-26 (one escape vocabulary, one malformed-escape
 report — the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
@@ -6808,7 +6808,7 @@ escape itself as the reported source: all three rows now read
 `invalid … escape: \x4` / `\u12` / `\xZZ` in both ports. Pinned by
 NUR026's `parse.tsv` rows.
 
-## NUR230 — a surrogate pair in a template: two replacement characters in Go, one code point in TS {#nur230}
+## NUR307 — a surrogate pair in a template: two replacement characters in Go, one code point in TS {#nur307}
 
 **Status:** FIXED 2026-09-26 (one escape vocabulary, one malformed-escape
 report — the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
@@ -6827,18 +6827,18 @@ pairs explicitly).
 is still U+FFFD. Pinned by NUR026's `parse.tsv` rows and the direct
 `processTemplateEscapes` cases.
 
-## NUR231 — a refinement over a computed bound: the compile pass baked a bound it did not know {#nur231}
+## NUR308 — a refinement over a computed bound: the compile pass baked a bound it did not know {#nur308}
 
 **Status:** FIXED 2026-09-26 (the value half: Bytes a refinement base, a computed bound the run's; the type half: the run-time type install — the handoff log's entries of that date) · **Recorded:** 2026-09-26 ·
 **Surfaced by:** closing NUR009 — every Bytes bound is computed, so pinning
 Bytes refinements on both lanes met it first.
 
-The full record — its divergence, the trace and the fix — is archived in [design/NUR-ARCHIVE.0.md](design/NUR-ARCHIVE.0.md#nur231), moved there on 2026-09-27 to keep this file under the repository's 1 MiB limit (`scripts/check-no-binaries.sh`).
+The full record — its divergence, the trace and the fix — is archived in [design/NUR-ARCHIVE.0.md](design/NUR-ARCHIVE.0.md#nur308), moved there on 2026-09-27 to keep this file under the repository's 1 MiB limit (`scripts/check-no-binaries.sh`).
 
-## NUR232 — an inline refinement return refused an abstract residual at check time; the named twin defers it {#nur232}
+## NUR309 — an inline refinement return refused an abstract residual at check time; the named twin defers it {#nur309}
 
 **Status:** FIXED 2026-09-26 (Bytes a refinement base, a computed bound the run's — the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
-**Surfaced by:** closing NUR009, pinning NUR231's check-clean half.
+**Surfaced by:** closing NUR009, pinning NUR308's check-clean half.
 
 **Rule:** one return contract, one check, whatever the type's spelling.
 
@@ -6860,13 +6860,13 @@ the RET and decides only a compile-time-known scalar.
 provably outside its base (`refinementUndecided`, check_fnbody.go) — the
 named path's rule. A residual provably outside (`[n:String]`) and a failing
 constant (`[2]`) are still flagged. Pinned by lang's
-`TestNUR232InlineRefinementReturnDefers`.
+`TestNUR309InlineRefinementReturnDefers`.
 
-## NUR233 — a make field's refusal: a bare error interpreted, a compiler defect compiled {#nur233}
+## NUR310 — a make field's refusal: a bare error interpreted, a compiler defect compiled {#nur310}
 
 **Status:** FIXED 2026-09-26 (a make field's refusal is a type_error — the
 handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
-**Surfaced by:** compiling NUR231's type half — a class field typed by a
+**Surfaced by:** compiling NUR308's type half — a class field typed by a
 refinement over a computed bound is the run's to check.
 
 **Rule:** one refusal, one error, on both lanes.
@@ -6885,7 +6885,7 @@ interpreter printed it bare; a compiled run books a plain error as a
 compiler defect (`compiledRunError`). The check pass already calls the same
 refusal a type_error when it knows the value, so the compile only reached
 the run-time raise for a value only the run knows: a loop-carried one, or,
-since NUR231's type half, a field typed by a refinement over a computed
+since NUR308's type half, a field typed by a refinement over a computed
 bound.
 
 **The fix.** The refusal is a type_error on both lanes (`makeFieldError`,
@@ -6897,13 +6897,13 @@ module-struct.tsv L100, record.tsv L97/L98; `bailDefectCeiling` 44 → 39).
 `make`'s OTHER refusals — an unknown or missing field, a source of the
 wrong shape — are the same class and stay plain errors, still ledgered as
 bails there. Pinned by core's `TestMakeFieldErrorIsStructured` and lang's
-`TestNUR233MakeFieldRefusalIsATypeError`.
+`TestNUR310MakeFieldRefusalIsATypeError`.
 
 ## NUR234 — a compiled direct call's contract no-match reports every argument; the interpreter reports its attempted window {#nur234}
 
 **Status:** FIXED 2026-09-26 (the call carries the interpreter's window —
 the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
-**Surfaced by:** compiling NUR231's type half — a call over a parameter
+**Surfaced by:** compiling NUR308's type half — a call over a parameter
 typed by a computed-bound name is admitted by the pass and checked by the
 run.
 
@@ -7217,7 +7217,7 @@ arrives into such a window unproven for its slot (`unprovenStackOperand`:
 a paren's gradual result) flags the gradual split when a window collecting
 fewer forward tokens also fits the stack beneath the word, over any of the
 word's signatures (`narrowerWindowFits`, the windows the interpreter's
-planner prunes to). The program then declines loudly, NUR228's discipline,
+planner prunes to). The program then declines loudly, NUR305's discipline,
 where it compiled to a wrong `cannot call append`.
 
 The naive latch's false positive stays out: `1 2 add (m.v)` is not
@@ -7258,14 +7258,14 @@ prunes the forward window and takes the all-stack split (`"x"` onto
 so `preferWordSig` defers the non-`/q` match (`PlanMatch`'s
 `bestDeferred`), and the deferred window `[acc, (m.path)]` parks the word.
 The paren's gradual Any then arrives in the FlexList slot optimistically.
-NUR228's `AmbiguousGradualSplit` covers a gradual STACK operand at the
+NUR305's `AmbiguousGradualSplit` covers a gradual STACK operand at the
 normal return. This one is a forward operand whose type is known only at
 ARRIVAL, so the fix belongs at the arrival or its force-stack re-step.
 
 A naive arrival latch over-declines. "The arrived value is unproven for its
 slot and a narrower stack window matches" also fires on `1 2 add (m.v)`:
 the same shape, and an idiom gradual code uses constantly, where the value
-fits in nearly every real run. The fix needs NUR228's discipline: a
+fits in nearly every real run. The fix needs NUR305's discipline: a
 restriction that names what makes the narrower window the runtime's
 likely one (here the plan was the deferred word-led window,
 `preferWordSig`), or a run-time re-plan of the window. It must not be a
@@ -8086,7 +8086,7 @@ With `[0]` as the else it is `[0 7]` compiled. NUR109's decline catches a
 parser operand that is the arm's own promoted event (`(Parse.parser g)`);
 an inline `fn` literal bakes as a value, and the dispatch uses it.
 
-## NUR228 — a native's forward window binds a gradual stack operand the runtime value may not fit {#nur228}
+## NUR305 — a native's forward window binds a gradual stack operand the runtime value may not fit {#nur305}
 
 **Status:** FIXED 2026-09-26 (the gradual window declines — the handoff
 log's entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:**
@@ -8129,13 +8129,13 @@ compile declines with "forward/stack split depends on a gradual operand".
 All-stack matches stay the forward-drift guard's. A window no later
 candidate would widen (`v send {a: 1} 5`), a concrete value beneath
 (`"q" send …`) and a paren that seals the call off still compile and agree.
-Pinned: core `TestNUR228GradualStackWindowIsAmbiguous`,
-`TestNUR228NoLaterClaimIsNoAmbiguity`,
-`TestNUR228SpeculativeClaimIsNoWiderWindow`; lang
-`TestNUR228GradualStackWindowDeclines`,
-`TestNUR228ProvenWindowsStillCompile`.
+Pinned: core `TestNUR305GradualStackWindowIsAmbiguous`,
+`TestNUR305NoLaterClaimIsNoAmbiguity`,
+`TestNUR305SpeculativeClaimIsNoWiderWindow`; lang
+`TestNUR305GradualStackWindowDeclines`,
+`TestNUR305ProvenWindowsStillCompile`.
 
-## NUR225 — template strings and XML `${}` holes canon in debug form {#nur225}
+## NUR302 — template strings and XML `${}` holes canon in debug form {#nur302}
 
 **Status:** FIXED 2026-09-26 (templates and XML holes spell their source —
 the handoff log's entry of that date) · **Recorded:** 2026-09-26 ·
@@ -8151,7 +8151,7 @@ attribute text escaped as a plain element's are, holes as `${…}`, nested
 templates recursing. The TS twin keeps a tagged EMPTY hole as `${}` (Go's
 untagged parts cannot hold one in a template, which divergent.tsv's `\`${}`
 row records). All 30 ledgered rows reach their fixpoint. Pinned: core
-`TestNUR225TemplateCanonIsSource`, `TestNUR225XmlTmplCanonIsSource`;
+`TestNUR302TemplateCanonIsSource`, `TestNUR302XmlTmplCanonIsSource`;
 parse.tsv's rows.
 
 **Rule:** ADR-015 — canon renders source that re-parses to the same value;
@@ -8164,7 +8164,7 @@ form as the word `interp-xml` over a paren group. 30 of the fixpoint
 ledger's 33 rows. Both ports render the same debug form, so this is a
 contract defect, not a parity one.
 
-## NUR226 — a map key that needs quoting canons bare {#nur226}
+## NUR303 — a map key that needs quoting canons bare {#nur303}
 
 **Status:** FIXED 2026-09-26 (the key canons as its key — the handoff log's
 entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:** the canon
@@ -8176,14 +8176,14 @@ string otherwise (an empty key, whitespace, a structural character such as
 `?`, `.`, `/`), in every canon map arm (map, flex, weak flex, typed map,
 options and inspect maps in TS), both ports. `{'q k':2}` and `{'':1}` keep
 their one key; `{1.5:2}` renders `{'1.5':2}`, the same map. Pinned: core
-`TestNUR226MapKeysCanonAsTheirKey`; parse.tsv's rows.
+`TestNUR303MapKeysCanonAsTheirKey`; parse.tsv's rows.
 
 **Rule:** ADR-015.
 
 **Divergence:** `{'q k':2}` canons `{q k:2}`, which re-parses as two
 entries, `{q:q k:2}`; `{'a b': 1}` the same. Two ledger rows, both ports.
 
-## NUR227 — a typed tag before an XML literal re-lexes as an angle sugar {#nur227}
+## NUR304 — a typed tag before an XML literal re-lexes as an angle sugar {#nur304}
 
 **Status:** FIXED 2026-09-26 (a comma before the angle — the handoff log's
 entry of that date) · **Recorded:** 2026-09-26 · **Surfaced by:** the canon
@@ -8194,7 +8194,7 @@ whitespace or not, so a sequence joins such a part to a part opening `<`
 with a comma — the list/paren separator every sequence accepts, which parses
 to nothing (`joinCanonParts`, both ports). `<a/>:A` canons `[:A, <a/>]`, and a
 word `A` before an XML literal `A, <a/>`. Pinned: core
-`TestNUR227CommaSeparatesAnAngleReceiver`; parse.tsv's row.
+`TestNUR304CommaSeparatesAnAngleReceiver`; parse.tsv's row.
 
 **Rule:** ADR-015.
 
@@ -11651,7 +11651,7 @@ decides at the re-step itself (`recordUndecidedApply`, the paren close's
 own event). That is a variadic region under NUR246's rules: it seats in
 place, collects in a list alone, and declines beside another element (the
 witness now declines where it answered wrong). A record the recorder
-refuses flags the gradual split, NUR228's discipline. A concrete value
+refuses flags the gradual split, NUR305's discipline. A concrete value
 decides the pattern at the pass and is untouched. Pinned by lang
 `TestNUR254UndecidedPatternPark` and core `TestNUR254UndecidedPatternWindow`
 and `TestNUR254RecordUndecidedApply`. The root's concrete variants surfaced
@@ -13135,7 +13135,7 @@ a carrier (of the annotation's node when that is a builtin one, which the
 run's check guarantees, else the carrier the unify kept) and records
 OpBindTyped over `TypedBindRunMembership` against the annotation, which
 binds what the interpreter's unify binds or raises its refusal
-byte-identically (the kind NUR231 added for a bound only the run knows).
+byte-identically (the kind NUR308 added for a bound only the run knows).
 An `Any` annotation admits every value, so that def is the untyped one.
 A value that may be a fn under an annotation a fn may inhabit (`Function`,
 `Type`, a fn shape, a negation) declines, through the compile-time-word
@@ -13693,7 +13693,7 @@ beneath misses the Map overload, whose one slot the word takes from the
 stack, and the List overload takes the `[5]` written after the word. The
 check pass holds a dynamic Any carrier there instead, which fills the Map
 overload's slot on no proof: the poly `do` then ran the stack value as its
-body and left the literal as data. NUR228's guard asks exactly this, that a
+body and left the literal as data. NUR305's guard asks exactly this, that a
 window hangs on an unproven stack operand while a later candidate
 forward-collects the token after the word, but only when the selected
 candidate took a forward token too. An all-stack match was the forward-drift
@@ -13702,7 +13702,7 @@ multi-operand word. On main the poly op's one-value claim bailed. On the
 branch the region seat (13aa881, NUR282's gradual region) commits no claim,
 and the wrong split answered silently.
 
-**Fix.** The forward-drift guard asks NUR228's question of an all-stack
+**Fix.** The forward-drift guard asks NUR305's question of an all-stack
 window its two models leave: when the drift window does not take the
 dispatch and the check side's decline (`DeclineForwardStackDrift`, which
 now reports whether it declined) does not fire, `allStackWindowAmbiguous`

@@ -120,7 +120,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.NoteRuntimeBind("x")
 	e.NoteRuntimeConstruct()
 	e.RecordRuntimeDispatch("w", nil, nil, nil, SrcPos{})
-	// NUR231's type half: the run-time type install, the run-dependent
+	// NUR308's type half: the run-time type install, the run-dependent
 	// compile-time word, the run-time membership bind.
 	e.NoteRuntimeTypeInstall("T", nil, Value{})
 	e.NoteRuntimeSigForward(nil, Value{})

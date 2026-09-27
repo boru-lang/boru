@@ -383,7 +383,7 @@ type emitCall struct {
 	// typeRun, when non-nil, marks this event as a root type def's RUN-TIME
 	// install (OpBindTypeRun over the single operand, the body the run
 	// computed) — recorded by RecordRuntimeDispatch off the type installer's
-	// NoteRuntimeTypeInstall latch (NUR231).
+	// NoteRuntimeTypeInstall latch (NUR308).
 	typeRun *core.TypeRunInstallSpec
 	// dynMethod, when non-nil, marks this event as a GUARDED shaped-instance-
 	// method apply (Stage M2c, OpCallDynMethod): ops[0] is the runtime method
@@ -1084,19 +1084,19 @@ type EmitState struct {
 	// NoteRuntimeBind and the dispatch's RecordRuntimeDispatch.
 	pendingRuntimeBindCall bool
 	// pendingRuntimeConstruct latches between a constructor handler's
-	// NoteRuntimeConstruct and the dispatch's RecordRuntimeDispatch (NUR231).
+	// NoteRuntimeConstruct and the dispatch's RecordRuntimeDispatch (NUR308).
 	pendingRuntimeConstruct bool
 	// pendingTypeRun latches between the type installer's
-	// NoteRuntimeTypeInstall and the def's RecordRuntimeDispatch (NUR231).
+	// NoteRuntimeTypeInstall and the def's RecordRuntimeDispatch (NUR308).
 	pendingTypeRun *pendingTypeRun
 	// pendingRuntimeDependent latches between a handler's
 	// NoteRuntimeDependent and its dispatch's RecordRuntimeDispatch: the
 	// compile-time word's effect is the run's to redo, and the compile cannot
-	// record it (NUR231).
+	// record it (NUR308).
 	pendingRuntimeDependent bool
 	// pendingSigForwards latch between a signature's NoteRuntimeSigForward
 	// (one per inline refinement slot over a bound only the run knows) and
-	// the building word's RecordRuntimeDispatch (NUR231).
+	// the building word's RecordRuntimeDispatch (NUR308).
 	pendingSigForwards []pendingTypeRun
 	// runtimeDefNames are the names a def form binds at RUN time with no
 	// check-engine install (NoteRuntimeDefDispatch), re-read by
@@ -6030,7 +6030,7 @@ func (es *EmitState) NoteRuntimeBind(name string) {
 
 // NoteRuntimeConstruct — a check-mode-run constructor built its result over
 // an operand the pass does not know (a refinement over a computed bound,
-// `Integer gt (size s)`: the bound is a carrier, NUR231). The result is no
+// `Integer gt (size s)`: the bound is a carrier, NUR308). The result is no
 // const — baked, it carried the carrier for a bound — so the dispatch
 // records as the call it is (RecordRuntimeDispatch) and the run builds it.
 func (es *EmitState) NoteRuntimeConstruct() {
@@ -6048,7 +6048,7 @@ type pendingTypeRun struct {
 }
 
 // NoteRuntimeTypeInstall — the type installer minted a type whose content
-// holds a refinement over a bound the pass does not know (NUR231): the
+// holds a refinement over a bound the pass does not know (NUR308): the
 // replay would install the pass's placeholder, so the def's dispatch
 // records the run-time install instead (RecordRuntimeDispatch).
 func (es *EmitState) NoteRuntimeTypeInstall(name string, node *core.Type, body core.Value) {
@@ -6059,7 +6059,7 @@ func (es *EmitState) NoteRuntimeTypeInstall(name string, node *core.Type, body c
 
 // NoteRuntimeSigForward — a signature under construction carries an
 // anonymous node minted over a refinement whose bound the pass does not know
-// (runSigPattern, NUR231): the building word's dispatch records the run's
+// (runSigPattern, NUR308): the building word's dispatch records the run's
 // forward of that node (recordSigForwards).
 func (es *EmitState) NoteRuntimeSigForward(node *core.Type, body core.Value) {
 	if es.Active() {
@@ -6096,7 +6096,7 @@ func (es *EmitState) recordSigForwards(fwds []pendingTypeRun, pos core.SrcPos) b
 // NoteRuntimeDependent — the compile-time word now dispatching has an
 // effect only the run knows, which the compile cannot record (an inline
 // signature type over a computed bound, a typed def over one whose bind
-// has no compiled home, NUR231): the dispatch declines as the compile-time
+// has no compiled home, NUR308): the dispatch declines as the compile-time
 // word it is (RecordRuntimeDispatch hands it to RecordCall).
 func (es *EmitState) NoteRuntimeDependent() {
 	if es.Active() {
@@ -6207,11 +6207,11 @@ func (es *EmitState) runtimeDefPartsBlocked() (string, bool) {
 //     result) — and the handler binds the names on the run-time registry
 //     exactly as the interpreter's does;
 //   - a constructor whose value is built over an operand the pass does not
-//     know (NoteRuntimeConstruct's latch, NUR231): the call is emitted with
+//     know (NoteRuntimeConstruct's latch, NUR308): the call is emitted with
 //     its outs, which later operands resolve to, so the run builds the
 //     refinement over the real bound;
 //   - a root type def over such a refinement (NoteRuntimeTypeInstall's
-//     latch, NUR231's type half): the run-time install is recorded in the
+//     latch, NUR308's type half): the run-time install is recorded in the
 //     def's place (recordTypeRun);
 //   - a word whose effect only the run knows and the compile cannot record
 //     (NoteRuntimeDependent's latch — an inline signature type over such a
@@ -9450,7 +9450,7 @@ func (es *EmitState) RecordTypedBind(spec core.TypedBindSpec, in, out core.Value
 }
 
 // RecordTypedBindRun records a typed def's run-time membership check over a
-// constraint only the run can decide (TypedBindRunMembership, NUR231):
+// constraint only the run can decide (TypedBindRunMembership, NUR308):
 // unlike RecordTypedBind it records a CONCRETE value too — the pass's
 // verdict over a placeholder bound is no verdict — and, with ConsOperand,
 // takes the constraint the run computed as an operand beneath the value

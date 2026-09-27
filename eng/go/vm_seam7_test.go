@@ -147,7 +147,7 @@ func TestSeam7RunUnderflowArms(t *testing.T) {
 	}
 }
 
-// TestBindTypeRunRefusal: the run-time type install's own refusal (NUR231's
+// TestBindTypeRunRefusal: the run-time type install's own refusal (NUR308's
 // type half) is the interpreter's installer's raise, stamped at the op.
 func TestBindTypeRunRefusal(t *testing.T) {
 	p := &compiler.Program{

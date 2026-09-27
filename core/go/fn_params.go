@@ -590,7 +590,7 @@ func looksLikeTypeName(name string) bool {
 // a bound the analysis pass does not know (`xs:[:(Integer gt (size s))]`):
 // the child is no node a forward could stand in for, and a compiled unit
 // would carry the pass's placeholder for the bound, so the word building
-// the signature declines as the compile-time word it is (NUR231). A
+// the signature declines as the compile-time word it is (NUR308). A
 // refinement or union slot compiles (runSigPattern), as a named type does.
 func noteRuntimeSigType(r *Registry, v Value) {
 	if r != nil && r.analysisActive() && HasUnknownRefinement(v) {

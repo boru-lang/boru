@@ -4068,7 +4068,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, vmErrAt(curDebug, pc, "unresolvable type operand "+p.Types[in.Arg].Name)
 			}
 			// A node the pass minted over a bound only the run knows pushes
-			// the node the run installed in its place (OpBindTypeRun, NUR231).
+			// the node the run installed in its place (OpBindTypeRun, NUR308).
 			stack = append(stack, core.NewTypeLiteral(core.ForwardedType(t)))
 		case compiler.OpForSetup:
 			var err error
@@ -4286,7 +4286,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			var bound core.Value
 			var err error
 			if spec.ConsOperand {
-				// An inline constraint the run computed (NUR231) sits beneath
+				// An inline constraint the run computed (NUR308) sits beneath
 				// the value: pop both, bind against the run's constraint.
 				if len(stack) < 2 {
 					return nil, vmErrAt(curDebug, pc, "BIND_TYPED stack underflow")
@@ -4582,7 +4582,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, stampAt(err, curDebug, pc, curReg)
 			}
 		case compiler.OpBindTypeRun:
-			// A root type def over a bound only the run knows (NUR231): the
+			// A root type def over a bound only the run knows (NUR308): the
 			// interpreter's own install of the body the run computed, and the
 			// pass's node forwarded to the node it bound.
 			if len(stack) == 0 {

@@ -1208,7 +1208,7 @@ func checkFnBodyAtConstruction(r *core.Registry, name string, fnDef core.FnDefIn
 // VALUE's, which only the run has, and the RET check asks it there. The
 // named spelling (`[Big]`) defers exactly this case already (the scalar-fold
 // gate below), so an inline refinement return refused an abstract Integer at
-// check time that both lanes then returned (NUR232). A residual provably
+// check time that both lanes then returned (NUR309). A residual provably
 // outside the refinement's base, or a compile-time-known scalar, still
 // decides.
 func refinementUndecided(pattern, got core.Value) bool {

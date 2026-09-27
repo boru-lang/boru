@@ -473,7 +473,7 @@ func CanonValues(vals []Value) string {
 // joinCanonParts joins a sequence's parts with a space — and with a COMMA
 // where a space would not separate them: the angle-sugar gate opens on a `<`
 // that follows ANY bare capitalised token, whitespace or not, so a tag or a
-// word `A` before an XML literal `<a/>` re-lexes as `A<a/>` (NUR227). The
+// word `A` before an XML literal `<a/>` re-lexes as `A<a/>` (NUR304). The
 // comma is the list/paren separator every sequence accepts, and it parses
 // to nothing.
 func joinCanonParts(parts []string) string {
@@ -503,7 +503,7 @@ func endsWithCapitalisedToken(p string) bool {
 // letters, digits, `_`, `$`, `-` and `@` — and as a quoted string otherwise, so
 // `{'q k':2}` keeps its one key instead of re-reading as two entries, and a
 // key that is a structural character (`?`, `.`, `:`) keeps its text
-// (NUR226).
+// (NUR303).
 func canonKey(k string) string {
 	if k == "" {
 		return canonString(k)
@@ -528,7 +528,7 @@ func joinCanonEntries(m ReadMap, render func(Value) string) string {
 }
 
 // canonTemplate renders a template string as the backtick source it came
-// from (NUR225) — it used to fall to the debug `interp('a ' ${word(x)})`,
+// from (NUR302) — it used to fall to the debug `interp('a ' ${word(x)})`,
 // which re-parses as a syntax error. Literal text takes the template's own
 // escapes (writeTemplateLit); each hole renders `${…}` over its tokens'
 // canon.
@@ -571,7 +571,7 @@ func writeTemplateLit(b *strings.Builder, s string) {
 }
 
 // canonXmlTmpl renders an XML literal with `${…}` holes as its source
-// (NUR225) — it used to fall to the debug `interp-xml(…)` wrapper, whose
+// (NUR302) — it used to fall to the debug `interp-xml(…)` wrapper, whose
 // holes spelled their tokens in the debug form. Literal text and attribute
 // text are escaped as a plain XML element's are (escapeXmlText /
 // escapeXmlAttr); a hole renders `${…}` over its tokens' canon.

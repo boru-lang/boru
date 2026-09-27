@@ -1579,7 +1579,7 @@ func comboTypeNames(combo []core.Value) string {
 // DepScalar and Go-member types match self-contained in check mode (no
 // leniency), so they carry no hazard — unless the refinement's bound is one
 // the pass does not know (a computed one, `def T (Integer gt (size s))`):
-// its check-mode match admits every value (NUR231), the same leniency.
+// its check-mode match admits every value (NUR308), the same leniency.
 func FnPredicateOverloadHazard(r *core.Registry, word string, args []core.Value) bool {
 	fn := r.Lookup(word)
 	if fn == nil || len(fn.Signatures) < 2 {

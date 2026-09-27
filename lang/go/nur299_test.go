@@ -15,7 +15,7 @@ import (
 // That answered `[1 2 [5]]` on this branch (13aa881's region commits no count
 // claim) and bailed on main. Over a fn value (`m.f do [(g)]`) it raised
 // `cannot call do` compiled. The split is ambiguous, so the compile declines
-// (NUR228's discipline, widened to the one-operand all-stack match); a
+// (NUR305's discipline, widened to the one-operand all-stack match); a
 // concrete value beneath compiles as before.
 func TestNUR299OneOperandSplitDeclines(t *testing.T) {
 	const g = `def g fn [[][Any][5]] end `

@@ -37,7 +37,7 @@ func unifyNegation(neg NegationInfo, val Value, r *Registry) (Value, *UnifyError
 		// does not know: the refinement admits every value (depBoundCheck),
 		// so its complement would refuse every value, and neither verdict
 		// is the bound's. The pass admits, gradually; the run decides
-		// (NUR231).
+		// (NUR308).
 		if HasUnknownRefinement(neg.Inner) {
 			return val, nil
 		}

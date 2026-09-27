@@ -59,7 +59,7 @@ import (
 // walk: the landing hands the capture to the interpreter's island (or its
 // skip) and the rows answer natively (runtime_defers.tsv's fn-value line
 // deleted).
-// 44 -> 39 on 2026-09-26 (NUR233, found compiling NUR231's type half): a
+// 44 -> 39 on 2026-09-26 (NUR310, found compiling NUR308's type half): a
 // make field's refusal is a type_error on both lanes, no longer a plain
 // error the compiled run books as a defect — edge-dispatch-3.tsv L59,
 // generics.tsv L56, module-struct.tsv L100 and record.tsv L97/L98 answer

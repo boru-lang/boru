@@ -1957,7 +1957,7 @@ type typeMeta struct {
 	RefinementBase *Type
 	// RunForward, non-nil, is the node the RUN installed under the name the
 	// analysis pass minted this node for — a type over a refinement whose
-	// bound only the run knows (NUR231, RunTypeInstall). Compiled references
+	// bound only the run knows (NUR308, RunTypeInstall). Compiled references
 	// name this node; ForwardedType follows the forward to the run's.
 	RunForward *Type
 }

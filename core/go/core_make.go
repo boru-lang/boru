@@ -52,7 +52,7 @@ func MakeRecord(recType RecordTypeInfo, srcVal Value, useBase bool) ([]Value, er
 // lanes. A plain error here was the interpreter's raise, and a compiled run
 // books a plain error as a compiler defect (internal_error and its note) —
 // reached once a field value only the run knows, a loop-carried value or a
-// refinement's computed bound, left the check pass admitting (NUR233). An
+// refinement's computed bound, left the check pass admitting (NUR310). An
 // error already structured keeps its own code beneath the prefix.
 func makeFieldError(key string, err error) error {
 	var ae *BoruError

@@ -7,14 +7,14 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// TestNUR233MakeFieldRefusalIsATypeError pins NUR233: a make field the run
+// TestNUR310MakeFieldRefusalIsATypeError pins NUR310: a make field the run
 // refuses — a value only the run knows, loop-carried here, or a field typed
-// by a refinement whose bound only the run computes (NUR231) — raised a
+// by a refinement whose bound only the run computes (NUR308) — raised a
 // plain error, which the interpreter printed bare and a compiled run booked
 // as a compiler defect (internal_error, with the "please report it" note).
 // The refusal is a type_error on both lanes now, the code the check pass
 // already gave the same refusal over a value it knows.
-func TestNUR233MakeFieldRefusalIsATypeError(t *testing.T) {
+func TestNUR310MakeFieldRefusalIsATypeError(t *testing.T) {
 	for _, src := range []string{
 		`def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}`,
 		`def Big (Integer gt (size "abc")) def S class {x:Big} make S {x:2}`,

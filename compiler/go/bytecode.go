@@ -675,7 +675,7 @@ const (
 	// a branch merge (`def x (if …)`) or a loop value a frame slot cannot
 	// seat — under the widened environment (dynEnv, a deopt unit).
 	OpBindDynScopePeek
-	// OpBindTypeRun is the RUN-TIME type install (NUR231's type half): a
+	// OpBindTypeRun is the RUN-TIME type install (NUR308's type half): a
 	// root `def T <body>` whose body holds a refinement over a bound the
 	// analysis pass did not know (`def T (Integer gte (size s))`). It pops
 	// the body the run computed and installs it through the interpreter's own
@@ -1560,7 +1560,7 @@ type Program struct {
 	StoreNames map[int]string
 	TypedBinds []core.TypedBindSpec
 	// TypeRuns backs OpBindTypeRun: one entry per root type def the run
-	// installs from the body it computed (NUR231).
+	// installs from the body it computed (NUR308).
 	TypeRuns []core.TypeRunInstallSpec
 	// GlobalBinds backs OpBindGlobal: one entry per top-level computed `def`,
 	// naming the binding and the DEPTH its check-pass install recorded. The
