@@ -815,6 +815,9 @@ type lowerer struct {
 	// value in, by its call's event seq (NUR296): a later event of the
 	// statement may consume the value before the stop.
 	substStash map[int]int
+	// countRestarts are the count islands of the root's `do` calls
+	// (planCountRestarts, SigRef.Count), keyed by the do event's seq.
+	countRestarts map[int]*landingRestart
 	// collectedApplies are the fn-value applies a planned collect takes as
 	// regions (planRegionCollectOver, NUR247/NUR249): lowered count-agnostic,
 	// never in a one-result form.
@@ -3867,6 +3870,17 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		}
 		lw.p.PolyRefs = append(lw.p.PolyRefs, PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk})
 		lw.emit(OpCallNativePoly, pi, c.pos)
+	} else if lw.es != nil && lw.es.phantomConsumed[ev.seq] && !dynOne && !plainChk && !c.hostSplice && c.nativeSplit == nil {
+		// A do whose run's count the seat may miss (NUR222): its own SigRef
+		// checks the count, and carries the statement island a miss takes
+		// where the walk seated one (planCountRestarts).
+		ref := SigRef{Word: c.word, Sig: c.sig, CountCheck: true, CountClaim: c.nout}
+		ref.Count = lw.countIsland(ev.seq)
+		lw.p.Sigs = append(lw.p.Sigs, ref)
+		if ref.Count != nil {
+			lw.restartSigs = append(lw.restartSigs, len(lw.p.Sigs)-1)
+		}
+		lw.emit(OpCallNative, len(lw.p.Sigs)-1, c.pos)
 	} else if c.hostSplice || dynOne || plainChk || c.nativeSplit != nil {
 		// A hosted splice (a computed `for` body): its own SigRef, never
 		// shared with a plain call of the same signature — the flag is the
@@ -5018,6 +5032,8 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 	for _, sp := range r.substs {
 		src, ok := RestartSrc{Kind: RestartGuard}, true
 		switch {
+		case sp.results:
+			src = RestartSrc{Kind: RestartResults}
 		case guarded.kind == opEvent && guarded.idx == sp.seq:
 		case sp.seq == landed && landed >= 0:
 			src = RestartSrc{Kind: RestartStack, Idx: lw.landedIdx(landed)}
@@ -5033,6 +5049,21 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Span: sp.span, Src: src})
 	}
 	return out, true
+}
+
+// countIsland is the count island of the do event seq (SigRef.Count), when
+// the walk seated one: the statement from its first token, its prefix, and
+// the runs it writes — the do's own run last. nil when none is.
+func (lw *lowerer) countIsland(seq int) *StmtIsland {
+	r := lw.countRestarts[seq]
+	if !r.seated() {
+		return nil
+	}
+	substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, -1)
+	if !ok {
+		return nil
+	}
+	return &StmtIsland{Island: lw.landingBody[r.token:], Depth: r.depth, RetPC: -1, Root: lw.landingRoot, PrefixSrc: r.srcs, Substs: substs}
 }
 
 // stashSubst keeps, in a frame slot of its own, the value event ev left on
@@ -5060,7 +5091,7 @@ func (lw *lowerer) stashSubst(ev *EmitEvent) {
 // substSeq reports whether a planned statement island (a landing's or a
 // branch guard's) writes event seq's value in its paren's place.
 func (lw *lowerer) substSeq(seq int) bool {
-	for _, plans := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts} {
+	for _, plans := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts} {
 		for _, r := range plans {
 			for _, sp := range r.substs {
 				if sp.seq == seq {

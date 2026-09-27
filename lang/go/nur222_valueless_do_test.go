@@ -14,11 +14,10 @@ import (
 // compiled and bailed at run time (STORE_LOCAL / DROP underflow). Each such
 // seat declines now, loudly, and the program answers through the
 // interpreter. A word that CONSUMES the phantom as its operand (`1 do
-// [(1 add 1) drop] drop`) still bails: declining every such consumer also
-// declined a loop that always raises (`for 1 [do [for 2 [raise 'x']] drop
-// i]`), which the pass cannot prove; that half is NUR222's open part. A body
-// of literals and plain stack shuffles has no phantom at all (2026-09-27):
-// run isolated, it cannot raise, so `do` nets what the pass saw — nothing.
+// [(1 add 1) drop] drop`) compiles through the do's count island
+// (TestNUR222ConsumedPhantomCountIsland). A body of literals and plain stack
+// shuffles has no phantom at all (2026-09-27): run isolated, it cannot
+// raise, so `do` nets what the pass saw — nothing.
 func TestNUR222ValuelessDoSeatedDeclines(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
 		{`if [do [(1 add 1) drop] true] [2] [3]`, "[2]"},
@@ -62,5 +61,54 @@ func TestNUR222ValuelessDoSeatedDeclines(t *testing.T) {
 	_, _, _, errC := mustNew(t).CompileCheck(src)
 	if codeOf(errI) != "undefined_word" || (errC != nil && !strings.Contains(errC.Error(), "q")) {
 		t.Errorf("%s: the def after a certain raise is never made, got interp %v, check %v", src, errI, errC)
+	}
+}
+
+// TestNUR222ConsumedPhantomCountIsland pins NUR222's consumer half. A call
+// that takes a caught body's phantom as an operand checks the run's count at
+// run time (SigRef.CountCheck). A miss re-runs the do's statement on the
+// interpreter from its first token, with the do word and its body written as
+// the run the call left (RestartResults), so the body never runs twice. A
+// seat no island can take — a trap before the statement, a paren the do's
+// level cannot write as inert, a loop — defers loudly (vm:do-count). The
+// formerly silent `(g) 1 do [...] drop` is among them: it answered `[1]`
+// for `[5]`.
+func TestNUR222ConsumedPhantomCountIsland(t *testing.T) {
+	const g = `def g fn [[][Any][5]] end `
+	for _, c := range []struct{ src, want string }{
+		{`1 do [(1 add 1) drop] drop`, "[]"},
+		{g + `1 do [(g) drop] drop`, "[]"},
+		{g + `1 do [g drop] drop`, "[]"},
+		{`1 do [def x 5] drop x`, "[5]"},
+		{`1 do [(raise 'x') drop] drop`, "[1]"},
+		{`1 do [print "p" 2 drop] drop`, "[]"},
+		{`1 do [(1 add 1) drop] drop 9`, "[9]"},
+		{`def n (flex []) end 1 do [push 1 n] drop n`, "[1 [1]]"},
+		{`1 do [(1 add 1) drop] drop ; 2 do [(1 add 1) drop] drop`, "[]"},
+		{`def f fn [[][Any][1 do [(1 add 1) drop] drop 7]] end f`, "[7]"},
+		{`1 do [(1 add 1) drop] typeof`, "[Integer]"},
+		{`1 do [(0 div 0) drop] typeof`, "[1 Error]"},
+		// The island's own run raises the interpreter's error.
+		{`do [(1 add 1) drop] drop`, "ERROR:cannot call `drop`"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	for _, c := range []struct{ src, want, loud string }{
+		{`1 2 do [(1 add 1) drop] add`, "[3]", "DISPATCH_REMATCH underflow"},
+		{g + `(g) 1 do [(1 add 1) drop] drop`, "[5]", "a caught body's run left 0 value(s)"},
+		{g + `[(g) 1 do [(1 add 1) drop] drop]`, "[[5]]", "a caught body's run left 0 value(s)"},
+		// A top-level list literal's token carries no position, so no
+		// statement island can find the do inside it; nor can one re-run a
+		// bare call before the do.
+		{`[1 do [(1 add 1) drop] drop]`, "[[]]", "a caught body's run left 0 value(s)"},
+		{`1 add 2 [1 do [(1 add 1) drop] drop]`, "[3 []]", "a caught body's run left 0 value(s)"},
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
+		if errI != nil || fmt.Sprint(gotI) != c.want {
+			t.Errorf("%s: interpreted %v %v, want %s", c.src, gotI, errI, c.want)
+		}
+		if !compiled || codeOf(errC) != "internal_error" || !strings.Contains(errC.Error(), c.loud) {
+			t.Errorf("%s: loud compiled (%s), got compiled=%v %v %v", c.src, c.loud, compiled, gotC, errC)
+		}
 	}
 }

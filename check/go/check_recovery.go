@@ -216,10 +216,10 @@ func checkForwardStrandsOperand(e *core.Engine, w core.WordInfo, sig *core.Signa
 // Without the top-is-dynamic and trailing-token gates a genuine all-stack
 // dynamic dispatch (`get key dyn`, `dyn 5 add`) would be declined although it
 // compiles faithfully, so both gates are load-bearing.
-func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []int) {
+func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []int) bool {
 	es := e.Registry.Check.Recorder()
 	if !es.Active() || sig == nil || sig.BarrierPos == 0 || sig.FullStack() || len(positions) < 2 {
-		return
+		return false
 	}
 	// A word with NoEvalArgs (code-body / quoted) positions — `if`, `for`, the
 	// higher-order words — forward-collects THOSE body/quote tokens, never a
@@ -231,7 +231,7 @@ func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []i
 	// and the trailing `0` is a separate statement, so compiled == interpreter.
 	// Firing here is a false positive that declines a faithfully-compilable `if`.
 	if len(sig.NoEvalArgs) > 0 {
-		return
+		return false
 	}
 	// Find the top-of-stack matched arg (highest tape position). Its operands
 	// beneath may be dynamic too: the match over carriers reached past the
@@ -239,22 +239,24 @@ func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []i
 	topPos := -1
 	for _, p := range positions {
 		if p < 0 || p >= e.Tape.Len() {
-			return
+			return false
 		}
 		if p > topPos {
 			topPos = p
 		}
 	}
 	if !e.Tape.At(topPos).Dynamic {
-		return
+		return false
 	}
 	nxt := e.Pointer + 1
 	if nxt >= e.Tape.Len() {
-		return
+		return false
 	}
 	if _, ok := e.ForwardOperandValue(e.Tape.At(nxt)); ok {
 		es.MarkUncompilable("forward operand accounting across a dynamic/island residual (Stage 3)")
+		return true
 	}
+	return false
 }
 
 // declineStrandedMemberFn declines (compile mode only) a dispatch that consumes a

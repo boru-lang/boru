@@ -1861,32 +1861,37 @@ func laterIterationDefer(reg *core.Registry, curDebug []core.SrcPos, pc int) err
 // substIsland is island with each substituted run of tokens written as the
 // value the compiled code left there (RestartSubst, compiler's
 // restartSubsts): its call ran and must not run again. The value is read
-// where the stop holds it — a slot, a frame-region entry, or guarded, the
-// value a guard checks — and a source the stop does not hold is the
-// compiler's own fault. The runs are in the island's token order and are
-// written last to first, so a run of two never moves a later one's path.
-// A paren's or a bare word's value that would dispatch as a token is a
-// designed defer: the interpreter parks it where it lands (NUR297).
-func (vc *vmContext) substIsland(island []core.Value, substs []compiler.RestartSubst, guarded *core.Value, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+// where the stop holds it — a slot, a frame-region entry, or stop, the
+// stop's own values: the one value a guard checks, or the run a do's call
+// left (RestartResults), written whole — and a source the stop does not
+// hold is the compiler's own fault. The runs are in the island's token
+// order and are written last to first, so a run of two never moves a later
+// one's path. A paren's or a bare word's value that would dispatch as a
+// token is a designed defer: the interpreter parks it where it lands
+// (NUR297). A do's results the interpreter steps in its place, as the
+// island does.
+func (vc *vmContext) substIsland(island []core.Value, substs []compiler.RestartSubst, stop []core.Value, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
 	for k := len(substs) - 1; k >= 0; k-- {
 		sb := substs[k]
-		var v core.Value
+		var vs []core.Value
 		i := sb.Src.Idx
 		switch {
-		case sb.Src.Kind == compiler.RestartGuard && guarded != nil:
-			v = *guarded
+		case sb.Src.Kind == compiler.RestartResults && stop != nil:
+			vs = stop
+		case sb.Src.Kind == compiler.RestartGuard && len(stop) == 1:
+			vs = stop
 		case sb.Src.Kind == compiler.RestartLocal && i >= 0 && i < len(vc.restartLocals):
-			v = vc.restartLocals[i]
+			vs = []core.Value{vc.restartLocals[i]}
 		case sb.Src.Kind == compiler.RestartStack && i >= 0 && frameBase+i < len(stack):
-			v = stack[frameBase+i]
+			vs = []core.Value{stack[frameBase+i]}
 		default:
 			return nil, vmErrAt(curDebug, pc, "bad statement-island substitution")
 		}
-		if sb.Span == 1 && core.FnValueDispatchesAtPointer(v) {
+		if sb.Src.Kind != compiler.RestartResults && sb.Span == 1 && core.FnValueDispatchesAtPointer(vs[0]) {
 			return nil, vmDefer(vc.r, curDebug, pc, "vm:restart-parked-fn", "a statement island would write a fn value where the interpreter parks it, and the island's step would apply it (NUR297); the compiled runtime cannot execute it")
 		}
 		var ok bool
-		if island, ok = substToken(island, sb.Path, sb.Span, v); !ok {
+		if island, ok = substToken(island, sb.Path, sb.Span, vs...); !ok {
 			return nil, vmErrAt(curDebug, pc, "bad statement-island substitution")
 		}
 	}
@@ -1941,19 +1946,27 @@ func (vc *vmContext) statementRestart(reg *core.Registry, srcs []compiler.Restar
 // written in place of the paren that computed it (substIsland) — a value is
 // inert on the tape, where the paren would run its call again.
 func (vc *vmContext) guardRestart(reg *core.Registry, is *compiler.StmtIsland, guarded core.Value, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
-	island, err := vc.substIsland(is.Island, is.Substs, &guarded, frameBase, stack, curDebug, pc)
+	return vc.stopRestart(reg, is, []core.Value{guarded}, frameBase, stack, curDebug, pc)
+}
+
+// stopRestart is a stop's statement island over its own values (stop): a
+// branch guard's guarded value (guardRestart), or the run a do's call left
+// where the program seats another count (SigRef.Count, NUR222), which the
+// island writes in place of the do word and its body.
+func (vc *vmContext) stopRestart(reg *core.Registry, is *compiler.StmtIsland, stop []core.Value, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	island, err := vc.substIsland(is.Island, is.Substs, stop, frameBase, stack, curDebug, pc)
 	if err != nil {
 		return nil, nil, err
 	}
 	return vc.statementRestart(reg, is.PrefixSrc, island, is.Depth, is.RetPC, is.Root, frameBase, stack, curDebug, pc)
 }
 
-// substToken is toks with the span tokens from path on replaced by v — a
+// substToken is toks with the span tokens from path on replaced by vs — a
 // fresh copy of every level on the way down, a paren's or a list literal's,
 // keeping its flags and position; the program's own tokens are never
 // written. An empty path is toks itself; ok is false for a path or span
 // that leaves them.
-func substToken(toks []core.Value, path []int, span int, v core.Value) ([]core.Value, bool) {
+func substToken(toks []core.Value, path []int, span int, vs ...core.Value) ([]core.Value, bool) {
 	if len(path) == 0 {
 		return toks, true
 	}
@@ -1965,15 +1978,15 @@ func substToken(toks []core.Value, path []int, span int, v core.Value) ([]core.V
 		if span < 1 || i+span > len(toks) {
 			return nil, false
 		}
-		out := make([]core.Value, 0, len(toks)-span+1)
-		out = append(append(append(out, toks[:i]...), v), toks[i+span:]...)
+		out := make([]core.Value, 0, len(toks)-span+len(vs))
+		out = append(append(append(out, toks[:i]...), vs...), toks[i+span:]...)
 		return out, true
 	}
 	out := append([]core.Value(nil), toks...)
 	t := out[i]
 	if core.IsParenExpr(t) {
 		inner, _ := core.AsParenExpr(t)
-		sub, ok := substToken(inner, path[1:], span, v)
+		sub, ok := substToken(inner, path[1:], span, vs...)
 		t.Data = core.ParenExprPayload{Toks: sub}
 		out[i] = t
 		return out, ok
@@ -1982,7 +1995,7 @@ func substToken(toks []core.Value, path []int, span int, v core.Value) ([]core.V
 	if err != nil {
 		return nil, false
 	}
-	sub, ok := substToken(l.Slice(), path[1:], span, v)
+	sub, ok := substToken(l.Slice(), path[1:], span, vs...)
 	t.Data = core.ListPayload{Elems: sub}
 	out[i] = t
 	return out, ok
@@ -4176,6 +4189,29 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// data.
 			if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil {
 				return nil, err
+			}
+			if s.CountCheck && len(results) != s.CountClaim {
+				// A do whose run's count the program's seat does not hold
+				// (SigRef.CountCheck, NUR222): its statement runs again, the
+				// run written in the do's place — or, with no island, a
+				// designed defer, where the consumer would take a value
+				// beneath the do.
+				if s.Count == nil {
+					return nil, vmDefer(curReg, curDebug, pc, "vm:do-count", s.Word+": a caught body's run left "+strconv.Itoa(len(results))+" value(s) where the program seats "+strconv.Itoa(s.CountClaim)+" for a later word to take (NUR222); the compiled runtime cannot execute it")
+				}
+				fb := 0
+				if len(frames) > 0 {
+					fb = frames[len(frames)-1].stackBase
+				}
+				vc.restartLocals = locals
+				ns, ent, rerr := vc.stopRestart(curReg, s.Count, results, fb, stack, curDebug, pc)
+				vc.restartLocals = nil
+				if rerr != nil {
+					return nil, rerr
+				}
+				stack = ns
+				pc = ent.jumpPC - 1
+				break
 			}
 			if s.DynBodyOne {
 				// A computed `do` body's run a single-value seat consumes

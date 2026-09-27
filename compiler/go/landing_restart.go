@@ -62,6 +62,9 @@ type substPlan struct {
 	path []int
 	span int
 	seq  int
+	// results marks the stop's own call, written as the run it left
+	// (RestartResults) rather than a value it holds.
+	results bool
 }
 
 // covers reports whether path lies in the run of tokens p replaces: it
@@ -238,6 +241,120 @@ func (es *EmitState) guardPoint(u *emitUnit, rec *fnUnitRec, tree map[int]treeEv
 	}
 	d.substs = substs
 	return d, true
+}
+
+// planCountRestarts plans the statement island of each root `do` whose run's
+// count the program's seat may miss (SigRef.Count, NUR222): a catch-latched
+// value-less body seats the one Error a caught raise leaves, a later word
+// takes that as its operand, and a clean run leaves nothing — `1 do [(1 add
+// 1) drop] drop` is `[]` interpreted, the drop taking the 1. The stop is the
+// do's own call. The events before it in its statement run again or are
+// written as their values (restartSubsts), and the do word and its literal
+// body list are written as the run the call left (RestartResults): the
+// interpreter splices a do's results back in its place and steps them. The
+// body is never run twice. A do inside a loop plans none.
+func (es *EmitState) planCountRestarts(lw *lowerer, residual []core.Value) {
+	es.notePhantomConsumers()
+	if len(es.rootBody) == 0 || es.trapAt != 0 {
+		return
+	}
+	tree := rootTreeEvents(es.frames[0], false)
+	for seq, te := range tree {
+		if te.inLoop || !es.phantomConsumed[seq] {
+			continue
+		}
+		tok, substs, ok := es.countPoint(tree, seq, es.rootBody)
+		if !ok {
+			continue
+		}
+		start := es.rootBody[tok].Pos()
+		srcs, held, ok := es.rootPreStart(lw, residual, start, statementFirstSeq(tree, seq, start))
+		if !ok {
+			continue
+		}
+		if lw.countRestarts == nil {
+			lw.countRestarts = map[int]*landingRestart{}
+		}
+		lw.countRestarts[seq] = &landingRestart{token: tok, start: start, depth: -1, srcs: srcs, held: held, substs: substs}
+	}
+}
+
+// notePhantomConsumers marks each catch-latched value-less `do` whose
+// phantom Error a CALL anywhere in the program takes as an operand
+// (EmitState.phantomConsumed, NUR222): its call checks the run's count
+// (SigRef.CountCheck) — the root's, the fragments' and every unit's. A
+// call's operands are a fixed count; a loop's, a branch's or a residual's
+// seat absorbs the region (`for 3 [do [def t 5]]`).
+func (es *EmitState) notePhantomConsumers() {
+	es.notePhantomConsumersIn(es.frames[0])
+	for _, rec := range es.fnRecs {
+		if rec != nil && rec.frag != nil {
+			es.notePhantomConsumersIn(rec.frag.events)
+		}
+	}
+}
+
+// notePhantomConsumersIn is notePhantomConsumers over one event list and
+// the fragments beneath it: a unit's own, which it plans as it closes
+// (planUnitRestarts), long before the root's.
+func (es *EmitState) notePhantomConsumersIn(events []EmitEvent) {
+	for i := range events {
+		if k := events[i].kind; k == evCall || k == evCallUser {
+			forEachOperand(&events[i], func(op EmitOperand) {
+				if op.kind == opEvent && es.eventInfo[op.idx].catchPhantom {
+					if es.phantomConsumed == nil {
+						es.phantomConsumed = map[int]bool{}
+					}
+					es.phantomConsumed[op.idx] = true
+				}
+			})
+		}
+		for _, f := range childFragments(&events[i]) {
+			if f != nil {
+				es.notePhantomConsumersIn(f.events)
+			}
+		}
+	}
+}
+
+// countPoint is the count island of the do event seq in body: its
+// statement's first token and the runs the island writes — each earlier
+// event's paren (restartSubsts), then the do word and its literal body list
+// as the do's own run. The body must be the list written right after the
+// word (its closure), and only scalar literals may stand before the word on
+// its level: written as values, the two tokens are no collection barrier.
+func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Value) (int, []substPlan, bool) {
+	ev := tree[seq].ev
+	c := &ev.call
+	if ev.kind != evCall || c.word != "do" || len(c.ops) != 1 || c.ops[0].kind != opClosure {
+		return 0, nil, false
+	}
+	tok := statementToken(body, c.pos)
+	path := tokenPath(body, c.pos)
+	if tok < 0 || len(path) == 0 || !inertBefore(body, tok, path) {
+		return 0, nil, false
+	}
+	toks := body
+	for _, at := range path[:len(path)-1] {
+		toks, _ = nestedToks(toks[at])
+	}
+	at := path[len(path)-1]
+	if at+1 >= len(toks) || !core.IsWord(toks[at]) || toks[at].Pos() != c.pos || !toks[at+1].Eval || toks[at+1].Quoted || !toks[at+1].Parent.Equal(core.TList) {
+		return 0, nil, false
+	}
+	first := statementFirstSeq(tree, seq, body[tok].Pos())
+	var pending []int
+	for s := range tree {
+		if s >= first && s < seq {
+			pending = append(pending, s)
+		}
+	}
+	sort.Ints(pending)
+	substs, ok := es.restartSubsts(tree, body, tok, pending)
+	if !ok {
+		return 0, nil, false
+	}
+	return tok, append(substs, substPlan{path: path, span: 2, seq: seq, results: true}), true
 }
 
 // restartSubsts plans the runs of tokens a statement island writes values in
@@ -586,6 +703,32 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 			rec.deopts = append(rec.deopts, d)
 		}
 	}
+	// Its do calls whose run's count the seat may miss (NUR222), as the
+	// root's (planCountRestarts).
+	es.notePhantomConsumersIn(rec.frag.events)
+	for _, seq := range sortedSeqs(tree) {
+		if te := tree[seq]; te.inLoop || !es.phantomConsumed[seq] {
+			continue
+		}
+		tok, substs, ok := es.countPoint(tree, seq, rec.body)
+		if !ok {
+			continue
+		}
+		d := deoptPoint{seq: seq, slot: -1, start: rec.body[tok].Pos(), token: tok, restart: true, count: true, substs: substs}
+		if d.start.Row > 0 && !es.deoptDeferred(u, rec, &d, -1) && !outsProducedBefore(rec.outOps, statementFirstSeq(tree, seq, d.start)) {
+			rec.deopts = append(rec.deopts, d)
+		}
+	}
+}
+
+// sortedSeqs is tree's event seqs in order.
+func sortedSeqs(tree map[int]treeEvent) []int {
+	seqs := make([]int, 0, len(tree))
+	for seq := range tree {
+		seqs = append(seqs, seq)
+	}
+	sort.Ints(seqs)
+	return seqs
 }
 
 // outsProducedBefore reports whether a unit's residual holds a result an
@@ -618,7 +761,7 @@ func (lw *lowerer) restartAt(seq int) *landingRestart {
 // still holds on its stack bottom at the statement's start (deoptPrefix,
 // read from their slots), then the frame region.
 func (lw *lowerer) noteRestartDepths(p core.SrcPos) {
-	for _, m := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts} {
+	for _, m := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts} {
 		for _, r := range m {
 			lw.noteRestartDepth(r, p)
 		}

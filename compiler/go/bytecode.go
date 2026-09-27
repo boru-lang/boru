@@ -1191,6 +1191,16 @@ type SigRef struct {
 	// from its first token instead, the guarded value standing where the
 	// paren that computed it was written (StmtIsland.Subst).
 	Restart *StmtIsland
+	// CountCheck marks a `do` whose run's count the program may not hold
+	// (NUR222): a catch-latched value-less body seats the one Error a caught
+	// raise leaves, which a later word consumes, where a clean run leaves
+	// nothing. A run of any count but CountClaim runs the statement again
+	// from its first token — Count, its island, the run written in place of
+	// the do word and its body (RestartResults) — or, with no island, is a
+	// designed defer: the consumer would take a value beneath.
+	CountCheck bool
+	CountClaim int
+	Count      *StmtIsland
 }
 
 // NativeSplit is SigRef.Split: how many of the call's operands, in
@@ -1842,6 +1852,10 @@ const (
 	// RestartGuard is the value a branch guard checks, off the stack when
 	// its island runs (a RestartSubst of StmtIsland only).
 	RestartGuard
+	// RestartResults is the run of values the stop's own call left, written
+	// in the call's place (a RestartSubst of SigRef.Count only: a `do` whose
+	// run's count the program's seat does not hold, NUR222).
+	RestartResults
 )
 
 // CallWindowKind names where one CallWindowOperand's value lives when the

@@ -94,7 +94,7 @@ func TestSubstIsland(t *testing.T) {
 	sub := func(i int, kind compiler.RestartSrcKind, idx int) compiler.RestartSubst {
 		return compiler.RestartSubst{Path: []int{i}, Span: 1, Src: compiler.RestartSrc{Kind: kind, Idx: idx}}
 	}
-	got, err := vc.substIsland(island, []compiler.RestartSubst{sub(0, compiler.RestartGuard, 0), sub(1, compiler.RestartLocal, 0), sub(2, compiler.RestartStack, 0)}, &g, 1, stack, seam7Dbg, 0)
+	got, err := vc.substIsland(island, []compiler.RestartSubst{sub(0, compiler.RestartGuard, 0), sub(1, compiler.RestartLocal, 0), sub(2, compiler.RestartStack, 0)}, []core.Value{g}, 1, stack, seam7Dbg, 0)
 	if err != nil || got[0].String() != "1" || got[1].String() != "2" || got[2].String() != "3" || !core.IsParenExpr(island[0]) {
 		t.Fatalf("each value from its source, the program's tokens untouched: %v %v", got, err)
 	}
@@ -235,5 +235,36 @@ func TestLandingCollectsVM(t *testing.T) {
 	lword := compiler.LandingWord{Restart: true, Root: true, RetPC: 4, Island: []core.Value{core.NewInteger(9)}}
 	if got, ent, err := vc.reStepLanding(r, guarded, 0, []core.Value{unary}, seam7Dbg, 0, lword); err != nil || ent == nil || ent.jumpPC != 4 || len(got) != 1 || got[0].String() != "9" {
 		t.Errorf("guarded with an island: the statement runs again: %v %+v %v", got, ent, err)
+	}
+}
+
+// TestStopRestartResults pins the count island's substitution (NUR222): the
+// run a do's call left is written whole in place of the do word and its
+// body (RestartResults) — none at all, or several — and the stop's values
+// must be there to write.
+func TestStopRestartResults(t *testing.T) {
+	r := seam7Reg(t)
+	vc := &vmContext{p: &compiler.Program{}, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
+	island := []core.Value{core.NewInteger(1), core.NewWord("do"), core.NewEvalList(nil), core.NewWord("drop")}
+	run := compiler.RestartSubst{Path: []int{1}, Span: 2, Src: compiler.RestartSrc{Kind: compiler.RestartResults}}
+	got, err := vc.substIsland(island, []compiler.RestartSubst{run}, []core.Value{}, 0, nil, seam7Dbg, 0)
+	if err != nil || len(got) != 2 || got[0].String() != "1" {
+		t.Errorf("an empty run removes the do: %v %v", got, err)
+	}
+	got, err = vc.substIsland(island, []compiler.RestartSubst{run}, []core.Value{core.NewInteger(7), core.NewInteger(8)}, 0, nil, seam7Dbg, 0)
+	if err != nil || len(got) != 4 || got[1].String() != "7" || got[2].String() != "8" {
+		t.Errorf("a run of two is written whole: %v %v", got, err)
+	}
+	if _, err := vc.substIsland(island, []compiler.RestartSubst{run}, nil, 0, nil, seam7Dbg, 0); err == nil {
+		t.Error("no run to write is the compiler's fault")
+	}
+	guard := compiler.RestartSubst{Path: []int{1}, Span: 1, Src: compiler.RestartSrc{Kind: compiler.RestartGuard}}
+	if _, err := vc.substIsland(island, []compiler.RestartSubst{guard}, []core.Value{core.NewInteger(1), core.NewInteger(2)}, 0, nil, seam7Dbg, 0); err == nil {
+		t.Error("a guard's value is one value")
+	}
+	is := &compiler.StmtIsland{Island: island[:3], RetPC: 5, Root: true, Substs: []compiler.RestartSubst{run}}
+	res, ent, err := vc.stopRestart(r, is, []core.Value{core.NewInteger(7)}, 0, nil, seam7Dbg, 0)
+	if err != nil || ent == nil || ent.jumpPC != 5 || len(res) != 2 || res[1].String() != "7" {
+		t.Errorf("the statement runs again over the run: `1 7`: %v %+v %v", res, ent, err)
 	}
 }

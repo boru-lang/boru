@@ -3328,7 +3328,7 @@ func (e *Engine) stepWord(val Value) error {
 	if DriftWindowRecorder(e, w, sig, positions) {
 		return nil
 	}
-	CheckBraid.DeclineForwardStackDrift(e, sig, positions)
+	e.declineForwardStackDrift(fn, w, sig, positions)
 
 	// Immediate execution: read args from recorded positions.
 	match := &MatchResult{Sig: sig, Positions: positions, Name: w.Name}

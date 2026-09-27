@@ -1029,6 +1029,10 @@ type EmitState struct {
 	// crossesStatementEnd proves a crossing for such an entry only when
 	// every read of it sits past the boundary (NUR266).
 	defReadPos map[string][]core.SrcPos
+	// phantomConsumed marks the catch-latched value-less `do` events whose
+	// phantom an event takes as an operand (notePhantomConsumers, NUR222):
+	// each checks its run's count at run time (SigRef.CountCheck).
+	phantomConsumed map[int]bool
 	// runtimeStub latches, per name, the ONE install a native the program
 	// calls is about to make at run time (`unpack [a b] d` over a source the
 	// pass cannot read — NoteRuntimeBind, right before the handler's own
@@ -2151,6 +2155,9 @@ type deoptPoint struct {
 	// place of (restartSubsts).
 	guard  int
 	substs []substPlan
+	// count, on a restart point, marks a do's count island (SigRef.Count,
+	// NUR222): the stop is the do's own call.
+	count bool
 	// first, on a restart point inside loops, is the first-iteration check
 	// its island takes at run time (firstIterGuard).
 	first []RestartFirst
@@ -16298,6 +16305,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// (NUR242, NUR219, NUR292).
 	es.planLandingRestarts(lw, residual)
 	es.planGuardRestarts(lw, residual)
+	es.planCountRestarts(lw, residual)
 	// Seed the lowerer's frame-local counter from the unit's planned locals;
 	// spillSeat bumps it for spill temps. Written back below so Program.NumLocals
 	// covers them.
@@ -17705,8 +17713,15 @@ func seatUnitDeopts(flw *lowerer, rec *fnUnitRec, cf *CompiledFn, diverged bool)
 // other before its statement's first root op.
 func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 	if d.restart {
-		// Seated on the landing, the shaped apply or the branch guard it
-		// serves, its depth by the walk (landing_restart.go).
+		// Seated on the landing, the shaped apply, the branch guard or the
+		// do it serves, its depth by the walk (landing_restart.go).
+		if d.count {
+			if flw.countRestarts == nil {
+				flw.countRestarts = map[int]*landingRestart{}
+			}
+			flw.countRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs}
+			return
+		}
 		if d.guard > 0 {
 			if flw.guardRestarts == nil {
 				flw.guardRestarts = map[int]*landingRestart{}
@@ -17788,7 +17803,7 @@ func stampUnitRestarts(flw *lowerer, cf *CompiledFn, retPC int) {
 		cf.RetReplay = true
 	}
 	for _, si := range flw.restartSigs {
-		flw.p.Sigs[si].Restart.RetPC = retPC
+		stampSigRestart(&flw.p.Sigs[si], retPC)
 		cf.RetReplay = true
 	}
 }
@@ -17804,7 +17819,18 @@ func stampRootRestarts(lw *lowerer) {
 		lw.p.DynMethods[di].RetPC = end
 	}
 	for _, si := range lw.restartSigs {
-		lw.p.Sigs[si].Restart.RetPC = end
+		stampSigRestart(&lw.p.Sigs[si], end)
+	}
+}
+
+// stampSigRestart seats retPC on a SigRef's statement island — a branch
+// guard's (Restart) or a do's count island (Count).
+func stampSigRestart(s *SigRef, retPC int) {
+	if s.Restart != nil {
+		s.Restart.RetPC = retPC
+	}
+	if s.Count != nil {
+		s.Count.RetPC = retPC
 	}
 }
 

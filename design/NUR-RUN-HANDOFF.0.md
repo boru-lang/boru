@@ -9,6 +9,39 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR222's consumer compiles; NUR299 keyed on the drift models (2026-09-27)
+
+**NUR222's consumer.** A word that consumed a caught body's phantom as its
+operand (`1 do [(1 add 1) drop] drop`) bailed with a CALL_NATIVE underflow:
+the pass models a body that may raise as the Error it would leave, and a
+clean run leaves nothing. The do's call now checks the run's count at run
+time (`SigRef.CountCheck`, `CountClaim`). A miss re-runs the statement on
+the interpreter from its first token, the do's count island (`SigRef.Count`,
+`stopRestart`): the events before the stop are written as their values, and
+the do word with its body list as the run the call left (`RestartResults`),
+so the body never runs twice. `notePhantomConsumers` marks the consumed do
+events over the root, every fragment and each unit as it closes (a unit is
+planned long before the root, which first left the unit form deferring).
+The planner takes a do over its literal body's closure, outside loops, with
+only stepless values before it on its level (`countPoint`). The seats no
+island takes defer loudly (`vm:do-count`); among them is `(g) 1 do [(1 add
+1) drop] drop`, which answered `[1]` for `[5]` silently on main and here. A
+do inside a top-level list literal defers too: the literal's token carries
+no position, so no statement island can find the do (every island kind
+shares this).
+
+**NUR299, keyed on the drift models.** gate47 on ebe6e34 was green but for
+the arity gate: NUR299's cut asked a one-operand all-stack match by its
+parameter count, which ADR-016 forbids. The case is the forward-drift
+guard's (NUR228's record says an all-stack match is that guard's), so the
+guard now asks it directly. Where neither the drift window nor the check
+side's decline (`DeclineForwardStackDrift`, which now reports whether it
+declined) takes an all-stack dispatch, `allStackWindowAmbiguous` latches the
+split when a stack operand is unproven and a later candidate collects past
+the word. A suspended region's dispatch asks nothing, since its body runs
+as an island (`do [mk mk add 1]` compiles as before). The arity pin is back
+at 8.
+
 ## NUR296's consumed forms; the barrier rule; NUR299 found and closed (2026-09-27)
 
 **NUR296's consumed forms.** A paren's value the statement consumed before

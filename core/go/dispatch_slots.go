@@ -63,7 +63,7 @@ var CheckBraid = struct {
 	DrainUndefinedAtoms          func(e *Engine)
 	ExprRefsCarrier              func(e *Engine, items []Value) bool
 	NoteSpeculativeBarrierCommit func(e *Engine, fwd ForwardInfo)
-	DeclineForwardStackDrift     func(e *Engine, sig *Signature, positions []int)
+	DeclineForwardStackDrift     func(e *Engine, sig *Signature, positions []int) bool
 	DeclineStrandedMemberFn      func(e *Engine, positions []int)
 	ShareCheckState              func(e *Engine, capturedReg *Registry) func()
 	// ShareCheckStateFrom points owner's Check at caller's for the returned
@@ -150,7 +150,7 @@ func inactiveExprRefsCarrier(e *Engine, items []Value) bool { return false }
 
 func inactiveNoteSpeculativeBarrierCommit(e *Engine, fwd ForwardInfo) {}
 
-func inactiveDeclineForwardStackDrift(e *Engine, sig *Signature, positions []int) {}
+func inactiveDeclineForwardStackDrift(e *Engine, sig *Signature, positions []int) bool { return false }
 
 func inactiveDeclineStrandedMemberFn(e *Engine, positions []int) {}
 
