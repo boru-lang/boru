@@ -183,3 +183,23 @@ func TestIslandCountPoint(t *testing.T) {
 		t.Error("an island word at its statement's second token has no do before it")
 	}
 }
+
+// TestDoBeforeComputedBody pins the do before a handler over a computed
+// body: its body token is its one argument site (doBodyAfter), so the do,
+// the read, the word and the handler are one run; a site elsewhere is none.
+func TestDoBeforeComputedBody(t *testing.T) {
+	es := NewEmitState()
+	body := islandBody()
+	body[3] = gtok(core.NewWord("b"), 8)
+	tree, _ := islandTree()
+	tree[10].ev.call.ops[0] = EventOperand(9, 0)
+	es.eventInfo = map[int]eventFlags{12: {stripIsland: true}}
+	es.argSites = map[int][]argSite{10: {{pos: gpos(8), seq: -1}}}
+	if _, substs, ok := es.countPoint(tree, 12, body); !ok || len(substs) != 1 || substs[0].span != 4 {
+		t.Errorf("a read body is the do's run: %+v %v", substs, ok)
+	}
+	es.argSites[10] = []argSite{{pos: gpos(27), seq: -1}}
+	if _, _, ok := es.countPoint(tree, 12, body); ok {
+		t.Error("a body site elsewhere is no run")
+	}
+}

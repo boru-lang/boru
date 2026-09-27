@@ -60,6 +60,15 @@ func TestNUR301HandlerRunsNotSeatedAsOne(t *testing.T) {
 		{`def f fn [[] [Any] [[do [raise oops 'x'] error [drop 9 8]]]] end f`, "[[9 8]]"},
 		{`def xs [0] end [do [1 div (xs 0 getr)] error [drop]]`, "[[]]"},
 		{`def g fn [[x:Integer][Integer][x add 100]] end 1 [do [raise oops 'x'] error [drop g/v]]`, "[1 [fn g(Integer)]]"},
+		// A computed or def-bound do body under the handler: the do's body
+		// token is its one argument site (doBefore, doBodyAfter).
+		{`def b (quote [raise oops 'x']) end [do b error [drop 5 6]]`, "[[5 6]]"},
+		{`def b (quote [raise oops 'x']) end (do b error [drop 5 6]) add 1`, "[5 7]"},
+		{`def b (quote [raise oops 'x']) end 1 [do (b) error [drop 5 6]]`, "[1 [5 6]]"},
+		{`def f fn [[][List][quote [raise oops 'x']]] end [do (f) error [drop 5 6]]`, "[[5 6]]"},
+		{`def f fn [[b:List][Any][[do b error [drop 1 2]]]] end f (quote [raise oops 'x'])`, "[[1 2]]"},
+		{`def f fn [[b:List][Any][[do b error [drop 1 2]]]] end f (quote [9])`, "[[9]]"},
+		{`def f fn [[b:List][Any][(do b error [drop 1 2]) add 1]] end f (quote [raise oops 'x'])`, "ERROR:expected 1 return value(s), got 2"},
 		// A list literal that is the whole program: the parser sites the
 		// root container now, so its statement has a first token.
 		{`[do [raise oops 'x'] error [drop 9 8]]`, "[[9 8]]"},

@@ -399,19 +399,12 @@ func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Val
 
 // handlerRun reports whether the error call at toks[at] took its computed
 // handler from the token right after the word (its one argument site) and
-// its caught value from the do written right before it over a literal body
-// (`do [raise oops 'x'] error (mk)`, NUR300): the four tokens are one run.
+// its caught value from the do written right before it (doBefore — `do
+// [raise oops 'x'] error (mk)`, NUR300): the four tokens are one run.
 func (es *EmitState) handlerRun(tree map[int]treeEvent, seq int, toks []core.Value, at int) bool {
 	c := &tree[seq].ev.call
 	sites := es.argSites[seq]
-	if at < 2 || len(sites) != 2 || c.ops[1].kind != opEvent {
-		return false
-	}
-	do, in := tree[c.ops[1].idx]
-	if !in || do.ev.kind != evCall || do.ev.call.word != "do" || len(do.ev.call.ops) != 1 || do.ev.call.ops[0].kind != opClosure {
-		return false
-	}
-	if !core.IsWord(toks[at-2]) || toks[at-2].Pos() != do.ev.call.pos || !literalListTok(toks[at-1]) {
+	if len(sites) != 2 || !es.doBefore(tree, c.ops[1], toks, at) {
 		return false
 	}
 	q := sites[0].pos
@@ -430,14 +423,23 @@ func (es *EmitState) handlerRun(tree map[int]treeEvent, seq int, toks []core.Val
 // computed handler's are (handlerRun).
 func (es *EmitState) islandRun(tree map[int]treeEvent, seq int, toks []core.Value, at int) bool {
 	fb := &tree[seq].ev.fb
-	if at < 2 || len(fb.ins) != 1 || fb.ins[0].kind != opEvent {
+	return len(fb.ins) == 1 && es.doBefore(tree, fb.ins[0], toks, at) && literalListTok(toks[at+1])
+}
+
+// doBefore reports whether op is the value of the do written two tokens
+// before the word at toks[at], with its body — a literal list, or a
+// computed body whose one argument site is that token (doBodyAfter) —
+// right after it: `do [raise oops 'x'] error …`, `(do b error …)`. The do,
+// its body, the word and the handler are then one run.
+func (es *EmitState) doBefore(tree map[int]treeEvent, op EmitOperand, toks []core.Value, at int) bool {
+	if at < 2 || op.kind != opEvent {
 		return false
 	}
-	do, in := tree[fb.ins[0].idx]
-	if !in || do.ev.kind != evCall || do.ev.call.word != "do" || len(do.ev.call.ops) != 1 || do.ev.call.ops[0].kind != opClosure {
+	do, in := tree[op.idx]
+	if !in || do.ev.kind != evCall || do.ev.call.word != "do" || len(do.ev.call.ops) != 1 {
 		return false
 	}
-	return core.IsWord(toks[at-2]) && toks[at-2].Pos() == do.ev.call.pos && literalListTok(toks[at-1]) && literalListTok(toks[at+1])
+	return core.IsWord(toks[at-2]) && toks[at-2].Pos() == do.ev.call.pos && es.doBodyAfter(tree, op.idx, toks, at-2)
 }
 
 // literalListTok reports whether v is a list literal as written: evaluated
@@ -465,13 +467,22 @@ func inSpan(body []core.Value, p core.SrcPos, path []int, span int) bool {
 
 // doBodyAfter reports whether the do at toks[at] took its body from the
 // token written right after it: a literal list, its closure (NUR222's caught
-// body), or a computed body — a read, a paren — whose one argument site
-// (argSites) is that token (`(do b) add 1`, NUR282's single seat).
+// body), or a body — computed, or a closure the pass compiled from a read or
+// a paren — whose one argument site (argSites) is that token (`(do b) add
+// 1`, NUR282's single seat).
 func (es *EmitState) doBodyAfter(tree map[int]treeEvent, seq int, toks []core.Value, at int) bool {
 	ev := tree[seq].ev
 	if ev.call.ops[0].kind == opClosure {
-		return toks[at+1].Eval && !toks[at+1].Quoted && toks[at+1].Parent.Equal(core.TList)
+		// A literal list, or a body the pass compiled from a def-bound
+		// list's read or a paren (`do b`, `do (b)` over `def b (quote
+		// […])`) whose site is the token after the word.
+		if literalListTok(toks[at+1]) {
+			return true
+		}
+		site, noted := es.closureBodySites[seq]
+		return noted && site.Row > 0 && bodyTokenContaining(toks, site) == at+1
 	}
+	// A computed body: its one argument site is the token after the word.
 	sites := es.argSites[seq]
 	if len(sites) != 1 {
 		return false

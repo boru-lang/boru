@@ -1303,6 +1303,10 @@ type EmitState struct {
 	// seq (noteArgSites): the tokens a statement island may write the call's
 	// run over (callRun, NUR296).
 	argSites map[int][]argSite
+	// closureBodySites is where a closure call's body argument was written
+	// (RecordClosureCall): a read's own position, else the value's token.
+	// doBodyAfter alone reads it — a closure call is no call run.
+	closureBodySites map[int]core.SrcPos
 	// appliedByWord holds the value IDs a trailing `apply` WORD dispatched,
 	// recorded PROGRAM-wide rather than per unit.
 	//
@@ -14161,6 +14165,21 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 		call.nativeSplit = &NativeSplit{NFwd: l.NFwd, BodyAt: bodyPos, Body: args[bodyPos], Beneath: l.Beneath, After: l.After}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
+	// Where the closure's body was written (closureBodySites): a body read
+	// from a def-bound list — `do b` — proves its token to the count
+	// islands (doBodyAfter) as a literal list does. Its own map, not
+	// argSites: a closure call is no call run (callRun reads argSites).
+	if bodyPos >= 0 && bodyPos < len(args) {
+		b := args[bodyPos]
+		site := b.Pos()
+		if p, read := es.readPos[b.ID]; read && b.ID != "" {
+			site = p
+		}
+		if es.closureBodySites == nil {
+			es.closureBodySites = map[int]core.SrcPos{}
+		}
+		es.closureBodySites[seq] = site
+	}
 	// A fallible multi-value catch body (the ReturnsFn latched it): the
 	// runtime count is N on no-raise but 1 on the caught path, so the
 	// result region is VARIADIC — the residual absorbs it; a fixed-arity
