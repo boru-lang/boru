@@ -235,7 +235,8 @@ func CaseClauses(r *Registry, v Value, elems []Value) ([]Value, error) {
 func CaseReturnsFn(args []Value, r *Registry) []Value {
 	dynAny := []Value{NewDynamicCarrier(TAny)}
 	v, clauses := args[0], args[1]
-	if isCodeBody(v) && !isCodeBody(clauses) {
+	swapped := isCodeBody(v) && !isCodeBody(clauses)
+	if swapped {
 		v, clauses = clauses, v
 	}
 	if isCodeBody(v) {
@@ -359,7 +360,12 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	// planValueDefLocals then promotes to a frame local once the fragment reads
 	// are recorded. if3ReturnsFn returns the branch-join type AND records the
 	// lowering.
-	if es := r.Check.Recorder(); es.CanSeatAcrossFragment(v) {
+	es := r.Check.Recorder()
+	seatable := es.CanSeatAcrossFragment(v)
+	if seatable && caseScrutineeMayRun(v) {
+		v, seatable = recordCaseSubject(r, v, swapped, r.Check.CurCallPos)
+	}
+	if seatable {
 		cond := NewList(caseGuardTokens(v, elems[0]))
 		then := NewList(caseBlockTokens(v, elems[1]))
 		rest := buildCaseChain(v, elems, 2)
@@ -381,6 +387,42 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	// and a non-re-pushable case narrow instead of poisoning the result with
 	// Any.
 	return CaseBranchJoin(r, v, elems)
+}
+
+// caseScrutineeMayRun reports whether a scrutinee the pass holds abstractly
+// may be a list at run time — a carrier or dynamic value whose type admits
+// one. CaseHandler RUNS a list scrutinee as a code body and dispatches on
+// its last result, whatever produced the list (`case (mk) […]` over mk's
+// `[1 2]` dispatches on 2), where a chain over the value would match the
+// list itself (NUR291).
+func caseScrutineeMayRun(v Value) bool {
+	if !v.Carrier && !v.Dynamic {
+		return false
+	}
+	p := v.Parent
+	return p != nil && (TList.ConformsTo(p) || p.ConformsTo(TList))
+}
+
+// recordCaseSubject records case's own scrutinee rule over a scrutinee that
+// may be a list at run time (NUR291), and the chain matches what it hands
+// on — a value the pass cannot know, so the gradual any. The forward form's
+// __casesubject runs a code body and hands its last result on, any other
+// value as itself. The stack form's __casestack passes a value that is not
+// a code body and defers on one: were the stack value a list, BOTH operands
+// would be lists, which CaseHandler reads the forward way round (the
+// clause list is the scrutinee), and no chain over these clauses is that.
+// Each is the run's to match (a poly record, as any native over a dynamic
+// operand); a record that did not seat the result leaves it no provenance,
+// so seatable=false.
+func recordCaseSubject(r *Registry, v Value, swapped bool, pos SrcPos) (Value, bool) {
+	es := r.Check.Recorder()
+	word := "__casesubject"
+	if swapped {
+		word = "__casestack"
+	}
+	subject := NewDynamicCarrier(TAny)
+	es.RecordPolyCall(word, []Value{v}, []Value{subject}, pos, r, nil)
+	return subject, es.CanSeatAcrossFragment(subject)
 }
 
 // CaseBranchJoin computes a `case` result TYPE as the join of every clause

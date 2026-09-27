@@ -213,6 +213,7 @@ keep the two in sync in the same commit.
 | [NUR288](#nur288) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): a fn literal written in a fn body is a new function every time the body runs — `def mk fn [[][Any][([x:Any] => [x])]] end mk mk eq` is `[false]` interpreted — and the compiled body pushed the literal's pooled const, one identity across calls: `[true]` (silent). An unbound, capture-free fn literal in a fn body is re-identified per push now (`OpPushConstFresh`, core's `WithFreshFnIdentity`), as a compound body literal is re-constructed; a named fn read by `/v` stays one function | probe sweep, 2026-09-27 |
 | [NUR289](#nur289) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): an anonymous fn whose Any slot meets a function word where a `do` body's result lands — `def mk fn [[][Any][([x:Any] => [x])]] end do [mk] typeof` — is the interpreter's strict-rule `signature_error`, and the compiled landing's walk answered `[Function]` (silent): it planned over the value's AUTHORED signature, whose `BarrierAllForward` scanned nothing forward. It plans over the installed view now (`installedSigView`). The caret still points at the word where the interpreter points at the fn (the landed value carries no position) | probe sweep, 2026-09-27 |
 | [NUR290](#nur290) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): a typed def over a body the check pass holds as a carrier — `def mk fn [[][Any][42]] end def x:Integer (mk) end x` — bound the ANNOTATION: Unify over a wider carrier takes the narrower side, the annotation's own type content, so the compiled run answered `[Integer]` where the interpreter answers 42 (and `[String]` where it refuses), and a membership unifier that cannot inspect a carrier (a fn shape, a negation) admitted it, binding the run's value unchecked (silent; 127 of 420 probed typed defs, in an arm unchanged from main). Unless the carrier's own type proves membership, the run decides it now: OpBindTyped over TypedBindRunMembership. A value that may be a fn under an annotation a fn may inhabit declines | probe sweep, 2026-09-27 |
+| [NUR291](#nur291) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): `case` RUNS a list scrutinee as a code body and dispatches on its last result, whatever produced the list — `def mk fn [[][Any][[1 2]]] end case (mk) [Integer "i" String "s" "o"]` is "i" — and the compiled desugar matched the value itself when the pass held it abstractly: "o" (silent; also a fn parameter's `case v […]`, on main). The forward form records case's own scrutinee rule ahead of the chain (`__casesubject`); the stack form, where a list makes the clause list the scrutinee, guards the chain with `__casestack`, which defers on a list (loud) and passes every other value | probe sweep, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14297,3 +14298,56 @@ declines as before. The check pass alone binds the same carrier, so a
 use downstream of the def is analysed over a value, not a type. Pinned
 by `lang/go/nur290_test.go`; the sweep after the fix: 0 silent of 420,
 and 193 declines where there were 197.
+
+## NUR291 — a case scrutinee that may be a list ran as data {#nur291}
+
+**Status:** FIXED 2026-09-27 (recorded and closed together; the handoff
+log's entry of that date) · **Surfaced by:** a probe sweep of type words
+over dynamic values (present on main).
+
+**Rule:** a program the compiler admits, the compiled runtime runs, and
+answers as the interpreter does.
+
+**Divergence:**
+
+```
+def mk fn [[][Any][[1 2]]] end case (mk) [Integer "i" String "s" "o"]
+  interpreted   [i]
+  compiled      [o]                                       (silent)
+def mk fn [[][Any][[1 2]]] end case (mk) [List "l" "o"]
+  interpreted   [o]
+  compiled      [l]                                       (silent)
+def f fn [[v:Any][Any][case v [Integer "i" String "s" "o"]]] end f [1 2]    the same pair
+```
+
+**Cause.** `case`'s scrutinee is a value expression: `CaseHandler` runs a
+code body (a plain list) in a sub-engine and dispatches on its last
+result, raising `case_error` when it leaves none — whatever produced the
+list, a literal or a fn's result or a parameter. The compile pass
+desugars a case over an abstract scrutinee into a chain of `if` guards
+over the value (`v m __casematch`), which matches the list itself.
+
+**Fix.** Before the chain, when the pass holds the scrutinee as a
+carrier or dynamic value whose type admits a list
+(`caseScrutineeMayRun`), the desugar records case's own scrutinee step
+as a run-time call (a poly record, `recordCaseSubject`) and chains over
+its result:
+
+- the forward form's `__casesubject` applies `CaseHandler`'s rule — a
+  code body runs and hands its last result on, or raises the same
+  `case_error`; any other value is itself;
+- the stack form's `__casestack` passes a value that is not a code body.
+  A list there makes BOTH operands lists, which `CaseHandler` reads the
+  forward way round — the clause list runs as the scrutinee and the
+  value's elements are the clauses — and no chain over the written
+  clauses is that, so it raises a designed defer (the compiler defect's
+  report), never an answer the interpreter does not give. The corpus's
+  stack-form rows (`error [dot code case […]]`) keep compiling: their
+  value is an atom at run time.
+
+A concrete scrutinee keeps today's paths. No decline site is added: the
+record is the existing poly path's. The two words are internal
+(REFERENCE.md lists them with `__casematch`). Pinned by
+`lang/go/nur291_test.go`; the sweep after the fix: 0 silent of 231, one
+loud (the stack form over a list, by design), and 49 declines where
+there were 56.

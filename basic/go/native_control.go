@@ -155,6 +155,33 @@ var ControlNatives = []NativeFunc{
 		}},
 	},
 	{
+		// __casesubject is case's scrutinee rule at run time (caseSubject),
+		// which the compiled `case` desugar records ahead of its chain when
+		// the pass holds a forward-form scrutinee that may be a list: a list
+		// is run as a code body and its last result is what the chain
+		// matches (NUR291). Not user-facing.
+		Name: "__casesubject",
+		Signatures: []Signature{{
+			Args:       []*Type{TAny},
+			Impl:       Go(CaseSubjectHandler),
+			Returns:    []*Type{TAny},
+			BarrierPos: 0,
+		}},
+	},
+	{
+		// __casestack is the compiled `case` desugar's guard over a
+		// stack-form scrutinee the pass holds abstractly: a value that is
+		// not a code body passes, and a list defers (CaseStackHandler,
+		// NUR291). Not user-facing.
+		Name: "__casestack",
+		Signatures: []Signature{{
+			Args:       []*Type{TAny},
+			Impl:       Go(CaseStackHandler),
+			Returns:    []*Type{TAny},
+			BarrierPos: 0,
+		}},
+	},
+	{
 		Name: "for",
 
 		Signatures: []Signature{
@@ -1356,20 +1383,9 @@ func CaseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 	if isCodeBody(v) && !isCodeBody(clauses) {
 		v, clauses = clauses, v
 	}
-	if isCodeBody(v) {
-		sub := New(r)
-		lst, _ := AsList(v)
-		input := make([]Value, lst.Len())
-		copy(input, lst.Slice())
-		out, err := sub.Run(input)
-		if err != nil {
-			return nil, err
-		}
-		if len(out) == 0 {
-			return nil, r.BoruError("case_error",
-				"case: value expression produced no value to dispatch on", "case")
-		}
-		v = out[len(out)-1]
+	v, err := caseSubject(r, v)
+	if err != nil {
+		return nil, err
 	}
 	if !isCodeBody(clauses) {
 		return nil, r.BoruError("case_error",
@@ -1377,6 +1393,59 @@ func CaseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 	}
 	lst, _ := AsList(clauses)
 	return CaseClauses(r, v, lst.Slice())
+}
+
+// caseSubject is case's scrutinee rule: a code body runs in a sub-engine and
+// its LAST result is the scrutinee — it must produce one, loudly — and any
+// other value is itself.
+func caseSubject(r *Registry, v Value) (Value, error) {
+	if !isCodeBody(v) {
+		return v, nil
+	}
+	lst, _ := AsList(v)
+	input := make([]Value, lst.Len())
+	copy(input, lst.Slice())
+	out, err := New(r).Run(input)
+	if err != nil {
+		return Value{}, err
+	}
+	if len(out) == 0 {
+		return Value{}, r.BoruError("case_error",
+			"case: value expression produced no value to dispatch on", "case")
+	}
+	return out[len(out)-1], nil
+}
+
+// CaseSubjectHandler is the runtime of __casesubject: case's scrutinee rule
+// over the run's value (caseSubject), recorded where the compile pass holds
+// a forward-form scrutinee that may be a list (NUR291).
+func CaseSubjectHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	v, err := caseSubject(r, args[0])
+	if err != nil {
+		return nil, err
+	}
+	return []Value{v}, nil
+}
+
+// CaseStackHandler is the runtime of __casestack, the guard the compiled
+// `case` desugar records ahead of a STACK-form chain whose scrutinee the
+// pass holds abstractly (NUR291): a value that is not a code body passes, as
+// CaseHandler swaps it into the scrutinee's place. A code body makes BOTH
+// operands lists, which CaseHandler reads the forward way round — the clause
+// list runs as the scrutinee and the value is the clauses — and no chain
+// over the written clauses is that: a designed defer (the compiler defect's
+// report), never an answer the interpreter does not give.
+func CaseStackHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	if !isCodeBody(args[0]) {
+		return []Value{args[0]}, nil
+	}
+	err := r.BoruError("internal_error",
+		"case: the stack-form value is a list, so the interpreter runs the clause list as the scrutinee "+
+			"and dispatches over the value's elements; the compiled chain over the written clauses cannot (NUR291)", "case")
+	if ae, ok := err.(*BoruError); ok {
+		ae.VMDefer = true
+	}
+	return nil, err
 }
 
 // IfListReturnsFn type-checks the clause-list form: the result is the

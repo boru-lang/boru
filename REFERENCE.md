@@ -1059,6 +1059,14 @@ justification weight as a new init-time panic — NUR023):
   clause lowers to `if (v match __casematch) …`), always fed by the
   synthesized chain's stack discipline. The `__` prefix marks it
   internal; it is describable but not meant for direct calls.
+- `__casesubject` and `__casestack` — the same desugar's scrutinee
+  step, recorded ahead of the chain when the compile pass holds the
+  scrutinee abstractly and it may be a list at run time (NUR291):
+  `__casesubject` applies `case`'s own rule (a list runs as a code
+  body and its last result is the scrutinee), and `__casestack`, for
+  the stack form, passes a value that is not a list and defers on one.
+  Each takes the value the chain already holds, so they are stack-only
+  for the reason `__casematch` is; internal in the same way.
 
 ### Arithmetic
 

@@ -9,6 +9,25 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR291 found and closed by a probe sweep of type words (2026-09-27)
+
+**How it was found.** A sweep of type words over a user fn's Any result
+(`as`, `unify`, `is`, `make`, typed defs, `convert`, `typeof`, `case`,
+`teq`, the comparisons): one silent row of 196, `case (mk) […]` over a
+list. The arm is main's.
+
+**The divergence.** `case` runs a list scrutinee as a code body and
+dispatches on its last result; the compiled desugar matched the list
+itself (`o` for `i`), for a fn's result and for a parameter alike.
+
+**The fix.** Where the pass holds the scrutinee abstractly and it may be a
+list, the desugar records case's scrutinee step as a run-time call ahead
+of its chain: `__casesubject` (forward form) applies CaseHandler's rule;
+`__casestack` (stack form) passes a non-list and defers on a list, where
+CaseHandler would read the clause list as the scrutinee. A first cut
+that declined instead put nine corpus rows (`error [dot code case […]]`)
+back on the compile-failure ledger and was replaced before it landed.
+
 ## NUR290 found and closed by a probe sweep of typed defs (2026-09-27)
 
 **How it was found.** A sweep of typed defs, an annotation over a body the
