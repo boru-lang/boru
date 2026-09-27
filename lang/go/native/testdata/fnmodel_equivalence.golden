@@ -1,6 +1,14 @@
 === SIGNATURE TABLE ===
+WORD __arm
+  [Node/List] barrier=1 noeval={0} +returnsfn
 WORD __casematch
   [Any Any] barrier=0 returns=[Scalar/Boolean]
+WORD __casestack
+  [Any] barrier=0 returns=[Any]
+WORD __casesubject
+  [Any] barrier=0 returns=[Any]
+WORD __codeguard
+  [Any] barrier=0 returns=[Any]
 WORD __file
   [] barrier=0 returns=[Scalar/String]
 WORD __folder
