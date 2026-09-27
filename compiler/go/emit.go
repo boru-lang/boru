@@ -17242,14 +17242,17 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 	// below is a plain-unit concern and still skips a closure.
 	rec.outOpsVals = vals
 	// The fold's escape fence at a unit's RETURN: a named fn's call result
-	// carries the folded member on (RecordUserCall taints it); a code body's
-	// or a lambda's result reaches a native or an apply the fence cannot
-	// follow, so it declines.
+	// carries the folded member on (RecordUserCall taints it); a lambda's
+	// result reaches an apply the fence cannot follow, so it declines. A
+	// CODE body run in place (`do [l.0]`) hands its result to its own word
+	// as the frame's values, and every read of the binding it makes is
+	// measured (NUR217, NUR285): `def j (do [l.0]) end j` answers 42.
 	if es.anyFolded(vals) {
-		if rec.closure {
-			es.foldedEscape("a code body's or a lambda's result")
-		} else {
+		switch {
+		case !rec.closure:
 			rec.returnsFolded = true
+		case rec.lambdaUnit || rec.storedRefUnit:
+			es.foldedEscape("a lambda's result")
 		}
 	}
 	// A branch result with an UNSETTLED arg-taking fn arm in a unit's

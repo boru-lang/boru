@@ -36,9 +36,14 @@ body, and a `/v` read of a def whose value lives in a frame local rendered
   (`residualAfterRead`); the frame replay's word reads take the data lookup
   (`replayWordLookups`); a def's rename reaches the value's frame local
   (`GlobalBindSpec.WriteSlot`).
-- The fold's fence for a code body's result stays: lifting it was measured
-  after NUR285, and the reads agree, but the def of a paren over a `do` run
-  answers wrong in the fence's non-folded twin (NUR286, silent, open).
+- The fold's fence stands only for a lambda's or a stored body's result:
+  with NUR285's close every read of a code body's folded result is
+  measured, so `def j (do [l.0]) end j` answers 42 and the sweep's `if` ×
+  container code-body variants compile. NUR286 (silent, open) is a def of a
+  paren over a `do` run whose fn takes an argument; its lambdas are never
+  folded, so the fence never covered it. A guard on the root landing over
+  values beneath turned it loud but fired where root deopt islands,
+  def-bound methods and claimed factories already answer, and was reverted.
 
 ## Main's NUR216 and NUR218 closed: a def read's island dispatches the name, and a fn argument in a bare-read slot runs on the interpreter (2026-09-27)
 

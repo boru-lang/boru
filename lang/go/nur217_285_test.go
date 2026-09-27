@@ -2,7 +2,6 @@ package lang
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 )
 
@@ -18,10 +17,11 @@ import (
 // consumer's deepest operand, the def's multi-output source is promoted
 // when every rest result is consumed, and the shuffled copy carries the
 // factory's shape claim, so every position reads it as it reads `def j
-// (mk)`. The other four witnesses already agreed; `do [l.0]` still declines
-// at the fold's fence (the fold is not measured through a code body's
-// result, and the non-folded twin of `def j (5 do [(mk)])` answers wrong —
-// NUR286).
+// (mk)`. The other four witnesses already agreed, and `do [l.0]` — which
+// declined at the fold's fence for a code body's result — answers too: a
+// code body run in place hands its result to its own word, and every read
+// of the binding it makes is measured (NUR285); a lambda's result keeps the
+// fence.
 func TestNUR217ShuffledFnDefIsTheWord(t *testing.T) {
 	const mk = `def mk fn [[][Any][([] => [42])]] end `
 	const mk1 = `def mk fn [[][Any][([x:Integer] => [x add 1])]] end `
@@ -53,9 +53,19 @@ func TestNUR217ShuffledFnDefIsTheWord(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, `def l [([] => [42])] end def j (do [l.0]) end j`)
-	if compiled || fmt.Sprint(gotI) != "[42]" || errI != nil || !strings.Contains(fmt.Sprint(errC), "folded to its parking lambda") {
-		t.Errorf("the fold's fence still declines `do [l.0]`; got compiled=%v %v %v / %v %v", compiled, gotC, errC, gotI, errI)
+	const l = `def l [([] => [42])] end `
+	for _, c := range []struct{ src, want string }{
+		{l + `def j (do [l.0]) end j`, "[42]"},
+		{l + `do [l.0]`, "[fn]"},
+		{l + `def j (do [l.0]) end do [j]`, "[42]"},
+		{l + `def j (do [l.0]) end [10] each [drop j]`, "[[42]]"},
+		{l + `def j (do [l.0]) end def g fn [[][Any][j]] end g`, "[42]"},
+		{l + `def j (do [l.0]) end j/v typeof`, "[Function]"},
+		{l + `def j (do [do [l.0]]) end j`, "[42]"},
+		{`do [def m {f: ([] => [1])} end if true m.f [2]]`, "[fn]"},
+		{`[10 20] each [drop def m {f: ([] => [1])} end if true m.f [2]]`, "[[fn fn]]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
 	}
 }
 
