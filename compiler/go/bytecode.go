@@ -1625,6 +1625,26 @@ type CompiledFn struct {
 	Body []core.Value
 	// Deopts is the unit's per-read deopt table (OpDeoptIfFn's Arg).
 	Deopts []DeoptSpec
+	// SpecGuards marks a CALL-SITE SPECIALISED unit: the body was compiled
+	// with each guarded param bound to a constant fn, so its reads of that
+	// param dispatch the fn's own compiled unit directly, typed by the fn's
+	// declared signature. It is valid only while every guarded runtime arg IS
+	// that fn (core.ExactEqual — fn identity); CALL_USER checks the guards at
+	// entry, before anything runs, and when one fails applies SpecFallback
+	// instead. Nil for every other unit.
+	SpecGuards []SpecGuard
+	// SpecFallback is the fn this unit specialises (single-signature): what
+	// a failed SpecGuards check applies to the call's args, through the
+	// fn-value callback seam — the dispatch the interpreter makes for it.
+	// Meaningful only when SpecGuards is non-empty.
+	SpecFallback core.Value
+}
+
+// SpecGuard is one call-site specialisation guard: the runtime arg bound to
+// param Param (sig position Param, the body's slot Param) must be the fn Fn.
+type SpecGuard struct {
+	Param int
+	Fn    core.Value
 }
 
 // DeoptSpec is one OpDeoptIfFn: the gradual word read it guards (Name, its
@@ -1650,6 +1670,20 @@ type DeoptSpec struct {
 	Results int
 	Token   int
 	RetPC   int
+}
+
+// specNote renders a specialised unit's guards for the disassembler:
+// " spec [l<param>=<fn>]" — empty for an ordinary unit.
+func specNote(fn CompiledFn) string {
+	if len(fn.SpecGuards) == 0 {
+		return ""
+	}
+	var sb strings.Builder
+	sb.WriteString(" spec")
+	for _, g := range fn.SpecGuards {
+		fmt.Fprintf(&sb, " [l%d=%s]", g.Param, g.Fn.String())
+	}
+	return sb.String()
 }
 
 // slotNames renders a CompiledFn's slot→name table for the
@@ -1694,7 +1728,7 @@ func (p *Program) Disassemble() string {
 	var sb strings.Builder
 	p.disasmUnit(&sb, p.Code, nil)
 	for fi := range p.Fns {
-		fmt.Fprintf(&sb, "fn f%d %s/%d (locals=%d)%s:\n", fi, p.Fns[fi].Name, p.Fns[fi].NParams, p.Fns[fi].NLocals, slotNames(p.Fns[fi].LocalNames))
+		fmt.Fprintf(&sb, "fn f%d %s/%d (locals=%d)%s%s:\n", fi, p.Fns[fi].Name, p.Fns[fi].NParams, p.Fns[fi].NLocals, slotNames(p.Fns[fi].LocalNames), specNote(p.Fns[fi]))
 		p.disasmUnit(&sb, p.Fns[fi].Code, p.Fns[fi].Deopts)
 	}
 	fmt.Fprintf(&sb, "; consts=%d types=%d sigs=%d fallbacks=%d fns=%d max-stack=%d locals=%d",

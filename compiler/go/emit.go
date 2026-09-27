@@ -510,6 +510,11 @@ type emitUserCall struct {
 	nout int
 	tail bool
 	pos  core.SrcPos
+	// wordPos is the dispatching WORD's position — where the interpreter
+	// reports an error raised AT the call (a param-contract refusal, a
+	// policy gate): the CALL_USER instruction carries it (callPos). pos, the
+	// first argument's, keeps positioning the operand layout.
+	wordPos core.SrcPos
 	// poly, when non-nil, marks a runtime-dispatched MULTI-OVERLOAD user call
 	// (OpCallUserPoly): the checker could not commit to one same-arity overload
 	// (a gradual-Any arg reached two or more), so EVERY arm's body compiled to
@@ -1679,8 +1684,19 @@ type fnUnitRec struct {
 	// to the ClosurePayload at OpPushClosure, so a compiled closure VALUE
 	// renders byte-identically to the interpreter's fn value (interpolation
 	// holes, print). Empty for every other unit (default rendering).
-	render        string
-	name          string
+	render string
+	name   string
+	// specParams / specFns / specFallback: a CALL-SITE SPECIALISED unit
+	// (SetUnitSpecialisation) — CompiledFn.SpecGuards / SpecFallback.
+	specParams   []int
+	specFns      []core.Value
+	specFallback core.Value
+	// placedParams are fn-valued params a code body names (placeFnParam):
+	// emitDynParamBinds binds each registry-visible at unit entry.
+	placedParams map[string]bool
+	// paramVals are the args the unit was compiled against (StartFnCompile),
+	// in param order: a call-site specialised unit's constant fns among them.
+	paramVals     []core.Value
 	nParams       int
 	nUnnamed      int // unnamed (stack-flowing) params — the RET trim allowance
 	caps          []core.CapturedBinding
@@ -6652,7 +6668,7 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 			nUnnamed++
 		}
 	}
-	rec := &fnUnitRec{name: name, nParams: len(args), nUnnamed: nUnnamed, caps: captures, generic: generic, returns: declared, locals: locals, pos: pos, reg: fnReg}
+	rec := &fnUnitRec{name: name, nParams: len(args), nUnnamed: nUnnamed, caps: captures, generic: generic, returns: declared, locals: locals, pos: pos, reg: fnReg, paramVals: args}
 	// The keep-defs body unit: opened at the very unit count the defs-keeping
 	// dispatch armed (keepDefsUnitDepth), never a fn unit the body's own
 	// analysis opens one level deeper — and only a TOKEN body, whose inputs
@@ -7042,6 +7058,38 @@ func (es *EmitState) SetUnitParamTypes(unit int, paramTypes []*core.Type, paramP
 	es.fnRecs[unit].paramPatterns = paramPatterns
 }
 
+// seatSpecGuards stamps a call-site specialised unit's guards and fallback
+// (SetUnitSpecialisation) on its CompiledFn; an ordinary unit carries none.
+func seatSpecGuards(cf *CompiledFn, rec *fnUnitRec) {
+	for i, param := range rec.specParams {
+		cf.SpecGuards = append(cf.SpecGuards, SpecGuard{Param: param, Fn: rec.specFns[i]})
+		cf.SpecFallback = rec.specFallback
+	}
+}
+
+// callPos is the CALL_USER instruction's position: the dispatching word's,
+// where the interpreter reports an error raised at the call, or the first
+// argument's for a dispatch recorded without one.
+func (uc emitUserCall) callPos() core.SrcPos {
+	if uc.wordPos.Row == 0 && uc.wordPos.Col == 0 {
+		return uc.pos
+	}
+	return uc.wordPos
+}
+
+// SetUnitSpecialisation marks unit as a call-site specialisation
+// (EmitRecorder): Finalize stamps its guards and fallback on the CompiledFn,
+// and the VM's CALL_USER applies the fallback when a guarded arg is not its
+// fn.
+func (es *EmitState) SetUnitSpecialisation(unit int, params []int, fns []core.Value, fallback core.Value) {
+	if unit < 0 || unit >= len(es.fnRecs) {
+		return
+	}
+	es.fnRecs[unit].specParams = params
+	es.fnRecs[unit].specFns = fns
+	es.fnRecs[unit].specFallback = fallback
+}
+
 // SetUnitBody seats a fn unit's source body tokens (EmitRecorder): the
 // stream a per-read deopt hands to the interpreter (planDeopts, NUR123).
 func (es *EmitState) SetUnitBody(unit int, body []core.Value) {
@@ -7193,7 +7241,7 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 		}
 		ops = append(ops, op)
 	}
-	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, region: region, generic: generic}})
+	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, wordPos: wordPos, region: region, generic: generic}})
 	es.SiteCounts[SiteMono]++
 	// A call to an ALREADY-variadic fn yields a runtime-variable count itself, so
 	// the result propagates variadic (a branch arm / body residual carrying it is
@@ -14215,7 +14263,7 @@ func (es *EmitState) unitBindsDynScope(rec *fnUnitRec) bool {
 // where the interpreter's InstallFrameBinding makes them visible; the frame's
 // RET truncates them back.
 func (es *EmitState) emitDynParamBinds(flw *lowerer, rec *fnUnitRec) {
-	if len(es.dynScopeNames) == 0 && len(es.routedNames) == 0 && !es.dynEnv && !rec.deoptEnv {
+	if len(es.dynScopeNames) == 0 && len(es.routedNames) == 0 && !es.dynEnv && !rec.deoptEnv && len(rec.placedParams) == 0 {
 		return
 	}
 	// A LAMBDA unit's islands read its CAPTURES, not the enclosing frame's
@@ -14233,7 +14281,7 @@ func (es *EmitState) emitDynParamBinds(flw *lowerer, rec *fnUnitRec) {
 		// InstallFrameBinding makes all of them registry-visible; a dynamic
 		// code body may read any); a deopt unit binds the params its
 		// islands spell. Unnamed slots have no name to bind.
-		if rec.locals[i] == "" || (!es.dynEnv && !rec.deoptNames[rec.locals[i]] && !es.dynScopeNames[rec.locals[i]] && !es.routedNames[rec.locals[i]]) {
+		if rec.locals[i] == "" || (!es.dynEnv && !rec.deoptNames[rec.locals[i]] && !es.dynScopeNames[rec.locals[i]] && !es.routedNames[rec.locals[i]] && !rec.placedParams[rec.locals[i]]) {
 			continue
 		}
 		flw.emit(OpPushLocal, i, rec.pos)
@@ -14643,6 +14691,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			cf.Reg = rec.reg
 		}
 		cf.KeepsDefs = rec.keepsDefs
+		seatSpecGuards(&cf, rec)
 		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the

@@ -45,6 +45,10 @@ func TestCollectionHazardFailsToCompile(t *testing.T) {
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
+		// The GENERIC path's pin: a constant lambda arg compiles through a
+		// call-site specialised unit instead, which dispatches the lead as
+		// the interpreter does (TestCallSiteSpecialisationGraduatedShapes).
+		a.SetCallSiteSpecialisation(false)
 		prog, reason, _, cerr := a.CompileCheck(c.src)
 		if cerr != nil {
 			t.Fatalf("CompileCheck(%q): %v", c.src, cerr)
@@ -57,7 +61,7 @@ func TestCollectionHazardFailsToCompile(t *testing.T) {
 			t.Errorf("%q: compile failure drifted: want %q in %q", c.src, c.reason, reason)
 		}
 		// The fallback answers the interpreter's 16 on both lanes.
-		gotC, _, errC, gotI, errI := runBothEngines(t, c.src)
+		gotC, _, errC, gotI, errI := runBothEnginesNoSpec(t, c.src)
 		requireParity(t, c.src, gotC, errC, gotI, errI)
 	}
 }

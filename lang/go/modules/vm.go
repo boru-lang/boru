@@ -433,6 +433,9 @@ func compileInSubEngine(parent *native.Registry, src string) (native.Value, erro
 	// The shared compile-pass ritual (fresh EmitState, Compiling flag,
 	// fn-memo drop) — see CheckState.BeginCompilePass.
 	defer subReg.Check.BeginCompilePass()()
+	// No call-site specialisation here: this pass has no retry to contain a
+	// specialisation that declines (CheckState.SpecOff).
+	subReg.Check.SpecOff = true
 
 	eng := native.NewTop(subReg)
 	eng.SetSource(src)

@@ -568,3 +568,28 @@ func TestMergeCaptures(t *testing.T) {
 		t.Error("MergeCaptures(nil) should be nil")
 	}
 }
+
+// ComputeFnValueCaptures is ComputeCaptures plus the call-site
+// specialisation decline: a fn value constructed in a body that captures a
+// specialised param's binding marks the pass declined; any other capture
+// leaves it alone.
+func TestComputeFnValueCaptures(t *testing.T) {
+	r := newTestRegistry(t)
+	sig := &FnSig{Impl: Boru([]Value{NewWord("g")})}
+	r.PushFnBaseline(map[string]int{})
+	r.Defs.Push("g", NewInteger(7))
+	defer func() {
+		r.Defs.Pop("g")
+		r.PopFnBaseline()
+		r.Check.SpecParamNames = nil
+		r.Check.SpecDeclined = false
+	}()
+
+	if caps := ComputeFnValueCaptures(r, sig); len(caps) != 1 || caps[0].Name != "g" || r.Check.SpecDeclined {
+		t.Fatalf("plain capture: got %+v declined=%v, want [g] undeclined", caps, r.Check.SpecDeclined)
+	}
+	r.Check.SpecParamNames = map[string]bool{"g": true}
+	if caps := ComputeFnValueCaptures(r, sig); len(caps) != 1 || !r.Check.SpecDeclined {
+		t.Errorf("capturing a specialised param: got %+v declined=%v, want declined", caps, r.Check.SpecDeclined)
+	}
+}

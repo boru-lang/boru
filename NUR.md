@@ -132,6 +132,9 @@ keep the two in sync in the same commit.
 | [NUR220](#nur220) | A STORED fn value's stamped unit reads a Function-typed param BARE as data where the interpreter dispatches it: `def g fn [[f:Function] [Any] [f]] end def mk fn [[] [Map] [{g: g/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end def gg m.g gg z/v` is `[0]` interpreted and `[fn f]` compiled, SILENT (the direct `g z` is `[0]` on both lanes). It is why NUR190's Function-typed claim keeps its defer: `m.g z` would enter the same unit. Present on `main` at 45c3bdb, found 2026-09-26; not fixed. |
 | [NUR221](#nur221) | A name DEF-BOUND to a `/q`-capturing member fn value, then read as a word with nothing after it — `def h fn [[x:Atom/q] [Any] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end def r m.f z r` — is the interpreter's `signature_error: cannot call `r`` and the compiled lane's `[0 fn h(Atom)]`, SILENT: the read of `r` leaves the fn as data where the interpreter dispatches it and raises. Present on `main` at 45c3bdb, found 2026-09-26 probing NUR190's neighbours; not fixed. |
 | [NUR233](#nur233) | A two-value producer SPLIT into a def and read later — `def x (5 dup) x add 1` — raises `internal_error: BIND_GLOBAL splice underflow` compiled where the interpreter answers `[5 6]`; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
+| [NUR234](#nur234) | A `Function` param passed on BARE to a recursive call — `(h g (n sub 1))` inside `h`'s own body — is a word dispatch of `g` on the interpreter (the bare-name-calls rule), so `h inc/v 5` raises `signature_error`; the generic compiled unit passes the value and answers `[20]` — SILENT, present on `main` at c8bce66 | call-site specialisation (2026-09-27) |
+| [NUR235](#nur235) | A typed-map param pattern (`m:{f:Integer}`, `m:{:Integer}`) rejects an INLINE map literal whose member is computed (`h {f: (1 add 1)}`) on both lanes, and the two lanes' `signature_error` notes differ (`{f:paren(…)}` / "does not satisfy its declared pattern" interpreted, `{f:2}`-style values / "expected: h (Map) or (no args)" compiled) | call-site specialisation's investigation (2026-09-27) |
+| [NUR236](#nur236) | A source naming `Function` whose COMPILE PASS makes an effect the retry cannot repeat — a counted effect (a file write, a network send, a RunInCheckMode word that notes one) or a stdin read, in a module body or a check-mode word — and whose call-site specialisation declines does not compile (`call-site specialisation declined after an unrepeatable check-pass effect`), where `main` compiles it; the effect happens once, never twice | Codex review of #516 (2026-09-27) |
 | [NUR232](#nur232) | A ROOT def made inside an `if` arm is lost for the NEXT request on a reused instance: `if true [def y 9] [] end 0` then `y` fails to compile (`undefined_word`) where the interpreter answers 9; the same request agrees; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
 | [NUR231](#nur231) | `mini` over a member whose declared type is `Function` — `import "boru:minilang" end def m {e: Function} end mini m.e 'ab'` — bails `internal_error: DISPATCH_REMATCH … matched at run time where the static model failed` where the interpreter raises `signature_error`; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
 | [NUR230](#nur230) | A value-less `case` scrutinee inside a `do` body followed by more of it — `do [case [1 drop] [5 "five" "other"] 9]` — compiles, then bails `internal_error: CALL_DYNAMIC underflow` where the interpreter answers `[error(case: value expression produced no value to dispatch on)]`; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
@@ -8890,6 +8893,13 @@ ledgers that moved are that increment's, and this fix moved none of its own.
 ## NUR176 — a 0-arg runtime lead under the one-arg window fires interpreted and no-matches compiled {#nur176}
 
 **Status:** Pending. Recorded 2026-09-22 while landing S1b's apply shapes.
+Partly closed 2026-09-27 by call-site specialisation: a CONSTANT lead
+(`h z/v`) compiles through a unit specialised on `z` — the check pass
+dispatches the lead as the interpreter does — and answers the interpreter's
+`8`. A computed lead keeps the generic window's loud `signature_error`
+(`TestApplyShapesZeroArgLeadIsLoud`, run with specialisation off); the
+literal-argument rows (`(k 5)`) decline the specialisation — their residual
+misses the declared return count — and keep it too.
 
 **Rule:** a compiled program answers as the interpreter does.
 
@@ -10696,3 +10706,85 @@ Diagnosis (reported, not confirmed): `SplitEventRegionBind` applies to
 any two-output word, and once the name is committed to dynamic scope the
 global bind's splice finds one value where the region bound two.
 
+## NUR234 — a Function param passed on bare to a recursive call is a word dispatch interpreted and a value compiled {#nur234}
+
+**Status:** Pending — SILENT. Recorded 2026-09-27 while landing call-site
+specialisation; present on `main` at c8bce66.
+
+```
+def inc fn [[x:Integer][Integer][x add 1]] end
+def h fn [[g:Function n:Integer][Integer][if (n lte 0) [0] [(g n) add (h g (n sub 1))]]] end
+h inc/v 5
+  interpreted   signature_error: cannot call `h` — no signature matches the arguments
+  compiled      [20]
+```
+
+The interpreter reads the bare `g` in `(h g (n sub 1))` as a CALL of `g`
+(the bare-name-calls rule — ADR-011's 2026-08-17 amendment: passing a fn as
+an argument takes `/v`), so `g` consumes `(n sub 1)` and `h` no-matches. The
+generic compiled unit passes `g`'s VALUE as `h`'s first argument and
+recurses to 20. NUR123's family (a bare read of a fn-valued frame binding is
+a word dispatch) — its table's last row is the non-recursive sibling.
+
+A call-site specialisation of this call declines (the check pass models the
+call of `g`, and `h`'s dispatch then no-matches — "unmatched dispatch
+recovered"), so the retry compiles exactly what `main` compiles. The
+declining analysis costs about half a second per compile: the recovery's
+assumed dispatch of `h` re-expands a splice marker in check mode until the
+tape nears its ceiling (the three `tape at 9x%` warnings) — a latent
+check-mode pathology the specialised analysis is the first to reach.
+Diagnosis of the splice runaway: reported, not confirmed.
+
+## NUR235 — a typed-map param pattern rejects an inline map literal with a computed member, and the lanes word the error differently {#nur235}
+
+**Status:** Pending. Recorded 2026-09-27 in the investigation that led to
+call-site specialisation; present on `main` at c8bce66.
+
+```
+def h fn [[m:{f:Integer}][Any][m.f]] end  h {f: (1 add 1)}
+  interpreted   signature_error: cannot call `h` … the argument was {f:paren([…])} (a Map)
+                … candidate `h (Map)` — argument 1: … does not satisfy its declared pattern {f:Integer}
+  compiled      signature_error: cannot call `h` … the argument was {f:2} (a Map)
+                … expected: h (Map) or (no args)
+```
+
+Both lanes refuse the call — the error CODE agrees — but the notes differ:
+the interpreter matches the pattern against the literal before its paren
+members are evaluated, and the compiled lane reports the evaluated map and
+no candidate. The same holds for `{:Integer}` and for a lambda member
+(`h {f: ([x:Integer] => [x add 1])}` against `{f:Function}`); a map bound
+first (`def mm {f: …}  h mm`) matches on both lanes. Whether the
+interpreter's refusal is itself the language defect (a typed-map pattern
+unusable with an inline literal of computed members) is a question for the
+maintainer, not recorded here as settled.
+
+## NUR236 — a declined specialisation after an unrepeatable compile-pass effect does not compile {#nur236}
+
+**Status:** Recorded 2026-09-27 (Codex review of #516); introduced by call-site
+specialisation, deliberately — the alternative is a repeated effect.
+
+A compile pass is the program's own execution of what the check pass runs
+for real: a RunInCheckMode word, an imported module's body (the VM never
+re-imports). CompileCheck re-runs a pass whose call-site specialisation
+declined, and a re-run would repeat every effect the first pass made — the
+duplicate-effect class (L-DUP) removing the interpreter re-run closed. The
+first pass's OUTPUT is held and written once (`lang/go/compile_effect_hold.go`),
+so a printing module body or check-mode word costs nothing. A counted effect
+(the effect ledger: a file write, a network send) or a stdin read cannot be
+held, and the pass that made one is not re-run: where it needed the re-run,
+the program does not compile.
+
+```
+zz-effect ; def inc fn [[x:Integer][Integer][x add 1]] end
+def h fn [[g:Function x:Any][Any][g x]] end  h inc/v "s"
+  main          compiles (no specialisation)
+  this branch   compile_failed: call-site specialisation declined after an
+                unrepeatable check-pass effect (uncompilable) — the effect once
+```
+
+(`zz-effect` is `lang/go/compile_effect_hold_test.go`'s check-mode word
+that notes an effect.) The class is narrow — a source must name `Function`,
+make such an effect during compilation, AND specialise a call site that
+declines — and the cure is the declines' own: a specialisation that
+declines less often, or one that can be unwound in place so no re-run is
+needed.

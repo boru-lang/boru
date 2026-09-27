@@ -73,7 +73,7 @@ var compileFailureDispositions = map[string]compileFailureDisposition{
 	"basic/go/native_definition.go:AfnHandler#1":                        {dispGeneric, 7, "as FnTripleHandler, for afn"},
 
 	// check/go — the analysis pass's own compile failures.
-	"check/go/carrier.go:RunFnBodyOnce#1":                   {dispGeneric, 8, "an analysis failure is not a program error (soundiness): the body lowers generically instead of declining"},
+	"check/go/carrier.go:runFnBodyOnce#1":                   {dispGeneric, 8, "an analysis failure is not a program error (soundiness): the body lowers generically instead of declining"},
 	"check/go/check_fnbody.go:BuildFnBodyReturnsFn#1":       {dispGeneric, 3, "an Atom param bound to a computed value in a closure body: the capture rides as a value"},
 	"check/go/check_recovery.go:DeclineForwardStackDrift#1": {dispGeneric, 5, "forward accounting across a dynamic residual: inside a region the stack is the address"},
 	"check/go/check_recovery.go:declineStrandedMemberFn#1":  {dispGeneric, 3, "a member fn value auto-applying mid-expression: the arrival model over the Apply kernel"},

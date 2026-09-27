@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"io"
 	"strconv"
+	"strings"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
 	core "github.com/boru-lang/boru/core/go"
@@ -166,6 +167,18 @@ type Boru struct {
 	registry *native.Registry
 	options  Options
 	manager  *udk.UniversalManager
+	// noCallSiteSpec turns call-site specialisation off for this instance
+	// (SetCallSiteSpecialisation).
+	noCallSiteSpec bool
+}
+
+// SetCallSiteSpecialisation turns call-site specialisation on (the default)
+// or off for this instance's compiles. Off, a call passing a constant fn to
+// a Function param records the generic unit, exactly as a call passing any
+// other value does — the switch a host uses to compare the two, and the one
+// the tests pinning the generic compile path use.
+func (a *Boru) SetCallSiteSpecialisation(on bool) {
+	a.noCallSiteSpec = !on
 }
 
 // New creates a new boru instance with built-in functions.
@@ -458,11 +471,52 @@ func (a *Boru) CompileCheck(src string) (*Program, string, CheckResult, error) {
 	if err != nil {
 		return nil, "parse error", CheckResult{}, err
 	}
+	// A call-site specialisation (check's specialiseCallSite) is only ever a
+	// faster path. A pass that tried one and did not produce a program — or
+	// whose specialised analysis declined one (CheckState.SpecDeclined) — is
+	// re-run once without them, from the registry as it was before the
+	// first pass (the check pass leaves real side effects — defs, minted
+	// types, loaded modules — that the program's replay base would
+	// otherwise inherit), so specialisation never costs a program the
+	// compilation it has without it: the retry records exactly what a pass
+	// with none records. Specialisation acts on a Function-typed param, and
+	// a source that never names the type declares none: it compiles in one
+	// pass with specialisation off and pays for no snapshot.
+	//
+	// The first pass's effects are the program's (a module body imported,
+	// a RunInCheckMode word run), so a retry must not repeat them: its
+	// output is held until the pass is kept or discarded, and a pass that
+	// did what cannot be held — a file write, a network send, a stdin read —
+	// is not retried (checkPassHold). Where it needed the retry, the program
+	// does not compile: a program the first pass declined is owed the
+	// retry's recording, which only a repeat of the effect can make.
+	if a.noCallSiteSpec || !strings.Contains(src, "Function") {
+		return a.compilePass(src, values, true)
+	}
+	snap := a.registry.SnapshotForCompile()
+	hold := holdCheckPass(a.registry)
+	prog, reason, res, err := a.compilePass(src, values, false)
+	if !a.registry.Check.SpecTried || (prog != nil && !a.registry.Check.SpecDeclined) {
+		hold.release(true)
+		return prog, reason, res, err
+	}
+	if hold.unrepeatable() {
+		hold.release(true)
+		return nil, "call-site specialisation declined after an unrepeatable check-pass effect (uncompilable)", res, nil
+	}
+	hold.release(false)
+	a.registry.RestoreForCompile(snap)
+	return a.compilePass(src, values, true)
+}
 
+// compilePass is one CompileCheck recording pass over parsed values;
+// specOff disables call-site specialisation for it.
+func (a *Boru) compilePass(src string, values []Value, specOff bool) (*Program, string, CheckResult, error) {
 	a.registry.Source = src
 	// BeginCompilePass arms the shared compile-pass ritual (fresh
 	// EmitState, Compiling flag, fn-memo drop) in one place.
 	defer a.registry.Check.BeginCompilePass()()
+	a.registry.Check.SpecOff = specOff
 	native.ResetModuleExportGrowth(a.registry)
 	native.ResetCheckFnCarrierBinds(a.registry)
 

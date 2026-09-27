@@ -130,6 +130,43 @@ type CheckState struct {
 	// a placeholder instead of looping.
 	FnInflight map[string]bool
 
+	// SpecKeySuffix is the one-shot memo-key suffix a CALL-SITE SPECIALISED
+	// fn-unit compile hands its own body analysis (check's
+	// BuildFnBodyReturnsFn): the specialised args carry a constant Function
+	// where the generic unit's carry a Function carrier, and the two render
+	// the same arg-type key, so without the suffix the specialised analysis
+	// would hit — or overwrite — the generic unit's summary. AnalyseFnBody
+	// takes it at entry and clears it, so no nested analysis inherits it.
+	SpecKeySuffix string
+
+	// FnSpecCounts counts the call-site specialisations compiled per fn
+	// DEFINITION SITE (the fnQuotaKey of FnAnalysisCounts), so a recursion
+	// that passes a freshly constructed fn at every level cannot mint
+	// specialised units without end. Reset by Begin.
+	FnSpecCounts map[string]int
+
+	// SpecOff disables call-site specialisation for this pass, and SpecTried
+	// records that the pass compiled one. A specialisation is only ever a
+	// faster path beside its generic unit, so a compile pass that TRIED one
+	// and failed is re-run once with SpecOff set (lang's CompileCheck): a
+	// program that compiles without specialisation never loses compilation
+	// to it. Both reset by Begin; a driver sets SpecOff after it.
+	SpecOff   bool
+	SpecTried bool
+	// SpecDeclined records that the pass's specialised analysis found a
+	// shape a specialisation must not compile (a residual missing the
+	// declared returns, a call through the param its contract may refuse, a
+	// fn value capturing the param). It is not a compile failure of the
+	// program: CompileCheck discards the pass and re-runs it with SpecOff.
+	SpecDeclined bool
+
+	// SpecParamNames are the constant-fn params a call-site specialised
+	// body analysis has bound (check's runFnBodyOnce), live for that
+	// analysis only: a dispatch THROUGH one of them over an argument its
+	// contract may refuse at run time declines the specialisation (check's
+	// specParamCallMayRefuse).
+	SpecParamNames map[string]bool
+
 	// FnBodyChecked records which fn BODIES the construction-time check has
 	// already analysed in this pass, keyed by the body's first token's
 	// source position — the one identity that is stable across the two
@@ -999,6 +1036,8 @@ func (c *CheckState) Clone() *CheckState {
 	}
 	cp.FnNameInflight = cloneMap(c.FnNameInflight)
 	cp.FnAnalysisCounts = cloneMap(c.FnAnalysisCounts)
+	cp.FnSpecCounts = cloneMap(c.FnSpecCounts)
+	cp.SpecParamNames = cloneMap(c.SpecParamNames)
 	cp.DefsInstalled = cloneMap(c.DefsInstalled)
 	cp.DefsUsed = cloneMap(c.DefsUsed)
 	cp.ContextTypes = cloneMap(c.ContextTypes)
@@ -1083,6 +1122,12 @@ func (c *CheckState) Begin() func() {
 	c.FnNameInflight = nil
 	c.SuppressBodyErrors = 0
 	c.FnAnalysisCounts = nil
+	c.FnSpecCounts = nil
+	c.SpecKeySuffix = ""
+	c.SpecOff = false
+	c.SpecTried = false
+	c.SpecDeclined = false
+	c.SpecParamNames = nil
 	c.FnBodyChecked = nil
 	c.PendingFnBodies = nil
 	c.Emit = TheInactiveEmit

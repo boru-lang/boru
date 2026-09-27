@@ -120,6 +120,10 @@ func TestReturnedClosureParkSoundFallbacks(t *testing.T) {
 		if err != nil {
 			t.Fatalf("New: %v", err)
 		}
+		// The GENERIC path's pin: the `app` rows with a constant arg compile
+		// through a call-site specialised unit instead, rendered as the
+		// interpreter's frame binding (TestCallSiteSpecialisationGraduatedShapes).
+		a.SetCallSiteSpecialisation(false)
 		prog, reason, _, cerr := a.CompileCheck(c.src)
 		if cerr != nil {
 			t.Fatalf("CompileCheck(%q): %v", c.src, cerr)
@@ -131,7 +135,7 @@ func TestReturnedClosureParkSoundFallbacks(t *testing.T) {
 		if !strings.Contains(reason, c.reason) {
 			t.Errorf("%q: compile failure drifted: want %q in %q", c.src, c.reason, reason)
 		}
-		gotC, compiled, errC, _, _ := runBothEngines(t, c.src)
+		gotC, compiled, errC, _, _ := runBothEnginesNoSpec(t, c.src)
 		if compiled {
 			t.Errorf("%q: compiled — this shape has graduated; move it to the parity rows", c.src)
 			continue
