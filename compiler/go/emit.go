@@ -7058,6 +7058,15 @@ func (es *EmitState) SetUnitParamTypes(unit int, paramTypes []*core.Type, paramP
 	es.fnRecs[unit].paramPatterns = paramPatterns
 }
 
+// seatSpecGuards stamps a call-site specialised unit's guards and fallback
+// (SetUnitSpecialisation) on its CompiledFn; an ordinary unit carries none.
+func seatSpecGuards(cf *CompiledFn, rec *fnUnitRec) {
+	for i, param := range rec.specParams {
+		cf.SpecGuards = append(cf.SpecGuards, SpecGuard{Param: param, Fn: rec.specFns[i]})
+		cf.SpecFallback = rec.specFallback
+	}
+}
+
 // callPos is the CALL_USER instruction's position: the dispatching word's,
 // where the interpreter reports an error raised at the call, or the first
 // argument's for a dispatch recorded without one.
@@ -14682,10 +14691,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 			cf.Reg = rec.reg
 		}
 		cf.KeepsDefs = rec.keepsDefs
-		for i, param := range rec.specParams {
-			cf.SpecGuards = append(cf.SpecGuards, SpecGuard{Param: param, Fn: rec.specFns[i]})
-			cf.SpecFallback = rec.specFallback
-		}
+		seatSpecGuards(&cf, rec)
 		flw := &lowerer{es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the

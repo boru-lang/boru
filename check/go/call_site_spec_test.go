@@ -130,8 +130,11 @@ func TestSpecialiseCallSiteAdmission(t *testing.T) {
 	if call(fd, []core.Value{core.NewInteger(1)}) != -1 || compiled != 0 {
 		t.Error("no constant fn arg: no specialisation, nothing compiled")
 	}
-	if call(fd, []core.Value{inc}) != 7 || call(fd, []core.Value{inc}) != 7 || !r.Check.SpecTried {
+	if call(fd, []core.Value{inc}) != 7 || !r.Check.SpecTried {
 		t.Error("a qualifying call records its specialised unit")
+	}
+	if call(fd, []core.Value{inc}) != 7 {
+		t.Error("the same (site, fn) again records its unit, uncounted")
 	}
 	for i := 0; i < FnSpecQuota; i++ {
 		call(fd, []core.Value{specFn("f")})
