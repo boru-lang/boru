@@ -14172,3 +14172,16 @@ The compiled report is built over the window the check pass matched (the
 attempted window, NUR234); the interpreter's forward collection stopped at
 the reach `m.e` and supplied none. The notes are the only difference.
 
+**Where it comes from (analysis, 2026-09-27).** The program compiles to a
+`DISPATCH_REMATCH` whose render tuple (`DispatchSpec.Written`) the check
+pass derives in core's `rematchWritten`: the concrete tokens after the word
+(none — the reach lowers to a paren, which stops the walk) and then the
+stack prefix beneath (`attemptedWindowOver` over `runPrefix`). At the check
+pass's failure point its forward collection has already moved the reach's
+value and `'ab'` onto that prefix, so the tuple is both values; the
+interpreter's report comes from a point where nothing was supplied. A fix
+derives the tuple from the interpreter's failure point (or declines the
+rematch when the two disagree, since an empty tuple cannot be rebuilt); the
+rematch and its values are otherwise right, and both lanes raise the same
+error at the same caret.
+
