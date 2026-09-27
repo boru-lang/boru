@@ -66,15 +66,15 @@ func benchInstance(base string) *lang.Boru {
 // benchRun compiles src on a fresh instance and times the RUN alone
 // (eng.RunProgram — compilation is reported separately, it is not what the
 // guarded fast paths change); it returns the result, the error and, for a
-// suite, its Test.summary.
-func benchRun(src, base string) (time.Duration, time.Duration, string, error, string) {
+// suite, its Test.summary, then the error.
+func benchRun(src, base string) (time.Duration, time.Duration, string, string, error) {
 	a := benchInstance(base)
 	defer a.ArmRuntimeStamping()()
 	c0 := time.Now()
 	prog, reason, _, err := a.CompileCheck(src)
 	compile := time.Since(c0)
 	if err != nil || prog == nil {
-		return 0, compile, "", fmt.Errorf("not compiled: %s %v", reason, err), ""
+		return 0, compile, "", "", fmt.Errorf("not compiled: %s %v", reason, err)
 	}
 	t0 := time.Now()
 	res, err := eng.RunProgram(prog, a.NativeRegistry())
@@ -85,7 +85,7 @@ func benchRun(src, base string) (time.Duration, time.Duration, string, error, st
 			sum = fmt.Sprint(v)
 		}
 	}
-	return d, compile, fmt.Sprint(res), err, sum
+	return d, compile, fmt.Sprint(res), sum, err
 }
 
 func TestGenericDispatchBench(t *testing.T) {
@@ -110,7 +110,7 @@ func TestGenericDispatchBench(t *testing.T) {
 		var best, compile time.Duration
 		note := ""
 		for i := 0; i < reps; i++ {
-			d, c, res, err, sum := benchRun(src, base)
+			d, c, res, sum, err := benchRun(src, base)
 			if i == 0 {
 				note = check(res, err, sum)
 			}

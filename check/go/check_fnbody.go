@@ -699,18 +699,13 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// NUR068: a declared record return keeps its schema, and a bare
 				// Map return surfaces a record-schema body residual — see
 				// nur068ReturnCarrier.
-				if rc, ok := nur068ReturnCarrier(r, t, declaredReturnPatterns, i, len(declaredReturns), stk); ok {
-					out[i] = rc
-					continue
-				}
-				// The body PROVED a narrower result than the declaration (an
-				// `[Any]` fn returning `x add 1`, a `[List]` fn returning a
-				// list of Integers): the caller sees the proven type, so its
+				//
+				// Or the body PROVED an exact leaf scalar under a declared `Any`
+				// (provenNarrowerReturn): the caller sees the proven type, so its
 				// dispatches over the result commit instead of re-matching at
-				// run time. The TYPE only — never the residual's value, which
-				// may be one call's.
-				if pc, ok := provenNarrowerReturn(t, stk, len(declaredReturns), i); ok && allParamsTyped(sigParams) {
-					out[i] = pc
+				// run time. The TYPE only — never the residual's value.
+				if rc, ok := refinedDeclaredReturn(r, t, sigParams, declaredReturnPatterns, i, len(declaredReturns), stk); ok {
+					out[i] = rc
 					continue
 				}
 				c := core.NewCarrier(t)
@@ -1246,15 +1241,16 @@ func narrowToDeclaredParam(pt *core.Type, a core.Value, generic bool) (core.Valu
 }
 
 // provenNarrowerReturn is the carrier for return slot i of a fn declaring n
-// returns of which slot i is `Any`, when the analysed body residual stk
+// returns of which slot i is `Any` and whose params are all typed
+// (allParamsTyped), when the analysed body residual stk
 // proves an exact leaf scalar there: exactly n residual values, slot i a
 // STRICT CARRIER of Integer, Float or Boolean. Exact leaves only: a join
 // widens to an upper bound (List ∪ Map is Node, Integer ∪ Float is Number)
 // that matches FEWER overloads than the runtime value would, and a String
 // carrier holds a ProperString at run time. Carriers only: a concrete
 // residual value is one call's constant.
-func provenNarrowerReturn(t *core.Type, stk []core.Value, n, i int) (core.Value, bool) {
-	if t == nil || !t.Equal(core.TAny) || len(stk) != n {
+func provenNarrowerReturn(t *core.Type, params []core.FnParam, stk []core.Value, n, i int) (core.Value, bool) {
+	if t == nil || !t.Equal(core.TAny) || len(stk) != n || !allParamsTyped(params) {
 		return core.Value{}, false
 	}
 	bv := stk[i]
@@ -1277,4 +1273,14 @@ func allParamsTyped(params []core.FnParam) bool {
 		}
 	}
 	return true
+}
+
+// refinedDeclaredReturn is the carrier a declared return slot refines to
+// from what the body shows: a record return's schema (nur068ReturnCarrier),
+// else an exact leaf scalar proven under `Any` (provenNarrowerReturn).
+func refinedDeclaredReturn(r *core.Registry, t *core.Type, params []core.FnParam, patterns []*core.Value, i, n int, stk []core.Value) (core.Value, bool) {
+	if rc, ok := nur068ReturnCarrier(r, t, patterns, i, n, stk); ok {
+		return rc, true
+	}
+	return provenNarrowerReturn(t, params, stk, n, i)
 }

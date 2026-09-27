@@ -208,7 +208,11 @@ func TestSpecialisableShapeArg(t *testing.T) {
 // surfaces that type; anything else keeps the declaration's rules.
 func TestProvenNarrowerReturn(t *testing.T) {
 	ints := core.NewCarrier(core.TInteger)
-	if c, ok := provenNarrowerReturn(core.TAny, []core.Value{ints}, 1, 0); !ok || !c.Parent.Equal(core.TInteger) || c.Dynamic {
+	typed := []core.FnParam{{Name: "x", Type: core.TInteger}}
+	if _, ok := provenNarrowerReturn(core.TAny, []core.FnParam{{Name: "x", Type: core.TAny}}, []core.Value{ints}, 1, 0); ok {
+		t.Error("an Any-param fn's result stays gradual")
+	}
+	if c, ok := provenNarrowerReturn(core.TAny, typed, []core.Value{ints}, 1, 0); !ok || !c.Parent.Equal(core.TInteger) || c.Dynamic {
 		t.Errorf("an Integer carrier under [Any] narrows, got %v %v", c, ok)
 	}
 	for name, c := range map[string]struct {
@@ -224,7 +228,7 @@ func TestProvenNarrowerReturn(t *testing.T) {
 		"no parent":   {core.TAny, []core.Value{{Carrier: true}}},
 		"nil decl":    {nil, []core.Value{ints}},
 	} {
-		if _, ok := provenNarrowerReturn(c.t, c.stk, 1, 0); ok {
+		if _, ok := provenNarrowerReturn(c.t, typed, c.stk, 1, 0); ok {
 			t.Errorf("%s: must not narrow", name)
 		}
 	}
