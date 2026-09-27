@@ -240,6 +240,8 @@ keep the two in sync in the same commit.
 | [NUR315](#nur315) | FIXED 2026-09-27 (a flex container passed to a user fn loses its claims — the handoff log's entry of that date): a FlexList written through a fn parameter's alias kept the check pass's element join — `poke fl drop def j (fl get 0) j`, where poke sets a fn `h/v` at 0, answered `fn j` compiled for the interpreter's 42; present on main |
 | [NUR316](#nur316) | FIXED 2026-09-27 (a gradual element stays gradual — the handoff log's entry of that date): `each`'s result type dropped the gradual mark of its body's value, so a later body committed a direct op over an element the run may not hold — `[0] each [drop (fl get 0)]` then `each [add 1]` over a flex holding "s" answered [[1]] for [['s1']], and over a typed list's out-of-range read [[1]] for the interpreter's signature_error (now a loud defer); present on main |
 | [NUR317](#nur317) | PARTLY FIXED 2026-09-27 (an enclosing re-step undoes a branch's placement — the handoff log's entry of that date): an `if` body arm's placed fn value that a `do` or a two-survivor paren re-steps stayed data — `def c true do [if c [g/v] [0]]` answered `fn g` for 7, `(if c [g/v] [0] 5)` `fn g 5` for `7 5`, and a dyn body's parked lead (`do [if c [(mkf)] [0] 5]`) `fn g 5` too; present on main except the last, which NUR271's settled lead made silent. OPEN, silent: a `do` body's union lead under its own sibling (`do [if c [g/v] [0] 5]`, `do [if c [l/v] [0] 5]`) and a join of two fn arms (`do [if c [g/v] [g/v]]`) — the pass folds the caller's re-step of a closure body's results into its model and nothing compiles it |
+| [NUR318](#nur318) | FIXED 2026-09-27 (a `/v` after a member read says data — the handoff log's entry of that date): a 0-arg member of a map read with `/v` fired — `def m {f: g/v} m.f/v` answered 7 for `fn g`, `m.f/v typeof` Integer for Function, ten forms in all; present on main. `5 m.f/v` and `m.f/v dup` decline, loud |
+| [NUR319](#nur319) | FIXED 2026-09-27 (a def read of a branch's union dispatches — the handoff log's entry of that date): a bare read of a def bound to a placed branch's join was data before a value — `def r (if c [g/v] [0]) r 5` answered `fn r 5` for `7 5`, `3 r 5` `3 fn r 5` for `3 7 5`; present on main. An arg-taking arm's read declines, loud |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14255,16 +14257,16 @@ counts its fn-capable value as parked. A branch with one such body and one
 value arm lands on the value arm's own path (`splitLanding`, in `lowerArms`
 and `lowerComputedBranch`). A split branch whose placed arm may leave a fn
 and that leads a residual apply declines, since one apply after the merge
-cannot tell the paths apart (`splitArmMayBeFn`). A placed branch's value
-leading a residual apply declines too where an arm may leave a fn
-(`branchLeadDecline`, `placedArmsMayBeFn`, loud): the apply is wrong where nothing re-steps the value (`if c [(mkl)] [0] 5` is `fn l 5`)
-and right where an enclosing `do` does (NUR317), and the residual cannot tell
-the two apart. Placement is per delivery: the check pass counts each value's
-step-loop deliveries (`NoteDelivery`), and a value delivered again — a `do`
-over the branch re-steps its results — is no longer placed
-(`branchPlacedHere`). Pinned by `lang/go/nur312_314_test.go` and compiler
-`TestBranchPlaces` / `TestSplitArmMayBeFn` / `TestBranchLeadDecline` /
-`TestPlacedArmsMayBeFn`.
+cannot tell the paths apart (`splitArmMayBeFn`, `branchLeadDecline`). A
+placed branch's value is placed DATA wherever an apply arm, a list literal,
+a fn body's replay or the re-step deopt of a native word's results asks
+(`callResultPlaced`'s branch case, and `NoteFnResultReStep` skips it): `if c
+[(mkl)] [0] 5` is `fn l 5`, `5 if c [(mkf)] [0]` is `5 fn g`, and in a fn body
+the count error lists `fn l 5`. Placement is per delivery: the check pass
+counts each value's step-loop deliveries (`NoteDelivery`), and a re-step
+undoes it (`branchPlacedHere`, NUR317). Pinned by `lang/go/nur312_314_test.go`
+and compiler `TestBranchPlaces` / `TestSplitArmMayBeFn` /
+`TestBranchLeadDecline` / `TestNUR317PlacedBranchNotReStepped`.
 
 ## NUR314 — a loop's fn-valued results are re-stepped at the loop's end {#nur314}
 
@@ -14414,6 +14416,16 @@ apart, and a body whose count differs from the model's (`do [case [1 drop]
 declines, loud. Pinned by `lang/go/nur317_test.go`, core `TestUnionMayBeFn`
 and compiler `TestNUR317PlacementUndone` / `TestDynBodySettledOp`.
 
+Probing the fix turned up three of NUR313's shapes the branch's own
+placement still missed, one of them a regression the first cut of this fix
+made: a placed value beneath which a value sits (`5 if c [(mkf)] [0]`, which
+the trailing arm applied), the same value in a list literal, and in a fn
+body, where NUR124's re-step deopt after the `if` applied it before the
+count error (`fn l 5` listed as 6, present on main). The placement is now
+asked wherever the placement of a user call's result is
+(`callResultPlaced`'s branch case, over the fragment's own event —
+`branchPlacedBy`), and the re-step note skips a placed branch.
+
 **Open, silent.** A `do` body whose union lead sits under its own sibling —
 `do [if c [g/v] [0] 5]` (`fn g 5` for `7 5`), `do [if c [l/v] [0] 5]` (`fn
 l 5` for 6) — and a join of two fn arms, `do [if c [g/v] [g/v]]` (`fn g` for
@@ -14423,3 +14435,57 @@ while the compiled `do` returns them before it and nothing re-steps them.
 The fix is the caller's re-step at run time — NUR314's loop-exit shape at
 the `do`'s return, on the island where the results are isolated and a
 designed defer elsewhere.
+
+## NUR318 — a `/v` after a member read did not keep a 0-arg member as data {#nur318}
+
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-27 · **Surfaced by:** a sweep of placed fn values under
+the words and forms that re-step them. Present on main.
+
+```
+def m {f: g/v} m.f/v
+  interpreted   [fn g]
+  compiled      [7]
+def f fn [[][Any][g/v 5]] end f
+  interpreted   type_error … got 2 — [fn g 5]
+  compiled      type_error … got 2 — [7 5]
+```
+
+**Cause.** A reach group lowers to `( m dot f )`, and its `/v` marker rides
+after the group's close. The shaped-method and member-fn arrival models run
+when the member's carrier lands inside the group, and an all-0-arg member
+skips their forward scan: it fires the moment it lands, whatever follows the
+group. The marker, which says data, came too late. In a fn body the count
+replay re-stepped a `/v` value before the count error named the residual.
+
+**Fix.** Both arrival models stand aside when a dispatch modifier follows the
+carrier or its lone group's close (`modifiedAsData`); the marker then quotes
+the carrier (NUR277). A word that re-steps its results over a quoted fn
+carrier is the decline a concrete fn value takes (`quotedFnCarrier` —
+`m.f/v dup` is `7 7` interpreted), and a fn body's replay leaves a quoted or
+`/v`-delivered value as it stands. `5 m.f/v` declines, loud. Pinned by
+`lang/go/nur318_319_test.go`, check `TestModifiedAsData` and compiler
+`TestNUR318QuotedFnCarrier`.
+
+## NUR319 — a bare read of a def bound to a branch's union was data {#nur319}
+
+**Status:** FIXED 2026-09-27 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-27 · **Surfaced by:** the same sweep. Present on main.
+
+```
+def c true def r (if c [g/v] [0]) r 5
+  interpreted   [7 5]
+  compiled      [fn r 5]
+```
+
+**Cause.** A bare name read is the word's dispatch (ADR-011): the interpreter
+installs the fn the branch left under the name and fires it over what
+follows. Alone the read agreed through the guarded landing (NUR317's union
+test); with a value after it no apply arm read the union as callable.
+
+**Fix.** A def read of a placed branch's union is a re-step that reaches it
+(`unionLeadReStepped`): the lead's conditional apply takes it, and so does
+every gate that asks whether a value may re-step over its neighbours
+(`mayBeFnUnsettled` — `3 r 5` is `3 7 5`). An arg-taking arm's read keeps
+its decline, loud. Pinned by `lang/go/nur318_319_test.go` and compiler
+`TestNUR319UnionReadReStepped`.

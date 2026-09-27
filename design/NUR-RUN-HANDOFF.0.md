@@ -9,6 +9,35 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## A sweep of placed fn values under re-steps: NUR318, NUR319; NUR313's placed data (2026-09-27)
+
+A sweep crossing eleven placed-fn producers (branch arms, parens, `/v`
+reads, a member read, `case`, `do`, `for`) with twenty-three contexts that
+re-step or collect found nineteen silent rows. Two were regressions the
+first cut of NUR317 made (it had dropped `callResultPlaced`'s branch case):
+`5 if c [(mkf)] [0]` and `[if c [(mkf)] [0] 5]`. The case is back over
+`branchPlacedBy`, which reads the fragment's own event, so a placed branch
+is data wherever a user call's parked result is. With it, the NUR313
+lead decline is unreachable and gone. `if c [(mkl)] [0] 5` now compiles as
+the data it is. NUR124's re-step deopt skips a placed branch too, which
+closes the fn-body form (`fn l 5` listed as 6, present on main).
+
+- **NUR318 (present on main).** `def m {f: g/v} m.f/v` fired g. The reach
+  group's `/v` marker rides after its close, and the arrival models fired
+  an all-0-arg member on landing. They stand aside for a marker
+  (`modifiedAsData`). A quoted fn carrier reaching `dup` is the concrete fn
+  value's decline (`quotedFnCarrier`). A fn body's replay leaves `/v`
+  values as they stand.
+- **NUR319 (present on main).** `def r (if c [g/v] [0]) r 5` left the read as
+  data. A def read of a placed branch's union is a re-step
+  (`unionLeadReStepped`, `mayBeFnUnsettled`).
+
+Four rows stay: NUR317's open half (two), and two forms that now decline
+loudly (`5 m.f/v`, `m.f/v dup`). Pinned by `lang/go/nur318_319_test.go`,
+the rows added to `lang/go/nur312_314_test.go`, check `TestModifiedAsData`,
+and compiler `TestNUR318QuotedFnCarrier`, `TestNUR319UnionReadReStepped` and
+`TestNUR317PlacedBranchNotReStepped`.
+
 ## Re-steps that undo a placement: NUR313, NUR314 and NUR317 (2026-09-27)
 
 Gate58 on 9835ff5 (NUR312–NUR314) was green except gocyclo: the NUR313
