@@ -1246,7 +1246,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// position descriptor even over a list, which is why the two cases
 		// here differ rather than sharing a branch.
 		if isList {
-			return []core.Value{check.NewElementCarrier(elem)}, ClosureInValue, true
+			return []core.Value{check.ElementCarrierOf(data)}, ClosureInValue, true
 		}
 	case "fold":
 		// NOT an arity rule. `fold` declares TWO signatures — one taking a seed
@@ -1276,7 +1276,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 			if len(args) > spec.BodyPos+2 {
 				accT = args[spec.BodyPos+2].Parent
 			}
-			return []core.Value{check.NewElementCarrier(elem), core.NewCarrier(accT)}, ClosureInStackPair, true
+			return []core.Value{check.ElementCarrierOf(data), core.NewCarrier(accT)}, ClosureInStackPair, true
 		}
 	case "scan":
 		// scan seeds the accumulator from the first value (no init operand): the
@@ -1288,7 +1288,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// slots carry the element type; the order and the permutation are the
 		// list fold's.
 		if isList {
-			return []core.Value{check.NewElementCarrier(elem), core.NewCarrier(elem)}, ClosureInStackPair, true
+			return []core.Value{check.ElementCarrierOf(data), check.ElementCarrierOf(data)}, ClosureInStackPair, true
 		}
 	}
 	return nil, ClosureInValue, false

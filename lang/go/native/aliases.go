@@ -530,8 +530,10 @@ var (
 	StampModuleCallGates     = core.StampModuleCallGates
 	NewElementCarrier        = check.NewElementCarrier
 	ElementCarrierFromValue  = check.ElementCarrierFromValue
+	ElementCarrierOf         = check.ElementCarrierOf
 	NewCarrierTypedList      = core.NewCarrierTypedList
 	NewCarrierTypedListValue = core.NewCarrierTypedListValue
+	CarrierTypedListOf       = core.CarrierTypedListOf
 	NewDynamicCarrier        = core.NewDynamicCarrier
 	NewDynamicCarrierValue   = core.NewDynamicCarrierValue
 	// NewClockDuration moved to lang/go/engine/native_temporal.go (Step 8).

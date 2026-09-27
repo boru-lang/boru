@@ -1988,11 +1988,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 	out := NewCarrier(TList)
 	if len(stk) > 0 {
 		top := stk[len(stk)-1]
-		if IsDisjunct(top) {
-			out = NewCarrierTypedListValue(top)
-		} else {
-			out = NewCarrierTypedList(top.Parent)
-		}
+		out = CarrierTypedListOf(top)
 	}
 	if lowerable {
 		// The STATIC region size (trips x per-iteration net) arms the S5

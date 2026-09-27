@@ -408,6 +408,12 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// The memo key mirrors AnalyseFnBody's so the unit is compiled
 		// exactly when the body is analysed.
 		es := r.Check.Recorder()
+		// A shaped flex container passed to a user fn may be written through
+		// the parameter's alias, which the body analysis (over a plain
+		// carrier) does not see: its claims are stale from here (NUR315).
+		for _, a := range args {
+			PoisonFlexShapes(a)
+		}
 		// Take this call's Phase-A offer out of the pool NOW, before the body
 		// analysis below can re-offer under the same (word, row, col) from
 		// another source and consume it (compiler/go/region_record.go,

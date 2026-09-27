@@ -528,6 +528,7 @@ var (
 	ResetCheckFnCarrierBinds = core.ResetCheckFnCarrierBinds
 	NewCarrierTypedList      = core.NewCarrierTypedList
 	NewCarrierTypedListValue = core.NewCarrierTypedListValue
+	CarrierTypedListOf       = core.CarrierTypedListOf
 	NewDynamicCarrier        = core.NewDynamicCarrier
 	NewDynamicCarrierValue   = core.NewDynamicCarrierValue
 	// NewClockDuration moved to lang/go/engine/native_temporal.go (Step 8).

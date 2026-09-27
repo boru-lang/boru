@@ -262,7 +262,7 @@ var Natives = []NativeFunc{
 		CompileEffect: CompileFallbackBody | CompileDynBody,
 		// filter [body] data — the body sees one element and returns a Boolean.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, BodyResultTop: true, Inputs: func(a []Value) []Value {
-			return []Value{NewElementCarrier(DataListElemTypeFromValue(a[1]))}
+			return []Value{ElementCarrierOf(a[1])}
 		}},
 
 		Signatures: []Signature{

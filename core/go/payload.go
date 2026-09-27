@@ -475,6 +475,10 @@ type StoreShapeInfo struct {
 	// lambda re-dispatched by the reader) poisons it, and readers keep
 	// the pre-existing dynamic(Any) hatch.
 	ValsPoisoned bool
+	// KeysPoisoned marks every keyed claim unusable (Poison): a writer the
+	// shape cannot see makes each recorded key stale, so LookupKey declines
+	// and readers keep the dynamic(Any) hatch.
+	KeysPoisoned bool
 	// DeclaredVal is the DECLARED element type of a typed container (a
 	// `patrun T` table): nil for an inferred/untyped shape. When set, a
 	// reader (`find`) surfaces `dynamic(DeclaredVal ∪ None)` directly,

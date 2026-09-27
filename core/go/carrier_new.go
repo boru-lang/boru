@@ -80,6 +80,27 @@ func NewCarrierTypedListValue(child Value) Value {
 	return v
 }
 
+// CarrierTypedListOf is the typed-list carrier whose element has v's shape:
+// a disjunct as it stands, a GRADUAL value's type as a dynamic element, and
+// any other value's type strict. A gradual value is one the run may hold
+// something else in place of (a flex element, a typed container's element
+// read at its supertype, a read that may be None); a strict element type
+// lets the next body commit a direct op over it, and the run's value then
+// answers through that op where the interpreter's dispatch raises or picks
+// another overload (NUR316: `ys each [add 1]` over a list `each` built from
+// such a read answered [[1]] for [['s1']]).
+func CarrierTypedListOf(v Value) Value {
+	if IsDisjunct(v) {
+		return NewCarrierTypedListValue(v)
+	}
+	if v.Dynamic {
+		c := NewCarrier(v.Parent)
+		c.Dynamic = true
+		return NewCarrierTypedListValue(c)
+	}
+	return NewCarrierTypedList(v.Parent)
+}
+
 // UnionCarrierForType returns the DISTRIBUTING carrier for a user-defined
 // union/enum type — a strict Disjunct of the type's alternatives, the exact
 // shape a branch join of distant cousins produces (JoinCarriers), so

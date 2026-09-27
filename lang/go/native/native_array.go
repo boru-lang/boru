@@ -307,7 +307,7 @@ var allArrayNatives = []NativeFunc{
 		// (the parity oracle's measured population) — the twin regime's
 		// arm-residency license; see the field's doc in core.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, CrossCollectionTokenShape: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			return []Value{NewElementCarrier(DataListElemTypeFromValue(a[1]))}
+			return []Value{ElementCarrierOf(a[1])}
 		}},
 
 		Signatures: []Signature{
@@ -369,7 +369,7 @@ var allArrayNatives = []NativeFunc{
 		//     InvokeBody once per element on the shared registry with no def
 		//     cleanup — the same seam and the same leak eachHandler has.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 0, BodyResultTop: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			return []Value{NewElementCarrier(DataListElemTypeFromValue(a[1]))}
+			return []Value{ElementCarrierOf(a[1])}
 		}},
 
 		Signatures: []Signature{
@@ -407,11 +407,10 @@ var allArrayNatives = []NativeFunc{
 		// word's family), so a body def installs once per element with that
 		// element's runtime value. Arm-residency's license; see core's field doc.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, CrossCollectionTokenShape: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			elem := DataListElemTypeFromValue(a[1])
 			if len(a) >= 3 {
-				return []Value{foldAccCarrier(a[2]), NewElementCarrier(elem)}
+				return []Value{foldAccCarrier(a[2]), ElementCarrierOf(a[1])}
 			}
-			return []Value{NewElementCarrier(elem), NewElementCarrier(elem)}
+			return []Value{ElementCarrierOf(a[1]), ElementCarrierOf(a[1])}
 		}},
 
 		Signatures: []Signature{
@@ -465,8 +464,7 @@ var allArrayNatives = []NativeFunc{
 		// InvokeBody on the shared registry with no cleanup (handler-verified,
 		// like each's) — one leaked install per element, per-element value.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, EmptyBodyErrors: true, BodyResultTop: true, CrossCollectionTokenShape: true, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			e := DataListElemTypeFromValue(a[1])
-			return []Value{NewElementCarrier(e), NewElementCarrier(e)}
+			return []Value{ElementCarrierOf(a[1]), ElementCarrierOf(a[1])}
 		}},
 
 		Signatures: []Signature{
@@ -505,9 +503,7 @@ var allArrayNatives = []NativeFunc{
 		// grid rather than a flat element list, which changes the COUNT the
 		// oracle measures but not the mechanism.
 		Callable: &CallableSpec{BodyPos: 0, BodyOut: 1, BodyMultiRunKeepsDefs: true, Inputs: func(a []Value) []Value {
-			le := DataListElemTypeFromValue(a[1])
-			re := DataListElemTypeFromValue(a[2])
-			return []Value{NewElementCarrier(le), NewElementCarrier(re)}
+			return []Value{ElementCarrierOf(a[1]), ElementCarrierOf(a[2])}
 		}},
 
 		Signatures: []Signature{{
@@ -1516,8 +1512,7 @@ func windowHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 // window yields a TList<TList<sameElem>>: wrap the source-data
 // element carrier twice.
 func windowReturnsFn(args []Value, _ *Registry) []Value {
-	elem := DataListElemTypeFromValue(args[1])
-	inner := NewCarrierTypedList(elem)
+	inner := CarrierTypedListOf(ElementCarrierOf(args[1]))
 	return []Value{NewCarrierTypedListValue(inner)}
 }
 
@@ -1542,8 +1537,7 @@ func pairsHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 
 // pairs yields TList<TList<sameElem>> (2-tuples).
 func pairsReturnsFn(args []Value, _ *Registry) []Value {
-	elem := DataListElemTypeFromValue(args[0])
-	inner := NewCarrierTypedList(elem)
+	inner := CarrierTypedListOf(ElementCarrierOf(args[0]))
 	return []Value{NewCarrierTypedListValue(inner)}
 }
 
@@ -1695,7 +1689,7 @@ func eachReturnsFn(args []Value, r *Registry) []Value {
 	if len(stk) == 0 {
 		return []Value{NewCarrier(TList)}
 	}
-	return []Value{NewCarrierTypedList(stk[len(stk)-1].Parent)}
+	return []Value{CarrierTypedListOf(stk[len(stk)-1])}
 }
 
 // analyseHigherOrderBody runs a literal code-body list through a
@@ -1820,7 +1814,7 @@ func foldAccCarrier(init Value) Value {
 	var out Value
 	switch {
 	case init.Parent.ConformsTo(TList):
-		out = NewCarrierTypedList(DataListElemTypeFromValue(init))
+		out = CarrierTypedListOf(ElementCarrierOf(init))
 	case init.Parent.ConformsTo(TMap):
 		out = NewCarrier(TMap)
 	default:
@@ -2004,10 +1998,7 @@ func foldaxisReturnsFn(args []Value, r *Registry) []Value {
 	if !ok {
 		return []Value{NewCarrier(TList)}
 	}
-	if IsDisjunct(acc) {
-		return []Value{NewCarrierTypedListValue(acc)}
-	}
-	return []Value{NewCarrierTypedList(acc.Parent)}
+	return []Value{CarrierTypedListOf(acc)}
 }
 
 // staticEmptyLaneDetail is the runtime error text foldaxis raises over a
@@ -2105,10 +2096,7 @@ func scanReturnsFn(args []Value, r *Registry) []Value {
 	if !ok {
 		return []Value{NewCarrier(TList)}
 	}
-	if IsDisjunct(acc) {
-		return []Value{NewCarrierTypedListValue(acc)}
-	}
-	return []Value{NewCarrierTypedList(acc.Parent)}
+	return []Value{CarrierTypedListOf(acc)}
 }
 
 // ---- outer ----

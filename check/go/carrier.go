@@ -133,7 +133,23 @@ func ElementCarrierFromValue(data core.Value) core.Value {
 			return joined
 		}
 	}
-	return NewElementCarrier(DataListElemTypeFromValue(data))
+	return ElementCarrierOf(data)
+}
+
+// ElementCarrierOf is the carrier of one element of data by its element type
+// alone (NewElementCarrier over DataListElemTypeFromValue), kept GRADUAL where
+// data's element is: a typed list built from gradual values
+// (core.CarrierTypedListOf) hands its body a dynamic element, never the
+// strict type, so a body compiled against it re-matches its dispatch at run
+// time rather than committing a direct op over a value the run may not hold
+// (NUR316: a flex element, a typed container's element read that may be
+// None).
+func ElementCarrierOf(data core.Value) core.Value {
+	c := NewElementCarrier(DataListElemTypeFromValue(data))
+	if ct, ok := data.Data.(core.ChildTypeInfo); ok && ct.Child.Carrier && ct.Child.Dynamic {
+		c.Dynamic = true
+	}
+	return c
 }
 
 // joinedElementCarrier joins the element types of a concrete plain list (or

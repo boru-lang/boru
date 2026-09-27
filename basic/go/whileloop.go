@@ -133,11 +133,7 @@ func whileReturnsFn(args []Value, r *Registry) []Value {
 	var top Value
 	if len(stk) > 0 {
 		top = stk[len(stk)-1]
-		if IsDisjunct(top) {
-			out = NewCarrierTypedListValue(top)
-		} else {
-			out = NewCarrierTypedList(top.Parent)
-		}
+		out = CarrierTypedListOf(top)
 	}
 	if recording {
 		condFrag := es.TakeFragment()

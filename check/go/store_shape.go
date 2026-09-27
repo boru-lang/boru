@@ -141,6 +141,46 @@ func MintFlexListShapeCarrier(src core.Value, depth int) (core.Value, bool) {
 	return out, true
 }
 
+// PoisonFlexShapes poisons the store shape of v and of every shaped
+// container reachable from it — through the shape's own claims and through a
+// concrete list or map holding one — for a writer the shapes cannot see
+// (NUR315): a user fn v is passed to may write through its parameter's alias.
+func PoisonFlexShapes(v core.Value) {
+	poisonShapes(v, map[*core.StoreShapeInfo]bool{}, 0)
+}
+
+func poisonShapes(v core.Value, seen map[*core.StoreShapeInfo]bool, depth int) {
+	if depth > flexShapeMaxDepth {
+		return
+	}
+	var nested []core.Value
+	if ss, ok := StoreShapeOf(v); ok {
+		if seen[ss] {
+			return
+		}
+		seen[ss] = true
+		nested = append(nested, ss.Vals)
+		for _, kv := range ss.KeyTypes {
+			nested = append(nested, kv)
+		}
+		ss.Poison()
+	}
+	switch p := v.Data.(type) {
+	case core.ListPayload:
+		nested = append(nested, p.Elems...)
+	case core.MapPayload:
+		if p.M != nil {
+			for _, k := range p.M.Keys() {
+				el, _ := p.M.Get(k)
+				nested = append(nested, el)
+			}
+		}
+	}
+	for _, n := range nested {
+		poisonShapes(n, seen, depth+1)
+	}
+}
+
 // FlexListShapeOf returns the shape of a store-shaped FlexList CARRIER (the
 // element-join shape MintFlexListShapeCarrier mints), or ok=false for
 // anything else — a FlexMap / patrun / context shape keys its writes, so an
