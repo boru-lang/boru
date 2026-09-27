@@ -153,7 +153,9 @@ func TestGradualReadWithPendingValueGuards(t *testing.T) {
 		t.Errorf("the interpreter dispatches the read (42, then its type): err=%v", err)
 	}
 	requireSameVerdict(t, held)
-	dis := compileDisasm(t, held)
+	// The generic unit's read is gradual; the call specialises on the map's
+	// shape (main's #517), where the read is strict and needs no guard.
+	dis := compileDisasmNoSpec(t, held)
 	if !strings.Contains(dis, "bail if the read holds a fn (guard)") {
 		t.Errorf("the read's push must carry the guard:\n%s", dis)
 	}

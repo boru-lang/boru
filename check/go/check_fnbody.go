@@ -304,6 +304,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 	}
 	declaredReturns := append([]*core.Type(nil), s.Returns...)
 	declaredReturnPatterns := append([]*core.Value(nil), s.ReturnPatterns...)
+	bodyTraps := bodyTrapsErrors(s.Body())
 	// The compiled unit's RET contract: a named fn's declaration as written;
 	// an anonymous lambda's placeholder count (LambdaCountContract), which
 	// stands at run time even though the ANALYSER below infers past it.
@@ -659,7 +660,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// (provenNarrowerReturn): the caller sees the proven type, so its
 				// dispatches over the result commit instead of re-matching at
 				// run time. The TYPE only — never the residual's value.
-				if rc, ok := refinedDeclaredReturn(r, t, sigParams, declaredReturnPatterns, i, len(declaredReturns), stk); ok {
+				if rc, ok := refinedDeclaredReturn(r, t, sigParams, declaredReturnPatterns, i, len(declaredReturns), stk, bodyTraps); ok {
 					out[i] = rc
 					continue
 				}
@@ -1368,9 +1369,28 @@ func allParamsTyped(params []core.FnParam) bool {
 // refinedDeclaredReturn is the carrier a declared return slot refines to
 // from what the body shows: a record return's schema (nur068ReturnCarrier),
 // else an exact leaf scalar proven under `Any` (provenNarrowerReturn).
-func refinedDeclaredReturn(r *core.Registry, t *core.Type, params []core.FnParam, patterns []*core.Value, i, n int, stk []core.Value) (core.Value, bool) {
+func refinedDeclaredReturn(r *core.Registry, t *core.Type, params []core.FnParam, patterns []*core.Value, i, n int, stk []core.Value, bodyTraps bool) (core.Value, bool) {
 	if rc, ok := nur068ReturnCarrier(r, t, patterns, i, n, stk); ok {
 		return rc, true
 	}
+	if bodyTraps {
+		return core.Value{}, false
+	}
 	return provenNarrowerReturn(t, params, stk, n, i)
+}
+
+// bodyTrapsErrors reports whether a fn body holds a `do`, which traps its
+// body's raise into an Error value (DoListHandler) that the modelled residual
+// does not carry: such a residual proves no exact leaf for
+// provenNarrowerReturn. `def rpt fn [[] [Any] [do [def Big Integer 15 is
+// Big]]]` answers true on its first call and a trapped conflict Error on its
+// second, where the narrowed return claimed Boolean for both.
+func bodyTrapsErrors(body []core.Value) bool {
+	traps := false
+	core.WalkBodyWords(body, func(w core.WordInfo, _ core.Value) {
+		if w.Name == "do" {
+			traps = true
+		}
+	})
+	return traps
 }

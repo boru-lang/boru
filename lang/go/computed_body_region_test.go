@@ -193,8 +193,15 @@ func TestComputedDoBodyCheckedPlain(t *testing.T) {
 	if dis := compileDisasm(t, g1+`(1 add 8) do (mk)`); !strings.Contains(dis, "[plain values, checked]") {
 		t.Errorf("the seated run's call carries the plain check; got:\n%s", dis)
 	}
-	if dis := compileDisasm(t, g0+`def f fn [[m:Map][Any][do m.k]] end f {k: (quote [g/v])}`); !strings.Contains(dis, "(poly) [plain values, checked]") {
+	// The generic unit's gradual body re-matches do; the call specialises on
+	// the map's shape (main's #517), whose unit calls do over the member's
+	// List directly — under the same check either way.
+	const mapDo = `def f fn [[m:Map][Any][do m.k]] end f {k: (quote [g/v])}`
+	if dis := compileDisasmNoSpec(t, g0+mapDo); !strings.Contains(dis, "(poly) [plain values, checked]") {
 		t.Errorf("the gradual body's poly call carries the plain check; got:\n%s", dis)
+	}
+	if dis := compileDisasm(t, g0+mapDo); !strings.Contains(dis, "do (List) [plain values, checked]") {
+		t.Errorf("the shape-specialised body's call carries the plain check; got:\n%s", dis)
 	}
 	for _, c := range []struct{ src, want string }{
 		// Plain runs beside their neighbours.
@@ -303,7 +310,6 @@ func TestComputedDoBodyCheckedOneDefers(t *testing.T) {
 		// A run of the wrong count.
 		{risky + `risky [true true]`, "error:type_error"},
 		{risky + `risky []`, "error:signature_error"},
-		{`def f fn [[m:Map][Any][(do m.k) add 1]] end f {k: (quote [5 6])}`, "error:type_error"},
 		// A def's group whose name a later island reads from the compiled
 		// frame: a gradual read of it after the group resumes there, and the
 		// run's checked value has no re-pushable home for its bind.
@@ -312,6 +318,15 @@ func TestComputedDoBodyCheckedOneDefers(t *testing.T) {
 	} {
 		requireCheckedOneDefer(t, c.src, c.wantI)
 	}
+	// A gradual body (a map member) is the same defer in the generic unit;
+	// the call specialises on the map's shape (main's #517), and that unit,
+	// reading the member as a List, raises f's own return-count error with
+	// the interpreter.
+	const mapRun = `def f fn [[m:Map][Any][(do m.k) add 1]] end f {k: (quote [5 6])}`
+	if gotC, _, errC := mustNewNoSpec(t).RunCompiled(mapRun); !isBailDefect(errC) || !strings.Contains(errC.Error(), "over a computed body left") || len(gotC) != 0 {
+		t.Errorf("%q: want the generic unit's loud dyn-body-one defer, got %v / %v", mapRun, gotC, errC)
+	}
+	agreeOnBothLanes(t, mapRun, "ERROR:expected 1 return value(s), got 2")
 	// A seat whose statement the do's count island can re-run (NUR282):
 	// the run is written in the do's place, and the interpreter's own
 	// answer stands on both lanes. A def's group is such a seat: the island
