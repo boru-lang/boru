@@ -763,6 +763,10 @@ func (o Opcode) String() string {
 	return fmt.Sprintf("OP(%d)", uint8(o))
 }
 
+// PolyNOutRegion is PolyRef.NOut's out-of-domain sentinel for a variadic
+// region's run: the op commits no result-count claim.
+const PolyNOutRegion = -1
+
 // PolyRef names one runtime-dispatched native call: the word and the arity
 // (operand count) the checker fixed at the call site. OpCallNativePoly runs
 // MatchSignature over the word's signatures against that many stack values.
@@ -776,6 +780,9 @@ type PolyRef struct {
 	// stack layout no longer holds — the VM defers to the interpreter via
 	// internal_error (runtimeShouldFallback) instead of silently shifting
 	// every downstream operand — the lesser of two failures, and still one.
+	// PolyNOutRegion (-1) is no claim: the call is a variadic region's run
+	// (NUR282), whose count the region's own seat rules own, as they do for
+	// the CALL_NATIVE twin.
 	NOut int
 	// Reg is the sub-registry whose signatures the VM re-matches a MODULE poly
 	// word over (`StructUtil.getpath` — a sub-registry word). Nil means the main

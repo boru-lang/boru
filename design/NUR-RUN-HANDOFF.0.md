@@ -9,6 +9,19 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR282's gradual-body region: `do (mk)` over an Any result compiles (2026-09-27)
+
+The sweeps' loud rows included `do (mk)` over a declared-Any result that
+returns two values: `poly dispatch do: result count 2 differs from the
+recorded claim 1`. The recorder already marks such a run a variadic
+region (the dyn-body backstop's poly arm sets the same flags as the
+List-typed CALL_NATIVE's), and the lowerer seats it as one; only the poly
+op's result-count claim stood in the way. A region's poly op now commits
+no claim (`PolyNOutRegion`; the VM skips the count check for it), so the
+region's own seat rules own the count, as for the CALL_NATIVE twin. A
+fixed consumer still declines; a computed error handler's count stays a
+defer (its result is variadic but no region).
+
 ## NUR292 found by a probe sweep of conditionals; its silent half made loud (2026-09-27)
 
 **How it was found.** A sweep of conditionals and code-body words over a

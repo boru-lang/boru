@@ -1094,7 +1094,7 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 			return nil, err
 		}
 	}
-	if len(results) != pr.NOut {
+	if pr.NOut != compiler.PolyNOutRegion && len(results) != pr.NOut {
 		return nil, vmDefer(r, curDebug, pc, "vm:poly-nout-drift", fmt.Sprintf(
 			"poly dispatch %s: result count %d differs from the recorded claim %d; the compiled runtime cannot execute it",
 			pr.Word, len(results), pr.NOut))

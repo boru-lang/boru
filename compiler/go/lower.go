@@ -3763,7 +3763,14 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// Runtime-matched dispatch: no baked sig, the VM re-matches over the
 		// word's signatures against the n stack values.
 		pi := len(lw.p.PolyRefs)
-		lw.p.PolyRefs = append(lw.p.PolyRefs, PolyRef{Word: c.word, Arity: n, NOut: c.nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk})
+		nout := c.nout
+		if lw.seatsAsRegion(ev.seq) {
+			// A variadic region's run (a computed `do` body over a gradual
+			// operand): the region's own seat rules own its count, as they
+			// do for the CALL_NATIVE twin, so the op commits no claim.
+			nout = PolyNOutRegion
+		}
+		lw.p.PolyRefs = append(lw.p.PolyRefs, PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk})
 		lw.emit(OpCallNativePoly, pi, c.pos)
 	} else if c.hostSplice || dynOne || plainChk || c.nativeSplit != nil {
 		// A hosted splice (a computed `for` body): its own SigRef, never
@@ -3794,7 +3801,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	// exactly nout values, a dead-result drop pops exactly one — so neither
 	// can serve a run whose size is a runtime value; decline instead, the
 	// earliest true diagnosis, and the interpreter owns the program.
-	if lw.es != nil && (lw.es.eventInfo[ev.seq].variadicRegion || lw.regionPrefixSeq == ev.seq) {
+	if lw.seatsAsRegion(ev.seq) {
 		if _, prom := lw.promoted[ev.seq]; prom {
 			return c.word + ": variadic region promoted to a frame slot (the runtime count is not the static seat)"
 		}
@@ -3807,6 +3814,13 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		return ""
 	}
 	return lw.seatCallResults(ev, c)
+}
+
+// seatsAsRegion reports whether the event's result seats as a VARIADIC
+// REGION (NUR067's growing direction): a run the recorder marked one, or
+// the prefix island's own region. Such a result carries no static count.
+func (lw *lowerer) seatsAsRegion(seq int) bool {
+	return lw.es != nil && (lw.es.eventInfo[seq].variadicRegion || lw.regionPrefixSeq == seq)
 }
 
 // seatCallResults seats a call's results on the simulated stack: a promoted

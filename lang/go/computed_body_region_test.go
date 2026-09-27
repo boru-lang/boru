@@ -114,6 +114,32 @@ func TestComputedDoBodyRegionCompiles(t *testing.T) {
 	}
 }
 
+// TestComputedDoBodyGradualRegionCompiles pins NUR282's wrong-count seat for
+// a GRADUAL body: `do` over a declared-Any result records a poly re-match
+// (either overload, List or Map, is the run's), and the run is a variadic
+// region like the List-typed one's — so the op commits no result-count
+// claim (PolyNOutRegion) and the region's seat rules own the count. It
+// deferred on every run but a single value (`poly dispatch do: result count
+// 2 differs from the recorded claim 1`). A fixed seat still declines, and a
+// value the run matches no overload for is the interpreter's no-match.
+func TestComputedDoBodyGradualRegionCompiles(t *testing.T) {
+	mk := func(v string) string { return `def mk fn [[][Any][` + v + `]] end ` }
+	for _, src := range []string{
+		mk(`[1 2]`) + `do (mk)`,
+		mk(`[]`) + `do (mk)`,
+		mk(`[1 2 3]`) + `do (mk)`,
+		mk(`{a:1}`) + `do (mk)`,
+		mk(`[1 2]`) + `9 do (mk)`,
+		mk(`[1 2]`) + `[do (mk)]`,
+		mk(`[5]`) + `(do (mk)) add 1`,
+		mk(`[1 2]`) + `def f fn [[][Any][do (mk)]] end f`,
+		mk(`42`) + `do (mk)`,
+	} {
+		requireEngineParity(t, src, true)
+	}
+	requireLoudDeclineErr(t, mk(`[1 2]`)+`(do (mk)) add 1`, "consumes loop results", "")
+}
+
 // TestComputedDoBodyIslandCompiles: a run with inert values beneath it, or
 // collected by a list literal at the program level, is the prefix island's
 // (the branch's NUR210 close, compiler prefix_island.go): the interpreter's
