@@ -95,13 +95,22 @@ func TestNUR313BodyArmPlacesItsValue(t *testing.T) {
 	}
 	requireLoudDecline(t, nur312Pre+one+`def c true if c [(mkf)] one/v 5`,
 		"a branch whose body arm places a fn value and whose value arm is re-stepped leads the residual (NUR313)", "[fn g 5]")
-	// A placed value leading a residual apply: wrong where nothing re-steps
-	// it, right where an enclosing do does (NUR317), and the residual cannot
-	// tell them apart, so the apply declines.
-	const led = "a branch's placed fn value leads the residual; whether a word re-steps it is not modelled (NUR313)"
-	requireLoudDecline(t, nur312Pre+`def c true if c [(mkl)] [0] 5`, led, "[fn l(Integer) 5]")
-	requireLoudDecline(t, nur312Pre+`if true [(mkl)] [0] 5`, led, "[fn l(Integer) 5]")
-	requireLoudDecline(t, nur312Pre+`if true [(mkf)] [0] 5`, led, "[fn g 5]")
+	// A placed value leading a residual is data where nothing re-steps it,
+	// in the program, a list literal, a fn body and beneath a value alike
+	// (callResultPlaced's branch case); an enclosing re-step undoes that
+	// (NUR317).
+	for _, c := range []struct{ src, want string }{
+		{`def c true if c [(mkl)] [0] 5`, "[fn l(Integer) 5]"},
+		{`if true [(mkl)] [0] 5`, "[fn l(Integer) 5]"},
+		{`if true [(mkf)] [0] 5`, "[fn g 5]"},
+		{`def c true 5 if c [(mkf)] [0]`, "[5 fn g]"},
+		{`def c true 5 if c [(mkl)] [0]`, "[5 fn l(Integer)]"},
+		{`def c true [if c [(mkf)] [0] 5]`, "[[fn g 5]]"},
+		{`def c true def f fn [[][Any][if c [(mkl)] [0] 5]] end f`, "ERROR:expected 1 return value(s), got 2"},
+		{`def c true def f fn [[][Any][if c [(mkf)] [0] 5]] end f`, "ERROR:expected 1 return value(s), got 2"},
+	} {
+		agreeOnBothLanes(t, nur312Pre+c.src, c.want)
+	}
 }
 
 // TestNUR314LoopResultsReStep pins NUR314. A loop's end splices its results

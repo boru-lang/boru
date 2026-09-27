@@ -72,10 +72,9 @@ func TestSplitArmMayBeFn(t *testing.T) {
 	}
 }
 
-// TestBranchLeadDecline pins the apply arms' NUR313 declines: a lead its
-// placing branch delivered once, and a split branch whose body arm may leave
-// a fn, decline; a lead delivered again (an enclosing re-step) or with no
-// branch behind it applies.
+// TestBranchLeadDecline pins the apply arms' NUR313 decline: a split branch
+// whose body arm may leave a fn declines, and a lead with no producer or a
+// branch whose every arm places (placed data, not an apply) does not.
 func TestBranchLeadDecline(t *testing.T) {
 	es := NewEmitState()
 	lead := core.Value{Parent: core.TAny, ID: "lead"}
@@ -87,19 +86,19 @@ func TestBranchLeadDecline(t *testing.T) {
 		then: body, els: body, hasThenOut: true, hasElsOut: true,
 	}})
 	es.producedBy[lead.ID] = producer{seq: 7}
-	es.NoteDelivery(lead)
-	if why := es.branchLeadDecline(lead); !strings.Contains(why, "a branch's placed fn value leads") {
-		t.Errorf("a placed lead delivered once: %q", why)
-	}
-	es.NoteDelivery(lead)
-	if why := es.branchLeadDecline(lead); why != "" || es.deliveries[lead.ID] != 2 {
-		t.Errorf("a lead delivered again is re-stepped: %q (%d)", why, es.deliveries[lead.ID])
+	if why := es.branchLeadDecline(lead); why != "" {
+		t.Errorf("a placed branch is data, no apply to decline: %q", why)
 	}
 	es.frames[0][0].br = &emitBranch{then: body, hasThenOut: true, elsIsVal: true, hasElsOut: true, thenOut: EventOperand(2, 0)}
 	if why := es.branchLeadDecline(lead); !strings.Contains(why, "whose value arm is re-stepped") {
 		t.Errorf("a split branch's body arm: %q", why)
 	}
+	es.NoteDelivery(lead)
+	es.NoteDelivery(lead)
 	es.NoteDelivery(core.Value{})
+	if es.deliveries[lead.ID] != 2 {
+		t.Errorf("deliveries: %d", es.deliveries[lead.ID])
+	}
 	if _, ok := es.deliveries[""]; ok {
 		t.Error("a value with no ID is not counted")
 	}
@@ -141,32 +140,6 @@ func TestNUR317PlacementUndone(t *testing.T) {
 	}
 }
 
-// TestPlacedArmsMayBeFn pins the lead decline's fn test (NUR313): a placed
-// branch whose arms leave data consts is no fn lead, one with an event's
-// value or a fn const may be.
-func TestPlacedArmsMayBeFn(t *testing.T) {
-	es := NewEmitState()
-	if es.placedArmsMayBeFn(7) {
-		t.Error("no event: no fn")
-	}
-	body := &EmitFragment{residualN: 1}
-	zero, nine := ConstOperand(es.intern(core.NewInteger(0))), ConstOperand(es.intern(core.NewInteger(9)))
-	es.frames[0] = append(es.frames[0], EmitEvent{seq: 7, kind: evBranch, br: &emitBranch{
-		then: body, els: body, hasThenOut: true, hasElsOut: true, thenOut: zero, elsOut: nine,
-	}})
-	if es.placedArmsMayBeFn(7) {
-		t.Error("two data consts leave no fn")
-	}
-	es.frames[0][0].br.elsOut = EventOperand(2, 0)
-	if !es.placedArmsMayBeFn(7) {
-		t.Error("an event's value may be a fn")
-	}
-	es.frames[0][0].br.elsOut = ConstOperand(es.intern(core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "g"}}))
-	if !es.placedArmsMayBeFn(7) {
-		t.Error("a fn const is a fn")
-	}
-}
-
 // TestDynBodySettledOp pins NUR317's settled-lead op: a dyn body's lead
 // under its own sibling re-steps from the mark where the window is armed,
 // and seats as it stands where it is not; any other residual is not settled.
@@ -186,5 +159,81 @@ func TestDynBodySettledOp(t *testing.T) {
 	es.markWindowSeq = 3
 	if op, settled := es.dynBodySettledOp(res); !settled || op != OpCallDynMixedFromMark {
 		t.Errorf("an armed window re-steps from the mark, got %v %v", op, settled)
+	}
+}
+
+// TestNUR318QuotedFnCarrier pins NUR318's operand test: a carrier a `/v`
+// marker quoted that may hold a fn is a fn value at a re-stepping word, and
+// an unquoted or data carrier is not.
+func TestNUR318QuotedFnCarrier(t *testing.T) {
+	q := core.NewDynamicCarrier(core.TAny)
+	q.Quoted = true
+	fq := core.NewCarrier(core.TFunction)
+	fq.Quoted = true
+	iq := core.NewCarrier(core.TInteger)
+	iq.Quoted = true
+	for _, c := range []struct {
+		why  string
+		v    core.Value
+		want bool
+	}{
+		{"a quoted gradual carrier", q, true},
+		{"a quoted fn carrier", fq, true},
+		{"an unquoted gradual carrier", core.NewDynamicCarrier(core.TAny), false},
+		{"a quoted data carrier", iq, false},
+	} {
+		if got := quotedFnCarrier(c.v); got != c.want {
+			t.Errorf("%s: quotedFnCarrier = %v, want %v", c.why, got, c.want)
+		}
+	}
+}
+
+// TestNUR319UnionReadReStepped pins NUR319: a bare read of a def bound to a
+// placed branch's union is its word's dispatch, a re-step that reaches it —
+// the lead's conditional apply and the interior gate's unsettled value — and
+// a `/v` read of it is data.
+func TestNUR319UnionReadReStepped(t *testing.T) {
+	es := NewEmitState()
+	body := &EmitFragment{residualN: 1}
+	es.frames[0] = append(es.frames[0], EmitEvent{seq: 7, kind: evBranch, br: &emitBranch{
+		then: body, els: body, hasThenOut: true, hasElsOut: true,
+	}})
+	u := core.NewDisjunct([]core.Value{core.NewTypeLiteral(core.TInteger), core.NewTypeLiteral(core.TFunction)})
+	u.Carrier, u.ID = true, "u"
+	es.producedBy[u.ID] = producer{seq: 7}
+	if es.unionLeadReStepped(u, 7) || es.mayBeFnUnsettled(u) {
+		t.Error("an unread placed union is no re-step")
+	}
+	es.NoteDefRead(u.ID, "r")
+	if !es.unionLeadReStepped(u, 7) || !es.mayBeFnUnsettled(u) {
+		t.Error("a bare read of the def dispatches it")
+	}
+	if es.unionLeadReStepped(u, 8) {
+		t.Error("no placing branch at the seq: no re-step")
+	}
+}
+
+// TestNUR317PlacedBranchNotReStepped pins the re-step note's branch skip: a
+// branch whose body arms place its value never re-steps it where the `if`
+// stood, and a call's result keeps its note.
+func TestNUR317PlacedBranchNotReStepped(t *testing.T) {
+	es := NewEmitState()
+	body := &EmitFragment{residualN: 1}
+	es.frames[0] = append(es.frames[0], EmitEvent{seq: 7, kind: evBranch, br: &emitBranch{
+		then: body, els: body, hasThenOut: true, hasElsOut: true,
+	}})
+	v := core.NewDynamicCarrier(core.TAny)
+	v.ID = "v"
+	es.producedBy[v.ID] = producer{seq: 7}
+	es.NoteFnResultReStep(v, core.SrcPos{})
+	if len(es.reStepNotes) != 0 {
+		t.Errorf("a placed branch's value takes no re-step note: %v", es.reStepNotes)
+	}
+	w := core.NewDynamicCarrier(core.TAny)
+	w.ID = "w"
+	es.producedBy[w.ID] = producer{seq: 9}
+	es.NoteFnResultReStep(w, core.SrcPos{})
+	if _, ok := es.reStepNotes[9]; !ok {
+		t.Error("a call's result keeps its re-step note")
 	}
 }

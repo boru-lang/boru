@@ -10285,6 +10285,14 @@ func (es *EmitState) dynamicStackShuffleOK(word string, sig *core.Signature) boo
 	return true
 }
 
+// quotedFnCarrier reports a carrier a `/v` marker quoted that may hold a fn
+// (the standalone-marker drop, NUR277 — `m.f/v` over a map's fn member): the
+// run holds the fn value itself, which a word re-steps with its results like
+// any fn value — `m.f/v dup` is `7 7` interpreted (NUR318).
+func quotedFnCarrier(a core.Value) bool {
+	return a.Quoted && a.Carrier && (core.IsFnTypedCarrier(a) || (a.Dynamic && core.SigTypeMatches(a, core.TFunction)))
+}
+
 // RecordCallOperands resolves a lowerable native dispatch's operands. It declines
 // (marking the program uncompilable, returning ok=false) when a fn-valued operand
 // would reach a fn-INVOKING word — that handler re-steps the fn on the tape,
@@ -10338,7 +10346,7 @@ func (es *EmitState) RecordCallOperands(word string, sig *core.Signature, args [
 		// const and its body runs on the VM. A declined stamp still falls
 		// back to CallBoru — correct, uncompiled, and visible to the
 		// interp-entry census, which is the gate that keeps this honest.
-		if _, isFnVal := a.Data.(core.FnDefInfo); !isFnVal {
+		if _, isFnVal := a.Data.(core.FnDefInfo); !isFnVal && !quotedFnCarrier(a) {
 			continue
 		}
 		// Dispatch WRECKAGE rides no inert slot either: a named fn value the
@@ -10905,25 +10913,6 @@ func (es *EmitState) splitArmMayBeFn(seq int) bool {
 	return out.kind != opConst || core.IsFnValueResidual(es.consts[out.idx])
 }
 
-// placedArmsMayBeFn reports whether a branch's arms may leave a fn value:
-// an arm's output that is not a data const — an event's value, which may be
-// a fn, or a fn const (`[0] [9]` leaves data on both paths; NUR313).
-func (es *EmitState) placedArmsMayBeFn(seq int) bool {
-	ev := es.eventBySeq(seq)
-	if ev == nil || ev.kind != evBranch {
-		return false
-	}
-	for _, a := range []struct {
-		has bool
-		out EmitOperand
-	}{{ev.br.hasThenOut, ev.br.thenOut}, {ev.br.hasElsOut, ev.br.elsOut}} {
-		if a.has && (a.out.kind != opConst || core.IsFnValueResidual(es.consts[a.out.idx])) {
-			return true
-		}
-	}
-	return false
-}
-
 // branchPlacesAt is branchPlaces for the event seq, false for any other
 // kind of event.
 func (es *EmitState) branchPlacesAt(seq int) bool {
@@ -10945,16 +10934,29 @@ func (es *EmitState) branchPlacesAt(seq int) bool {
 // `do [if c [g/v] [0]]` is 7, where the branch's own step inside the body
 // ran suspended).
 func (es *EmitState) branchPlacedHere(v core.Value, seq int) bool {
-	return es.deliveries[v.ID] <= 1 && !es.parenReSteppedFn(v) && !es.inResidualToCallerUnit() && es.branchPlacesAt(seq)
+	ev := es.eventBySeq(seq)
+	return ev != nil && ev.kind == evBranch && es.branchPlacedBy(v, ev.br)
+}
+
+// branchPlacedBy is branchPlacedHere over the branch itself, for a caller
+// that holds the event: a fn unit's residual at finish reads it from the
+// unit's captured fragment, where eventBySeq no longer reaches it.
+func (es *EmitState) branchPlacedBy(v core.Value, br *emitBranch) bool {
+	return es.deliveries[v.ID] <= 1 && !es.parenReSteppedFn(v) && !es.inResidualToCallerUnit() && branchPlaces(br)
 }
 
 // unionLeadReStepped reports a placed branch's join (branchPlacesAt), one
-// of whose alternatives is a fn, that an enclosing paren re-stepped with the
-// values after it (NUR317): `(if c [g/v] [0] 5)` is 7 5, the arm's parked g
-// fired by the paren's rewind. The union is callable on that alternative,
-// so the lead is a runtime-conditional apply.
+// of whose alternatives is a fn, that a re-step reaches with the values after
+// it: an enclosing paren's rewind (NUR317 — `(if c [g/v] [0] 5)` is 7 5, the
+// arm's parked g fired by the paren), or a bare read of a def bound to it,
+// which is the word's dispatch (ADR-011; NUR319 — `def r (if c [g/v] [0]) r
+// 5` is 7 5). The union is callable on that alternative, so the lead is a
+// runtime-conditional apply.
 func (es *EmitState) unionLeadReStepped(v core.Value, seq int) bool {
-	return core.UnionMayBeFn(v) && es.parenReSteppedFn(v) && es.branchPlacesAt(seq)
+	if !core.UnionMayBeFn(v) || !es.branchPlacesAt(seq) {
+		return false
+	}
+	return es.parenReSteppedFn(v) || (es.isDefRead(v) && !es.placedValRead(v.ID))
 }
 
 // inResidualToCallerUnit reports whether the innermost open unit is a code
@@ -12280,8 +12282,12 @@ func (es *EmitState) NoteFnResultReStep(v core.Value, resume core.SrcPos) {
 	if !es.Active() || v.ID == "" {
 		return
 	}
+	// A branch whose body arms each net one value never re-steps it where
+	// the `if` stood: the arm's paren parked it (NUR313) — `def f fn [[][Any]
+	// [if c [(mkl)] [0] 5]] end f` returns `fn l 5` to its count check,
+	// where the deopt applied l to the 5.
 	pr, ok := es.producedBy[v.ID]
-	if !ok {
+	if !ok || es.branchPlacesAt(pr.seq) {
 		return
 	}
 	if es.reStepNotes == nil {
@@ -12767,16 +12773,21 @@ func (es *EmitState) claimedShape(id string) (core.FnShape, bool) {
 // it as data (placedNotReStepped) or a `/v` read delivered it inert
 // (placedValRead), and either is the interpreter's own park. Every arm and
 // gate that asks "could the interpreter re-step this value over its
-// neighbours?" asks this (NUR159).
+// neighbours?" asks this (NUR159). So is a placed branch's union a re-step
+// reaches (unionLeadReStepped): `def r (if c [g/v] [0]) 3 r 5` is `3 7 5`,
+// the read's dispatch firing g between its neighbours (NUR319).
 func (es *EmitState) mayBeFnUnsettled(v core.Value) bool {
 	if es == nil || v.ID == "" || v.Quoted {
 		return false
 	}
 	pr, ok := es.producedBy[v.ID]
-	if !ok || !es.eventInfo[pr.seq].mayBeFnArgs {
+	if !ok {
 		return false
 	}
-	return !es.placedNotReStepped(v) && !es.placedValRead(v.ID)
+	if es.unionLeadReStepped(v, pr.seq) {
+		return true
+	}
+	return es.eventInfo[pr.seq].mayBeFnArgs && !es.placedNotReStepped(v) && !es.placedValRead(v.ID)
 }
 
 // fnLikeResidual reports whether a residual entry may be a callable at run
@@ -15545,39 +15556,20 @@ func eventBySeq(events []EmitEvent, seq int) *EmitEvent {
 }
 
 // branchLeadDecline names why a branch result an apply arm chose must not be
-// applied over the values above it (NUR313), or "" when the apply stands.
-// `if` splices a body arm inside its own paren (spliceArg), and a
-// one-survivor paren parks a fn value: the apply is wrong where nothing
-// re-steps it (`if c [(mkl)] [0] 5` is `fn l 5`) and right where an
-// enclosing `do` splices it back (`do [if c [(mkl)] [0] 5]` is 6), and the
-// residual cannot tell the two apart. A SPLIT branch (splitLanding)
-// re-steps its value arm and places its body arm's value, and the one apply
-// after the merge cannot tell those paths apart either: `if c [(mkf)] one/v
-// 5` applied the placed g (7 5 for `fn g 5`).
+// applied over the values above it (NUR313), or "" when the apply stands. A
+// SPLIT branch (splitLanding) re-steps its value arm and places its body
+// arm's value, and the one apply after the merge cannot tell the paths
+// apart: `if c [(mkf)] one/v 5` applied the placed g (7 5 for `fn g 5`). A
+// branch whose every arm places is not an apply at all — its value is
+// placed data until a re-step undoes that (callResultPlaced's branch case,
+// branchPlacedBy).
 func (es *EmitState) branchLeadDecline(lead core.Value) string {
-	if pr, ok := es.producedBy[lead.ID]; ok {
-		if es.branchPlacedHere(lead, pr.seq) && es.placedArmsMayBeFn(pr.seq) {
-			return "a branch's placed fn value leads the residual; whether a word re-steps it is not modelled (NUR313)"
-		}
-		if es.splitArmMayBeFn(pr.seq) {
-			return "a branch whose body arm places a fn value and whose value arm is re-stepped leads the residual (NUR313)"
-		}
+	if pr, ok := es.producedBy[lead.ID]; ok && es.splitArmMayBeFn(pr.seq) {
+		return "a branch whose body arm places a fn value and whose value arm is re-stepped leads the residual (NUR313)"
 	}
 	return ""
 }
 
-// resolveDynamicApply classifies the residual's fn-value-call boundary (report
-// §9.1) and returns the residual (rotated for a trailing apply), the apply
-// opcode to emit once the residual is on the stack (0 = none), and a failure
-// reason for an fn-value shape the static residual cannot reproduce.
-//
-// Handled: a dynamic value LEADING the residual with static args after it
-// (`r.int 0 100`); a Function CARRIER leading it (the factory `(mk2 5)
-// 10`); and a single dynamic / fn value TRAILING one static arg (`5 m.f`,
-// `[..] r.one-of`) — rotated to [fn, arg] so the reconciliation lays it out
-// like the leading boundary, with OpCallDynamicTrailing restoring the fn-on-top
-// order if the value is not callable. Every other dynamic / fn-value-precedes-
-// args shape, and any unconsumed fn-value carrier, declines.
 func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]core.Value, Opcode, string) {
 	// The prefix island re-steps the whole residual itself (NUR210).
 	if lw.island != nil && lw.island.list == 0 {
@@ -17408,7 +17400,11 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 		// The replay island re-steps every token it is handed, so a placed
 		// value can never ride in an armed window: it is skipped here, and a
 		// window that would carry one beside an applicable declines below.
-		if es.placedNotReStepped(v) {
+		// So is a value a `/v` marker delivered — quoted on the value
+		// (NUR277) or read through `/v` (placedValRead): `def f fn [[][Any]
+		// [g/v 5]]` is the count error over `[fn g 5]`, where the replay
+		// fired g first and listed `[7 5]` (NUR318).
+		if es.placedNotReStepped(v) || v.Quoted || es.placedValRead(v.ID) {
 			continue
 		}
 		if v.Dynamic || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {
@@ -19999,6 +19995,14 @@ func (es *EmitState) callResultPlacedIn(v core.Value, frag *EmitFragment) bool {
 	switch ev.kind {
 	case evCallUser:
 		if ev.uc.nout != 1 {
+			return false
+		}
+	case evBranch:
+		// A branch whose body arms each net one value: the arm's paren
+		// parks it (NUR313) until a re-step undoes the placement
+		// (branchPlacedHere, NUR317) — a question only for a value that may
+		// be a fn; data sits where it lands either way.
+		if !es.branchPlacedBy(v, ev.br) || !(core.IsFnTypedCarrier(v) || (v.Dynamic && core.SigTypeMatches(v, core.TFunction)) || core.IsFnValueResidual(v) || core.UnionMayBeFn(v)) {
 			return false
 		}
 	case evCall:

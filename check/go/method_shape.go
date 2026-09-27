@@ -98,6 +98,21 @@ func evalFixedWindowToken(v core.Value) bool {
 	return false
 }
 
+// modifiedAsData reports whether a dispatch modifier (`/v`, `/q`) follows
+// the carrier at valIdx — directly, or after the close of the reach group
+// it stands alone in (`( m dot f ) /v`): the marker says DATA, so the member
+// the read delivers stays a value where the interpreter's peek leaves it —
+// `def m {f: g/v} m.f/v` is `fn g`, where a 0-arg member's arrival model
+// fired it (7; NUR318). The marker then quotes the carrier (the
+// standalone-marker drop, NUR277).
+func modifiedAsData(e *core.Engine, valIdx int) bool {
+	i := valIdx + 1
+	if i < e.Tape.Len() && core.IsCloseParen(e.Tape.At(i)) && valIdx > 0 && core.IsOpenParen(e.Tape.At(valIdx-1)) {
+		i++
+	}
+	return i < e.Tape.Len() && core.IsDispatchMod(e.Tape.At(i))
+}
+
 // TryShapedMethodDispatch models the interpreter's auto-dispatch of an
 // annotated dynamic method-read carrier sitting at the pointer (see the
 // file comment). Returns true when it consumed the dispatch (tape spliced,
@@ -106,7 +121,7 @@ func evalFixedWindowToken(v core.Value) bool {
 func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
-	if !v.Dynamic || v.Quoted || v.ID == "" {
+	if !v.Dynamic || v.Quoted || v.ID == "" || modifiedAsData(e, valIdx) {
 		return false
 	}
 	member, ok := r.Check.MethodShapeMember(v.ID)
@@ -481,7 +496,7 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 		return true
 	}
 	v := e.Tape.At(valIdx)
-	if !v.Dynamic || v.Quoted || v.ID == "" {
+	if !v.Dynamic || v.Quoted || v.ID == "" || modifiedAsData(e, valIdx) {
 		return false
 	}
 	member, ok := es.MemberFnReadValue(v.ID)
