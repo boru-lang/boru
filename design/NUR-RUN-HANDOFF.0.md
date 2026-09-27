@@ -9,6 +9,19 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## A root container's position: the whole-program list literal compiles (2026-09-27)
+
+A program that is one list, map or paren parsed to a container with no
+position: the val rule sites it with its opening token, but both parsers'
+root switch dropped `rootPos` for the explicit list, typed list and map
+branches, and passed the root paren unsited. Every consumer that finds a
+statement by its token lost the program: NUR222's root list-literal do and
+NUR301's `[do [raise oops 'x'] error [drop 9 8]]` deferred where `1 [...]`
+answered. Both parsers stamp the root container now (parser/go `Parse`,
+parser/ts `convert.ts` — the TS twin in lockstep, its suite at 100%), and
+`shape.tsv` pins the root list, map, typed map and paren positions (two new
+rows, 28 -> 30 in both runners). Both programs answer on both lanes.
+
 ## NUR301's owed count island: a literal handler's two-value run answers (2026-09-27)
 
 The checked single seat (5cb5591) deferred where a literal handler's

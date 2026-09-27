@@ -60,15 +60,16 @@ func TestNUR301HandlerRunsNotSeatedAsOne(t *testing.T) {
 		{`def f fn [[] [Any] [[do [raise oops 'x'] error [drop 9 8]]]] end f`, "[[9 8]]"},
 		{`def xs [0] end [do [1 div (xs 0 getr)] error [drop]]`, "[[]]"},
 		{`def g fn [[x:Integer][Integer][x add 100]] end 1 [do [raise oops 'x'] error [drop g/v]]`, "[1 [fn g(Integer)]]"},
+		// A list literal that is the whole program: the parser sites the
+		// root container now, so its statement has a first token.
+		{`[do [raise oops 'x'] error [drop 9 8]]`, "[[9 8]]"},
+		{`[do [do [raise oops 'x'] error [drop 5 6]] error [drop 9]]`, "[[5 6]]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	// Where no island is seated the check's loud defer stands: a list
-	// literal that is the program's first token has no position (NUR222's
-	// owed form), and a do inside a loop plans none.
+	// Where no island is seated the check's loud defer stands: a do inside
+	// a loop plans none.
 	for _, c := range []struct{ src, what, want string }{
-		{`[do [raise oops 'x'] error [drop 9 8]]`, "error's island left 2", "[[9 8]]"},
-		{`[do [do [raise oops 'x'] error [drop 5 6]] error [drop 9]]`, "do over a computed body left 2", "[[5 6]]"},
 		{`for 2 [[do [raise oops 'x'] error [drop 9 8]]]`, "error's island left 2", "[[9 8] [9 8]]"},
 	} {
 		prog, reason, _, err := mustNew(t).CompileCheck(c.src)

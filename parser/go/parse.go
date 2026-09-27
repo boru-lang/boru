@@ -201,11 +201,13 @@ func Parse(src string) ([]core.Value, error) {
 		return nil, nil
 	}
 
-	// A single top-level scalar/paren/interp value arrives wrapped by the
-	// val-rule BC; unwrap it so the cases below see a bare jsonic node, but
-	// keep its position to stamp the single produced value. (Root containers
-	// come from the list/map rule and are not sited; their elements carry
-	// positions individually.)
+	// A single top-level value arrives wrapped by the val rule's siting —
+	// a scalar, a paren, an interp, and a root CONTAINER too (the whole
+	// input one list or map); unwrap it so the cases below see a bare jsonic
+	// node, but keep its position to stamp the single produced value. A
+	// root container left unstamped had no position, which cost every
+	// consumer that finds a statement by its token (a statement island, a
+	// caret) the program that is one list literal.
 	result, rootPos := deSite(result)
 
 	// One depth tracker for this parse, threaded through the recursive
@@ -224,7 +226,7 @@ func Parse(src string) ([]core.Value, error) {
 			if err != nil {
 				return nil, err
 			}
-			return []core.Value{tv}, nil
+			return []core.Value{withPos(tv, rootPos)}, nil
 		}
 		if !val.Implicit {
 			// Explicit list [...]  — a single list value (quotation).
@@ -232,7 +234,7 @@ func Parse(src string) ([]core.Value, error) {
 			if err != nil {
 				return nil, err
 			}
-			return []core.Value{lv}, nil
+			return []core.Value{withPos(lv, rootPos)}, nil
 		}
 		// Implicit list — top-level stack values.
 		return convertTopLevel(val.Val, d)
@@ -242,7 +244,7 @@ func Parse(src string) ([]core.Value, error) {
 			if err != nil {
 				return nil, err
 			}
-			return []core.Value{tv}, nil
+			return []core.Value{withPos(tv, rootPos)}, nil
 		}
 		mv, err := convertMapData(val.Val, val.Implicit, d, val.Meta)
 		if err != nil {
@@ -253,13 +255,14 @@ func Parse(src string) ([]core.Value, error) {
 		if val.Implicit && !mv.Eval {
 			mv.Eval = true
 		}
-		return []core.Value{mv}, nil
+		return []core.Value{withPos(mv, rootPos)}, nil
 	case unclosedParen:
 		return nil, core.MakeBoruError("syntax_error", "unmatched opening parenthesis", "(", src, "")
 
 	case parenGroup:
-		// Single paren group at top level: expand to paren markers.
-		return convertTopLevelItems([]any{val}, d)
+		// Single paren group at top level: expand to paren markers, sited
+		// as any paren in a longer program is.
+		return convertTopLevelItems([]any{sited{Node: val, Pos: rootPos}}, d)
 
 	case interpGroup:
 		// Single template string at top level.

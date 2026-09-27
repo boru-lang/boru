@@ -519,11 +519,13 @@ export function parse(src: string): Value[] {
     return []
   }
 
-  // A single top-level scalar/paren/interp value arrives wrapped by the
-  // val-rule BC; unwrap it so the cases below see a bare jsonic node, but
-  // keep its position to stamp the single produced value. (Root containers
-  // come from the list/map rule and are not sited; their elements carry
-  // positions individually.)
+  // A single top-level value arrives wrapped by the val rule's siting — a
+  // scalar, a paren, an interp, and a root CONTAINER too (the whole input
+  // one list or map); unwrap it so the cases below see a bare jsonic node,
+  // but keep its position to stamp the single produced value. A root
+  // container left unstamped had no position, which cost every consumer
+  // that finds a statement by its token (a statement island, a caret) the
+  // program that is one list literal.
   // One depth tracker for this parse. Besides logical nesting, it owns a
   // linear UTF-16-index → code-point-column table so normalizing every
   // sited node below remains O(n), even for a 10,000-node single line.
@@ -546,11 +548,11 @@ export function parse(src: string): Value[] {
   // info.implicit distinguishes implicit structures from explicit ones.
   if (Array.isArray(res)) {
     if ((res as Record<string, unknown> & unknown[])['child$'] !== undefined) {
-      return [convertTypedList(res, d)]
+      return [withPos(convertTypedList(res, d), rootPos)]
     }
     if (!getInfo(res)?.implicit) {
       // Explicit list [...]  — a single list value (quotation).
-      return [convertWordList(res, d)]
+      return [withPos(convertWordList(res, d), rootPos)]
     }
     // Implicit list — top-level stack values.
     return convertTopLevel(res, d)
@@ -563,7 +565,7 @@ export function parse(src: string): Value[] {
     const implicit = !!info.implicit
     const meta = info?.meta
     if (hasMapChild(res)) {
-      return [convertTypedMap(res, d, meta)]
+      return [withPos(convertTypedMap(res, d, meta), rootPos)]
     }
     let mv = convertMapData(res, implicit, d, meta)
     // Top-level implicit maps (e.g. entire input is "a:x") must be
@@ -571,7 +573,7 @@ export function parse(src: string): Value[] {
     if (implicit && !mv.eval) {
       mv = markEval(mv)
     }
-    return [mv]
+    return [withPos(mv, rootPos)]
   }
   if (res instanceof UnclosedParen) {
     throw new BoruError('syntax_error', 'unmatched opening parenthesis', '(', {
@@ -579,8 +581,9 @@ export function parse(src: string): Value[] {
     })
   }
   if (res instanceof ParenGroup) {
-    // Single paren group at top level: expand to paren markers.
-    return convertTopLevelItems([res], d)
+    // Single paren group at top level: expand to paren markers, sited as
+    // any paren in a longer program is.
+    return convertTopLevelItems([new Sited(res, rootPos)], d)
   }
   if (res instanceof InterpGroup) {
     // Single template string at top level.

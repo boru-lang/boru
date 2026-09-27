@@ -12303,9 +12303,12 @@ loudly (`vm:do-count`): a program with a trap before the statement (`1 2
 do [(1 add 1) drop] add`, a DISPATCH_REMATCH underflow), a call before it
 whose operand lies beneath its statement (`1 end add 2 [1 do …]`; one over
 operands written right before its word is its call run since the same day,
-so `1 add 2 [1 do …]` is `[3 []]` on both lanes), and a do inside a
-top-level list literal, whose token carries no position for an island to
-find. A paren before the do is written as its value, and
+so `1 add 2 [1 do …]` is `[3 []]` on both lanes). A do inside a list
+literal that is the WHOLE program compiles since 2026-09-27: the parser
+had left a root container unsited (no position for an island to find),
+and both parsers now stamp it with its opening token's (parser/go
+`Parse`, parser/ts `convert.ts`; `shape.tsv`'s root rows). A paren before
+the do is written as its value, and
 an effect as its run (NUR296's call run, the same day): `(g) 1 do [(1 add
 1) drop] drop`, which answered `[1]` for `[5]` silently on main and on this
 branch until then, is `[5]` on both lanes. Pinned by lang
