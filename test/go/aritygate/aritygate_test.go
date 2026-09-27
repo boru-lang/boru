@@ -526,6 +526,12 @@ var pinnedAritySites = map[string]int{
 	// presence test guards the index it reads. How the argument rule
 	// collects that slot, never behaviour decided by the count.
 	"eng/go/vm_list_restep.go": 2,
+	// A `do`'s re-step asks whether a dispatching fn value's every signature
+	// takes no parameter (NUR317): such a value collects nothing — the
+	// argument rule reaches no value beneath or after it — so the island's
+	// step of the results alone is the interpreter's. How the argument rule
+	// collects, never behaviour decided by the count.
+	"eng/go/vm_do_restep.go": 1,
 
 	// ── Tooling and fixtures.
 	"tools/piecetool/demethod.go": 1,
