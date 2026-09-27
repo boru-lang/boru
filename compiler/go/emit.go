@@ -18003,6 +18003,7 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	for n := range rec.deoptNames {
 		names[n] = true
 	}
+	es.dropIslandMadeDefs(rec, names)
 	ok := es.deoptDefsBindable(rec.frag.events, names)
 	switch {
 	case !ok:
@@ -18226,6 +18227,54 @@ func (es *EmitState) lambdaNamesSelfBound(rec *fnUnitRec, names map[string]bool)
 		}
 	}
 	return true
+}
+
+// dropIslandMadeDefs removes from names each def every island makes itself
+// (NUR282's `def ok (do b) ok`, whose count island re-runs its statement):
+// a name no closure child seeded, no param or capture holds, and every def
+// of which stands at the unit's top level after the token the latest island
+// resumes at. Each island runs such a def again before it reads the name,
+// so none reads it from the compiled frame, and its def needs no
+// registry-visible bind (a do's run has no re-pushable home).
+func (es *EmitState) dropIslandMadeDefs(rec *fnUnitRec, names map[string]bool) {
+	last := -1
+	for _, d := range rec.deopts {
+		last = max(last, d.token)
+	}
+	kept := map[string]bool{}
+	for i, n := range rec.locals {
+		if n != "" && i < rec.nParams+len(rec.caps) {
+			kept[n] = true
+		}
+	}
+	for n := range rec.deoptNames {
+		kept[n] = true
+	}
+	late := map[string]bool{}
+	var walk func(events []EmitEvent, top bool)
+	walk = func(events []EmitEvent, top bool) {
+		for i := range events {
+			ev := &events[i]
+			if ev.kind == evDynBind && ev.dyn != nil {
+				if top && bodyTokenContaining(rec.body, ev.dyn.pos) > last {
+					late[ev.dyn.name] = true
+				} else {
+					kept[ev.dyn.name] = true
+				}
+			}
+			for _, f := range childFragments(ev) {
+				if f != nil {
+					walk(f.events, false)
+				}
+			}
+		}
+	}
+	walk(rec.frag.events, true)
+	for n := range late {
+		if !kept[n] {
+			delete(names, n)
+		}
+	}
 }
 
 // planDeoptsEnv keeps the environment a unit's closure children seeded on

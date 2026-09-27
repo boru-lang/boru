@@ -106,22 +106,32 @@ func TestPlanDeoptsDeclines(t *testing.T) {
 	if len(rec.deopts) != 0 || rec.deoptEnv {
 		t.Errorf("a def with no re-pushable source declines the unit's points: %+v", rec.deopts)
 	}
-	// A def the island reads of a FN value (`def w fn […]  … w`): no
-	// const or local re-pushes it, so the unit would decline at its bind —
-	// the points decline; a def of an inert literal binds.
-	es, u, rec, _ = deoptUnit(t, []core.Value{deoptTok("j", 43), deoptTok("typeof", 45), deoptTok("w", 52)}, 43,
-		EmitEvent{seq: 3, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(45), ops: []EmitOperand{EventOperand(1, 0)}}},
-		EmitEvent{seq: 4, kind: evDynBind, dyn: &emitDynBind{name: "w", srcSeq: -1, val: core.NewCarrier(core.TFunction), pos: deoptAt(48)}})
+	// A def the island reads of a FN value (`def w fn […]` before the
+	// island's statement, `… w` in it): no const or local re-pushes it, so
+	// the unit would decline at its bind — the points decline; a def of an
+	// inert literal binds.
+	fnDef := func(val core.Value, col int) (*EmitState, *emitUnit, *fnUnitRec) {
+		es, u, rec, _ := deoptUnit(t, []core.Value{deoptTok("j", 43), deoptTok("typeof", 45), deoptTok("w", 52)}, 43,
+			EmitEvent{seq: 3, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(45), ops: []EmitOperand{EventOperand(1, 0)}}},
+			EmitEvent{seq: 4, kind: evDynBind, dyn: &emitDynBind{name: "w", srcSeq: -1, val: val, pos: deoptAt(col)}})
+		return es, u, rec
+	}
+	es, u, rec = fnDef(core.NewCarrier(core.TFunction), 26)
 	es.planDeopts(u, rec)
 	if len(rec.deopts) != 0 || rec.deoptEnv {
 		t.Errorf("a def of a fn value the island spells declines: %+v", rec.deopts)
 	}
-	es, u, rec, _ = deoptUnit(t, []core.Value{deoptTok("j", 43), deoptTok("typeof", 45), deoptTok("w", 52)}, 43,
-		EmitEvent{seq: 3, kind: evCall, call: emitCall{word: "typeof", nout: 1, pos: deoptAt(45), ops: []EmitOperand{EventOperand(1, 0)}}},
-		EmitEvent{seq: 4, kind: evDynBind, dyn: &emitDynBind{name: "w", srcSeq: -1, val: core.NewInteger(7), pos: deoptAt(48)}})
+	es, u, rec = fnDef(core.NewInteger(7), 26)
 	es.planDeopts(u, rec)
 	if len(rec.deopts) != 1 || !rec.deoptEnv {
 		t.Errorf("a def of an inert literal binds: %+v", rec.deopts)
+	}
+	// The same def after the island's token is one the island makes itself
+	// (dropIslandMadeDefs, NUR282): it needs no bind, and the point stands.
+	es, u, rec = fnDef(core.NewCarrier(core.TFunction), 48)
+	es.planDeopts(u, rec)
+	if len(rec.deopts) != 1 || !rec.deoptEnv || rec.deoptNames["w"] {
+		t.Errorf("a def the island makes itself needs no bind: %+v %v", rec.deopts, rec.deoptNames)
 	}
 	// A def the island reads made inside a branch arm declines too.
 	es, u, rec, _ = deoptUnit(t, []core.Value{deoptTok("j", 43), deoptTok("typeof", 45), deoptTok("y", 52)}, 43,

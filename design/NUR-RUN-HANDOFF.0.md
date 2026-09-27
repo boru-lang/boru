@@ -9,6 +9,28 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR282's def-group seat compiles (2026-09-27)
+
+`def f fn [[b:List][Any][def ok (do b) ok]] end f (quote [5 6])` raises f's
+return-count error interpreted. The do's count island was planned, and then
+`planDeopts` dropped it with every point of the unit: each def among the
+names an island spells must bind registry-visibly, and a do's run has no
+re-pushable home. But `ok`'s def stands after the token its island resumes
+at, so the island makes it itself.
+
+- **The rule (`dropIslandMadeDefs`).** A name leaves the names the islands
+  bind when every def of it stands at the unit's top level after the latest
+  island's token, no param or capture holds it, and no closure child seeded
+  it. Every island runs such a def again before it reads the name.
+- **Answers.** A run of `[5 6]` raises the interpreter's return-count error,
+  `[]` answers `undefined word: ok`, and `[g/v]` answers `[7]`: the island
+  writes g in the do's place and steps it.
+- **Still loud.** An island that reads the name from the frame: an earlier
+  def of it (`def ok 1 end def ok (do b) ok`), or a gradual read after the
+  group, whose own point resumes at the read (`def ok (do b) ok add 1`).
+- **Pins.** `TestComputedDoBodyCheckedOneDefers` (two defer rows now agree,
+  two new loud rows) and compiler `TestDropIslandMadeDefs`.
+
 ## NUR282's wrong-count single seat compiles (2026-09-27)
 
 `(do b) add 1` over a two-value body raises the interpreter's return-count
@@ -41,7 +63,10 @@ carries the claim (`DynMethodSpec.Parks`). The claim is set only where the
 residual relies on it, recorded through the DynMethods index each shaped
 apply lowered to (`dynMethodAt`), so no program that compiled before
 changes. The VM defers on a callee that is not a boru fn, a native whose
-result the interpreter might step on (`parksResult`).
+result the interpreter might step on (`parksResult`). gate52 found
+`parksResult`'s `len(fd.Signatures) == 0` unpinned in the arity gate: an
+emptiness test of the overload list, like NUR238's, where the count of params
+never enters. `eng/go/vm.go` is pinned at 24 (75aed2d).
 
 ## The register resolved: NUR296 and NUR282 by the scope ruling (2026-09-27)
 

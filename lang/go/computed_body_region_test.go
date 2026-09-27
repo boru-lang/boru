@@ -303,21 +303,26 @@ func TestComputedDoBodyCheckedOneDefers(t *testing.T) {
 		// A run of the wrong count.
 		{risky + `risky [true true]`, "error:type_error"},
 		{risky + `risky []`, "error:signature_error"},
-		{`def f fn [[b:List][Any][def ok (do b) ok]] end f (quote [])`, "error:undefined_word"},
 		{`def f fn [[m:Map][Any][(do m.k) add 1]] end f {k: (quote [5 6])}`, "error:type_error"},
-		// One value the interpreter re-steps: a fn value. (A list literal
-		// over such a run at the program level is the prefix island's —
-		// TestComputedDoBodyIslandCompiles.)
-		{`def g fn [[][Integer][7]] end def f fn [[b:List][Any][def h (do b) h]] end f (quote [g/v])`, "[7]"},
+		// A def's group whose name an island reads from the compiled frame:
+		// an earlier def of it, or a gradual read of it after the group.
+		{`def f fn [[b:List][Any][def ok 1 end def ok (do b) ok]] end f (quote [5 6])`, "error:type_error"},
+		{`def f fn [[b:List][Any][def ok (do b) ok add 1]] end f (quote [5 6])`, "error:type_error"},
 	} {
 		requireCheckedOneDefer(t, c.src, c.wantI)
 	}
 	// A seat whose statement the do's count island can re-run (NUR282):
 	// the run is written in the do's place, and the interpreter's own
-	// error answers on both lanes.
+	// answer stands on both lanes. A def's group is such a seat: the island
+	// makes the def itself (dropIslandMadeDefs), so a fn value the run
+	// leaves re-steps as the interpreter steps it.
 	for _, c := range []struct{ src, want string }{
 		{`def f fn [[b:List][Any][(do b) add 1]] end f (quote [5 6])`, "ERROR:expected 1 return value(s), got 2"},
 		{`def f fn [[b:List][Any][(do b) add 1]] end f (quote [])`, "ERROR:cannot call `add`"},
+		{`def f fn [[b:List][Any][def ok (do b) ok]] end f (quote [5 6])`, "ERROR:expected 1 return value(s), got 2"},
+		{`def f fn [[b:List][Any][def ok (do b) ok]] end f (quote [])`, "ERROR:undefined word: ok"},
+		{`def f fn [[b:List][Any][def ok (do b) end ok]] end f (quote [5 6])`, "ERROR:expected 1 return value(s), got 2"},
+		{`def g fn [[][Integer][7]] end def f fn [[b:List][Any][def h (do b) h]] end f (quote [g/v])`, "[7]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
