@@ -114,6 +114,9 @@ type dynBindEntry struct {
 // frames, open loops, pc) lives in run() so a body closure invoked
 // mid-dispatch executes on its own stack without disturbing the caller.
 type vmContext struct {
+	// polyCache is the run's poly inline cache (vm_poly_cache.go), per
+	// CALL_NATIVE_POLY site.
+	polyCache map[*compiler.PolyRef]*polyCacheEntry
 	p         *compiler.Program
 	r         *core.Registry
 	ceiling   int
@@ -885,7 +888,18 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	for i := 0; i < n; i++ {
 		window[i] = stack[len(stack)-1-i]
 	}
-	mr := core.MatchSignature(sigs, window, core.WordInfo{ArgCount: n})
+	// The poly inline cache (vm_poly_cache.go): a window with the tags the
+	// site's last pick was made for takes that pick without re-matching.
+	ic := vc.polyCacheFor(pr)
+	var mr *core.MatchResult
+	if sig := ic.hit(fn, window); sig != nil {
+		mr = &core.MatchResult{Sig: sig, Args: window}
+	} else {
+		mr = core.MatchSignature(sigs, window, core.WordInfo{ArgCount: n})
+		if mr != nil && mr.Sig != nil {
+			ic.fill(fn, sigs, window, mr.Sig)
+		}
+	}
 	if mr == nil || mr.Sig == nil || mr.Sig.DispatchHandler() == nil {
 		// No runtime match. The interpreter's signature_error is built from its
 		// live tape / forward-collection state (engine.go sigError) — the

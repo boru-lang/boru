@@ -23,4 +23,5 @@ vm_markwindow.go	eng
 vm_poly_nomatch.go	eng	
 vm_rematch.go	eng	
 vm_spec_guard.go	eng	call-site specialisation guard (CALL_USER entry)
+vm_poly_cache.go	eng	poly inline cache (CALL_NATIVE_POLY per-site pick keyed on operand tags)
 vm_token_body.go	eng	
