@@ -19,12 +19,15 @@ import (
 //
 // The interpreter can run the whole STATEMENT holding the landing again, from
 // its first token, whenever nothing the compiled code did inside it before
-// the landing is an effect a second run repeats — here, only member reads —
-// and the compiled stack at the statement's start holds exactly what the
-// interpreter's does there (no operand of the statement or a later one was
-// deferred past it, NUR207's accounting). The landing then restarts it: the
-// frame region beneath the statement as the resolved prefix, the program's
-// tokens from the statement on, and the island's residual is the program's.
+// the landing is an effect a second run repeats — member reads only, or a
+// call that opens a paren whose value the compiled code still holds: the
+// island writes the value in the paren's place (restartSubsts), so the call
+// is not repeated — and the compiled stack at the statement's start holds
+// exactly what the interpreter's does there (no operand of the statement or
+// a later one was deferred past it, NUR207's accounting). The landing then
+// restarts it: the frame region beneath the statement as the resolved
+// prefix, the program's tokens from the statement on, and the island's
+// residual is the program's.
 
 // landingRestart is one planned statement island: the program token the
 // statement begins at, its position, and the compiled stack's depth there
@@ -43,6 +46,24 @@ type landingRestart struct {
 	// unseatable marks a unit's island whose frame, at the statement's
 	// start, holds unnamed params the walk cannot place (deoptPrefix).
 	unseatable bool
+	// substs are the parens the island writes the compiled code's values in
+	// place of (restartSubsts).
+	substs []substPlan
+}
+
+// substPlan is one paren a statement island writes a value in place of: its
+// token path (tokenPath) and the call event whose one result it is.
+type substPlan struct {
+	path []int
+	seq  int
+}
+
+// seated reports whether the walk seated r where the island can take the
+// statement over: its depth measured, its unit frame placeable and, at the
+// root, the compiled stack there exactly the residual's results the plan
+// counted (rootPreStart).
+func (r *landingRestart) seated() bool {
+	return r != nil && r.depth >= 0 && !r.unseatable && (r.held < 0 || r.depth == r.held)
 }
 
 // planLandingRestarts plans the program root's landings and shaped applies a
@@ -72,7 +93,11 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 			continue
 		}
 		d := deoptPoint{seq: seq, slot: -1, start: es.rootBody[tok].Pos(), token: tok}
-		if d.start.Row == 0 || es.deoptDeferred(es.units[0], rec, &d, -1) || !restartReruns(tree, at, seq, es.rootBody, tok) {
+		if d.start.Row == 0 || es.deoptDeferred(es.units[0], rec, &d, -1) {
+			continue
+		}
+		substs, reruns := restartReruns(tree, at, seq, es.rootBody, tok)
+		if !reruns {
 			continue
 		}
 		srcs, held, ok := es.rootPreStart(lw, residual, d.start, statementFirstSeq(tree, seq, d.start))
@@ -82,8 +107,260 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 		if lw.landingRestarts == nil {
 			lw.landingRestarts = map[int]*landingRestart{}
 		}
-		lw.landingRestarts[seq] = &landingRestart{token: tok, start: d.start, depth: -1, srcs: srcs, held: held}
+		lw.landingRestarts[seq] = &landingRestart{token: tok, start: d.start, depth: -1, srcs: srcs, held: held, substs: substs}
 	}
+}
+
+// The guards of a branch (NUR292) a statement island may take over: the
+// condition's (__condguard, before the jump) and each value arm's
+// (__codeguard, on the path that takes it). guardKey keys one with its
+// branch event's seq.
+const (
+	guardCond = iota + 1
+	guardThen
+	guardElse
+)
+
+// guardKey keys the planned island of the guard of kind on branch event seq.
+func guardKey(seq, kind int) int { return seq*4 + kind }
+
+// guardCand is one guarded operand of a branch: the branch event's seq, the
+// guard's kind and the operand it guards.
+type guardCand struct {
+	seq, kind int
+	op        EmitOperand
+}
+
+// branchGuards lists the guarded operands of the tree's branches outside any
+// loop, in seq order.
+func branchGuards(tree map[int]treeEvent) []guardCand {
+	var out []guardCand
+	for seq, te := range tree {
+		if te.ev.kind != evBranch || te.inLoop {
+			continue
+		}
+		br := te.ev.br
+		if br.condGuard {
+			out = append(out, guardCand{seq: seq, kind: guardCond, op: br.cond})
+		}
+		if br.thenGuard {
+			out = append(out, guardCand{seq: seq, kind: guardThen, op: br.thenVal})
+		}
+		if br.elsGuard {
+			out = append(out, guardCand{seq: seq, kind: guardElse, op: br.elsVal})
+		}
+	}
+	sort.Slice(out, func(i, j int) bool { return guardKey(out[i].seq, out[i].kind) < guardKey(out[j].seq, out[j].kind) })
+	return out
+}
+
+// planGuardRestarts plans the root's branch guards a statement island can
+// take over (NUR292). A guard defers on a computed condition or value arm
+// that is a list at run time, which the interpreter runs as code — a
+// condition inline, over the values beneath the `if`, an arm spliced in
+// parens. The statement then runs again on the interpreter from its first
+// token, the guarded value written in place of the paren that computed it,
+// under the landing's conditions (planLandingRestarts): the branch outside
+// any loop, nothing deferred past the statement's start, and every event
+// the compiled code ran in the statement before the guard re-runnable or
+// inside a paren the island substitutes (guardReruns).
+func (es *EmitState) planGuardRestarts(lw *lowerer, residual []core.Value) {
+	if len(es.rootBody) == 0 || es.trapAt != 0 {
+		return
+	}
+	tree := rootTreeEvents(es.frames[0], false)
+	rec := &fnUnitRec{frag: &EmitFragment{events: es.frames[0]}, body: es.rootBody, localReads: es.rootLocalReads}
+	for _, g := range branchGuards(tree) {
+		d, ok := es.guardPoint(es.units[0], rec, tree, g)
+		if !ok {
+			continue
+		}
+		srcs, held, ok := es.rootPreStart(lw, residual, d.start, statementFirstSeq(tree, g.seq, d.start))
+		if !ok {
+			continue
+		}
+		if lw.guardRestarts == nil {
+			lw.guardRestarts = map[int]*landingRestart{}
+		}
+		lw.guardRestarts[guardKey(g.seq, g.kind)] = &landingRestart{token: d.token, start: d.start, depth: -1, srcs: srcs, held: held, substs: d.substs}
+	}
+}
+
+// guardPoint is guard g's statement island in rec's body, when one can take
+// the statement over (planGuardRestarts' conditions but the prefix). The
+// statement is the `if` word's (BranchRecord.CondCheckPos): the branch's
+// own position is its condition value's, which an earlier statement may
+// have written.
+func (es *EmitState) guardPoint(u *emitUnit, rec *fnUnitRec, tree map[int]treeEvent, g guardCand) (deoptPoint, bool) {
+	tok := statementToken(rec.body, tree[g.seq].ev.br.condCheckPos)
+	if tok < 0 {
+		return deoptPoint{}, false
+	}
+	d := deoptPoint{seq: g.seq, slot: -1, start: rec.body[tok].Pos(), token: tok, restart: true, guard: g.kind}
+	if d.start.Row == 0 || es.deoptDeferred(u, rec, &d, -1) {
+		return deoptPoint{}, false
+	}
+	substs, ok := guardReruns(tree, g.seq, rec.body, tok)
+	if !ok {
+		return deoptPoint{}, false
+	}
+	d.substs = substs
+	return d, true
+}
+
+// restartSubsts plans the parens a statement island writes values in place
+// of, so that it may run the statement (from body token tok on) again: every
+// event of pending — the compiled code's run in the statement before the
+// stop — that is no re-runnable read (restartRead) must have run inside a
+// paren another such event's call opens (parenOf), binding nothing there,
+// and the island writes each outermost one as the value its call left: the
+// run is the compiled code's, never repeated. ok is false otherwise.
+func restartSubsts(tree map[int]treeEvent, body []core.Value, tok int, pending []int) ([]substPlan, bool) {
+	var cands []substPlan
+	for _, s := range pending {
+		if ev := tree[s].ev; !restartRead(ev) {
+			if path, ok := parenOf(ev, body, tok); ok {
+				cands = append(cands, substPlan{path: path, seq: s})
+			}
+		}
+	}
+	var kept []substPlan
+	for _, c := range cands {
+		outer := false
+		for _, o := range cands {
+			outer = outer || (len(o.path) < len(c.path) && hasPrefix(c.path, o.path))
+		}
+		if !outer {
+			kept = append(kept, c)
+		}
+	}
+	for _, s := range pending {
+		ev := tree[s].ev
+		inside := false
+		for _, k := range kept {
+			inside = inside || hasPrefix(tokenPath(body, eventPos(*ev)), k.path)
+		}
+		switch {
+		case inside && (ev.kind == evDynBind || ev.kind == evStore || ev.kind == evBindTwin):
+			return nil, false
+		case !inside && !restartRead(ev):
+			return nil, false
+		}
+	}
+	sort.Slice(kept, func(i, j int) bool { return kept[i].seq < kept[j].seq })
+	return kept, true
+}
+
+// parenOf is the path (tokenPath) to the paren of the statement, from body
+// token tok on, that call event ev opens — ev at its first token — when the
+// paren leaves exactly ev's one value: a paren seals the stack off, so the
+// call takes nothing from outside it, and it leaves its value alone when it
+// takes every later token as one operand each. ok is false for any other
+// event.
+func parenOf(ev *EmitEvent, body []core.Value, tok int) ([]int, bool) {
+	p := eventPos(*ev)
+	path := tokenPath(body, p)
+	if len(path) == 0 || path[0] < tok {
+		return nil, false
+	}
+	ops, nout := callShape(ev)
+	toks := body
+	for i, at := range path {
+		inner, nested := nestedToks(toks[at])
+		if core.IsParenExpr(toks[at]) && len(inner) > 0 && inner[0].Pos() == p {
+			return path[:i+1], nout == 1 && len(ops) == len(inner)-1
+		}
+		if !nested {
+			break
+		}
+		toks = inner
+	}
+	return nil, false
+}
+
+// tokenPath is the path of token indexes from body down to the token that
+// holds position p: at each level the one holding it (bodyTokenContaining),
+// entered while it is a paren or a list literal.
+func tokenPath(body []core.Value, p core.SrcPos) []int {
+	var path []int
+	for toks := body; ; {
+		at := bodyTokenContaining(toks, p)
+		if at < 0 {
+			return path
+		}
+		path = append(path, at)
+		inner, nested := nestedToks(toks[at])
+		if !nested {
+			return path
+		}
+		toks = inner
+	}
+}
+
+// nestedToks is a paren's or a plain list literal's tokens.
+func nestedToks(v core.Value) ([]core.Value, bool) {
+	if core.IsParenExpr(v) {
+		toks, _ := core.AsParenExpr(v)
+		return toks, true
+	}
+	if v.Parent.Equal(core.TList) && v.Eval && !v.Quoted {
+		l, err := core.AsList(v)
+		return l.Slice(), err == nil
+	}
+	return nil, false
+}
+
+// hasPrefix reports whether path begins with prefix (non-empty).
+func hasPrefix(path, prefix []int) bool {
+	if len(prefix) == 0 || len(path) < len(prefix) {
+		return false
+	}
+	for i, x := range prefix {
+		if path[i] != x {
+			return false
+		}
+	}
+	return true
+}
+
+// callShape is a call event's operands and result count; none for another
+// kind.
+func callShape(ev *EmitEvent) ([]EmitOperand, int) {
+	if ev.kind == evCall {
+		return ev.call.ops, ev.call.nout
+	}
+	if ev.kind == evCallUser {
+		return ev.uc.ops, ev.uc.nout
+	}
+	return nil, 0
+}
+
+// guardReruns plans the parens a guard's statement island substitutes
+// (restartSubsts) when the guard on branch event seq stops it, the statement
+// beginning at body token tok: the compiled code's run in it before the
+// guard is every event recorded from the statement's first event up to the
+// branch, its arms aside, which had not run. The guarded value's own paren
+// is one of them, its value the one the guard checks.
+func guardReruns(tree map[int]treeEvent, seq int, body []core.Value, tok int) ([]substPlan, bool) {
+	br := tree[seq].ev.br
+	arms := map[int]bool{}
+	for _, frag := range []*EmitFragment{br.then, br.els} {
+		if frag == nil {
+			continue
+		}
+		for s := range rootTreeEvents(frag.events, false) {
+			arms[s] = true
+		}
+	}
+	first := statementFirstSeq(tree, seq, body[tok].Pos())
+	var pending []int
+	for s := range tree {
+		if s >= first && s < seq && !arms[s] {
+			pending = append(pending, s)
+		}
+	}
+	sort.Ints(pending)
+	return restartSubsts(tree, body, tok, pending)
 }
 
 // rootPreStart reads the program residual's entries the interpreter's stack
@@ -164,11 +441,21 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 			continue
 		}
 		d := deoptPoint{seq: seq, slot: -1, start: rec.body[tok].Pos(), token: tok, restart: true}
-		if d.start.Row == 0 || es.deoptDeferred(u, rec, &d, -1) || !restartReruns(tree, at, seq, rec.body, tok) ||
-			outsProducedBefore(rec.outOps, statementFirstSeq(tree, seq, d.start)) {
+		if d.start.Row == 0 || es.deoptDeferred(u, rec, &d, -1) || outsProducedBefore(rec.outOps, statementFirstSeq(tree, seq, d.start)) {
 			continue
 		}
+		substs, reruns := restartReruns(tree, at, seq, rec.body, tok)
+		if !reruns {
+			continue
+		}
+		d.substs = substs
 		rec.deopts = append(rec.deopts, d)
+	}
+	// The unit's branch guards (NUR292), as the root's (planGuardRestarts).
+	for _, g := range branchGuards(tree) {
+		if d, ok := es.guardPoint(u, rec, tree, g); ok && !outsProducedBefore(rec.outOps, statementFirstSeq(tree, g.seq, d.start)) {
+			rec.deopts = append(rec.deopts, d)
+		}
 	}
 }
 
@@ -189,11 +476,10 @@ func outsProducedBefore(outs []EmitOperand, firstSeq int) bool {
 // not the residual's results the plan counted (rootPreStart), and in a unit
 // whose frame's unnamed params the walk could not place.
 func (lw *lowerer) restartAt(seq int) *landingRestart {
-	r := lw.landingRestarts[seq]
-	if r == nil || r.depth < 0 || r.unseatable || (r.held >= 0 && r.depth != r.held) {
-		return nil
+	if r := lw.landingRestarts[seq]; r.seated() {
+		return r
 	}
-	return r
+	return nil
 }
 
 // noteRestartDepths seats the compiled stack's depth on every planned
@@ -203,26 +489,45 @@ func (lw *lowerer) restartAt(seq int) *landingRestart {
 // still holds on its stack bottom at the statement's start (deoptPrefix,
 // read from their slots), then the frame region.
 func (lw *lowerer) noteRestartDepths(p core.SrcPos) {
-	for _, r := range lw.landingRestarts {
-		if r.depth >= 0 || p.Row == 0 || posAfter(r.start, p) {
-			continue
-		}
-		r.depth = len(lw.vm)
-		if lw.landingRoot {
-			continue
-		}
-		params, ok := lw.deoptPrefix()
-		if !ok {
-			r.unseatable = true
-			continue
-		}
-		for _, slot := range params {
-			r.srcs = append(r.srcs, RestartSrc{Kind: RestartLocal, Idx: slot})
-		}
-		for i := 0; len(params) > 0 && i < r.depth; i++ {
-			r.srcs = append(r.srcs, RestartSrc{Kind: RestartStack, Idx: i})
+	for _, m := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts} {
+		for _, r := range m {
+			lw.noteRestartDepth(r, p)
 		}
 	}
+}
+
+// noteRestartDepth is noteRestartDepths for one island.
+func (lw *lowerer) noteRestartDepth(r *landingRestart, p core.SrcPos) {
+	if r.depth >= 0 || p.Row == 0 || posAfter(r.start, p) {
+		return
+	}
+	r.depth = len(lw.vm)
+	if lw.landingRoot {
+		return
+	}
+	params, ok := lw.deoptPrefix()
+	if !ok {
+		r.unseatable = true
+		return
+	}
+	for _, slot := range params {
+		r.srcs = append(r.srcs, RestartSrc{Kind: RestartLocal, Idx: slot})
+	}
+	for i := 0; len(params) > 0 && i < r.depth; i++ {
+		r.srcs = append(r.srcs, RestartSrc{Kind: RestartStack, Idx: i})
+	}
+}
+
+// restartAnchor is where root event ev stands in its statement for the
+// islands' depth (noteRestartDepths): a guarded branch at its `if` word
+// (BranchRecord.CondCheckPos) — its own position is its condition value's,
+// which an earlier statement may have written — and any other event at its
+// own position.
+func restartAnchor(ev *EmitEvent) core.SrcPos {
+	if ev.kind == evBranch && ev.br.condCheckPos.Row > 0 {
+		return ev.br.condCheckPos
+	}
+	return eventPos(*ev)
 }
 
 // treeEvent is one event of the root's tree: the event, whether a loop
@@ -277,16 +582,17 @@ func statementToken(body []core.Value, p core.SrcPos) int {
 }
 
 // restartReruns reports whether the statement at body token tok may run
-// again from its first token when event seq (at) stops it: every event the
-// compiled code ran before the stop is re-runnable (restartRunsReadsOnly).
-// A stop inside a loop's body ran earlier iterations WHOLE — the body's
-// events after the stop too — so there every event of the statement's span
-// must be re-runnable, the branches and loops that hold them aside
-// (restartSpanReruns).
-func restartReruns(tree map[int]treeEvent, at treeEvent, seq int, body []core.Value, tok int) bool {
+// again from its first token when event seq (at) stops it, and the parens
+// its island substitutes: every event the compiled code ran before the stop
+// is re-runnable or ran inside one (restartRunsReadsOnly). A stop inside a
+// loop's body ran earlier iterations WHOLE — the body's events after the
+// stop too — so there every event of the statement's span must be
+// re-runnable, the branches and loops that hold them aside
+// (restartSpanReruns), and none is substituted.
+func restartReruns(tree map[int]treeEvent, at treeEvent, seq int, body []core.Value, tok int) ([]substPlan, bool) {
 	start := body[tok].Pos()
 	if !at.inLoop {
-		return restartRunsReadsOnly(tree, seq, start)
+		return restartRunsReadsOnly(tree, seq, body, tok)
 	}
 	end := len(body)
 	for i := tok + 1; i < len(body); i++ {
@@ -300,7 +606,7 @@ func restartReruns(tree map[int]treeEvent, at treeEvent, seq int, body []core.Va
 	if at.ev.kind == evCall && at.ev.call.dynMethod != nil {
 		landed = methodSeq(at.ev)
 	}
-	return restartSpanReruns(tree, start, end, body, landed)
+	return nil, restartSpanReruns(tree, start, end, body, landed)
 }
 
 // restartSpanReruns reports whether a stop inside a loop may restart the
@@ -357,23 +663,22 @@ func containsInt(xs []int, x int) bool {
 	return false
 }
 
-// restartRunsReadsOnly reports whether every event of the root's tree the
-// compiled code ran from the statement's start up to event seq — the ones
-// recorded in that span, in execution order — is a member read
-// (restartRead), so the statement island's second run repeats no effect. A
-// shaped apply's own event has not run when it restarts; a landed event
-// has, and is read like the others.
-func restartRunsReadsOnly(tree map[int]treeEvent, seq int, start core.SrcPos) bool {
-	first := statementFirstSeq(tree, seq, start)
+// restartRunsReadsOnly plans the parens a statement island substitutes
+// (restartSubsts) so that its second run repeats no effect: the compiled
+// code's run in the statement, from its start (body token tok) up to event
+// seq, is every event recorded in that span. A shaped apply's own event has
+// not run when it restarts; a landed event has, and is planned like the
+// others.
+func restartRunsReadsOnly(tree map[int]treeEvent, seq int, body []core.Value, tok int) ([]substPlan, bool) {
+	first := statementFirstSeq(tree, seq, body[tok].Pos())
+	var pending []int
 	for s, te := range tree {
-		if s < first || s > seq || (s == seq && te.ev.kind == evCall && te.ev.call.dynMethod != nil) {
-			continue
-		}
-		if !restartRead(te.ev) {
-			return false
+		if s >= first && s <= seq && (s != seq || te.ev.kind != evCall || te.ev.call.dynMethod == nil) {
+			pending = append(pending, s)
 		}
 	}
-	return true
+	sort.Ints(pending)
+	return restartSubsts(tree, body, tok, pending)
 }
 
 // restartRead reports whether ev runs no user code, binds nothing and has

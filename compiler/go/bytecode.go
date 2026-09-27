@@ -1185,6 +1185,12 @@ type SigRef struct {
 	// the operands out as the interpreter's tape (the body slot as its token
 	// list) and plans them: no signature, and it raises that report.
 	Split *NativeSplit
+	// Restart, when non-nil, is a branch guard's STATEMENT island (NUR292,
+	// compiler's landing_restart.go): where the guard's designed defer fires
+	// — a list the interpreter runs as code — the VM runs the statement again
+	// from its first token instead, the guarded value standing where the
+	// paren that computed it was written (StmtIsland.Subst).
+	Restart *StmtIsland
 }
 
 // NativeSplit is SigRef.Split: how many of the call's operands, in
@@ -1476,6 +1482,9 @@ type DynMethodSpec struct {
 	Island    []core.Value
 	RetPC     int
 	PrefixSrc []RestartSrc
+	// Substs are the parens the island writes the compiled code's values in
+	// place of (RestartSubst).
+	Substs []RestartSubst
 }
 
 // Program is a compiled unit: code, interned constants, the signature
@@ -1742,6 +1751,36 @@ type LandingWord struct {
 	// residual's earlier entries. Empty, the prefix is the frame region's
 	// Depth values.
 	PrefixSrc []RestartSrc
+	// Substs are the parens the island writes the compiled code's values in
+	// place of (RestartSubst).
+	Substs []RestartSubst
+}
+
+// StmtIsland is a guard's statement island (SigRef.Restart): Island is the
+// body from the statement's first token, Depth how many values of the frame
+// region lie beneath the statement, PrefixSrc where the island's prefix
+// lives (RestartSrc; empty: the Depth values themselves), and Substs the
+// parens it writes the compiled code's values in place of — the guarded
+// value's own among them. The run continues at RetPC with the island's
+// residual; a unit's island tears its own defs down (Root false).
+type StmtIsland struct {
+	Island    []core.Value
+	Depth     int
+	RetPC     int
+	Root      bool
+	PrefixSrc []RestartSrc
+	Substs    []RestartSubst
+}
+
+// RestartSubst is one paren a statement island writes a value in place of
+// (compiler's restartSubsts): the call that opens it ran in the compiled
+// code, which must not repeat it, and a paren seals the stack off, so its
+// value is all it leaves. Path is the paren's index in the island, then in
+// each paren or list literal entered on the way down; Src is where the
+// compiled code holds the value when the island runs.
+type RestartSubst struct {
+	Path []int
+	Src  RestartSrc
 }
 
 // RestartSrc is one value a root statement island seats beneath the
@@ -1767,6 +1806,9 @@ const (
 	// RestartStack is the frame region's entry Idx, 0 at its bottom: an
 	// earlier result the root left on the stack.
 	RestartStack
+	// RestartGuard is the value a branch guard checks, off the stack when
+	// its island runs (a RestartSubst of StmtIsland only).
+	RestartGuard
 )
 
 // CallWindowKind names where one CallWindowOperand's value lives when the

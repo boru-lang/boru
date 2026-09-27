@@ -9,6 +9,44 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR292 closed: a branch guard's statement island, and the paren substitution (2026-09-27)
+
+**The mechanism.** A branch guard (`__condguard`, `__codeguard`) defers on
+a computed condition or value arm that is a list the interpreter runs as
+code — a condition inline over the values beneath the `if`, an arm spliced
+in parens. Its STATEMENT now runs again on the interpreter, the island
+NUR242 built for a landing: the planner (`planGuardRestarts` at the root,
+`planUnitRestarts` in a unit, both through `guardPoint`) keys each guard by
+its branch and kind (`guardKey`), and the lowering seats the island on the
+guard's own `SigRef` (`SigRef.Restart`, a `StmtIsland`) where the walk
+proved it; the VM's CALL_NATIVE takes it on the guard's designed defer
+(`guardRestart`).
+
+**The paren substitution.** A call before the stop no longer blocks the
+island when it opens a paren whose value the compiled code still holds: a
+paren seals the stack off, so the call took nothing from outside it, and
+it leaves exactly its value when its first token is the call and it takes
+every later token as one operand (`parenOf`). The island writes that value
+in the paren's place (`restartSubsts`, `RestartSubst`, the VM's
+`substIsland`), read where the stop holds it — the guard's own operand,
+a promoted slot, a frame-region entry (`restartSubstSrcs`, `heldAt`) —
+through parens and list literals (a token path, `substToken`). The same
+serves the landings and paren applies: NUR296's first witness, `[(g) (l.0
+true)]`, compiles.
+
+**What it took, measured by the probes.** The branch's recorded position
+is its condition VALUE's, which an earlier statement may have written
+(`def c (mk) end 5 if c …` restarted the `def`): the statement and the
+walk's depth now anchor at the `if` word (`CondCheckPos`,
+`restartAnchor`). The both-computed branch lowerings keep their operands
+on the walk's stack past the jump, so an arm guard there read stale
+indices — loud, never silent, as the VM refused them — and now sees the
+stack the run holds on its path (`emitCodeGuardOver`). A 46-program sweep
+over the guard and landing forms: 34 agree, 10 stay loud by design (NUR296),
+2 are the check pass's own refusals, none silent. gate43 on 41efce6 was
+green but for gocyclo (`Finalize` at 72 over 70), fixed here by moving the
+restart stamping out (`stampUnitRestarts`, `stampRootRestarts`).
+
 ## NUR242 and NUR219 closed: the statement island; NUR296 recorded (2026-09-27)
 
 **The mechanism.** A root landing whose `/q` claim has no compiled answer

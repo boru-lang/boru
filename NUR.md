@@ -214,11 +214,11 @@ keep the two in sync in the same commit.
 | [NUR289](#nur289) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): an anonymous fn whose Any slot meets a function word where a `do` body's result lands — `def mk fn [[][Any][([x:Any] => [x])]] end do [mk] typeof` — is the interpreter's strict-rule `signature_error`, and the compiled landing's walk answered `[Function]` (silent): it planned over the value's AUTHORED signature, whose `BarrierAllForward` scanned nothing forward. It plans over the installed view now (`installedSigView`). The caret still points at the word where the interpreter points at the fn (the landed value carries no position) | probe sweep, 2026-09-27 |
 | [NUR290](#nur290) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): a typed def over a body the check pass holds as a carrier — `def mk fn [[][Any][42]] end def x:Integer (mk) end x` — bound the ANNOTATION: Unify over a wider carrier takes the narrower side, the annotation's own type content, so the compiled run answered `[Integer]` where the interpreter answers 42 (and `[String]` where it refuses), and a membership unifier that cannot inspect a carrier (a fn shape, a negation) admitted it, binding the run's value unchecked (silent; 127 of 420 probed typed defs, in an arm unchanged from main). Unless the carrier's own type proves membership, the run decides it now: OpBindTyped over TypedBindRunMembership. A value that may be a fn under an annotation a fn may inhabit declines | probe sweep, 2026-09-27 |
 | [NUR291](#nur291) | FIXED 2026-09-27 (recorded and closed together, found by a probe sweep; the handoff log's entry of that date): `case` RUNS a list scrutinee as a code body and dispatches on its last result, whatever produced the list — `def mk fn [[][Any][[1 2]]] end case (mk) [Integer "i" String "s" "o"]` is "i" — and the compiled desugar matched the value itself when the pass held it abstractly: "o" (silent; also a fn parameter's `case v […]`, on main). The forward form records case's own scrutinee rule ahead of the chain (`__casesubject`); the stack form, where a list makes the clause list the scrutinee, guards the chain with `__casestack`, which defers on a list (loud) and passes every other value | probe sweep, 2026-09-27 |
-| [NUR292](#nur292) | OPEN — its silent half made LOUD and its plain list forms compiled 2026-09-27 (recorded the same day, found by a probe sweep; the handoff log's entries of that date; proposed verdict: resolve by fix): `if` runs a list condition INLINE — its words take the values beneath the if — and splices a list arm in parens, whatever produced the list, and the compiled branch held a computed list as a value: `def mk fn [[][Any][[false]]] end if (mk) ["t"] ["f"]` is "f" interpreted and was "t" compiled; `5 if (mk) …` over `quote [gt 3]` took the 5 interpreted; an Any arm over `[1 2]` answered `[[1 2]]` for `[1 2]` (silent, on main). The lowering now guards a value condition, and a value arm on the path that takes it, which the pass holds abstractly and which may be a list (`__codeguard`, `BranchRecord.Guard`): any other value passes, a fn still landing at the merge (NUR280), and a list defers. A condition list of plain values is its last value (`__condguard`; boru:sift's column dedupe over ArrayUtil.member's Boolean mask was the corpus witness, silent on main) and a one-value plain arm list its value. Open: a list condition that dispatches (it may take the values beneath the `if`), and an arm list of 0 or 2+ values |
+| [NUR292](#nur292) | FIXED 2026-09-27 (recorded the same day, found by a probe sweep; the handoff log's entries of that date): `if` runs a list condition INLINE — its words take the values beneath the if — and splices a list arm in parens, whatever produced the list, and the compiled branch held a computed list as a value: `def mk fn [[][Any][[false]]] end if (mk) ["t"] ["f"]` is "f" interpreted and was "t" compiled; `5 if (mk) …` over `quote [gt 3]` took the 5 interpreted; an Any arm over `[1 2]` answered `[[1 2]]` for `[1 2]` (silent, on main). The lowering guards a value condition, and a value arm on the path that takes it, which the pass holds abstractly and which may be a list (`__codeguard`, `__condguard`); a plain condition list is its last value and a one-value plain arm list its value (boru:sift's column dedupe was the corpus witness); any other list restarts the guard's STATEMENT on the interpreter, the guarded value written in place of the paren that computed it (the statement island, NUR242). The statements no island can run again stay loud: NUR296 |
 | [NUR293](#nur293) | FIXED 2026-09-27 (recorded and closed together, found probing NUR292; the handoff log's entry of that date): the compiled `if` ran a COMPUTED List arm as `[do <arm>]` (computedArmDoBody), the interpreter's arm splice on every axis but one — `do` traps a body error as an Error value, where the splice raises it: `def mk fn [[][List][quote [1 div 0]]] end if true (mk) ["f"]` raised arith_error interpreted and answered `[error(division by zero)]` compiled (silent, on main). The arm runs through `__arm`, `do` without the trap | probing NUR292, 2026-09-27 |
 | [NUR294](#nur294) | FIXED 2026-09-27 (recorded and closed together, found probing NUR292; the handoff log's entry of that date): a RUN — a computed body's values, counted at run time — was seated as the one value the pass models wherever it was not the dyn-body call's own result: a branch whose arm is one (`9 if true (mk) ["f"]` over a List `[1 2]` answered `[1 9 2]`), a literal `do` body ending in one (`9 do [do (mk)]` the same; `[9 do [do (mk)]]` `[1 [9 2]]`; `do [do (mk)] add` a signature_error for 3). A run is a run wherever it surfaces (`runOperand`: the trailing apply declines it, a closure body holding one is a region or declines, the backstop learns it from a probe); `__arm` runs the compiled closure of a literal body | probing NUR292, 2026-09-27 |
 | [NUR295](#nur295) | FIXED 2026-09-27 (recorded and closed together, found probing NUR219; the handoff log's entry of that date): a list literal's element the pass holds as possibly a fn — a gradual member read, a word's fn result, a list element — was assembled as data, where the interpreter's evaluation of the literal re-steps it over its neighbours: `[m.g 5]` over a factory's map answered `[[fn g(Integer) 5]]` for `[[6]]` (silent, on main). Such a list lowers to `OpMakeListReStep`: data elements assemble as before, a fn element re-steps the window through the island where the elements after it are literals, and anything else defers | probing NUR219, 2026-09-27 |
-| [NUR296](#nur296) | OPEN (recorded 2026-09-27, closing NUR242 and NUR219; proposed verdict: resolve by fix): a landing's `/q` claim or a paren apply over data restarts its statement on the interpreter only where the compiled code ran nothing a second run would repeat, and where a loop's first iteration decides every other; otherwise it defers. `def g fn [[] [Any] [7]] end [(g) (l.0 true)]` (a user call before the landing), `for 2 [[(l.(i) true)]]` (a read of the loop's index) and `for 2 [[(l.0 true)] def q 1 end]` (a bind in the loop) over a list of `/q` fns answer interpreted and defer compiled. Loud | closing NUR242, 2026-09-27 |
+| [NUR296](#nur296) | OPEN (recorded 2026-09-27, closing NUR242 and NUR219; proposed verdict: resolve by fix): a landing's `/q` claim, a paren apply over data or a branch guard over a list (NUR292) restarts its statement on the interpreter only where the compiled code ran nothing a second run would repeat — a call before the stop is written as its paren's value where the compiled code still holds it — and where a loop's first iteration decides every other; otherwise it defers. `for 2 [[(l.(i) true)]]` (a read of the loop's index) and `for 2 [[(l.0 true)] def q 1 end]` (a bind in the loop) over a list of `/q` fns, `[(g) drop (l.0 true)]` (a call whose value the statement consumed), and a branch guard inside a loop answer interpreted and defer compiled. `[(g) (l.0 true)]` compiles since the same day. Loud | closing NUR242, 2026-09-27 |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14460,11 +14460,11 @@ there were 56.
 
 ## NUR292 — a computed if condition or arm that is a list ran as data {#nur292}
 
-**Status:** OPEN — its silent half made LOUD 2026-09-27, and its plain
-list forms compiled the same day (recorded the same day; the handoff
-log's entries of that date) · **Surfaced by:** a probe
-sweep of conditionals over dynamic values (present on main) · **Proposed
-verdict:** resolve by fix.
+**Status:** FIXED 2026-09-27 — its silent half made LOUD, its plain list
+forms compiled, and its dispatching forms taken by the statement island,
+all that day (recorded the same day; the handoff log's entries of that
+date) · **Surfaced by:** a probe sweep of conditionals over dynamic
+values (present on main).
 
 **Rule:** a program the compiler admits, the compiled runtime runs, and
 answers as the interpreter does.
@@ -14539,14 +14539,36 @@ guard is emitted there). Pinned by
 `TestNUR292PlainListConditionAndArmCompile`; module-sift.tsv L112 runs
 compiled with the interpreter's answer.
 
-**What is open.** A list condition holding anything the inline run
-DISPATCHES (a word, a fn value — `5 if (quote [gt 3]) …` takes the 5): a
-faithful compile needs the interpreter's own splice at that point of the
-tape, the prefix island's machinery (`CALL_DYN_MIXED_FROM_MARK`) being
-the candidate. And a list arm of 0 or 2+ values (or one that dispatches):
-its count is a run's at the merge's one seat — the runtime-variadic
-region `[__arm <arm>]` already compiles for a List-typed arm, once the
-arm's list-or-value choice is made at run time.
+**The dispatching forms (2026-09-27, the same day).** A list condition
+holding anything the inline run DISPATCHES (`5 if (mk) …` over `quote [gt
+3]` takes the 5), and an arm list of 0 or 2+ values, are the interpreter's
+own splice at that point of the tape. Where the guard defers on one, its
+STATEMENT runs again on the interpreter from its first token — the
+statement island NUR242 built for a landing (compiler's
+`planGuardRestarts`, `SigRef.Restart`, the VM's `guardRestart`) — over the
+frame region beneath the statement, the island's residual the program's
+(or the unit's, at its RET). The guarded value is written in place of the
+paren that computed it: a paren seals the stack off, so its call took
+nothing from outside it, and it leaves exactly the value when its first
+token is the call, which takes every later token as one operand; the call
+ran in the compiled code and does not run again. Every other paren a call
+before the guard opened is written as the value the compiled code still
+holds (`restartSubsts`, `RestartSubst`), and every other event before the
+guard must be a re-runnable read. The statement is the `if` word's
+(`BranchRecord.CondCheckPos`), whose depth the walk seats there
+(`restartAnchor`): the branch's own position is its condition value's,
+which an earlier statement may have written (`def c (mk) end 5 if c …`).
+A def-bound condition or a parameter is read again by name; a branch
+nested in a list literal or another arm substitutes its paren where it
+stands (a token path); an error the list raises is the interpreter's
+(`quote [gt]` raises `gt`'s no-match, `quote [drop]` the "no value"). The
+arm guards of a branch whose arms are both computed see the stack the run
+holds on that path (`emitCodeGuardOver`). Pinned by
+`TestNUR292StatementIslandRunsTheList`; the forms no island can run again
+— a guard inside a loop, an effect before it outside any paren, a paren
+whose value the statement consumed before the guard (the condition of a
+branch whose arm guard stops, an unselected computed arm) — stay loud, as
+`TestNUR292ComputedIfConditionOrArmThatIsAList` pins, and are NUR296.
 
 ## NUR293 — a computed List arm ran as `do`, which traps its error {#nur293}
 
@@ -14698,7 +14720,7 @@ call's result is not collectable. Pinned by
 `TestNUR295FnElementInListLiteralReSteps`; a sweep of 90 list shapes over
 three map kinds found none silent.
 
-## NUR296 — a landing's statement an island cannot run again {#nur296}
+## NUR296 — a statement an island cannot run again {#nur296}
 
 **Status:** OPEN (proposed verdict: resolve by fix) · **Recorded:**
 2026-09-27 · **Surfaced by:** closing NUR242 and NUR219.
@@ -14710,17 +14732,29 @@ answers as the interpreter does.
 [[] [List] [[h/v h/v]]] end def l (mk) end`):
 
 ```
-def g fn [[] [Any] [7]] end [(g) (l.0 true)]     interp [[7 true]]
 for 2 [[(l.(i) true)]]                           interp [[true] [true]]
 for 2 [[(l.0 true)] def q 1 end]                 interp [[true] [true]]
+def g fn [[] [Any] [7]] end [(g) drop (l.0 true)]   interp [[true]]
   compiled   internal_error: RESTEP_LANDING at h: the re-step may CAPTURE the word `true` … (NUR219)
 ```
 
+and the branch guards' (NUR292; over `def mk fn [[][Any][quote [gt 3]]]
+end`): `def n 0 end while [n lt 1] [def n (n add 1) 5 if (mk) ["t"]
+["f"] drop]` (a guard inside a loop) and `print "a" 5 if (mk) ["big"]
+["small"]` (an effect before the guard) answer interpreted and defer
+compiled, as do `if (c) (mk) ["f"]` over a fn `c` (the condition's value
+is consumed when the then arm's guard stops) and `if true (mk) (mk2)`
+(the unselected computed arm is dropped).
+
 **Cause.** The statement island (NUR242) runs the statement again from its
 first token, so it serves only where the compiled code ran nothing a
-second run would repeat: here a user call ran before the landing, and in a
-loop the stop may first fire on a later iteration — the read follows the
-loop's index, or a bind in the span may change what it reads — after
+second run would repeat. A call before the stop is served where it opens a
+paren whose value the compiled code still holds at the stop — the island
+writes the value in the paren's place (`restartSubsts`, 2026-09-27: `[(g)
+(l.0 true)]`, recorded here first, compiles) — but not where the statement
+consumed the value before the stop, nor for an effect outside any paren.
+In a loop the stop may first fire on a later iteration — the read follows
+the loop's index, or a bind in the span may change what it reads — after
 earlier iterations ran their effects.
 
 **What a fix needs.** An island that resumes AT the stop instead of the

@@ -13,19 +13,17 @@ import (
 // holds abstractly that may be a list is guarded by the LOWERING
 // (__codeguard, BranchRecord.Guard): the guard passes any other value —
 // which answers as before, a fn landing where it did — and defers on a
-// list. An arm the branch does not take is never checked, as the
-// interpreter never splices it; an arm the pass types List keeps its
-// `[__arm <arm>]` path. A member fn condition is coerced and a member fn arm
-// lands at the merge, as NUR280 pins.
+// list its statement island cannot take (TestNUR292StatementIslandRunsTheList):
+// a guard inside a loop, or after an effect in its statement. An arm the
+// branch does not take is never checked, as the interpreter never splices
+// it; an arm the pass types List keeps its `[__arm <arm>]` path. A member fn
+// condition is coerced and a member fn arm lands at the merge, as NUR280
+// pins.
 func TestNUR292ComputedIfConditionOrArmThatIsAList(t *testing.T) {
 	mk := func(v string) string { return `def mk fn [[][Any][` + v + `]] end ` }
 	for _, src := range []string{
-		mk(`quote [gt 3]`) + `5 if (mk) ["big"] ["small"]`,
-		mk(`quote [gt 3]`) + `def f fn [[c:Any][Any][5 if c ["t"] ["f"]]] end f (mk)`,
-		mk(`[1 2]`) + `if true (mk) ["f"]`,
-		mk(`[1 2]`) + `def c false end if c ["t"] (mk)`,
-		mk(`[Integer]`) + `if (mk) ["t"] ["f"]`,
-		mk(`[{a:1}]`) + `if (mk) ["t"] ["f"]`,
+		mk(`quote [gt 3]`) + `print "a" 5 if (mk) ["big"] ["small"]`,
+		mk(`quote [gt 3]`) + `def n 0 end while [n lt 1] [def n (n add 1) 5 if (mk) ["t"] ["f"] drop]`,
 	} {
 		gotC, compiled, errC, _, errI := runBothEngines(t, src)
 		if !compiled || codeOf(errC) != "internal_error" || !strings.Contains(errC.Error(), "NUR292") || errI != nil || len(gotC) != 0 {
@@ -41,6 +39,47 @@ func TestNUR292ComputedIfConditionOrArmThatIsAList(t *testing.T) {
 		{`def mk fn [[][List][[1 2]]] end def c true end if c (mk) ["f"]`, "[1 2]"},
 		{`def inc fn [[n:Integer][Integer][n add 1]] end def m (flex {h: inc/v}) end 5 if m.h ["t"] ["f"]`, "[5 t]"},
 		{mk(`([y:Integer] => [y])`) + `5 if (mk) ["t"] ["f"]`, "[5 t]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+}
+
+// TestNUR292StatementIslandRunsTheList pins the list forms the guard hands
+// to its STATEMENT ISLAND (compiler's planGuardRestarts): where a guard
+// defers, the statement runs again on the interpreter from its first token,
+// the guarded value written in place of the paren that computed it — its
+// call is not repeated — so a condition list's words take the values beneath
+// the `if` (`5 if (mk) …` over `quote [gt 3]`), and an arm list of 0 or 2+
+// values lands them. A def-bound or parameter condition is read again by
+// name; a statement nested in a list literal or another arm substitutes the
+// paren where it stands; an error the list raises is the interpreter's.
+func TestNUR292StatementIslandRunsTheList(t *testing.T) {
+	mk := func(v string) string { return `def mk fn [[][Any][` + v + `]] end ` }
+	gt3 := mk(`quote [gt 3]`)
+	for _, c := range []struct{ src, want string }{
+		{gt3 + `5 if (mk) ["big"] ["small"]`, "[big]"},
+		{gt3 + `7 5 if (mk) ["big"] ["small"]`, "[7 big]"},
+		{gt3 + `def c (mk) end 5 if c ["big"] ["small"]`, "[big]"},
+		{gt3 + `def m {a: 5} end m.a if (mk) ["big"] ["small"]`, "[big]"},
+		{gt3 + `print "a" end 5 if (mk) ["big"] ["small"]`, "[big]"},
+		{gt3 + `5 if (mk) ["big"] ["small"] print`, "[]"},
+		{gt3 + `if true [5 if (mk) ["big"] ["small"]] [0]`, "[big]"},
+		{gt3 + `[5 if (mk) ["big"] ["small"]]`, "[['big']]"},
+		{gt3 + `def f fn [[c:Any][Any][5 if c ["t"] ["f"]]] end f (mk)`, "[t]"},
+		{gt3 + `def g fn [[n:Integer][Any][print "x" end n if (mk) ["big"] ["small"]]] end g 5`, "[big]"},
+		{gt3 + `def g fn [[Integer][Any][if (mk) ["big"] ["small"]]] end g 5`, "[big]"},
+		{mk(`quote [add gt 3]`) + `1 5 if (mk) ["big"] ["small"]`, "[big]"},
+		{mk(`[Integer]`) + `if (mk) ["t"] ["f"]`, "[f]"},
+		{mk(`[{a:1}]`) + `if (mk) ["t"] ["f"]`, "[t]"},
+		{mk(`[1 2]`) + `if true (mk) ["f"]`, "[1 2]"},
+		{mk(`[]`) + `if true (mk) ["f"]`, "[]"},
+		{mk(`[1 2]`) + `def c false end if c ["t"] (mk)`, "[1 2]"},
+		{mk(`[1 2]`) + `if false ["t"] (mk)`, "[1 2]"},
+		{mk(`[1 2]`) + `def g fn [[c:Any][Any][if true c ["f"]]] end g (mk)`, "ERROR:expected 1 return value(s), got 2"},
+		{mk(`quote [gt]`) + `if (mk) ["t"] ["f"]`, "ERROR:cannot call `gt`"},
+		{mk(`quote [raise "boom"]`) + `if (mk) ["t"] ["f"]`, "ERROR:boom"},
+		{mk(`quote [drop]`) + `5 if (mk) ["big"] ["small"]`, "ERROR:condition produced no value"},
+		{mk(`quote [add 1]`) + `5 if true (mk) ["f"]`, "ERROR:cannot call `add`"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}

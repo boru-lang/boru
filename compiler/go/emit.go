@@ -2141,6 +2141,12 @@ type deoptPoint struct {
 	// restart marks a STATEMENT island (landing_restart.go): a landing's or
 	// a shaped apply's statement, run again from its first token (token).
 	restart bool
+	// guard, on a restart point, is the kind of the branch guard it serves
+	// (guardCond / guardThen / guardElse, NUR292; 0 for a landing's or a
+	// shaped apply's), and substs the parens its island writes values in
+	// place of (restartSubsts).
+	guard  int
+	substs []substPlan
 	// install marks a read of a root def captured by a code body at the
 	// program root (DeoptSpec.Install, NUR285).
 	install bool
@@ -16213,8 +16219,10 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// seated for the walk below, a residual read's test for after the
 	// residual is laid out (seatRootResidualReads).
 	rootResidualReads := es.planRootWordReads(lw, residual)
-	// The root landings a statement island takes over (NUR242, NUR219).
+	// The root landings and branch guards a statement island takes over
+	// (NUR242, NUR219, NUR292).
 	es.planLandingRestarts(lw, residual)
+	es.planGuardRestarts(lw, residual)
 	// Seed the lowerer's frame-local counter from the unit's planned locals;
 	// spillSeat bumps it for spill temps. Written back below so Program.NumLocals
 	// covers them.
@@ -16467,13 +16475,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 				}
 			}
 			cf.RetReplay = rec.retReplay
-			retPC := flw.emit(OpRet, 0, rec.pos)
-			stampDeoptRet(&cf, retPC)
-			// A shaped apply's statement island continues at the RET too.
-			for _, di := range flw.restartMethods {
-				p.DynMethods[di].RetPC = retPC
-				cf.RetReplay = true
-			}
+			stampUnitRestarts(flw, &cf, flw.emit(OpRet, 0, rec.pos))
 		}
 		// A fully diverging body (every path tail-calls) emits no RET —
 		// control leaves via the callee's eventual RET.
@@ -16533,12 +16535,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if !twinsFullyPlaced(lw.p, twinExempt) {
 		return nil, "twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it", false
 	}
-	// A top-level landing island (NUR190) continues at the program's end:
-	// its residual is the program's. So does a root read's island (NUR207).
-	stampLandingRet(lw.p.LandingWords, len(lw.p.Code))
-	for _, di := range lw.restartMethods {
-		lw.p.DynMethods[di].RetPC = len(lw.p.Code)
-	}
+	stampRootRestarts(lw)
 	stampRootDeopts(lw.p, es.rootBody)
 	return lw.p, "", true
 }
@@ -17632,12 +17629,19 @@ func seatUnitDeopts(flw *lowerer, rec *fnUnitRec, cf *CompiledFn, diverged bool)
 // other before its statement's first root op.
 func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 	if d.restart {
-		// Seated on the landing or the shaped apply it serves, its depth by
-		// the walk (landing_restart.go).
+		// Seated on the landing, the shaped apply or the branch guard it
+		// serves, its depth by the walk (landing_restart.go).
+		if d.guard > 0 {
+			if flw.guardRestarts == nil {
+				flw.guardRestarts = map[int]*landingRestart{}
+			}
+			flw.guardRestarts[guardKey(d.seq, d.guard)] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs}
+			return
+		}
 		if flw.landingRestarts == nil {
 			flw.landingRestarts = map[int]*landingRestart{}
 		}
-		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1}
+		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs}
 		return
 	}
 	if d.landing {
@@ -17692,6 +17696,37 @@ func stampDeoptRet(cf *CompiledFn, retPC int) {
 	}
 	if len(cf.Deopts) > 0 || stampLandingRet(cf.LandingWords, retPC) {
 		cf.RetReplay = true
+	}
+}
+
+// stampUnitRestarts seats a unit's RET, retPC, on every island that
+// continues there: its deopt points and landings (stampDeoptRet), and the
+// statement islands of its shaped applies and branch guards (NUR242,
+// NUR292), whose residual the RET replays.
+func stampUnitRestarts(flw *lowerer, cf *CompiledFn, retPC int) {
+	stampDeoptRet(cf, retPC)
+	for _, di := range flw.restartMethods {
+		flw.p.DynMethods[di].RetPC = retPC
+		cf.RetReplay = true
+	}
+	for _, si := range flw.restartSigs {
+		flw.p.Sigs[si].Restart.RetPC = retPC
+		cf.RetReplay = true
+	}
+}
+
+// stampRootRestarts seats the program's end on every top-level island: a
+// landing's (NUR190) and a root read's (NUR207), and the statement islands
+// of a shaped apply and a branch guard (NUR242, NUR292) — each one's
+// residual is the program's.
+func stampRootRestarts(lw *lowerer) {
+	end := len(lw.p.Code)
+	stampLandingRet(lw.p.LandingWords, end)
+	for _, di := range lw.restartMethods {
+		lw.p.DynMethods[di].RetPC = end
+	}
+	for _, si := range lw.restartSigs {
+		lw.p.Sigs[si].Restart.RetPC = end
 	}
 }
 

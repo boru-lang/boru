@@ -804,6 +804,13 @@ type lowerer struct {
 	// restartMethods are the DynMethods entries this lowerer seated a
 	// statement island on, whose RetPC its finish stamps.
 	restartMethods []int
+	// guardRestarts are the branch guards' planned statement islands, keyed
+	// by guardKey (planGuardRestarts); restartSigs the Sigs entries seated
+	// with one, whose RetPC the finish stamps. curBranch is the branch event
+	// being lowered, whose guards look their island up.
+	guardRestarts map[int]*landingRestart
+	restartSigs   []int
+	curBranch     int
 	// collectedApplies are the fn-value applies a planned collect takes as
 	// regions (planRegionCollectOver, NUR247/NUR249): lowered count-agnostic,
 	// never in a one-result form.
@@ -1253,7 +1260,9 @@ func (lw *lowerer) seatLandingWord(w LandingWord, seq int) {
 	if opens, island, ok := lw.landingDeoptIsland(seq, w); ok {
 		w.Deopt, w.Root, w.Opens, w.Island, w.RetPC = true, lw.landingRoot, opens, island, -1
 	} else if r := lw.restartAt(seq); r != nil {
-		w.Restart, w.Root, w.Depth, w.Island, w.RetPC, w.PrefixSrc = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs
+		if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}); ok {
+			w.Restart, w.Root, w.Depth, w.Island, w.RetPC, w.PrefixSrc, w.Substs = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs
+		}
 	}
 	if !w.Deopt && lw.es.landingWalkArmed(seq) {
 		if lw.landingSkips == nil {
@@ -1602,7 +1611,7 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 			lw.emitDeoptsBefore(eventPos(*ev))
 		}
 		if lw.depth == 0 {
-			lw.noteRestartDepths(eventPos(*ev))
+			lw.noteRestartDepths(restartAnchor(ev))
 		}
 		if lw.markBefore[ev.seq] {
 			lw.emit(OpStackMark, 0, eventPos(*ev))
@@ -3754,8 +3763,10 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		di := len(lw.p.DynMethods)
 		spec := *c.dynMethod
 		if r := lw.restartAt(ev.seq); r != nil {
-			spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs
-			lw.restartMethods = append(lw.restartMethods, di)
+			if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}); ok {
+				spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc, spec.Substs = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs
+				lw.restartMethods = append(lw.restartMethods, di)
+			}
 		}
 		lw.p.DynMethods = append(lw.p.DynMethods, spec)
 		lw.seatLandingSkip(c)
@@ -4701,6 +4712,8 @@ func (es *EmitState) markTailCalls(frag *EmitFragment, out *EmitOperand, hasOut 
 
 func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 	br := ev.br
+	defer func(prev int) { lw.curBranch = prev }(lw.curBranch)
+	lw.curBranch = ev.seq
 	// Every carried-slot seed init is a re-pushable operand: an event-sourced
 	// one was force-promoted to a frame local by planValueDefLocals
 	// (collectBranchCarriedSources); one that still reads as an event
@@ -4717,7 +4730,7 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 	if br.constCond != nil {
 		// Statically-taken branch: inline the taken fragment (always a body in
 		// const-cond form — never a value-then).
-		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, true, br.pos, nil); reason != "" {
+		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, true, br.pos, armGuardRef{}); reason != "" {
 			return reason
 		}
 		thenMulti := lw.fragMulti
@@ -4882,27 +4895,121 @@ func (lw *lowerer) seedCarried(br *emitBranch) {
 // a list at run time (NUR292): the interpreter runs such a list as code.
 func (lw *lowerer) emitBranchJump(br *emitBranch) int {
 	if br.condGuard {
-		lw.emitGuardCall("__condguard", br.condCheck, br.condCheckPos)
+		lw.emitGuardCallAt("__condguard", br.condCheck, br.condCheckPos, guardCond, br.cond)
 	}
 	return lw.emit(OpJmpIfFalse, 0, br.pos)
 }
 
-// emitCodeGuard calls the branch's run-time arm guard over the value on top
-// when on: a one-in, one-out native call, so the simulated stack is
+// emitCodeGuard calls the branch's run-time arm guard over the COMPUTED
+// value on top — the then arm's, or the else arm's — when that arm is
+// guarded: a one-in, one-out native call, so the simulated stack is
 // unchanged.
-func (lw *lowerer) emitCodeGuard(br *emitBranch, on bool) {
-	if on {
-		lw.emitGuardCall("__codeguard", br.guard, br.pos)
+func (lw *lowerer) emitCodeGuard(br *emitBranch, then bool) {
+	switch {
+	case then && br.thenGuard:
+		lw.emitGuardCallAt("__codeguard", br.guard, br.pos, guardThen, br.thenVal)
+	case !then && br.elsGuard:
+		lw.emitGuardCallAt("__codeguard", br.guard, br.pos, guardElse, br.elsVal)
 	}
+}
+
+// emitCodeGuardOver is emitCodeGuard on a path whose run holds the frame
+// region's first base entries and then the arm's value, arm, where the walk
+// still lists the branch's other operands: the guard's statement island
+// reads the stack as the run holds it (restartSubstSrcs).
+func (lw *lowerer) emitCodeGuardOver(br *emitBranch, then bool, base int, arm vmSlot) {
+	saved := lw.vm
+	lw.vm = append(append(make([]vmSlot, 0, base+1), saved[:base]...), arm)
+	lw.emitCodeGuard(br, then)
+	lw.vm = saved
+}
+
+// armGuardRef is the guard a value arm takes on the path that runs it —
+// the branch's guard signature (nil: none) and which arm it guards
+// (guardThen / guardElse), whose statement island it looks up.
+type armGuardRef struct {
+	sig  *core.Signature
+	kind int
 }
 
 // armGuard is the guard a value arm takes on the path that runs it: the
 // branch's guard when that arm is flagged, else none.
-func (lw *lowerer) armGuard(br *emitBranch, then bool) *core.Signature {
-	if (then && br.thenGuard) || (!then && br.elsGuard) {
-		return br.guard
+func (lw *lowerer) armGuard(br *emitBranch, then bool) armGuardRef {
+	switch {
+	case then && br.thenGuard:
+		return armGuardRef{sig: br.guard, kind: guardThen}
+	case !then && br.elsGuard:
+		return armGuardRef{sig: br.guard, kind: guardElse}
 	}
-	return nil
+	return armGuardRef{}
+}
+
+// emitGuardCallAt is emitGuardCall for the guard of kind in the branch being
+// lowered, over operand op: where that guard's statement island is planned
+// and seated (guardRestarts), the call takes a SigRef of its own carrying it
+// (SigRef.Restart, NUR292).
+func (lw *lowerer) emitGuardCallAt(word string, guard *core.Signature, pos core.SrcPos, kind int, op EmitOperand) {
+	r := lw.guardRestarts[guardKey(lw.curBranch, kind)]
+	substs, ok := lw.restartSubstSrcs(r, op)
+	if guard == nil || !r.seated() || !ok {
+		lw.emitGuardCall(word, guard, pos)
+		return
+	}
+	lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: word, Sig: guard, Restart: &StmtIsland{
+		Island: lw.landingBody[r.token:], Depth: r.depth, RetPC: -1, Root: lw.landingRoot, PrefixSrc: r.srcs, Substs: substs,
+	}})
+	lw.restartSigs = append(lw.restartSigs, len(lw.p.Sigs)-1)
+	lw.emit(OpCallNative, len(lw.p.Sigs)-1, pos)
+}
+
+// restartSubstSrcs is where the compiled code holds, at the stop being
+// emitted, the value of each paren r's island substitutes (substPlan), its
+// path made relative to the island: the guarded operand's — guarded, an
+// event's result when a guard is the stop — is the value the guard checks,
+// off the stack when the island runs; any other, its call's promoted slot or
+// its frame-region entry (heldAt). ok is false for no island, or a value
+// held nowhere the island can read.
+func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand) ([]RestartSubst, bool) {
+	if r == nil {
+		return nil, false
+	}
+	out := make([]RestartSubst, 0, len(r.substs))
+	for _, sp := range r.substs {
+		src, ok := RestartSrc{Kind: RestartGuard}, true
+		if guarded.kind != opEvent || guarded.idx != sp.seq {
+			src, ok = lw.heldAt(sp.seq)
+		}
+		if !ok {
+			return nil, false
+		}
+		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Src: src})
+	}
+	return out, true
+}
+
+// heldAt is where the compiled code holds event seq's one result now: its
+// promoted slot, or its entry in the frame region, which the simulated stack
+// mirrors below any region whose count the run decides. ok is false for a
+// result consumed, or above such a region. An entry the run has already
+// dropped at the stop — a branch's unselected eager arm, which the walk
+// still lists — lies past the stack the island reads, which the VM refuses
+// as the compiler's own fault.
+func (lw *lowerer) heldAt(seq int) (RestartSrc, bool) {
+	if slot, ok := lw.promoted[seq]; ok {
+		return RestartSrc{Kind: RestartLocal, Idx: slot}, true
+	}
+	for i := len(lw.vm) - 1; i >= 0; i-- {
+		if lw.vm[i].seq != seq || lw.vm[i].idx != 0 {
+			continue
+		}
+		for _, below := range lw.vm[:i] {
+			if below.seq >= 0 && lw.variadic[below.seq] {
+				return RestartSrc{}, false
+			}
+		}
+		return RestartSrc{Kind: RestartStack, Idx: i}, true
+	}
+	return RestartSrc{}, false
 }
 
 // emitGuardCall emits a CALL_NATIVE of the guard word over the value on top
@@ -4926,7 +5033,7 @@ func (lw *lowerer) emitGuardCall(word string, guard *core.Signature, pos core.Sr
 // lowerFragment (the merge of two body arms may be variadic; a computed-branch
 // arm may not). Shared by lowerArms, lowerBranch's const-cond inline, and the
 // non-eager arm of lowerComputedBranch.
-func (lw *lowerer) lowerArm(kind armKind, val EmitOperand, frag *EmitFragment, out *EmitOperand, allowVariadic bool, pos core.SrcPos, guard *core.Signature) string {
+func (lw *lowerer) lowerArm(kind armKind, val EmitOperand, frag *EmitFragment, out *EmitOperand, allowVariadic bool, pos core.SrcPos, guard armGuardRef) string {
 	lw.fragMulti = false
 	switch kind {
 	case armValue:
@@ -4934,7 +5041,7 @@ func (lw *lowerer) lowerArm(kind armKind, val EmitOperand, frag *EmitFragment, o
 		// (pushOperand tracked it; the merge slot owns the count), guarded
 		// on this path when the pass holds it abstractly (NUR292).
 		lw.pushOperand(val, pos)
-		lw.emitGuardCall("__codeguard", guard, pos)
+		lw.emitGuardCallAt("__codeguard", guard.sig, pos, guard.kind, val)
 		lw.vm = lw.vm[:len(lw.vm)-1]
 		return ""
 	case armBodyOut:
@@ -5058,13 +5165,13 @@ func (lw *lowerer) lowerBothComputed(ev *EmitEvent) string {
 	// beneath it: SWAP then DROP → [thenVal].
 	lw.emit(OpSwap, 0, br.pos)
 	lw.emit(OpDrop, 0, br.pos)
-	lw.emitCodeGuard(br, br.thenGuard)
+	lw.emitCodeGuardOver(br, true, n-3, lw.vm[n-2])
 	jend := lw.emit(OpJmp, 0, br.pos)
 	// FALSE: stack is [elsVal, thenVal] (thenVal on top); the result is elsVal,
 	// so drop thenVal → [elsVal].
 	(*lw.code)[jf].Arg = int32(len(*lw.code))
 	lw.emit(OpDrop, 0, br.pos)
-	lw.emitCodeGuard(br, br.elsGuard)
+	lw.emitCodeGuardOver(br, false, n-3, lw.vm[n-3])
 	(*lw.code)[jend].Arg = int32(len(*lw.code))
 	// Sim: the three input slots (cond/then/else) collapse to one merge slot.
 	lw.vm = lw.vm[:len(lw.vm)-3]
@@ -5104,13 +5211,14 @@ func (lw *lowerer) lowerBothComputedMatCond(ev *EmitEvent) string {
 		jf = lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1]
 	}
+	n := len(lw.vm)
 	lw.emit(OpDrop, 0, br.pos)
-	lw.emitCodeGuard(br, br.thenGuard)
+	lw.emitCodeGuardOver(br, true, n-2, lw.vm[n-2])
 	jend := lw.emit(OpJmp, 0, br.pos)
 	(*lw.code)[jf].Arg = int32(len(*lw.code))
 	lw.emit(OpSwap, 0, br.pos)
 	lw.emit(OpDrop, 0, br.pos)
-	lw.emitCodeGuard(br, br.elsGuard)
+	lw.emitCodeGuardOver(br, false, n-2, lw.vm[n-1])
 	(*lw.code)[jend].Arg = int32(len(*lw.code))
 	lw.vm = lw.vm[:len(lw.vm)-2]
 	lw.vm = append(lw.vm, vmSlot{seq: ev.seq})
@@ -5172,9 +5280,10 @@ func (lw *lowerer) lowerComputedCond(br *emitBranch, condOnTop bool) (int, strin
 func (lw *lowerer) lowerComputedBranch(ev *EmitEvent, jf int) string {
 	br := ev.br
 	multi := false
+	base, eager := len(lw.vm)-1, lw.vm[len(lw.vm)-1]
 	if br.thenComputed {
 		// TRUE/fall-through keeps the eager then value; jump over the else arm.
-		lw.emitCodeGuard(br, br.thenGuard)
+		lw.emitCodeGuard(br, true)
 		jend := lw.emit(OpJmp, 0, br.pos)
 		(*lw.code)[jf].Arg = int32(len(*lw.code)) // FALSE lands here
 		lw.emit(OpDrop, 0, br.pos)                // discard the eager then value
@@ -5195,7 +5304,7 @@ func (lw *lowerer) lowerComputedBranch(ev *EmitEvent, jf int) string {
 		multi = lw.fragMulti
 		jend := lw.emit(OpJmp, 0, br.pos)
 		(*lw.code)[jf].Arg = int32(len(*lw.code)) // FALSE lands here, eager value intact
-		lw.emitCodeGuard(br, br.elsGuard)
+		lw.emitCodeGuardOver(br, false, base, eager)
 		(*lw.code)[jend].Arg = int32(len(*lw.code))
 	}
 	lw.vm = append(lw.vm, vmSlot{seq: ev.seq})

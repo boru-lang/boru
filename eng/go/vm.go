@@ -1804,7 +1804,38 @@ func (vc *vmContext) landingDeopt(reg *core.Registry, v core.Value, lword compil
 // from the statement's first token. The island's residual is the program's:
 // it replaces the frame region, and the run continues at the program's end.
 func (vc *vmContext) landingRestart(reg *core.Registry, lword compiler.LandingWord, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
-	return vc.statementRestart(reg, lword.PrefixSrc, lword.Island, lword.Depth, lword.RetPC, lword.Root, frameBase, stack, curDebug, pc)
+	island, err := vc.substIsland(lword.Island, lword.Substs, nil, frameBase, stack, curDebug, pc)
+	if err != nil {
+		return nil, nil, err
+	}
+	return vc.statementRestart(reg, lword.PrefixSrc, island, lword.Depth, lword.RetPC, lword.Root, frameBase, stack, curDebug, pc)
+}
+
+// substIsland is island with each substituted paren written as the value the
+// compiled code left there (RestartSubst, compiler's restartSubsts): its
+// call ran and must not run again. The value is read where the stop holds
+// it — a slot, a frame-region entry, or guarded, the value a guard checks —
+// and a source the stop does not hold is the compiler's own fault.
+func (vc *vmContext) substIsland(island []core.Value, substs []compiler.RestartSubst, guarded *core.Value, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	for _, sb := range substs {
+		var v core.Value
+		i := sb.Src.Idx
+		switch {
+		case sb.Src.Kind == compiler.RestartGuard && guarded != nil:
+			v = *guarded
+		case sb.Src.Kind == compiler.RestartLocal && i >= 0 && i < len(vc.restartLocals):
+			v = vc.restartLocals[i]
+		case sb.Src.Kind == compiler.RestartStack && i >= 0 && frameBase+i < len(stack):
+			v = stack[frameBase+i]
+		default:
+			return nil, vmErrAt(curDebug, pc, "bad statement-island substitution")
+		}
+		var ok bool
+		if island, ok = substToken(island, sb.Path, v); !ok {
+			return nil, vmErrAt(curDebug, pc, "bad statement-island substitution")
+		}
+	}
+	return island, nil
 }
 
 // statementRestart is the statement island itself (landingRestart's, and a
@@ -1846,6 +1877,55 @@ func (vc *vmContext) statementRestart(reg *core.Registry, srcs []compiler.Restar
 		return nil, nil, err
 	}
 	return append(stack[:frameBase], results...), &dynEnter{jump: true, jumpPC: retPC}, nil
+}
+
+// guardRestart is a branch guard's statement island (SigRef.Restart,
+// NUR292): the guard deferred on a computed condition or arm that is a list,
+// which the interpreter runs as code, so the statement runs again on the
+// interpreter from its first token (statementRestart), the guarded value
+// written in place of the paren that computed it (substIsland) — a value is
+// inert on the tape, where the paren would run its call again.
+func (vc *vmContext) guardRestart(reg *core.Registry, is *compiler.StmtIsland, guarded core.Value, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	island, err := vc.substIsland(is.Island, is.Substs, &guarded, frameBase, stack, curDebug, pc)
+	if err != nil {
+		return nil, nil, err
+	}
+	return vc.statementRestart(reg, is.PrefixSrc, island, is.Depth, is.RetPC, is.Root, frameBase, stack, curDebug, pc)
+}
+
+// substToken is toks with the token at path replaced by v — a fresh copy of
+// every level on the way down, a paren's or a list literal's, keeping its
+// flags and position; the program's own tokens are never written. An
+// empty path is toks itself; ok is false for a path that leaves them.
+func substToken(toks []core.Value, path []int, v core.Value) ([]core.Value, bool) {
+	if len(path) == 0 {
+		return toks, true
+	}
+	i := path[0]
+	if i < 0 || i >= len(toks) {
+		return nil, false
+	}
+	out := append([]core.Value(nil), toks...)
+	if len(path) == 1 {
+		out[i] = v
+		return out, true
+	}
+	t := out[i]
+	if core.IsParenExpr(t) {
+		inner, _ := core.AsParenExpr(t)
+		sub, ok := substToken(inner, path[1:], v)
+		t.Data = core.ParenExprPayload{Toks: sub}
+		out[i] = t
+		return out, ok
+	}
+	l, err := core.AsList(t)
+	if err != nil {
+		return nil, false
+	}
+	sub, ok := substToken(l.Slice(), path[1:], v)
+	t.Data = core.ListPayload{Elems: sub}
+	out[i] = t
+	return out, ok
 }
 
 // landingQuoteClaim enters the landed fn over the word its re-step CAPTURED
@@ -2434,7 +2514,11 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		// its statement's island runs it (DynMethodSpec.Restart, NUR242),
 		// and with none the apply defers wholesale.
 		if spec.Restart {
-			return vc.statementRestart(reg, spec.PrefixSrc, spec.Island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
+			island, err := vc.substIsland(spec.Island, spec.Substs, nil, frameBase, stack, curDebug, pc)
+			if err != nil {
+				return nil, nil, err
+			}
+			return vc.statementRestart(reg, spec.PrefixSrc, island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
 		}
 		return nil, nil, vmDefer(vc.r, curDebug, pc, "vm:shaped-method-not-appliable", "shaped method apply "+spec.Word+
 			": value is not an appliable function at run time; the compiled runtime cannot execute it")
@@ -3944,6 +4028,12 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// order-independent — see design/OPEN-WORDS.1.md §9.
 				args[i] = core.StripAscribed(stack[len(stack)-1-i])
 			}
+			// A guard's statement island writes the guarded value as the
+			// program holds it (SigRef.Restart, NUR292).
+			var guarded core.Value
+			if s.Restart != nil && n > 0 {
+				guarded = stack[len(stack)-1]
+			}
 			stack = stack[:len(stack)-n]
 			// An optimistic bake's no-match arm reads the operands after the
 			// handler, whose body runs may reuse the scratch buffer: keep a
@@ -3978,6 +4068,23 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					if raise := nativeSplitRaise(curReg, s.Word, s.Split, splitArgs, curDebug, pc); raise != nil {
 						return nil, raise
 					}
+				}
+				if s.Restart != nil && core.IsVMDefer(err) {
+					// A branch guard deferred on a list the interpreter runs as
+					// code: its statement island takes the rest of the body.
+					fb := 0
+					if len(frames) > 0 {
+						fb = frames[len(frames)-1].stackBase
+					}
+					vc.restartLocals = locals
+					ns, ent, rerr := vc.guardRestart(curReg, s.Restart, guarded, fb, stack, curDebug, pc)
+					vc.restartLocals = nil
+					if rerr != nil {
+						return nil, rerr
+					}
+					stack = ns
+					pc = ent.jumpPC - 1
+					break
 				}
 				return nil, stampAt(err, curDebug, pc, curReg)
 			}

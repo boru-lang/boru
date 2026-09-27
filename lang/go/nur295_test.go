@@ -98,6 +98,9 @@ func TestNUR219QuoteCapturesCollectedWord(t *testing.T) {
 		// seated from there; a loop over a loop-invariant read restarts on its
 		// first iteration; a code body's statement restarts in its frame.
 		{pre + `(mk) end 7 m.f true`, "[{f:fn h(Atom)} 7 true]"},
+		// A user call before the landing opens a paren whose value the
+		// island writes in its place (restartSubsts): it does not run twice.
+		{pre + `def g fn [[] [Any] [7]] end [(g) (m.f true)]`, "[[7 true]]"},
 		{pre + `for 2 [[(m.f true)]]`, "[[true] [true]]"},
 		{pre + `[1 2] each [drop [(m.f true)]]`, "[[[true] [true]]]"},
 		// The caret sibling: a named fn no window fits raises at its own
@@ -107,9 +110,10 @@ func TestNUR219QuoteCapturesCollectedWord(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	// A user call the statement made before the landing would run twice in
-	// the statement's island: that capture stays a designed defer.
-	src := pre + `def g fn [[] [Any] [7]] end [(g) (m.f true)]`
+	// A user call whose value the statement consumed before the landing
+	// would run twice in the statement's island: that capture stays a
+	// designed defer.
+	src := pre + `def g fn [[] [Any] [7]] end [(g) drop (m.f true)]`
 	gotC, compiled, errC, _, errI := runBothEngines(t, src)
 	if !compiled || errI != nil || errC == nil || !strings.Contains(errC.Error(), "NUR219") || len(gotC) != 0 {
 		t.Errorf("%s: an unsealed capture defers compiled; got %v %v (interpreter %v)", src, gotC, errC, errI)

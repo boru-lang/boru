@@ -128,16 +128,16 @@ func TestRestartReruns(t *testing.T) {
 	end := core.NewEnd()
 	end.SetPos(core.SrcPos{Row: 1, Col: 30})
 	body = append(body, end, restartTok(1, 40))
-	if !restartReruns(tree, tree[2], 2, body, 0) {
+	if _, ok := restartReruns(tree, tree[2], 2, body, 0); !ok {
 		t.Error("a loop's landing over an invariant read restarts")
 	}
 	apply := EmitEvent{kind: evCall, seq: 3, call: emitCall{word: "(paren apply)", dynMethod: &DynMethodSpec{}, ops: []EmitOperand{{kind: opEvent, idx: 2}}, pos: core.SrcPos{Row: 1, Col: 15}}}
 	tree[3] = treeEvent{ev: &apply, inLoop: true, loopSlots: []int{5}}
-	if !restartReruns(tree, tree[3], 3, body, 0) {
+	if _, ok := restartReruns(tree, tree[3], 3, body, 0); !ok {
 		t.Error("a loop's shaped apply restarts over its method's invariant read")
 	}
 	flat := rootTreeEvents([]EmitEvent{{kind: evCall, seq: 1, call: emitCall{word: "dot", pos: core.SrcPos{Row: 1, Col: 10}}}}, false)
-	if !restartReruns(flat, flat[1], 1, body, 0) {
+	if _, ok := restartReruns(flat, flat[1], 1, body, 0); !ok {
 		t.Error("outside a loop, the reads before the stop are checked")
 	}
 }
