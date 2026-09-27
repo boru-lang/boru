@@ -173,7 +173,13 @@ func (es *EmitState) residualIsland(events []EmitEvent, residual []core.Value) (
 		}
 		i--
 	}
-	if i == 0 || i == len(residual) {
+	// A run ALONE (nothing beneath it) is an island too when it may leave a
+	// callable (eventFlags.regionMayBeFn): the interpreter re-steps a fn value
+	// the handler hands back — a named zero-argument one fires, an arg-taking
+	// one takes the value beside it in the run — where seating the run as data
+	// left `fn g` for 7 (main's NUR213). A run proven plain seats as it
+	// stands.
+	if i == len(residual) || (i == 0 && !es.eventInfo[r.seq].regionMayBeFn) {
 		return nil, false
 	}
 	prefix := make([]EmitOperand, 0, i)

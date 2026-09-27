@@ -802,6 +802,10 @@ type PolyRef struct {
 	// body (a gradual operand): exactly one non-re-stepping result, or the
 	// loud defer.
 	DynBodyOne bool
+	// DynBodyPlain is SigRef.DynBodyPlain for a poly re-match of a computed
+	// `do` body: any count of results, none of them one the interpreter
+	// re-steps, or the loud defer.
+	DynBodyPlain bool
 }
 
 // PolySplit is PolyRef.Split: the number of the poly's operands, in
@@ -1127,6 +1131,14 @@ type SigRef struct {
 	// value the interpreter's tape would not re-step, and otherwise defers
 	// loudly at this call (vm:dyn-body-one).
 	DynBodyOne bool
+	// DynBodyPlain marks the CALL_NATIVE of a COMPUTED `do` body whose run may
+	// leave a callable and is seated where the prefix island does not re-step
+	// it — with values beneath it, entries after it, or as a fn's result
+	// (lowerCall, NUR213): the VM seats the run only when none of its values
+	// is one the interpreter's tape would re-step (a fn value, class, reach
+	// or modifier) — a plain run is data on both lanes wherever it lands —
+	// and otherwise defers loudly at this call (vm:dyn-body-plain).
+	DynBodyPlain bool
 }
 
 // TypeRef names one type operand: the canonical type ID (resolved
@@ -2015,6 +2027,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			if s.DynBodyOne {
 				guard = " [one value, checked]"
 			}
+			if s.DynBodyPlain {
+				guard = " [plain values, checked]"
+			}
 			fmt.Fprintf(sb, " s%-3d ; %s (%s)%s", in.Arg, s.Word, strings.Join(names, ", "), guard)
 		case OpJmp, OpJmpIfFalse, OpForNext:
 			fmt.Fprintf(sb, " -> %04d", in.Arg)
@@ -2036,6 +2051,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			one := ""
 			if pr.DynBodyOne {
 				one = " [one value, checked]"
+			}
+			if pr.DynBodyPlain {
+				one = " [plain values, checked]"
 			}
 			fmt.Fprintf(sb, " p%-3d ; %s/%d (poly)%s", in.Arg, pr.Word, pr.Arity, one)
 		case OpCallUserPoly:

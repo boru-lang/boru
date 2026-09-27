@@ -426,19 +426,3 @@ func TestBodyProvenFn(t *testing.T) {
 		t.Error("an unresolvable body is not")
 	}
 }
-
-func TestEventRunLast(t *testing.T) {
-	run := []EmitOperand{EventOperand(4, 0), EventOperand(4, 1)}
-	if !eventRunLast(run, 4) {
-		t.Error("the event's run, in result order, is last")
-	}
-	for name, ops := range map[string][]EmitOperand{
-		"a value after the run":  append(append([]EmitOperand{}, run...), typeOperand(0)),
-		"another event's result": {EventOperand(5, 0)},
-		"results out of order":   {EventOperand(4, 1), EventOperand(4, 0)},
-	} {
-		if eventRunLast(ops, 4) {
-			t.Errorf("%s: not the run alone", name)
-		}
-	}
-}

@@ -9,6 +9,41 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR213 and NUR281 closed, NUR282 narrowed: a computed run is re-stepped or checked plain (2026-09-27)
+
+**NUR281 (silent, on main and the branch).** A map literal's value after a
+computed keep-defs body at the root was const-folded off the emit path, so
+the kept-defs latch never saw the read: `[1 2] each (mk) end {a: x}` over
+`[def x 5 1]` answered `{a:99}` for `{a:5}`. When the latch arms at the root
+the compiler now generalises every root value binding
+(`generaliseRootValues`, the speculative undef's transition), so the fold
+stands aside and the latch declines the read, as it does the list twin.
+
+**NUR213 (main's, silent).** A computed `do` run that leaves a fn value is
+re-stepped by the interpreter and was data compiled. Two halves:
+- a run ALONE at the program's end that may leave a callable is the prefix
+  island's, with an empty prefix: `do (mk)` over `[g/v]` is 7 on both lanes;
+- a run seated anywhere else — values beneath it, entries after it, a fn's
+  result — compiles under a runtime check that none of its values is one
+  the interpreter re-steps (`DynBodyPlain`, the VM's `vm:dyn-body-plain`
+  defer). This replaced the seat rule's declines, main's `dynRegionNotLast`
+  among them: "keep bails on the ledger rather than declining over-wide".
+  A first cut that declined those seats statically (a value beneath, a fn's
+  result) was sound but declined `f (quote [1 add 2])`; the check keeps it.
+
+**NUR282 (the merge's compile losses), two shapes.** A run proven to leave
+only PARKING fn values — a lone anonymous lambda, or zero-argument ones only
+— is no callable region (`bodyParksFnValues` over main's
+`provenBodyTokens`); an arg-taking lambda beside a value takes it inside the
+run, which the probe caught (`[5 lam]` is 6), so such a run is not proven.
+And the plain check compiles plain runs the seat rule declined.
+
+**Measured.** 311 probe programs — the merge's 199 and a run × context
+matrix of 120 (eight runs, fifteen contexts) — answer the interpreter's way
+or fail loudly on the compiled lane; no silent row is left. The lambda
+token's shape was read off the pass, not assumed: a quoted `(A => B)` is a
+paren group of one item, the inner group `[A, sugar(lambda), B]`.
+
 ## The merge of main's #514: two closes of NUR207 and NUR210 composed (2026-09-26)
 
 **What main brought.** Main's #514 closed NUR207 and NUR210/NUR211 its own

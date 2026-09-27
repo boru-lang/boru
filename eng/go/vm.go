@@ -1089,6 +1089,11 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 			return nil, err
 		}
 	}
+	if pr.DynBodyPlain {
+		if err := checkDynBodyPlain(r, pr.Word, results, curDebug, pc); err != nil {
+			return nil, err
+		}
+	}
 	if len(results) != pr.NOut {
 		return nil, vmDefer(r, curDebug, pc, "vm:poly-nout-drift", fmt.Sprintf(
 			"poly dispatch %s: result count %d differs from the recorded claim %d; the compiled runtime cannot execute it",
@@ -3798,6 +3803,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// A computed `do` body's run a single-value seat consumes
 				// (vm_dyn_body_one.go): exactly one plain value, or defer.
 				if err := checkDynBodyOne(curReg, s.Word, results, curDebug, pc); err != nil {
+					return nil, err
+				}
+			}
+			if s.DynBodyPlain {
+				// A computed run seated as data beside its neighbours
+				// (vm_dyn_body_one.go): no value the interpreter re-steps.
+				if err := checkDynBodyPlain(curReg, s.Word, results, curDebug, pc); err != nil {
 					return nil, err
 				}
 			}

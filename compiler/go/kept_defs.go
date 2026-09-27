@@ -165,6 +165,7 @@ func (es *EmitState) operandMayInvoke(op EmitOperand) bool {
 // latch arms at the current depth.
 func (es *EmitState) runKeptDefs(word string) {
 	es.keptDefsFresh = nil
+	es.generaliseRootValues()
 	for _, u := range es.openUnitRecs {
 		if es.fnRecs[u].runsKeptDefs == "" {
 			es.fnRecs[u].runsKeptDefs = word
@@ -213,6 +214,26 @@ func (es *EmitState) keptDefsHandedOn(rec *fnUnitRec, level int) {
 		es.keptDefsWord = rec.runsKeptDefs
 	}
 	es.keptDefsFresh = nil
+	es.generaliseRootValues()
+}
+
+// generaliseRootValues is NUR281's: a kept-defs body that runs at the PROGRAM
+// level may rebind or unbind any root value binding, and a map literal's value
+// const-folds off the emit path (core AutoEvalMap's fold), where no read
+// reaches the latch — `[1 2] each (mk) end {a: x}` baked the pre-body x. So
+// the pass stops knowing root values there, as `do`'s check half already does
+// (basic generaliseRootValues): each binding becomes a fresh carrier of its
+// type (the speculative undef's transition), which the fold stands aside for
+// and whose read reaches the latch. Only at the root: inside a unit the run's
+// defs land in the unit's frame, and the latch re-arms where the unit runs.
+func (es *EmitState) generaliseRootValues() {
+	r := es.reg
+	if len(es.units) != 1 || r == nil || r.Check == nil || r.Check.FnBodyDepth > 0 {
+		return
+	}
+	for _, name := range r.Defs.Names() {
+		core.GeneraliseSpecUndef(r, name)
+	}
 }
 
 // noteKeptDefsFreshBind records a def of name to the value id made while the

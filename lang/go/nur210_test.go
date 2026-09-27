@@ -68,10 +68,9 @@ func TestNUR210ComputedDoRunBeneathAndCollected(t *testing.T) {
 // on the registry the body installed into (EmitState.rootDynLeak), a statement
 // boundary between the body's run and the read is proven (NUR266), and a body
 // that unbinds runs on the interpreter (NUR267). Since the merge of main's
-// #514 a body whose tokens are not proven plain data declines instead: its
-// run may leave a callable (main's region rule, dynRegionNotLast — a named
-// zero-argument fn fires across the `end`), and a later read observes a
-// binding the body may have changed (main's kept-defs latch).
+// #514 a body whose tokens are not proven binding-free declines instead: a
+// later read observes a binding the body may have changed (main's kept-defs
+// latch).
 func TestNUR210ComputedBodyRebindsTheRoot(t *testing.T) {
 	mk := func(body string) string { return `def mk fn [[][List][quote [` + body + `]]] end def x 99 end ` }
 	for _, src := range []string{
@@ -80,7 +79,7 @@ func TestNUR210ComputedBodyRebindsTheRoot(t *testing.T) {
 		mk(`undef x`) + `do (mk) end x`,   // undefined_word: the body's undef
 		mk(`def x 5 7`) + `do (mk) end x`, // [7 5]: the run, then the read
 	} {
-		requireDeclineReason(t, src, dynRegionNotLastReason)
+		requireDeclineReason(t, src, keptDefsLatchReason)
 	}
 	requireEngineParity(t, mk(`1 2`)+`do (mk) end x`, true) // a body that binds nothing
 	// Negative: the shapes the run's count still cannot seat stay loud —
@@ -120,7 +119,7 @@ func TestNUR210ComputedBodyGeneralisesTheRoot(t *testing.T) {
 		mk(`def x 5 7`) + `def f fn [[][Any][[x]]] end do (mk) end f`,
 		mk(`undef x 7`) + `do (mk) end [x]`,
 	} {
-		requireDeclineReason(t, src, dynRegionNotLastReason)
+		requireDeclineReason(t, src, keptDefsLatchReason)
 	}
 	for _, c := range []struct{ src, want string }{
 		// A body that leaves x alone reads the pre-body value live.

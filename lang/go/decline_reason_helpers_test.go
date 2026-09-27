@@ -5,10 +5,10 @@ import (
 	"testing"
 )
 
-// dynRegionNotLastReason is the substring of compiler lower.go
-// dynRegionNotLast, the region rule's decline for entries above a computed
-// run that may leave a callable.
-const dynRegionNotLastReason = "seat only as the residual's last entries"
+// keptDefsLatchReason is the substring of compiler kept_defs.go
+// poisonKeptDefs, the kept-defs latch's decline of a read after a computed
+// body that may have changed the binding.
+const keptDefsLatchReason = "a computed body keeps its defs and undefs in the enclosing scope"
 
 // requireDeclineReason asserts src declines at compile time with a reason
 // holding wantReason, the compiled lane fails loudly as compile_failed, and

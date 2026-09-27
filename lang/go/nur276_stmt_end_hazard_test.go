@@ -12,9 +12,9 @@ import (
 // where the run's re-step could never have taken the value. The hazard scan
 // stops at the statement end now: each program compiles with the
 // interpreter's answer. Since the merge of main's #514 a run whose tokens
-// are not proven plain data may leave a callable, and main's region rule
-// declines every entry above it (dynRegionNotLast); the scan's statement-end
-// stop still lets a proven run compile.
+// are not proven binding-free arms the kept-defs latch, which declines the
+// read after it; the scan's statement-end stop still lets a proven run
+// compile.
 func TestNUR276RunIsNoHazardAcrossAStatementEnd(t *testing.T) {
 	const sv = `def s 'a' end `
 	for _, src := range []string{
@@ -27,7 +27,7 @@ func TestNUR276RunIsNoHazardAcrossAStatementEnd(t *testing.T) {
 		sv + `def mk fn [[][List][quote [def s 'b']]] end do (mk) end s size`,
 		sv + `def mk fn [[][List][quote [([x:String] => [x size])]]] end do (mk) end s size`,
 	} {
-		requireDeclineReason(t, src, dynRegionNotLastReason)
+		requireDeclineReason(t, src, keptDefsLatchReason)
 	}
 	// Negative: with no end between them the run's lambda DOES take the
 	// value at its re-step — a sound decline, the hazard's (NUR121) or the
@@ -35,7 +35,7 @@ func TestNUR276RunIsNoHazardAcrossAStatementEnd(t *testing.T) {
 	src := sv + `def mk fn [[][List][quote [([x:String] => [x size])]]] end do (mk) s size`
 	a := mustNew(t)
 	prog, reason, _, _ := a.CompileCheck(src)
-	if prog != nil || !(strings.Contains(reason, "NUR121") || strings.Contains(reason, dynRegionNotLastReason)) {
+	if prog != nil || !(strings.Contains(reason, "NUR121") || strings.Contains(reason, keptDefsLatchReason)) {
 		t.Errorf("%q: the run's argument, collected by a later dispatch in its own statement, declines; got prog=%v reason=%q", src, prog != nil, reason)
 	}
 }

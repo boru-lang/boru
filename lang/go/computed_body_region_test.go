@@ -53,7 +53,6 @@ func TestComputedDoBodyRegionDeclines(t *testing.T) {
 	const mk12 = `def mk fn [[][List][quote [1 2]]] end `
 	const above = "call result above a literal"
 	const region = "consumes loop results"
-	const notLast = "seat only as the residual's last entries"
 	const kept = "a computed body keeps its defs and undefs in the enclosing scope"
 	for _, c := range []struct{ src, reason, want string }{
 		// NUR210's first witness and its neighbours — a value beneath the
@@ -64,8 +63,6 @@ func TestComputedDoBodyRegionDeclines(t *testing.T) {
 		// A fixed-count consumer of the run.
 		{mk12 + `9 do (mk) drop`, region, "[9 1]"},
 		{mk12 + `do (mk) add 9`, region, "[1 11]"},
-		// A run that may leave a callable, with values after it.
-		{`def g fn [[n:Integer][Integer][n add 1]] end def mk fn [[][List][quote [g/v]]] end do (mk) 5`, notLast, "[6]"},
 		// NUR210's second witness: a rebinding the run leaks, read after it.
 		{`def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x`, "(NUR210)", "[5]"},
 		{`def h fn [[][Integer][1]] end def mk fn [[][List][quote [def h fn [[][Integer][7]] end]]] end do (mk) end h`, "(NUR210)", "[7]"},
@@ -76,20 +73,15 @@ func TestComputedDoBodyRegionDeclines(t *testing.T) {
 		{`def x 99 end def f fn [[b:List][Integer][do b x]] end f (quote [def x 5])`, "unapplied fn-value in body residual", "[5]"},
 		{`def f fn [[b:List n:Integer][Integer][do b n]] end f (quote [def n 5]) 1`, "unapplied fn-value in body residual", "[5]"},
 		{`def x 99 end def mk fn [[][List][quote [def x 5]]] end def g fn [[][Integer][x]] end do (mk) end g`, "(NUR210)", "[5]"},
-		// A run whose tokens are not plain data may leave a callable, so
-		// even a literal after it declines (the interpreter would re-step
-		// one over it).
-		{`def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end 7`, notLast, "[7]"},
 	} {
 		requireLoudDecline(t, c.src, c.reason, c.want)
 	}
 	// The undef twins: the interpreter raises where the model still binds.
-	for _, src := range []string{
-		`def x 99 end def mk fn [[][List][quote [undef x]]] end do (mk) end x`,
-		`def x 99 end def f fn [[b:List][][do b]] end f (quote [undef x]) end x`,
-	} {
-		requireLoudDeclineErr(t, src, "(NUR210)", "undefined_word")
-	}
+	requireLoudDeclineErr(t, `def x 99 end def mk fn [[][List][quote [undef x]]] end do (mk) end x`, "(NUR210)", "undefined_word")
+	// The unit form: the latch re-arms at the call, where the root's value
+	// bindings are generalised (NUR281), so the read after it has no
+	// compiled home and the residual's provenance decline is met first.
+	requireLoudDeclineErr(t, `def x 99 end def f fn [[b:List][][do b]] end f (quote [undef x]) end x`, "residual value of unknown provenance", "undefined_word")
 	// An empty run under a consumer: the interpreter's own no-match.
 	requireLoudDeclineErr(t, `def mk fn [[][List][quote []]] end do (mk) add 9`, region, "signature_error")
 }
@@ -151,6 +143,71 @@ func TestComputedDoBodyIslandCompiles(t *testing.T) {
 		if got, err := mustNew(t).RunInterp(c.src); err != nil || fmt.Sprint(got) != c.want {
 			t.Errorf("%s: the interpreter answers %s, got %v / %v", c.src, c.want, got, err)
 		}
+	}
+}
+
+// TestComputedDoBodyCheckedPlain pins NUR213's close (the reverse-order NUR
+// run, after the merge of main's #514): a computed run that may leave a
+// callable, seated where the prefix island does not re-step it — values
+// beneath it, entries after it, a fn's result — compiles under a runtime
+// check that it left no value the interpreter re-steps (SigRef/PolyRef
+// .DynBodyPlain, the VM's vm:dyn-body-plain). A plain run answers the
+// interpreter's result; a run holding a fn value is the loud defer, where the
+// seated run was data (`(1 add 8) do (mk)` over `[g/v]` answered `[9 fn g]`
+// for 10, silent). A run ALONE at the program's end is the island's, exact.
+func TestComputedDoBodyCheckedPlain(t *testing.T) {
+	const g1 = `def g fn [[n:Integer][Integer][n add 1]] end def mk fn [[][List][quote [g/v]]] end `
+	const g0 = `def g fn [[][Integer][7]] end `
+	for _, c := range []struct{ src, wantI string }{
+		{g1 + `(1 add 8) do (mk)`, "[10]"},
+		{g1 + `do (mk) 5`, "[6]"},
+		{g0 + `def f fn [[b:List][Any][do b]] end f (quote [g/v])`, "[7]"},
+		// A gradual body re-matches do's overloads (CALL_NATIVE_POLY) under
+		// the same check.
+		{g0 + `def f fn [[m:Map][Any][do m.k]] end f {k: (quote [g/v])}`, "[7]"},
+	} {
+		requireCheckedPlainDefer(t, c.src, c.wantI)
+	}
+	if dis := compileDisasm(t, g1+`(1 add 8) do (mk)`); !strings.Contains(dis, "[plain values, checked]") {
+		t.Errorf("the seated run's call carries the plain check; got:\n%s", dis)
+	}
+	if dis := compileDisasm(t, g0+`def f fn [[m:Map][Any][do m.k]] end f {k: (quote [g/v])}`); !strings.Contains(dis, "(poly) [plain values, checked]") {
+		t.Errorf("the gradual body's poly call carries the plain check; got:\n%s", dis)
+	}
+	for _, c := range []struct{ src, want string }{
+		// Plain runs beside their neighbours.
+		{`def mk fn [[][List][quote [1 2]]] end (1 add 8) do (mk)`, "[9 1 2]"},
+		{`def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end 7`, "[7]"},
+		{`def f fn [[b:List][Any][do b]] end f (quote [1 add 2])`, "[3]"},
+		// A run alone: the island re-steps it (a named 0-arg fn fires, an
+		// arg-taking lambda takes the value beside it in the run).
+		{g0 + `def mk fn [[][List][quote [g/v]]] end do (mk)`, "[7]"},
+		{`def g fn [[n:Integer][Integer][n add 1]] end def mk fn [[][List][quote [5 g/v]]] end do (mk)`, "[6]"},
+		{`def mk fn [[][List][quote [([n:Integer] => [n add 1]) 5]]] end do (mk)`, "[6]"},
+	} {
+		requireEngineParity(t, c.src, true)
+		if got, err := mustNew(t).RunInterp(c.src); err != nil || fmt.Sprint(got) != c.want {
+			t.Errorf("%s: the interpreter answers %s, got %v / %v", c.src, c.want, got, err)
+		}
+	}
+}
+
+// requireCheckedPlainDefer asserts src COMPILES and its run dies at the
+// plain-run check — a compiler-defect bail naming the seated run — where
+// the interpreter answers wantI.
+func requireCheckedPlainDefer(t *testing.T, src, wantI string) {
+	t.Helper()
+	prog, reason, _, err := mustNew(t).CompileCheck(src)
+	if prog == nil || err != nil {
+		t.Errorf("%q: want a compiled program, got decline %q / %v", src, reason, err)
+		return
+	}
+	gotC, _, errC := mustNew(t).RunCompiled(src)
+	if !isBailDefect(errC) || !strings.Contains(errC.Error(), "where the run is seated as data") || len(gotC) != 0 {
+		t.Errorf("%q: want the loud dyn-body-plain defer, got %v / %v", src, gotC, errC)
+	}
+	if gotI, errI := mustNew(t).RunInterp(src); errI != nil || fmt.Sprint(gotI) != wantI {
+		t.Errorf("%q: interpreter answered %v / %v, want %s", src, gotI, errI, wantI)
 	}
 }
 

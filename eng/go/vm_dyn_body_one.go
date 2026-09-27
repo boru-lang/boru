@@ -28,6 +28,24 @@ func checkDynBodyOne(r *core.Registry, word string, results []core.Value, curDeb
 	return nil
 }
 
+// checkDynBodyPlain is the runtime check of a computed `do` body's run seated
+// where the prefix island does not re-step it (SigRef/PolyRef.DynBodyPlain —
+// compiler lowerCall, NUR213): with values beneath it, entries after it, or
+// as a fn's result. A run of plain values is data on both lanes wherever it
+// lands; a value the interpreter's tape dispatches when it steps it (a fn
+// value, class, reach or modifier) would be applied over the run's
+// neighbours, which the seated run cannot do — a designed defer at the call's
+// own position, loud.
+func checkDynBodyPlain(r *core.Registry, word string, results []core.Value, curDebug []core.SrcPos, pc int) error {
+	for _, v := range results {
+		if dynBodyValueReSteps(v) {
+			return vmDefer(r, curDebug, pc, "vm:dyn-body-plain", word+
+				" over a computed body left a value the interpreter re-steps (a fn value, class, reach or modifier) where the run is seated as data; the compiled runtime cannot execute it")
+		}
+	}
+	return nil
+}
+
 // dynBodyValueReSteps reports whether the interpreter's tape DISPATCHES v
 // when it steps it, rather than pushing it as data.
 func dynBodyValueReSteps(v core.Value) bool {

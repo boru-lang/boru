@@ -2820,16 +2820,10 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 					return msgs.variadic
 				}
 			}
-			// A COMPUTED `do` body's run (a dyn-body region that may leave a
-			// callable) seats only as the residual's LAST entries — the
-			// program residual included, which otherwise absorbs a region
-			// anywhere: the interpreter re-steps a fn value the handler
-			// hands back, and it collects what follows it FORWARD (`do (mk)
-			// 5` over `[g/v]` is g applied to 5, where the seated run leaves
-			// `fn g 5`).
-			if lw.dynRegionMayBeFn(op.idx) && !eventRunLast(ops[i:], op.idx) {
-				return dynRegionNotLast
-			}
+			// A COMPUTED `do` body's run that may leave a callable is either
+			// the prefix island's (the residual's last entries, re-stepped
+			// whole) or checked plain at its call (lowerCall's
+			// DynBodyPlain), so it seats as any region does.
 			if len(tail) > 0 {
 				return msgs.aboveLiteral
 			}
@@ -3364,21 +3358,6 @@ func eventRunThenInert(ops []EmitOperand, idx int) bool {
 	return true
 }
 
-// dynRegionNotLast is seatResults' decline for a computed `do` body's run
-// with residual entries above it (dynRegionMayBeFn).
-const dynRegionNotLast = "do: a computed body's values seat only as the residual's last entries — the interpreter re-steps a fn value they may hold over what follows (NUR210)"
-
-// eventRunLast reports whether ops is exactly one contiguous run of event
-// idx's results, in result order, and nothing after it.
-func eventRunLast(ops []EmitOperand, idx int) bool {
-	for n, op := range ops {
-		if op.kind != opEvent || op.idx != idx || op.resIdx != n {
-			return false
-		}
-	}
-	return true
-}
-
 // reconcileResults arranges a unit's N result operands (bottom→top) as the
 // final stack, ready for a RET. who prefixes the compile failure reason ("fn name").
 // This is the fn-unit caller of the shared seatResults primitive — it rejects a
@@ -3589,6 +3568,12 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// demotion armed does not apply to the run it seats.
 		dynOne = false
 	}
+	// Any other computed run that may leave a callable — values beneath it,
+	// entries after it, a fn's result — is seated under a runtime check that
+	// it left none (NUR213): a plain run is data on both lanes wherever it
+	// lands, and a run holding a fn value the interpreter would re-step over
+	// its neighbours is the loud vm:dyn-body-plain defer.
+	plainChk := !dynOne && lw.dynRegionMayBeFn(ev.seq) && (lw.island == nil || lw.island.region != ev.seq)
 	if c.generic {
 		// The routed native dispatch (region_route.go): the operands stay
 		// pushed as the record's claim and the descriptor drives the
@@ -3726,15 +3711,15 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// Runtime-matched dispatch: no baked sig, the VM re-matches over the
 		// word's signatures against the n stack values.
 		pi := len(lw.p.PolyRefs)
-		lw.p.PolyRefs = append(lw.p.PolyRefs, PolyRef{Word: c.word, Arity: n, NOut: c.nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne})
+		lw.p.PolyRefs = append(lw.p.PolyRefs, PolyRef{Word: c.word, Arity: n, NOut: c.nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk})
 		lw.emit(OpCallNativePoly, pi, c.pos)
-	} else if c.hostSplice || dynOne {
+	} else if c.hostSplice || dynOne || plainChk {
 		// A hosted splice (a computed `for` body): its own SigRef, never
 		// shared with a plain call of the same signature — the flag is the
 		// call site's, and the VM runs the handler's tokens on its island.
 		// A runtime-checked single value (dynOne) takes its own SigRef for
 		// the same reason.
-		lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne})
+		lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk})
 		lw.emit(OpCallNative, len(lw.p.Sigs)-1, c.pos)
 	} else {
 		si, ok := lw.sigIdx[c.sig]

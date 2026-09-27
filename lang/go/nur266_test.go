@@ -15,12 +15,13 @@ import (
 // a def read, whose reads share one value. The recorder kept each read's
 // position, and a read wholly past the boundary proved the crossing.
 //
-// At the merge of main's #514 main's region rule supersedes the compile:
-// a run that may leave a callable seats only as the residual's LAST entries
-// (lower.go dynRegionNotLast), because a NAMED zero-argument fn value in the
-// run fires across the `end` (`do (mk) end x` over `[g/v]` is the
-// interpreter's [7 5], and the statement-boundary seat answered [fn g 5]).
-// Every row below declines loudly now.
+// At the merge of main's #514 main's rules superseded the compile: a run
+// whose tokens are not proven binding-free arms the kept-defs latch, which
+// declines the read after it; and a NAMED zero-argument fn value in the run
+// fires across the `end` (`do (mk) end x` over `[g/v]` is the interpreter's
+// [7 5], which the statement-boundary seat answered [fn g 5], silent). That
+// run now compiles under the plain-run check (NUR213) and defers loudly; a
+// lone anonymous lambda parks and seats as data (NUR282).
 func TestNUR266RunLeadStopsAtTheStatementEnd(t *testing.T) {
 	const lam = `def mk fn [[][List][quote [([n:Integer] => [n add 1])]]] end def x 5 end `
 	for _, prog := range []string{
@@ -28,11 +29,11 @@ func TestNUR266RunLeadStopsAtTheStatementEnd(t *testing.T) {
 		`do (mk) end x x`, // every read past the end
 		`do (mk) ; x`,     // `;` ends the statement as `end` does
 		`do (mk) x`,       // no boundary: the fn takes x forward, 6
-		`do (mk) end 7`,   // a literal after the end
 	} {
-		requireDeclineReason(t, lam+prog, dynRegionNotLastReason)
+		requireDeclineReason(t, lam+prog, keptDefsLatchReason)
 	}
-	requireDeclineReason(t, `def g fn [[][Integer][7]] end def mk fn [[][List][quote [g/v]]] end def x 5 end do (mk) end x`, dynRegionNotLastReason)
+	requireEngineParity(t, lam+`do (mk) end 7`, true) // a literal after the end
+	requireCheckedPlainDefer(t, `def g fn [[][Integer][7]] end def mk fn [[][List][quote [g/v]]] end def x 5 end do (mk) end x`, "[7 5]")
 	// A run of plain values and a paren's fn result are unchanged.
 	requireEngineParity(t, `def mk fn [[][List][quote [1 2]]] end def x 5 end do (mk) end x`, true)
 	requireEngineParity(t, `def mk fn [[][Any][([n:Integer] => [n add 1])]] end def x 5 end (mk) end x`, true)

@@ -1040,7 +1040,7 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	if !fixedValueEval && sig.Callable != nil && sig.Callable.BodyOut == core.BodyOutResidual && !core.IsConcrete(body) && len(outs) == 1 {
 		if n, plain := es.bodyPlainCount(body); !plain || n != 1 {
 			f.variadicRegion = true
-			f.regionMayBeFn = regionValsMayBeCallable(outs) && !plain
+			f.regionMayBeFn = regionValsMayBeCallable(outs) && !plain && !es.bodyParksFnValues(body)
 		}
 	}
 	// The dyn-body backstop already marks every code-body result variadic
