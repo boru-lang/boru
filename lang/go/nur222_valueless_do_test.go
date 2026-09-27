@@ -95,6 +95,10 @@ func TestNUR222ConsumedPhantomCountIsland(t *testing.T) {
 		{g + `(g) 1 do [(1 add 1) drop] drop`, "[5]"},
 		{g + `[(g) 1 do [(1 add 1) drop] drop]`, "[[5]]"},
 		{`print "p" 1 do [(1 add 1) drop] drop`, "[]"},
+		// A call before the do that took a stack operand written right
+		// before it is written as its run too (callRun).
+		{`1 add 2 [1 do [(1 add 1) drop] drop]`, "[3 []]"},
+		{`"x" print/s 1 do [(1 add 1) drop] drop`, "[]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
@@ -102,9 +106,9 @@ func TestNUR222ConsumedPhantomCountIsland(t *testing.T) {
 		{`1 2 do [(1 add 1) drop] add`, "[3]", "DISPATCH_REMATCH underflow"},
 		// A top-level list literal's token carries no position, so no
 		// statement island can find the do inside it; nor can one re-run a
-		// bare call before the do.
+		// call before the do whose operand lies beneath the statement.
 		{`[1 do [(1 add 1) drop] drop]`, "[[]]", "a caught body's run left 0 value(s)"},
-		{`1 add 2 [1 do [(1 add 1) drop] drop]`, "[3 []]", "a caught body's run left 0 value(s)"},
+		{`1 end add 2 [1 do [(1 add 1) drop] drop]`, "[3 []]", "a caught body's run left 0 value(s)"},
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
 		if errI != nil || fmt.Sprint(gotI) != c.want {

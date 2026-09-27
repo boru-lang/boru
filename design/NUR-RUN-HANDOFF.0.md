@@ -9,6 +9,32 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## A call run over its stack operands: NUR296's and NUR222's owed forms (2026-09-27)
+
+An effect before a stop that took its operand off the stack (`"x" print/s`)
+had no call run, so its island would run it twice, and the stop deferred.
+NUR222's count island met the same refusal at `1 add 2 [1 do […] drop]`.
+
+- **The run.** `callRun` now takes the tokens right before the word that
+  hold the arguments it took off the stack, the top nearest the word, as
+  well as the ones after it it took forward (`10 sub 3` is one run of three
+  tokens). A stack operand an event left must come from a paren, or from a
+  word whose own call run ends right before this one (`runBefore`): `3 4
+  add print/s` is one run of four tokens.
+- **Nested plans.** A paren's own plan inside a call run is the run's
+  (`substPlan.holds`), so the island writes the run once and the paren
+  never.
+- **Answers.** Every such form prints once and answers as the interpreter
+  does, output compared: `"a" print/s 5 if (mk) …`, `3 4 add print/s …`,
+  `(g) print/s …`, the def-group and fn-body forms, and `1 add 2 [1 do
+  […] drop]` (`[3 []]`).
+- **Still loud.** An operand beneath the statement (`"x" end print/s`), or
+  one written apart from the word (`"x" "y" print/s print/s`, inside a
+  def's group).
+- **Pins.** The six pins whose loud row was `print/s` each gain an
+  agreeing row and take `end print/s` (or the apart form) as their loud
+  row; compiler `TestCallRunOffTheStack`, `TestSubstPlanHolds`.
+
 ## NUR300 found and closed: a computed error handler's run is a region (2026-09-27)
 
 Probing NUR282's owed handler count found it silent, on main and here. A

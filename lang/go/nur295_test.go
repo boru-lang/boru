@@ -108,6 +108,7 @@ func TestNUR219QuoteCapturesCollectedWord(t *testing.T) {
 		// An effect before the landing is written as nothing (NUR296's
 		// call run): it does not run twice.
 		{pre + `print "x" [(m.f true)]`, "[[true]]"},
+		{pre + `"x" print/s [(m.f true)]`, "[[true]]"},
 		{pre + `for 2 [[(m.f true)]]`, "[[true] [true]]"},
 		{pre + `[1 2] each [drop [(m.f true)]]`, "[[[true] [true]]]"},
 		// The caret sibling: a named fn no window fits raises at its own
@@ -117,10 +118,10 @@ func TestNUR219QuoteCapturesCollectedWord(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	// An effect before the landing that took its operand off the stack is
-	// no call run an island can write: it would run twice, so that capture
-	// stays a designed defer.
-	src := pre + `"x" print/s [(m.f true)]`
+	// An effect before the landing whose operand lies beneath its statement
+	// is no call run an island can write: it would run twice, so that
+	// capture stays a designed defer.
+	src := pre + `"x" end print/s [(m.f true)]`
 	gotC, compiled, errC, _, errI := runBothEngines(t, src)
 	if !compiled || errI != nil || errC == nil || !strings.Contains(errC.Error(), "NUR219") || len(gotC) != 0 {
 		t.Errorf("%s: an unsealed capture defers compiled; got %v %v (interpreter %v)", src, gotC, errC, errI)

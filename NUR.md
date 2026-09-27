@@ -218,7 +218,7 @@ keep the two in sync in the same commit.
 | [NUR293](#nur293) | FIXED 2026-09-27 (recorded and closed together, found probing NUR292; the handoff log's entry of that date): the compiled `if` ran a COMPUTED List arm as `[do <arm>]` (computedArmDoBody), the interpreter's arm splice on every axis but one — `do` traps a body error as an Error value, where the splice raises it: `def mk fn [[][List][quote [1 div 0]]] end if true (mk) ["f"]` raised arith_error interpreted and answered `[error(division by zero)]` compiled (silent, on main). The arm runs through `__arm`, `do` without the trap | probing NUR292, 2026-09-27 |
 | [NUR294](#nur294) | FIXED 2026-09-27 (recorded and closed together, found probing NUR292; the handoff log's entry of that date): a RUN — a computed body's values, counted at run time — was seated as the one value the pass models wherever it was not the dyn-body call's own result: a branch whose arm is one (`9 if true (mk) ["f"]` over a List `[1 2]` answered `[1 9 2]`), a literal `do` body ending in one (`9 do [do (mk)]` the same; `[9 do [do (mk)]]` `[1 [9 2]]`; `do [do (mk)] add` a signature_error for 3). A run is a run wherever it surfaces (`runOperand`: the trailing apply declines it, a closure body holding one is a region or declines, the backstop learns it from a probe); `__arm` runs the compiled closure of a literal body | probing NUR292, 2026-09-27 |
 | [NUR295](#nur295) | FIXED 2026-09-27 (recorded and closed together, found probing NUR219; the handoff log's entry of that date): a list literal's element the pass holds as possibly a fn — a gradual member read, a word's fn result, a list element — was assembled as data, where the interpreter's evaluation of the literal re-steps it over its neighbours: `[m.g 5]` over a factory's map answered `[[fn g(Integer) 5]]` for `[[6]]` (silent, on main). Such a list lowers to `OpMakeListReStep`: data elements assemble as before, a fn element re-steps the window through the island where the elements after it are literals, and anything else defers | probing NUR219, 2026-09-27 |
-| [NUR296](#nur296) | FIXED 2026-09-27 by its loud defers (recorded the same day, closing NUR242 and NUR219; the handoff log's entries of that date; by the scope ruling a refusal is no answer divergence — the compiles of the forms below that still defer stay owed, each a designed defer): a landing's `/q` claim, a paren apply over data or a branch guard over a list (NUR292) restarts its statement on the interpreter only where the compiled code ran nothing a second run would repeat — a call before the stop is written as its paren's value where the compiled code still holds it, or kept a copy in a slot of its own when the statement consumes it (the stash) — and, inside counted loops, only on their first iteration (checked at run time); otherwise it defers. A stop on a later iteration or in a condition loop, a paren substituted inside a loop, and an effect before the stop that took an operand off the stack answer interpreted and defer compiled. `[(g) (l.0 true)]`, `[(g) drop (l.0 true)]`, `5 if (c) (mk) ["f"]`, `for 2 [[(l.(i) true)]]` and `for 2 [[(l.0 true)] def q 1 end]`, recorded here first, compile since the same day, and so does an effect before the stop written after its word (`print "a" 5 if (mk) ["big"] ["small"]`, the call run: written as no token, it prints once). Loud | closing NUR242, 2026-09-27 |
+| [NUR296](#nur296) | FIXED 2026-09-27 by its loud defers (recorded the same day, closing NUR242 and NUR219; the handoff log's entries of that date; by the scope ruling a refusal is no answer divergence — the compiles of the forms below that still defer stay owed, each a designed defer): a landing's `/q` claim, a paren apply over data or a branch guard over a list (NUR292) restarts its statement on the interpreter only where the compiled code ran nothing a second run would repeat — a call before the stop is written as its paren's value where the compiled code still holds it, or kept a copy in a slot of its own when the statement consumes it (the stash) — and, inside counted loops, only on their first iteration (checked at run time); otherwise it defers. A stop on a later iteration or in a condition loop, a paren substituted inside a loop, and an effect before the stop whose operand lies beneath its statement (`"x" end print/s …`) answer interpreted and defer compiled. `[(g) (l.0 true)]`, `[(g) drop (l.0 true)]`, `5 if (c) (mk) ["f"]`, `for 2 [[(l.(i) true)]]` and `for 2 [[(l.0 true)] def q 1 end]`, recorded here first, compile since the same day, and so does an effect before the stop written after its word (`print "a" 5 if (mk) ["big"] ["small"]`, the call run: written as no token, it prints once), or over operands it took off the stack written right before it (`"x" print/s`, `3 4 add print/s`: the producer's own run joins the call's). Loud | closing NUR242, 2026-09-27 |
 | [NUR297](#nur297) | FIXED 2026-09-27 (recorded and closed together, probing NUR286's compile; the branch's own NUR292 work, never on main; the handoff log's entry of that date): a statement island wrote the value a paren's call left as a token, which the island steps — the interpreter parks a paren's value that would dispatch at the pointer, so `[5 (g) (l.0 true)]` over a factory of a lambda answered `[[6 true]]` for `[[5 fn (Integer) true]]` (silent). A paren's or a bare word's fn value is a designed defer now (`vm:restart-parked-fn`); data is written as before. Loud | probing NUR286, 2026-09-27 |
 | [NUR298](#nur298) | FIXED 2026-09-27 (recorded and closed together, probing NUR286's compile; the handoff log's entry of that date): inside a def's operand group the interpreter's re-step applies a landed fn to the literal after it before the def takes the group's first value, and the compiled lane left the fn to the residual arms, which met it only after the def: `def j (5 do [(mk)] 7) end 1 j` answered `[fn (Integer) 7 1 5]` for `[8 1 5]`, as did a string or list after the fn (silent, on main); the plain `end j` form regressed on the branch at 51b1a62 (NUR266's crossing rule). The crossing counts only the entry right after the lead, and a def group's collecting landing (`LandingCollects`) is guarded and takes its statement island; with an effect before the stop it defers (`vm:landing-collects`) | probing NUR286, 2026-09-27 |
 | [NUR299](#nur299) | FIXED 2026-09-27 by a loud decline (recorded and closed together, probing the statement island's barriers; the handoff log's entry of that date; by the scope ruling a refusal is no answer divergence): a one-operand word over a gradual value beneath it and a literal after it splits at run time by the value — `(mk) do [5]` over a factory of `[1 2]` is `[[1 2] 5]` interpreted (the List misses do's Map overload, and the List one takes the `[5]`), and the check pass filled the Map overload from the stack: the branch answered `[1 2 [5]]` (silent since 13aa881's region claim) and main bailed; over a fn value (`m.f do [(g)]`) the compiled lane raised `cannot call do` on both. the forward-drift guard now asks an all-stack window neither of its models answers (NUR228's question at fwd 0, keyed on the drift window and its decline, not on arity — ADR-016), so the compile declines | probing NUR296, 2026-09-27 |
@@ -12281,9 +12281,11 @@ The island's own run raises the interpreter's error (`do [(1 add 1) drop]
 drop` is `cannot call drop` on both lanes). A seat no island takes defers
 loudly (`vm:do-count`): a program with a trap before the statement (`1 2
 do [(1 add 1) drop] add`, a DISPATCH_REMATCH underflow), a call before it
-in its statement that took an operand off the stack (`1 add 2 [1 do …]`),
-and a do inside a top-level list literal, whose token carries no position
-for an island to find. A paren before the do is written as its value, and
+whose operand lies beneath its statement (`1 end add 2 [1 do …]`; one over
+operands written right before its word is its call run since the same day,
+so `1 add 2 [1 do …]` is `[3 []]` on both lanes), and a do inside a
+top-level list literal, whose token carries no position for an island to
+find. A paren before the do is written as its value, and
 an effect as its run (NUR296's call run, the same day): `(g) 1 do [(1 add
 1) drop] drop`, which answered `[1]` for `[5]` silently on main and on this
 branch until then, is `[5]` on both lanes. Pinned by lang
@@ -13463,8 +13465,10 @@ of that date; by the scope ruling a refusal is no answer divergence). No
 form was ever silent, and every form below either compiles or defers
 loudly. The compiles still owed, each a designed defer: a stop on a later
 iteration of a counted loop or in a condition loop, a paren substituted
-inside a loop, and an effect before the stop that took an operand off the
-stack (`"x" print/s`). Their direction is "What a fix needs" below: `for`
+inside a loop, and an effect before the stop whose operand lies beneath its
+statement (`"x" end print/s`; an effect over operands written right before
+its word compiles since the same day). Their direction is "What a fix
+needs" below: `for`
 takes a `[start end step]` range, so a later iteration's continuation is
 expressible as the rest of the iteration under a one-step range, then the
 remaining range (a `break` in the body wants care). · **Recorded:**
@@ -13539,8 +13543,13 @@ n [(l.0 true)] n` and the fn-body forms compile and print once. The
 recorder keeps where each argument of a call was written (`argSites`): a
 read by its own site, a computed value by its event, a literal by its
 token. The run must hold the call's arguments in written order and nothing
-else, so a call that took an operand off the stack (`"x" print/s`) is no
-run and still defers. Written runs are no collection barrier to what
+else: the ones it took forward right after the word, and (since the same
+day) the ones it took off the stack right before it, the top nearest the
+word — `"x" print/s`, `10 sub 3 print/s`. A stack operand a word left joins
+that word's own run to the call's (`runBefore`: `3 4 add print/s` is one
+run of four tokens), and a paren's plan inside a run is the run's
+(`substPlan.holds`). An operand beneath the statement (`"x" end print/s`)
+is no run and still defers. Written runs are no collection barrier to what
 follows them (`writtenOver`: `print "a" print "b"` before the stop), and a
 list literal never collects forward (`barrierFree`): `[(l.0 true)] print
 "z"`, where the pass recorded the print before the list's landing, writes

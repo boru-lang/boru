@@ -89,6 +89,22 @@ func (p substPlan) covers(path []int) bool {
 	return at >= p.path[n-1] && at < p.path[n-1]+p.span
 }
 
+// holds reports whether c's whole run lies inside p's, on the same level,
+// p's the longer: a call run over a paren it took off the stack (`(mk)
+// print/s`). Writing p writes c's tokens too.
+func (p substPlan) holds(c substPlan) bool {
+	n := len(p.path)
+	if n == 0 || len(c.path) != n || c.span >= p.span {
+		return false
+	}
+	for i := 0; i < n-1; i++ {
+		if c.path[i] != p.path[i] {
+			return false
+		}
+	}
+	return c.path[n-1] >= p.path[n-1] && c.path[n-1]+c.span <= p.path[n-1]+p.span
+}
+
 // seated reports whether the walk seated r where the island can take the
 // statement over: its depth measured, its unit frame placeable and, at the
 // root, the compiled stack there exactly the residual's results the plan
@@ -482,7 +498,7 @@ func (es *EmitState) restartSubsts(tree map[int]treeEvent, body []core.Value, to
 	for i, c := range cands {
 		outer := false
 		for j, o := range cands {
-			outer = outer || (i != j && len(o.path) < len(c.path) && o.covers(c.path))
+			outer = outer || (i != j && (len(o.path) < len(c.path) && o.covers(c.path) || o.holds(c)))
 		}
 		if !outer {
 			kept = append(kept, c)
@@ -644,12 +660,16 @@ func writtenOver(written []substPlan, path []int) bool {
 	return false
 }
 
-// callRun is the run of tokens a bare call took (NUR296): its word, at
-// path, and the tokens right after it on its level that hold its
-// arguments, every one taken forward (argSites) and in written order, the
-// run holding nothing else. An island writes the call's one result in the
-// run's place, or nothing for an effect (`print "a"`), so the call never
-// runs twice. ok is false for any other call.
+// callRun is the run of tokens a bare call took (NUR296): its word, the
+// tokens right after it on its level that hold the arguments it took
+// forward, in written order, and the tokens right before it that hold the
+// ones it took off the stack (argSites), the top nearest the word — `"x"
+// print/s` — the run holding nothing else. A stack argument an event left
+// must come from a paren, whose own plan the run then holds (restartSubsts):
+// a word's run there (`5 inc print/s`) would overlap this one. path is the
+// run's first token. An island writes the call's one result in the run's
+// place, or nothing for an effect (`print "a"`), so the call never runs
+// twice. ok is false for any other call.
 func (es *EmitState) callRun(tree map[int]treeEvent, ev *EmitEvent, body []core.Value, tok int) (path []int, span int, ok bool) {
 	ops, nout := callShape(ev)
 	sites, noted := es.argSites[ev.seq]
@@ -671,21 +691,52 @@ func (es *EmitState) callRun(tree map[int]treeEvent, ev *EmitEvent, body []core.
 	if !core.IsWord(toks[at]) || toks[at].Pos() != p {
 		return nil, 0, false
 	}
-	last := at
+	lo, hi := at, at
 	for _, site := range sites {
-		q := site.pos
-		if te, in := tree[site.seq]; site.seq >= 0 && in {
+		q, made := site.pos, site.seq >= 0
+		te, in := tree[site.seq]
+		if made && in {
 			q = eventPos(*te.ev)
-		} else if site.seq >= 0 {
+		} else if made {
 			return nil, 0, false
 		}
 		j := bodyTokenContaining(toks, q)
-		if j < last || j > last+1 || (j == last && j == at) {
+		switch {
+		case j > at && (j == hi && hi > at || j == hi+1):
+			hi = j
+		case j >= 0 && j < at && (j == lo && lo < at || j == lo-1) && (!made || core.IsParenExpr(toks[j])):
+			lo = j
+		case j >= 0 && j < at && made:
+			// A word's result (`3 4 add print/s`): the producer's own run,
+			// ending right before this one on its level, joins it.
+			from, ok := es.runBefore(tree, te.ev, body, tok, len(path), lo)
+			if !ok {
+				return nil, 0, false
+			}
+			lo = from
+		default:
 			return nil, 0, false
 		}
-		last = j
 	}
-	return path, last - at + 1, true
+	if len(path) == 1 && lo < tok {
+		return nil, 0, false
+	}
+	path[len(path)-1] = lo
+	return path, hi - lo + 1, true
+}
+
+// runBefore is the first token of producer ev's own call run when that run
+// stands at depth n, the consuming call's level, and ends right before
+// token lo there: the run a call that took ev's result off the stack
+// extends over. The producer stands between that level's first token and
+// the call's word (callRun found it there), so a run at the same depth is
+// on the same level.
+func (es *EmitState) runBefore(tree map[int]treeEvent, ev *EmitEvent, body []core.Value, tok, n, lo int) (int, bool) {
+	run, span, ok := es.callRun(tree, ev, body, tok)
+	if !ok || len(run) != n || run[n-1]+span != lo {
+		return 0, false
+	}
+	return run[n-1], true
 }
 
 // tokenPath is the path of token indexes from body down to the token that

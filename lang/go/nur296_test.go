@@ -28,6 +28,7 @@ func TestNUR296LoopIslands(t *testing.T) {
 		{`def mk fn [[][Any][quote [gt 3]]] end def c (mk) end for 2 [5 if c ["t"] ["f"] drop]`, "[]"},
 		{l + `def g fn [[] [Any] [7]] end [(g) drop (l.0 true)]`, "[[true]]"},
 		{l + `print "x" [(l.0 true)]`, "[[true]]"},
+		{l + `"x" print/s [(l.0 true)]`, "[[true]]"},
 		{`def mk fn [[][Any][quote [gt 3]]] end def g fn [[] [Any] [7]] end 5 (g) drop if (mk) ["big"] ["small"]`, "[big]"},
 		{`def mk fn [[][Any][quote [gt 3]]] end def c fn [[][Any][true]] end 5 if (c) (mk) ["f"]`, "ERROR:cannot call `gt`"},
 	} {
@@ -37,7 +38,7 @@ func TestNUR296LoopIslands(t *testing.T) {
 	for _, c := range []struct{ src, sub string }{
 		{mixed + `for 2 [[(l.(i) true)]]`, "first iteration"},
 		{l + `def n (flex [0]) end for 2 [push i n [(l.(i) true)]]`, "NUR219"},
-		{l + `"x" print/s [(l.0 true)]`, "NUR219"},
+		{l + `"x" end print/s [(l.0 true)]`, "NUR219"},
 		{`def l [true (quote [gt 3])] end for 2 [5 if l.(i) ["t"] ["f"] drop]`, "NUR292"},
 		{`def mk fn [[][Any][quote [gt 3]]] end def n 0 end for 2 [5 if (mk) ["t"] ["f"] drop]`, "NUR292"},
 	} {
@@ -49,12 +50,13 @@ func TestNUR296LoopIslands(t *testing.T) {
 }
 
 // TestNUR296EffectBeforeTheStop pins NUR296's effect form. A bare call
-// before the stop in its statement whose arguments were all written after
-// its word is written in the island as the run it left: an effect as
-// nothing (`print "a"`, RestartNone), a value as that value. So the island
-// never runs it again, and the program prints what the interpreter prints,
-// once. A call that took an argument off the stack (`"x" print/s`) is no
-// such run and still defers.
+// before the stop in its statement whose arguments were written beside its
+// word — after it, or right before it for those it took off the stack
+// (`"x" print/s`) — is written in the island as the run it left: an effect
+// as nothing (`print "a"`, RestartNone), a value as that value. So the
+// island never runs it again, and the program prints what the interpreter
+// prints, once. A call whose operand lies beneath its statement is no such
+// run and still defers (TestNUR292ComputedIfConditionOrArmThatIsAList).
 func TestNUR296EffectBeforeTheStop(t *testing.T) {
 	l := `def h fn [[x:Atom/q] [Any] [x]] end def mk fn [[] [List] [[h/v h/v]]] end def l (mk) end `
 	gt := `def mk fn [[][Any][quote [gt 3]]] end `
@@ -69,6 +71,11 @@ func TestNUR296EffectBeforeTheStop(t *testing.T) {
 		{l + `def n (flex []) end push 1 n [(l.0 true)] n`, "[[1] [true] [1]]", ""},
 		{l + `def f fn [[][Any][print "a" [(l.0 true)]]] end f`, "[[true]]", "a\n"},
 		{`def f fn [[][Any][print "a" 1 do [(1 add 1) drop] drop 7]] end f`, "[7]", "a\n"},
+		{gt + `"a" print/s 5 if (mk) ["big"] ["small"]`, "[big]", "a\n"},
+		{gt + `3 4 add print/s 5 if (mk) ["big"] ["small"]`, "[big]", "7\n"},
+		{gt + `10 sub 3 print/s 5 if (mk) ["big"] ["small"]`, "[big]", "7\n"},
+		{gt + `def g fn [[][Any][7]] end (g) print/s 5 if (mk) ["big"] ["small"]`, "[big]", "7\n"},
+		{l + `"a" print/s [(l.0 true)]`, "[[true]]", "a\n"},
 	} {
 		var oc, oi bytes.Buffer
 		a := mustNew(t)

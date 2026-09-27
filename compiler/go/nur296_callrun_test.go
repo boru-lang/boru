@@ -65,7 +65,8 @@ func TestCallRun(t *testing.T) {
 		{"two values of one token", call(4, 1, 1, lit(7), lit(7)), 0, []int{0}, 2, true},
 		{"a word that took nothing", call(5, 20, 0), 0, []int{4}, 1, true},
 		{"a run of several results", call(6, 1, 2, lit(7)), 0, nil, 0, false},
-		{"an argument off the stack", call(7, 20, 0, lit(11)), 0, nil, 0, false},
+		{"an argument off the stack with a gap before the word", call(7, 20, 0, lit(11)), 0, nil, 0, false},
+		{"a paren's value off the stack right before the word", call(14, 20, 0, argSite{seq: 3}), 0, []int{3}, 2, true},
 		{"a gap in the run", call(8, 1, 0, lit(11)), 0, nil, 0, false},
 		{"an argument at the word itself", call(9, 1, 0, lit(1)), 0, nil, 0, false},
 		{"a computed argument no event of the tree left", call(10, 1, 0, argSite{seq: 99}), 0, nil, 0, false},
@@ -96,6 +97,86 @@ func TestCallRun(t *testing.T) {
 	inner := []core.Value{gtok(core.NewParenExpr([]core.Value{gtok(core.NewWord("print"), 2), gtok(core.NewString("a"), 8)}), 1)}
 	if path, span, ok := es.callRun(tree, call(22, 2, 0, lit(8)), inner, 0); !ok || span != 2 || len(path) != 2 || path[1] != 0 {
 		t.Errorf("a run inside a paren: %v %d %v", path, span, ok)
+	}
+}
+
+// stackBody is `3 4 add print 7 sub 2 print [9 inc] print`: add at column 5
+// takes 4 and 3 off the stack, the first print (9) takes add's result, sub
+// (17) takes 2 forward and 7 off the stack, the second print (25) takes
+// sub's result, and the third (37) takes inc's, inside a list literal (31).
+func stackBody() []core.Value {
+	list := gtok(core.NewEvalList([]core.Value{gtok(core.NewInteger(9), 32), gtok(core.NewWord("inc"), 34)}), 31)
+	return []core.Value{
+		gtok(core.NewInteger(3), 1), gtok(core.NewInteger(4), 3), gtok(core.NewWord("add"), 5), gtok(core.NewWord("print"), 9),
+		gtok(core.NewInteger(7), 15), gtok(core.NewWord("sub"), 17), gtok(core.NewInteger(2), 21), gtok(core.NewWord("print"), 25),
+		list, gtok(core.NewWord("print"), 37),
+	}
+}
+
+// TestCallRunOffTheStack pins a call run over the arguments a call took off
+// the stack (NUR296, NUR222): the tokens right before the word, the top
+// nearest it, and a word's result by that word's own run.
+func TestCallRunOffTheStack(t *testing.T) {
+	es := NewEmitState()
+	es.argSites = map[int][]argSite{}
+	lit := func(col int) argSite { return argSite{pos: gpos(col), seq: -1} }
+	call := func(seq, col, nout int, sites ...argSite) *EmitEvent {
+		es.argSites[seq] = sites
+		return &EmitEvent{kind: evCall, seq: seq, call: emitCall{word: "w", pos: gpos(col), ops: make([]EmitOperand, len(sites)), nout: nout}}
+	}
+	add := call(1, 5, 1, lit(3), lit(1))
+	sub := call(3, 17, 1, lit(21), lit(15))
+	inc := call(5, 34, 1, lit(32))
+	two := call(6, 5, 2, lit(3), lit(1))
+	tree := map[int]treeEvent{1: {ev: add}, 3: {ev: sub}, 5: {ev: inc}, 6: {ev: two}}
+	body := stackBody()
+	for _, c := range []struct {
+		name       string
+		ev         *EmitEvent
+		first, pan int
+		ok         bool
+	}{
+		{"two stack operands, the top nearest the word", add, 0, 3, true},
+		{"an infix call, forward and stack", sub, 4, 3, true},
+		{"an effect over a word's result, that word's run joined", call(2, 9, 0, argSite{seq: 1}), 0, 4, true},
+		{"an effect over an infix call's result", call(4, 25, 0, argSite{seq: 3}), 4, 4, true},
+		{"a producer with no run of its own", call(7, 9, 0, argSite{seq: 6}), 0, 0, false},
+		{"a producer whose run ends before a gap", call(8, 25, 0, argSite{seq: 1}), 0, 0, false},
+		{"a producer inside a list literal", call(9, 37, 0, argSite{seq: 5}), 0, 0, false},
+		{"a stack operand before the statement", add, 0, 0, false},
+	} {
+		tok := 0
+		if c.name == "a stack operand before the statement" {
+			tok = 1
+		}
+		path, span, ok := es.callRun(tree, c.ev, body, tok)
+		if ok != c.ok || (ok && (span != c.pan || len(path) != 1 || path[0] != c.first)) {
+			t.Errorf("%s: callRun = %v %d %v, want [%d] %d %v", c.name, path, span, ok, c.first, c.pan, c.ok)
+		}
+	}
+}
+
+func TestSubstPlanHolds(t *testing.T) {
+	run := substPlan{path: []int{2, 3}, span: 3}
+	for _, c := range []struct {
+		name string
+		c    substPlan
+		want bool
+	}{
+		{"a paren inside the run", substPlan{path: []int{2, 4}, span: 1}, true},
+		{"a shorter run at its start", substPlan{path: []int{2, 3}, span: 2}, true},
+		{"one running past its end", substPlan{path: []int{2, 5}, span: 2}, false},
+		{"one before it", substPlan{path: []int{2, 2}, span: 1}, false},
+		{"one as long", substPlan{path: []int{2, 3}, span: 3}, false},
+		{"one on another level", substPlan{path: []int{2, 4, 0}, span: 1}, false},
+		{"one in another paren", substPlan{path: []int{1, 4}, span: 1}, false},
+	} {
+		if got := run.holds(c.c); got != c.want {
+			t.Errorf("%s: holds = %v, want %v", c.name, got, c.want)
+		}
+	}
+	if (substPlan{}).holds(substPlan{span: 1}) {
+		t.Error("a plan with no path holds nothing")
 	}
 }
 

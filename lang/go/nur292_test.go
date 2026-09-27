@@ -14,9 +14,9 @@ import (
 // (__codeguard, BranchRecord.Guard): the guard passes any other value —
 // which answers as before, a fn landing where it did — and defers on a
 // list its statement island cannot take (TestNUR292StatementIslandRunsTheList):
-// a guard inside a loop, or after an effect in its statement that took an
-// operand off the stack (an effect written after its word is its call run,
-// NUR296). An arm the
+// a guard inside a loop, or after an effect in its statement whose operand
+// lies beneath the statement (an effect whose operands are written beside
+// its word is its call run, NUR296). An arm the
 // branch does not take is never checked, as the interpreter never splices
 // it; an arm the pass types List keeps its `[__arm <arm>]` path. A member fn
 // condition is coerced and a member fn arm lands at the merge, as NUR280
@@ -24,7 +24,7 @@ import (
 func TestNUR292ComputedIfConditionOrArmThatIsAList(t *testing.T) {
 	mk := func(v string) string { return `def mk fn [[][Any][` + v + `]] end ` }
 	for _, src := range []string{
-		mk(`quote [gt 3]`) + `"a" print/s 5 if (mk) ["big"] ["small"]`,
+		mk(`quote [gt 3]`) + `"a" end print/s 5 if (mk) ["big"] ["small"]`,
 		mk(`quote [gt 3]`) + `def n 0 end while [n lt 1] [def n (n add 1) 5 if (mk) ["t"] ["f"] drop]`,
 	} {
 		gotC, compiled, errC, _, errI := runBothEngines(t, src)
@@ -42,6 +42,7 @@ func TestNUR292ComputedIfConditionOrArmThatIsAList(t *testing.T) {
 		{`def inc fn [[n:Integer][Integer][n add 1]] end def m (flex {h: inc/v}) end 5 if m.h ["t"] ["f"]`, "[5 t]"},
 		{mk(`([y:Integer] => [y])`) + `5 if (mk) ["t"] ["f"]`, "[5 t]"},
 		{mk(`quote [gt 3]`) + `print "a" 5 if (mk) ["big"] ["small"]`, "[big]"},
+		{mk(`quote [gt 3]`) + `"a" print/s 5 if (mk) ["big"] ["small"]`, "[big]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
