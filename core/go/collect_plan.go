@@ -344,8 +344,9 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 		// and to v when v is a Pid). No static window is faithful, so the
 		// compile declines — the mirror of noteSplit's case, where the
 		// static choice forward-collects and the runtime one grabs the
-		// carrier (NUR228). An all-stack match (fwd 0) is the forward-drift
-		// guard's (DeclineForwardStackDrift and its drift window).
+		// carrier (NUR228). A one-operand word's all-stack match (fwd 0)
+		// asks the same — the forward-drift window takes only a wider one —
+		// so `(mk) do [5]` declines (NUR299).
 		if compiling && gradualWindowAmbiguous(h, fn, si, w, pointer, fwd, gradualStack, checkActive) {
 			reg.noteAmbiguousGradualSplit()
 		}
@@ -386,9 +387,14 @@ func unprovenStackOperand(v Value, slot *Type) bool {
 
 // gradualWindowAmbiguous reports a compile-pass window that took fwd forward
 // tokens and hangs on an unproven stack operand while a LATER candidate
-// forward-collects past the token this one's scan stopped at (NUR228).
+// forward-collects past the token this one's scan stopped at (NUR228). A
+// ONE-operand word's all-stack match asks too (fwd 0): `(mk) do [5]` over an
+// Any result fills do's Map overload from the stack, while at run time a List
+// value misses it and the List overload takes the `[5]` written after the
+// word (NUR299). A wider all-stack match is the forward-drift window's
+// (NUR287: `mk mk add 1`), which answers it at run time.
 func gradualWindowAmbiguous(h CollectHost, fn *FnDefInfo, si int, w WordInfo, pointer, fwd int, gradualStack, checkActive bool) bool {
-	return fwd > 0 && gradualStack && laterCandidateCollectsPast(h, fn, si, w, pointer, fwd, checkActive, true)
+	return gradualStack && (fwd > 0 || fn.Signatures[si].TotalArgs() == 1) && laterCandidateCollectsPast(h, fn, si, w, pointer, fwd, checkActive, true)
 }
 
 func laterCandidateCollectsPast(h CollectHost, fn *FnDefInfo, si int, w WordInfo, pointer, fwd int, checkActive, compiling bool) bool {

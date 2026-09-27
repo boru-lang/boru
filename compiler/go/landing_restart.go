@@ -255,9 +255,9 @@ func (es *EmitState) restartSubsts(tree map[int]treeEvent, body []core.Value, to
 		if restartRead(ev) {
 			continue
 		}
-		if path, ok := parenOf(ev, body, tok); ok {
+		if path, ok := parenOf(ev, body, tok); ok && (!wordAt(body, path) || inertBefore(body, tok, path)) {
 			cands = append(cands, substPlan{path: path, span: 1, seq: s})
-		} else if sub, whole, ok := es.doBody(ev, body, tok); ok && !whole {
+		} else if sub, whole, ok := es.doBody(ev, body, tok); ok && !whole && inertBefore(body, tok, sub) {
 			cands = append(cands, substPlan{path: sub, span: 2, seq: s})
 		}
 	}
@@ -374,6 +374,36 @@ func (es *EmitState) doBody(ev *EmitEvent, body []core.Value, tok int) (sub []in
 		return nil, false, false
 	}
 	return append(append([]int(nil), path[:len(path)-2]...), list-1), false, true
+}
+
+// wordAt reports whether the token at path is a word (parenOf's bare call).
+func wordAt(body []core.Value, path []int) bool {
+	toks := body
+	for _, at := range path[:len(path)-1] {
+		toks, _ = nestedToks(toks[at])
+	}
+	return core.IsWord(toks[path[len(path)-1]])
+}
+
+// inertBefore reports whether every token before the one at path, on its own
+// level of the statement — from token tok at the top, from the group's start
+// inside a paren or a list literal — is a scalar literal. A word-led run the
+// island writes as a value (a bare call, a do and its body) is a collection
+// barrier no longer: a function word stops a forward phase and a value does
+// not, so nothing before it may be collecting — `[(m.f y)]` over a 0-arg y
+// calls m.f with nothing, where `[(m.f 42)]` would take the 42.
+func inertBefore(body []core.Value, tok int, path []int) bool {
+	toks, from := body, tok
+	for _, at := range path[:len(path)-1] {
+		toks, _ = nestedToks(toks[at])
+		from = 0
+	}
+	for _, t := range toks[from:path[len(path)-1]] {
+		if !core.IsSteplessValue(t) {
+			return false
+		}
+	}
+	return true
 }
 
 // tokenPath is the path of token indexes from body down to the token that

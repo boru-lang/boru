@@ -12,9 +12,10 @@ import (
 // the VM checks at run time (compiler.RestartFirst): the index slot still
 // holds the loop's start. A read of the loop's index and a bind written after
 // the stop no longer block it, and a branch guard over a list takes the same
-// island. A stop on a later iteration, an effect before the stop, a paren's
-// value the statement consumed before the stop, and a paren substituted
-// inside the loop stay designed defers.
+// island. A paren's value the statement consumed before the stop is kept in
+// a slot of its own when the call leaves it (the stash). A stop on a later
+// iteration, an effect before the stop and a paren substituted inside the
+// loop stay designed defers.
 func TestNUR296LoopIslands(t *testing.T) {
 	l := `def h fn [[x:Atom/q] [Any] [x]] end def mk fn [[] [List] [[h/v h/v]]] end def l (mk) end `
 	for _, c := range []struct{ src, want string }{
@@ -22,6 +23,9 @@ func TestNUR296LoopIslands(t *testing.T) {
 		{l + `for 2 [[(l.0 true)] def q 1 end]`, "[[true] [true]]"},
 		{`def l [(quote [gt 3]) true] end for 2 [5 if l.(i) ["t"] ["f"] drop]`, "[5]"},
 		{`def mk fn [[][Any][quote [gt 3]]] end def c (mk) end for 2 [5 if c ["t"] ["f"] drop]`, "[]"},
+		{l + `def g fn [[] [Any] [7]] end [(g) drop (l.0 true)]`, "[[true]]"},
+		{`def mk fn [[][Any][quote [gt 3]]] end def g fn [[] [Any] [7]] end 5 (g) drop if (mk) ["big"] ["small"]`, "[big]"},
+		{`def mk fn [[][Any][quote [gt 3]]] end def c fn [[][Any][true]] end 5 if (c) (mk) ["f"]`, "ERROR:cannot call `gt`"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
@@ -29,7 +33,7 @@ func TestNUR296LoopIslands(t *testing.T) {
 	for _, c := range []struct{ src, sub string }{
 		{mixed + `for 2 [[(l.(i) true)]]`, "first iteration"},
 		{l + `def n (flex [0]) end for 2 [push i n [(l.(i) true)]]`, "NUR219"},
-		{l + `def g fn [[] [Any] [7]] end [(g) drop (l.0 true)]`, "NUR219"},
+		{l + `print "x" [(l.0 true)]`, "NUR219"},
 		{`def l [true (quote [gt 3])] end for 2 [5 if l.(i) ["t"] ["f"] drop]`, "NUR292"},
 		{`def mk fn [[][Any][quote [gt 3]]] end def n 0 end for 2 [5 if (mk) ["t"] ["f"] drop]`, "NUR292"},
 	} {

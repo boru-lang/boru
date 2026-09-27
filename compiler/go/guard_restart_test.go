@@ -577,3 +577,84 @@ func TestSubstPlanCovers(t *testing.T) {
 		}
 	}
 }
+
+// TestWordLedSubstNeedsInertPredecessors pins the barrier rule (NUR296): a
+// word-led run written as a value — a bare call, a do and its body — is a
+// collection barrier no longer, so it is written only where every token
+// before it on its level is a scalar literal. A paren is collectable either
+// way and needs no such proof.
+func TestWordLedSubstNeedsInertPredecessors(t *testing.T) {
+	five := gtok(core.NewInteger(5), 1)
+	y := gtok(core.NewWord("y"), 3)
+	lead := gtok(core.NewWord("m"), 1)
+	if !wordAt([]core.Value{five, y}, []int{1}) || wordAt([]core.Value{five, y}, []int{0}) {
+		t.Error("wordAt names a bare word's token")
+	}
+	for _, c := range []struct {
+		name string
+		body []core.Value
+		tok  int
+		path []int
+		want bool
+	}{
+		{"literals before it at the top", []core.Value{five, five, y}, 0, []int{2}, true},
+		{"a word before it at the top", []core.Value{lead, y}, 0, []int{1}, false},
+		{"before the statement's first token", []core.Value{lead, five, y}, 1, []int{2}, true},
+		{"inside a paren, from its start", []core.Value{lead, gtok(core.NewParenExpr([]core.Value{five, y}), 2)}, 0, []int{1, 1}, true},
+		{"inside a paren, after a word", []core.Value{gtok(core.NewParenExpr([]core.Value{lead, y}), 2)}, 0, []int{0, 1}, false},
+	} {
+		if got := inertBefore(c.body, c.tok, c.path); got != c.want {
+			t.Errorf("%s: inertBefore = %v, want %v", c.name, got, c.want)
+		}
+	}
+	// The planner: a bare call after a word is no candidate, so its event,
+	// outside any written paren, blocks the island.
+	body := []core.Value{lead, gtok(core.NewWord("y"), 3)}
+	bare := map[int]treeEvent{1: {ev: &EmitEvent{kind: evCallUser, seq: 1, uc: emitUserCall{pos: gpos(3), nout: 1}}}}
+	if _, ok := NewEmitState().restartSubsts(bare, body, 0, []int{1}); ok {
+		t.Error("a bare call after a collector is not written as its value")
+	}
+	if got, ok := NewEmitState().restartSubsts(bare, []core.Value{five, gtok(core.NewWord("y"), 3)}, 0, []int{1}); !ok || len(got) != 1 || got[0].span != 1 {
+		t.Errorf("after a literal it is: %+v %v", got, ok)
+	}
+}
+
+// TestStashSubst pins the stash (NUR296): a planned island's substituted
+// value its call left on the stack's top is copied into a slot of its own
+// (STORE_LOCAL, PUSH_LOCAL), which the island reads where the statement
+// consumed the value before the stop; any other event, a value not on the
+// top, and a promoted one keep no stash.
+func TestStashSubst(t *testing.T) {
+	var code []Instr
+	var dbg []core.SrcPos
+	lw := &lowerer{es: NewEmitState(), code: &code, debug: &dbg, promoted: map[int]int{8: 2}}
+	lw.guardRestarts = map[int]*landingRestart{guardKey(1, guardCond): {substs: []substPlan{{path: []int{0}, span: 1, seq: 5}, {path: []int{1}, span: 1, seq: 8}}}}
+	lw.landingRestarts = map[int]*landingRestart{9: {substs: []substPlan{{path: []int{2}, span: 1, seq: 6}}}}
+	if !lw.substSeq(5) || !lw.substSeq(6) || lw.substSeq(7) {
+		t.Error("substSeq names each planned island's substituted events")
+	}
+	ev := func(seq int) *EmitEvent {
+		return &EmitEvent{kind: evCallUser, seq: seq, uc: emitUserCall{pos: gpos(3), nout: 1}}
+	}
+	lw.vm = []vmSlot{{seq: 5}}
+	lw.stashSubst(ev(5))
+	if t5, ok := lw.substStash[5]; !ok || len(code) != 2 || code[0].Op != OpStoreLocal || code[1].Op != OpPushLocal || int(code[0].Arg) != t5 || len(lw.vm) != 1 {
+		t.Fatalf("the value is stored and pushed back, its slot kept: %+v %v", code, lw.substStash)
+	}
+	lw.vm = []vmSlot{{seq: 7}}
+	lw.stashSubst(ev(7))
+	lw.vm = []vmSlot{{seq: 3}}
+	lw.stashSubst(ev(6))
+	lw.vm = []vmSlot{{seq: 8}}
+	lw.stashSubst(ev(8))
+	if len(code) != 2 || len(lw.substStash) != 1 {
+		t.Errorf("no plan, not on the top, promoted: no stash: %+v", code)
+	}
+	// The island reads the stash where the value is held nowhere else.
+	r := &landingRestart{token: 0, substs: []substPlan{{path: []int{0}, span: 1, seq: 5}}}
+	lw.vm = nil
+	got, ok := lw.restartSubstSrcs(r, EmitOperand{}, -1)
+	if !ok || len(got) != 1 || got[0].Src.Kind != RestartLocal || got[0].Src.Idx != lw.substStash[5] {
+		t.Errorf("a consumed value is read from its stash: %+v %v", got, ok)
+	}
+}

@@ -9,6 +9,38 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## NUR296's consumed forms; the barrier rule; NUR299 found and closed (2026-09-27)
+
+**NUR296's consumed forms.** A paren's value the statement consumed before
+the stop, as in `[(g) drop (l.0 true)]` or a branch guard's condition or
+unselected arm, left the island nowhere to read it. The lowering now keeps
+a copy in a slot of its own, stored and pushed back right after the call
+(`stashSubst`, for every event a planned island substitutes: `substSeq`),
+and the island reads the slot where the value is held nowhere else
+(`restartSubstSrcs`).
+
+**The barrier rule.** Stashing gave the bare-word substitution a source,
+and `if true [(m.f y)] [0]` went silent: `[43]` for `[42 42]`. A function
+word is a collection barrier and a value is not, so an overloaded `m.f`
+fires its zero-argument overload at `y`, where the island's `(m.f 42)`
+took the 42. A word-led run written as a value (a bare call, or a do and
+its body list) is written only where every token before it on its level is
+a scalar literal (`inertBefore`); a paren is collectable either way. The
+same hazard sat latent in fa2f00c wherever such a value was held.
+`[(m.f k) (l.0 true)]`, which that substitution had answered, defers now.
+
+**NUR299.** Probing the barriers found a one-operand split. `(mk) do [5]`
+over a factory of `[1 2]` is `[[1 2] 5]` interpreted: the List misses
+do's Map overload, and the List overload takes the `[5]`. The check pass
+filled the Map overload from the stack with its Any carrier. That answered
+`[1 2 [5]]` on the branch, silent since 13aa881's region seat dropped the
+poly claim, and bailed on main. Over a member fn it raised `cannot call
+do` on both. NUR228's guard skipped all-stack matches, leaving them to the
+forward-drift guard, which takes only multi-operand words. It now asks a
+one-operand all-stack match too, and the compile declines. A first cut
+that asked every all-stack match declined the drift window's own forms
+(`mk mk add 1`, `(5 do [(mk)]) add 1`), which answer at run time.
+
 ## NUR286 closed; NUR297 and NUR298 found and closed (2026-09-27)
 
 **NUR286's compile.** A guarded landing over its own values beneath takes

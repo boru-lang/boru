@@ -811,6 +811,10 @@ type lowerer struct {
 	guardRestarts map[int]*landingRestart
 	restartSigs   []int
 	curBranch     int
+	// substStash are the frame slots stashSubst kept a substituted paren's
+	// value in, by its call's event seq (NUR296): a later event of the
+	// statement may consume the value before the stop.
+	substStash map[int]int
 	// collectedApplies are the fn-value applies a planned collect takes as
 	// regions (planRegionCollectOver, NUR247/NUR249): lowered count-agnostic,
 	// never in a one-result form.
@@ -1717,6 +1721,7 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 		if reason := lw.emitReStepAfter(ev); reason != "" {
 			return reason
 		}
+		lw.stashSubst(ev)
 		// A PROMOTED branch value-def (planValueDefLocals marked it, a multiply-read
 		// `def bi (if …)`): store the merge to its frame slot so later references
 		// re-push from the slot (RewritePromotedRefs rewrote them to local operands).
@@ -5018,6 +5023,9 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 			src = RestartSrc{Kind: RestartStack, Idx: lw.landedIdx(landed)}
 		default:
 			src, ok = lw.heldAt(sp.seq)
+			if t, stashed := lw.substStash[sp.seq]; !ok && stashed {
+				src, ok = RestartSrc{Kind: RestartLocal, Idx: t}, true
+			}
 		}
 		if !ok {
 			return nil, false
@@ -5025,6 +5033,43 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Span: sp.span, Src: src})
 	}
 	return out, true
+}
+
+// stashSubst keeps, in a frame slot of its own, the value event ev left on
+// the stack's top when a planned statement island writes it in its paren's
+// place (substSeq): a later event of the statement may consume it before
+// the stop — `[(g) drop (l.0 true)]` — which leaves the island nowhere else
+// to read it (NUR296). A promoted value keeps its slot instead.
+func (lw *lowerer) stashSubst(ev *EmitEvent) {
+	if n := len(lw.vm); n == 0 || lw.vm[n-1] != (vmSlot{seq: ev.seq}) || !lw.substSeq(ev.seq) {
+		return
+	}
+	if _, promoted := lw.promoted[ev.seq]; promoted {
+		return
+	}
+	t := lw.allocLocal()
+	pos := eventPos(*ev)
+	lw.emit(OpStoreLocal, t, pos)
+	lw.emit(OpPushLocal, t, pos)
+	if lw.substStash == nil {
+		lw.substStash = map[int]int{}
+	}
+	lw.substStash[ev.seq] = t
+}
+
+// substSeq reports whether a planned statement island (a landing's or a
+// branch guard's) writes event seq's value in its paren's place.
+func (lw *lowerer) substSeq(seq int) bool {
+	for _, plans := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts} {
+		for _, r := range plans {
+			for _, sp := range r.substs {
+				if sp.seq == seq {
+					return true
+				}
+			}
+		}
+	}
+	return false
 }
 
 // landedIdx is the frame-region entry of the value event seq's landing
