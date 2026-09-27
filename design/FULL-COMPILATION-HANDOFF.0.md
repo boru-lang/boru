@@ -15906,6 +15906,14 @@ miscompiles, now loud declines). Found and recorded, not fixed: NUR229
 (a `case` clause body's def, silent), NUR230, NUR231, NUR232, NUR233, and
 NUR224's message-order sibling.
 
-**Ceilings.** None moves: lang `compileDefectCeiling` 301 and
-`bailDefectCeiling` 38, the compile-failure site census 91, the aritygate
-pins.
+**Ceilings.** lang `compileDefectCeiling` 301 and `bailDefectCeiling` 38
+and the compile-failure site census 91 hold. Three corpus ceilings rise,
+all from NUR225's guard: two rows the panic kept from compiling —
+code-bodies.tsv L213 and each-variants.tsv L207, an `if` over `[gt 1]`
+inside an `each` body — compile now with parity, their `each` body running
+on the registry once per element. `interpEntryRowCeiling` 25 -> 27,
+`engineEntryCeiling` 166 -> 171 (RunResolved 14 -> 19, one per element),
+`diagnosticParityCeiling` 349 -> 350 (L213's armed pass completes where it
+panicked: plain=no_signature/gt armed=). The aritygate pin of
+compiler_dispatch_record.go rises 2 -> 3 for the guard itself (the
+argument rule, not a NUR100 site).

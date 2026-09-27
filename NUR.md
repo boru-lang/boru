@@ -10545,7 +10545,11 @@ its second param unguarded. Inside the deferred fn-body check
 fold now declines a window whose length is not the signature's
 `TotalArgs`, and both programs run with parity. Pinned by compiler
 `TestTryFoldScalarConstArityMismatchDeclines` and lang
-`TestAssumedSigFoldArityGuard`.
+`TestAssumedSigFoldArityGuard`. Two corpus rows the panic had kept from
+compiling — booked as their own check errors — compile now with parity:
+code-bodies.tsv L213 and each-variants.tsv L207 (`each [if [gt 1] ['big']
+['small']] …`); the census ceilings rise for them (the handoff log's entry
+of 2026-09-27).
 
 ## NUR226 — a split-bound name rebound in an `if` arm, read as the final result {#nur226}
 
