@@ -537,63 +537,11 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 			if len(bodyCopy) > 0 {
 				fnPos = bodyCopy[0].Pos()
 			}
-			// compileUnit compiles — or, on a memo hit, reuses — the unit for
-			// one arg vector and returns its index (-1 when the recorder
-			// declines). keySuffix separates a call-site specialisation's unit
-			// key and body summary from the generic unit's (SpecKeySuffix).
-			compileUnit := func(unitArgs []core.Value, keySuffix string) int {
-				key := FnAnalysisKey(r.AnalysisScopeID(), nameCopy, unitArgs, capturesCopy, bodyCopy) + keySuffix
-				unit, finish, ok := es.StartFnCompile(key, nameCopy, r, unitArgs, compileReturns, paramNames, capturesCopy, genSpec != nil, fnPos)
-				if !ok {
-					return -1
-				}
-				// Record the declared PARAM types so the VM enforces them at
-				// CALL_USER entry (the gradual-Any param-guard, mirroring the RET
-				// return-check). A gradual (Dynamic) arg optimistically matched a
-				// concrete param at check time; the compiled call must re-check the
-				// runtime value, or a laundered mismatch silently runs the body.
-				pts := make([]*core.Type, len(sigParams))
-				pats := make([]*core.Value, len(sigParams))
-				for i := range sigParams {
-					pts[i] = sigParams[i].Type
-					pats[i] = sigParams[i].Pattern
-				}
-				es.SetUnitParamTypes(unit, pts, pats)
-				// The body tokens: what a per-read deopt hands to the
-				// interpreter (compiler planDeopts, NUR123).
-				es.SetUnitBody(unit, bodyCopy)
-				// The RET-side twin: a declared union return degrades its
-				// *Type to Any, so without the pattern the compiled path —
-				// the DEFAULT path — enforces nothing while the interpreter
-				// and the check pass both reject.
-				es.SetUnitReturnPatterns(unit, declaredReturnPatterns)
-				// The return-contract declaration site, so a compiled RET
-				// return error labels the declaration exactly as the
-				// interpreter's ReturnCheck does.
-				es.SetUnitDecl(unit, declSite)
-				if finish != nil {
-					// A fresh compilation must RECORD the body into THIS unit — drop any
-					// summary cached by a prior analysis (the install-time synthetic
-					// example eval, or a DISCARDED closure PROBE compile that shares
-					// r.Check.FnSummaries) so AnalyseFnBody re-runs and re-records the
-					// body's events instead of returning the cached residual with an
-					// empty fragment. The cache (and the AnalyseFnBody call below) is
-					// keyed on the unit's args, NOT the call's — deleting the args key
-					// left the genArgs-keyed probe summary live, so a fn dispatched under
-					// a recursive closure probe (boru:test run-case) compiled to an EMPTY
-					// stub unit in the real pass (silent 0-cases miscompile).
-					delete(r.Check.FnSummaries, key)
-					r.Check.SpecKeySuffix = keySuffix
-					stkGen := AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, unitArgs, capturesCopy, declaredReturns, fnDef.Anonymous)
-					if keySuffix != "" && !specResidualMeetsReturns(stkGen, compileReturns) {
-						r.Check.SpecDeclined = true
-					}
-					finish(stkGen)
-				}
-				return unit
-			}
-			if fnUnit = specialiseCallSite(r, es, compileUnit, fnDef, core.FnHomeForeign(caller, &fnDef), nameCopy, bodyCopy, sigParams, args, genArgs); fnUnit < 0 {
-				fnUnit = compileUnit(genArgs, "")
+			uc := &fnUnitCompile{r: r, es: es, name: nameCopy, body: bodyCopy, captures: capturesCopy, params: sigParams, paramNames: paramNames,
+				compileReturns: compileReturns, returns: declaredReturns, returnPatterns: declaredReturnPatterns, decl: declSite,
+				generic: genSpec != nil, anonymous: fnDef.Anonymous, pos: fnPos}
+			if fnUnit = specialiseCallSite(r, es, uc.compile, fnDef, core.FnHomeForeign(caller, &fnDef), nameCopy, bodyCopy, sigParams, args, genArgs); fnUnit < 0 {
+				fnUnit = uc.compile(genArgs, "")
 			}
 		}
 		stk := AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, narrowArgsToParams(args, sigParams), capturesCopy, declaredReturns, fnDef.Anonymous)
@@ -807,6 +755,83 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		}
 		return stk
 	}
+}
+
+// fnUnitCompile is BuildFnBodyReturnsFn's unit compile for one call: what the
+// generic unit and a call-site specialised one share — the fn's name, body,
+// captures, params and contracts, and the call's registry and recorder.
+type fnUnitCompile struct {
+	r              *core.Registry
+	es             core.EmitRecorder
+	name           string
+	body           []core.Value
+	captures       []core.CapturedBinding
+	params         []core.FnParam
+	paramNames     []string
+	compileReturns []*core.Type
+	returns        []*core.Type
+	returnPatterns []*core.Value
+	decl           core.DeclSite
+	generic        bool
+	anonymous      bool
+	pos            core.SrcPos
+}
+
+// compile compiles — or, on a memo hit, reuses — the unit for one arg vector
+// and returns its index (-1 when the recorder declines). keySuffix separates
+// a call-site specialisation's unit key and body summary from the generic
+// unit's (SpecKeySuffix).
+func (c *fnUnitCompile) compile(unitArgs []core.Value, keySuffix string) int {
+	r, es := c.r, c.es
+	key := FnAnalysisKey(r.AnalysisScopeID(), c.name, unitArgs, c.captures, c.body) + keySuffix
+	unit, finish, ok := es.StartFnCompile(key, c.name, r, unitArgs, c.compileReturns, c.paramNames, c.captures, c.generic, c.pos)
+	if !ok {
+		return -1
+	}
+	// Record the declared PARAM types so the VM enforces them at
+	// CALL_USER entry (the gradual-Any param-guard, mirroring the RET
+	// return-check). A gradual (Dynamic) arg optimistically matched a
+	// concrete param at check time; the compiled call must re-check the
+	// runtime value, or a laundered mismatch silently runs the body.
+	pts := make([]*core.Type, len(c.params))
+	pats := make([]*core.Value, len(c.params))
+	for i := range c.params {
+		pts[i] = c.params[i].Type
+		pats[i] = c.params[i].Pattern
+	}
+	es.SetUnitParamTypes(unit, pts, pats)
+	// The body tokens: what a per-read deopt hands to the
+	// interpreter (compiler planDeopts, NUR123).
+	es.SetUnitBody(unit, c.body)
+	// The RET-side twin: a declared union return degrades its
+	// *Type to Any, so without the pattern the compiled path —
+	// the DEFAULT path — enforces nothing while the interpreter
+	// and the check pass both reject.
+	es.SetUnitReturnPatterns(unit, c.returnPatterns)
+	// The return-contract declaration site, so a compiled RET
+	// return error labels the declaration exactly as the
+	// interpreter's ReturnCheck does.
+	es.SetUnitDecl(unit, c.decl)
+	if finish != nil {
+		// A fresh compilation must RECORD the body into THIS unit — drop any
+		// summary cached by a prior analysis (the install-time synthetic
+		// example eval, or a DISCARDED closure PROBE compile that shares
+		// r.Check.FnSummaries) so AnalyseFnBody re-runs and re-records the
+		// body's events instead of returning the cached residual with an
+		// empty fragment. The cache (and the AnalyseFnBody call below) is
+		// keyed on the unit's args, NOT the call's — deleting the args key
+		// left the genArgs-keyed probe summary live, so a fn dispatched under
+		// a recursive closure probe (boru:test run-case) compiled to an EMPTY
+		// stub unit in the real pass (silent 0-cases miscompile).
+		delete(r.Check.FnSummaries, key)
+		r.Check.SpecKeySuffix = keySuffix
+		stkGen := AnalyseFnBody(r, c.name, c.paramNames, c.body, unitArgs, c.captures, c.returns, c.anonymous)
+		if keySuffix != "" && !specResidualMeetsReturns(stkGen, c.compileReturns) {
+			r.Check.SpecDeclined = true
+		}
+		finish(stkGen)
+	}
+	return unit
 }
 
 // freshResidual re-mints every value of an analysed body residual under its
