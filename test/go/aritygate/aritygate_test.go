@@ -278,7 +278,12 @@ var pinnedAritySites = map[string]int{
 	// asking whether the window fits one — a value with no contract to
 	// consult is not the no-match rule's. The count of params never enters;
 	// every arity takes the same path.
-	"eng/go/vm.go": 23,
+	// 23 -> 24 (NUR282's `j j`): parksResult asks whether a fn value
+	// carries ANY signature (`len(fd.Signatures) == 0`) before asking
+	// whether every one runs a boru body, whose result the interpreter
+	// parks — a value with no signature has no body to park. The same
+	// presence test as NUR238's; the count of params never enters.
+	"eng/go/vm.go": 24,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the
