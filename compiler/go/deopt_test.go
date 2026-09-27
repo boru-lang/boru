@@ -127,11 +127,11 @@ func TestPlanDeoptsDeclines(t *testing.T) {
 		t.Errorf("a def of an inert literal binds: %+v", rec.deopts)
 	}
 	// The same def after the island's token is one the island makes itself
-	// (dropIslandMadeDefs, NUR282): it needs no bind, and the point stands.
+	// (markIslandMadeDefs, NUR282): it needs no bind, and the point stands.
 	es, u, rec = fnDef(core.NewCarrier(core.TFunction), 48)
 	es.planDeopts(u, rec)
-	if len(rec.deopts) != 1 || !rec.deoptEnv || rec.deoptNames["w"] {
-		t.Errorf("a def the island makes itself needs no bind: %+v %v", rec.deopts, rec.deoptNames)
+	if w := rec.frag.events[len(rec.frag.events)-1].dyn; len(rec.deopts) != 1 || !rec.deoptEnv || !w.islandMade {
+		t.Errorf("a def the island makes itself needs no bind: %+v %+v", rec.deopts, w)
 	}
 	// A def the island reads made inside a branch arm declines too.
 	es, u, rec, _ = deoptUnit(t, []core.Value{deoptTok("j", 43), deoptTok("typeof", 45), deoptTok("y", 52)}, 43,

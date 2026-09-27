@@ -72,18 +72,22 @@ names an island spells must bind registry-visibly, and a do's run has no
 re-pushable home. But `ok`'s def stands after the token its island resumes
 at, so the island makes it itself.
 
-- **The rule (`dropIslandMadeDefs`).** A name leaves the names the islands
-  bind when every def of it stands at the unit's top level after the latest
-  island's token, no param or capture holds it, and no closure child seeded
-  it. Every island runs such a def again before it reads the name.
+- **The rule (`markIslandMadeDefs`).** A def at the unit's top level after
+  the latest island's token, of a name no closure child seeded, is
+  island-made (`emitDynBind.islandMade`): every island runs it again before
+  it reads the name, so it takes no registry-visible bind for them and asks
+  no re-pushable source. The mark is per def site; the first cut dropped
+  the whole name (`dropIslandMadeDefs`), which an earlier def of it
+  refused.
 - **Answers.** A run of `[5 6]` raises the interpreter's return-count error,
   `[]` answers `undefined word: ok`, and `[g/v]` answers `[7]`: the island
   writes g in the do's place and steps it.
-- **Still loud.** An island that reads the name from the frame: an earlier
-  def of it (`def ok 1 end def ok (do b) ok`), or a gradual read after the
-  group, whose own point resumes at the read (`def ok (do b) ok add 1`).
+- **Still loud.** A gradual read of the name after the group has an island
+  of its own that resumes at the read and reads the name from the frame;
+  there the def must bind, and the run's checked value has no re-pushable
+  home yet (`def ok (do b) ok add 1`, `def ok 1 end def ok (do b) ok`).
 - **Pins.** `TestComputedDoBodyCheckedOneDefers` (two defer rows now agree,
-  two new loud rows) and compiler `TestDropIslandMadeDefs`.
+  two new loud rows) and compiler `TestMarkIslandMadeDefs`.
 
 ## NUR282's wrong-count single seat compiles (2026-09-27)
 

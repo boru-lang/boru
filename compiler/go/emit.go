@@ -813,6 +813,11 @@ type emitDynBind struct {
 	// twenty-two do-body variants of the `afn`, `word`, `macro`, `walk`
 	// and `for-each` seeds, measured 2026-09-24).
 	keepSkip bool
+	// islandMade marks a def every one of its unit's islands runs again
+	// before reading the name (markIslandMadeDefs, NUR282's `def ok (do b)
+	// ok`): no island reads it from the compiled frame, so it takes no
+	// registry-visible bind for them, and its source need not re-push.
+	islandMade bool
 }
 
 // bindsValue reports whether this def-site event installs a RUNTIME value
@@ -18003,7 +18008,7 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	for n := range rec.deoptNames {
 		names[n] = true
 	}
-	es.dropIslandMadeDefs(rec, names)
+	es.markIslandMadeDefs(rec)
 	ok := es.deoptDefsBindable(rec.frag.events, names)
 	switch {
 	case !ok:
@@ -18229,50 +18234,23 @@ func (es *EmitState) lambdaNamesSelfBound(rec *fnUnitRec, names map[string]bool)
 	return true
 }
 
-// dropIslandMadeDefs removes from names each def every island makes itself
-// (NUR282's `def ok (do b) ok`, whose count island re-runs its statement):
-// a name no closure child seeded, no param or capture holds, and every def
-// of which stands at the unit's top level after the token the latest island
-// resumes at. Each island runs such a def again before it reads the name,
-// so none reads it from the compiled frame, and its def needs no
-// registry-visible bind (a do's run has no re-pushable home).
-func (es *EmitState) dropIslandMadeDefs(rec *fnUnitRec, names map[string]bool) {
+// markIslandMadeDefs marks each def every island of rec makes itself
+// (emitDynBind.islandMade — NUR282's `def ok (do b) ok`, whose count island
+// re-runs its statement): a def at the unit's top level after the token the
+// latest island resumes at, of a name no closure child seeded. Each island
+// runs such a def again before it reads the name, so none reads it from the
+// compiled frame: it needs no registry-visible bind (a do's run has no
+// re-pushable home), while an earlier def of the same name keeps its own
+// (`def ok 1 end def ok (do b) ok`).
+func (es *EmitState) markIslandMadeDefs(rec *fnUnitRec) {
 	last := -1
 	for _, d := range rec.deopts {
 		last = max(last, d.token)
 	}
-	kept := map[string]bool{}
-	for i, n := range rec.locals {
-		if n != "" && i < rec.nParams+len(rec.caps) {
-			kept[n] = true
-		}
-	}
-	for n := range rec.deoptNames {
-		kept[n] = true
-	}
-	late := map[string]bool{}
-	var walk func(events []EmitEvent, top bool)
-	walk = func(events []EmitEvent, top bool) {
-		for i := range events {
-			ev := &events[i]
-			if ev.kind == evDynBind && ev.dyn != nil {
-				if top && bodyTokenContaining(rec.body, ev.dyn.pos) > last {
-					late[ev.dyn.name] = true
-				} else {
-					kept[ev.dyn.name] = true
-				}
-			}
-			for _, f := range childFragments(ev) {
-				if f != nil {
-					walk(f.events, false)
-				}
-			}
-		}
-	}
-	walk(rec.frag.events, true)
-	for n := range late {
-		if !kept[n] {
-			delete(names, n)
+	for i := range rec.frag.events {
+		ev := &rec.frag.events[i]
+		if ev.kind == evDynBind && ev.dyn != nil && !rec.deoptNames[ev.dyn.name] && bodyTokenContaining(rec.body, ev.dyn.pos) > last {
+			ev.dyn.islandMade = true
 		}
 	}
 }
@@ -18475,7 +18453,7 @@ func (es *EmitState) deoptDefsBindable(events []EmitEvent, names map[string]bool
 				return false
 			}
 		}
-		if ev.kind != evDynBind || ev.dyn == nil || !names[ev.dyn.name] {
+		if ev.kind != evDynBind || ev.dyn == nil || !names[ev.dyn.name] || ev.dyn.islandMade {
 			continue
 		}
 		if ev.dyn.srcSeq < 0 {

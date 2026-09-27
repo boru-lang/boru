@@ -353,7 +353,7 @@ func (lw *lowerer) storeIndexBind(d *emitDynBind, twin int) (reason string, done
 // names it, a dyn-scope read, a routed dispatch, or a top-level read of an
 // S5 loop-split name (loopSplitRebind).
 func (lw *lowerer) bindNeedsDyn(d *emitDynBind) bool {
-	return lw.es != nil && ((lw.keepsDefs && !d.keepSkip) || lw.es.dynEnv || lw.deoptNames[d.name] || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]) || lw.es.routedBindsDyn(d) || lw.es.loopSplitRebind(d))
+	return lw.es != nil && ((lw.keepsDefs && !d.keepSkip) || lw.es.dynEnv || (lw.deoptNames[d.name] && !d.islandMade) || (lw.es.dynScopeNames != nil && lw.es.dynScopeNames[d.name]) || lw.es.routedBindsDyn(d) || lw.es.loopSplitRebind(d))
 }
 
 func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
@@ -3325,7 +3325,7 @@ func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[st
 		// event, so the peek fast path reads the live top and every lowering
 		// shape stays byte-identical; a source promoted by the ordinary
 		// triggers re-pushes in Pop mode instead.)
-		if es.dynEnv || deoptNames[ev.dyn.name] || (es.dynScopeNames != nil && es.dynScopeNames[ev.dyn.name]) || es.routedBindsDyn(ev.dyn) ||
+		if es.dynEnv || (deoptNames[ev.dyn.name] && !ev.dyn.islandMade) || (es.dynScopeNames != nil && es.dynScopeNames[ev.dyn.name]) || es.routedBindsDyn(ev.dyn) ||
 			// A KEEP-DEFS unit (`do`'s body) installs every value def
 			// (lowerDynBind's keep arm), so every computed source is
 			// promoted for the install's re-push.
@@ -3438,7 +3438,7 @@ func (es *EmitState) promoteLateDynBind(rec *fnUnitRec) {
 		if _, done := rec.promoted[seq]; done {
 			continue
 		}
-		if !es.dynEnv && !rec.deoptNames[ev.dyn.name] {
+		if !es.dynEnv && (!rec.deoptNames[ev.dyn.name] || ev.dyn.islandMade) {
 			// A deopt unit promotes only the defs its islands read.
 			continue
 		}
