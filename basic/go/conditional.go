@@ -404,20 +404,43 @@ func mayRunAsCode(v Value) bool {
 	return p != nil && (TList.ConformsTo(p) || p.ConformsTo(TList))
 }
 
-// guardedComputedCode hands back, for a condition or arm of `if` the pass
-// holds abstractly that may be a list at run time (NUR292), the synthesized
-// body `[v __codeguard]`: the value, then a guard that passes it unless it is
-// a list, on which it raises a designed defer. The interpreter runs a list
-// condition INLINE (its words may take the values beneath the if) and
-// splices a list arm in parens, and no branch over the value is either; any
-// other value is the branch's as before. Recording pass only. An arm the
-// pass types List keeps its own path (computedArmDoBody's `[do <arm>]`),
-// since its value is always a list.
-func guardedComputedCode(r *Registry, v Value, arm bool) Value {
-	if !r.Check.Recorder().Active() || !mayRunAsCode(v) || (arm && v.Parent.ConformsTo(TList)) {
-		return v
+// codeGuards reports which of a branch's value condition and value arms
+// the compiled `if` guards at run time (NUR292): a value the pass holds
+// abstractly whose type admits a list — which the interpreter runs as code
+// there, a list condition inline and a list arm spliced in parens — takes
+// __codeguard, which passes any other value and defers on a list. The guard
+// is the LOWERING's (BranchRecord.Guard): it runs on the value as the
+// branch consumes it, on the taken path for an arm, and adds nothing to the
+// pass's model, so a value that may be a fn keeps the landing that applies
+// it at the merge (NUR280). A List-typed arm keeps its own path
+// (computedArmDoBody's `[__arm <arm>]`), since its value is always a list.
+// Recording pass only.
+func codeGuards(r *Registry, cond Value, thenValue, elseValue *Value) (condGuard, thenGuard, elseGuard bool) {
+	if !r.Check.Recorder().Active() {
+		return false, false, false
 	}
-	return NewList([]Value{v, NewWord("__codeguard")})
+	armGuard := func(v *Value) bool {
+		return v != nil && mayRunAsCode(*v) && !v.Parent.ConformsTo(TList)
+	}
+	return mayRunAsCode(cond), armGuard(thenValue), armGuard(elseValue)
+}
+
+// codeGuardRecord fills a branch record's guard fields (codeGuards).
+func codeGuardRecord(r *Registry, rec BranchRecord) BranchRecord {
+	c, t, e := codeGuards(r, rec.Cond, rec.ThenValue, rec.ElsValue)
+	if c || t || e {
+		rec.Guard, rec.CondGuard, rec.ThenGuard, rec.ElseGuard = &codeGuardSignature, c, t, e
+	}
+	return rec
+}
+
+// codeGuardSignature is __codeguard's one signature, the one the lowering's
+// guard call runs (BranchRecord.Guard).
+var codeGuardSignature = Signature{
+	Args:       []*Type{TAny},
+	Impl:       Go(CodeGuardHandler),
+	Returns:    []*Type{TAny},
+	BarrierPos: 0,
 }
 
 // recordCaseSubject records case's own scrutinee rule over a scrutinee that

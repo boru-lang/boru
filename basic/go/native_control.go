@@ -155,6 +155,28 @@ var ControlNatives = []NativeFunc{
 		}},
 	},
 	{
+		// __arm runs a COMPUTED List arm of `if` as the interpreter's arm
+		// splice does (spliceArg): a code body runs — its values land, its
+		// defs leak, and its errors RAISE — and any other value is itself.
+		// `do` is that splice on every axis but one: it traps a body error
+		// as an Error value (NUR293). The compiled `if` synthesizes
+		// `[__arm <arm>]` for such an arm (computedArmDoBody); the dyn-body
+		// machinery compiles it exactly as it compiles `do`. Not
+		// user-facing.
+		Name: "__arm",
+		Callable: &CallableSpec{BodyPos: 0, BodyOut: BodyOutResidual, BodyOnceKeepsDefs: true, Inputs: func(_ []Value) []Value {
+			return []Value{}
+		}},
+		Signatures: []Signature{{
+			Args:          []*Type{TList},
+			NoEvalArgs:    map[int]bool{0: true},
+			Impl:          Go(ArmSpliceHandler),
+			ReturnsFn:     DoListReturnsFn,
+			BarrierPos:    -1,
+			CompileEffect: CompileFallbackBody | CompileDynBody,
+		}},
+	},
+	{
 		// __casesubject is case's scrutinee rule at run time (caseSubject),
 		// which the compiled `case` desugar records ahead of its chain when
 		// the pass holds a forward-form scrutinee that may be a list: a list
@@ -185,13 +207,8 @@ var ControlNatives = []NativeFunc{
 		// __codeguard is the compiled `if`'s guard over a condition or arm
 		// the pass holds abstractly: a value that is not a code body passes,
 		// and a list defers (CodeGuardHandler, NUR292). Not user-facing.
-		Name: "__codeguard",
-		Signatures: []Signature{{
-			Args:       []*Type{TAny},
-			Impl:       Go(CodeGuardHandler),
-			Returns:    []*Type{TAny},
-			BarrierPos: 0,
-		}},
+		Name:       "__codeguard",
+		Signatures: []Signature{codeGuardSignature},
 	},
 	{
 		Name: "for",
@@ -790,7 +807,6 @@ func if2Handler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 func if3ReturnsFn(args []Value, r *Registry) []Value {
 	es := r.Check
 	pos := branchRecordPos(r, args[0])
-	args = []Value{guardedComputedCode(r, args[0], false), guardedComputedCode(r, args[1], true), guardedComputedCode(r, args[2], true)}
 	// Plain-check static reduction (the else-less-if soundness fix,
 	// forward-barrier.tsv:83): a paren comparison folds to a bare concrete
 	// Boolean, so reduce to the taken arm and return a bare-VALUE arm as-is,
@@ -908,11 +924,11 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		// mirroring the 2-arg if2 guard. The registered result is a phantom None
 		// the residual reconciliation skips.
 		out := NewCarrier(TNone)
-		recorderState(es).RecordBranch(BranchRecord{
+		recorderState(es).RecordBranch(codeGuardRecord(r, BranchRecord{
 			Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 			Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
 			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: pos, Joins: joins,
-		})
+		}))
 		// The phantom None is only meaningful while bytecode recording is
 		// live (the lowering tracks the zeroOut slot and the top-level
 		// residual strips it). On a plain or uncompilable check there is no
@@ -934,11 +950,11 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		}
 	}
 	out := joined[len(joined)-1]
-	recorderState(es).RecordBranch(BranchRecord{
+	recorderState(es).RecordBranch(codeGuardRecord(r, BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
 		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: pos, Joins: joins,
-	})
+	}))
 	return []Value{out}
 }
 
@@ -1021,12 +1037,14 @@ func branchRecordPos(r *Registry, cond Value) SrcPos {
 	return r.Check.CurCallPos
 }
 
-// computedArmDoBody synthesizes the `[do <arm>]` body for a COMPUTED
+// computedArmDoBody synthesizes the `[__arm <arm>]` body for a COMPUTED
 // List-conforming branch arm (COMPILE FAILURE-CLOSURE.0 §4): the interpreter's
 // spliceArg EXECUTES a computed list arm as a code body, and probes prove
 // the splice ≡ `do <arm>` (multi-values, def leaking via do's keep-defs,
-// break/continue via the FlowCtrl escape) — so the arm compiles through the
-// ordinary body path with the dyn-body machinery owning the computed `do`.
+// break/continue via the FlowCtrl escape) on every axis but the error one —
+// `do` traps a body error as an Error value where the splice raises it — so
+// the arm runs through __arm, `do` without the trap (NUR293), and compiles
+// through the ordinary body path with the dyn-body machinery owning it.
 // Recording pass only: plain checks keep today's value-arm surface (no
 // ratchet churn), and a concrete arm (a real body or a scalar value) never
 // reaches here (the body/value paths own those).
@@ -1037,7 +1055,7 @@ func computedArmDoBody(r *Registry, arm Value) (Value, bool) {
 	if IsConcrete(arm) || arm.Parent == nil || !arm.Parent.ConformsTo(TList) {
 		return Value{}, false
 	}
-	return NewList([]Value{NewWord("do"), arm}), true
+	return NewList([]Value{NewWord("__arm"), arm}), true
 }
 
 // staticCondArm reports the taken arm for a statically-known BARE concrete
@@ -1314,7 +1332,6 @@ func installArmJoins(r *Registry, cond Value, thenDefs, elseDefs map[string]Valu
 func If2ReturnsFn(args []Value, r *Registry) []Value {
 	pos := branchRecordPos(r, args[0])
 	es := r.Check
-	args = []Value{guardedComputedCode(r, args[0], false), guardedComputedCode(r, args[1], true)}
 	// Plain-check static reduction (else-less if): a folded bare-Boolean
 	// condition reduces to the then residual (true) or nothing (false),
 	// instead of the phantom Disjunct(then, None) the join path produces.
@@ -1354,10 +1371,10 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 	// 2-arg if: a VARIADIC result (0 or 1 values at run time). An empty
 	// then-stack (a 0-value/diverging then) makes it a 0-value statement
 	// guard — RecordBranch lowers that with no merge slot.
-	recorderState(es).RecordBranch(BranchRecord{
+	recorderState(es).RecordBranch(codeGuardRecord(r, BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: false,
 		Then: thenFrag, ThenStk: thenStk, Out: out, Pos: pos, Joins: joins,
-	})
+	}))
 	// A 0-value statement guard's phantom None only belongs on the carrier
 	// stack while recording is live (mirrors if3ReturnsFn): a plain or
 	// uncompilable check has no recorded event to strip it, so it must net
@@ -1430,6 +1447,17 @@ func caseSubject(r *Registry, v Value) (Value, error) {
 	return out[len(out)-1], nil
 }
 
+// ArmSpliceHandler is the runtime of __arm: spliceArg's reading of a
+// computed arm — a code body runs (InvokeBody, as `do` runs it) and its
+// error propagates, where `do` would trap it as a value (NUR293); a typed
+// list, a table or any other value is the arm's one value.
+func ArmSpliceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	if !isCodeBody(args[0]) {
+		return []Value{args[0]}, nil
+	}
+	return InvokeBody(r, args[0], nil)
+}
+
 // CaseSubjectHandler is the runtime of __casesubject: case's scrutinee rule
 // over the run's value (caseSubject), recorded where the compile pass holds
 // a forward-form scrutinee that may be a list (NUR291).
@@ -1464,7 +1492,7 @@ func CaseStackHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 
 // CodeGuardHandler is the runtime of __codeguard, the guard the compiled
 // `if` records over a condition or arm the pass holds abstractly
-// (guardedComputedCode, NUR292): a value that is not a code body passes; a
+// (codeGuards, NUR292): a value that is not a code body passes; a
 // list — which the interpreter runs as code there — is a designed defer
 // (the compiler defect's report), never an answer the interpreter does not
 // give.

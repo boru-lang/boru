@@ -22,7 +22,7 @@ region's own seat rules own the count, as for the CALL_NATIVE twin. A
 fixed consumer still declines; a computed error handler's count stays a
 defer (its result is variadic but no region).
 
-## NUR292 found by a probe sweep of conditionals; its silent half made loud (2026-09-27)
+## NUR292 found by a probe sweep of conditionals; its silent half made loud; NUR293 closed (2026-09-27)
 
 **How it was found.** A sweep of conditionals and code-body words over a
 user fn's Any result (240 programs), then of computed `if` arms (126):
@@ -34,11 +34,21 @@ produced the list; the compiled branch held the list as a value (`if
 (mk) …` over `[false]` answered "t" for "f"; an Any arm over `[1 2]`
 answered `[[1 2]]` for `[1 2]`).
 
-**What landed.** A condition or arm the pass holds abstractly that may be a
-list (not an arm typed List, which keeps its `[do <arm>]` path) becomes
-`[v __codeguard]`: any other value passes and answers as before; a list
-raises a designed defer. The guard sits inside the arm's fragment, so an
-untaken arm is never checked. After: 0 silent; the list forms are loud.
+**What landed.** A value condition or value arm the pass holds abstractly
+that may be a list (not an arm typed List, which keeps its own path) is
+guarded by the lowering: `__codeguard` runs over the condition before the
+jump and over an arm's value on the path that takes it, passing any other
+value and raising a designed defer on a list. A first cut put the guard in
+the pass's model as a `[v __codeguard]` body; the guard's call result
+landed inside the arm, so a flex member fn arm raised where the
+interpreter lands it at the merge (NUR280's pin caught it), and the guard
+moved to the lowering. After: 0 silent of 192; the list forms are loud.
+
+**NUR293, found on the way.** A List-typed computed arm compiled as `[do
+<arm>]`, and `do` traps a body error as a value where the arm splice
+raises it (`if true (mk) ["f"]` over `quote [1 div 0]` answered
+`error(division by zero)`). It runs through `__arm` now, `do` without the
+trap.
 
 **What is open.** Compiling the list forms: the condition's inline run
 over the live stack, and the arm's paren splice once its list-or-value

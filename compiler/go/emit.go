@@ -396,6 +396,11 @@ type emitBranch struct {
 	elsVal                EmitOperand // the value-else operand (const/local/type, OR a COMPUTED event when elsComputed) when elsIsVal
 	elsComputed           bool        // else value is a COMPUTED event eagerly on the stack below the cond (`if c [t] (expr)`): SWAP cond up, DROP it on the taken path
 	pos                   core.SrcPos
+	// guard is the run-time guard's signature (BranchRecord.Guard, NUR292),
+	// called over the value condition before the jump (condGuard) and over
+	// a value arm on the path that takes it (thenGuard / elsGuard).
+	guard                          *core.Signature
+	condGuard, thenGuard, elsGuard bool
 	// carried seeds the branch-carried def slots (a name an arm rebinds,
 	// read after the merge — branch_carried.go) with the PRE-branch binding,
 	// lowered once per execution before the arms (after a list-form
@@ -4982,6 +4987,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	b.ElsStk = es.stripZeroOutPhantoms(b.ElsStk)
 	ev := EmitEvent{kind: evBranch, br: &emitBranch{
 		constCond: b.ConstCond, hasElse: b.HasElse, pos: b.Pos,
+		guard: b.Guard, condGuard: b.CondGuard, thenGuard: b.ThenGuard, elsGuard: b.ElseGuard,
 	}}
 	resolveArm := func(frag *EmitFragment, stk []core.Value, name string) (EmitOperand, bool, bool) {
 		if frag == nil {

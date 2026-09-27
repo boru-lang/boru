@@ -26,6 +26,14 @@ type BranchRecord struct {
 	ElsValue        *Value // non-nil: the else arm is this already-evaluated VALUE
 	Out             Value
 	Pos             SrcPos
+	// Guard is the signature of the run-time guard (basic's __codeguard,
+	// NUR292) the lowering calls over a value condition, or over a value arm
+	// on the path that takes it, which the pass holds abstractly and which
+	// may be a list at run time — CondGuard / ThenGuard / ElseGuard say
+	// which. The interpreter runs such a list as code; the guard passes any
+	// other value and defers on a list. Nil when no guard is owed.
+	Guard                           *Signature
+	CondGuard, ThenGuard, ElseGuard bool
 	// Uncaptured says WHY an arm the record leaves nil was not captured —
 	// the clause-list `if` records an element its lowering cannot place
 	// (a condition it cannot decide, an arm the tape would re-step) as an

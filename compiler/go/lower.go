@@ -4671,7 +4671,7 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 	if br.constCond != nil {
 		// Statically-taken branch: inline the taken fragment (always a body in
 		// const-cond form — never a value-then).
-		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, true, br.pos); reason != "" {
+		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, true, br.pos, nil); reason != "" {
 			return reason
 		}
 		thenMulti := lw.fragMulti
@@ -4700,12 +4700,12 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 			!slotIs(lw.vm[len(lw.vm)-1], br.cond) || !slotIs(lw.vm[len(lw.vm)-2], br.elsVal) {
 			return "if: variadic-else claim stack layout (Stage 2)"
 		}
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1] // cond consumed
 		// TRUE: discard the 0-or-1 eager (truncate to the mark) and run the then arm.
 		lw.emit(OpDropToMark, 0, br.pos)
 		lw.vm = lw.vm[:len(lw.vm)-1] // eager folded into the merge
-		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, false, br.pos); reason != "" {
+		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, false, br.pos, lw.armGuard(br, true)); reason != "" {
 			return reason
 		}
 		jend := lw.emit(OpJmp, 0, br.pos)
@@ -4786,7 +4786,7 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 		lw.seedCarried(br)
 		// The Boolean is on the runtime stack but not in the parent
 		// scope's sim — JMP_IF_FALSE consumes it net-zero.
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		return lw.lowerArms(ev, jf)
 	case br.cond.kind == opEvent:
 		if lw.variadic[br.cond.idx] {
@@ -4795,12 +4795,12 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 		if len(lw.vm) == 0 || !slotIs(lw.vm[len(lw.vm)-1], br.cond) {
 			return "if: condition is not on top of the stack"
 		}
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1] // cond consumed
 		return lw.lowerArms(ev, jf)
 	default:
 		lw.pushOperand(br.cond, br.pos)
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1]
 		return lw.lowerArms(ev, jf)
 	}
@@ -4831,19 +4831,61 @@ func (lw *lowerer) seedCarried(br *emitBranch) {
 	}
 }
 
+// emitBranchJump emits the branch's JMP_IF_FALSE over the condition on top,
+// guarded first when the pass held a value condition abstractly that may be
+// a list at run time (NUR292): the interpreter runs such a list as code.
+func (lw *lowerer) emitBranchJump(br *emitBranch) int {
+	lw.emitCodeGuard(br, br.condGuard)
+	return lw.emit(OpJmpIfFalse, 0, br.pos)
+}
+
+// emitCodeGuard calls the branch's run-time guard over the value on top when
+// on: a one-in, one-out native call, so the simulated stack is unchanged.
+func (lw *lowerer) emitCodeGuard(br *emitBranch, on bool) {
+	if on {
+		lw.emitGuardCall(br.guard, br.pos)
+	}
+}
+
+// armGuard is the guard a value arm takes on the path that runs it: the
+// branch's guard when that arm is flagged, else none.
+func (lw *lowerer) armGuard(br *emitBranch, then bool) *core.Signature {
+	if (then && br.thenGuard) || (!then && br.elsGuard) {
+		return br.guard
+	}
+	return nil
+}
+
+// emitGuardCall emits a CALL_NATIVE of the guard over the value on top (nil:
+// nothing), interning its SigRef as a plain call's.
+func (lw *lowerer) emitGuardCall(guard *core.Signature, pos core.SrcPos) {
+	if guard == nil {
+		return
+	}
+	si, ok := lw.sigIdx[guard]
+	if !ok {
+		lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: "__codeguard", Sig: guard})
+		si = len(lw.p.Sigs) - 1
+		lw.sigIdx[guard] = si
+	}
+	lw.emit(OpCallNative, si, pos)
+}
+
 // lowerArm emits one if-arm as a single (or zero) merge value: a plain value
 // operand is pushed; a body fragment is lowered with its out (nil when the arm
 // nets nothing or diverges — it still runs). allowVariadic passes through to
 // lowerFragment (the merge of two body arms may be variadic; a computed-branch
 // arm may not). Shared by lowerArms, lowerBranch's const-cond inline, and the
 // non-eager arm of lowerComputedBranch.
-func (lw *lowerer) lowerArm(kind armKind, val EmitOperand, frag *EmitFragment, out *EmitOperand, allowVariadic bool, pos core.SrcPos) string {
+func (lw *lowerer) lowerArm(kind armKind, val EmitOperand, frag *EmitFragment, out *EmitOperand, allowVariadic bool, pos core.SrcPos, guard *core.Signature) string {
 	lw.fragMulti = false
 	switch kind {
 	case armValue:
 		// Push the literal/local/type operand as the arm's single result
-		// (pushOperand tracked it; the merge slot owns the count).
+		// (pushOperand tracked it; the merge slot owns the count), guarded
+		// on this path when the pass holds it abstractly (NUR292).
 		lw.pushOperand(val, pos)
+		lw.emitGuardCall(guard, pos)
 		lw.vm = lw.vm[:len(lw.vm)-1]
 		return ""
 	case armBodyOut:
@@ -4860,7 +4902,7 @@ func (lw *lowerer) lowerArm(kind armKind, val EmitOperand, frag *EmitFragment, o
 // (no else) merges with 0-or-1 values — a VARIADIC result.
 func (lw *lowerer) lowerArms(ev *EmitEvent, jf int) string {
 	br := ev.br
-	if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, true, br.pos); reason != "" {
+	if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, true, br.pos, lw.armGuard(br, true)); reason != "" {
 		return reason
 	}
 	thenMulti := lw.fragMulti
@@ -4883,7 +4925,7 @@ func (lw *lowerer) lowerArms(ev *EmitEvent, jf int) string {
 		jend = lw.emit(OpJmp, 0, br.pos)
 	}
 	(*lw.code)[jf].Arg = int32(len(*lw.code))
-	if reason := lw.lowerArm(br.elseArm(), br.elsVal, br.els, &br.elsOut, true, br.pos); reason != "" {
+	if reason := lw.lowerArm(br.elseArm(), br.elsVal, br.els, &br.elsOut, true, br.pos, lw.armGuard(br, false)); reason != "" {
 		return reason
 	}
 	elseMulti := lw.fragMulti
@@ -4962,16 +5004,18 @@ func (lw *lowerer) lowerBothComputed(ev *EmitEvent) string {
 	lw.emit(OpReverse, 3, br.pos)
 	n := len(lw.vm)
 	lw.vm[n-3], lw.vm[n-1] = lw.vm[n-1], lw.vm[n-3]
-	jf := lw.emit(OpJmpIfFalse, 0, br.pos) // pop cond → [elsVal, thenVal]
+	jf := lw.emitBranchJump(br) // pop cond → [elsVal, thenVal]
 	// TRUE/fall-through: the result is thenVal (now on top), so drop elsVal
 	// beneath it: SWAP then DROP → [thenVal].
 	lw.emit(OpSwap, 0, br.pos)
 	lw.emit(OpDrop, 0, br.pos)
+	lw.emitCodeGuard(br, br.thenGuard)
 	jend := lw.emit(OpJmp, 0, br.pos)
 	// FALSE: stack is [elsVal, thenVal] (thenVal on top); the result is elsVal,
 	// so drop thenVal → [elsVal].
 	(*lw.code)[jf].Arg = int32(len(*lw.code))
 	lw.emit(OpDrop, 0, br.pos)
+	lw.emitCodeGuard(br, br.elsGuard)
 	(*lw.code)[jend].Arg = int32(len(*lw.code))
 	// Sim: the three input slots (cond/then/else) collapse to one merge slot.
 	lw.vm = lw.vm[:len(lw.vm)-3]
@@ -5005,17 +5049,19 @@ func (lw *lowerer) lowerBothComputedMatCond(ev *EmitEvent) string {
 			return reason
 		}
 		lw.seedCarried(br)
-		jf = lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf = lw.emitBranchJump(br)
 	} else {
 		lw.pushOperand(br.cond, br.pos)
-		jf = lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf = lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1]
 	}
 	lw.emit(OpDrop, 0, br.pos)
+	lw.emitCodeGuard(br, br.thenGuard)
 	jend := lw.emit(OpJmp, 0, br.pos)
 	(*lw.code)[jf].Arg = int32(len(*lw.code))
 	lw.emit(OpSwap, 0, br.pos)
 	lw.emit(OpDrop, 0, br.pos)
+	lw.emitCodeGuard(br, br.elsGuard)
 	(*lw.code)[jend].Arg = int32(len(*lw.code))
 	lw.vm = lw.vm[:len(lw.vm)-2]
 	lw.vm = append(lw.vm, vmSlot{seq: ev.seq})
@@ -5044,7 +5090,7 @@ func (lw *lowerer) lowerComputedCond(br *emitBranch, condOnTop bool) (int, strin
 			return 0, reason
 		}
 		lw.seedCarried(br)
-		return lw.emit(OpJmpIfFalse, 0, br.pos), ""
+		return lw.emitBranchJump(br), ""
 	case br.cond.kind == opEvent:
 		if !condOnTop {
 			if len(lw.vm) < 2 || !slotIs(lw.vm[len(lw.vm)-2], br.cond) {
@@ -5052,12 +5098,12 @@ func (lw *lowerer) lowerComputedCond(br *emitBranch, condOnTop bool) (int, strin
 			}
 			lw.swapTop2(br.pos)
 		}
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1] // cond consumed; eager value stays on top
 		return jf, ""
 	default:
 		lw.pushOperand(br.cond, br.pos)
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1] // cond consumed; eager value stays on top
 		return jf, ""
 	}
@@ -5079,11 +5125,12 @@ func (lw *lowerer) lowerComputedBranch(ev *EmitEvent, jf int) string {
 	multi := false
 	if br.thenComputed {
 		// TRUE/fall-through keeps the eager then value; jump over the else arm.
+		lw.emitCodeGuard(br, br.thenGuard)
 		jend := lw.emit(OpJmp, 0, br.pos)
 		(*lw.code)[jf].Arg = int32(len(*lw.code)) // FALSE lands here
 		lw.emit(OpDrop, 0, br.pos)                // discard the eager then value
 		lw.vm = lw.vm[:len(lw.vm)-1]
-		if reason := lw.lowerArm(br.elseArm(), br.elsVal, br.els, &br.elsOut, false, br.pos); reason != "" {
+		if reason := lw.lowerArm(br.elseArm(), br.elsVal, br.els, &br.elsOut, false, br.pos, lw.armGuard(br, false)); reason != "" {
 			return reason
 		}
 		multi = lw.fragMulti
@@ -5093,12 +5140,13 @@ func (lw *lowerer) lowerComputedBranch(ev *EmitEvent, jf int) string {
 		// the FALSE path falls through with the eager value intact.
 		lw.emit(OpDrop, 0, br.pos)
 		lw.vm = lw.vm[:len(lw.vm)-1]
-		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, false, br.pos); reason != "" {
+		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, false, br.pos, lw.armGuard(br, true)); reason != "" {
 			return reason
 		}
 		multi = lw.fragMulti
 		jend := lw.emit(OpJmp, 0, br.pos)
 		(*lw.code)[jf].Arg = int32(len(*lw.code)) // FALSE lands here, eager value intact
+		lw.emitCodeGuard(br, br.elsGuard)
 		(*lw.code)[jend].Arg = int32(len(*lw.code))
 	}
 	lw.vm = append(lw.vm, vmSlot{seq: ev.seq})
