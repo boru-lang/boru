@@ -1463,6 +1463,15 @@ func getNodeReturns(args []Value, r *Registry) []Value {
 	// Array<T> OOB→None lesson). A field outside the schema, or a dispatch-
 	// bearing (Function/FnDef) field, keeps dynamic Any.
 	if rt, ok := container.Data.(RecordTypeInfo); ok && rt.Fields != nil {
+		// A SHAPE carrier (a call-site shape specialisation's Map param,
+		// core.ShapeOf): the unit's entry guard proved the exact key set and
+		// every value's tag, and a plain Map is copy-on-write, so a field in
+		// the shape reads STRICT at its tag.
+		if core.IsShapeCarrier(container) {
+			if fv, hit := rt.Fields.Get(getKey(key)); hit {
+				return []Value{NewCarrier(fv.Parent)}
+			}
+		}
 		return recordSchemaFieldReturns(rt, key)
 	}
 	// A DYNAMIC DISJUNCT receiver with a SHAPED alternative — stat's

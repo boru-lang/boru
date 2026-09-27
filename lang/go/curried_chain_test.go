@@ -135,7 +135,11 @@ func TestCurriedChainSoundCompileFailures(t *testing.T) {
 		{ccMk + `def r (((mk 1) 2)) end r`, "computed fn", "[3]"},
 	}
 	for _, c := range rows {
-		prog, reason, _, cerr := mustNew(t).CompileCheck(c.src)
+		// The generic path's declines are what these pin: a shape
+		// specialisation (call_site_spec.go) of a constant Map arg types
+		// `m.x` strictly and compiles `f {x: 2}` (TestShapeSpecialisation
+		// asserts its parity), so the pins run with specialisation off.
+		prog, reason, _, cerr := mustNewNoSpec(t).CompileCheck(c.src)
 		if cerr != nil {
 			t.Fatalf("%q: check: %v", c.src, cerr)
 		}

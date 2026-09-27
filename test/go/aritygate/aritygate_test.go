@@ -103,7 +103,13 @@ var pinnedAritySites = map[string]int{
 	"core/go/engine.go":       32,
 	"core/go/region_diag.go":  1,
 	"core/go/collect_plan.go": 5,
-	"core/go/signature.go":    12,
+	// 12 -> 13 on 2026-09-27 (the poly inline cache): TagDeterminedSigs
+	// considers only the n-argument overloads (`s.TotalArgs() != n`) — the
+	// ones MatchSignature's own ArgCount filter considers for an n-operand
+	// window — to prove the first match is decided by the operands' tags.
+	// The argument rule, not behaviour by arity: a cache miss takes the
+	// same full match every arity takes.
+	"core/go/signature.go":    13,
 	"core/go/match.go":        1,
 	"core/go/fnsig.go":        3,
 	"core/go/word_extend.go":  6,
@@ -162,6 +168,19 @@ var pinnedAritySites = map[string]int{
 	// compiles its generic unit exactly as before, and a specialised call
 	// answers what the generic call answers. Not behaviour by arity.
 	"check/go/call_site_spec.go": 1,
+	// The seeded poly pick (2026-09-27) proves the checker's pick for an
+	// n-operand window: the pick must take n args (`sig.TotalArgs() != n`)
+	// and, for the tag-free guard, be the word's ONLY overload MatchSignature
+	// would consider for n operands (`sigs[i].TotalArgs() == n`) — the
+	// matcher's own ArgCount filter. A failed guard re-matches exactly as
+	// before; no function behaves differently by its count.
+	"compiler/go/poly_seed.go": 2,
+	// The seed's revalidation against the LIVE aggregate (2026-09-27, Codex
+	// review of #517) finds the live overload standing for the seed among
+	// the window's-arity overloads (`sigs[i].TotalArgs() != len(window)`) —
+	// MatchSignature's own ArgCount filter, the argument rule. A seed that
+	// does not validate takes the same full match every arity takes.
+	"eng/go/vm_poly_seed.go": 1,
 	// 10 -> 11: nameFrameFns bounds its loop by `i < fn.NParams` to visit the
 	// NAMED PARAM slots of a frame — which slots are params, so a fn value
 	// bound for one takes the binding's name as the interpreter's frame

@@ -757,6 +757,16 @@ type PolyRef struct {
 	// body (a gradual operand): exactly one non-re-stepping result, or the
 	// loud defer.
 	DynBodyOne bool
+	// Seed is the checker's own pick, where it holds for the runtime window
+	// under a cheap guard (polySeedFor): the VM dispatches it directly — no
+	// lookup, no match — when the guard holds, and re-matches (the inline
+	// cache, then MatchSignature) when it does not. SeedTags, when set, are
+	// the operand tags the pick was proven for (every operand strict or
+	// concrete, the word's overloads tag-determined): the guard is exact tag
+	// equality. Nil SeedTags means Seed is the word's ONLY overload of this
+	// arity: the guard is that overload's own positional match.
+	Seed     *core.Signature
+	SeedTags []*core.Type
 }
 
 // UserPolyRef names one runtime-dispatched multi-overload USER-FN call: the

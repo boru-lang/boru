@@ -288,6 +288,7 @@ type emitCall struct {
 	generic           bool                  // ROUTED through the region descriptor (OpDispatchGeneric, region_route.go): a fn-unit dispatch with a live word slot over a drivable span
 	polyReg           *core.Registry        // the sub-registry to re-match a module poly word in (nil = main registry)
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)
+	polySeed          *polySeed             // the checker's guarded pick (PolyRef.Seed; nil = none)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
 	dynApply          int                   // >0: apply the TOP operand (a runtime fn value) to the `dynApply` trailing args below it (OpCallDynTrailTop) — a paren-bounded trailing fn-value apply recorded as an EVENT so it seats like any computed result
 	dynApplyUnquote   bool                  // the dynApply event came through the `apply` WORD (a consumed pendingApply): lower to OpCallDynApplyTop, which unquotes like applyHandler (Stage M2a)
@@ -784,6 +785,9 @@ type EmitFragment struct {
 // Finalize afterwards. All methods are nil-receiver-safe so hook
 // sites need no guards.
 type EmitState struct {
+	// pendingPolySeed is the guarded pick tryRecordPoly derived for the poly
+	// call it is about to record (poly_seed.go); RecordPolyCall takes it.
+	pendingPolySeed *polySeed
 	// Compilable latches false at the first construct Stage 1 cannot
 	// lower; Reason names the first offender.
 	Compilable bool
@@ -9473,7 +9477,7 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		es.declineUndef(n, fwdReadAfterSpecUndef)
 		return true
 	}
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, region: region, generic: generic}})
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, polySeed: es.takePolySeed(), region: region, generic: generic}})
 	switch len(outs) {
 	case 0:
 		// A 0-output poly (a side-effect word like the test framework's

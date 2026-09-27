@@ -11,6 +11,20 @@ import (
 // (core.ExactEqual, fn identity: what `eq` answers).
 func specGuardsHold(guards []compiler.SpecGuard, args []core.Value) bool {
 	for _, g := range guards {
+		// A shape guard (a Map param specialised on its shape, core.ShapeOf)
+		// holds for any Map of that exact shape; a fn guard for that fn.
+		if core.IsShapeCarrier(g.Fn) {
+			if !core.ShapeHolds(g.Fn, args[g.Param]) {
+				return false
+			}
+			continue
+		}
+		if core.IsListShapeGuard(g.Fn) {
+			if !core.ListShapeHolds(g.Fn, args[g.Param]) {
+				return false
+			}
+			continue
+		}
 		if !core.ExactEqual(args[g.Param], g.Fn) {
 			return false
 		}

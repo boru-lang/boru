@@ -237,10 +237,11 @@ func TestFnUnitDynFrameEffectDiscipline(t *testing.T) {
 // gate.
 func TestBodyLocalMultiOverloadPolyStored(t *testing.T) {
 	src := `def wrapfn fn [[m:Map] [Integer] [def helper fn [[a:Integer] [Integer] [a mul 2] [b:String] [Integer] [7]] helper (m get k/q)]] wrapfn {k:3}`
-	a, err := New()
-	if err != nil {
-		t.Fatal(err)
-	}
+	// The GENERIC path is what this pins: a shape specialisation of the
+	// constant {k:3} (call_site_spec.go) types k strictly and commits the
+	// Integer arm, so the pin runs with specialisation off; the specialised
+	// form's parity is TestShapeSpecialisation's.
+	a := mustNewNoSpec(t)
 	prog, reason, _, cerr := a.CompileCheck(src)
 	if cerr != nil || prog == nil {
 		t.Fatalf("§6b: expected a stored-sig poly compile, declined: reason=%q err=%v", reason, cerr)
@@ -248,7 +249,7 @@ func TestBodyLocalMultiOverloadPolyStored(t *testing.T) {
 	if !strings.Contains(prog.Disassemble(), "CALL_USER_POLY") {
 		t.Errorf("expected a CALL_USER_POLY lowering:\n%s", prog.Disassemble())
 	}
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	gotC, compiled, errC, gotI, errI := runBothEnginesNoSpec(t, src)
 	if !compiled {
 		t.Errorf("the stored-sig poly program must run compiled (errC=%v)", errC)
 	}

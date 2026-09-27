@@ -114,6 +114,9 @@ type dynBindEntry struct {
 // frames, open loops, pc) lives in run() so a body closure invoked
 // mid-dispatch executes on its own stack without disturbing the caller.
 type vmContext struct {
+	// polyCache is the run's poly inline cache (vm_poly_cache.go), per
+	// CALL_NATIVE_POLY site.
+	polyCache map[*compiler.PolyRef]*polyCacheEntry
 	p         *compiler.Program
 	r         *core.Registry
 	ceiling   int
@@ -885,7 +888,22 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	for i := 0; i < n; i++ {
 		window[i] = stack[len(stack)-1-i]
 	}
-	mr := core.MatchSignature(sigs, window, core.WordInfo{ArgCount: n})
+	// The poly inline cache (vm_poly_cache.go): a window with the tags the
+	// site's last pick was made for takes that pick without re-matching.
+	ic := vc.polyCacheFor(pr)
+	var mr *core.MatchResult
+	if sig := ic.seeded(pr, fn, sigs, window); sig != nil {
+		// The seeded pick (PolyRef.Seed, vm_poly_seed.go): the checker's own
+		// overload, revalidated against the LIVE aggregate, without a match.
+		mr = &core.MatchResult{Sig: sig, Args: window}
+	} else if sig := ic.hit(fn, window); sig != nil {
+		mr = &core.MatchResult{Sig: sig, Args: window}
+	} else {
+		mr = core.MatchSignature(sigs, window, core.WordInfo{ArgCount: n})
+		if mr != nil && mr.Sig != nil {
+			ic.fill(fn, sigs, window, mr.Sig)
+		}
+	}
 	if mr == nil || mr.Sig == nil || mr.Sig.DispatchHandler() == nil {
 		// No runtime match. The interpreter's signature_error is built from its
 		// live tape / forward-collection state (engine.go sigError) — the
@@ -907,19 +925,28 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 			"CALL_NATIVE_POLY no match for "+pr.Word+"; the compiled runtime cannot execute it for the canonical signature_error",
 			bestEffortNoMatch(r, fn, pr.Word, window, curDebug, pc))
 	}
+	return vc.polyDispatch(dispReg, pr, mr.Sig, mr.Args, stack, curDebug, pc)
+}
+
+// polyDispatch runs the overload a poly site picked — by re-match, by the
+// inline cache or by its seed — over args (sig order, the window popped off
+// stack) and lands the results.
+func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, sig *core.Signature, args []core.Value, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	r := dispReg
+	n := pr.Arity
 	// Per-export module policy gate (NUR045): a module poly word's
 	// re-match resolved a stamped sub-registry sig — the same identity
 	// the interpreter's execMatch gate reads, checked AFTER the match so
 	// the gate applies to the overload that actually dispatches.
-	if err := vc.gateModuleCall(dispReg, mr.Sig.ModuleCall); err != nil {
+	if err := vc.gateModuleCall(dispReg, sig.ModuleCall); err != nil {
 		return nil, err
 	}
 	// StripAscribed at delivery: the re-match above consumed the ascribed
 	// view; the handler receives the REAL values (execMatch parity).
-	for i := range mr.Args {
-		mr.Args[i] = core.StripAscribed(mr.Args[i])
+	for i := range args {
+		args[i] = core.StripAscribed(args[i])
 	}
-	results, err := mr.Sig.DispatchHandler()(mr.Args, r.Contexts.TopData(), nil, r)
+	results, err := sig.DispatchHandler()(args, r.Contexts.TopData(), nil, r)
 	if err != nil {
 		return nil, stampAt(err, curDebug, pc, r)
 	}
