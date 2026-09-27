@@ -10568,9 +10568,13 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	// as a read lost where the interpreter dispatches it.
 	es.creditWordRead(fn.ID)
 	es.SiteCounts[SiteDynamic]++
+	defRead := false
+	if name, ok := es.defReads[fn.ID]; ok && name == word {
+		defRead = true
+	}
 	call := emitCall{
 		word: word, ops: ops, nout: len(outs), pos: pos,
-		dynMethod: &DynMethodSpec{Word: word, NArgs: len(args), NOut: len(outs)},
+		dynMethod: &DynMethodSpec{Word: word, NArgs: len(args), NOut: len(outs), DefRead: defRead},
 	}
 	// The method value's own producer, when it is a compiled closure (the
 	// factory pattern): the call is a user call by another route and its
@@ -11869,6 +11873,36 @@ func storedUnitFnReadParams(u *emitUnit, rec *fnUnitRec) []int {
 		if slot, local := u.localByID[id]; local && slot < rec.nParams && (rec.wordReads[id] == 0 || rec.wordReads[id] > rec.wordReadCredit[id]) {
 			slots = append(slots, slot)
 		}
+	}
+	sort.Ints(slots)
+	return slots
+}
+
+// namedUnitFnReadParams are the param slots a NAMED fn's unit reads bare
+// under a gradual carrier, a read no lowering took as the dispatch it is
+// (NUR218). The pass analysed the call over an argument it could not type —
+// a container member's fn arrives as a gradual carrier — so the unit pushes
+// the slot where the interpreter dispatches a fn there as a word (`def g fn
+// [[h:Any][Any][h]] end g m.f` raises `cannot call h`). CALL_USER hands a
+// call with a fn in one of these slots to the interpreter
+// (CompiledFn.FnReadRefused); data arguments run the unit. Only a unit with
+// a declared return contract: the interpreter's call then answers exactly
+// the count the caller's model seated, or raises its own count error.
+func namedUnitFnReadParams(u *emitUnit, rec *fnUnitRec) []int {
+	if len(rec.returns) == 0 {
+		return nil
+	}
+	var slots []int
+	for id := range rec.localReads {
+		slot, local := u.localByID[id]
+		if !local || slot >= rec.nParams || rec.wordReads[id] > 0 || rec.wordReadCredit[id] > 0 {
+			continue
+		}
+		// A parameter no fn value can fill holds data on both lanes.
+		if slot < len(rec.paramTypes) && rec.paramTypes[slot] != nil && !core.TFunction.ConformsTo(rec.paramTypes[slot]) {
+			continue
+		}
+		slots = append(slots, slot)
 	}
 	sort.Ints(slots)
 	return slots
@@ -17138,6 +17172,9 @@ func (es *EmitState) fnResidualReplayReason(u *emitUnit, rec *fnUnitRec, vals []
 		// interpreter's pointer inside the body (noteClosureBodyReplay).
 		es.noteClosureBodyReplay(u, rec, vals)
 		return ""
+	}
+	if !rec.closure {
+		rec.fnReadParams = namedUnitFnReadParams(u, rec)
 	}
 	// A body-tail dynamic apply (dynTrail) owns the residual: the count and
 	// replay arms do not apply, but the READ accounting still does — a bare

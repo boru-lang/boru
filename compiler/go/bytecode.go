@@ -1388,6 +1388,13 @@ type DynMethodSpec struct {
 	Word  string
 	NArgs int
 	NOut  int
+	// DefRead marks a method that IS a def-bound binding's read (the read
+	// model's word dispatch, check tryShapedFnReadArrival): the run
+	// dispatches the NAME, so where the VM cannot enter the value's unit
+	// (the binding's installed copy carries no stamp) its island steps the
+	// word rather than the value, which the interpreter would park as data
+	// when it is an anonymous lambda (NUR216).
+	DefRead bool
 }
 
 // Program is a compiled unit: code, interned constants, the signature

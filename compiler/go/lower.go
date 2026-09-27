@@ -4519,6 +4519,13 @@ func (es *EmitState) tailCompatibleReturns(calleeUnit int, callerReturns []*core
 	return true
 }
 
+// unitRefusesFnArgs reports whether unit records parameter slots it reads
+// bare under a gradual carrier (fnUnitRec.fnReadParams): a call of it with a
+// fn there runs on the interpreter (NUR218).
+func (es *EmitState) unitRefusesFnArgs(unit int) bool {
+	return unit >= 0 && unit < len(es.fnRecs) && len(es.fnRecs[unit].fnReadParams) > 0
+}
+
 func (es *EmitState) markTailCalls(frag *EmitFragment, out *EmitOperand, hasOut bool, callerReturns []*core.Type) (stillHasOut bool) {
 	if frag == nil || len(frag.events) == 0 || !hasOut || out.kind != opEvent {
 		return hasOut
@@ -4529,7 +4536,11 @@ func (es *EmitState) markTailCalls(frag *EmitFragment, out *EmitOperand, hasOut 
 		// A POLY user call (uc.poly != nil, unit -1) is never tail-marked: the
 		// arm is only known at run time, and OpCallUserPoly always pushes a
 		// frame (the caller's RET check must still run over the arm's result).
-		if last.uc.poly == nil && !last.uc.generic && last.seq == out.idx && fragSingleResidual(frag) && es.tailCompatibleReturns(last.uc.unit, callerReturns) {
+		// A callee that hands a fn argument in a bare-read slot to the
+		// interpreter (fnReadParams, NUR218) keeps its own frame: the VM runs
+		// such a call there and returns to this caller, which a frame-
+		// replacing tail call leaves no caller to return to.
+		if last.uc.poly == nil && !last.uc.generic && last.seq == out.idx && fragSingleResidual(frag) && es.tailCompatibleReturns(last.uc.unit, callerReturns) && !es.unitRefusesFnArgs(last.uc.unit) {
 			// Tail position requires the call's result to be the fragment's WHOLE
 			// residual — nothing left BELOW it. A multi-value arm (`[n mul 2 m (n
 			// sub 1)]`, where n*2 sits below the recursive call) is NOT tail: a

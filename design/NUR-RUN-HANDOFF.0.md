@@ -9,6 +9,28 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## Main's NUR216 and NUR218 closed: a def read's island dispatches the name, and a fn argument in a bare-read slot runs on the interpreter (2026-09-27)
+
+**The divergences, both silent.** On the branch (and at the pushed head), a
+Function-declared factory's result def-bound to `j` and read in a code body
+or fn body answered `fn j` for 42 (`do [j]`, `each [drop j]`, a fn's body),
+and `typeof j` / `j eq j` answered where the interpreter's barrier raises
+(NUR216). A container member's lambda passed to an `Any` parameter and read
+bare in the callee was data where the interpreter dispatches it and raises
+`cannot call h` (NUR218).
+
+**The fixes, as recorded.**
+- NUR216: the body read's data lookup reaches the binding's installed copy,
+  which `installFnDef` rebuilt without the compiled stamp, so the frame entry
+  declined and the island stepped the VALUE, which parks. A def read's
+  shaped method now carries `DynMethodSpec.DefRead`, and its island steps the
+  WORD. And a read of a name def-bound to a Function carrier is a barrier in
+  the pass as a registered fn word is, so the collected rows decline on the
+  interpreter's strand error.
+- NUR218: a named unit with a declared contract records the parameter slots
+  it reads bare (`namedUnitFnReadParams`), and CALL_USER runs a call with a
+  fn in one of them on the interpreter (`fnReadCallUser`); data runs the unit.
+
 ## NUR257 closed: an anonymous fn value's reader identity (2026-09-27)
 
 **The divergence.** The dynamic-scope rescue keeps an undefined-word finding

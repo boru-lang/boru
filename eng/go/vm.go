@@ -2389,13 +2389,59 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		}
 	}
 	island := make([]core.Value, 0, n+1)
-	island = append(island, fnVal)
+	island = append(island, dynMethodIslandLead(spec, fnVal, curDebug, pc))
 	island = append(island, args...)
 	results, err := vc.islandRun(reg, island)
 	if err != nil {
 		return nil, nil, stampAt(err, curDebug, pc, reg)
 	}
 	return guard(results)
+}
+
+// fnReadCallUser runs a CALL_USER whose arguments put a fn in a slot the
+// unit reads bare (CompiledFn.FnReadParams, NUR218) as the interpreter runs
+// it: its word dispatched over the arguments, laid out as the stack the call
+// takes them from (the last pushed is the first parameter), in the unit's
+// own dispatch registry. ran is false when no argument is refused, and the
+// unit runs.
+func (vc *vmContext) fnReadCallUser(reg *core.Registry, fn *compiler.CompiledFn, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
+	n := fn.NParams
+	args := make([]core.Value, n)
+	for i := 0; i < n; i++ {
+		args[i] = stack[len(stack)-1-i]
+	}
+	if !fn.FnReadRefused(args) {
+		return nil, false, nil
+	}
+	callReg := dispatchRegistry(fn.Reg, reg)
+	island := append(make([]core.Value, 0, n+1), stack[len(stack)-n:]...)
+	w := core.NewWordModified(fn.Name, -1, true, false)
+	if pc >= 0 && pc < len(curDebug) {
+		w = core.WithPosAt(w, curDebug[pc])
+	}
+	island = append(island, w)
+	results, err := vc.islandRun(callReg, island)
+	if err != nil {
+		return nil, true, stampAt(err, curDebug, pc, reg)
+	}
+	return append(stack[:len(stack)-n], results...), true, nil
+}
+
+// dynMethodIslandLead is what the island steps first for a shaped method: a
+// def-bound binding's read dispatches its NAME on the run — installDef made
+// the value the name's fn — so the island steps the word, at the read's
+// position, where stepping the value itself would park an anonymous lambda
+// as data (NUR216: `def j (mk) end do [j]` answered `fn j` for 42). Any
+// other method applies its value.
+func dynMethodIslandLead(spec *compiler.DynMethodSpec, fnVal core.Value, curDebug []core.SrcPos, pc int) core.Value {
+	if !spec.DefRead {
+		return fnVal
+	}
+	w := core.NewWord(spec.Word)
+	if pc >= 0 && pc < len(curDebug) {
+		w = core.WithPosAt(w, curDebug[pc])
+	}
+	return w
 }
 
 // dynMethodClaimOK reports whether an Apply-kernel entry agrees with the
@@ -4036,6 +4082,20 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// addresses, so reconstructing one here would miss the rule.
 				if err := vc.gateModuleCall(curReg, core.StampedModuleCall(fn.Reg, fn.Name)); err != nil {
 					return nil, err
+				}
+			}
+			// A fn argument in a slot the unit reads bare under a gradual
+			// carrier is the interpreter's word dispatch there, which the
+			// unit's slot push cannot run: the call runs on the interpreter
+			// (NUR218). Data arguments run the unit.
+			if in.Op == compiler.OpCallUser && len(fn.FnReadParams) > 0 {
+				ns, ran, err := vc.fnReadCallUser(curReg, fn, stack, curDebug, pc)
+				if err != nil {
+					return nil, err
+				}
+				if ran {
+					stack = ns
+					break
 				}
 			}
 			nl := make([]core.Value, fn.NLocals)

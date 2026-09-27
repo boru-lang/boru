@@ -3047,9 +3047,7 @@ func (e *Engine) stepWord(val Value) error {
 		// else-less `if`'s else) swallows this statement's result, or
 		// this statement runs before a guard's then-branch does. See
 		// commitBarrierForward.
-		if e.commitBarrierForward() {
-			return nil
-		}
+		//
 		// Every bare function word beginning its own dispatch is a barrier —
 		// uniformly, regardless of arity. The strict rule does not ask "how
 		// many args does this word collect"; a nullary `context` and a
@@ -3059,10 +3057,8 @@ func (e *Engine) stepWord(val Value) error {
 		// dot-access chain is implicitly parenthesized navigation, so its
 		// `dot` dispatch is grouped and the outer word sees one value (the
 		// Reach hook above never strands). design/STRICT-FORWARD-BARRIER.0.md.
-		if strictForwardBarrier {
-			if serr := e.strandedForwardError(w.Name); serr != nil {
-				return serr
-			}
+		if committed, err := e.wordBarrier(w.Name); committed || err != nil {
+			return err
 		}
 		// Macro dispatch (design/legacy/MACROS-PHASE1.10.ignore §5): a macro word is
 		// applied to its raw operands ahead on the tape — BEFORE preEvalParens
@@ -3153,6 +3149,17 @@ func (e *Engine) stepWord(val Value) error {
 		// The list-member twin of the old corruption is still caught in
 		// the compiler (RecordMakeListInner).
 		if cv, hit := CheckFnCarrierBind(e.Registry, w.Name); hit {
+			// A name def-bound to a fn is a FUNCTION WORD on the run
+			// (installDef installs the value as the name's fn), so its read
+			// is a forward-collection barrier exactly as a registered fn
+			// word's is above: commit the nearest parked forward that can
+			// fire, or strand it. Only a carrier the pass proves holds a fn;
+			// a gradual one may hold data, where the run collects it (its
+			// claim declines the collection instead, NUR207). NUR216:
+			// `typeof j` answered [Function] compiled where the run raises.
+			if stop, err := e.fnCarrierBarrier(cv, w.Name); stop || err != nil {
+				return err
+			}
 			e.Registry.noteAnalysisUse(w.Name)
 			e.Registry.analysisRecorder().NoteDefRead(cv.ID, w.Name)
 			e.Registry.analysisRecorder().NoteLocalRead(cv.ID, val.Pos())
@@ -8139,6 +8146,36 @@ func (e *Engine) commitBarrierForward() bool {
 	e.Pointer = funcIdx
 	e.rearrangeForForward(fwd.StackArgs, fwd.CollectedArgs)
 	return true
+}
+
+// wordBarrier is the forward-collection barrier a function word beginning
+// its own dispatch raises: commit the nearest parked forward that can
+// already fire (committed — the caller returns, and the loop re-steps the
+// word), or, under the strict rule, strand one that cannot.
+func (e *Engine) wordBarrier(name string) (committed bool, err error) {
+	if e.commitBarrierForward() {
+		return true, nil
+	}
+	if strictForwardBarrier {
+		if serr := e.strandedForwardError(name); serr != nil {
+			return false, serr
+		}
+	}
+	return false, nil
+}
+
+// fnCarrierBarrier is wordBarrier for a read, under an analysis pass, of a
+// name def-bound to a fn carrier: a name def-bound to a fn is a FUNCTION
+// WORD on the run (installDef installs the value as the name's fn), so its
+// read is the same barrier a registered fn word's is (NUR216: `typeof j`
+// answered [Function] compiled where the run raises). Only a carrier the
+// pass proves holds a fn; a gradual one may hold data, where the run
+// collects it (its claim declines the collection instead, NUR207).
+func (e *Engine) fnCarrierBarrier(cv Value, name string) (stop bool, err error) {
+	if !IsFnTypedCarrier(cv) {
+		return false, nil
+	}
+	return e.wordBarrier(name)
 }
 
 // strandedForwardError implements the strict-barrier rule's failure
