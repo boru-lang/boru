@@ -179,6 +179,32 @@ func fnDefHasSigR(fnDef FnDefInfo, want FnSigSpec, r *Registry) bool {
 	return false
 }
 
+// ProvenWindowMatch reports whether fn's own signatures PROVABLY admit a
+// fn-value apply's window, given in signature order (the top argument
+// first): no argument is gradual, some own signature matches them
+// (MatchFnSig), and every value pattern of that signature holds over a
+// CONCRETE argument — over a carrier the match is a run-time question. The
+// one proof both halves of a paren-bounded apply ask for: the compiler's
+// applyWindowFits (NUR246's count) and the collapse's bind-time evaluation
+// of a pending container argument (NUR337).
+func ProvenWindowMatch(fn Value, sigArgs []Value) bool {
+	for _, a := range sigArgs {
+		if a.Dynamic {
+			return false
+		}
+	}
+	sig := MatchFnSig(fn, sigArgs)
+	if sig == nil {
+		return false
+	}
+	for i, p := range sig.Params {
+		if p.Pattern != nil && !p.Pattern.Carrier && !IsConcrete(sigArgs[i]) {
+			return false
+		}
+	}
+	return true
+}
+
 // MatchFnSig finds the first OWN signature of a fn VALUE whose params admit
 // args, or nil when none does. Params are matched pairwise in sig order, which
 // is the order a forward-bound call presents them.

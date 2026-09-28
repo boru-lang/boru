@@ -38,6 +38,16 @@ func BearsActiveTokens(v Value) bool {
 	return false
 }
 
+// IsPendingActiveContainer reports whether v is a map or list literal the
+// interpreter still owes an evaluation (a pending residual container: Eval,
+// unquoted, untyped) AND whose members hold a token that evaluation changes
+// (BearsActiveTokens) — `{a:(1 add 2)}`, `[1 add 2]`. Such a value is not
+// its own data: the consuming dispatch evaluates it first, so a compiled
+// operand must never carry it as a baked raw token (NUR337).
+func IsPendingActiveContainer(v Value) bool {
+	return isPendingResidualContainer(v) && BearsActiveTokens(v)
+}
+
 // ModuleScopeBinding reports whether name's active binding sits at module /
 // global scope — NOT an enclosing fn's param or body-local (the
 // ComputeCaptures depth rule: Depth > baseline means enclosing-fn-local). A

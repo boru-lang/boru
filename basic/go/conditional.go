@@ -234,6 +234,11 @@ func CaseClauses(r *Registry, v Value, elems []Value) ([]Value, error) {
 // CaseHandler/CaseClauses; __casematch reuses its UnifyR).
 func CaseReturnsFn(args []Value, r *Registry) []Value {
 	dynAny := []Value{NewDynamicCarrier(TAny)}
+	// The `case` token itself — where the interpreter's CaseHandler error
+	// lands (stampErrPos stamps the dispatching word) and so where a trap
+	// below must raise (NUR338). Read at entry: running a code-body
+	// scrutinee dispatches, which overwrites CurCallPos.
+	casePos := r.Check.CurCallPos
 	v, clauses := args[0], args[1]
 	swapped := isCodeBody(v) && !isCodeBody(clauses)
 	if swapped {
@@ -263,7 +268,7 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		// Plain check (no emit) keeps the prior dynAny; a compile pass's
 		// SUSPENDED run keeps the scrutinee's bindings (keepScrutineeBindings).
 		if es := r.Check.Recorder(); es.Active() {
-			return caseCodeBodyRecord(r, es, v, clauses, dynAny)
+			return caseCodeBodyRecord(r, es, v, clauses, dynAny, casePos)
 		}
 		keepScrutineeBindings(r, v)
 		return dynAny
@@ -289,7 +294,7 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		if !clauses.Dynamic && !clauses.Carrier {
 			r.Check.Recorder().RecordTrap("case_error",
 				"case: clause list must be a concrete list of match/block pairs (optional trailing default)",
-				"case", "", args[0].Pos())
+				"case", "", casePos)
 		}
 		return dynAny
 	}
@@ -466,7 +471,8 @@ func recordCaseSubject(r *Registry, v Value, swapped bool, pos SrcPos) (Value, b
 // scrutinee (the shapes are listed at its call): the terminal trap for a
 // body that nets nothing, the single-clause desugar, or the conservative
 // dynAny that leaves the dispatch to the generic record.
-func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny []Value) []Value {
+// casePos is the `case` token, where the trap raises.
+func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny []Value, casePos SrcPos) []Value {
 	nDiag := len(r.Check.Diagnostics)
 	stk, binds, ran := condResidual(r, v)
 	r.Check.TruncateDiagnostics(nDiag)
@@ -489,7 +495,7 @@ func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny [
 	if len(stk) == 0 {
 		es.RecordTrap("case_error",
 			"case: value expression produced no value to dispatch on",
-			"case", "", v.Pos())
+			"case", "", casePos)
 		return dynAny
 	}
 	if isCodeBody(clauses) {

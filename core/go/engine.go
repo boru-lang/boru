@@ -2641,8 +2641,12 @@ func (e *Engine) stepWordUsurp(val Value, w WordInfo) error {
 			// trap so a compiled program raises the byte-identical error in place
 			// instead of declining on the downstream Undefined placeholder. Only a
 			// top-level trap is recordable; a nested /u keeps the placeholder path
-			// and declines (falls back) as before.
-			e.Registry.analysisRecorder().RecordTrap("illegal_ref", detail, w.Name, "", e.currentPos())
+			// and declines (falls back) as before. The trap raises at the
+			// error's own position below — the token's row and column with the
+			// bare NAME as its source text, so the caret underlines `x`, not
+			// the whole `x/u` token its pos would widen it to (NUR338).
+			e.Registry.analysisRecorder().RecordTrap("illegal_ref", detail, w.Name, "",
+				SrcPos{Row: val.Pos().Row, Col: val.Pos().Col, Src: w.Name})
 			placeholder := NewAtom(w.Name)
 			placeholder.pos = val.pos
 			placeholder.Undefined = true
@@ -9258,6 +9262,7 @@ func (e *Engine) recordParenProducedLeadApply(es EmitRecorder, w producedLeadWin
 // Returns the possibly-shrunk closeIdx. Extracted from stepCloseParen for
 // its complexity cap (NUR038).
 func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx, closeIdx, lastIdx, count int) int {
+	e.evalTrailingWindowContainers(last, openIdx, closeIdx, lastIdx)
 	var argVals []Value
 	var argIdxs []int
 	for i := openIdx + 1; i < closeIdx; i++ {
@@ -9312,6 +9317,104 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 		es.RegisterTrailingApply(last.ID, count-1)
 	}
 	return closeIdx
+}
+
+// evalTrailingWindowContainers evaluates the PENDING CONTAINER arguments of
+// a trailing fn-value apply window — a map or list literal still holding
+// tokens the interpreter evaluates, `({a:(1 add 2)} lam/v)` — before
+// recordParenTrailingFnApply collects the window, so the recorded apply
+// consumes the value the interpreter's apply consumes (NUR337). The check
+// pass never applies the lead here (the recorder collapses the window to a
+// carrier), so nothing else evaluates the literal: the op received the RAW
+// token and the VM, which does not re-evaluate an argument, answered
+// `{a:paren([1 word(add) 2])}` for the interpreter's `{a:3}`.
+//
+// The interpreter evaluates such an argument at two different moments. An
+// apply that MATCHES evaluates it at the bind (execFnDefSig's consumed
+// auto-eval) — the moment of this collapse — while a lead that PARKS or
+// raises leaves it raw for the end-of-run sweep or a later consumer. So an
+// argument is evaluated eagerly, the bind's way, only under a window that
+// provably fits the lead's one signature; otherwise only a pure constant
+// fold (the top frame, no carrier read, no effect — the value every later
+// evaluation would produce) replaces it. A container the signature takes
+// RAW (NoEvalArgs / NoEvalMapArgs) stays raw, marked consumed under a
+// fitting window. Anything left pending the recorder never takes as a raw
+// operand (recordDynApply's container arm): it stays on the tape for the
+// residual's own sweep, or the program declines.
+func (e *Engine) evalTrailingWindowContainers(last Value, openIdx, closeIdx, lastIdx int) {
+	fd, ok := last.Data.(FnDefInfo)
+	if !ok {
+		return
+	}
+	own := fd.OwnSigs()
+	if len(own) != 1 {
+		return
+	}
+	sig := &own[0]
+	var idxs []int
+	for i := openIdx + 1; i < closeIdx; i++ {
+		if i != lastIdx && IsRecordableLiteral(e.Tape.At(i)) {
+			idxs = append(idxs, i)
+		}
+	}
+	n := len(sig.Params)
+	if n == 0 || n > len(idxs) {
+		return
+	}
+	// The window binds top-down: the top argument to the first param.
+	idxs = idxs[len(idxs)-n:]
+	sigArgs := make([]Value, n)
+	for p := range sigArgs {
+		sigArgs[p] = e.Tape.At(idxs[n-1-p])
+	}
+	fits := trailingWindowFits(last, sigArgs)
+	for p, v := range sigArgs {
+		if !IsPendingActiveContainer(v) {
+			continue
+		}
+		if ev, ok := e.evalTrailingContainer(v, sig, p, fits); ok {
+			e.Tape.Set(idxs[n-1-p], ev)
+		}
+	}
+}
+
+// trailingWindowFits reports whether the lead's signature provably admits
+// the window (ProvenWindowMatch — the compiler's applyWindowFits asks the
+// same) under a lead the collapse applies: unquoted and not gradual.
+func trailingWindowFits(last Value, sigArgs []Value) bool {
+	return !last.Quoted && !last.Dynamic && ProvenWindowMatch(last, sigArgs)
+}
+
+// evalTrailingContainer evaluates one pending container argument at sig
+// position p per evalTrailingWindowContainers' rule, reporting whether the
+// returned value replaces it (the value is meaningless when it does not).
+func (e *Engine) evalTrailingContainer(v Value, sig *Signature, p int, fits bool) (Value, bool) {
+	isMap := v.Parent.Equal(TMap)
+	if (isMap && sig.NoEvalMapArgs[p]) || (!isMap && sig.NoEvalArgs[p]) {
+		v.Eval = !fits
+		return v, fits
+	}
+	var ev Value
+	var err error
+	switch {
+	case fits && isMap:
+		ev, err = e.AutoEvalMap(v, false, true)
+	case fits:
+		ev, err = e.autoEvalList(v, true)
+	case !e.Registry.analysisRecorder().TopFrameOnly() || CheckBraid.ExprRefsCarrier(e, []Value{v}):
+		return v, false
+	default:
+		var folded bool
+		ev, folded = e.constFoldContainerVal([]Value{v})
+		if !folded || containsSharedMutable(ev) || containsCapturingFn(ev) {
+			return v, false
+		}
+	}
+	// A bind-time evaluation that raised replaces nothing (ok false): the
+	// literal stays pending, and the recorder never takes it raw.
+	ev.Eval = false
+	ev.pos = v.pos
+	return ev, err == nil
 }
 
 // parenFeedsPendingForward reports whether the paren opening at openIdx is
