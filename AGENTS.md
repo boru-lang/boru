@@ -33,13 +33,12 @@ linked source — it is authoritative, this page is just the index.
 > rebuilding, and names the files that moved: the `generated_at` stamp
 > is pinned and is NOT a freshness signal, the input digest is.
 >
-> **As of 2026-09-20 `make -C kg graph` does not run** (`DISPATCH_GENERIC
-> at ev` — the generic lane's evaluating host, pre-existing and confirmed
-> on a clean `ba64e11` worktree), so the `kg-verify` CI step and the
-> commit-gate lane are DEACTIVATED and a doc change is not blocked on the
-> graph. `scripts/ci-steps.sh` carries the reason, the re-activation
-> instruction and the reference-engine workaround for rebuilding it by
-> hand.
+> **The kg gate is active again (2026-09-28).** From 2026-09-20 `make -C kg
+> graph` died compiled (`DISPATCH_GENERIC at ev`) and the `kg-verify` CI
+> step and commit-gate lane were off; the failure and the two behind it are
+> fixed, the compiled pipeline's output is byte-identical to the
+> interpreter's, and both lanes run again — a change to a digested input
+> needs the rebuilt graph committed.
 
 
 ## First: let the tool document itself (`boru describe` / `boru help`)

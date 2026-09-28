@@ -1289,10 +1289,11 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// over-suppression that dropping it inside the suspend branch caused).
 	// A compile pass reports it once the recorder has DECIDED this dispatch
 	// (decided, above) and stamps it RuntimeMirror, because the finding's
-	// compile consequence is already carried by the recording: a trap or a
-	// rematch compiles and raises the interpreter's byte-identical
-	// signature_error (a rematch that matches at run time defers to the
-	// interpreter), and a decline surfaces its SPECIFIC MarkUncompilable
+	// compile consequence is already carried by the recording: a trap
+	// compiles and raises the interpreter's byte-identical signature_error
+	// (a runtime REMATCH is excluded — it may match at run time and
+	// continue, so its finding is no guaranteed failure; Codex review of
+	// #518), and a decline surfaces its SPECIFIC MarkUncompilable
 	// reason through Finalize — which a model-undermining finding would mask
 	// as the generic "check diagnostics" (boru.go). The mirror flag keeps the
 	// compile gate from re-deciding what the recorder decided, so no program
@@ -1334,6 +1335,13 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// / TestSliceDynamicReceiverRefines). Only the fully-unknown Any carrier is
 	// deferrable to the runtime CALL_USER contract.
 	recoverableUnknownType := AnyAnyCarrier(args) && core.SingleOverloadRecoverable(sig, fn) && core.ConcreteArgsMatch(sig, args, nStack)
+	// A RUNTIME REMATCH is not a decided failure: the live values can match
+	// and the program then continues (TestDispatchRematchMatchDefers), so the
+	// compile pass reports it no more than it did before the mirror — only a
+	// terminal trap or a decline is.
+	if decided && e.LastUnmatchedRematched {
+		decided = false
+	}
 	if (!e.Registry.Check.Compiling || decided) && !recoverableUnknownType {
 		// Expected-vs-actual: name the operand types the dispatch saw and
 		// the nearest candidate's declared types, so the user can see the

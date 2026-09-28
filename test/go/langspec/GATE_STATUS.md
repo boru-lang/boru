@@ -2,7 +2,7 @@
 | compile failures | 0 | 0 | 0 | at end state | corpus rows that FAIL to compile — every one a BUG, not a policy (design/COMPILABLE-SUBSET.md §5); the sum of compile_failures.tsv |
 | compute gaps | 0 | 0 | 5 | at end state | real-compute rows that fail to compile |
 | correct-error compile failures | 0 | 0 | 1 | at end state | a known-to-error row must compile an OpTrap / RET error path; failing to compile it is a bug |
-| diagnostic parity divergences | 30 | 0 | 30 | open | rows whose findings differ between the plain and the compile-armed check — the checker's verdict depends on who is asking (NUR103); top shapes:   2x  plain= armed=fn_body_error/f|type_error/f;   2x  plain=no_signature/add armed=;   2x  plain=no_signature/convert armed= |
+| diagnostic parity divergences | 48 | 0 | 48 | open | rows whose findings differ between the plain and the compile-armed check — the checker's verdict depends on who is asking (NUR103); top shapes:   6x  plain=no_signature/f armed=;   5x  plain=no_signature/add armed=;   3x  plain=no_signature/apply armed= |
 | engine entries | 164 | 0 | 164 | open | unattributed interpreter runs on the compiled path, by seam: Engine.Run×164, CallBoru×132, RunResolved×16, vm:island-resolved×6, InvokeCallback:callboru×5, runPooledSub×5, vm:island×4 |
 | interp-entry census rows | 21 | 0 | 21 | open | corpus rows that run compiled and still enter the interpreter through an unattributed seam — the OpFallback island ceiling cannot see this (it counts disassembly spans, not a CallBoru inside a handler) |
 | interpreter islands | 0 | 0 | 0 | at end state | compiled programs with an OpFallback span — an uncompiled region inside something called compiled |

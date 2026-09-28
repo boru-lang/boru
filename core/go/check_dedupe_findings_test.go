@@ -51,6 +51,15 @@ func TestDedupeFindingsKeepsDistinctLines(t *testing.T) {
 		other(func(d *CheckDiagnostic) { d.Src = "keys" }),
 		other(func(d *CheckDiagnostic) { d.Code = "type_error" }),
 		other(func(d *CheckDiagnostic) { d.Severity = SeverityWarning }),
+		// So is the structured payload: a did-you-mean one analysis gained is
+		// kept beside the bare twin, and a replacement's absence differs from
+		// an empty one.
+		other(func(d *CheckDiagnostic) { d.Notes = []string{"the note"} }),
+		other(func(d *CheckDiagnostic) { d.Suggestions = []DiagSuggestion{{Message: "did you mean `vals`?"}} }),
+		other(func(d *CheckDiagnostic) {
+			empty := ""
+			d.Suggestions = []DiagSuggestion{{Message: "did you mean `vals`?", Replacement: &empty}}
+		}),
 		// Info advisories are never collapsed: one per body execution is
 		// the finding.
 		info, info,
@@ -70,5 +79,18 @@ func TestRescueForwardRefDiagnosticsDedupes(t *testing.T) {
 	r.RescueForwardRefDiagnostics()
 	if len(r.Check.Diagnostics) != 1 {
 		t.Fatalf("the end-of-pass rescue must collapse the repeat; got %+v", r.Check.Diagnostics)
+	}
+}
+
+// Two findings with the same payload are one: the payload joins the
+// identity, it does not split every repeat.
+func TestDedupeFindingsSamePayloadCollapses(t *testing.T) {
+	fix := "vals"
+	d := CheckDiagnostic{Code: "undefined_word", Detail: "undefined word: vasl", Word: "vasl", Row: 1, Col: 1,
+		Severity: SeverityError, Notes: []string{"n"}, Suggestions: []DiagSuggestion{{Message: "did you mean `vals`?", Replacement: &fix}}}
+	c := &CheckState{Diagnostics: []CheckDiagnostic{d, d}}
+	c.DedupeFindings()
+	if len(c.Diagnostics) != 1 {
+		t.Errorf("an exact repeat with its payload collapses to one, got %+v", c.Diagnostics)
 	}
 }

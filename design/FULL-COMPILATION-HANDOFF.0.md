@@ -16120,9 +16120,11 @@ reaches the other. The work that followed, in the order it was ranked:
    enterBodyUnit now does the same. The compiled kg pipeline runs in 37 s
    (2 m 12 s interpreted) with byte-identical output, and the kg gate is
    active again.
-3. **Diagnostic parity 350 → 30.** The armed pass had proven `no_signature`
+3. **Diagnostic parity 350 → 48.** The armed pass had proven `no_signature`
    (it baked the trap) and then said nothing — it now reports it as a
-   runtime mirror; the static-if dead-arm warning ran only when the recorder
+   runtime mirror, for a terminal trap or a decline (a runtime rematch may
+   still match and continue, so its eighteen rows stay divergences — Codex
+   review of #518); the static-if dead-arm warning ran only when the recorder
    was idle — it now runs in both passes; duplicate findings from the armed
    pass's second body analysis are deduped. Armed-only 8 → 4.
 4. **Numeric result typing.** Integer only when both operands are Integer,

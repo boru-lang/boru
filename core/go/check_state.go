@@ -1805,14 +1805,41 @@ func (r *Registry) RescueForwardRefDiagnostics() {
 	r.Check.Diagnostics = kept
 }
 
-// findingKey is a finding's identity for DedupeFindings: every scalar field
-// a reader can see or a gate can act on. Notes and Suggestions are derived
-// from the same emission and are not compared.
+// findingKey is a finding's identity for DedupeFindings: every field a reader
+// can see or a gate can act on. The structured payload — Notes and
+// Suggestions — is part of it (findingPayload): one token analysed in two
+// registry states can gain a did-you-mean on the second pass, and a dedupe
+// that ignored the payload kept only the first (Codex review of #518).
 type findingKey struct {
 	code, detail, word, src, fnName string
 	row, col                        int
 	severity                        CheckSeverity
 	fnBody, mirror, caught          bool
+	payload                         string
+}
+
+// findingPayload renders a finding's Notes and Suggestions as one comparable
+// string: separators no rendered text carries, and a replacement's absence
+// (nil) kept distinct from an empty one.
+func findingPayload(d CheckDiagnostic) string {
+	if len(d.Notes) == 0 && len(d.Suggestions) == 0 {
+		return ""
+	}
+	var b strings.Builder
+	for _, n := range d.Notes {
+		b.WriteString(n)
+		b.WriteByte(0)
+	}
+	b.WriteByte(1)
+	for _, sg := range d.Suggestions {
+		b.WriteString(sg.Message)
+		if sg.Replacement != nil {
+			b.WriteByte(2)
+			b.WriteString(*sg.Replacement)
+		}
+		b.WriteByte(0)
+	}
+	return b.String()
 }
 
 // DedupeFindings drops every FINDING (error or warning) that repeats an
@@ -1845,7 +1872,7 @@ func (c *CheckState) DedupeFindings() {
 	for _, d := range c.Diagnostics {
 		if d.Severity == SeverityError || d.Severity == SeverityWarning {
 			k := findingKey{d.Code, d.Detail, d.Word, d.Src, d.FnName, d.Row, d.Col,
-				d.Severity, d.FnBody, d.RuntimeMirror, d.CaughtAtRuntime}
+				d.Severity, d.FnBody, d.RuntimeMirror, d.CaughtAtRuntime, findingPayload(d)}
 			if seen[k] {
 				continue
 			}

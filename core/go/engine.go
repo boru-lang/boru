@@ -87,6 +87,11 @@ type Engine struct {
 	// the definite-mismatch trap (TryRecordUnmatchedDispatchTrap) — stand
 	// down under it: a runtime no-match then defers to the interpreter.
 	fnValueRecovery bool
+	// LastUnmatchedRematched reports that the last TryRecordUnmatchedDispatchTrap
+	// recorded a RUNTIME REMATCH rather than a terminal trap: the dispatch may
+	// still match at run time, so its static no-match is not a guaranteed
+	// runtime failure (check's no_signature mirror keys on it).
+	LastUnmatchedRematched bool
 	// debugLabel names the CALL this engine's run realises, when the
 	// dispatch knows it (CallBoruNamed: a module fn body run in its own
 	// sub-engine, whose Defs-based frame leaves no tape marks). A debug
@@ -9645,6 +9650,7 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 // compile failure. Returns true when the trap now owns the program's tail; false
 // leaves the caller's MarkUncompilable compile failure to stand.
 func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos SrcPos) bool {
+	e.LastUnmatchedRematched = false
 	es := e.Registry.analysisRecorder()
 	// A fn VALUE's no-match parks the value in the interpreter; it never
 	// raises at this point, so there is no raise to replay (fnValueRecovery).
@@ -9832,7 +9838,8 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		if rematchWindowMatches(fn, vals) {
 			return false
 		}
-		return es.RecordDispatchRematchValues(w.Name, vals, off, len(written), pos)
+		e.LastUnmatchedRematched = es.RecordDispatchRematchValues(w.Name, vals, off, len(written), pos)
+		return e.LastUnmatchedRematched
 	}
 	// Serialise the FULL interpreter error into the trap so the compiled
 	// OpTrap raises byte-identical to the interpreter (Detail + spans +

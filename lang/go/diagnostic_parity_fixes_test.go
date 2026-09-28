@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -65,10 +66,11 @@ func bothPasses(t *testing.T, src string) (plain, armed CheckResult, compiled bo
 	return plain, armed, prog != nil, reason
 }
 
-// A no-match the compile pass has DECIDED — a terminal trap, a runtime
-// rematch, or a decline — is reported on that pass too, as a RuntimeMirror:
-// the plain pass's model-undermining finding, with the compile consequence
-// already carried by the recording.
+// A no-match the compile pass has DECIDED — a terminal trap or a decline —
+// is reported on that pass too, as a RuntimeMirror: the plain pass's
+// model-undermining finding, with the compile consequence already carried by
+// the recording. A runtime REMATCH is not decided: the live values may match
+// and the program continue, so it carries no mirror.
 func TestArmedNoSignatureIsARuntimeMirror(t *testing.T) {
 	t.Run("a trapped no-match compiles and raises byte-identically", func(t *testing.T) {
 		for _, src := range []string{
@@ -130,6 +132,21 @@ func TestArmedNoSignatureIsARuntimeMirror(t *testing.T) {
 				t.Errorf("%q: want one mirrored no_signature, got %+v", src, armed.Diagnostics)
 			}
 			requireRaisesIdentically(t, src)
+		}
+	})
+	t.Run("a runtime rematch is no guaranteed failure and carries no mirror", func(t *testing.T) {
+		// TestDispatchRematchMatchDefers's source: the static model misses,
+		// the runtime value matches, and the program returns normally.
+		src := `def Pos (refine Integer) def mk fn [[n:Integer][Integer][def y:Pos n y]] def g fn [[p:Pos][Integer][99]] g (mk 5)`
+		prog, reason, armed, err := mustNew(t).CompileCheck(src)
+		if err != nil || prog == nil {
+			t.Fatalf("the rematch shape must compile: %v (%s)", err, reason)
+		}
+		if _, n := findingOf(armed.Diagnostics, "no_signature", "g"); n != 0 {
+			t.Errorf("a rematch must not be reported as a decided runtime failure: %+v", armed.Diagnostics)
+		}
+		if got, err := mustNew(t).RunInterp(src); err != nil || fmt.Sprint(got) != "[99]" {
+			t.Errorf("the interpreter answers 99, got %v [%v]", got, err)
 		}
 	})
 	t.Run("a matching dispatch reports nothing on either pass", func(t *testing.T) {

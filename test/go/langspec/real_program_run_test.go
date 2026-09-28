@@ -11,7 +11,9 @@ import (
 	"sort"
 	"strings"
 	"sync"
+	"sync/atomic"
 	"testing"
+	"time"
 
 	core "github.com/boru-lang/boru/core/go"
 	eng "github.com/boru-lang/boru/eng/go"
@@ -88,12 +90,36 @@ func TestRealProgramsRun(t *testing.T) {
 	verdicts := make([]verdict, len(files))
 	sem := make(chan struct{}, runtime.NumCPU())
 	var wg sync.WaitGroup
+	// Progress on stderr (the shard runs without -v, where t.Logf is silent
+	// until the end): a line per finished suite with the COMPLETED count, and
+	// a heartbeat while the slow ones run (AGENTS.md: transient tasks report
+	// progress at least every 30 seconds).
+	var done atomic.Int32
+	start := time.Now()
+	stop := make(chan struct{})
+	go func() {
+		tick := time.NewTicker(20 * time.Second)
+		defer tick.Stop()
+		for {
+			select {
+			case <-stop:
+				return
+			case <-tick.C:
+				n := int(done.Load())
+				fmt.Fprintf(os.Stderr, "real programs run: %d/%d suites (%d%%), %s\n", n, len(files), 100*n/len(files), time.Since(start).Round(time.Second))
+			}
+		}
+	}()
 	for i, f := range files {
 		wg.Add(1)
 		go func(i int, f string) {
 			defer wg.Done()
 			sem <- struct{}{}
 			defer func() { <-sem }()
+			defer func() {
+				n := int(done.Add(1))
+				fmt.Fprintf(os.Stderr, "real programs run: [%d/%d] %s\n", n, len(files), verdicts[i].rel)
+			}()
 			rel, _ := filepath.Rel(repo, f)
 			rel = filepath.ToSlash(rel)
 			// Every suite is written to run from its tests/ folder's parent
@@ -106,10 +132,11 @@ func TestRealProgramsRun(t *testing.T) {
 				return
 			}
 			verdicts[i] = verdict{rel, realRunJudge(rel, comp, dir, f)}
-			t.Logf("[%d/%d] %s: %s", i+1, len(files), rel, firstN(comp.Summary, 60))
+			t.Logf("%s: %s", rel, firstN(comp.Summary, 60))
 		}(i, f)
 	}
 	wg.Wait()
+	close(stop)
 	failing := map[string]bool{}
 	for _, v := range verdicts {
 		want, ledgered := realProgramRunLedger[v.rel]
