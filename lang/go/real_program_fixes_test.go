@@ -70,6 +70,23 @@ func TestVariadicDoResultsAreNotApplied(t *testing.T) {
 	}
 }
 
+// A shaped method value and its operands that are all results of one
+// runtime-variable call (the check pass left `do [m.r.int 0 100]`'s body as
+// `[fn 0 100]`) were applied inside the body at run time: the compiler
+// declines the apply it would have laid after the call, which underflowed
+// (REVERSE underflow where the interpreter answers 61). The same method read
+// outside a do still compiles.
+func TestVariadicShapedMethodDeclines(t *testing.T) {
+	const pre = `import "boru:rand" def s (Rand.with-seed 3) end def m {r: s} `
+	prog, reason, _, err := mustNew(t).CompileCheck(pre + `do [m.r.int 0 100]`)
+	if prog != nil || err != nil || !strings.Contains(reason, "shaped method apply") {
+		t.Errorf("want the shaped-apply decline, got prog=%v reason=%q err=%v", prog != nil, reason, err)
+	}
+	if prog, reason, _, err := mustNew(t).CompileCheck(pre + `m.r.int 0 100`); prog == nil || err != nil {
+		t.Errorf("the method read outside a do compiles: reason=%q err=%v", reason, err)
+	}
+}
+
 // A nested body the VM enters (a callback a handler invokes per element) runs
 // on its own step budget, as the interpreter's sub-engine does: its steps are
 // not charged to the run that invoked it. The VM charged every body to one

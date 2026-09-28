@@ -9535,6 +9535,15 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	if fn.ID != "" && fn.ID == es.pendingFoldedFire {
 		es.pendingFoldedFire = ""
 	}
+	// A method value and its operands that are all results of ONE
+	// runtime-variable call (variadicSiblings — a dyn-body `do` whose body
+	// the check pass left as `[fn 0 100]`) were applied INSIDE that call's
+	// body at run time, which returns the one applied result: the apply laid
+	// after it underflowed (`do [m.r.int 0 100]`, REVERSE underflow where
+	// the interpreter answers 61). Decline rather than lay it.
+	if len(args) > 0 && es.variadicSiblings(append([]core.Value{fn}, args...)) {
+		return false
+	}
 	fnOp, ok := es.resolveOperand(fn)
 	if !ok {
 		return false
@@ -13590,12 +13599,22 @@ func (es *EmitState) variadicSiblingLead(residual []core.Value) bool {
 	if len(residual) < 2 {
 		return false
 	}
-	lead, ok := es.producedBy[residual[0].ID]
-	above, ok2 := es.producedBy[residual[1].ID]
-	if !ok || !ok2 || lead.seq != above.seq {
+	return es.variadicSiblings(residual[:2])
+}
+
+// variadicSiblings reports whether every value in vals is a result of ONE
+// runtime-variable call (variadicSiblingLead's event class).
+func (es *EmitState) variadicSiblings(vals []core.Value) bool {
+	first, ok := es.producedBy[vals[0].ID]
+	if !ok {
 		return false
 	}
-	f := es.eventInfo[lead.seq]
+	for _, v := range vals[1:] {
+		if pr, ok := es.producedBy[v.ID]; !ok || pr.seq != first.seq {
+			return false
+		}
+	}
+	f := es.eventInfo[first.seq]
 	return f.callVariadic || (f.dynBodyResult && f.variadicResult)
 }
 
