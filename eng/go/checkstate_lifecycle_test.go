@@ -43,6 +43,7 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"LoopBodyDepth":            true,
 		"CodeEffectDepth":          true,
 		"Compiling":                true,
+		"ProgramEmit":              true,
 		"FnCarrierReadSubstituted": true,
 		"ParenPlacedFnIDs":         true,
 		"ReachSurvivorFnIDs":       true,

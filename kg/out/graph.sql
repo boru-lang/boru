@@ -14,9 +14,9 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '5202294874873565916');
-INSERT INTO input_files VALUES ('../AGENTS.md', '2200695068082150409', 13966);
-INSERT INTO input_files VALUES ('../CLI.md', '6821607043254790718', 82100);
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '6469797744786928243');
+INSERT INTO input_files VALUES ('../AGENTS.md', '6665130395557295718', 15330);
+INSERT INTO input_files VALUES ('../CLI.md', '1936818953179421473', 83450);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
 INSERT INTO input_files VALUES ('../STYLE-GUIDE.md', '3527342302034149151', 16295);
 INSERT INTO input_files VALUES ('../basic/go/go.mod', '592614718618454325', 457);
@@ -27,29 +27,31 @@ INSERT INTO input_files VALUES ('../compiler/go/go.mod', '142593282390199928', 3
 INSERT INTO input_files VALUES ('../core/go/go.mod', '2316996521694161686', 98);
 INSERT INTO input_files VALUES ('../design/ADR-004-REFINEMENT.0.md', '3861417885565819188', 20704);
 INSERT INTO input_files VALUES ('../design/BORU-INFOVIEW.0.md', '2090869893701264049', 24408);
-INSERT INTO input_files VALUES ('../design/BORU-SCRY.0.md', '3285728856019765195', 16574);
+INSERT INTO input_files VALUES ('../design/BORU-SCRY.0.md', '4245787646279207683', 17508);
 INSERT INTO input_files VALUES ('../design/BORU-VIZ.0.md', '1948552775752251328', 25772);
 INSERT INTO input_files VALUES ('../design/CANON-ROUNDTRIP.0.md', '1353161920241380593', 7262);
-INSERT INTO input_files VALUES ('../design/CONTENT-ADDRESSING.0.md', '1071995686512372242', 18400);
+INSERT INTO input_files VALUES ('../design/CONTENT-ADDRESSING.0.md', '8987256348768534340', 19025);
 INSERT INTO input_files VALUES ('../design/CORE-TS-DIVERGENCES.1.md', '1418715068438228615', 22564);
 INSERT INTO input_files VALUES ('../design/DECLARATIVE-GRAMMAR.0.md', '3946353376704890703', 3246);
 INSERT INTO input_files VALUES ('../design/DIAGNOSTIC-VALUES.0.md', '1744818756133586638', 6687);
 INSERT INTO input_files VALUES ('../design/ENG-COVERAGE-PARITY.0.md', '9166176367028368975', 20202);
 INSERT INTO input_files VALUES ('../design/FN-VALUE-OPEN-WORK.0.md', '7137588848014700077', 32800);
-INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-ASSESSMENT.0.md', '1596646274498773965', 38325);
-INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-HANDOFF.0.md', '6476375130733636949', 681641);
-INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-REPLAN.0.md', '5131828316944983469', 17603);
-INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-REVIEW.0.md', '1881035783008324429', 47247);
-INSERT INTO input_files VALUES ('../design/FULL-COMPILATION.0.md', '4842823631539811847', 258339);
+INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-ASSESSMENT.0.md', '5273309529523977744', 38332);
+INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-HANDOFF.0.md', '2985849997997276570', 1030758);
+INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-REPLAN.0.md', '2996764963638601533', 30544);
+INSERT INTO input_files VALUES ('../design/FULL-COMPILATION-REVIEW.0.md', '542536140079291977', 47255);
+INSERT INTO input_files VALUES ('../design/FULL-COMPILATION.0.md', '3277397549771875776', 258354);
 INSERT INTO input_files VALUES ('../design/FUNCTION-VALUE-SCOPE.0.md', '5965631548714272956', 73926);
-INSERT INTO input_files VALUES ('../design/GO-TS-PARITY.0.md', '7708654490684213804', 23548);
-INSERT INTO input_files VALUES ('../design/HANDLER-MIGRATION-LINE.0.md', '8387961511163018782', 13912);
+INSERT INTO input_files VALUES ('../design/GO-TS-PARITY.0.md', '298886948117144679', 23594);
+INSERT INTO input_files VALUES ('../design/HANDLER-MIGRATION-LINE.0.md', '5774651396100651588', 18879);
 INSERT INTO input_files VALUES ('../design/HOT-CODE-LOADING.0.md', '4181002289371161566', 19083);
 INSERT INTO input_files VALUES ('../design/MODULE-VIEWS.0.md', '570466612363092696', 22324);
+INSERT INTO input_files VALUES ('../design/NUR-ARCHIVE.0.md', '8737380384114904296', 183596);
+INSERT INTO input_files VALUES ('../design/NUR-RUN-HANDOFF.0.md', '2640723508142864479', 280357);
 INSERT INTO input_files VALUES ('../design/PAREN-RESTEP-RULE.0.md', '6362463872929681453', 16140);
 INSERT INTO input_files VALUES ('../design/RELOAD-INVALIDATION.0.md', '1747462305432078777', 25012);
-INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '7335512018331647502', 32448);
-INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '3988227259832537239', 89115);
+INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '5253692661242893873', 113671);
+INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '988109864692237677', 90476);
 INSERT INTO input_files VALUES ('../design/legacy/BASIC-CHECK-CUT.0.ignore', '2999343245563700976', 8203);
 INSERT INTO input_files VALUES ('../design/legacy/COMPILE-DECLARATION-MODEL.0.ignore', '5471579664599608073', 28469);
 INSERT INTO input_files VALUES ('../design/legacy/CORE-TS-COVERAGE.0.ignore', '5035147551064830801', 10419);
@@ -74,7 +76,7 @@ INSERT INTO input_files VALUES ('../test/specfix/go.mod', '7601104241745438425',
 INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '4566725813820157164', 550);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '509860570392406449', 630);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '109985226710069875', 91952);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '8501690531263913060', 92659);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -234,6 +236,12 @@ INSERT INTO sources VALUES ('src:hot-code-loading', 'text', 'design/HOT-CODE-LOA
   "repository": "boru-lang/boru"
 }');
 INSERT INTO sources VALUES ('src:module-views', 'text', 'design/MODULE-VIEWS.0.md', 'module-provided views and widgets proposal', NULL, 'module-views-2026-08', 'primary', '{
+  "repository": "boru-lang/boru"
+}');
+INSERT INTO sources VALUES ('src:nur-archive', 'text', 'design/NUR-ARCHIVE.0.md', 'the Non-Uniformity Register''s archive: fixed records'' full bodies, split out of NUR.md', NULL, 'nur-archive-2026-09-27', 'primary', '{
+  "repository": "boru-lang/boru"
+}');
+INSERT INTO sources VALUES ('src:nur-run-handoff', 'text', 'design/NUR-RUN-HANDOFF.0.md', 'the reverse-order NUR run: its handoff log, split out of the full-compilation handoff', NULL, 'nur-run-handoff-2026-09-26', 'primary', '{
   "repository": "boru-lang/boru"
 }');
 INSERT INTO sources VALUES ('src:o1-relitigation', 'text', 'design/legacy/O1-RELITIGATION.0.ignore', 'O1: re-litigating the NUR101 / NUR078 rulings', NULL, 'o1-relitigation-2026-08', 'primary', '{

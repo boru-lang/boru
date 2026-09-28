@@ -252,6 +252,9 @@ keep the two in sync in the same commit.
 | [NUR327](#nur327) | FIXED 2026-09-28 (a typed container's paren child evaluates at `is` and at a type def — the handoff log's entry of that date): `[:(Integer tor None)]` reached `is` and `def T` with its child unevaluated, so `['a' 1] is [:(Integer tor String)]` was false on the interpreter and `def T [:(Integer tor None)] end [5 1] is T` false on BOTH lanes; only a fn parameter and a typed def resolved the paren |
 | [NUR328](#nur328) | FIXED 2026-09-28 (a parameter admits a value as the interpreter's dispatch does — the handoff log's entry of that date): a type value or a None read at a user fn's parameter — `7 m.e f` over `{e: Integer}` and `x:Integer` answered `[7 [Integer]]` compiled for the interpreter's `signature_error` (so did a fn body's `f y` over a type), `7 f m.b` over `x:Type` raised compiled for `[7 [None]]`, and `k None` into a fn unit's Any parameter bound nothing a union takes; found by a generated sweep, silent on main too |
 | [NUR329](#nur329) | PENDING (notes only; the code, message and caret agree): a no-match over a reach-led forward operand the plan refused — `7 f m.a` over `x:Type` — names the reach's value interpreted (`the argument was 1`) and the stack's compiled (`the argument was 7`) |
+| [NUR330](#nur330) | A `def` inside a Rand.map-from / Rand.list-of generator body is a registry binding on the interpreter (the body runs on the shared registry, no def cleanup) that outlives the call, and invisible to the compiled program after it: `import "boru:rand"  def k 5 Rand.map-from {b:[def k 1 k]} k` is `[{b:1} 1]` interpreted, `[{b:1} 5]` compiled — the recorder reads the later `k` as the def it saw and does not know the rand words' bodies can rebind it. Pre-existing on both words; found while moving map-from's bodies onto the InvokeBody seam, which neither causes nor cures it | found 2026-09-27 (the interp-entry census, module-rand.tsv) |
+| [NUR331](#nur331) | A seeded generator reached through a MAP member: `import "boru:rand" def s (Rand.with-seed 3) end def m {r: s} [(m.r.int 0 100) (m.r.int 0 100)]` is `[[61 84]]` interpreted. Found as a wrong compiled answer (`[[5 52]]`) on main 91e97dd; since main's NUR run (e8702ac) the program no longer compiles — the check pass stops at `undefined word: rand-int` — so the lane is sound and the defect is a compile gap; `s.int 0 100` on `s` directly compiles and agrees | found 2026-09-28 (the shaped-method underflow review); updated 2026-09-28 (the merge of main e8702ac) |
+| [NUR332](#nur332) | The check pass PANICS (recovered as an internal_error, so the program does not compile) on an `if` word stranded in a `case` clause list: `case 7 [[lt 3] "low" [lt 10] if (1 eq 1) ["mid"] ["x"] "high"]` — the failed-dispatch recovery calls the if handlers with fewer operands than their first statement reads. The interpreter raises the signature_error. Pre-existing on main 91e97dd | found 2026-09-28 (the diagnostic-parity work) |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14890,3 +14893,75 @@ paren, so the recorded tuple is the stack prefix (7). A fix records the
 reach's result as a written operand, which the VM's NUR311 stop rule then
 cuts where the run's value is no concrete value. The same shape gives
 `x:None`, `x:[:Maybe]` and `x:N` over a refused reach or a refused `none`.
+
+## NUR330 — a def inside a rand generator body outlives the call on the interpreter only {#nur330}
+
+**Status:** Pending. Recorded 2026-09-27 (the interp-entry census's
+module-rand.tsv row); pre-existing.
+
+`Rand.map-from` and `Rand.list-of` run each generator body on the shared
+registry with no def cleanup — the token-body contract every code-body word
+shares (a `do` body's `def` survives the `do` alike, NUR202) — so a `def`
+inside a body rebinds the name for the rest of the program. The compiled
+program does not see it: the recorder treats the rand words' body operands
+as opaque, so a later read of the name is the binding it recorded before
+the call.
+
+```
+import "boru:rand"  def k 5 Rand.map-from {b:[def k 1 k]} k
+  interpreter   [{b:1} 1]
+  compiled      [{b:1} 5]
+import "boru:rand"  def k 5 Rand.list-of [def k 1 k] 1 k
+  interpreter   [[1] 1]
+  compiled      [[1] 5]
+```
+
+`do [def k 1] k` is `[1]` on both lanes: its body is joined into the model
+(the do$body unit's BIND_DYN_SCOPE and the dyn read after it). The cure is
+the same for the rand words — join a body that defines a name into the
+model, or decline to compile one — and moving map-from's bodies onto the
+InvokeBody seam (2026-09-27) neither causes nor cures it: the old pooled
+run diverged identically.
+
+## NUR331 — a seeded generator read through a map member {#nur331}
+
+**Status:** Pending (a compile gap; sound). Recorded 2026-09-28 as a wrong
+compiled answer on main 91e97dd; re-measured on the merge of main e8702ac.
+
+```
+import "boru:rand" def s (Rand.with-seed 3) end def m {r: s} [(m.r.int 0 100) (m.r.int 0 100)]
+  interpreter   [[61 84]]
+  main 91e97dd  [[5 52]]        (compiled — a silent wrong answer)
+  main e8702ac  compile_failed: the check pass stopped at [undefined_word] undefined word: rand-int
+import "boru:rand" def s (Rand.with-seed 3) end s.int 0 100
+  interpreter   [61]
+  compiled      [61]
+```
+
+The generator's methods are fns whose bodies delegate to the rand module's
+sub-registry words (`int:fn [[:Integer :Integer][Integer][rand-int]]`, the
+corpus-modules.tsv row for `Rand.with-seed`). The likely mechanism, not yet
+traced: read through `s` the check pass
+resolves the delegate in that sub-registry; read through a map member it
+resolves `rand-int` in the program's registry, where it is not defined. The
+earlier wrong answer was the same mis-resolution reaching the VM with a
+check-time generator instance in the member's place. The cure is the member
+read carrying the fn's own registry to the check pass. Pinned sound (no
+program, no error in its place) by `TestVariadicShapedMethodDeclines`.
+
+## NUR332 — the check pass panics on an `if` stranded in a case clause list {#nur332}
+
+**Status:** Pending. Recorded 2026-09-28; pre-existing on main 91e97dd.
+
+```
+case 7 [[lt 3] "low" [lt 10] if (1 eq 1) ["mid"] ["x"] "high"]
+  interpreter   signature_error: cannot call `if` — no signature matches the arguments
+  compile pass  internal_error: internal engine error: runtime error: index out of range [0] with length 0
+```
+
+The failed-dispatch recovery (check_recovery) calls the if handlers with
+fewer operands than the signature declares, and their first statement reads
+`args[0]`. The panic is recovered, so nothing crashes, but a panic in the
+tree is a defect (Panic Prevention), and the program reports an internal
+error where the interpreter reports the user's mistake. Cure: the recovery
+must not call a handler over a short window, or the handlers must guard it.

@@ -3,6 +3,7 @@ package compiler
 import (
 	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -1771,6 +1772,12 @@ type EmitState struct {
 	// (Program.CondBoundNames, noteCondBound).
 	condBoundNames   map[string]bool
 	livePlaceholders map[int]bool
+	// inPlaceFrom maps the identity of a value the collection kernel produced
+	// by evaluating a forward-slot token IN PLACE (NoteInPlaceSlot — an
+	// interpolated template string or XML literal) to that token's identity,
+	// so a region completion recognises the value as the slot's operand
+	// (slotIsOperand) and the claim covers it. Nil until first use.
+	inPlaceFrom map[string]string
 }
 
 // routedBindsDyn reports whether a def event owes the routed-read channel a
@@ -9872,6 +9879,17 @@ func (es *EmitState) dynBodySettledOp(residual []core.Value) (Opcode, bool) {
 	return 0, true
 }
 
+// regionSettledOp is resolveDynamicApply's first question: a residual
+// holding a VARIADIC REGION entry takes no fn-value-call op (0, settled —
+// residualHasVariadicRegion), and a dyn body's settled lead takes
+// dynBodySettledOp's.
+func (es *EmitState) regionSettledOp(residual []core.Value) (Opcode, bool) {
+	if es.residualHasVariadicRegion(residual) {
+		return 0, true
+	}
+	return es.dynBodySettledOp(residual)
+}
+
 // regionValsMayBeCallable reports whether any value a region's run is modelled
 // to leave could be CALLABLE at run time. A fn value or a Function-typed
 // carrier plainly can; so can a DYNAMIC one, whose runtime type the model does
@@ -10873,6 +10891,15 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	}
 	if fn.ID != "" && fn.ID == es.pendingFoldedFire {
 		es.pendingFoldedFire = ""
+	}
+	// A method value and its operands that are all results of ONE
+	// runtime-variable call (variadicSiblings — a dyn-body `do` whose body
+	// the check pass left as `[fn 0 100]`) were applied INSIDE that call's
+	// body at run time, which returns the one applied result: the apply laid
+	// after it underflowed (`do [m.r.int 0 100]`, REVERSE underflow where
+	// the interpreter answers 61). Decline rather than lay it.
+	if len(args) > 0 && es.variadicSiblings(append([]core.Value{fn}, args...)) {
+		return false
 	}
 	fnOp, ok := es.resolveOperand(fn)
 	if !ok {
@@ -14263,6 +14290,20 @@ func (es *EmitState) RecordMakeMap(r *core.Registry, keys []string, vals []core.
 	return true
 }
 
+// NoteInPlaceSlot links a value the collection kernel produced by evaluating
+// forward-slot token tok in place to that token (EmitState.inPlaceFrom). An
+// empty identity on either side links nothing: an empty id never corresponds
+// (slotIsOperand), and a link through one would admit a coincidental match.
+func (es *EmitState) NoteInPlaceSlot(tok, result core.Value) {
+	if !es.Active() || tok.ID == "" || result.ID == "" {
+		return
+	}
+	if es.inPlaceFrom == nil {
+		es.inPlaceFrom = map[string]string{}
+	}
+	es.inPlaceFrom[result.ID] = tok.ID
+}
+
 // RecordInterp records the assembly of a template string whose holes are
 // computed — “ `got ${x}` “, “ `n=${1 add 2}` “, “ `t=${typeof x}` “ —
 // into an OpInterp dispatch. The hole expressions ran in evalInterpParts (their
@@ -15667,6 +15708,45 @@ func eventBySeq(events []EmitEvent, seq int) *EmitEvent {
 	return nil
 }
 
+// variadicSiblingLead reports whether the residual's lead and the entry above
+// it are two results of ONE runtime-variable call (eventFlags.callVariadic —
+// a fallible multi-value `do` body, catchVariadicFor — or a dyn-body code-body
+// dispatch, whose handler re-runs the body: dynBodyResult with
+// variadicResult). The call's count is N on the happy path but ONE caught
+// Error value when the body raises, so an apply laid over the pair at a fixed
+// count underflowed on the caught path (`def g h/v  do [(g "1") 2]` with h
+// raising: the interpreter's `[error(x)]`, the compiled CALL_DYNAMIC's
+// underflow).
+func (es *EmitState) variadicSiblingLead(residual []core.Value) bool {
+	if len(residual) < 2 {
+		return false
+	}
+	return es.variadicSiblings(residual[:2])
+}
+
+// variadicSiblings reports whether every value in vals is a result of ONE
+// runtime-variable call (variadicSiblingLead's event class).
+func (es *EmitState) variadicSiblings(vals []core.Value) bool {
+	first, ok := es.producedBy[vals[0].ID]
+	if !ok {
+		return false
+	}
+	for _, v := range vals[1:] {
+		if pr, ok := es.producedBy[v.ID]; !ok || pr.seq != first.seq {
+			return false
+		}
+	}
+	f := es.eventInfo[first.seq]
+	// A `do` the VM re-steps itself (reStepResults, NUR317's doReStep) is
+	// settled at the call: its island steps the results only where nothing
+	// follows the call in the unit, so an apply laid after it would both
+	// re-step them twice and defeat that test (`do [if c [l/v] [0] 5 6]`).
+	if f.reStepResults {
+		return false
+	}
+	return f.callVariadic || (f.dynBodyResult && f.variadicResult)
+}
+
 // branchLeadDecline names why a branch result an apply arm chose must not be
 // applied over the values above it (NUR313), or "" when the apply stands. A
 // SPLIT branch (splitLanding) re-steps its value arm and places its body
@@ -15682,6 +15762,18 @@ func (es *EmitState) branchLeadDecline(lead core.Value) string {
 	return ""
 }
 
+// resolveDynamicApply classifies the residual's fn-value-call boundary (report
+// §9.1) and returns the residual (rotated for a trailing apply), the apply
+// opcode to emit once the residual is on the stack (0 = none), and a failure
+// reason for an fn-value shape the static residual cannot reproduce.
+//
+// Handled: a dynamic value LEADING the residual with static args after it
+// (`r.int 0 100`); a Function CARRIER leading it (the factory `(mk2 5)
+// 10`); and a single dynamic / fn value TRAILING one static arg (`5 m.f`,
+// `[..] r.one-of`) — rotated to [fn, arg] so the reconciliation lays it out
+// like the leading boundary, with OpCallDynamicTrailing restoring the fn-on-top
+// order if the value is not callable. Every other dynamic / fn-value-precedes-
+// args shape, and any unconsumed fn-value carrier, declines.
 func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]core.Value, Opcode, string) {
 	// The prefix island re-steps the whole residual itself (NUR210).
 	if lw.island != nil && lw.island.list == 0 {
@@ -15721,10 +15813,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// lead — it is a count. Asked of one, the scan answered yes for the
 	// zero-netting handler's 0-or-1 run and declined a program that has no
 	// fn value in it at all.
-	if es.residualHasVariadicRegion(residual) {
-		return residual, 0, ""
-	}
-	if op, settled := es.dynBodySettledOp(residual); settled {
+	if op, settled := es.regionSettledOp(residual); settled {
 		return residual, op, ""
 	}
 	// A fn-value lead a later dispatch collected past, ANYWHERE in the
@@ -15733,10 +15822,8 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// the model's drop took the 2 the frame's rewind would have applied the
 	// lead to, leaving the lead alone), declines before any arm can apply it;
 	// a placed (lazy) lead is the arms' own business (hazardLead).
-	for _, v := range residual {
-		if es.hazardLead(v) {
-			return residual, 0, "fn-value lead's argument was collected by a later dispatch (NUR121)"
-		}
+	if slices.ContainsFunc(residual, es.hazardLead) {
+		return residual, 0, "fn-value lead's argument was collected by a later dispatch (NUR121)"
 	}
 	// The program unit's pending `apply`-WORD application on the residual's
 	// top (the dynamic-lead group, 2026-09-22): the word's own op over the
@@ -15762,6 +15849,18 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// that fires its zero-argument overload or raises, and for one whose
 	// arg-taking overload could claim the word neither the apply nor a data
 	// seat is faithful — the pending NUR190, wordFollowsLanding.
+	// A lead and the entry above it that are two results of ONE
+	// runtime-variable call (variadicSiblingLead) re-step from the region's
+	// mark: the interpreter re-steps the call's results (a closure the body
+	// PLACED applies over the value after it — `do [(f 5) 2]` is 20), but the
+	// count is N on the happy path and one caught Error value when the body
+	// raises, so a fixed-count apply underflowed on the caught path
+	// (`def g h/v  do [(g "1") 2]` with h raising). The mark window re-steps
+	// whatever the region holds; without one the arms below keep today's
+	// lowering.
+	if es.markWindowSeq != 0 && es.variadicSiblingLead(residual) {
+		return residual, OpCallDynMixedFromMark, ""
+	}
 	leadCrossed := len(residual) >= 2 && es.crossesStatementEnd(residual[0], residual[1:])
 	// A QUOTED lead is data whatever it holds: the pass quotes a dynamic
 	// member read a `/v` marker qualified (engine.go's standalone-marker
@@ -16996,28 +17095,33 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 				seatDynFrameWords(&cf, len(cf.Code), rec.dynFrameWords)
 				flw.emit(OpCallDynFrame, rec.dynFrameW, rec.pos)
 			}
-			// spillSeat may have allocated frame-local temps during lowering,
-			// and so may the RESIDUAL seating just above
-			// (seatResidualRebuild): grow NLocals (and the debug name table)
-			// so the VM frame holds them all.
-			//
-			// AFTER the reconciliation, not before it — the same ordering the
-			// program residual's own write-back documents, and for the same
-			// reason. Growing it before the seating left the rebuild's temps
-			// outside the frame, and the VM crashed reading past the end of a
-			// frame it had sized without them ("index out of range" —
-			// measured the moment the body-unit rebuild first fired).
-			if flw.numLocals > cf.NLocals {
-				cf.NLocals = flw.numLocals
-				for len(cf.LocalNames) < cf.NLocals {
-					cf.LocalNames = append(cf.LocalNames, "")
-				}
-			}
 			cf.RetReplay = rec.retReplay
 			stampUnitRestarts(flw, &cf, flw.emit(OpRet, 0, rec.pos))
 		}
 		// A fully diverging body (every path tail-calls) emits no RET —
 		// control leaves via the callee's eventual RET.
+		//
+		// spillSeat may have allocated frame-local temps during lowering,
+		// and so may the RESIDUAL seating above (seatResidualRebuild): grow
+		// NLocals (and the debug name table) so the VM frame holds them all.
+		//
+		// AFTER the reconciliation, not before it — the same ordering the
+		// program residual's own write-back documents, and for the same
+		// reason. Growing it before the seating left the rebuild's temps
+		// outside the frame, and the VM crashed reading past the end of a
+		// frame it had sized without them ("index out of range" — measured
+		// the moment the body-unit rebuild first fired).
+		//
+		// And on BOTH paths: a fully diverging body spills too (a paren
+		// operand reordered beneath a constant before the tail call), and
+		// sizing only the returning path wrote its temp past the frame —
+		// kg/tests/digest_test.boru's `am {… n:(x add 1) …}` tail call.
+		if flw.numLocals > cf.NLocals {
+			cf.NLocals = flw.numLocals
+			for len(cf.LocalNames) < cf.NLocals {
+				cf.LocalNames = append(cf.LocalNames, "")
+			}
+		}
 		freshenFnUnitConsts(&cf, es, rec, p)
 		p.Fns = append(p.Fns, cf)
 	}

@@ -639,8 +639,7 @@ func (u *userBehavior) runCompareBody(a, b Value) (int, error) {
 	defer r.Defs.Pop("a")
 	defer r.Defs.Pop("b")
 
-	tokens := append([]Value{}, u.compareBody...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, u.compareBody)
 	if err != nil {
 		return 0, fmt.Errorf("behave compare %s: %w", u.typeName, err)
 	}
@@ -728,8 +727,7 @@ func (u *userBehavior) runUnifyBody(a, b Value) (Value, *core.UnifyError) {
 	defer r.Defs.Pop("a")
 	defer r.Defs.Pop("b")
 
-	tokens := append([]Value{}, u.unifyBody...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, u.unifyBody)
 	if err != nil {
 		return Value{}, &core.UnifyError{
 			Reason: fmt.Sprintf("behave unify %s: %v", u.typeName, err),
@@ -793,8 +791,7 @@ func (u *userBehavior) runNodifyBody(v Value) (Value, error) {
 	r.Defs.Push("a", v)
 	defer r.Defs.Pop("a")
 
-	tokens := append([]Value{}, u.nodifyBody...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, u.nodifyBody)
 	if err != nil {
 		return Value{}, fmt.Errorf("behave nodify %s: %w", u.typeName, err)
 	}
@@ -888,8 +885,7 @@ func (u *userBehavior) runEqualityBody(body []Value, slot string, a, b Value) (b
 	defer r.Defs.Pop("a")
 	defer r.Defs.Pop("b")
 
-	tokens := append([]Value{}, body...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, body)
 	if err != nil {
 		return false, fmt.Errorf("behave %s %s: %w", slot, u.typeName, err)
 	}
@@ -975,8 +971,7 @@ func (u *userBehavior) runUnaryBody(body []Value, v Value, slot string) (Value, 
 	r.Defs.Push("a", v)
 	defer r.Defs.Pop("a")
 
-	tokens := append([]Value{}, body...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, body)
 	if err != nil {
 		return Value{}, fmt.Errorf("behave %s %s: %w", slot, u.typeName, err)
 	}
@@ -984,6 +979,50 @@ func (u *userBehavior) runUnaryBody(body []Value, v Value, slot string) (Value, 
 		return Value{}, fmt.Errorf("behave %s %s: body produced no result", slot, u.typeName)
 	}
 	return result[len(result)-1], nil
+}
+
+// runBehaviorBody runs one installed behaviour body on r — the NewTop regime
+// every capability slot shares: an empty stack, the operands bound as `a` /
+// `b` by the caller, the body's own defs left on the registry, and top-engine
+// semantics (an atom in the body resolves its referent, a pending `gen` spec
+// or an unresolved break/continue raises at the body's end).
+//
+// A STEPLESS body — scalar literals only, no atom, run with no `gen` spec
+// pending — is its own residual under that regime: the top engine places each
+// value and hands the window back, touching nothing else. It is answered
+// without the engine, so a constant behaviour (`behave canon/q (fn
+// [[t:Temp][String]['T']])`) runs no interpreter on a compiled run (the
+// interp-entry census's code-bodies.tsv row). The two exclusions are the
+// ways a top engine's run of scalar literals is NOT the identity:
+// resolveAtomReferents stamps an atom's referent, and the end-of-run gen
+// check raises on a spec some enclosing `gen` left pending. Everything else
+// runs as before.
+//
+// (Hosting a general body on the VM is not this: the fn value's own stamped
+// unit binds the DECLARED params — `t` for `fn [[t:Temp]…]`, an unnamed param
+// on the stack — where the behaviour regime binds `a`/`b` as defs over an
+// empty stack, and it enforces the declared return where the slot reports
+// its own error; and the token-body host models a pooled sub-engine, not a
+// top one, whose escaped break/continue the enclosing run resolves.)
+func runBehaviorBody(r *Registry, body []Value) ([]Value, error) {
+	if behaviorBodyStepless(r, body) {
+		return append([]Value(nil), body...), nil
+	}
+	return core.RunPooledTop(r, append([]Value{}, body...))
+}
+
+// behaviorBodyStepless reports whether runBehaviorBody may answer body
+// without an engine (see its comment for the two exclusions).
+func behaviorBodyStepless(r *Registry, body []Value) bool {
+	if r.PendingGen() != nil || !core.IsSteplessWindow(body) {
+		return false
+	}
+	for _, v := range body {
+		if _, isAtom := v.Data.(core.AtomPayload); isAtom {
+			return false
+		}
+	}
+	return true
 }
 
 func (u *userBehavior) runCanonBody(v Value) (string, error) {
@@ -994,8 +1033,7 @@ func (u *userBehavior) runCanonBody(v Value) (string, error) {
 	r.Defs.Push("a", v)
 	defer r.Defs.Pop("a")
 
-	tokens := append([]Value{}, u.canonBody...)
-	result, err := core.RunPooledTop(r, tokens)
+	result, err := runBehaviorBody(r, u.canonBody)
 	if err != nil {
 		return "", err
 	}

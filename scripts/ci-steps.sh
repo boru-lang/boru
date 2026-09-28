@@ -43,22 +43,12 @@ gate_status=test/go/langspec/GATE_STATUS.md
 
 case "$step" in
   build-cli)        run make -C cmd/go build ;;
-  # DEACTIVATED 2026-09-20. `make -C kg graph` cannot run: it dies at pc=8 with
-  # "DISPATCH_GENERIC at ev: the walk needs an evaluation this host cannot
-  # perform" — the generic lane's EVALUATING HOST, one of the three unbuilt
-  # cores (design/FULL-COMPILATION-REVIEW.0.md §2). Verified A/B against a
-  # clean worktree at ba64e11: identical on main, so it predates the F3 sweep.
-  #
-  # `verify` still passes on an untouched tree, so this gate only ever fired
-  # when a cited document changed — and then there was no way back to green,
-  # because the graph could not be rebuilt. Gating documentation edits on a
-  # generator that cannot run blocks every doc change in the repo, so the gate
-  # is off until the evaluating host lands.
-  #
-  # RE-ACTIVATE by restoring the `run` line below; nothing else changed, and
-  # `make -C kg verify` / `graph` still work by hand (see the handover for the
-  # reference-engine workaround that rebuilds the graph meanwhile).
-  kg-verify)        echo "==> [ci] kg-verify SKIPPED (kg generator blocked on the generic lane's evaluating host; see scripts/ci-steps.sh)" ;;
+  # RE-ACTIVATED 2026-09-28. It was off from 2026-09-20 because `make -C kg
+  # graph` died compiled (DISPATCH_GENERIC at ev: a routed dispatch whose
+  # interpolation slot the VM host could not evaluate); that and the two
+  # failures behind it are fixed, and the compiled pipeline's output is
+  # byte-identical to the interpreter's.
+  kg-verify)        run make -C kg verify ;;
   vet)              run make vet ;;
   lint-assertions)  run make -C lang/go lint-assertions ;;
   lint)             run make lint ;;

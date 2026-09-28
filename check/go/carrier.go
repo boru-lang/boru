@@ -2323,6 +2323,27 @@ func ReturnsDynUnion(types ...*core.Type) core.ReturnsFunc {
 // Integer⊕Float mix is Float. A Big⊕Float mix errors at runtime (the
 // exact types never silently become Float); statically it is modelled as
 // the Big leaf so analysis can continue past it.
+//
+// The Integer result needs BOTH operands to be Integers when they are
+// numbers. Any other numeric pair — an operand typed only as Number (a fold
+// accumulator over `[1 2.5 3]`, whose element carrier is the join Number),
+// or a gradual operand — can carry a Float leaf at run time, so the result
+// is a Number: dynamic when an operand is gradual (the optimistic modality
+// flows through, so a later Integer slot still matches), strict otherwise.
+// This was a blanket Integer default, which typed `0 fold [add] [1 2.5 3]`
+// as [Integer] while it returns 6.5 — a type-soundness violation
+// (fold-map-filter.tsv:L53, TestCheckTypeSoundness, 2026-09-27).
+//
+// A STRICT operand that is not a Number at all (a strict Any: an anonymous
+// fn's declared [Any] result) reaches here only through the no-match
+// recovery, whose runtime re-match decides the call; it keeps the
+// historical Integer model. That is still imprecise, and deliberately left:
+// both Number spellings of it cost programs their compilation — a strict
+// Number fails a specialised unit's return contract (`((mk 1) m.x) mul 10`
+// in a shape-specialised fn, TestShapeSpecialisation) and a dynamic one an
+// each body's residual layout (`xs each [(2 lam) mul 10]`,
+// TestUnnamedFrameApplyResultTyped). Typing it needs those consumers to
+// accept a Number bound first.
 func ReturnsNumericBinary() core.ReturnsFunc {
 	return func(args []core.Value, _ *core.Registry) []core.Value {
 		if len(args) != 2 {
@@ -2336,6 +2357,12 @@ func ReturnsNumericBinary() core.ReturnsFunc {
 			return []core.Value{core.NewCarrier(core.TBigInteger)}
 		case a.ConformsTo(core.TFloat) || b.ConformsTo(core.TFloat):
 			return []core.Value{core.NewCarrier(core.TFloat)}
+		case a.ConformsTo(core.TInteger) && b.ConformsTo(core.TInteger):
+			return []core.Value{core.NewCarrier(core.TInteger)}
+		case args[0].Dynamic || args[1].Dynamic:
+			return []core.Value{core.NewDynamicCarrier(core.TNumber)}
+		case a.ConformsTo(core.TNumber) && b.ConformsTo(core.TNumber):
+			return []core.Value{core.NewCarrier(core.TNumber)}
 		default:
 			return []core.Value{core.NewCarrier(core.TInteger)}
 		}

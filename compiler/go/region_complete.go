@@ -202,7 +202,14 @@ func (es *EmitState) slotIsOperand(s SlotDesc, reg *core.Registry, arg core.Valu
 		top, ok := reg.Defs.Top(wi.Name)
 		return ok && top.ID == arg.ID
 	}
-	return s.Token.ID == arg.ID
+	// A token the kernel evaluated in place (an interpolation, an XML
+	// literal) reaches the dispatch as the value it produced, a fresh
+	// identity; the recorder's link (NoteInPlaceSlot) says which token that
+	// value came from. The compiled code has already computed it by the time
+	// the dispatch runs (the interpolation's own event, or a constant), so
+	// the claim covers the slot and the routed op reads it off the stack
+	// rather than asking its host for an evaluation it cannot perform.
+	return s.Token.ID == arg.ID || es.inPlaceFrom[arg.ID] == s.Token.ID
 }
 
 // fnScopedWord reports whether a word token names a binding that lives inside

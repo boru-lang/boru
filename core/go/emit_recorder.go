@@ -579,6 +579,15 @@ type EmitRecorder interface {
 	// consumer or a residual re-push after a later effect (review of #464).
 	// A no-op for every other name, and when inactive.
 	NoteLiveRead(v *Value, name string, pos SrcPos)
+	// NoteInPlaceSlot records that the collection kernel evaluated the
+	// forward-slot token tok IN PLACE (an interpolated template string or XML
+	// literal a viable overload consumes) and result is what it produced. The
+	// result is a fresh value with its own identity, so without the link the
+	// region completion's identity check (compiler slotIsOperand) cannot tell
+	// that the operand came from that written slot, and the recorded claim
+	// stops short of an operand the dispatch did take forward. A no-op when
+	// inactive.
+	NoteInPlaceSlot(tok, result Value)
 	NotifyNameRebound(name string)
 	RegisterLocal(id string) int
 	// NameLocal names the frame local RegisterLocal reserved for id — a loop
@@ -799,6 +808,7 @@ func (inactiveEmit) RecordSpeculativeFnDef(*Registry, string, Value, Value, SrcP
 func (inactiveEmit) RecordSpecFnUndef(string, SrcPos)           {}
 func (inactiveEmit) DeclineSpeculativeUndef(string)             {}
 func (inactiveEmit) NoteLiveRead(*Value, string, SrcPos)        {}
+func (inactiveEmit) NoteInPlaceSlot(Value, Value)               {}
 func (inactiveEmit) NotifyNameRebound(string)                   {}
 func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)   {}
 func (inactiveEmit) RegisterLocal(string) int                   { return -1 }

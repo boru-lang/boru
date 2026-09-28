@@ -16097,3 +16097,96 @@ read is None), so nothing downstream committed; and seeding a recursive
 lambda's self-call with an unarmed pre-analysis needs a second body
 analysis per armed recursive fn and cannot be unwound if the armed residual
 disagrees — its sites are cache hits after 1.
+
+## Facts the passes dropped: real programs run compiled, the check passes agree (2026-09-28)
+
+A review asked where the compiler or checker works a fact out and then
+discards it. Two patterns explained almost everything it found: a value the
+collection kernel evaluates IN PLACE gets a fresh identity, so the record
+cannot tie it back to the slot it came from; and a fact one check pass
+computes (plain `boru check`, or CompileCheck's compile-armed pass) never
+reaches the other. The work that followed, in the order it was ranked:
+
+1. **Real programs are RUN, not only compiled** (`TestRealProgramsRun`,
+   shard 1). Every utils and kg suite runs on both lanes in a subprocess with
+   its own working directory and must give the interpreter's error, result
+   and Test.summary. Every corpus gate was green while four kg programs
+   failed compiled; this gate fails on exactly those three suites when the
+   fixes below are removed.
+2. **The four failures.** (a) A routed dispatch (DISPATCH_GENERIC) whose
+   forward slot is an interpolation: the kernel evaluates it in place and
+   the region completion's identity check cut the claim there, leaving a raw
+   token the VM host cannot evaluate. The recorder now links the value to its
+   token (NoteInPlaceSlot) — `make -C kg graph` died here, and the kg gate
+   was off because of it. (b) A unit whose every path tail-calls never sized
+   its frame for its spill temps. (c) A fixed-count apply over two results of
+   one runtime-variable call (a fallible multi-value `do`) underflowed on the
+   caught path's single Error value; such a residual now re-steps from its
+   mark (OpCallDynMixedFromMark), and a shaped method apply over one
+   declines. (d) The VM charged every nested body to one program step
+   counter, where the interpreter gives each sub-engine its own budget;
+   enterBodyUnit now does the same. The compiled kg pipeline runs in 37 s
+   (2 m 12 s interpreted) with byte-identical output, and the kg gate is
+   active again.
+3. **Diagnostic parity 350 → 48.** The armed pass had proven `no_signature`
+   (it baked the trap) and then said nothing — it now reports it as a
+   runtime mirror, for a terminal trap or a decline (a runtime rematch may
+   still match and continue, so its eighteen rows stay divergences — Codex
+   review of #518); the static-if dead-arm warning ran only when the recorder
+   was idle — it now runs in both passes; duplicate findings from the armed
+   pass's second body analysis are deduped. Armed-only 8 → 4.
+4. **Numeric result typing.** Integer only when both operands are Integer,
+   otherwise Number (type soundness 4 → 3). A strict non-Number operand still
+   types Integer: typing it Number stopped two lang programs compiling.
+5. **Interp-entry census 27 → 21 rows** (Engine.Run 171 → 164): Rand.map-from
+   bodies go through InvokeBody, stepless behave bodies answer without an
+   engine, and an FnDefInfo value that no signature matches parks natively.
+   Not done, each large: a closure body with a dynamic lead (needs the
+   whole-frame replay in closure units), break/continue in a stored fn (≈53
+   consumers of a compiled ref to audit), and an `if` condition inside `each`
+   (the condition model must read the enclosing stack).
+
+Recorded rather than fixed, all pre-existing on main: NUR330 (a def inside a
+rand generator body), NUR331 (a seeded generator read through a map member)
+and NUR332 (the check pass panics on an `if` stranded in a case clause list).
+
+## The merge of main's NUR run into #518 — where the two sides met (2026-09-28)
+
+Main e8702ac (the NUR run to NUR329, 175 commits) merged into #518. Four
+code conflicts resolved by keeping both sides: main's `stackSlotAdmits`
+(NUR328) moved into #518's shared `stackParamMatches`; main's undecided
+pattern window beside `UncalledRaisePos`; main's rematch prefix note beside
+`LastUnmatchedRematched`; main's `dynBodySettledOp` / `branchLeadDecline`
+beside `variadicSiblingLead`. #518's NUR237-239 collided with main's numbers
+and became NUR330-332.
+
+The full gate on the merged tree found three interactions no conflict marker
+showed, and one of main's own reds:
+
+1. **A throwaway recorder's decision was mirrored.** #518 reports a no-match
+   the compile pass has DECIDED (a trap or a decline) as a RuntimeMirror
+   no_signature. Main compiles a stored service handler on a PROBE EmitState
+   (`compileStoredFnUnit`), and boru:repl's handler misses `set` there — the
+   probe declines, the program compiles regardless, and the finding was one
+   neither the plain pass nor the runtime makes (module-repl.tsv:L12..L18).
+   `CheckState.ProgramEmit`, set by `BeginCompilePass`, names the recorder
+   whose decisions count; the mirror stands down on any other.
+2. **Two re-steps of one `do`.** Main's NUR317 lets the VM re-step a token
+   body `do`'s results itself (`doReStep`), but only when nothing follows the
+   call in its unit. #518's mark-window redirect laid an
+   `OpCallDynMixedFromMark` after the same call, so `do [if c [l/v] [0] 5 6]`
+   deferred as an internal error. `variadicSiblings` now excludes a call the
+   VM re-steps (`reStepResults`).
+3. **gocyclo.** The two sides' arms put `resolveDynamicApply` at 72; the
+   region / settled-lead arms moved into `regionSettledOp`.
+4. **Main's red test-core.** check's `TestZzFmReturnsFnArmedCompile` expected
+   a root type node kept as a type-less carrier; NUR323/NUR324 deliberately
+   widen it to its Type carrier. The test now asserts main's rule.
+
+The gates, live on the merged tree: diagnostic parity 46 (main 355, #518
+48), engine entries 176 (189 / 164), interp-entry rows 29 (39 / 21), type
+soundness 6 (7 / 3), armed-only 2 (8 / 4). Main's own corpus compile failure
+(code-bodies L142, NUR154's sound decline) and sweep compile failure carry
+over unchanged. NUR331 changed on main: the member-read generator now fails
+to compile (`undefined word: rand-int`) where it answered wrong — sound, a
+compile gap.

@@ -1208,7 +1208,11 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// (boru.go:297). On a plain check pass this branch is still reachable —
 		// IsolateEmit arms a fresh ACTIVE Emit while analysing each fn body — and
 		// there the diagnostic IS the genuine static report, so gate it on
-		// !Compiling, matching the fall-through path below.
+		// !Compiling. Unlike the fall-through below, this branch stays silent on
+		// the compile pass even as a RuntimeMirror: measured 2026-09-27, it
+		// reaches module bodies the plain pass runs for real (boru:repl's
+		// internal `set`, module-repl.tsv:L12..L18) and would report a no-match
+		// neither the plain pass nor the runtime sees.
 		es.MarkUncompilable("unmatched dispatch recovered at " + w.Name)
 		if !e.Registry.Check.Compiling && bestMatch < 0 {
 			e.Registry.Check.AddDiagnostic(core.CheckDiagnostic{
@@ -1233,7 +1237,15 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// transient String-carrier alternative. Skip the latch (and its diagnostic)
 	// under suspend; still splice the analysis result so the enclosing probe
 	// reads a residual.
+	//
+	// decided records that THIS dispatch's compile consequence is now owned
+	// by the recorder — a terminal trap or runtime rematch below, or the
+	// program-wide MarkUncompilable decline (or an earlier one, which left
+	// the recorder inactive). A suspended probe decides nothing, and says
+	// nothing: its enclosing dispatch owns the decision.
+	decided := false
 	if !es.SuspendedNow() {
+		decided = true
 		// A STATICALLY-DEFINITE unmatched dispatch — every value the failed
 		// match examined is identical at run time — compiles to a terminal
 		// OpTrap raising the interpreter's byte-identical error instead of
@@ -1291,14 +1303,27 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 			e.Registry.Check.Recorder().MarkUncompilable("unmatched dispatch recovered at " + w.Name)
 		}
 	}
-	// Emit the error-severity no_signature diagnostic ONLY off a REAL compile pass
-	// (!Compiling), where it is the genuine static report of an unmatched dispatch.
-	// This gate is INDEPENDENT of the suspend skip above: a plain check reports a
-	// genuine unmatched dispatch even when it is reached under a suspended
-	// sub-probe (the over-suppression that dropping it inside the suspend branch
-	// caused), while a compile pass never adds it (Finalize surfaces the
-	// MarkUncompilable reason; a diagnostic would only mask it as the generic
-	// "check diagnostics", boru.go:297). Do NOT additionally gate on
+	// Emit the error-severity no_signature diagnostic — the genuine static
+	// report of an unmatched dispatch — on BOTH passes (NUR103's parity
+	// clause, design/FULL-COMPILATION.0.md §6.9(4)(b): the verdict on a
+	// program must not depend on who is asking). A plain check reports it
+	// even when it is reached under a suspended sub-probe (the
+	// over-suppression that dropping it inside the suspend branch caused).
+	// A compile pass reports it once the recorder has DECIDED this dispatch
+	// (decided, above) and stamps it RuntimeMirror, because the finding's
+	// compile consequence is already carried by the recording: a trap
+	// compiles and raises the interpreter's byte-identical signature_error
+	// (a runtime REMATCH is excluded — it may match at run time and
+	// continue, so its finding is no guaranteed failure; Codex review of
+	// #518), and a decline surfaces its SPECIFIC MarkUncompilable
+	// reason through Finalize — which a model-undermining finding would mask
+	// as the generic "check diagnostics" (boru.go). The mirror flag keeps the
+	// compile gate from re-deciding what the recorder decided, so no program
+	// changes compile status or bytecode for carrying it. A compile pass's
+	// SUSPENDED probe still says nothing: it only reads a result type for an
+	// enclosing dispatch that owns the decision (2026-09-27; this was a
+	// blanket `!Compiling` gate, and ~219 corpus rows lost the finding under
+	// compilation). Do NOT additionally gate on
 	// `bestMatch >= 0`: this fall-through is reached only when matchSignature
 	// already FAILED to commit, so a positive best-fit score here is a
 	// best-effort guess (a bare type-literal or wildcard operand that
@@ -1312,8 +1337,8 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// dynamic operand whose runtime value still misses the sole sig (the
 	// recursive `f` whose `next` holds a List where the sig wants an Integer —
 	// which `signature_error`s at run time, NOT a false positive). The
-	// `!Compiling` guard alone is the correct condition.
-	// EXCEPTION to the "!Compiling alone" rule: a SINGLE-overload user fn
+	// pass gate alone is the correct condition.
+	// EXCEPTION to the "pass gate alone" rule: a SINGLE-overload user fn
 	// dispatched over an Any/disjunct-CARRIER arg (a value of statically-unknown
 	// type, not a concrete mismatch) is NOT a genuine unmatched dispatch — it is
 	// the exact shape the armed (compile) pass RECOVERS as a guarded CALL_USER
@@ -1332,7 +1357,24 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// / TestSliceDynamicReceiverRefines). Only the fully-unknown Any carrier is
 	// deferrable to the runtime CALL_USER contract.
 	recoverableUnknownType := AnyAnyCarrier(args) && core.SingleOverloadRecoverable(sig, fn) && core.ConcreteArgsMatch(sig, args, nStack)
-	if !e.Registry.Check.Compiling && !recoverableUnknownType {
+	// A RUNTIME REMATCH is not a decided failure: the live values can match
+	// and the program then continues (TestDispatchRematchMatchDefers), so the
+	// compile pass reports it no more than it did before the mirror — only a
+	// terminal trap or a decline is.
+	if decided && e.LastUnmatchedRematched {
+		decided = false
+	}
+	// Nor is a decision on a THROWAWAY recorder — a probe a compile path
+	// arms to try a body and discard (compileStoredFnUnit's stored handler,
+	// IsolateEmit's construction-time analysis): its trap or decline goes
+	// with it, and the program compiles and runs regardless. boru:repl's
+	// service handler reaches here for its internal `set`
+	// (module-repl.tsv:L12..L18) — a no-match neither the plain pass nor the
+	// runtime sees.
+	if decided && es != e.Registry.Check.ProgramEmit {
+		decided = false
+	}
+	if (!e.Registry.Check.Compiling || decided) && !recoverableUnknownType {
 		// Expected-vs-actual: name the operand types the dispatch saw and
 		// the nearest candidate's declared types, so the user can see the
 		// mismatch without reconstructing the stack ("got (Map, Integer);
@@ -1345,11 +1387,12 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 			}
 		}
 		e.Registry.Check.AddDiagnostic(core.CheckDiagnostic{
-			Code:   "no_signature",
-			Detail: detail + "; assuming best-fit candidate for analysis",
-			Word:   w.Name,
-			Row:    pos.Row,
-			Col:    pos.Col,
+			Code:          "no_signature",
+			Detail:        detail + "; assuming best-fit candidate for analysis",
+			Word:          w.Name,
+			Row:           pos.Row,
+			Col:           pos.Col,
+			RuntimeMirror: e.Registry.Check.Compiling,
 		})
 	}
 	// The assumed dispatch runs its ReturnsFn against args the REAL

@@ -135,6 +135,14 @@ func regionDrivable(d *RegionDesc) bool {
 		if i >= d.NFwd && d.Slots[i].Source == SlotEvent {
 			return false
 		}
+		// An interpolation or XML literal beyond the recorded claim is one a
+		// live claim could reach only by evaluating it, which the descriptor
+		// host cannot do (vm:generic-declined): the region is not drivable.
+		// Inside the claim it is already a value on the stack (the recorder's
+		// in-place link, slotIsOperand).
+		if i >= d.NFwd && (core.IsInterpString(tok) || core.IsXmlInterp(tok)) {
+			return false
+		}
 	}
 	return true
 }

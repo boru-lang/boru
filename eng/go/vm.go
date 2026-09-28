@@ -417,14 +417,24 @@ func (vc *vmContext) enterCallbackUnit(reg *core.Registry, unit int, locals []co
 // call at all and no seam function can ever cover it. Anything claiming to
 // bracket "every body" has to say something about both.
 //
-// This function deliberately does NOT change behaviour: it is the place a
-// later per-body concern can be added once, not the addition itself.
+// It is the place a per-body concern is added once. Two live here: the
+// context frame, and the STEP BUDGET. The interpreter runs a nested body on a
+// sub-engine (core.New) with a budget of its own — DefaultSubStepLimit, or
+// the registry's StepLimit — so a body's steps are never charged to the run
+// that invoked it. The VM ran every nested body against the one program
+// counter, so a callback-heavy program exhausted a budget the interpreter's
+// run of it never approached: kg/main.boru's folds inside an `each` raised
+// evaluation_limit compiled after 10s, where the interpreter finishes the
+// pipeline (2026-09-27). The caller's count resumes where it was.
 // TestVMBodyEntryIsFunnelled keeps the funnel from re-fragmenting.
 func (vc *vmContext) enterBodyUnit(reg *core.Registry, unit int, locals []core.Value) ([]core.Value, error) {
 	if reg != nil {
 		reg.Contexts.Push(reg.Contexts.Top())
 		defer reg.Contexts.Pop()
 	}
+	outer := vc.steps
+	vc.steps = 0
+	defer func() { vc.steps = outer }()
 	return vc.run(unit, locals, nil)
 }
 
@@ -715,6 +725,15 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 		// declines still steps below.
 		if res, err, ran := vc.invokeTokenBody(reg, body, inputs); ran {
 			return res, err
+		}
+		// A fn value no signature admits over the inputs parks on top of
+		// them — RunResolved's residual — or raises, as its step would
+		// (vm_fnvalue_park.go): the inputs are the stack beneath it.
+		switch verdict, fd := fnValueNoMatchVerdict(reg, body, inputs, nil); verdict {
+		case noMatchPark:
+			return append(append([]core.Value(nil), inputs...), body), nil
+		case noMatchRaise:
+			return nil, uncalledAt(reg, body, fd, inputs)
 		}
 		return core.RunResolved(reg, inputs, core.BodyTokens(body))
 	}
@@ -1401,6 +1420,15 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 		if results, ran, err := vc.dynApplyForeign(inner, iargs, 0); ran {
 			return vc.dynForeignResults(results, err, stack, base, "dynamic result", curDebug, pc, reg)
 		}
+	}
+	// A fn VALUE the window does not fit at all: the interpreter's step
+	// parks it (the window as written) or, for a named one, raises
+	// uncalled_function — answered here with the step's own matchers
+	// (vm_fnvalue_park.go). The LEADING form steps the value over the args
+	// as forward tokens; the TRAILING form places the args first, so they
+	// are the stack beneath it (and are stepped, so each must be stepless).
+	if st, handled, err := vc.callDynamicNoMatch(reg, fnVal, args, stack, base, trailing, curDebug, pc); handled {
+		return st, nil, err
 	}
 	// Non-trivial fn (user body): apply via the island sub-engine, which
 	// auto-applies the Function to the forward args exactly as a nested Run.
@@ -3029,6 +3057,18 @@ func (vc *vmContext) callDynFrame(reg *core.Registry, w, frameBase int, stack []
 	if len(words) > 0 {
 		if st, handled, err := vc.callDynFrameWords(reg, words, frameBase, base, stack, curDebug, pc); handled {
 			return st, nil, err
+		}
+	}
+	// A fn value leading the region that nothing admits parks — the region
+	// stands, the frame's residual as it is — or raises, as the island's step
+	// would (vm_fnvalue_park.go): the prefix is the stack beneath it, the rest
+	// of the region its forward tokens.
+	if len(tokens) > 0 {
+		switch verdict, fd := fnValueNoMatchVerdict(reg, tokens[0], prefix, tokens[1:]); verdict {
+		case noMatchPark:
+			return stack, nil, nil
+		case noMatchRaise:
+			return nil, nil, stampAt(uncalledAt(reg, tokens[0], fd, append(append([]core.Value(nil), prefix...), tokens[1:]...)), curDebug, pc, reg)
 		}
 	}
 	results, err := runIslandResolved(reg, prefix, tokens)

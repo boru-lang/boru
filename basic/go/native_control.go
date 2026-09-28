@@ -874,6 +874,10 @@ func if2Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 func if3ReturnsFn(args []Value, r *Registry) []Value {
 	es := r.Check
 	pos := branchRecordPos(r, args[0])
+	// The dead-arm warning for a bare concrete-Boolean condition is a claim
+	// about the CODE, so both passes make it — ahead of the recording gate
+	// below, which only chooses the LOWERING (warnStaticIfDeadArm).
+	warnStaticIfDeadArm(r, args[0], true)
 	// Plain-check static reduction (the else-less-if soundness fix,
 	// forward-barrier.tsv:83): a paren comparison folds to a bare concrete
 	// Boolean, so reduce to the taken arm and return a bare-VALUE arm as-is,
@@ -1155,13 +1159,8 @@ func ReduceStaticIf(r *Registry, cond, thenArm Value, elseArm *Value) ([]Value, 
 	if !ok {
 		return nil, false
 	}
-	// Warn on the dead arm, mirroring the const path — but only when a dead
-	// arm actually exists (a 2-arg true `if` has no else to call unreachable).
-	if !takeThen {
-		EmitUnreachableBranch(r, false, "then")
-	} else if elseArm != nil {
-		EmitUnreachableBranch(r, true, "else")
-	}
+	// The dead-arm warning is NOT made here: the caller made it already
+	// (warnStaticIfDeadArm), on both passes, before choosing this reduction.
 	if takeThen {
 		return reduceStaticArm(r, cond, thenArm, true), true
 	}
@@ -1169,6 +1168,29 @@ func ReduceStaticIf(r *Registry, cond, thenArm Value, elseArm *Value) ([]Value, 
 		return nil, true // if2, false: the then is unreachable and nothing runs
 	}
 	return reduceStaticArm(r, cond, *elseArm, false), true
+}
+
+// warnStaticIfDeadArm emits the unreachable_branch warning for an `if`
+// whose condition is a statically-known BARE concrete Boolean
+// (staticCondArm) — but only when a dead arm actually exists: a true
+// condition on the 2-arg form (hasElse false) has no else to call
+// unreachable. It is the warning half of ReduceStaticIf, split out so the
+// if2/if3 ReturnsFns make it on EVERY pass: ReduceStaticIf itself runs only
+// off the recording pass (the emit lowering keeps the folded condition
+// EVENT), and when it owned the warning the compile-armed check silently
+// dropped a finding the plain check reported — 101 corpus rows of the
+// diagnostic-parity ledger (diagnostic_parity_test.go, 2026-09-27). A
+// warning never declines compilation (CompileCheck declines on errors
+// only), and emitting it changes nothing the recording path lowers.
+func warnStaticIfDeadArm(r *Registry, cond Value, hasElse bool) {
+	takeThen, ok := staticCondArm(cond)
+	switch {
+	case !ok:
+	case !takeThen:
+		EmitUnreachableBranch(r, false, "then")
+	case hasElse:
+		EmitUnreachableBranch(r, true, "else")
+	}
 }
 
 // EmitUnreachableBranch records the constant-condition dead-branch warning
@@ -1408,6 +1430,9 @@ func installArmJoins(r *Registry, cond Value, thenDefs, elseDefs map[string]Valu
 func If2ReturnsFn(args []Value, r *Registry) []Value {
 	pos := branchRecordPos(r, args[0])
 	es := r.Check
+	// Both passes warn on a statically-false bare condition's dead then-arm
+	// (a true one has no dead arm without an else), as in if3ReturnsFn.
+	warnStaticIfDeadArm(r, args[0], false)
 	// Plain-check static reduction (else-less if): a folded bare-Boolean
 	// condition reduces to the then residual (true) or nothing (false),
 	// instead of the phantom Disjunct(then, None) the join path produces.
