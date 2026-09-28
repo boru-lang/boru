@@ -7691,7 +7691,10 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 					}
 				}
 				if a > 0 && a == len(bodyStk)-1 {
-					argsOK := true
+					// A pending container argument is owed the bind's
+					// evaluation the op never performs (NUR337): not a
+					// plain operand either.
+					argsOK := !anyPendingActiveContainer(bodyStk[:len(bodyStk)-1])
 					for _, v := range bodyStk[:len(bodyStk)-1] {
 						if core.IsFnValueResidual(v) {
 							argsOK = false
@@ -8366,16 +8369,11 @@ func (es *EmitState) applyWindowFits(fn core.Value, args []core.Value) bool {
 		}
 		sigArgs[i] = a
 	}
-	if sig := core.MatchFnSig(fn, sigArgs); sig != nil {
-		for i, p := range sig.Params {
-			if p.Pattern != nil && !p.Pattern.Carrier && !core.IsConcrete(sigArgs[i]) {
-				return false
-			}
-		}
+	if core.ProvenWindowMatch(fn, sigArgs) {
 		return true
 	}
 	if _, isFn := fn.Data.(core.FnDefInfo); isFn {
-		return false // own signatures, none of which admits the window
+		return false // own signatures, none of which provably admits the window
 	}
 	s, ok := es.producerReturnedClosureShape(fn.ID)
 	if !ok || len(s.Params) != len(sigArgs) {
@@ -8398,6 +8396,19 @@ func raisesTrailNoMatch(fn core.Value, fnOp EmitOperand, head DynApplyHead) bool
 	fd, ok := fn.Data.(core.FnDefInfo)
 	return ok && fnOp.kind == opConst && !head.Leading && !head.WrittenFirst &&
 		!fd.Anonymous && !fd.Macro && len(fd.OwnSigs()) > 0 && !core.IsDelegationFnDef(fd)
+}
+
+// anyPendingActiveContainer reports whether an apply window holds an
+// argument the interpreter's dispatch still evaluates before binding it
+// (core.IsPendingActiveContainer) — a value no fn-value apply op may take
+// as its operand.
+func anyPendingActiveContainer(args []core.Value) bool {
+	for _, a := range args {
+		if core.IsPendingActiveContainer(a) {
+			return true
+		}
+	}
+	return false
 }
 
 func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos core.SrcPos) (int, bool) {
@@ -8543,6 +8554,19 @@ func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos c
 		// An EVENT lead with no provable arity keeps the standing failure: the
 		// KeepQ lowering would consume the whole window on the unquoted path.
 		decline = "trailing fn-value apply over a call result (runtime quote state unknown)"
+	}
+	// A window argument still a PENDING container (`{a:(1 add 2)}`, `[1 add
+	// 2]`) is owed an evaluation this op never performs: the op would bind
+	// the raw token where the interpreter's apply evaluates it at the bind
+	// or its park leaves it for the frame's residual sweep (NUR337). The
+	// collapse evaluated every one it could evaluate exactly (core's
+	// evalTrailingWindowContainers); one it left pending stays on the tape
+	// UNRECORDED, where the residual's own sweep evaluates it — the program's
+	// end-of-run fold, a fn frame's in-frame close — before the fallback
+	// lowering applies it (RegisterTrailingApply), and a residual that sweep
+	// could not place declines there (the tail lowering's argsOK guard).
+	if decline == "" && anyPendingActiveContainer(args) {
+		return 0, false
 	}
 	// ONE failure site for both arms, deliberately: the failure-site census is
 	// a downward ratchet (test/go/langspec compileFailureSiteCeiling), so a second

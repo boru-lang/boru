@@ -291,8 +291,12 @@ func bindUnpackEntry(r *Registry, localName, srcKey string, get func(string) (Va
 			// declined the same shape inside a fn. Neither is recorded for
 			// an unproven source; the dispatch lowers as the plain
 			// CALL_NATIVE it is, binding the names at run time.
+			// The trap raises where the interpreter's error lands: the
+			// handler's unpositioned error is stamped at the DISPATCHING
+			// word (stampErrPos — `unpack`, not the name token the
+			// diagnostic above points at: NUR338), which CurWordPos holds.
 			if proven && !r.Check.Recorder().RecordTrap("unpack_error",
-				"unpack: key "+srcKey+" not found in source", "unpack", "", pos) {
+				"unpack: key "+srcKey+" not found in source", "unpack", "", r.Check.CurWordPos) {
 				r.Check.SuppressedRuntimeError = true
 			}
 			if !proven {
