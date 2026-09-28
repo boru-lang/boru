@@ -12,10 +12,11 @@ import (
 // the parking-lambda token proof's shape screen (kept_defs_scan.go
 // anonLambdaArity) directly. The whole-program halves are in lang/go
 // (zz_cover_merge519_keptdefs_test.go); the fn-value and type-literal arms
-// of the settlement are dialled here because every program that reaches
-// them today declines first at lowering ("dynamic-scope def `t` of unknown
-// provenance" — a type or fn value def'd in the unit), so no program row can
-// show what the arm itself decides.
+// of the settlement are dialled here, where the arm's own decision shows
+// without a program around it. (A fn value def'd in the unit still declines
+// first at lowering; a type def'd in the unit — `def t Integer do b drop t`
+// — compiles since NUR333's fix and reaches the type arm as a program too,
+// lang TestNUR333ComputedBodyBindsAType.)
 
 // m519PendingRead arms the latch and leaves v's read pending, as
 // noteKeptDefsRead does for a read that may be seated live.

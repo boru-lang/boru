@@ -408,6 +408,7 @@ type emitCall struct {
 	diverges          bool          // the word ALWAYS raises (CompileDiverges, e.g. raise): control never returns past this call
 	live              bool          // a LIVE READ seated as an event (NoteLiveRead): no dispatch — OpLookupDynScope of liveName at the read token, one result; rides evCall so the result seats, promotes and drops as any computed value does
 	liveName          int           // the read name's const index, meaningful only when live
+	liveRef           bool          // a live `/v` read (NoteValReadLive): OpLookupDynScopeRef, the value spelling's lookup
 	// typedBind, when non-nil, marks this event as a typed value-def's runtime
 	// validate/reparent step (OpBindTyped over the single operand) instead of a
 	// word dispatch — recorded by RecordTypedBind from the def handler's
@@ -1255,6 +1256,11 @@ type EmitState struct {
 	// pendingKeptName is its binding's name.
 	pendingKeptRead string
 	pendingKeptName string
+	// passMintedTypes is every type node a type install of THIS pass minted
+	// (RecordTypeInstall, by node ID): a keep-defs def of a lowercase name
+	// to such a node keeps its skip, where one to a node that existed before
+	// the pass installs it (keepTypeNode, NUR333).
+	passMintedTypes map[string]bool
 	// storedGradualDepth marks a DETACHED stamp compile (StampDetachedFn
 	// sets it on the fork's private EmitState). While non-zero,
 	// buildFnBodyReturnsFn generalises an Any arg into an Any param as a
@@ -3230,7 +3236,17 @@ func (es *EmitState) RecordDynUndef(name string, pos core.SrcPos) {
 // (AdoptBodyTwins — `do [def Big Integer] 15 is Big` lowers BIND_FN_TYPE in
 // the unit and BIND_TWIN after the call, `[true]` on both lanes).
 func (es *EmitState) RecordTypeInstall(name string, entry core.DefEntry, pos core.SrcPos) {
-	if es == nil || !es.Active() || name == "" {
+	if es == nil {
+		return
+	}
+	if entry.Minted && entry.TypeDef != nil {
+		// Suspended or not: the node is this pass's (keepTypeNode).
+		if es.passMintedTypes == nil {
+			es.passMintedTypes = map[string]bool{}
+		}
+		es.passMintedTypes[entry.TypeDef.ID] = true
+	}
+	if !es.Active() || name == "" {
 		return
 	}
 	if es.armResidentDepth == 0 {
@@ -7016,8 +7032,7 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		}
 		es.defReadPos[v.ID] = append(es.defReadPos[v.ID], pos)
 	}
-	keepLive := es.keepLeakNames[name] && (!es.readHasHome(*v) || es.dynLeakNames[name])
-	rootLive := es.rootDynLeak && es.TopFrameOnly() && !es.fnLikeResidual(*v)
+	keepLive, rootLive := es.keptLeakLive(*v, name)
 	// A stored-ref unit's bare read of a module-scope value is live too
 	// (the seventy-first increment): the unit is invoked by the host after
 	// the store, when the binding may have moved, so the read is seated
@@ -7062,6 +7077,24 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 	if keepLive || rootLive {
 		es.keptReadSeatedLive(v)
 	}
+	es.seatLiveRead(v, name, pos, false)
+}
+
+// keptLeakLive reports the two kept-defs arms of NoteLiveRead: keepLive, a
+// read of a name a keep-defs body leaked (NoteKeepDefsLeak,
+// noteDynKeepDefsLeak) with no compiled home of its own — or any home, for
+// a computed body's leak — and rootLive, a root read after a computed body
+// ran at the program level (rootDynLeak) of a value no window may apply.
+func (es *EmitState) keptLeakLive(v core.Value, name string) (keepLive, rootLive bool) {
+	keepLive = es.keepLeakNames[name] && (!es.readHasHome(v) || es.dynLeakNames[name])
+	rootLive = es.rootDynLeak && es.TopFrameOnly() && !es.fnLikeResidual(v)
+	return keepLive, rootLive
+}
+
+// seatLiveRead is NoteLiveRead's seating: the read gets an identity of its
+// own and a one-result live event lowering to OpLookupDynScope at pos —
+// OpLookupDynScopeRef for a `/v` read (ref, NoteValReadLive).
+func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, ref bool) {
 	v.ID = core.GenerateID(core.IDPrefixForType(v.Parent))
 	if pos.Row > 0 {
 		if es.defReadPos == nil {
@@ -7078,7 +7111,7 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 	}
 	es.liveReadIDs[v.ID] = true
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
-		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)),
+		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)), liveRef: ref,
 	}})
 	es.setProduced(*v, seq)
 }
@@ -12161,8 +12194,11 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,
 		root: root, depth: depth, spliceDepth: spliceDepth,
 		residentTwin: -1, carried: carried, specFn: specFn, replace: replace,
-		keepSkip: cur.keepsDefs && !keepInstallable(src, srcSeq, v),
+		keepSkip: cur.keepsDefs && !es.keepInstallable(src, srcSeq, v),
 	}})
+	if cur.keepsDefs && es.inStampCompile && !es.keepInstallable(src, srcSeq, v) {
+		es.stampKeepSkipped(name)
+	}
 	es.noteBindHazard(name)
 }
 
@@ -12183,7 +12219,8 @@ func (es *EmitState) loopSplitRebind(d *emitDynBind) bool {
 // keepInstallable reports whether a KEEP-DEFS unit's def can install its
 // value at run time: the value has a home the install re-pushes from — a
 // producing event (promoted to a frame slot for the re-push), a frame
-// slot, or an inert const baked as it stands under a BUILTIN type.
+// slot, an inert const baked as it stands under a BUILTIN type, or a type
+// node that exists before this pass (keepTypeNode).
 // Anything else — a fn value, a splice marker, a macro, and a literal
 // REPARENTED to a user type (`def y:P 5` over a refinement `P` the same
 // body mints: installed at run time BEFORE the body's type twin replays
@@ -12191,11 +12228,43 @@ func (es *EmitState) loopSplitRebind(d *emitDynBind) bool {
 // analysis-order suite; the twin's replay, after the type's, keeps the
 // order the interpreter had) — is emitDynBind.keepSkip and keeps the
 // lowering it had.
-func keepInstallable(src EmitOperand, srcSeq int, v core.Value) bool {
-	if srcSeq >= 0 || src.kind == opLocal {
+func (es *EmitState) keepInstallable(src EmitOperand, srcSeq int, v core.Value) bool {
+	if srcSeq >= 0 || src.kind == opLocal || es.keepTypeNode(v) {
 		return true
 	}
 	return core.IsInertConst(v) && (v.Parent == nil || v.Parent.Origin == core.OriginBuiltin)
+}
+
+// stampKeepSkipped declines a RUN-TIME stamp (a token body, StampTokenBody)
+// whose keep-defs unit skipped the install of name's def. At compile time a
+// skipped install keeps the lowering it had — the program's bind twin
+// replays the def after the unit — but a run-time stamp has no such twin:
+// the def the interpreter keeps in the caller's scope was silently dropped,
+// and a read after the body answered the name's earlier value (`quote [def
+// y:P 5]` over a refinement P read 0, `quote [def y word [1 2]]` 0 — NUR333's
+// siblings). Declined through the arm-read seam's Finalize decline (no new
+// compile-failure site), the stamp is dropped and the interpreter runs the
+// body, as for every declined stamp.
+func (es *EmitState) stampKeepSkipped(name string) {
+	if es.trapAt == 0 && es.armReadCompileFailure == "" {
+		es.armReadCompileFailure = "keep-defs body def `" + name + "` of a value its unit cannot install: a run-time stamp has no bind twin to replay it"
+	}
+}
+
+// keepTypeNode reports whether a keep-defs def binds a bare type NODE — a
+// lowercase name bound to a type (`def x Integer`) — that its install can
+// re-push as a type operand (OpPushType, the canonical node resolved by ID at
+// run time), exactly as a read of the node would (resolveOperand's type arm).
+// Such a value is no inert const (a pooled by-value copy of a node goes
+// stale), so a keep-defs unit skipped its install, and a COMPUTED `do` body —
+// run as a stamped unit, with no twin to replay the def after it — never
+// bound the name: `def x 99 … do (mk) end x` over `quote [def x Integer]`
+// read 99 for the interpreter's Integer (NUR333). A node THIS pass minted
+// (`def P (refine Integer) def x P` in a literal body) keeps the skip, for
+// the reparented literal's reason above: the body's type twin replays the
+// node after the unit, and the twin of `x` binds the replayed node.
+func (es *EmitState) keepTypeNode(v core.Value) bool {
+	return core.IsBareTypeNode(v) && v.ID != "" && !es.passMintedTypes[v.ID]
 }
 
 // dynScopeRescue is resolveOperand's last resort inside a fn unit: a value

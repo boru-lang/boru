@@ -695,6 +695,16 @@ const (
 	// list's evaluation would and the list holds what it leaves, and
 	// elsewhere the op is a designed defer.
 	OpMakeListReStep
+	// OpLookupDynScopeRef is the `/v` READ's twin of OpLookupDynScope
+	// (NUR334): a `/v` read the recorder seats live (NoteValReadLive — a
+	// name a computed keep-defs body may have rebound) resolves the binding
+	// at its token as the interpreter's stepWordVal does, through
+	// core.ResolveRef: the binding's value, a fn binding as the aggregate
+	// Function value and a class as the class, pushed as data where
+	// OpLookupDynScope defers on both. An active token keeps the defer, and
+	// a miss is the read's undefined_word, as OpLookupDynScope's is for a
+	// live-read name.
+	OpLookupDynScopeRef
 )
 
 // opcodeNames is the single source of each opcode's disassembler mnemonic,
@@ -765,6 +775,7 @@ var opcodeNames = [...]string{
 	OpBindDynScopePeek:     "BIND_DYN_SCOPE_PEEK",
 	OpBindTypeRun:          "BIND_TYPE_RUN",
 	OpMakeListReStep:       "MAKE_LIST_RESTEP",
+	OpLookupDynScopeRef:    "LOOKUP_DYN_SCOPE_REF",
 }
 
 func (o Opcode) String() string {
@@ -2350,7 +2361,7 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 	for i, in := range code {
 		fmt.Fprintf(sb, "%04d %-11s", i, in.Op.String())
 		switch in.Op {
-		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope:
+		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpLookupDynScopeRef, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope:
 			c := p.Consts[in.Arg]
 			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent.Leaf())
 		case OpCallNative:

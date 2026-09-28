@@ -533,6 +533,14 @@ type EmitRecorder interface {
 	// binding (ResolveRef), so the compiler traces it to the bound value
 	// by name (the thirty-first increment).
 	NoteValRead(id, name string)
+	// NoteValReadLive gives a `/v` read of name the kept-defs discipline a
+	// bare read takes through NoteDefRead and the tag hook (NUR334): after
+	// a computed keep-defs body that may have rebound the name, the read is
+	// seated live at its token (a fresh identity, the live lookup) or the
+	// compile declines, never baked from the check model's stale binding.
+	// Called before NoteValRead, which then notes the read's own identity.
+	// A no-op for every other read, and when inactive.
+	NoteValReadLive(v *Value, name string, pos SrcPos)
 	// NoteFrozenRead's gen is the binding's DefTable generation
 	// (DefTable.Gen) at the read, taken by the caller from the registry the
 	// read resolved in. It is the staleness key of the binding-sensitive
@@ -808,6 +816,7 @@ func (inactiveEmit) RecordSpeculativeFnDef(*Registry, string, Value, Value, SrcP
 func (inactiveEmit) RecordSpecFnUndef(string, SrcPos)           {}
 func (inactiveEmit) DeclineSpeculativeUndef(string)             {}
 func (inactiveEmit) NoteLiveRead(*Value, string, SrcPos)        {}
+func (inactiveEmit) NoteValReadLive(*Value, string, SrcPos)     {}
 func (inactiveEmit) NoteInPlaceSlot(Value, Value)               {}
 func (inactiveEmit) NotifyNameRebound(string)                   {}
 func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)   {}
