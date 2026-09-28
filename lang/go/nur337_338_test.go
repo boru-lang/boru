@@ -89,8 +89,10 @@ func TestNUR337PendingContainerTrailingApply(t *testing.T) {
 // TestNUR337PendingContainerDeclines: a pending container the collapse can
 // not evaluate exactly — a PARKED lead over a member with an effect, whose
 // evaluation the interpreter defers past the next statement — must not
-// compile to the raw token either. The program declines (loudly) and the
-// interpreter answers, rather than binding `{a:paren(...)}`.
+// compile to the raw token either. The program declines (loudly), or — where
+// another path now lowers it (the effectful parked row compiles, with parity,
+// once the other 2026-09-28 fixes are merged beside this one) — compiles to
+// the interpreter's exact answer; never to `{a:paren(...)}`.
 func TestNUR337PendingContainerDeclines(t *testing.T) {
 	for _, src := range []string{
 		`def lam ([x:Integer] => [x]) end def s (flex {n:1}) ({a:(s set n 2)} lam/v) s.n`,
@@ -101,8 +103,8 @@ func TestNUR337PendingContainerDeclines(t *testing.T) {
 	} {
 		gotC, compiled, errC := mustNew(t).RunCompiled(src)
 		gotI, errI := mustNew(t).RunInterp(src)
-		if compiled {
-			t.Errorf("%q must decline, but compiled: %v [%v] (interp %v [%v])", src, gotC, errC, gotI, errI)
+		if compiled && (fmt.Sprint(gotC) != fmt.Sprint(gotI) || fmt.Sprint(errC) != fmt.Sprint(errI)) {
+			t.Errorf("%q must decline or agree, but compiled: %v [%v] (interp %v [%v])", src, gotC, errC, gotI, errI)
 		}
 		if strings.Contains(fmt.Sprint(gotI), "paren(") || errI != nil {
 			t.Errorf("%q: interpreter answered %v [%v]", src, gotI, errI)
