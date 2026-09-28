@@ -55,7 +55,8 @@ func TestContainerReadParenLeadCompiles(t *testing.T) {
 	} {
 		requireEngineParity(t, src, true)
 	}
-	// A non-callable lead keeps the interpreter's answer (the op defers).
+	// A non-callable lead keeps the interpreter's answer: placed by the op where
+	// nothing after it reads beneath (NUR336), deferred otherwise.
 	for _, src := range []string{
 		`def reg (flex {}) end reg set 'cb' 3 drop end ((reg.cb) 5)`,
 		`def m {cb: 3} end ((m.cb) 5)`,

@@ -8376,6 +8376,7 @@ func (e *Engine) stepEnd() error {
 	}
 
 	if fwdIdx < 0 {
+		e.noteStatementStack(endIdx)
 		e.Tape.Remove(endIdx)
 		return nil
 	}
@@ -8409,6 +8410,26 @@ func (e *Engine) stepEnd() error {
 
 	e.curryOrStack(funcIdx, fwd.CollectedArgs, fwd.StackArgs)
 	return nil
+}
+
+// noteStatementStack tells the recorder the stack an `end` at endIdx that
+// closed nothing leaves for the next statement (EmitRecorder
+// NoteStatementStack) — when the tape beneath it holds values alone: an open
+// paren, a pending forward or an engine marker there is no statement
+// boundary's stack.
+func (e *Engine) noteStatementStack(endIdx int) {
+	if e.Registry == nil || e.Registry.Check == nil || !e.Registry.analysisActive() {
+		return
+	}
+	stack := make([]Value, 0, endIdx)
+	for i := 0; i < endIdx; i++ {
+		v := e.Tape.At(i)
+		if IsOpenParen(v) || IsForward(v) || isEngineMarker(v) {
+			return
+		}
+		stack = append(stack, v)
+	}
+	e.Registry.Check.Recorder().NoteStatementStack(e.Tape.At(endIdx).Pos(), stack)
 }
 
 // stepMark records the mark's ID in the marks hash table and advances.
