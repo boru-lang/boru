@@ -162,3 +162,48 @@ func TestNUR336PlacedParenApply(t *testing.T) {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
 }
+
+// TestNUR336IslandNotPlanned: statements whose island the root planner
+// refuses (compiler planLandingRestarts). A statement opening with a bare
+// pair (`a:1`), which the parser mints without a position, has no start the
+// planner can place; a stack told at the statement's start that holds a type
+// cannot be seated (seatStack). No island is planned for either: a fn member
+// applies, a data member the VM places where nothing after the apply reads
+// beneath it, and elsewhere a data member stays the loud defer it was —
+// never a wrong answer.
+func TestNUR336IslandNotPlanned(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{nurFnMk + `a:1 drop (m.f 7)`, "[8]"},
+		{nurFnMk + `x:Integer drop (m.f 7)`, "[8]"},
+		{nurFnMk + `a:1 (m.f 7)`, "[{a:1} 8]"},
+		{nurDataMk + `a:1 drop (m.f 7)`, "[5 7]"},
+		{nurFnMk + `Integer end (m.f 7)`, "[Integer 8]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	for _, c := range []struct{ src, want string }{
+		{nurDataMk + `a:1 (m.f 7)`, "[{a:1} 5 7]"},
+		{nurDataMk + `Integer end (m.f 7)`, "[Integer 5 7]"},
+	} {
+		requireLoudDefer(t, c.src, "not an appliable function", c.want)
+	}
+}
+
+// TestNUR336PlacingFnLeadDefers: a paren apply over a fn member that takes
+// none of the values after it — a lambda of no argument, a signature the
+// values miss — PLACES its lead and values, as the interpreter's paren does.
+// Where the program reads beneath what it leaves (no placement claim) the
+// apply takes the statement's island (eng callDynMethod's placedAsIs arm),
+// whose write of the lead is a fn value the interpreter would dispatch where
+// it lands: the designed NUR297 defer, loud.
+func TestNUR336PlacingFnLeadDefers(t *testing.T) {
+	const zero = `def mk fn [[] [Map] [{f: ([] => [9])}]] end def m (mk) end `
+	const str = `def mk fn [[] [Map] [{f: ([x:String] => [x])}]] end def m (mk) end `
+	for _, c := range []struct{ src, want string }{
+		{zero + `(m.f 7) drop`, "[fn]"},
+		{zero + `def k 3 end k (m.f 7) drop`, "[3 fn]"},
+		{str + `def k 3 end k (m.f 7) drop`, "[3 fn (String)]"},
+	} {
+		requireLoudDefer(t, c.src, "NUR297", c.want)
+	}
+}
