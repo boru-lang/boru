@@ -134,6 +134,10 @@ func TestInactiveEmitMethods(t *testing.T) {
 	e.RememberStrippedOriginals(nil, nil)
 
 	e.ArmBranchCapture()
+	e.ArmSealedBranchCapture()
+	if e.RecordArmTrapErr(nil, core.SrcPos{}) {
+		t.Fatal("inactive RecordArmTrapErr should decline")
+	}
 	e.ArmLoopCapture()
 	if e.ConsumeLoopArm() {
 		t.Fatal("inactive ConsumeLoopArm should be false")

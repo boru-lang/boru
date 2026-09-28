@@ -399,6 +399,12 @@ func bodyErrorPropagates(err error) bool {
 }
 
 func DoListReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 1 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	body := args[0]
 	if IsWord(body) {
 		w, _ := AsWord(body)
@@ -872,6 +878,12 @@ func if2Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 }
 
 func if3ReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 3 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	es := r.Check
 	pos := branchRecordPos(r, args[0])
 	// The dead-arm warning for a bare concrete-Boolean condition is a claim
@@ -919,7 +931,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	thenRuns, elseRuns := armsKnownToRun(args[0])
 	if thenIsBody {
 		restoreThen := ApplyGuardNarrowing(r, args[0])
-		es.Recorder().ArmBranchCapture()
+		armBranchBody(r)
 		func() {
 			defer r.EnterSpecArm(thenRuns)()
 			thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
@@ -961,7 +973,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	var elseValue *Value
 	if elseIsBody {
 		restoreElse := ApplyComplementNarrowing(r, args[0])
-		es.Recorder().ArmBranchCapture()
+		armBranchBody(r)
 		func() {
 			defer r.EnterSpecArm(elseRuns)()
 			elseStk, elseDefs = RunCarrierBodyWithDefs(r, args[2])
@@ -1044,14 +1056,14 @@ func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool, pos SrcPos) []Val
 	var joins []BranchJoin
 	if lit {
 		restoreThen := ApplyGuardNarrowing(r, cond)
-		es.Recorder().ArmBranchCapture()
+		armBranchBody(r)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		stk = es.Recorder().ArmTailApply(stk)
 		restoreThen()
 		joins = InstallTakenArmDefs(r, defs, nil)
 	} else {
 		restoreElse := ApplyComplementNarrowing(r, cond)
-		es.Recorder().ArmBranchCapture()
+		armBranchBody(r)
 		stk, defs = RunCarrierBodyWithDefs(r, arm)
 		stk = es.Recorder().ArmTailApply(stk)
 		restoreElse()
@@ -1447,7 +1459,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 	}
 	condFrag, condStk := analyseCondFragment(r, args[0])
 	restore := ApplyGuardNarrowing(r, args[0])
-	es.Recorder().ArmBranchCapture()
+	armBranchBody(r)
 	// The arm runs only when the condition holds: bracketed unless the model
 	// decides it true, like if3's arms (NUR244 — unbracketed, a fn def in
 	// the arm was the join's own value, called past the merge on the path
@@ -1756,6 +1768,12 @@ func IfListReturnsFn(args []Value, r *Registry) []Value {
 // paren group; a map). A COMPUTED clause list keeps the generic record's
 // code-body refusal.
 func ifClauseRecord(r *Registry, list Value) []Value {
+	// The clause-list form's arms are not proven sealed: its handler hands
+	// the chosen body back for the tape to re-step AT THE `if`
+	// (CompileResteps), not in an arm of its own, so no arm trap is recorded
+	// inside them (armBranchBody) — the plain capture, as before.
+	r.Check.UnsealedArmDepth++
+	defer func() { r.Check.UnsealedArmDepth-- }()
 	if !isCodeBody(list) {
 		// A COMPUTED clause list: nothing to lower here, and the generic
 		// record's code-body refusal declines the dispatch, as it did.
@@ -1811,6 +1829,21 @@ func ifClauseRecord(r *Registry, list Value) []Value {
 	nested.SetPos(elems[2].Pos())
 	rest := NewList(append([]Value(nil), elems[2:]...))
 	return if3ReturnsFn([]Value{elems[0], arms[0], NewList([]Value{nested, rest})}, r)
+}
+
+// armBranchBody arms the fragment capture for an `if` word's literal arm
+// body. The interpreter runs such an arm over its own tokens alone — `5 if
+// c [add 1] [0]` raises add's no-match over the 1, never the 5 beneath — so
+// the arm is SEALED and a statically-definite no-match inside it may compile
+// to a trap raised when the arm runs (NUR332). Inside the clause-list form
+// (UnsealedArmDepth) the chosen body is re-stepped at the `if` rather than
+// run as an arm, and the plain capture is armed.
+func armBranchBody(r *Registry) {
+	if r.Check.UnsealedArmDepth > 0 {
+		r.Check.Recorder().ArmBranchCapture()
+		return
+	}
+	r.Check.Recorder().ArmSealedBranchCapture()
 }
 
 // ifClauseDecline declines a clause list whose element the lowering cannot
@@ -1918,6 +1951,12 @@ func forListListReturnsFn(args []Value, r *Registry) []Value {
 // range form decomposes a LITERAL integer range via ParseRange
 // (computed ranges record nothing and the generic path declines).
 func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Value, countArg int) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 2 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	body := args[len(args)-1]
 	iter := NewCarrier(iterType)
 	es := r.Check.Recorder()
@@ -2146,6 +2185,12 @@ func AsInt64Or(v Value, def int64) int64 {
 // analysis in the compile pass (an error-severity handler diagnostic
 // would have tripped the compile failure gate at 0).
 func ErrorReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 2 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	wide := []Value{NewDynamicCarrier(TAny)}
 	if !IsConcrete(args[0]) || args[1].Parent == nil {
 		return wide

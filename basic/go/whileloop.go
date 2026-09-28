@@ -68,6 +68,12 @@ func WhileHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 // analysis pass step the spliced regions with carrier conditions — is
 // what keeps a carrier-conditioned `while` from looping the checker.
 func whileReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 2 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	// RECORDING (the thirty-seventh increment): the condition and the body
 	// are captured as two fragments — each analysis armed like `for`'s — and
 	// recorded through RecordWhile with a scratch iterator slot, since the

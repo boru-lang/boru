@@ -1110,7 +1110,9 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 				return nil
 			}
 		}
-		e.Registry.Check.Recorder().MarkUncompilable("unmatched dispatch recovered at " + w.Name)
+		if !e.Registry.Check.Recorder().SuspendedNow() {
+			e.Registry.Check.Recorder().MarkUncompilable("unmatched dispatch recovered at " + w.Name)
+		}
 		spliceCheckResults(e, positions, out)
 		return nil
 	}
