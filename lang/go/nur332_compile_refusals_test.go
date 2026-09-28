@@ -117,6 +117,11 @@ func TestNUR332ReSteppedBlockDeclines(t *testing.T) {
 		// A binding the pass holds only abstractly may be a function at run
 		// time: it declines too.
 		{`def mk fn [[][Any][5]] end def k (mk) end 1 case 7 [[lt 10] k "z"]`, reStep, "[1 5]"},
+		// A splice binding spills its tokens where the block is re-stepped,
+		// and they reach the values around the case (the Codex review of
+		// #520): `add` runs over the 1 2 beneath it.
+		{`def g word [add] 1 2 case 7 [[lt 10] g 0]`, reStep, "[3]"},
+		{`def g word [add] end 1 2 case 7 [[lt 10] g 0] end`, reStep, "[3]"},
 		// Nested in a body, the case is not bare either.
 		{`1 if (1 eq 1) [case 7 [[lt 10] dup]] [0]`, reStep, "ERROR:cannot call `dup`"},
 		{`def f fn [[x:Integer][Any][case x [[lt 10] dup "z"]]] end f 1`, reStep, "ERROR:cannot call `dup`"},
@@ -174,6 +179,22 @@ func TestJoinedElementBodyRaisesCompiled(t *testing.T) {
 		`[1 Integer] each [typeof]`,
 		`[1 Integer] each [is Type]`,
 		`[1 Integer] each [dup]`,
+	} {
+		requireCompiledParity(t, src)
+	}
+}
+
+// TestJoinedElementBodyRaisesAcrossSpellings: the optimistic dispatch's
+// exact layout (PolyRef.Split) rides only a record whose word the source
+// wrote at its position (wordWrittenAt). That probe reads columns in RUNES,
+// as the parser counts them, and takes a comma as the token separator it
+// is — a comma-spelled body and a multibyte rune earlier on the line keep
+// the interpreter's per-element signature_error (Codex review of #520).
+func TestJoinedElementBodyRaisesAcrossSpellings(t *testing.T) {
+	for _, src := range []string{
+		`[1 Integer] each [add, 1]`,
+		`"é" drop [1 Integer] each [add 1]`,
+		`"日本" drop [1 Integer] each [add, 1]`,
 	} {
 		requireCompiledParity(t, src)
 	}

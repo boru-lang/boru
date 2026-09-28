@@ -423,7 +423,10 @@ func caseBlockReSteps(r *Registry, b Value) bool {
 		if fd, isFn := top.Data.(FnDefInfo); isFn {
 			return callReachesContext(&fd)
 		}
-		return top.Carrier || top.Dynamic
+		// A splice marker (`def g word [add]`) spills its tokens where the
+		// block is re-stepped, and those tokens reach the values around the
+		// case (`1 2 case 7 [[lt 10] g 0]` is 3) — the Codex review of #520.
+		return top.Carrier || top.Dynamic || IsSplice(top)
 	}
 	fn := r.Lookup(w.Name)
 	return fn != nil && callReachesContext(fn)
@@ -431,7 +434,8 @@ func caseBlockReSteps(r *Registry, b Value) bool {
 
 // callReachesContext reports whether some signature of fn takes an operand
 // or reads the whole stack — a dispatch whose outcome depends on the
-// values around the word.
+// values around the word. A macro is always one: `macro` refuses a
+// definition with no parameter, so its expansion's operands are its own.
 func callReachesContext(fn *FnDefInfo) bool {
 	for i := range fn.Signatures {
 		if fn.Signatures[i].TotalArgs() > 0 || fn.Signatures[i].FullStack() {

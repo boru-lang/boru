@@ -196,9 +196,8 @@ func TestNUR336IslandNotPlanned(t *testing.T) {
 // none of the values after it — a lambda of no argument, a signature the
 // values miss — PLACES its lead and values, as the interpreter's paren does.
 // Where the program reads beneath what it leaves (no placement claim) the
-// apply takes the statement's island (eng callDynMethod's placedAsIs arm),
-// whose write of the lead is a fn value the interpreter would dispatch where
-// it lands: the designed NUR297 defer, loud.
+// compiled apply has already run the lead, and never re-runs the statement
+// over it (the Codex review of #520): loud, never a wrong answer.
 func TestNUR336PlacingFnLeadDefers(t *testing.T) {
 	const zero = `def mk fn [[] [Map] [{f: ([] => [9])}]] end def m (mk) end `
 	const str = `def mk fn [[] [Map] [{f: ([x:String] => [x])}]] end def m (mk) end `
@@ -207,7 +206,14 @@ func TestNUR336PlacingFnLeadDefers(t *testing.T) {
 		{zero + `def k 3 end k (m.f 7) drop`, "[3 fn]"},
 		{str + `def k 3 end k (m.f 7) drop`, "[3 fn (String)]"},
 	} {
-		requireLoudDefer(t, c.src, "NUR297", c.want)
+		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
+		gotI, errI := mustNew(t).RunInterp(c.src)
+		if errI != nil || fmt.Sprint(gotI) != c.want {
+			t.Errorf("%q: interpreter %v / %v, want %s", c.src, gotI, errI, c.want)
+		}
+		if compiled && errC == nil {
+			t.Errorf("%q: compiled %v silently (interpreter %v); want a loud failure until it agrees", c.src, gotC, gotI)
+		}
 	}
 }
 

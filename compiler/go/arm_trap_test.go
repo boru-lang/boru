@@ -92,7 +92,7 @@ func TestArmTrapScope(t *testing.T) {
 // (RecordPolyCall's PolyRef.Split): the raise underlines the record's word,
 // so the word must be the token the source wrote at that position.
 func TestWordWrittenAt(t *testing.T) {
-	src := "[1 Integer] each [add 1]\n5 $.name apply\nx add/s\ny add"
+	src := "[1 Integer] each [add 1]\n5 $.name apply\nx add/s\ny add\n[1 Integer] each [add, 1]\n\"é\" add 1"
 	for _, c := range []struct {
 		word string
 		row  int
@@ -109,6 +109,9 @@ func TestWordWrittenAt(t *testing.T) {
 		{"add", 1, 99, false},  // past the line's end
 		{"each", 1, 13, true},  // mid-line, then a space
 		{"each", 1, 14, false}, // one column off
+		{"add", 5, 19, true},   // a comma separator after the word
+		{"add", 6, 5, true},    // a multibyte rune before it (columns count runes)
+		{"add", 6, 6, false},   // one rune off
 	} {
 		if got := wordWrittenAt(src, c.word, core.SrcPos{Row: c.row, Col: c.col}); got != c.want {
 			t.Errorf("wordWrittenAt(%q @%d:%d) = %v, want %v", c.word, c.row, c.col, got, c.want)

@@ -11066,11 +11066,17 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 // modifier suffix — `add/s` — may follow it).
 func wordWrittenAt(src, word string, pos core.SrcPos) bool {
 	lines := strings.Split(src, "\n")
-	if pos.Row < 1 || pos.Row > len(lines) || pos.Col < 1 || pos.Col-1 > len(lines[pos.Row-1]) {
+	if pos.Row < 1 || pos.Row > len(lines) || pos.Col < 1 {
 		return false
 	}
-	rest, ok := strings.CutPrefix(lines[pos.Row-1][pos.Col-1:], word)
-	return ok && (rest == "" || strings.ContainsRune(" \t\r()[]{};/", rune(rest[0])))
+	// The parser counts columns in RUNES; the line is sliced in bytes, so a
+	// multibyte rune before the word must not shift the probe.
+	runes := []rune(lines[pos.Row-1])
+	if pos.Col-1 > len(runes) {
+		return false
+	}
+	rest, ok := strings.CutPrefix(string(runes[pos.Col-1:]), word)
+	return ok && (rest == "" || strings.ContainsRune(" \t\r,()[]{};/", rune(rest[0])))
 }
 
 // RecordDynMethod records a GUARDED shaped-instance-method apply (Stage M2c):

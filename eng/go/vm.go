@@ -2629,21 +2629,6 @@ func parksResult(fnVal core.Value) bool {
 	return true
 }
 
-// placedAsIs reports whether an apply's results are its lead and its values
-// unchanged, in the order a paren places them: the lead took none of them
-// and nothing ran.
-func placedAsIs(results []core.Value, fnVal core.Value, args []core.Value) bool {
-	if len(results) != len(args)+1 || results[0].ID != fnVal.ID {
-		return false
-	}
-	for i, a := range args {
-		if results[i+1].ID != a.ID {
-			return false
-		}
-	}
-	return true
-}
-
 func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodSpec, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
 	if err := vc.gateWord(reg, spec.Word); err != nil {
 		return nil, nil, err
@@ -2677,13 +2662,13 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		// stands — `(m.f y 8)` over a one-argument fn leaves its result and
 		// the 8, as the interpreter's paren does (NUR336).
 		if len(results) != spec.NOut && !spec.Place {
-			// The paren PLACED its lead and values — a fn that took none of
-			// them (a lambda of no argument, a signature the values miss) is
-			// data to it — and ran nothing: the statement's island answers
-			// that stack shape, as it answers a data lead (NUR336).
-			if spec.Restart && placedAsIs(results, fnVal, args) {
-				return restart()
-			}
+			// No statement island here, even where the results LOOK like
+			// the paren's placement (the lead then its values): the apply
+			// has already run, and a run value carries no identity to tell
+			// "took none of them" from "ran and returned them" — re-running
+			// the statement could repeat its effects (the Codex review of
+			// #520). A lead the island may take is one that never ran: the
+			// not-appliable arm below.
 			// A boru fn's own return COUNT never reaches here: every path
 			// that runs one enforces it first — the island (the
 			// interpreter's named dispatch, NUR191), the foreign arm (the
