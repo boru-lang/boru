@@ -136,6 +136,8 @@ keep the two in sync in the same commit.
 | [NUR235](#nur235) | A typed-map param pattern (`m:{f:Integer}`, `m:{:Integer}`) rejects an INLINE map literal whose member is computed (`h {f: (1 add 1)}`) on both lanes, and the two lanes' `signature_error` notes differ (`{f:paren(…)}` / "does not satisfy its declared pattern" interpreted, `{f:2}`-style values / "expected: h (Map) or (no args)" compiled) | call-site specialisation's investigation (2026-09-27) |
 | [NUR236](#nur236) | A source naming `Function` whose COMPILE PASS makes an effect the retry cannot repeat — a counted effect (a file write, a network send, a RunInCheckMode word that notes one) or a stdin read, in a module body or a check-mode word — and whose call-site specialisation declines does not compile (`call-site specialisation declined after an unrepeatable check-pass effect`), where `main` compiles it; the effect happens once, never twice | Codex review of #516 (2026-09-27) |
 | [NUR237](#nur237) | A `def` inside a Rand.map-from / Rand.list-of generator body is a registry binding on the interpreter (the body runs on the shared registry, no def cleanup) that outlives the call, and invisible to the compiled program after it: `import "boru:rand"  def k 5 Rand.map-from {b:[def k 1 k]} k` is `[{b:1} 1]` interpreted, `[{b:1} 5]` compiled — the recorder reads the later `k` as the def it saw and does not know the rand words' bodies can rebind it. Pre-existing on both words; found while moving map-from's bodies onto the InvokeBody seam, which neither causes nor cures it | found 2026-09-27 (the interp-entry census, module-rand.tsv) |
+| [NUR238](#nur238) | A seeded generator reached through a MAP member answers a different sequence compiled: `import "boru:rand" def s (Rand.with-seed 3) end def m {r: s} [(m.r.int 0 100) (m.r.int 0 100)]` is `[[61 84]]` interpreted, `[[5 52]]` compiled; the same calls on `s` directly agree (`s.int 0 100` is 61 on both). Pre-existing on main 91e97dd | found 2026-09-28 (the shaped-method underflow review) |
+| [NUR239](#nur239) | The check pass PANICS (recovered as an internal_error, so the program does not compile) on an `if` word stranded in a `case` clause list: `case 7 [[lt 3] "low" [lt 10] if (1 eq 1) ["mid"] ["x"] "high"]` — the failed-dispatch recovery calls the if handlers with fewer operands than their first statement reads. The interpreter raises the signature_error. Pre-existing on main 91e97dd | found 2026-09-28 (the diagnostic-parity work) |
 | [NUR232](#nur232) | A ROOT def made inside an `if` arm is lost for the NEXT request on a reused instance: `if true [def y 9] [] end 0` then `y` fails to compile (`undefined_word`) where the interpreter answers 9; the same request agrees; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
 | [NUR231](#nur231) | `mini` over a member whose declared type is `Function` — `import "boru:minilang" end def m {e: Function} end mini m.e 'ab'` — bails `internal_error: DISPATCH_REMATCH … matched at run time where the static model failed` where the interpreter raises `signature_error`; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
 | [NUR230](#nur230) | A value-less `case` scrutinee inside a `do` body followed by more of it — `do [case [1 drop] [5 "five" "other"] 9]` — compiles, then bails `internal_error: CALL_DYNAMIC underflow` where the interpreter answers `[error(case: value expression produced no value to dispatch on)]`; present on `main` at cd188a2 | the merged cover-gate pass (2026-09-27) |
@@ -10818,3 +10820,40 @@ the same for the rand words — join a body that defines a name into the
 model, or decline to compile one — and moving map-from's bodies onto the
 InvokeBody seam (2026-09-27) neither causes nor cures it: the old pooled
 run diverged identically.
+
+## NUR238 — a seeded generator read through a map member answers another sequence compiled {#nur238}
+
+**Status:** Pending. Recorded 2026-09-28; pre-existing on main 91e97dd.
+
+```
+import "boru:rand" def s (Rand.with-seed 3) end def m {r: s} [(m.r.int 0 100) (m.r.int 0 100)]
+  interpreter   [[61 84]]
+  compiled      [[5 52]]
+import "boru:rand" def s (Rand.with-seed 3) end s.int 0 100
+  interpreter   [61]
+  compiled      [61]
+```
+
+Only the read through the map member diverges, and from the first draw, so
+the compiled program's generator is not the one the interpreter's `m` holds
+— the map literal's member is a copy or a check-time instance rather than
+`s` itself. Not investigated further; found while checking the shaped-method
+underflow (`do [m.r.int 0 100]`, which now declines).
+
+## NUR239 — the check pass panics on an `if` stranded in a case clause list {#nur239}
+
+**Status:** Pending. Recorded 2026-09-28; pre-existing on main 91e97dd.
+
+```
+case 7 [[lt 3] "low" [lt 10] if (1 eq 1) ["mid"] ["x"] "high"]
+  interpreter   signature_error: cannot call `if` — no signature matches the arguments
+  compile pass  internal_error: internal engine error: runtime error: index out of range [0] with length 0
+```
+
+The failed-dispatch recovery (check_recovery) calls the if handlers with
+fewer operands than the signature declares, and their first statement reads
+`args[0]`. The panic is recovered, so nothing crashes, but a panic in the
+tree is a defect (Panic Prevention), and the program reports an internal
+error where the interpreter reports the user's mistake. Cure: the recovery
+must not call a handler over a short window, or the handlers must guard it.
+

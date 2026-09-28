@@ -13588,13 +13588,11 @@ func eventBySeq(events []EmitEvent, seq int) *EmitEvent {
 // it are two results of ONE runtime-variable call (eventFlags.callVariadic —
 // a fallible multi-value `do` body, catchVariadicFor — or a dyn-body code-body
 // dispatch, whose handler re-runs the body: dynBodyResult with
-// variadicResult). The body's own stepping
-// already applied anything its residual would (a fn value the body leaves ran
-// over the tokens after it inside the body), so the pair is settled data; and
-// the call's count is N on the happy path but ONE caught Error value when the
-// body raises, so an apply laid over the pair underflowed on the caught path
-// (`def g h/v  do [(g "1") 2]` with h raising: the interpreter's
-// `[error(x)]`, the compiled CALL_DYNAMIC's underflow).
+// variadicResult). The call's count is N on the happy path but ONE caught
+// Error value when the body raises, so an apply laid over the pair at a fixed
+// count underflowed on the caught path (`def g h/v  do [(g "1") 2]` with h
+// raising: the interpreter's `[error(x)]`, the compiled CALL_DYNAMIC's
+// underflow).
 func (es *EmitState) variadicSiblingLead(residual []core.Value) bool {
 	if len(residual) < 2 {
 		return false
@@ -13703,11 +13701,19 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// that fires its zero-argument overload or raises, and for one whose
 	// arg-taking overload could claim the word neither the apply nor a data
 	// seat is faithful — the pending NUR190, wordFollowsLanding.
+	// A lead and the entry above it that are two results of ONE
+	// runtime-variable call (variadicSiblingLead) re-step from the region's
+	// mark: the interpreter re-steps the call's results (a closure the body
+	// PLACED applies over the value after it — `do [(f 5) 2]` is 20), but the
+	// count is N on the happy path and one caught Error value when the body
+	// raises, so a fixed-count apply underflowed on the caught path
+	// (`def g h/v  do [(g "1") 2]` with h raising). The mark window re-steps
+	// whatever the region holds; without one the arms below keep today's
+	// lowering.
+	if es.markWindowSeq != 0 && es.variadicSiblingLead(residual) {
+		return residual, OpCallDynMixedFromMark, ""
+	}
 	leadCrossed := len(residual) >= 2 && es.crossesStatementEnd(residual[0], residual[1:])
-	// Two results of ONE runtime-variable call are settled where they sit
-	// (variadicSiblingLead): the lead arms stand aside for them as for a
-	// crossed statement end.
-	leadCrossed = leadCrossed || es.variadicSiblingLead(residual)
 	if !leadCrossed && len(residual) >= 2 && residual[0].Dynamic && !es.methodShapeAnnotated(residual[0].ID) &&
 		!es.leadPlacedNotRead(residual[0]) && !es.callResultPlaced(residual[0]) {
 		applyDynamic = !anyDynamicTail(residual)
