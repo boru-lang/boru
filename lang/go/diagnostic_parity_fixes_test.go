@@ -76,6 +76,9 @@ func TestArmedNoSignatureIsARuntimeMirror(t *testing.T) {
 		for _, src := range []string{
 			`keys 5`,
 			`def f fn [[s:ProperString] [String] [s]]  f ''`,
+			// Inside a SEALED branch arm (the if word's literal arm) the
+			// trap is the arm's, raised when it runs (NUR332).
+			`if true [keys 5] [1]`,
 		} {
 			plain, armed, compiled, reason := bothPasses(t, src)
 			if !compiled {
@@ -102,10 +105,11 @@ func TestArmedNoSignatureIsARuntimeMirror(t *testing.T) {
 		}
 	})
 	t.Run("a declined no-match keeps its SPECIFIC decline reason", func(t *testing.T) {
-		src := `if true [keys 5] [1]`
+		// A loop body is no sealed arm: the no-match there declines.
+		src := `for 2 [keys 5]`
 		_, armed, compiled, reason := bothPasses(t, src)
 		if compiled {
-			t.Fatalf("%q: a no-match inside a branch arm is conditional and declines", src)
+			t.Fatalf("%q: a no-match inside a loop body declines", src)
 		}
 		if reason != "unmatched dispatch recovered at keys" {
 			t.Errorf("%q: the mirror must not mask the recorder's reason as the generic sentinel; got %q", src, reason)

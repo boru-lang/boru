@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 
 	check "github.com/boru-lang/boru/check/go"
 	core "github.com/boru-lang/boru/core/go"
@@ -1612,6 +1613,18 @@ type EmitState struct {
 	// root stream is, so the do-body adoption's root fence admits it
 	// (rootLikeStream).
 	fragUncond []bool
+	// fragSealed parallels the open fragment frames (frames[1:]) with
+	// whether each is a SEALED branch arm (ArmSealedBranchCapture): an arm
+	// the interpreter runs over its own tokens alone — no value beneath it,
+	// no token after it — exactly as the check pass's fresh arm sub-engine
+	// runs it, so a statically-definite no-match inside it is the run's
+	// (recordArmTrap). fragTrapped marks the sealed arms whose trap has
+	// been recorded: the rest of the arm is unreachable.
+	fragSealed  []bool
+	fragTrapped []bool
+	// captureSealed rides captureArm: the fragment the next body run records
+	// is a SEALED branch arm (ArmSealedBranchCapture).
+	captureSealed bool
 	// fragReads / bindHazard / storeHazard drive the residual-order hazard
 	// (unit_memo.go residualReadHazard), keyed by fragment id: the names a
 	// fragment has read, and the names (by name) or loop-carried slots (by
@@ -2872,6 +2885,22 @@ func (es *EmitState) ArmBranchCapture() {
 		return
 	}
 	es.captureArm = true
+	es.captureSealed = false
+}
+
+// ArmSealedBranchCapture is ArmBranchCapture for a SEALED branch arm — the
+// `if` word's literal then/else body, which the interpreter runs over its
+// own tokens alone (`5 if c [add 1] [0]` raises add's no-match over the 1,
+// never the 5 beneath the if). The fragment it opens admits an arm trap
+// (recordArmTrap). A condition (a list condition runs inline, over the
+// values beneath the `if`), a loop body, and the clause-list form's arms (a
+// body re-stepped at the `if`) are armed with the plain ArmBranchCapture.
+func (es *EmitState) ArmSealedBranchCapture() {
+	if !es.Active() {
+		return
+	}
+	es.captureArm = true
+	es.captureSealed = true
 }
 
 // consumeCaptureArm reports and clears the one-shot capture flag.
@@ -2908,6 +2937,8 @@ func (es *EmitState) beginFragment() func() {
 	es.fragIDs = append(es.fragIDs, es.fragSeq)
 	es.fragUnits = append(es.fragUnits, len(es.units))
 	es.fragUncond = append(es.fragUncond, false)
+	es.fragSealed = append(es.fragSealed, false)
+	es.fragTrapped = append(es.fragTrapped, false)
 	return func() {
 		n := len(es.frames) - 1
 		es.captured = &EmitFragment{
@@ -2920,6 +2951,8 @@ func (es *EmitState) beginFragment() func() {
 		es.fragIDs = es.fragIDs[:len(es.fragIDs)-1]
 		es.fragUnits = es.fragUnits[:len(es.fragUnits)-1]
 		es.fragUncond = es.fragUncond[:len(es.fragUncond)-1]
+		es.fragSealed = es.fragSealed[:len(es.fragSealed)-1]
+		es.fragTrapped = es.fragTrapped[:len(es.fragTrapped)-1]
 	}
 }
 
@@ -2960,7 +2993,11 @@ func (es *EmitState) inRolledBackRegion() bool {
 // single replay (see keepTaints). Nil-safe.
 func (es *EmitState) BodyAnalysisGuard() func() {
 	if es.consumeCaptureArm() {
-		return es.beginFragment()
+		sealed := es.captureSealed
+		es.captureSealed = false
+		end := es.beginFragment()
+		es.fragSealed[len(es.fragSealed)-1] = sealed
+		return end
 	}
 	if es == nil || es.keepBodyDepth == 0 {
 		return es.Suspend()
@@ -3292,6 +3329,11 @@ func (es *EmitState) appendEvent(ev EmitEvent) int {
 			es.seq++
 			return es.seq
 		}
+	}
+	// The same for a sealed arm's trap (recordArmTrap): the arm raises there.
+	if n > 0 && es.fragTrapped[n-1] {
+		es.seq++
+		return es.seq
 	}
 	es.seq++
 	ev.seq = es.seq
@@ -9455,6 +9497,50 @@ func (es *EmitState) RecordTrapErr(ae *core.BoruError, pos core.SrcPos) bool {
 	return true
 }
 
+// RecordArmTrapErr records a fully-built interpreter error as a trap inside
+// the SEALED branch arm being recorded (recordArmTrap) — never the terminal
+// top-level one. Declines outside one.
+func (es *EmitState) RecordArmTrapErr(ae *core.BoruError, pos core.SrcPos) bool {
+	if ae == nil || !es.Active() {
+		return false
+	}
+	return es.recordArmTrap(EmitTrap{
+		spec: TrapSpec{
+			Code: ae.Code, Detail: ae.Detail, Word: ae.Src, Hint: ae.Hint,
+			Spans: ae.Spans, Notes: ae.Notes, Suggestions: ae.Suggestions,
+		},
+		pos: pos,
+	})
+}
+
+// recordArmTrap records a definite raise INSIDE a sealed branch arm (NUR332's
+// closure): the trap the top level compiles, scoped to the arm, which raises
+// only when the arm runs. Sound because the arm is SEALED
+// (ArmSealedBranchCapture): the interpreter runs it over its own tokens
+// alone, as the check pass's fresh arm sub-engine did, so the no-match the
+// pass proved over the values it saw is the one the run meets whenever the
+// arm is taken. Only the INNERMOST frame counts — a trap met in a
+// condition, a loop body or an unsealed arm is not the run's — and not
+// under an optimistically matched outer dispatch (NUR264), whose rematch
+// owns the raise at the top level only. The first trap per arm wins; the
+// arm's later events are unreachable and appendEvent drops them, so the
+// fragment ends in the trap and diverges (fragDiverges), exactly as an arm
+// ending in `raise`. A mark the arm's later analysis makes still declines
+// the program, as after a `raise`: that analysis also shapes the join's
+// model of the arm, which the compile then rides.
+func (es *EmitState) recordArmTrap(t EmitTrap) bool {
+	n := len(es.fragSealed)
+	if n == 0 || !es.fragSealed[n-1] || es.optimisticOuter() != nil {
+		return false
+	}
+	if es.fragTrapped[n-1] {
+		return true
+	}
+	es.appendEvent(EmitEvent{kind: evTrap, trap: t})
+	es.fragTrapped[n-1] = true
+	return true
+}
+
 // RecordDispatchRematchValues is the value-level entry over
 // RecordDispatchRematch: it resolves each window VALUE to its operand
 // (a make-result carrier resolves to its producing event; a concrete
@@ -10839,7 +10925,22 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		es.declineUndef(n, fwdReadAfterSpecUndef)
 		return true
 	}
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, polySeed: es.takePolySeed(), region: region, generic: generic}})
+	// An OPTIMISTIC dispatch (a carrier operand whose type misses its slot —
+	// the joined element of `[1 Integer] each [add 1]`, NUR263) published its
+	// exact operand layout for its own record: with no no-match plan of its
+	// own, the poly's runtime no-match lays the operands out as the
+	// interpreter's tape there and raises its signature_error (PolyRef.Split,
+	// the channel the dyn-body poly already rides — NUR242), where it
+	// deferred as vm:poly-no-match. The raise is positioned at the record's
+	// word, so the word must be the one the source wrote there — the token
+	// the interpreter's report underlines. A word the pass synthesized (the
+	// `dot` a compiled lens expands to sits on its key, where the
+	// interpreter's sits on the receiver — NUR171) keeps the defer.
+	var split *PolySplit
+	if l := es.layoutFor(args); l != nil && noMatch == nil && es.reg != nil && wordWrittenAt(es.reg.Source, word, pos) {
+		split = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
+	}
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, polySplit: split, polySeed: es.takePolySeed(), region: region, generic: generic}})
 	es.noteArgSites(seq, args)
 	switch len(outs) {
 	case 0:
@@ -10875,6 +10976,17 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		}
 	}
 	return true
+}
+
+// wordWrittenAt reports whether src spells word as a whole token at pos (a
+// modifier suffix — `add/s` — may follow it).
+func wordWrittenAt(src, word string, pos core.SrcPos) bool {
+	lines := strings.Split(src, "\n")
+	if pos.Row < 1 || pos.Row > len(lines) || pos.Col < 1 || pos.Col-1 > len(lines[pos.Row-1]) {
+		return false
+	}
+	rest, ok := strings.CutPrefix(lines[pos.Row-1][pos.Col-1:], word)
+	return ok && (rest == "" || strings.ContainsRune(" \t\r()[]{};/", rune(rest[0])))
 }
 
 // RecordDynMethod records a GUARDED shaped-instance-method apply (Stage M2c):

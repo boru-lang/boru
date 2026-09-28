@@ -3786,7 +3786,13 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// A behave-installed capability may run in this frame over a value
 		// of its type (NUR257).
 		e.Registry.Check.NoteBehaveDispatch(match.Args)
+		prevBare := e.Registry.Check.BareCallPos
+		e.Registry.Check.BareCallPos = SrcPos{}
+		if e.bareCallContext(sortedIndices, callEnd) {
+			e.Registry.Check.BareCallPos = pos
+		}
 		results := e.Registry.analysisCarrierResults(name, match.Sig, match.Args, pos, match.Reg, tailConsumed)
+		e.Registry.Check.BareCallPos = prevBare
 		restoreLayout()
 		e.Registry.Check.NoteFnMemberRead(name, match.Args, results)
 		// Stamp a positionless FUNCTION result with this call's position,
@@ -4115,6 +4121,34 @@ func (e *Engine) stmtEndBetween(from, to SrcPos) bool {
 // srcPosBefore reports whether a lies strictly before b in the source.
 func srcPosBefore(a, b SrcPos) bool {
 	return a.Row < b.Row || (a.Row == b.Row && a.Col < b.Col)
+}
+
+// bareCallContext reports whether the dispatch at the pointer — its operands
+// at sortedIndices (ascending), its last consumed tape index callEnd — sits
+// in a BARE context (CheckState.BareCallPos): the top-level program's own
+// stream (the top engine, outside every nested body and fn body analysis),
+// nothing on the tape beneath its first operand but an open paren (which
+// seals the stack at run time) or the tape's start, and nothing after
+// callEnd but a close paren, a statement end or the tape's end. A word the
+// dispatch's handler hands back to be re-stepped there collects exactly
+// nothing from around it, on both engines.
+func (e *Engine) bareCallContext(sortedIndices []int, callEnd int) bool {
+	c := e.Registry.Check
+	if !e.IsTop || c.NestedBodyDepth != 0 || c.FnBodyDepth != 0 {
+		return false
+	}
+	first := e.Pointer
+	if len(sortedIndices) > 0 && sortedIndices[0] < first {
+		first = sortedIndices[0]
+	}
+	if first > 0 && !IsOpenParen(e.Tape.At(first-1)) {
+		return false
+	}
+	if next := callEnd + 1; next < e.Tape.Len() {
+		v := e.Tape.At(next)
+		return IsCloseParen(v) || IsEnd(v)
+	}
+	return true
 }
 
 // spliceMatchResults replaces the word and its matched args on the
@@ -10406,10 +10440,14 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 // sigError's stack-snapshot hint is advisory DX text, not part of the error
 // taxonomy (code + detail + position) the differential gates.
 //
-// RecordTrap's own guard keeps this top-level-only (frames and units both at
-// depth 1): a trap inside a branch arm or fn unit is conditional and stays a
-// compile failure. Returns true when the trap now owns the program's tail; false
-// leaves the caller's MarkUncompilable compile failure to stand.
+// RecordTrap's own guard keeps the terminal trap top-level-only (frames and
+// units both at depth 1). Below it the trap is recorded only inside a SEALED
+// branch arm — an `if` word's literal arm, which the interpreter runs over
+// its own tokens alone, so the no-match is the run's whenever the arm runs
+// (RecordArmTrapErr, NUR332); anywhere else it is conditional on context the
+// pass does not see and stays a compile failure. Returns true when a trap
+// now owns the program's tail or the arm's; false leaves the caller's
+// MarkUncompilable compile failure to stand.
 func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos SrcPos) bool {
 	e.LastUnmatchedRematched = false
 	es := e.Registry.analysisRecorder()
@@ -10611,10 +10649,14 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 	// notes + suggestions). Definiteness (screened above) guarantees the
 	// runtime values equal what sigError saw here, so the error built now
 	// is the error the interpreter builds at run time.
-	if verr := e.voidArgErrorFor(w.Name, pos); verr != nil {
-		return es.RecordTrapErr(verr, pos)
+	// Below the top level the trap is recorded only inside a SEALED branch
+	// arm (RecordArmTrapErr, NUR332): the arm raises when it runs, as the
+	// interpreter's does, and every other nested region declines.
+	ae := e.voidArgErrorFor(w.Name, pos)
+	if ae == nil {
+		ae = e.sigError(w.Name, fn, pos)
 	}
-	return es.RecordTrapErr(e.sigError(w.Name, fn, pos), pos)
+	return es.RecordTrapErr(ae, pos) || es.RecordArmTrapErr(ae, pos)
 }
 
 // rematchRenderTuple resolves the attempted written tuple to distinct

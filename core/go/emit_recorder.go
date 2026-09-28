@@ -324,6 +324,10 @@ type EmitRecorder interface {
 	// body unit — scoped to that unit, never the program's terminal trap
 	// (NUR134: a module export's no-match inside a `do` body).
 	RecordUnitTrapErr(ae *BoruError, pos SrcPos) bool
+	// RecordArmTrapErr records a definite runtime raise inside the SEALED
+	// branch arm being recorded (ArmSealedBranchCapture) — scoped to that
+	// arm, which raises only when it runs (NUR332). Inactive: declines.
+	RecordArmTrapErr(ae *BoruError, pos SrcPos) bool
 	RecordDispatchRematchValues(word string, vals []Value, nFwd int, written []int, pos SrcPos) bool
 	// NoteRematchPrefix attaches to the rematch RecordDispatchRematchValues
 	// just recorded the window indices (top first) of the stack prefix the
@@ -615,6 +619,10 @@ type EmitRecorder interface {
 	// deciding each iteration. Inactive: no-op.
 	RecordWhile(cond, body EmitFragmentRef, condStk, bodyStk []Value, iterID string, out Value, pos SrcPos)
 	ArmBranchCapture()
+	// ArmSealedBranchCapture is ArmBranchCapture for a SEALED branch arm:
+	// one the interpreter runs over its own tokens alone, so a trap may be
+	// recorded inside it (RecordArmTrapErr). Inactive: no-op.
+	ArmSealedBranchCapture()
 	PeekCaptureArm() bool
 	ArmLoopCapture()
 	ConsumeLoopArm() bool
@@ -755,6 +763,7 @@ func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { 
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }
 func (inactiveEmit) RecordUnitTrapErr(*BoruError, SrcPos) bool                { return false }
+func (inactiveEmit) RecordArmTrapErr(*BoruError, SrcPos) bool                 { return false }
 func (inactiveEmit) RecordDispatchRematchValues(string, []Value, int, []int, SrcPos) bool {
 	return false
 }
@@ -817,6 +826,7 @@ func (inactiveEmit) RememberOriginal(Value)                     {}
 func (inactiveEmit) RememberStrippedOriginals([]Value, []Value) {}
 
 func (inactiveEmit) ArmBranchCapture()                                {}
+func (inactiveEmit) ArmSealedBranchCapture()                          {}
 func (inactiveEmit) PeekCaptureArm() bool                             { return false }
 func (inactiveEmit) ArmLoopCapture()                                  {}
 func (inactiveEmit) ConsumeLoopArm() bool                             { return false }

@@ -771,6 +771,17 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 func declaredReturnCarriers(r *core.Registry, word string, sig *core.Signature, args []core.Value, pos core.SrcPos) []core.Value {
 	var out []core.Value
 	switch {
+	case sig.ReturnsFn != nil && len(args) < sig.TotalArgs():
+		// A SHORT window — fewer operands than the signature declares — is
+		// only ever the failed-dispatch recovery's (checkModeAssumeSig), which
+		// assumes a best-fit overload the site cannot supply in full: a real
+		// match always binds every position. A ReturnsFn is the analysis half
+		// of a MATCHED call and reads its operands positionally (`if`'s reads
+		// args[0], NUR332's panic), so it is never called over a window it was
+		// not given. The dispatch is a no-match the recovery has already
+		// reported and decided; its result is the declared Returns, else one
+		// dynamic Any — "type unknown", with no second missing_returns report.
+		out = shortWindowCarriers(sig)
 	case sig.ReturnsFn != nil:
 		r.Check.CurCallPos = pos // expose call site to ReturnsFn (e.g. make Array identity)
 		r.Check.CurCallWord = word
@@ -824,6 +835,23 @@ func declaredReturnCarriers(r *core.Registry, word string, sig *core.Signature, 
 			}
 			out[i] = c
 		}
+	}
+	return out
+}
+
+// shortWindowCarriers is a short-window recovery's result (see
+// declaredReturnCarriers): one fresh carrier per declared Returns type, or a
+// single dynamic Any when the signature declares none (a nil Returns; an
+// empty one declares "returns nothing").
+func shortWindowCarriers(sig *core.Signature) []core.Value {
+	if sig.Returns == nil {
+		return []core.Value{core.NewDynamicCarrier(core.TAny)}
+	}
+	out := make([]core.Value, len(sig.Returns))
+	for i, t := range sig.Returns {
+		c := core.NewCarrier(t)
+		c.Dynamic = t.Equal(core.TAny)
+		out[i] = c
 	}
 	return out
 }

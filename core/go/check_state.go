@@ -52,6 +52,15 @@ type CheckState struct {
 	// where no dispatch published one (a fn-value apply), which makes the
 	// claim miss and is the safe direction.
 	CurCallWord string
+	// BareCallPos is the position of the dispatch whose ReturnsFn is running
+	// when that dispatch sits in a BARE context (Engine.bareCallContext): the
+	// top-level program's own stream, no value beneath its operands inside
+	// the enclosing group and no token after them before the statement or
+	// group ends — so a word its handler hands back for the tape to re-step
+	// there meets exactly what a fresh sealed sub-engine would. Zero
+	// otherwise; a ReturnsFn compares it with CurCallPos (a `case` clause
+	// block that is a bare function word, NUR332).
+	BareCallPos SrcPos
 	// CurWordPos is the position of the WORD TOKEN whose dispatch handler is
 	// currently running — what `e.currentPos()` reads, written once per
 	// dispatch just before the handler is invoked.
@@ -353,6 +362,12 @@ type CheckState struct {
 	// speculative: a loop or each body, a known arm and a `do` body keep
 	// the twin machinery that already answers them.
 	SpecArmDepth int
+	// UnsealedArmDepth, when > 0, marks analysis inside an `if` whose chosen
+	// body the interpreter re-steps at the `if` rather than runs as an arm —
+	// the clause-list form (basic's ifClauseRecord) — so its arms, and every
+	// arm nested in them, are captured UNSEALED: no arm trap is recorded
+	// there (EmitRecorder.ArmSealedBranchCapture, NUR332).
+	UnsealedArmDepth int
 
 	// LoopBodyDepth, when > 0, marks analysis running inside a PROVEN
 	// counted-for LOOP body (AnalyseLoopBody brackets each round's body run,
@@ -1276,6 +1291,7 @@ func (c *CheckState) Begin() func() {
 	c.SpecUndefGen = 0
 	c.SpecFnNames = nil
 	c.SpecArmDepth = 0
+	c.UnsealedArmDepth = 0
 	c.ArgsFrameUnnamed = false
 	// Compiling marks a REAL compile pass; the compile entry points set it
 	// true AFTER this Begin (via BeginCompilePass). Reset it here so it is

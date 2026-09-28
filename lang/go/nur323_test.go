@@ -41,14 +41,17 @@ func TestNUR323TypeValueIsNoValueOfItsParent(t *testing.T) {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
 	// A poly in a fn unit whose operand is a type at run time meets its
-	// no-match without a faithful raise plan: the loud defer, where it
-	// answered the handler over the type literal ([1]).
+	// no-match. It answered the handler over the type literal ([1]); then
+	// it deferred loudly, owed its raise; now the optimistic dispatch's
+	// exact layout rides the poly record (PolyRef.Split), and the run raises
+	// the interpreter's signature_error byte for byte (NUR332's twin, the
+	// joined-element `[1 Integer] each [add 1]`).
 	for _, src := range []string{
 		`def f fn [[][Any][Integer]] end (f) add 1`,
 		`def f fn [[m:Map][Any][m.e add 1]] end f {e: Integer}`,
 		`each ([e:Any] => [e add 1]) [Integer]`,
 	} {
-		requireLoudDefer(t, src, "CALL_NATIVE_POLY no match for add", "ERROR:cannot call `add`")
+		requireCompiledParity(t, src)
 	}
 }
 
