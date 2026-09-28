@@ -156,8 +156,11 @@ func TestFoldedEscapeSites(t *testing.T) {
 			es.fnRecs = []*fnUnitRec{{}, {returnsFolded: true}}
 			es.RecordUserPolyCall("g", reg, nil, []int{-1, 0, 5, 1}, nil, nil, nil, nil, pos, "g", pos)
 		}},
-		{"a code body's result", "a code body's or a lambda's result", func(es *EmitState, reg *core.Registry, lam core.Value) {
-			es.fnResidualReplayReason(&emitUnit{localByID: map[string]int{}}, &fnUnitRec{closure: true}, []core.Value{lam}, nil, 0)
+		{"a lambda's result", "a lambda's result", func(es *EmitState, reg *core.Registry, lam core.Value) {
+			es.fnResidualReplayReason(&emitUnit{localByID: map[string]int{}}, &fnUnitRec{closure: true, lambdaUnit: true}, []core.Value{lam}, nil, 0)
+		}},
+		{"a stored body's result", "a lambda's result", func(es *EmitState, reg *core.Registry, lam core.Value) {
+			es.fnResidualReplayReason(&emitUnit{localByID: map[string]int{}}, &fnUnitRec{closure: true, storedRefUnit: true}, []core.Value{lam}, nil, 0)
 		}},
 		{"a pending folded fire the model stood aside for", "a def-bound read the model stood aside for", func(es *EmitState, reg *core.Registry, lam core.Value) {
 			es.pendingFoldedFire = lam.ID

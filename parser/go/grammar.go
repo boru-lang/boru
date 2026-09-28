@@ -562,8 +562,12 @@ func setupTemplateLiteralMatcher(j *jsonic.Jsonic, t parserTokens) {
 			if s[si] == '$' && si+1 < len(s) && s[si+1] == '{' {
 				break
 			}
-			// Process escape sequences in template literals.
+			// Process escape sequences in template literals. A malformed
+			// `\x` / `\u` is refused as a quoted string's is (NUR026).
 			if s[si] == '\\' && si+1 < len(s) {
+				if code, end := escapeFault(s, si+1, '`'); code != "" {
+					return badEscapeToken(lex, code, s[si:end])
+				}
 				si += 2
 				continue
 			}
@@ -587,6 +591,44 @@ func setupTemplateLiteralMatcher(j *jsonic.Jsonic, t parserTokens) {
 			}
 		}
 		return tkn
+	})
+}
+
+// setupStringEscapeMatcher refuses a malformed `\x` / `\u` escape in a
+// quoted string before jsonic's string lexer reads it (NUR026). The two
+// tabnas ports report one differently — Go spans from the opening quote,
+// TS spans the escape, and `"a\x4"` is an invalid escape in Go but an
+// unterminated string in TS — so boru owns the check, with the definition a
+// template's text answers to (escapeFault), as the 2026-07-31 verdict put
+// string escapes in boru's hands. A well-formed or unterminated string, or a
+// raw control character, is left to jsonic.
+func setupStringEscapeMatcher(j *jsonic.Jsonic) {
+	addMatcher(j, "string_escape", 1000003, func(lex *jsonic.Lex, rule *jsonic.Rule) *jsonic.Token {
+		if rule != nil {
+			if _, tpl := rule.K["boru_tpl"]; tpl {
+				return nil
+			}
+		}
+		s := lex.Src
+		si := lex.Cursor().SI
+		if si >= len(s) || (s[si] != '"' && s[si] != '\'') {
+			return nil
+		}
+		q := s[si]
+		for i := si + 1; i < len(s); i++ {
+			c := s[i]
+			if c == q || c < 32 {
+				return nil
+			}
+			if c != '\\' || i+1 >= len(s) {
+				continue
+			}
+			if code, end := escapeFault(s, i+1, q); code != "" {
+				return badEscapeToken(lex, code, s[i:end])
+			}
+			i++
+		}
+		return nil
 	})
 }
 
@@ -802,6 +844,9 @@ func setupValRule(j *jsonic.Jsonic, t parserTokens) {
 			},
 		})
 		setOpen(rs, []*jsonic.AltSpec{
+			// An arrow with nothing to fold — the source ends, or a closer
+			// or separator follows — has no body: refuse it (NUR060).
+			arrowNoBody(t),
 			// Consume the arrow, parse exactly one following val as the body.
 			{S: [][]jsonic.Tin{{t.AR}}, P: "val"},
 		})
@@ -906,6 +951,7 @@ func setupValRule(j *jsonic.Jsonic, t parserTokens) {
 			},
 		})
 		setOpen(rs, []*jsonic.AltSpec{
+			arrowNoBody(t),
 			{S: [][]jsonic.Tin{{t.AR}}, P: "val"},
 		})
 		setClose(rs, []*jsonic.AltSpec{
@@ -1240,10 +1286,44 @@ func setupPairGrammar(j *jsonic.Jsonic, t parserTokens) {
 		})
 	})
 
+	// --- A `]` never closes a list no `[` opened ---
+	//
+	// jsonic's list Close takes `]` for every list, so a bracket-less
+	// (implicit) top-level list swallowed a stray one: `1 2 ]` parsed as
+	// `1 2`, while `0 ]` (no list yet) was refused, and `1 2 ] 3` failed
+	// only at the end-of-parse check — which the two tabnas ports report
+	// on different tokens (NUR060). A list whose open token is not `[` is
+	// implicit; its `]` is an unexpected token, refused where it stands.
+	j.Rule("list", func(rs *jsonic.RuleSpec, _ *jsonic.Parser) {
+		prependClose(rs, []*jsonic.AltSpec{
+			{S: [][]jsonic.Tin{{jsonic.TinCS}},
+				C: func(r *jsonic.Rule, ctx *jsonic.Context) bool {
+					return r.O0 == nil || r.O0.Tin != jsonic.TinOS
+				},
+				E: func(_ *jsonic.Rule, ctx *jsonic.Context) *jsonic.Token {
+					return ctx.T0.Bad("unexpected", nil)
+				}},
+		})
+	})
+
 	// --- Optional field syntax in list context: [x?:Integer] ---
 
 	j.Rule("elem", func(rs *jsonic.RuleSpec, _ *jsonic.Parser) {
 		prependOpen(rs, []*jsonic.AltSpec{
+			// An element that OPENS with `:` is a typed list's child; one
+			// with no value after the colon (`[:]`, `[1, :]`, `? :`) is an
+			// empty element, refused like `{:}` and `[1 :]`. The Go tabnas
+			// port records an empty list child as a nil Child — the same as
+			// no child — so the converter cannot see it; the TS port keeps
+			// the two apart (NUR060).
+			{S: [][]jsonic.Tin{{jsonic.TinCL}, {jsonic.TinZZ, jsonic.TinCS, jsonic.TinCA}},
+				C: func(r *jsonic.Rule, ctx *jsonic.Context) bool {
+					_, qm := r.K["boru_qm"]
+					return !qm
+				},
+				E: func(_ *jsonic.Rule, ctx *jsonic.Context) *jsonic.Token {
+					return ctx.T0.Bad("empty_child", nil)
+				}},
 			// Step 1: match KEY ? — save key, push to elem.
 			{S: [][]jsonic.Tin{jsonic.TinSetKEY, {t.QM}},
 				P: "elem", K: map[string]any{"boru_qm": true},
@@ -1516,8 +1596,12 @@ func setupInterpGrammar(j *jsonic.Jsonic, t parserTokens) {
 			},
 		})
 		setOpen(rs, []*jsonic.AltSpec{
-			// Empty expression: ${}
-			{S: [][]jsonic.Tin{{jsonic.TinCB}}},
+			// Empty expression: ${}. Backtrack so the Close alternate takes
+			// the `}` — consuming it here left the Close wanting a second
+			// one, so the template broke after an empty hole (`x${}y` read
+			// `y` as unexpected) and only an unterminated one survived, in
+			// two different shapes (NUR060).
+			{S: [][]jsonic.Tin{{jsonic.TinCB}}, B: 1},
 			// First expression value.
 			{P: "ieval"},
 		})
@@ -1732,3 +1816,19 @@ func setupNumberSub(j *jsonic.Jsonic) {
 // place of a lambda-constructor word name; the converter maps it to
 // the lambda sugar marker (ADR-012 rule 3, 2026-08-04 amendment).
 type arrowTag struct{}
+
+// arrowNoBody is the fold's refusal of an arrow with no body: `=>` followed
+// by the end of the source, a closer (`]` `}` `)`) or a separator (`,` `;`).
+// Before it, the half-built (SIG afn) group fell to the tabnas val coalescer,
+// which restored the SIG alone — the arrow vanished (`[1 =>]` read `[1]`) —
+// or, where the body val re-read the SIG token, doubled it as the body
+// (`def x 2 =>` read `def x (2 => 2)`), differently in the two ports
+// (NUR060). The error sits on the arrow.
+func arrowNoBody(t parserTokens) *jsonic.AltSpec {
+	return &jsonic.AltSpec{
+		S: [][]jsonic.Tin{{t.AR}, {jsonic.TinZZ, jsonic.TinCS, jsonic.TinCB, t.CP, jsonic.TinCA, t.SC}},
+		E: func(_ *jsonic.Rule, ctx *jsonic.Context) *jsonic.Token {
+			return ctx.T0.Bad("arrow_no_body", nil)
+		},
+	}
+}

@@ -137,6 +137,51 @@ behave deq/q (fn [[Tag Tag] [Boolean] [true]])`); err != nil {
 	}
 }
 
+// TestBehaveEqSlotInstalls pins the eq slot's wiring (NUR075): `eq` is
+// extensible per type on deq's terms — the same shape, the same terminal
+// dispatch point (core.ExactEqualer, covered in core's
+// nur075_exact_equaler_test.go, since the values reaching the terminal are
+// not constructible from boru source today) — and installing it leaves deq
+// alone.
+func TestBehaveEqSlotInstalls(t *testing.T) {
+	r := w9Reg(t)
+	if _, err := w9Run(t, r, `
+def Tag (refine Ideal)
+behave eq/q (fn [[Tag Tag] [Boolean] [true]])`); err != nil {
+		t.Fatalf("installing the eq slot: %v", err)
+	}
+	ty := r.LookupTypeName("Tag")
+	if ty == nil {
+		t.Fatal("Tag was not installed")
+	}
+	ee, ok := ty.Behavior().(core.ExactEqualer)
+	if !ok {
+		t.Fatal("the eq slot did not produce an ExactEqualer")
+	}
+	eq, err := ee.ExactEqualValues(NewInteger(1), NewInteger(2))
+	if err != nil || !eq {
+		t.Errorf("the installed body returns true, so ExactEqualValues must: %v %v", eq, err)
+	}
+	// deq has no body of its own here: the wrapper declines it.
+	if de, ok := ty.Behavior().(core.DeepEqualer); ok {
+		if _, err := de.DeepEqualValues(NewInteger(1), NewInteger(2)); err == nil {
+			t.Error("an eq-only wrapper must decline deq")
+		}
+	}
+	// A wrapper with no eq body declines eq in turn.
+	r2 := w9Reg(t)
+	if _, err := w9Run(t, r2, `
+def Tag (refine Ideal)
+behave deq/q (fn [[Tag Tag] [Boolean] [true]])`); err != nil {
+		t.Fatalf("installing the deq slot: %v", err)
+	}
+	if ee2, ok := r2.LookupTypeName("Tag").Behavior().(core.ExactEqualer); ok {
+		if _, err := ee2.ExactEqualValues(NewInteger(1), NewInteger(2)); err == nil {
+			t.Error("a deq-only wrapper must decline eq")
+		}
+	}
+}
+
 // TestBehaveNewSlotsRejectWrongShapes is the negative half — each
 // validator must refuse a fn whose shape does not match the slot's
 // contract, or a body would be installed that the kernel then calls
@@ -179,6 +224,25 @@ behave deq/q (fn [[T T] [Integer] [1]])`,
 			want: "deq: fn must return Boolean",
 		},
 		{
+			name: "eq with one param",
+			src: `def T (refine Integer)
+behave eq/q (fn [[T] [Boolean] [true]])`,
+			want: "eq: fn must take 2 args",
+		},
+		{
+			name: "eq over two different types",
+			src: `def T (refine Integer)
+def U (refine Integer)
+behave eq/q (fn [[T U] [Boolean] [true]])`,
+			want: "eq: both params must be the same type",
+		},
+		{
+			name: "eq returning a non-Boolean",
+			src: `def T (refine Integer)
+behave eq/q (fn [[T T] [Integer] [1]])`,
+			want: "eq: fn must return Boolean",
+		},
+		{
 			name: "size with two params",
 			src: `def T (refine Integer)
 behave size/q (fn [[T T] [Integer] [1]])`,
@@ -207,12 +271,12 @@ behave size/q (fn [[T] [Boolean] [true]])`,
 // arm: a param with no declared type gives the slot nothing to attach
 // to.
 func TestBehaveNewSlotsUntypedParamsRejected(t *testing.T) {
-	for _, slot := range []string{"truthy", "size", "deq"} {
+	for _, slot := range []string{"truthy", "size", "deq", "eq"} {
 		fn := "(fn [[a] [Boolean] [true]])"
 		if slot == "size" {
 			fn = "(fn [[a] [Integer] [1]])"
 		}
-		if slot == "deq" {
+		if slot == "deq" || slot == "eq" {
 			fn = "(fn [[a b] [Boolean] [true]])"
 		}
 		if _, err := w9Run(t, w9Reg(t), "behave "+slot+"/q "+fn); err == nil {

@@ -76,11 +76,11 @@ func TestComboTypeNamesRendering(t *testing.T) {
 // returns its lattice node, whose Behavior is a *core.PredicateUnifier.
 func covPredicateType(t *testing.T, r *core.Registry, name string) *core.Type {
 	t.Helper()
-	pred := core.NewValueRaw(core.TFunction, core.FnDefInfo{Signatures: []core.Signature{{
+	pred := core.MarkPredicateFn(core.NewValueRaw(core.TFunction, core.FnDefInfo{Signatures: []core.Signature{{
 		Params:  []core.FnParam{{Name: "n", Type: core.TInteger}},
 		Returns: []*core.Type{core.TBoolean},
 		Impl:    core.Boru([]core.Value{core.NewBoolean(true)}),
-	}}})
+	}}}))
 	if err := core.InstallType(r, name, pred); err != nil {
 		t.Fatalf("InstallType(%s): %v", name, err)
 	}

@@ -15,11 +15,11 @@ import "boru:serve"
 import "sessions.boru"          # for the shared presence-name convention
 
 export "Notify" {
-  New: New/v
+  New: new/v
 }
 
 # `New {}` -> Service.  Place this in a server with `overflow: 'drop` (app.boru).
-def New fn [[opts:Map] [Service] [
+def new fn [[opts:Map] [Service] [
   def svc ( service {} )
 
   # --- event: a mutation happened; push it to the user's presence proc ---

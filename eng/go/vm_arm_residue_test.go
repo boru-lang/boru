@@ -141,7 +141,7 @@ func TestWrapperOverDetachedUnitHostsNested(t *testing.T) {
 			t.Errorf("%s: callDynamic answered %v, want the detached unit's 42", wrap.name, got[0])
 		}
 
-		got, ent, err = vc.callDynMethod(r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), w}, seam7Dbg, 0)
+		got, ent, err = vc.callDynMethod(r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), w}, seam7Dbg, 0)
 		if err != nil || ent != nil || len(got) != 1 {
 			t.Fatalf("%s: callDynMethod: %v %v %v", wrap.name, got, ent, err)
 		}
@@ -168,7 +168,7 @@ func TestCallDynMethodMemberRaises(t *testing.T) {
 		fn   core.Value
 	}{{"detached unit", raiser}, {"wrapped detached unit", wrapped}} {
 		vc, r := foreignVC(t, oneConstProg(1))
-		_, _, err := vc.callDynMethod(r, spec, []core.Value{core.NewInteger(5), tc.fn}, seam7Dbg, 0)
+		_, _, err := vc.callDynMethod(r, spec, 0, []core.Value{core.NewInteger(5), tc.fn}, seam7Dbg, 0)
 		wantErr(t, err, "the method raised")
 	}
 
@@ -195,7 +195,7 @@ func TestCallDynMethodMemberRaises(t *testing.T) {
 	if !ok {
 		t.Fatal("the closure wrapper did not build")
 	}
-	_, _, err := vc.callDynMethod(r, spec, []core.Value{core.NewInteger(5), w}, seam7Dbg, 0)
+	_, _, err := vc.callDynMethod(r, spec, 0, []core.Value{core.NewInteger(5), w}, seam7Dbg, 0)
 	wantErr(t, err, "expected Integer")
 }
 

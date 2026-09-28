@@ -30,6 +30,10 @@ func registerBytesType() *core.Type {
 	if err != nil { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
 		recordTypeInitErr(fmt.Errorf("types_bytes: register Scalar/Bytes: %w", err))
 	}
+	// Bytes is an ordered scalar leaf (a byte-lexicographic Comparer), so
+	// it declares itself a refinement base: `Bytes gte (convert Bytes "a")`
+	// refines it as `Integer gte 0` refines Integer (NUR009).
+	core.DeclareRefinementBase(t)
 	return t
 }
 

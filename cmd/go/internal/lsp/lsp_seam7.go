@@ -8,6 +8,7 @@ import (
 	"encoding/json"
 	"net"
 
+	"github.com/boru-lang/boru/cmd/go/internal/permsflags"
 	lang "github.com/boru-lang/boru/lang/go"
 	"github.com/boru-lang/boru/lang/go/native"
 )
@@ -15,6 +16,9 @@ import (
 var (
 	// langNew seams lang.New for computeDiagnostics's init-failure arm.
 	langNew = lang.New
+	// envPolicy seams permsflags.EnvPolicy for the policy-resolution arms
+	// (NUR079): the environment policy an editor session inherits.
+	envPolicy = permsflags.EnvPolicy
 
 	// nativeDefaultRegistry seams native.DefaultRegistry for
 	// ensureRegistry's init-failure arm.

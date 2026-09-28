@@ -136,6 +136,12 @@ func IsSteplessWindow(vs []Value) bool {
 	return true
 }
 
+// depBoundConst reports whether a refinement's bound side is absent or an
+// inert const (NUR308).
+func depBoundConst(b *DepBound) bool {
+	return b == nil || IsInertConst(b.Value)
+}
+
 func IsInertConst(v Value) bool {
 	if v.Carrier || v.Dynamic || IsBareTypeNode(v) {
 		return false
@@ -182,7 +188,10 @@ func IsInertConst(v Value) bool {
 		// The bound is recovered for a stripped operand via origByID
 		// (RememberOriginal at the constructor); type-algebra words
 		// (tcmp/teq/tand/…) then run over the baked predicate at run time.
-		return true
+		// Only a KNOWN bound is self-contained: a computed one (`Integer gt
+		// (size s)`) is the analysis pass's carrier, and a predicate over it
+		// baked a bound that is no value (NUR308).
+		return depBoundConst(d.Lo) && depBoundConst(d.Hi)
 	case RecordTypeInfo, OptionsTypeInfo, ChildTypeInfo, DisjunctInfo, ClassTypeInfo, TableTypeInfo:
 		// STRUCTURAL type bodies (what a bound type name pushes at a
 		// use site — make's operand). Sound as consts when their
@@ -338,6 +347,23 @@ func IsInertConst(v Value) bool {
 func IsFnTypedCarrier(v Value) bool {
 	return v.Carrier && v.Parent != nil &&
 		(v.Parent.ConformsTo(TFunction) || TypeIsFnShape(v.Parent))
+}
+
+// UnionMayBeFn reports whether v is a union carrier one of whose
+// alternatives is a fn — a branch join that may hold the fn value an arm
+// left (NUR317). The static tests miss it: the join's own type is the
+// union, which conforms to no fn type, and it is neither dynamic nor the
+// branch's value once a word hands it back under a fresh ID.
+func UnionMayBeFn(v Value) bool {
+	if !v.Carrier || !IsDisjunct(v) {
+		return false
+	}
+	for _, alt := range FlattenAlternatives(v) {
+		if IsFnTypedCarrier(CarrierOfLiteral(alt)) {
+			return true
+		}
+	}
+	return false
 }
 
 // TypeIsFnShape reports whether t is a function-SHAPE type — a type whose

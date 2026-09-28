@@ -23,7 +23,7 @@ import "boru:vm" { scopes: { engine: { words: { default: "allow" } } } } "10 sub
 #     Returns a QUOTED list of the engine's parse values; element
 #     shapes are implementation-defined for now (design/legacy/PARSING.10.ignore
 #     §3). Parse errors raise [boru/parse_error].
-import "boru:vm" Vm.parse "1 add 2"	(quote [1 word(add) 2])	parses source to a quoted token list without running it
+import "boru:vm" Vm.parse "1 add 2"	(quote [1 add 2])	parses source to a quoted token list without running it
 import "boru:vm" size (Vm.parse "1 add 2")	3	the structure is ordinary data
 import "boru:vm" Vm.parse "1 add ((("	ERROR:parse_error	malformed source raises loudly
 #

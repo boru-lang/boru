@@ -1,5 +1,7 @@
 package compiler
 
+import "slices"
+
 // The RUNTIME-CHECKED SINGLE VALUE (NUR210's follow-up). A COMPUTED `do`
 // body — `do b` over a List param, `do (mk)` over a factory's quoted list —
 // leaves 0-or-more values at run time where the check pass models one
@@ -37,11 +39,15 @@ package compiler
 // cannot (a value beneath the run, entries above it) the decline is the
 // NUR210 witnesses' own answer.
 
-// dynRegionCheckable reports whether fi is a computed `do` body's region
-// whose run may leave a callable — the one region demoteDynRegion may turn
-// into a runtime-checked single value.
+// dynRegionCheckable reports whether fi is a computed `do` body's region, a
+// computed error handler's (NUR300), or a strip word's island over a literal
+// handler (NUR301), whose run may leave a callable — the one region
+// demoteDynRegion may turn into a runtime-checked single value. The island's
+// check is its span's (FallbackSpan.CheckOne): `def ok (do b error [drop
+// false])` seats the handler's one value as it seated before NUR301 made the
+// island a region, and a handler that leaves two defers loudly.
 func dynRegionCheckable(fi eventFlags) bool {
-	return fi.dynBodyResult && fi.variadicRegion && fi.regionMayBeFn
+	return (fi.dynBodyResult || fi.stripIsland) && fi.variadicRegion && fi.regionMayBeFn
 }
 
 // demoteDynRegion turns the checkable region seq into a runtime-checked
@@ -73,6 +79,31 @@ func (es *EmitState) demoteConsumedDynRegions() {
 	for _, rec := range es.fnRecs {
 		if rec.frag != nil {
 			walkConsumingOperands(rec.frag.events, visit)
+		}
+	}
+	es.settleDemotedStrips()
+}
+
+// settleDemotedStrips clears the region marks a strip-input call inherited
+// from a region the pre-pass demoted (eventFlags.stripFrom): the checked run
+// left exactly the one value the strip consumes, so nothing of it lies
+// beneath the strip's result, which is one value — `def ok (do b error
+// [drop false])` binds it as it did before NUR301 made the strip a region.
+// Ascending seqs settle a strip over a strip, its source recorded first.
+func (es *EmitState) settleDemotedStrips() {
+	seqs := make([]int, 0, len(es.eventInfo))
+	for seq, f := range es.eventInfo {
+		if f.stripFrom {
+			seqs = append(seqs, seq)
+		}
+	}
+	slices.Sort(seqs)
+	for _, seq := range seqs {
+		f := es.eventInfo[seq]
+		src := es.eventInfo[f.stripSrc]
+		if f.variadicRegion && !src.variadicRegion && (src.dynBodyOne || src.stripFrom) {
+			f.variadicRegion, f.regionMayBeFn = false, false
+			es.eventInfo[seq] = f
 		}
 	}
 }

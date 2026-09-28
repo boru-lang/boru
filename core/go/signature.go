@@ -498,10 +498,11 @@ func rejectsTypeLiteral(v Value, expectedType *Type) bool {
 	if expectedType.Equal(TAny) {
 		return false
 	}
-	if expectedType.Equal(TNone) {
-		// At a TNone slot, the None type literal is the canonical
-		// inhabitant; sigTypeMatches has already verified the value
-		// is None-typed.
+	if !IsTypeLiteral(v) {
+		// The None literal is a VALUE — what a missing member reads as
+		// (IsTypeLiteral excludes it) — admitted wherever the slot's own
+		// match admitted it: a None slot, and a union that names None
+		// (NUR324).
 		return false
 	}
 	if expectedType.Equal(TType) {
@@ -522,6 +523,20 @@ func rejectsTypeLiteral(v Value, expectedType *Type) bool {
 		return false
 	}
 	return true
+}
+
+// ParamAdmits reports whether a declared parameter type t admits the value v
+// the way the interpreter's dispatch does: the type match (SigTypeMatches)
+// and the type-literal rule positionalMatch applies over it — a type is no
+// value of its Parent, so a bare type node is refused at a Map or List slot
+// and wherever rejectsTypeLiteral refuses it. The compiled lane's parameter
+// contract asked the type match alone, and a Type value bound an Integer
+// parameter the interpreter refuses it at (NUR328).
+func ParamAdmits(v Value, t *Type) bool {
+	if !SigTypeMatches(v, t) {
+		return false
+	}
+	return !IsBareTypeNode(v) || !(t.ConformsTo(TMap) || t.ConformsTo(TList) || rejectsTypeLiteral(v, t))
 }
 
 // positionalMatch checks whether values match the signature's types in order.
@@ -561,9 +576,14 @@ func positionalMatch(values []Value, sig *Signature) bool {
 		}
 		// Reject type literals (Data==nil) for concrete Map/List
 		// signatures — including the FlexMap/FlexList subtypes —
-		// unless this slot explicitly wants a type literal.
+		// unless this slot explicitly wants a type literal. Elsewhere a
+		// type literal is refused exactly where the interpreter's plan
+		// refuses it (rejectsTypeLiteral, PlanMatch and the collection
+		// kernel): a type is no value of its Parent, so the VM's poly
+		// re-match took `add` over the Integer node where the interpreter
+		// raises (NUR323).
 		isTypeArg := sig.TypeArgs != nil && sig.TypeArgs[i]
-		if !isTypeArg && IsBareTypeNode(v) && (t.ConformsTo(TMap) || t.ConformsTo(TList)) {
+		if !isTypeArg && IsBareTypeNode(v) && (t.ConformsTo(TMap) || t.ConformsTo(TList) || rejectsTypeLiteral(v, t)) {
 			return false
 		}
 	}

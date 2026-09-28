@@ -63,6 +63,9 @@ func GeneraliseSpecUndef(r *Registry, name string) bool {
 	}
 	noteRebind(r, name)
 	c := NewCarrier(v.Parent)
+	if IsTypeLiteral(v) {
+		c = ValueCarrier(v) // a type VALUE, no value of its Parent (NUR323)
+	}
 	r.Defs.Replace(name, c)
 	if r.Check.SpecUndefCarriers == nil {
 		r.Check.SpecUndefCarriers = map[string]string{}
@@ -84,7 +87,7 @@ func PopLiveBinding(r *Registry, name string) {
 	if r == nil {
 		return
 	}
-	if e, ok := r.Defs.PopEntry(name); ok && e.TypeDef != nil && e.Minted {
-		r.Types.Retire(e.TypeDef)
+	if e, ok := r.Defs.PopEntry(name); ok && e.TypeDef != nil && e.Minted && !r.Defs.HoldsType(e.TypeDef) {
+		r.Types.Retire(e.TypeDef) // the last pop retires the node (NUR135)
 	}
 }

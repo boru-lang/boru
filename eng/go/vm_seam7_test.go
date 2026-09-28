@@ -132,6 +132,8 @@ func TestSeam7RunUnderflowArms(t *testing.T) {
 		{"for-next", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpForNext, Arg: 0}}}, "FOR_NEXT without a loop"},
 		{"jmpiffalse", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpJmpIfFalse, Arg: 5}}}, "JMP_IF_FALSE underflow"},
 		{"bind-typed", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpBindTyped, Arg: 0}}, TypedBinds: []core.TypedBindSpec{{Kind: core.TypedBindDepScalar, Name: "x"}}}, "BIND_TYPED stack underflow"},
+		{"bind-typed-cons", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpPushConst, Arg: 0}, {Op: compiler.OpBindTyped, Arg: 0}}, Consts: []core.Value{core.NewInteger(1)}, TypedBinds: []core.TypedBindSpec{{Kind: core.TypedBindRunMembership, Name: "x", ConsOperand: true}}}, "BIND_TYPED stack underflow"},
+		{"bind-type-run", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpBindTypeRun, Arg: 0}}, TypeRuns: []core.TypeRunInstallSpec{{Name: "T"}}}, "BIND_TYPE_RUN stack underflow"},
 		{"call-native-poly", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpCallNativePoly, Arg: 0}}, PolyRefs: []compiler.PolyRef{{Word: "p", Arity: 2}}}, "CALL_NATIVE_POLY underflow"},
 		{"drop-to-mark", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpDropToMark}}}, "DROP_TO_MARK with no open mark"},
 		{"pop-mark", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpPopMark}}}, "POP_MARK with no open mark"},
@@ -142,6 +144,21 @@ func TestSeam7RunUnderflowArms(t *testing.T) {
 		t.Run(c.name, func(t *testing.T) {
 			wantInternal(t, runMalformed(t, c.p), c.sub)
 		})
+	}
+}
+
+// TestBindTypeRunRefusal: the run-time type install's own refusal (NUR308's
+// type half) is the interpreter's installer's raise, stamped at the op.
+func TestBindTypeRunRefusal(t *testing.T) {
+	p := &compiler.Program{
+		Code:     []compiler.Instr{{Op: compiler.OpPushConst, Arg: 0}, {Op: compiler.OpBindTypeRun, Arg: 0}},
+		Consts:   []core.Value{core.NewDepScalar(core.DepGT, core.NewInteger(1))},
+		TypeRuns: []core.TypeRunInstallSpec{{Name: "lower"}},
+	}
+	err := runMalformed(t, p)
+	var ae *core.BoruError
+	if !errors.As(err, &ae) || ae.Code != "type_error" || !strings.Contains(ae.Detail, "type names must start with a capital letter") {
+		t.Fatalf("the installer's refusal surfaces: %v", err)
 	}
 }
 
@@ -218,13 +235,13 @@ func TestSeam7CodeUnitEndedWithoutRet(t *testing.T) {
 func TestSeam7ForSetupRangeErrors(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
 	// Non-integer range triple.
-	_, _, err := vc.opForSetup([]core.Value{core.NewString("a"), core.NewString("b"), core.NewString("c")}, nil, 0, nil, -1, 0, seam7Dbg)
+	_, _, err := vc.opForSetup([]core.Value{core.NewString("a"), core.NewString("b"), core.NewString("c")}, nil, 0, 0, nil, -1, 0, seam7Dbg)
 	wantErr(t, err, "range must be concrete Integers")
 	// Zero step (stack top→ start, then end, then step).
-	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(0), core.NewInteger(5), core.NewInteger(1)}, nil, 0, nil, -1, 0, seam7Dbg)
+	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(0), core.NewInteger(5), core.NewInteger(1)}, nil, 0, 0, nil, -1, 0, seam7Dbg)
 	wantErr(t, err, "step cannot be zero")
 	// Underflow.
-	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(1)}, nil, 0, nil, -1, 0, seam7Dbg)
+	_, _, err = vc.opForSetup([]core.Value{core.NewInteger(1)}, nil, 0, 0, nil, -1, 0, seam7Dbg)
 	wantInternal(t, err, "FOR_SETUP underflow")
 }
 
@@ -378,10 +395,10 @@ func TestSeam7CallDynApplyTopArms(t *testing.T) {
 
 func TestSeam7CallDynMethodArms(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
-	_, _, err := vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, nil, seam7Dbg, 0)
+	_, _, err := vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, 0, nil, seam7Dbg, 0)
 	wantInternal(t, err, "CALL_DYN_METHOD underflow at m")
 	// non-appliable value on top: shape claim failed → defer.
-	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), core.NewInteger(9)}, seam7Dbg, 0)
+	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "m", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), core.NewInteger(9)}, seam7Dbg, 0)
 	wantInternal(t, err, "is not an appliable function at run time")
 }
 
@@ -420,10 +437,10 @@ func TestSeam7TryNativeFnApplyNoSigs(t *testing.T) {
 
 func TestSeam7RunFallbackArms(t *testing.T) {
 	vc := seam7VC(seam7Reg(t))
-	_, err := vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, nil, seam7Dbg, 0)
+	_, _, err := vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, false, nil, seam7Dbg, 0)
 	wantInternal(t, err, "FALLBACK underflow at d")
 	// NIn > 1 with enough stack: the lowerer never threads >1, so it is declined.
-	_, err = vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, []core.Value{core.NewInteger(1), core.NewInteger(2)}, seam7Dbg, 0)
+	_, _, err = vc.runFallback(vc.r, &core.FallbackSpan{NIn: 2, Desc: "d"}, false, []core.Value{core.NewInteger(1), core.NewInteger(2)}, seam7Dbg, 0)
 	wantInternal(t, err, "FALLBACK threads >1 input at d")
 }
 
@@ -566,7 +583,7 @@ func TestSeam7DelegationApplySuccess(t *testing.T) {
 		t.Errorf("leading delegation cinc(5) = %d, want 6", n)
 	}
 	// callDynMethod: fn ON TOP, shape claim {NArgs:1, NOut:1}.
-	got, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cinc", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), inc}, seam7Dbg, 0)
+	got, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cinc", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), inc}, seam7Dbg, 0)
 	if err != nil {
 		t.Fatalf("method delegation apply: %v", err)
 	}
@@ -585,7 +602,7 @@ func TestSeam7DelegationApplyError(t *testing.T) {
 	wantErr(t, err, "cfail: boom")
 	_, _, err = vc.callDynamic(vc.r, 1, false, []core.Value{fail, core.NewInteger(5)}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
-	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cfail", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), fail}, seam7Dbg, 0)
+	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cfail", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), fail}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
 }
 
@@ -671,7 +688,7 @@ func TestSeam7IslandApplyErrorArms(t *testing.T) {
 	wantErr(t, err, "cfail: boom")
 	_, _, err = vc.callDynApplyTop(vc.r, 1, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
-	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cuserfail", NArgs: 1, NOut: 1}, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0)
+	_, _, err = vc.callDynMethod(vc.r, &compiler.DynMethodSpec{Word: "cuserfail", NArgs: 1, NOut: 1}, 0, []core.Value{core.NewInteger(5), fn}, seam7Dbg, 0)
 	wantErr(t, err, "cfail: boom")
 	// callDynamicMixed islands its window verbatim — a window that calls cfail
 	// errors through the island (the mixed island error arm).

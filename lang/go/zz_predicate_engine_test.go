@@ -73,13 +73,13 @@ func TestPredicateBodyRunsOnTheVM(t *testing.T) {
 // a predicate that answers two values is not a raise, and is refused as a
 // malformed predicate on both lanes too.
 func TestTypedDefPredicateRaisePropagates(t *testing.T) {
-	const raising = `def Boom fn [[n:Integer] [Boolean] [raise bad_input "no"]] end def x:Boom 5 end x`
+	const raising = `def Boom fnpred [[n:Integer] [raise bad_input "no"]] end def x:Boom 5 end x`
 	requireEngineParity(t, raising, true)
 	_, errI := mustNew(t).RunInterp(raising)
 	if codeOf(errI) != "bad_input" || !strings.Contains(fmt.Sprint(errI), "def x: predicate type Boom: ") {
 		t.Errorf("the raise must surface in the def's context with its own code, got %v", errI)
 	}
-	const twoValued = `def Two fn [[n:Integer] [Any] [n n]] end def x:Two 5 end x`
+	const twoValued = `def Two fnpred [[n:Integer] [n n]] end def x:Two 5 end x`
 	requireEngineParity(t, twoValued, true)
 	_, errI = mustNew(t).RunInterp(twoValued)
 	if !strings.Contains(fmt.Sprint(errI), "def x: predicate type Two: RunPredicate: predicate must return exactly one value, got 2") {

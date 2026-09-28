@@ -1,18 +1,7 @@
-# Conditional fn-shadow (found by the variation sweep, forward-barrier.tsv:73;
-# fixed to a REFUSAL the same day). A user fn REDEFINED inside a
-# conditionally-reached body — an if/case arm or a for/each loop body —
-# overlap-removes the enclosing overload IN PLACE (installDef drops the outer
-# entry then pushes the new one at the SAME def depth), so the branch/loop def
-# rollback (which restores by depth GROWTH) cannot revert it. Compiled
-# resolution then statically bakes the conditional shadow, while the
-# interpreter keeps the outer fn when the branch is NOT taken (or the loop runs
-# zero times) — `if false [def g …] g 1` returned the shadow's value compiled
-# but the ORIGINAL interpreted. The fix fails to compile the redefinition
-# (CondBodyDepth-gated, eng/go/core_helpers.go), so the interpreter owns the
-# shape with full parity. Full graduation = a runtime dispatch that respects
-# the conditional binding compiles these rows, at which point the entries in
-# frontierCompileLedger delete and the rows move to the main corpus.
-def g fn [[x:Any] [Integer] [x add 100]] if false [def g fn [[x:Any] [Integer] [x add 1]]] g 1	101
+# Conditional fn-shadow (found by the variation sweep, forward-barrier.tsv:73).
+# The branch row graduated to control.tsv §9 (NUR244, 2026-09-26): a
+# redefinition in the arm a decided condition skips is a speculative family
+# now, placed at its site and resolved live.
 #
 # The FN-BODY twin (the thirty-first increment, 2026-09-08): a CAPTURING fn
 # value — a factory's returned closure — redefining an outer overloading def

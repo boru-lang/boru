@@ -42,7 +42,7 @@ func isCodeBody(v Value) bool {
 // Empty slice → no tokens. One element → just that element's tokens (a
 // lone else). The else branch of clause k is, recursively, ifClause of
 // elems[2k+2:].
-func ifClause(elems []Value) []Value {
+func ifClause(elems []Value, pos SrcPos) []Value {
 	switch len(elems) {
 	case 0:
 		return nil
@@ -52,7 +52,7 @@ func ifClause(elems []Value) []Value {
 
 	cond := elems[0]
 	thenBranch := spliceArg(elems[1])
-	elseBranch := ifClause(elems[2:])
+	elseBranch := ifClause(elems[2:], pos)
 
 	if isCodeBody(cond) {
 		_lst, _ := AsList(cond)
@@ -61,7 +61,7 @@ func ifClause(elems []Value) []Value {
 		tokens := make([]Value, 0, len(condSlice)+2)
 		tokens = append(tokens, NewMark(id, condSlice...))
 		tokens = append(tokens, condSlice...)
-		tokens = append(tokens, NewMoveIf(id, "if", &IfCont{Then: thenBranch, Else: elseBranch}))
+		tokens = append(tokens, WithPosAt(NewMoveIf(id, "if", &IfCont{Then: thenBranch, Else: elseBranch}), pos))
 		return tokens
 	}
 
@@ -235,7 +235,8 @@ func CaseClauses(r *Registry, v Value, elems []Value) ([]Value, error) {
 func CaseReturnsFn(args []Value, r *Registry) []Value {
 	dynAny := []Value{NewDynamicCarrier(TAny)}
 	v, clauses := args[0], args[1]
-	if isCodeBody(v) && !isCodeBody(clauses) {
+	swapped := isCodeBody(v) && !isCodeBody(clauses)
+	if swapped {
 		v, clauses = clauses, v
 	}
 	if isCodeBody(v) {
@@ -274,9 +275,22 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		// trap keeps the events before it, drops the case dispatch (which would
 		// otherwise island), and aborts exactly where the interpreter does. A
 		// nested case (RecordTrap declines, frames/units != 1) keeps the island.
-		r.Check.Recorder().RecordTrap("case_error",
-			"case: clause list must be a concrete list of match/block pairs (optional trailing default)",
-			"case", "", args[0].Pos())
+		//
+		// Only a CONCRETE non-list earns the trap. A clause operand the pass
+		// holds as a carrier or a dynamic value — a fn's returned list,
+		// `case 1 (mk 0)` over `def mk fn [[n:Integer] [List] [quote [1
+		// 'one' 'many']]]` — is a list or not at RUN time, where the
+		// interpreter reads the concrete value and answers `'one'`; the
+		// trap raised the error the interpreter never raises (NUR154). The
+		// dispatch's own gate declines the computed clause list instead
+		// (a NoEvalArgs body that is not inert data), so the program falls
+		// back and answers as the interpreter does. A KNOWN non-list — a
+		// scalar, a bare type node (`case 1 Integer`) — is the trap.
+		if !clauses.Dynamic && !clauses.Carrier {
+			r.Check.Recorder().RecordTrap("case_error",
+				"case: clause list must be a concrete list of match/block pairs (optional trailing default)",
+				"case", "", args[0].Pos())
+		}
 		return dynAny
 	}
 	lst, _ := AsList(clauses)
@@ -309,7 +323,12 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	// planValueDefLocals then promotes to a frame local once the fragment reads
 	// are recorded. if3ReturnsFn returns the branch-join type AND records the
 	// lowering.
-	if es := r.Check.Recorder(); es.CanSeatAcrossFragment(v) {
+	es := r.Check.Recorder()
+	seatable := es.CanSeatAcrossFragment(v)
+	if seatable && mayRunAsCode(v) {
+		v, seatable = recordCaseSubject(r, v, swapped, r.Check.CurCallPos)
+	}
+	if seatable {
 		cond := NewList(caseGuardTokens(v, elems[0]))
 		then := NewList(caseBlockTokens(v, elems[1]))
 		rest := buildCaseChain(v, elems, 2)
@@ -355,6 +374,92 @@ func dropSynthesizedDeadArmWarnings(r *Registry, mark int) {
 		kept = append(kept, d)
 	}
 	r.Check.Diagnostics = kept
+}
+
+// mayRunAsCode reports whether a value the pass holds abstractly may be a
+// list at run time — a carrier or dynamic value whose type admits one. The
+// interpreter RUNS a list in a code-body slot, whatever produced it: case
+// dispatches on a list scrutinee's last result (`case (mk) […]` over mk's
+// `[1 2]` dispatches on 2, NUR291), and if runs a list condition inline and
+// splices a list arm (NUR292), where a compiled chain or branch over the
+// value would hold the list itself.
+func mayRunAsCode(v Value) bool {
+	if !v.Carrier && !v.Dynamic {
+		return false
+	}
+	p := v.Parent
+	return p != nil && (TList.ConformsTo(p) || p.ConformsTo(TList))
+}
+
+// codeGuards reports which of a branch's value condition and value arms
+// the compiled `if` guards at run time (NUR292): a value the pass holds
+// abstractly whose type admits a list — which the interpreter runs as code
+// there, a list condition inline and a list arm spliced in parens — takes
+// __codeguard, which passes any other value and defers on a list. The guard
+// is the LOWERING's (BranchRecord.Guard): it runs on the value as the
+// branch consumes it, on the taken path for an arm, and adds nothing to the
+// pass's model, so a value that may be a fn keeps the landing that applies
+// it at the merge (NUR280). A List-typed arm keeps its own path
+// (computedArmDoBody's `[__arm <arm>]`), since its value is always a list.
+// Recording pass only.
+func codeGuards(r *Registry, cond Value, thenValue, elseValue *Value) (condGuard, thenGuard, elseGuard bool) {
+	if !r.Check.Recorder().Active() {
+		return false, false, false
+	}
+	armGuard := func(v *Value) bool {
+		return v != nil && mayRunAsCode(*v) && !v.Parent.ConformsTo(TList)
+	}
+	return mayRunAsCode(cond), armGuard(thenValue), armGuard(elseValue)
+}
+
+// codeGuardRecord fills a branch record's guard fields (codeGuards).
+func codeGuardRecord(r *Registry, rec BranchRecord) BranchRecord {
+	c, t, e := codeGuards(r, rec.Cond, rec.ThenValue, rec.ElsValue)
+	if c || t || e {
+		rec.Guard, rec.CondGuard, rec.ThenGuard, rec.ElseGuard = &codeGuardSignature, c, t, e
+		rec.CondCheck, rec.CondCheckPos = &condGuardSignature, r.Check.CurCallPos
+	}
+	return rec
+}
+
+// condGuardSignature is __condguard's one signature, the one the lowering's
+// condition guard runs (BranchRecord.CondCheck).
+var condGuardSignature = Signature{
+	Args:       []*Type{TAny},
+	Impl:       Go(CondGuardHandler),
+	Returns:    []*Type{TAny},
+	BarrierPos: 0,
+}
+
+// codeGuardSignature is __codeguard's one signature, the one the lowering's
+// guard call runs (BranchRecord.Guard).
+var codeGuardSignature = Signature{
+	Args:       []*Type{TAny},
+	Impl:       Go(CodeGuardHandler),
+	Returns:    []*Type{TAny},
+	BarrierPos: 0,
+}
+
+// recordCaseSubject records case's own scrutinee rule over a scrutinee that
+// may be a list at run time (NUR291), and the chain matches what it hands
+// on — a value the pass cannot know, so the gradual any. The forward form's
+// __casesubject runs a code body and hands its last result on, any other
+// value as itself. The stack form's __casestack passes a value that is not
+// a code body and defers on one: were the stack value a list, BOTH operands
+// would be lists, which CaseHandler reads the forward way round (the
+// clause list is the scrutinee), and no chain over these clauses is that.
+// Each is the run's to match (a poly record, as any native over a dynamic
+// operand); a record that did not seat the result leaves it no provenance,
+// so seatable=false.
+func recordCaseSubject(r *Registry, v Value, swapped bool, pos SrcPos) (Value, bool) {
+	es := r.Check.Recorder()
+	word := "__casesubject"
+	if swapped {
+		word = "__casestack"
+	}
+	subject := NewDynamicCarrier(TAny)
+	es.RecordPolyCall(word, []Value{v}, []Value{subject}, pos, r, nil)
+	return subject, es.CanSeatAcrossFragment(subject)
 }
 
 // caseCodeBodyRecord is CaseReturnsFn's RECORDING path for a code-body

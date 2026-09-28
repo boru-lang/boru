@@ -28,7 +28,12 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"FnSpecCounts": true, "SpecKeySuffix": true, "SpecOff": true, "SpecTried": true, "SpecDeclined": true, "SpecParamNames": true,
 		"FnBodyChecked":   true,
 		"PendingFnBodies": true,
-		"CaughtBodyDepth": true, "ValuelessDoBodies": true, "NestedBodyDepth": true, "CondBodyDepth": true,
+		"BehaveMakers":    true,
+		"AnonFnBodies":    true,
+		"BehaveReaders":   true,
+		"FnMemberReads":   true,
+		"SlotBoundReads":  true,
+		"CaughtBodyDepth": true, "RaiseWatches": true, "ValuelessDoBodies": true, "NestedBodyDepth": true, "CondBodyDepth": true,
 		"RolledBackBodyDepth":      true,
 		"SpecBaselines":            true,
 		"SpecUndefCarriers":        true,
@@ -40,6 +45,10 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"Compiling":                true,
 		"FnCarrierReadSubstituted": true,
 		"ParenPlacedFnIDs":         true,
+		"ReachSurvivorFnIDs":       true,
+		"ForceFnReanalysis":        true,
+		"RootDefSites":             true,
+		"FnReads":                  true,
 		"ParenReSteppedFnIDs":      true,
 		"WordReadFnIDs":            true,
 		"ForwardLeftoverFnIDs":     true,
@@ -56,6 +65,12 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"CurCallPos": "transient cursor overwritten per dispatch",
 		"CurCallWord": "transient cursor overwritten per dispatch, CurCallPos's twin: written " +
 			"beside it by declaredReturnCarriers and read only at a user-fn ReturnsFn's entry",
+		"CurLayout": "scoped: published around one recovered dispatch's record and " +
+			"restored when it returns (PublishLayout), so it is nil outside a record and " +
+			"no pass can begin with one set; a reader asks for its own operand slice (LayoutFor)",
+		"OptimisticOuter": "scoped: published by execMatch around one optimistic " +
+			"dispatch's argument evaluation and cleared by its defer when that returns, " +
+			"so it is nil outside the dispatch and no pass can begin with one set",
 		"CurWordPos": "transient cursor overwritten per dispatch, and the write is " +
 			"unconditional and immediately adjacent: execMatch sets it from " +
 			"e.currentPos() on the line above the handler call, and a handler is the " +

@@ -213,3 +213,48 @@ func engineMarkerToken(tk core.Value) bool {
 	_, mod := core.AsDispatchMod(tk)
 	return mod || core.IsSugar(tk) || core.IsMark(tk) || core.IsMove(tk)
 }
+
+// bodyParksFnValues reports whether a computed body's tokens are proven
+// (provenBodyTokens) and every one is an anonymous ZERO-argument lambda
+// literal (`([] => [42])`). Re-stepped, such a value parks as data on the
+// interpreter (execFnDefLiteral's anonymous park) wherever it lands, where a
+// NAMED zero-argument one fires — `do (mk) end x` over `[g/v]` is [7 5], over
+// `[([] => [42])]` [fn 5] (NUR282). An arg-taking lambda is not proven: it
+// takes a value beside it in the run (`[5 ([n:Integer] => [n add 1])]` is
+// 6) or a token written after the run in its statement (`do (mk) x` over
+// the lone lambda is 6). Such a run is no callable-bearing region to the
+// seat rules (eventFlags.regionMayBeFn).
+func (es *EmitState) bodyParksFnValues(body core.Value) bool {
+	toks, ok := es.provenBodyTokens(body)
+	if !ok || len(toks) == 0 {
+		return false
+	}
+	for _, tk := range toks {
+		if n, lambda := anonLambdaArity(tk); !lambda || n > 0 {
+			return false
+		}
+	}
+	return true
+}
+
+// anonLambdaArity reports whether tk is a paren group that builds an
+// anonymous fn value — `([params] => [body])`, the arrow fold of two concrete
+// lists around the lambda sugar (core's isLambdaFold shape), under any
+// single-item paren nesting the quoted list keeps — and its parameter count.
+func anonLambdaArity(tk core.Value) (int, bool) {
+	items, err := core.AsParenExpr(tk)
+	for err == nil && len(items) == 1 && core.IsParenExpr(items[0]) {
+		items, err = core.AsParenExpr(items[0])
+	}
+	if err != nil || len(items) != 3 {
+		return 0, false
+	}
+	if info, ok := core.AsSugar(items[1]); !ok || info.Kind != core.SugarLambda {
+		return 0, false
+	}
+	params, perr := core.AsList(items[0])
+	if _, berr := core.AsList(items[2]); perr != nil || berr != nil || !core.IsConcrete(items[0]) || !core.IsConcrete(items[2]) {
+		return 0, false
+	}
+	return params.Len(), true
+}

@@ -33,6 +33,15 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	if es == nil || !es.Active() || es.SuspendedNow() {
 		return false
 	}
+	// A list or map literal's element run (an inline context region of this
+	// unit) ends its own tape at the literal's last element, so the TERMINAL
+	// gate below would pass there — but the literal assembles a FIXED count
+	// of its elements, and the window's variadic result is not the program
+	// residual: `[7 mk add 1]` answered `[7 [43]]` for `[[7 43]]` (NUR287).
+	// The shape keeps the compile failure.
+	if es.InInlineCtxBoundary() {
+		return false
+	}
 	// The compile failure-site preconditions (mirrors declineForwardStackDrift): a
 	// forward-eligible non-full-stack sig, no code-body positions, at least
 	// a dynamic top + one deeper operand.
@@ -51,17 +60,25 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 			minPos = p
 		}
 	}
-	deeperConcrete := false
-	for _, p := range positions {
-		if p != topPos && !e.Tape.At(p).Dynamic {
-			deeperConcrete = true
-		}
-	}
-	if !e.Tape.At(topPos).Dynamic || !deeperConcrete {
+	// A DYNAMIC top is the whole precondition: the operands beneath it may
+	// be dynamic too. The check-mode match over carriers reached past the
+	// top to its deeper operands either way, and the interpreter, seeing
+	// concrete runtime values, may forward-collect the literal instead —
+	// `def mk fn [[][Any][42]] end mk mk add 1` is `[42 43]`, where the
+	// match over two carriers took `add (Bytes, Bytes)` all-stack and the
+	// poly re-match answered `[84 1]` (NUR287).
+	if !e.Tape.At(topPos).Dynamic {
 		return false
 	}
 	fwdIdx := e.Pointer + 1
-	if fwdIdx >= e.Tape.Len() || !core.ForwardLiteralOperand(e.Tape.At(fwdIdx)) {
+	if fwdIdx >= e.Tape.Len() {
+		return false
+	}
+	// The forward operand is a literal, or a word bound to one, which the
+	// interpreter's forward phase collects as its value: the window carries
+	// that value, the island's own token for it (NUR287, `mk mk add k`).
+	fwdVal, fwdOK := e.ForwardOperandValue(e.Tape.At(fwdIdx))
+	if !fwdOK {
 		return false
 	}
 	// CONTIGUITY: the matched operands must be exactly the tape span directly
@@ -99,8 +116,8 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	// island's tape in source order. A value produced by a VARIADIC event
 	// cannot ride a fixed-width window.
 	ops := make([]EmitOperand, 0, len(positions)+2)
-	fwdOp, ok := es.resolveOperand(e.Tape.At(fwdIdx))
-	if !ok { //covergate:allow forwardLiteralOperand admits only concrete scalars/atoms and bare type nodes, all of which resolveOperand materialises as const/type operands (§compiler)
+	fwdOp, ok := es.resolveOperand(fwdVal)
+	if !ok { //covergate:allow ForwardOperandValue yields only concrete scalars/atoms and bare type nodes, all of which resolveOperand materialises as const/type operands (§compiler)
 		return false
 	}
 	ops = append(ops, fwdOp)
@@ -117,6 +134,18 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 		op, ok := es.resolveOperand(v)
 		if !ok {
 			return false
+		}
+		// A PLACED value — a user call's parked result, a paren's placed
+		// survivor — is data the interpreter never re-steps, and the island
+		// stepped it live and applied it: `5 mk add 1` over mk's lambda
+		// answered 7 where the interpreter's add meets the parked fn and
+		// raises (NUR287). It rides into the island inside its own paren,
+		// the interpreter's placement: a one-survivor paren parks a fn as
+		// data (fnReturnPark) and leaves any other value as it is. Top-first,
+		// so the close marker goes first.
+		if es.callResultPlaced(v) || es.placedNotReStepped(v) {
+			ops = append(ops, ConstOperand(es.intern(core.NewCloseParen())), op, ConstOperand(es.intern(core.NewOpenParen())))
+			continue
 		}
 		ops = append(ops, op)
 	}

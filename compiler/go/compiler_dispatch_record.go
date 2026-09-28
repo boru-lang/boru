@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"slices"
+
 	check "github.com/boru-lang/boru/check/go"
 	core "github.com/boru-lang/boru/core/go"
 )
@@ -35,7 +37,12 @@ func tryFoldScalarConst(r *core.Registry, sig *core.Signature, args []core.Value
 	if len(args) != sig.TotalArgs() {
 		return core.Value{}, false
 	}
-	for _, a := range args {
+	for i, a := range args {
+		// A type literal at a declared type slot — `convert Bytes "m"`'s
+		// target — is compile-time known by construction.
+		if sig.TypeArgs[i] && core.IsBareTypeNode(a) {
+			continue
+		}
 		if !check.ScalarFoldOperand(a) {
 			return core.Value{}, false
 		}
@@ -204,6 +211,17 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 	}
 }
 
+// isFrameArgsList reports whether v is the check engine's CURRENT frame's
+// `args` list — the value the `args` word reads (core_helpers.go pushes it
+// per call; `args.N` is its static index read).
+func isFrameArgsList(es *EmitState, v core.Value) bool {
+	if es == nil || es.reg == nil || es.reg.Args == nil || v.ID == "" {
+		return false
+	}
+	top, ok, err := es.reg.Args.Top()
+	return err == nil && ok && top.ID == v.ID
+}
+
 // tryFoldReStepWord folds a `get` / `getr` read whose check-mode result is a
 // LIVE WORD token — a quoted list's word node read at a static index over a
 // compile-time-known list (`quote [add 1 2] get 0`, a macroexpand
@@ -264,6 +282,21 @@ func tryFoldStaticIndex(r *core.Registry, word string, args, outs []core.Value) 
 	elem := lst.Get(int(n))
 	if _, ok := es.resolveOperand(elem); !ok {
 		return false // element has no compiled home (e.g. an un-interned literal) — decline
+	}
+	// A fn-typed element is not folded: the fold hands the element's own
+	// carrier back with no event to test after it, and the interpreter
+	// re-steps what the read leaves — `[5 h/v] get 1 drop 7` inside
+	// `def f fn [[h:Function][Any][…]]` answered 7 for the interpreter's
+	// `uncalled_function` (NUR124's fold witness). The ordinary get event
+	// records, and its fn-typed result takes the re-step note. The frame's
+	// own `args` list is the one receiver that KEEPS the fold: `args.N` is
+	// a value read by the language's contract — "an unnamed fn-value arg
+	// is real data — readable via args.N and returnable, exactly like a
+	// named binding read via /v" (module-fnvalue-boundary.tsv:L24) — and
+	// the unfolded event's receiver has no compiled home (the VM keeps no
+	// args stack), so the exclusion turned four such rows into declines.
+	if (core.IsFnTypedCarrier(elem) || core.IsFnValueResidual(elem)) && !isFrameArgsList(es, recv) {
+		return false
 	}
 	// An `args` projection with a recorded home (RecordArgsProjection):
 	// the fold retracts its OpMakeList when nothing else consumed it, and
@@ -428,6 +461,14 @@ func tryFoldModuleConst(r *core.Registry, word string, sig *core.Signature, args
 // concreteEvalOnce, but dispatches the one matched native instead of re-running
 // a token stream — the args are already in sig order.
 func concreteHandlerEval(r *core.Registry, sig *core.Signature, args []core.Value) (core.Value, bool) {
+	// A handler runs over its signature's full arity, as every dispatch
+	// hands it; a recovery's assumed signature over a shorter window
+	// (`filter (mk) [gt 1]`'s auto-evaluated `gt 1`, one operand for gt's
+	// two) reached a handler that indexes its second argument, and the
+	// check pass panicked (NUR265).
+	if len(args) != sig.TotalArgs() {
+		return core.Value{}, false
+	}
 	snap := r.Defs.Snapshot()
 	prev := r.Check.Mode
 	r.Check.Mode = false
@@ -678,27 +719,32 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 	if !matchReg.IsBuiltinWord(word) {
 		return false
 	}
-	// A poly window re-matches over a FIXED pop count, so it is unsound
-	// when a SMALLER-arity overload exists and the operands are dynamic:
-	// the interpreter can dispatch the narrow overload over the live
-	// values, leaving the rest on the stack, where the VM's N-window
-	// forces all N into one match (`apply`: the gradual check match seats
-	// [Reach Any] over a fetched-fn carrier, but runtime wants the 1-arg
-	// [Function] — reachable since the BROAD park, NUR073 clause 3).
-	// Wider overloads are harmless: with only N live values they cannot
-	// match on either engine. Decline; the dispatch falls to the ordinary
-	// record and its compile failure nets.
+	// A poly window re-matches by PUSHING the matched handler's results, so
+	// it cannot stand for a dispatch whose result RE-STEPS on the tape — an
+	// overload that declares CompileResteps. When the operands are dynamic
+	// and such an overload is reachable over them, the interpreter may take
+	// it at run time where the poly op would push its marked value as data
+	// (`apply`: the gradual check match seats [Reach Any] over a fetched-fn
+	// carrier, but runtime dispatches [Function], which marks the fn and
+	// steps it over the values beneath — reachable since the BROAD park,
+	// NUR073 clause 3). Decline; the dispatch falls to the ordinary record,
+	// where the recorder owns `apply` by name (the gradual apply event, the
+	// pending-apply window) or its compile failure nets.
+	// This used to be keyed on a SMALLER-ARITY overload's existence — ADR-016
+	// forbids deciding what compiles by a count (NUR100 §2) — and the count
+	// was only ever the symptom: an overload of any arity whose result the
+	// poly op pushes is one the VM's re-match reproduces (a narrower window
+	// by NUR147's arity retry), and a re-stepping one is not, whatever it
+	// takes.
 	// The no-match RECOVERY flavours (dynamicRecovery / noMatch) are
 	// exempt: they deliberately record a wider probe window and the VM's
-	// rematch owns under-match by deferring, so the smaller-arity hazard
-	// is theirs to handle.
+	// rematch owns under-match by deferring.
 	// Confined to STACK-ONLY matches (BarrierPos 0): a forward-eligible
 	// word's window is disambiguated by its written tokens on both
-	// engines (`join`'s 1-arity overload never shadows its 2-arity call),
-	// so only the stack-sourced mixed-arity words — `apply`, per the
-	// ADR-004 closed list — carry the hazard.
+	// engines, so only the stack-sourced words — `apply`, per the ADR-004
+	// closed list — carry the hazard.
 	if !dynamicRecovery && noMatch == nil && sig.BarrierPos == 0 &&
-		check.AnyDynamicCarrier(args) && smallerArityOverload(matchReg, word, len(args)) {
+		check.AnyDynamicCarrier(args) && restepOverloadReachable(matchReg, word, args) {
 		return false
 	}
 	// Only a genuinely dynamic dispatch (the case the checker could not
@@ -894,10 +940,9 @@ func tryRecordDynBody(r *core.Registry, word string, sig *core.Signature, args, 
 	// An error HANDLER (`error`, StripsUnconsumedInput) takes the dyn-body
 	// path only for a COMPUTED body (a List param, a fn's result — code-
 	// bodies.tsv L152): its run-time result count is the handler body's own
-	// (0 for `[drop]`, 1 for a pass-through), which the variadic mark does
-	// not yet fence at every consumer (a list literal's MAKE_LIST, a
-	// trailing apply), so a CONCRETE handler body the closure path declined
-	// keeps its decline (region_stack_read_test.go's two witnesses).
+	// (0 for `[drop]`, 1 for a pass-through), a region below (NUR300). A
+	// CONCRETE handler body the closure path declined keeps its decline
+	// (region_stack_read_test.go's two witnesses).
 	if sig.Callable.StripsUnconsumedInput && core.IsConcrete(body) {
 		return false
 	}
@@ -959,13 +1004,28 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	if dynBodyPoly(r, word, args, body) {
 		call.sig = nil
 		call.poly = true
+		// The dispatch's exact layout, when the pass published one: the
+		// run's no-match lays the operands out as the interpreter's tape
+		// and plans them there (PolyRef.Split, NUR242 — `0 fold [add]
+		// b.data` over a String field).
+		if l := r.Check.LayoutFor(args); l != nil {
+			call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
+		}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
+	es.noteArgSites(seq, args)
 	if call.hostSplice {
 		es.hostSplices = append(es.hostSplices, seq)
 	}
 	f := es.eventInfo[seq]
 	f.dynBodyResult = true
+	// A keep-defs word (each / fold / do …) over a DYNAMIC body leaks the
+	// body's defs into the dispatching unit's frame, and the pass cannot
+	// know which names: the unit's later reads of its own defs seat live
+	// (noteDynKeepDefsLeak, NUR203).
+	if cs := sig.Callable; cs != nil && (cs.BodyOnceKeepsDefs || cs.BodyMultiRunKeepsDefs) {
+		es.noteDynKeepDefsLeak(pos)
+	}
 	// A VALUE-EVAL body (`do {map}`) — a CONCRETE, non-dynamic Map arg on the
 	// non-fallback (value-eval) sig — produces EXACTLY len(outs) values
 	// deterministically (the evaluated map: always one). Its result count is
@@ -980,11 +1040,25 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// A code-body slot (NoEvalArgs at the body position — walk's hook) is a
 	// CODE body whatever the word's other flags say.
 	fixedValueEval := core.IsConcrete(body) && !body.Dynamic && !sig.CompileEffect.Has(core.CompileFallbackBody) && !codeSlot
+	// A LITERAL body a closure probe found to leave a run (noteBodyRun,
+	// NUR294) is not modelled exactly: it takes a computed body's marks.
+	litRun := core.IsConcrete(body) && es.takeBodyRun(body)
 	if !fixedValueEval {
 		f.variadicResult = true
+		// A COMPUTED body's run (NUR210): a literal body the backstop took
+		// was modelled exactly by the pass, and its layouts stand — unless
+		// its residual holds a run itself.
+		// A computed error handler's run is one too (NUR301): a `do` whose
+		// body ends in it leaves the run's count, not one seat.
+		cs := sig.Callable
+		f.dynBodyRun = cs != nil && (cs.BodyOut == core.BodyOutResidual && cs.BodyOnceKeepsDefs || cs.StripsUnconsumedInput) &&
+			(!core.IsConcrete(body) || body.Dynamic || litRun)
 	}
 	// A COMPUTED whole-residual body (`do (mk)`, `do b`) leaves 0-or-MORE
-	// values where the check pass models one dynamic(Any) out: record the
+	// values where the check pass models one dynamic(Any) out, and so does a
+	// computed error handler's run (`error (mk)`, NUR300: the shrinking
+	// variadic mark alone let a list literal, a def's group and a value
+	// beneath seat two values as one, silently): record the
 	// run as a variadic REGION (NUR067's growing direction), so every rule a
 	// region obeys applies — a consumer of a fixed count declines, a value
 	// beneath it seats through the mark or declines, never after the run
@@ -995,16 +1069,26 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// check pass models. A region that may leave a callable is demoted to a
 	// runtime-checked single value where a fixed seat consumes it
 	// (dyn_body_one.go), rather than declined.
-	if !fixedValueEval && sig.Callable != nil && sig.Callable.BodyOut == core.BodyOutResidual && !core.IsConcrete(body) && len(outs) == 1 {
+	if !fixedValueEval && sig.Callable != nil && (sig.Callable.BodyOut == core.BodyOutResidual || sig.Callable.StripsUnconsumedInput) && (!core.IsConcrete(body) || litRun) && len(outs) == 1 {
 		if n, plain := es.bodyPlainCount(body); !plain || n != 1 {
 			f.variadicRegion = true
-			f.regionMayBeFn = regionValsMayBeCallable(outs) && !plain
+			f.regionMayBeFn = regionValsMayBeCallable(outs) && !plain && !es.bodyParksFnValues(body)
+		} else {
+			f.plainOne = true
 		}
 	}
+	// A literal body whose results the interpreter re-steps where the model
+	// already stepped them (the closure probe's note, NUR317), and a run a
+	// modelled output of which may be a fn — which a region seated beneath
+	// its prefix re-steps (planRegionPrefix).
+	f.reStepResults = es.takeBodyReStep(body)
+	f.outsMayBeFn = slices.ContainsFunc(outs, valueMayBeFn)
 	// The dyn-body backstop already marks every code-body result variadic
 	// above; consume the ReturnsFn's catch-variadic latch so it cannot leak
-	// past this dispatch (L-DO — see catchVariadicFor).
-	es.catchVariadicFor(sig)
+	// past this dispatch (L-DO — see catchVariadicFor), keeping its own mark
+	// for the fixed-count consumers (eventFlags.catchVariadic).
+	f.catchVariadic = es.catchVariadicFor(sig)
+	f.catchPhantom = f.catchVariadic && len(outs) == 1
 	es.eventInfo[seq] = f
 	// Carrier-identity de-collision, extended to INTRA-event repeats: the
 	// modeled outs of a dyn-body sub-run may repeat one value — an unrolled
@@ -1319,7 +1403,22 @@ func TryRecordFallback(r *core.Registry, word string, sig *core.Signature, args,
 		}
 		span = ns
 	}
-	return es.RecordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, outs[0], pos)
+	real, isReal := es.(*EmitState)
+	if !isReal || sig.Callable == nil || !sig.Callable.StripsUnconsumedInput {
+		return es.RecordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, outs[0], pos)
+	}
+	// A strip-input word's island (`error`) runs a handler the closure path
+	// refused, whose caught run is the handler's own count — `[drop 5 6]`
+	// leaves two — where the pass modelled one (NUR301). Its run is a
+	// region, of anything the interpreter left, and a run a `do` whose body
+	// ends in it carries (runOperand, as a dyn-body run's).
+	seq, ok := real.recordFallback(core.FallbackSpan{Tokens: span, Desc: word}, ins, outs[0], pos)
+	if ok {
+		f := real.eventInfo[seq]
+		f.variadicResult, f.variadicRegion, f.regionMayBeFn, f.dynBodyRun, f.stripIsland = true, true, true, true, true
+		real.eventInfo[seq] = f
+	}
+	return ok
 }
 
 // tryRecordDeferredList makes a deferred-list-body user fn TRANSPARENT in the
@@ -1337,22 +1436,47 @@ func tryRecordDeferredList(r *core.Registry, sig *core.Signature, outs []core.Va
 	return check.IsDeferredWordList(outs[0])
 }
 
-// smallerArityOverload reports whether the builtin word registers an
-// overload consuming FEWER than n operands — the condition under which a
-// poly window of n dynamic values can diverge from the interpreter's
-// dispatch (tryRecordPoly's mixed-arity decline; see the `apply` note
-// there).
-func smallerArityOverload(r *core.Registry, word string, n int) bool {
+// restepOverloadReachable reports whether the builtin word registers an
+// overload that DECLARES CompileResteps — a dispatch whose result the
+// interpreter re-steps on the tape, which a poly re-match (it pushes the
+// handler's results) cannot reproduce — that the window's operands can
+// reach: every operand the overload reads (sig position j is the j-th
+// operand from the top, the one argument rule) is an Any carrier or
+// gradually matches its slot. tryRecordPoly's re-step decline; see the
+// `apply` note there. Keyed on the overload's declaration, never on its
+// arity (NUR100 §2).
+func restepOverloadReachable(r *core.Registry, word string, args []core.Value) bool {
 	nf := r.Lookup(word)
 	if nf == nil {
 		return false
 	}
 	for i := range nf.Signatures {
-		if len(nf.Signatures[i].Args) < n {
+		s := &nf.Signatures[i]
+		if s.CompileEffect.Has(core.CompileResteps) && operandsReach(s, args) {
 			return true
 		}
 	}
 	return false
+}
+
+// operandsReach reports whether the window's operands could all be admitted
+// by s at run time: each operand s reads is an Any carrier (it may hold a
+// value of any type) or gradually matches its slot type. A slot past the
+// window reads a value the record never saw, which nothing rules out.
+func operandsReach(s *core.Signature, args []core.Value) bool {
+	for j, t := range s.ArgTypes() {
+		if j >= len(args) {
+			break
+		}
+		v := args[j]
+		if v.Carrier && v.Parent != nil && v.Parent.Equal(core.TAny) {
+			continue
+		}
+		if !core.SigTypeMatches(v, t) {
+			return false
+		}
+	}
+	return true
 }
 
 // produceRunOuts registers a RUN dispatch's results — an event whose N outs

@@ -8,9 +8,10 @@ import (
 
 // NoMatchOverWindow is sigError's derivation over a routed dispatch's
 // window (the VM's no-match raise, eng/go/vm_generic.go): the failing tuple
-// is the unclaimed forward tokens after the word in source order when there
-// are any, else the stack prefix top-first, and the reorder probe runs over
-// the forward view first and the prefix view second. Pinned here, by core's
+// is the attempted window — the unclaimed forward tokens after the word in
+// source order, filled from the stack prefix top-first to the smallest
+// overload's arity, else the stack prefix alone — and the reorder probe runs
+// over that view first and the prefix view second. Pinned here, by core's
 // own suite, because only the VM calls it — the engine's sigError takes the
 // same steps over its live tape — and the standalone core gate (ADR-008,
 // `make cover-gate-core`) counts core's tests alone.
@@ -32,9 +33,11 @@ func TestNoMatchOverWindow(t *testing.T) {
 		// `1 "x" w`: no forward token, so the stack prefix top-first; the
 		// hint comes from the same view.
 		{"no forward token: the prefix, top-first", []Value{one, x, NewWord("w")}, 2, []Value{x, one}, true},
-		// `1 "x" w true`: one forward token (too few for any reorder), the
-		// hint comes from the prefix view.
-		{"forward tokens, hint from the prefix view", []Value{one, x, NewWord("w"), NewBoolean(true)}, 2, []Value{NewBoolean(true)}, true},
+		// `1 "x" w true`: one forward token, fewer than w's arity, so the
+		// stack top fills the window as the interpreter's report does
+		// (NUR172; the routed lane named `true` alone until NUR242); no
+		// permutation of it matches, and the hint comes from the prefix view.
+		{"forward tokens, hint from the prefix view", []Value{one, x, NewWord("w"), NewBoolean(true)}, 2, []Value{NewBoolean(true), x}, true},
 		// `w "x" "y"`: no permutation matches either view — no hint.
 		{"no reorder on either view", []Value{NewWord("w"), x, NewString("y")}, 0, []Value{x, NewString("y")}, false},
 	}

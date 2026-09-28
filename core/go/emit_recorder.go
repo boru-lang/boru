@@ -26,6 +26,23 @@ type BranchRecord struct {
 	ElsValue        *Value // non-nil: the else arm is this already-evaluated VALUE
 	Out             Value
 	Pos             SrcPos
+	// Guard is the signature of the run-time guard (basic's __codeguard,
+	// NUR292) the lowering calls over a value condition, or over a value arm
+	// on the path that takes it, which the pass holds abstractly and which
+	// may be a list at run time — CondGuard / ThenGuard / ElseGuard say
+	// which. The interpreter runs such a list as code; the guard passes any
+	// other value and defers on a list. Nil when no guard is owed.
+	Guard                           *Signature
+	CondGuard, ThenGuard, ElseGuard bool
+	// CondCheck is the condition's guard (basic's __condguard) when
+	// CondGuard is set: the interpreter runs a list condition INLINE and
+	// branches on the last value it leaves, so a list of plain values
+	// answers its last element, an empty one raises the interpreter's "no
+	// value", and any other list defers.
+	CondCheck *Signature
+	// CondCheckPos is where the condition's guard runs: the `if` word's
+	// position, where the interpreter's inline run raises "no value".
+	CondCheckPos SrcPos
 	// Uncaptured says WHY an arm the record leaves nil was not captured —
 	// the clause-list `if` records an element its lowering cannot place
 	// (a condition it cannot decide, an arm the tape would re-step) as an
@@ -85,7 +102,11 @@ type BranchJoin struct {
 // the phase stops at (a candidate the interpreter counts), the end of the
 // tape, or a token the phase COLLECTS — a word bound to a value (`m.f k`
 // with `def k 2` is g over 2), a literal name — which the residual arms
-// model rather than the landing.
+// model rather than the landing. LandingNextCollect is a literal the phase
+// collects inside a `def`'s operand group (`def j (5 do [(mk)] 7) end`
+// applies mk's lambda to the 7 before the def takes the 5): the residual
+// arms meet that value only after the def, so the landing guards it
+// (NUR298).
 type LandingNext int
 
 const (
@@ -93,6 +114,7 @@ const (
 	LandingNextWord
 	LandingNextEnd
 	LandingNextValue
+	LandingNextCollect
 )
 
 type EmitRecorder interface {
@@ -174,7 +196,7 @@ type EmitRecorder interface {
 	// purely check-time product (the mint happens once and the compiled
 	// stream carries nothing for it), so outside that bracket this records
 	// nothing and no other lane's event stream changes. Inactive: no-op.
-	RecordTypeInstall(name string, pos SrcPos)
+	RecordTypeInstall(name string, entry DefEntry, pos SrcPos)
 	FnBodyGuard() func()
 
 	// --- compile failure + site accounting --------------------------------------
@@ -239,6 +261,21 @@ type EmitRecorder interface {
 	// at the same row and column of ANOTHER source would otherwise re-offer
 	// over this call's capture and consume it. Inactive: a no-op.
 	HoldRegion(word string, pos SrcPos) func()
+	// NoteCallWindow offers the operand window a dispatch's RUNTIME twin
+	// reports when its match fails — the interpreter's attempted window
+	// (attemptedWindowOver), derived over the check pass's own tape at the
+	// dispatch's FIRST step, so a gradual operand stands where the runtime
+	// value will (NUR320). deferred marks a dispatch that goes on to collect
+	// forward; restep marks its force-stack re-step, which keeps a deferred
+	// offer rather than replacing it. Keyed and held exactly as the region
+	// offer is (HoldRegion); a user-fn record claims it for its
+	// param-contract no-match. A nil window offers that no window is known.
+	// nFwd counts the window's leading entries written after the word, and
+	// prefix is the stack prefix beneath it as the run holds it: the
+	// interpreter's report stops its written entries at the first that is no
+	// concrete value at run time and falls to that prefix (NUR311).
+	// Inactive: a no-op.
+	NoteCallWindow(word string, pos SrcPos, window []Value, nFwd int, prefix []Value, deferred, restep bool)
 	// RecordDynApply records a paren-bounded TRAILING fn-value apply and
 	// reports how many of `args` the lowered apply CONSUMES, counted from the
 	// TOP of the window (the values nearest the fn). That is normally all of
@@ -274,10 +311,25 @@ type EmitRecorder interface {
 	// event, and a producer whose result is a runtime-variable REGION, are both
 	// shapes no landing op can express: they are left alone, on today's paths.
 	NoteReStepLanding(v Value, pos SrcPos)
+	// NoteDelivery records that the step loop re-steps v where it lands — a
+	// DELIVERY: the one its producer made, and each later one an enclosing
+	// word makes (a `do` splicing its body's results back, NUR313). A value
+	// its producer's own paren placed is placed only while that first
+	// delivery is its only one.
+	NoteDelivery(v Value)
 	RecordFallback(span FallbackSpan, ins []Value, out Value, pos SrcPos) bool
 	RecordTrap(code, detail, word, hint string, pos SrcPos) bool
 	RecordTrapErr(ae *BoruError, pos SrcPos) bool
-	RecordDispatchRematchValues(word string, vals []Value, writtenOff, nWritten int, pos SrcPos) bool
+	// RecordUnitTrapErr records a definite runtime raise inside the open
+	// body unit — scoped to that unit, never the program's terminal trap
+	// (NUR134: a module export's no-match inside a `do` body).
+	RecordUnitTrapErr(ae *BoruError, pos SrcPos) bool
+	RecordDispatchRematchValues(word string, vals []Value, nFwd int, written []int, pos SrcPos) bool
+	// NoteRematchPrefix attaches to the rematch RecordDispatchRematchValues
+	// just recorded the window indices (top first) of the stack prefix the
+	// interpreter's no-match report reads when a written operand stops its
+	// tuple (DispatchSpec.Prefix, NUR311).
+	NoteRematchPrefix(prefix []int)
 	RecordTypedBind(spec TypedBindSpec, in, out Value, pos SrcPos) (Value, bool)
 	RecordMakeList(r *Registry, ins []Value, out Value, pos SrcPos) bool
 	RecordMakeListInner(r *Registry, ins []Value, out Value, pos SrcPos) bool
@@ -293,17 +345,45 @@ type EmitRecorder interface {
 	// (the keep-defs leak's rule) and the program runs under DynEnv, whose
 	// frames unwind the binding as the interpreter's do.
 	NoteRuntimeBind(name string)
-	// RecordRuntimeBindDispatch records the dispatch of a check-mode-run
-	// binder word whose handler noted run-time binds in THIS dispatch
-	// (NoteRuntimeBind's latch): the call is emitted as a plain 0-result
-	// native call so the run performs the bind. A no-op when the latch is
-	// clear — the ordinary elision of a compile-time word stands.
-	RecordRuntimeBindDispatch(word string, sig *Signature, args []Value, pos SrcPos)
+	// NoteRuntimeConstruct records that the check-mode-run constructor
+	// dispatching now built its result over an operand the pass does not
+	// know — a refinement over a computed bound, `Integer gt (size s)`
+	// (NUR308): the result is no const, so the dispatch records as the call
+	// it is and the run builds the value over the real operand.
+	NoteRuntimeConstruct()
+	// NoteRuntimeTypeInstall records that the type installer minted name's
+	// node over a body holding a refinement whose bound the pass does not
+	// know (NUR308): the def's dispatch records the run-time install of the
+	// body the run computes, the node forwarding to the run's.
+	NoteRuntimeTypeInstall(name string, node *Type, body Value)
+	// NoteRuntimeSigForward records that a signature under construction
+	// carries an anonymous node minted over a refinement whose bound the
+	// pass does not know (NUR308): the building word's dispatch records the
+	// run's forward of that node, from the refinement the run computes.
+	NoteRuntimeSigForward(node *Type, body Value)
+	// NoteRuntimeDependent records that the compile-time word now
+	// dispatching has an effect only the run knows, which the compile cannot
+	// record: the dispatch declines as the compile-time word it is (NUR308).
+	NoteRuntimeDependent()
+	// RecordTypedBindRun records a typed def's run-time membership check
+	// over a constraint only the run can decide (TypedBindRunMembership,
+	// NUR308), a concrete value included; with spec.ConsOperand the
+	// constraint the run computed is an operand. ok=false leaves the def to
+	// its caller's decline.
+	RecordTypedBindRun(spec TypedBindSpec, cons, in, out Value, pos SrcPos) (Value, bool)
+	// RecordRuntimeDispatch records the dispatch of a check-mode-run word
+	// whose handler latched a run-time effect in THIS dispatch: a binder's
+	// run-time binds (NoteRuntimeBind — a plain 0-result native call, so the
+	// run performs the bind) or a constructor's run-time value
+	// (NoteRuntimeConstruct — a native call producing outs, which later
+	// operands resolve to). A no-op when no latch is set — the ordinary
+	// elision of a compile-time word stands.
+	RecordRuntimeDispatch(word string, sig *Signature, args, outs []Value, pos SrcPos)
 	// NoteRuntimeDefDispatch records that the check-mode-run binder word now
 	// dispatching could not CONSTRUCT the value it binds under NAME on the
 	// check engine — a def keyword form whose constructor needs an operand's
 	// run-time value (`def T fnsig M.sg`: the spec list a module fn returns)
-	// — and so bound nothing. It arms RecordRuntimeBindDispatch's latch, so
+	// — and so bound nothing. It arms RecordRuntimeDispatch's bind latch, so
 	// the dispatch is emitted as the call it is and the run constructs and
 	// binds exactly as the interpreter does. Unlike NoteRuntimeBind there is
 	// no stub: the name stays unbound on the check engine, so a later read of
@@ -510,6 +590,10 @@ type EmitRecorder interface {
 	NoteInPlaceSlot(tok, result Value)
 	NotifyNameRebound(name string)
 	RegisterLocal(id string) int
+	// NameLocal names the frame local RegisterLocal reserved for id — a loop
+	// variable's name, for the did-you-mean pool of a compiled
+	// undefined_word (NUR146). A local with no name stays anonymous.
+	NameLocal(id, name string)
 	RememberOriginal(v Value)
 	RememberStrippedOriginals(pre, stripped []Value)
 
@@ -540,6 +624,11 @@ type EmitRecorder interface {
 	BeginLoopCarried()
 	EndLoopCarried()
 	NoteLoopCarried(name string, joined, pre Value)
+	// NoteLoopFresh carries a FRESH name — one the body binds with no
+	// pre-loop binding — for a loop that may run zero times (NUR214): a
+	// slot with no init, read bound-checked after the loop. Inactive:
+	// no-op.
+	NoteLoopFresh(name string, joined Value)
 	Checkpoint() EmitCheckpoint
 	Rollback(cp EmitCheckpoint)
 	CanSeatAcrossFragment(v Value) bool
@@ -616,7 +705,7 @@ func (inactiveEmit) CondBodyGuard() func()                                  { re
 func (inactiveEmit) KeepDefsBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) MultiRunBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) RecordDynUndef(string, SrcPos)                          {}
-func (inactiveEmit) RecordTypeInstall(string, SrcPos)                       {}
+func (inactiveEmit) RecordTypeInstall(string, DefEntry, SrcPos)             {}
 func (inactiveEmit) FnBodyGuard() func()                                    { return func() {} }
 
 func (inactiveEmit) TakeFragment() EmitFragmentRef { return nil }
@@ -647,8 +736,9 @@ func (inactiveEmit) RecordPolyCall(string, []Value, []Value, SrcPos, *Registry, 
 func (inactiveEmit) RecordUserCall(int, string, []Value, []Value, SrcPos, SrcPos) {}
 func (inactiveEmit) RecordUserPolyCall(string, *Registry, []int, []int, []SigImpl, []Signature, []Value, []Value, SrcPos, string, SrcPos) {
 }
-func (inactiveEmit) HoldRegion(string, SrcPos) func()                         { return func() {} }
-func (inactiveEmit) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool) { return 0, false }
+func (inactiveEmit) HoldRegion(string, SrcPos) func()                                 { return func() {} }
+func (inactiveEmit) NoteCallWindow(string, SrcPos, []Value, int, []Value, bool, bool) {}
+func (inactiveEmit) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool)         { return 0, false }
 func (inactiveEmit) RecordDynApplyLead([]Value, Value, Value, SrcPos) (int, bool) {
 	return 0, false
 }
@@ -660,21 +750,31 @@ func (inactiveEmit) RecordDynMethod(Value, []Value, []Value, string, SrcPos) boo
 	return false
 }
 func (inactiveEmit) NoteReStepLanding(Value, SrcPos)                          {}
+func (inactiveEmit) NoteDelivery(Value)                                       {}
 func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }
-func (inactiveEmit) RecordDispatchRematchValues(string, []Value, int, int, SrcPos) bool {
+func (inactiveEmit) RecordUnitTrapErr(*BoruError, SrcPos) bool                { return false }
+func (inactiveEmit) RecordDispatchRematchValues(string, []Value, int, []int, SrcPos) bool {
 	return false
 }
+func (inactiveEmit) NoteRematchPrefix([]int) {}
 func (inactiveEmit) RecordTypedBind(_ TypedBindSpec, _, out Value, _ SrcPos) (Value, bool) {
 	return out, false
 }
-func (inactiveEmit) RecordMakeList(*Registry, []Value, Value, SrcPos) bool         { return false }
-func (inactiveEmit) RecordMakeListInner(*Registry, []Value, Value, SrcPos) bool    { return false }
-func (inactiveEmit) RecordArgsProjection(*Registry, []Value, Value, SrcPos) bool   { return false }
-func (inactiveEmit) NoteRuntimeBind(string)                                        {}
-func (inactiveEmit) RecordRuntimeBindDispatch(string, *Signature, []Value, SrcPos) {}
-func (inactiveEmit) NoteRuntimeDefDispatch(string)                                 {}
+func (inactiveEmit) RecordMakeList(*Registry, []Value, Value, SrcPos) bool       { return false }
+func (inactiveEmit) RecordMakeListInner(*Registry, []Value, Value, SrcPos) bool  { return false }
+func (inactiveEmit) RecordArgsProjection(*Registry, []Value, Value, SrcPos) bool { return false }
+func (inactiveEmit) NoteRuntimeBind(string)                                      {}
+func (inactiveEmit) NoteRuntimeConstruct()                                       {}
+func (inactiveEmit) NoteRuntimeTypeInstall(string, *Type, Value)                 {}
+func (inactiveEmit) NoteRuntimeSigForward(*Type, Value)                          {}
+func (inactiveEmit) NoteRuntimeDependent()                                       {}
+func (inactiveEmit) RecordTypedBindRun(_ TypedBindSpec, _, _, out Value, _ SrcPos) (Value, bool) {
+	return out, false
+}
+func (inactiveEmit) RecordRuntimeDispatch(string, *Signature, []Value, []Value, SrcPos) {}
+func (inactiveEmit) NoteRuntimeDefDispatch(string)                                      {}
 func (inactiveEmit) RecordMakeMap(*Registry, []string, []Value, bool, Value, SrcPos) bool {
 	return false
 }
@@ -712,6 +812,7 @@ func (inactiveEmit) NoteInPlaceSlot(Value, Value)               {}
 func (inactiveEmit) NotifyNameRebound(string)                   {}
 func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)   {}
 func (inactiveEmit) RegisterLocal(string) int                   { return -1 }
+func (inactiveEmit) NameLocal(string, string)                   {}
 func (inactiveEmit) RememberOriginal(Value)                     {}
 func (inactiveEmit) RememberStrippedOriginals([]Value, []Value) {}
 
@@ -727,6 +828,7 @@ func (inactiveEmit) RecordInterpXml(XmlTmpl, []Value, Value, SrcPos) bool { retu
 func (inactiveEmit) BeginLoopCarried()                    {}
 func (inactiveEmit) EndLoopCarried()                      {}
 func (inactiveEmit) NoteLoopCarried(string, Value, Value) {}
+func (inactiveEmit) NoteLoopFresh(string, Value)          {}
 func (inactiveEmit) Checkpoint() EmitCheckpoint           { return nil }
 func (inactiveEmit) Rollback(EmitCheckpoint)              {}
 func (inactiveEmit) CanSeatAcrossFragment(Value) bool     { return false }

@@ -13,11 +13,12 @@ func TestElideFnBracketsBranches(t *testing.T) {
 			"def f fn [[a:Integer] [Integer] [a] [b:String] [String] [b]]\n",
 			"def f fn [[a:Integer] [Integer] [a] [b:String] [String] [b]]\n",
 		},
-		// A non-list part in the wrapper is not a clean triple → kept.
+		// A bare single-param run inside the wrapper is one of the six
+		// spellings of the same signature (NUR088) → collapsed like the rest.
 		{
-			"non-list wrapper part kept",
+			"bare param in the wrapper collapses",
 			"def f fn [x [Integer] [x]]\n",
-			"def f fn [x [Integer] [x]]\n",
+			"def f fn x Integer [x]\n",
 		},
 		// A single `{…}` map param unbrackets to the triple form.
 		{

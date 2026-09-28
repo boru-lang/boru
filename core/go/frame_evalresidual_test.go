@@ -206,109 +206,11 @@ func TestResidualBottomUpAndBoundaryArms(t *testing.T) {
 	}
 }
 
-// TestUnwindFrameTailOnErrorArms pins the residual-eval error unwind: a
-// failing in-frame evaluation replays the frame's parked tail effects —
-// the truncation, the __pa Args/baseline pop, the undef pairs — before
-// the error propagates, so a do-error trap upstream resumes without the
-// callee's params/args/locals (PR #260 review; the end-to-end twin lives
-// in lang/go/test/residual_review_test.go). The non-canonical arms stay
-// best-effort: no __pa after the marker replays nothing beyond the
-// truncation.
-func TestUnwindFrameTailOnErrorArms(t *testing.T) {
-	r := runReg(t)
-	failMap := pendingMap("a", NewValueRaw(TParenExpr, ParenExprPayload{Toks: []Value{NewWord("cfail"), NewInteger(1)}}))
-
-	// Canonical tail: marker __pa undef p. Frame state: baseline+args
-	// pushed, param p installed, snapshot, body-local z installed.
-	r.PushFnBaseline(r.Defs.Snapshot())
-	_ = r.Args.Push(NewList(nil))
-	InstallFrameBinding(r, "p", NewInteger(1))
-	snap := r.Defs.Snapshot()
-	r.Defs.Push("z", NewInteger(0))
-
-	e := New(r)
-	marker := NewDefCleanup(DefCleanupInfo{Registry: r, Snapshot: snap, EvalResidual: true})
-	e.Tape = NewTape([]Value{
-		NewOpenParen(),
-		failMap,
-		marker,
-		NewWord("__pa"),
-		NewWordModified("undef", -1, false, true),
-		NewWord("p"),
-		NewCloseParen(),
-	}, StackHeadroom)
-	if err := e.stepDefCleanup(marker, 2); err == nil || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("canonical unwind = %v, want boom", err)
-	}
-	if r.Defs.Has("z") {
-		t.Fatal("body-local z must be truncated on the error unwind")
-	}
-	if r.Defs.Has("p") {
-		t.Fatal("param p must be undeffed on the error unwind")
-	}
-	if _, ok, _ := r.Args.Top(); ok {
-		t.Fatal("the per-call args list must be popped on the error unwind")
-	}
-
-	// Non-canonical: no __pa after the marker — truncation only.
-	r2 := runReg(t)
-	_ = r2.Args.Push(NewList(nil))
-	snap2 := r2.Defs.Snapshot()
-	r2.Defs.Push("z", NewInteger(0))
-	e2 := New(r2)
-	failMap2 := pendingMap("a", NewValueRaw(TParenExpr, ParenExprPayload{Toks: []Value{NewWord("cfail"), NewInteger(1)}}))
-	marker2 := NewDefCleanup(DefCleanupInfo{Registry: r2, Snapshot: snap2, EvalResidual: true})
-	e2.Tape = NewTape([]Value{NewOpenParen(), failMap2, marker2, NewInteger(9)}, StackHeadroom)
-	if err := e2.stepDefCleanup(marker2, 2); err == nil || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("non-canonical unwind = %v, want boom", err)
-	}
-	if r2.Defs.Has("z") {
-		t.Fatal("truncation must still run without a canonical tail")
-	}
-	if _, ok, _ := r2.Args.Top(); !ok {
-		t.Fatal("no __pa on the tape — the args list must NOT be popped")
-	}
-
-	// Malformed undef pair (undef followed by a non-word): the pair walk
-	// stops after the pops it can prove.
-	r3 := runReg(t)
-	r3.PushFnBaseline(r3.Defs.Snapshot())
-	_ = r3.Args.Push(NewList(nil))
-	snap3 := r3.Defs.Snapshot()
-	e3 := New(r3)
-	failMap3 := pendingMap("a", NewValueRaw(TParenExpr, ParenExprPayload{Toks: []Value{NewWord("cfail"), NewInteger(1)}}))
-	marker3 := NewDefCleanup(DefCleanupInfo{Registry: r3, Snapshot: snap3, EvalResidual: true})
-	e3.Tape = NewTape([]Value{
-		NewOpenParen(),
-		failMap3,
-		marker3,
-		NewWord("__pa"),
-		NewWordModified("undef", -1, false, true),
-		NewInteger(9),
-	}, StackHeadroom)
-	if err := e3.stepDefCleanup(marker3, 2); err == nil || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("malformed-pair unwind = %v, want boom", err)
-	}
-	if _, ok, _ := r3.Args.Top(); ok {
-		t.Fatal("__pa must still pop before the malformed pair stops the walk")
-	}
-
-	// Nil args stack (an uninitialised registry — the only shape
-	// Args.Pop errors on; an EMPTY stack pops as a no-op): the __pa
-	// replay declines and the walk stops.
-	r4 := runReg(t)
-	r4.Args = nil
-	snap4 := r4.Defs.Snapshot()
-	e4 := New(r4)
-	failMap4 := pendingMap("a", NewValueRaw(TParenExpr, ParenExprPayload{Toks: []Value{NewWord("cfail"), NewInteger(1)}}))
-	marker4 := NewDefCleanup(DefCleanupInfo{Registry: r4, Snapshot: snap4, EvalResidual: true})
-	e4.Tape = NewTape([]Value{
-		NewOpenParen(),
-		failMap4,
-		marker4,
-		NewWord("__pa"),
-	}, StackHeadroom)
-	if err := e4.stepDefCleanup(marker4, 2); err == nil || !strings.Contains(err.Error(), "boom") {
-		t.Fatalf("empty-args unwind = %v, want boom", err)
-	}
-}
+// The residual-eval ERROR arm leaves the frame's parked tail to the run's
+// fault return: the frame is still open on the tape when the marker's
+// evaluation raises, so Engine.faultReturn replays its tail once —
+// truncation, the __pa Args/baseline pop, the undef pairs — as it does
+// for every other error raised inside a live frame (NUR201). The pins are
+// TestRunErrorUnwindsFrameOnceAfterResidualError and
+// TestRunErrorUnwindsLiveFrame (fn_frame_unwind_test.go); the end-to-end
+// twin lives in lang/go/test/residual_review_test.go.

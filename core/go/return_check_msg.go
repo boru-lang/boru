@@ -17,7 +17,13 @@ import "fmt"
 // funcName's index-th (1-based) return value was expected to be `expected` but
 // the body produced `got`.
 func ReturnTypeErrorText(funcName string, index int, expected *Type, got Value) (detail, hint string) {
-	detail = fmt.Sprintf("%s: return value %d: expected %s, got %s", funcName, index, expected, got.Parent)
+	gotType := got.Parent
+	if gotType == nil {
+		// A lattice root has no Parent: the None literal a missing member
+		// reads as named itself `<nil>` here (NUR324).
+		gotType = ValueType(got)
+	}
+	detail = fmt.Sprintf("%s: return value %d: expected %s, got %s", funcName, index, expected, gotType)
 	hint = "value: " + diagValue(got)
 	return detail, hint
 }

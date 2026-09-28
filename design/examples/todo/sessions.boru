@@ -17,12 +17,12 @@ import "boru:serve"
 import "presence.boru"          # the raw-process presence actor
 
 export "Sessions" {
-  New:           New/v
+  New:           new/v
   presence-name: presence-name/v    # shared so notify.boru can `whereis` a user
 }
 
 # `New {}` -> Service
-def New fn [[opts:Map] [Service] [
+def new fn [[opts:Map] [Service] [
   # token -> uid, and uid -> presence Pid (so we can find a user's pushes).
   def svc ( service {tokens: {}  present: {}} )
 

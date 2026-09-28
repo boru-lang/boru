@@ -181,7 +181,22 @@ func specialisableFnArg(r *core.Registry, p core.FnParam, a core.Value) (string,
 	if !isFn || len(fd.Captured) > 0 || fd.Gen != nil || fd.Macro || fd.Wrap != core.WrapNone || core.FnHomeForeign(r, &fd) {
 		return "", false
 	}
+	// A fn LITERAL a fn or closure unit writes is a new function each time
+	// the unit runs it (the compiled lane's fresh push, NUR288), so a guard
+	// on its identity never holds and the specialised unit would only ever
+	// take its fallback: such an arg does not specialise. A `/v` reference
+	// and a root literal keep one identity.
+	if fd.Name == "" && freshLiteralContext(r) {
+		return "", false
+	}
 	return core.FnIdentityKey(a)
+}
+
+// freshLiteralContext reports whether the pass stands inside a unit the
+// compiled lane runs per call — a fn body's analysis or a closure unit —
+// where a fn literal is pushed with a fresh identity (NUR288).
+func freshLiteralContext(r *core.Registry) bool {
+	return r.Check.FnBodyDepth > 0 || r.Check.Recorder().InClosureUnit()
 }
 
 // specResidualMeetsReturns reports whether a specialised body's residual can

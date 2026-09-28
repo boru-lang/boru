@@ -326,7 +326,7 @@ func TestNoteRuntimeDefDispatch(t *testing.T) {
 		t.Errorf("a unit-scoped run-time def latches its decline: pending=%v inUnit=%v", es.pendingRuntimeBindCall, es.runtimeDefInUnit)
 	}
 	defSig := &core.Signature{Args: []*core.Type{core.TAtom}, Impl: core.Go(nil, core.RunInCheck())}
-	es.RecordRuntimeBindDispatch("def", defSig, []core.Value{core.NewAtom("T")}, core.SrcPos{})
+	es.RecordRuntimeDispatch("def", defSig, []core.Value{core.NewAtom("T")}, nil, core.SrcPos{})
 	if es.Compilable || !strings.Contains(es.Reason, "compile-time word def") || es.pendingRuntimeBindCall || es.runtimeDefInUnit {
 		t.Errorf("a unit-scoped run-time def must decline, got compilable=%v reason=%q", es.Compilable, es.Reason)
 	}

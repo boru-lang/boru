@@ -197,7 +197,7 @@ func appendGateSummary(name string, got, end, ceiling int, status, why string) {
 // entry with the fix that closed it). A listed row's divergence is open debt
 // on the direction lane and a known, tracked defect on the regression lane.
 var knownDivergences = map[string]string{
-	"code-bodies.tsv:L142": "NUR154 — `case` lowers its clause list as a static literal operand, so a quoted list a fn returns is a run-time value the lowering never reads: 'one' interpreted, case_error compiled",
+	// code-bodies.tsv:L142 (NUR154 — `case` over a factory-produced clause list) was RETIRED 2026-09-25: the check pass no longer traps a computed clause operand, the dispatch declines it and the fallback answers as the interpreter does.
 	// each-variants.tsv:L216 (NUR155 — a typed lambda's each$body unit ran
 	// on every element) left the ledger on 2026-09-23: the VM's token seam
 	// matches a lambda-derived body unit's contract per element

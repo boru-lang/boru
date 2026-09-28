@@ -105,7 +105,7 @@ import "boru:query" end Query.select ['a','b']	[]	query:select
 import "boru:rand" end Rand.int 2 3	2	rand:int
 import "boru:rand" end Rand.list-of ['a','b'] 2	['b' 'b']	rand:list-of
 import "boru:rand" end Rand.string 'a' 2	'aa'	rand:string
-import "boru:rand" end Rand.with-seed 2	{int:fn [[:Integer :Integer][Integer][word(rand-int)]] bool:fn [[][Boolean][word(rand-bool)]] float:fn [[][Float][word(rand-float)]] string:fn [[:String :Integer][String][word(rand-string)]] one-of:fn [[:List][Any][word(rand-one-of)]] list-of:fn [[:List :Integer][List][word(rand-list-of)]] map-from:fn [[:Map][Map][word(rand-map-from)]]}	rand:with-seed
+import "boru:rand" end Rand.with-seed 2	{int:fn [[:Integer :Integer][Integer][rand-int]] bool:fn [[][Boolean][rand-bool]] float:fn [[][Float][rand-float]] string:fn [[:String :Integer][String][rand-string]] one-of:fn [[:List][Any][rand-one-of]] list-of:fn [[:List :Integer][List][rand-list-of]] map-from:fn [[:Map][Map][rand-map-from]]}	rand:with-seed
 import "boru:report" end Report.list 2	'2'	report:list
 import "boru:report" end Report.record 2	'2'	report:record
 import "boru:report" end Report.table 2	'2'	report:table
@@ -183,4 +183,4 @@ import "boru:time-util" end TimeUtil.unix-ns 2	1970-01-01T00:00:00.000000002Z	ti
 import "boru:time-util" end TimeUtil.us 2	2µs	time-util:us
 import "boru:time-util" end TimeUtil.weeks 2	P0Y0M14D	time-util:weeks
 import "boru:time-util" end TimeUtil.years 2	P2Y0M0D	time-util:years
-import "boru:vm" end Vm.parse 'a'	(quote [word(a)])	vm:parse
+import "boru:vm" end Vm.parse 'a'	(quote [a])	vm:parse

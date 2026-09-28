@@ -321,9 +321,10 @@ func stage5Predicate(r *Registry, input *Type, body []Value) Value {
 }
 
 // TestRunPredicateArms drives RunPredicate through every arm: malformed
-// constraints, the check-mode short-circuit, the input-type gate (with
-// its bare-type-literal skip), body errors, the arity contract, and the
-// None / boolean-verdict / value-transform result protocol.
+// constraints, the check-mode short-circuit, the one-value application
+// (MatchFnSig selects the signature; what none takes is not a member —
+// NUR100), body errors, the return-arity contract, and the None /
+// boolean-verdict / value-transform result protocol.
 func TestRunPredicateArms(t *testing.T) {
 	r, err := NewRegistry()
 	if err != nil {
@@ -338,16 +339,19 @@ func TestRunPredicateArms(t *testing.T) {
 	if _, _, err := r.RunPredicate(Value{Parent: TFunction}, NewInteger(2)); err == nil {
 		t.Fatal("payload-less constraint must error")
 	}
-	// No own sig / wrong arity.
-	if _, _, err := r.RunPredicate(NewFunction(FnDefInfo{}), NewInteger(2)); err == nil {
-		t.Fatal("sig-less constraint must error")
+	// No signature takes ONE value: the candidate is not a member — the
+	// one-value application finds no overload, as any call would — and no
+	// parameter count raises (NUR100 §1: the old gate answered "predicate
+	// must take exactly one argument").
+	if _, matched, err := r.RunPredicate(NewFunction(FnDefInfo{}), NewInteger(2)); err != nil || matched {
+		t.Fatalf("a sig-less constraint admits nothing, got %v %v", matched, err)
 	}
 	twoArg := NewFunction(FnDefInfo{Signatures: []Signature{{
 		Params: []FnParam{{Name: "a", Type: TAny}, {Name: "b", Type: TAny}},
 		Impl:   Boru([]Value{NewInteger(1)}),
 	}}})
-	if _, _, err := r.RunPredicate(twoArg, NewInteger(2)); err == nil {
-		t.Fatal("two-arg predicate must error")
+	if _, matched, err := r.RunPredicate(twoArg, NewInteger(2)); err != nil || matched {
+		t.Fatalf("a two-arg predicate admits nothing, got %v %v", matched, err)
 	}
 
 	verdictTrue := stage5Predicate(r, TInteger, []Value{NewBoolean(true)})
@@ -360,15 +364,24 @@ func TestRunPredicateArms(t *testing.T) {
 		t.Fatalf("check-mode must accept the candidate, got %v %v %v", out, matched, err)
 	}
 
-	// Input-type gate: a non-conforming candidate rejects without a run.
+	// No signature takes a non-conforming candidate: not a member, and no
+	// body runs.
 	out, matched, err = r.RunPredicate(verdictTrue, NewString("s"))
 	if err != nil || matched || !ValuesEqual(out, NewString("s")) {
-		t.Fatalf("gate must reject a non-conforming candidate, got %v %v %v", out, matched, err)
+		t.Fatalf("a non-conforming candidate is not a member, got %v %v %v", out, matched, err)
 	}
-	// A bare type literal skips the gate and runs the body.
-	out, matched, err = r.RunPredicate(verdictTrue, NewTypeLiteral(TString))
+	// A bare type literal is matched as the matcher matches any value — a
+	// TYPE is no Integer, exactly as `f Integer` finds no overload of an
+	// Integer-taking f — so it is not a member of an Integer predicate…
+	out, matched, err = r.RunPredicate(verdictTrue, NewTypeLiteral(TInteger))
+	if err != nil || matched {
+		t.Fatalf("a type literal is no Integer, got %v %v %v", out, matched, err)
+	}
+	// …and an Any-input predicate takes it and runs its body.
+	anyTrue := stage5Predicate(r, TAny, []Value{NewBoolean(true)})
+	out, matched, err = r.RunPredicate(anyTrue, NewTypeLiteral(TString))
 	if err != nil || !matched {
-		t.Fatalf("bare type literal must skip the gate, got %v %v %v", out, matched, err)
+		t.Fatalf("an Any input takes a type literal, got %v %v %v", out, matched, err)
 	}
 
 	// Body error propagates.

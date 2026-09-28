@@ -77,6 +77,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 		t.Fatal("inactive RecordDynMethod should decline")
 	}
 	e.NoteReStepLanding(core.Value{}, core.SrcPos{})
+	e.NoteDelivery(core.Value{})
 	e.NoteStatementEnd(core.SrcPos{})
 	e.NoteLandingNext(core.Value{}, core.LandingNextEnd, false, core.Value{})
 	if e.MayBeFn("id") {

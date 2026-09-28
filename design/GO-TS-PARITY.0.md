@@ -75,10 +75,10 @@ same day measured 55 divergences (~2.1%) on inputs OUTSIDE the corpus —
 trailing-`=>` fold loss, two accept/reject splits, recovery-token detail,
 error precedence, and an internal type-name leak — and follow-up probing
 found an empty-`${}` template-fold class the sweep's seed missed. The
-ledger now carries one representative row per class found so far (9
-rows; measured, not proven exhaustive), both runners re-measure every
-row on every run, and 50 probe-AGREED neighbors were promoted into
-`parse.tsv`. The safe DATA-decode seam had two asymmetries no shared row
+ledger carried one representative row per class (9 rows) and 50
+probe-AGREED neighbors were promoted into `parse.tsv`. **All nine classes
+are fixed in both ports (NUR060, 2026-09-26)**: each row moved to
+`parse.tsv` with neighbours, and the ledger is empty again. The safe DATA-decode seam had two asymmetries no shared row
 could express — TS reordering integer-like map keys, and Go alone wrapping
 sign+separator runs like `+_1` as numbers — and both were DEPENDENCY
 defects, fixed upstream in jsonic v0.6.0 / parser v0.8.0 (ADR-014) and now

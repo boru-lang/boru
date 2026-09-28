@@ -151,6 +151,10 @@ snapshots it in-frame.
 > name before a Function-typed slot resolves as a reference (the
 > planner's designed intercept, un-broken by the collapse). The
 > map-continuation workaround below is no longer required.
+> **Superseded 2026-09-26 (NUR078):** the intercept is retired with
+> ADR-011's clause-2 amendment — a bare fn name CALLS at every slot, a
+> Function-typed one included, and the reference is spelled `/v`
+> (`wa {x:1} some-fn/v`).
 
 ```
 def wa fn [[s:Map act:Function] [Map] [ act s ]]

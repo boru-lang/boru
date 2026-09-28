@@ -43,6 +43,7 @@ var eventKindSites = map[string]string{
 	"eventsBindValueWhere":    "emit.go  — does this event bind a registry-visible name? (no default)",
 	"callResultPlacedIn":      "emit.go  — where a call's result lands",
 	"forEachOperand":          "lower.go — every enclosing-scope operand the event references (a missing case drops values: unvisited is unreferenced, so a live producer is marked dead)",
+	"readIsDeepestOperand":    "emit.go  — is a root read its plain call's deepest operand? (default: no — the read keeps its guard, NUR217)",
 	"forEachFragmentOperand":  "lower.go — the same walk over a fragment's own events",
 	"eachClosureCap":          "lower.go — the event's CLOSURE captures (a missing case leaves captures stale)",
 	"childFragments":          "lower.go — the event's nested fragments (a missing case hides a whole subtree)",
@@ -60,6 +61,7 @@ var eventKindSites = map[string]string{
 	"fragCanCarry":            "branch_carried.go — does the arm carry a name's binding out on every path? (default: an unnamed kind neither binds nor carries, so the name is NOT seated and its read declines as before — sound, never a stale slot)",
 	"keptDefsInvoker":         "kept_defs.go — may the event RUN a unit that runs a computed keep-defs body? (default: runs nothing — a new kind that can apply a fn value must be named here, or the kept-defs latch misses the run, NUR210)",
 	"forEachConsumingOperand": "dyn_body_one.go — which operands does the event consume at a fixed count? (default: forEachOperand's, whose own default names none — so a new kind consuming a computed `do` run leaves the region's decline standing, sound)",
+	"runOperand":              "prefix_island.go — is the event's result a run of its own runtime count? (default: not a run — a new kind passing a run through reads as one value, NUR294's wrong layout, until it is named)",
 }
 
 // operandKindSites key on OPERAND kind (opConst / opLocal / opEvent / …), a
@@ -255,7 +257,7 @@ func wellFormedEvent(kind int) *EmitEvent {
 		// A trap's operands are its REMATCH window, when it has one; a plain
 		// terminal trap carries none. The window is what must be visited, so
 		// that is what a well-formed fixture has.
-		ev.trap = EmitTrap{rematchWord: "w", rematchOps: []EmitOperand{op}, rematchNWritten: 1}
+		ev.trap = EmitTrap{rematchWord: "w", rematchOps: []EmitOperand{op}, rematchWritten: []int{0}}
 	case evStore:
 		ev.store = &emitStore{src: op}
 	case evDynBind:

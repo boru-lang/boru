@@ -69,12 +69,12 @@ func TestS5ARematchWrittenForwardStops(t *testing.T) {
 	// A Word right after the pointer stops the forward walk; the stack
 	// prefix (empty) yields nothing.
 	e := engWithTape(t, []Value{NewWord("w"), NewWord("x")}, 0)
-	if got := e.rematchWritten(); len(got) != 0 {
+	if got := e.rematchWritten(nil); len(got) != 0 {
 		t.Errorf("rematchWritten = %v, want empty", got)
 	}
 	// A non-concrete, non-carrier token (zero Value) stops the walk too.
 	e2 := engWithTape(t, []Value{NewWord("w"), {}}, 0)
-	if got := e2.rematchWritten(); len(got) != 0 {
+	if got := e2.rematchWritten(nil); len(got) != 0 {
 		t.Errorf("rematchWritten(zero token) = %v, want empty", got)
 	}
 }
@@ -82,13 +82,13 @@ func TestS5ARematchWrittenForwardStops(t *testing.T) {
 func TestS5ARematchWrittenStackFallback(t *testing.T) {
 	// Nothing after the pointer: the stack prefix is collected top-first.
 	e := engWithTape(t, []Value{NewInteger(1), NewInteger(2), NewWord("w")}, 2)
-	got := e.rematchWritten()
+	got := e.rematchWritten(nil)
 	if renderAll(got) != "2 | 1" {
 		t.Errorf("rematchWritten = %s, want 2 | 1", renderAll(got))
 	}
 	// The stack walk stops at an OpenParen boundary.
 	e2 := engWithTape(t, []Value{NewOpenParen(), NewInteger(3), NewWord("w")}, 2)
-	got2 := e2.rematchWritten()
+	got2 := e2.rematchWritten(nil)
 	if renderAll(got2) != "3" {
 		t.Errorf("rematchWritten = %s, want 3", renderAll(got2))
 	}

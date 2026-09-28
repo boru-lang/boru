@@ -129,7 +129,7 @@ export function matchEntry(
   const sigs =
     argCount === undefined
       ? fn.signatures
-      : fn.signatures.filter((s) => s.args.length === argCount);
+      : fn.signatures.filter((s) => BigInt(s.args.length) === argCount);
   // Strict pass: forward stops on type mismatch, stack fills the
   // rest. Most calls bind here.
   for (const sig of sigs) {

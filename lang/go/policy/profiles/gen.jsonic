@@ -40,6 +40,11 @@
           { allow: ["import"], where: {
               module: ["boru:math-util", "boru:rand", "boru:decision", "boru:test"]
           } }
+          // A boru-SOURCE module (`import "./lib.boru"`) runs under this
+          // same profile — its body inherits the importer's policy — so
+          // admitting the import widens nothing its body could do. Reading
+          // the file is still the fileops scope's call (NUR079).
+          { allow: ["import"], where: { kind: ["file"] } }
         ]
       }
       scopes: {

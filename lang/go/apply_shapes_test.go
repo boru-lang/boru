@@ -71,52 +71,68 @@ func TestApplyShapesBareFnWordArgDeclines(t *testing.T) {
 		`def inc fn [[n:Integer] [Integer] [n add 1]] end def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function] [Integer] [(k inc)]] end h app/v`,
 		// a bare read of a Function-typed PARAM is a word dispatch too (NUR123)
 		`def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function g:Function] [Integer] [(k g)]] end def inc fn [[n:Integer] [Integer] [n add 1]] end h app/v inc/v`,
+		// main's NUR234: passed on bare to a recursive call, the param is
+		// called over the next argument, and the recursion no-matches
+		`def inc fn [[x:Integer][Integer][x add 1]] end def h fn [[g:Function n:Integer][Integer][if (n lte 0) [0] [(g n) add (h g (n sub 1))]]] end h inc/v 5`,
 	} {
-		// The GENERIC path's pin: a constant lead compiles through a
-		// call-site specialised unit instead, which answers what the
-		// interpreter answers (TestCallSiteSpecialisationGraduatedShapes).
-		prog, _, _, cerr := mustNewNoSpec(t).CompileCheck(src)
-		if cerr == nil && prog != nil {
-			t.Errorf("%s: compiled — a bare fn word at the lead's argument position must decline", src)
+		// Both paths decline: a bare fn name calls at every slot (NUR078),
+		// so the interpreter calls the word over nothing and raises
+		// signature_error, and a call-site specialised unit — whose body
+		// dispatches the constant lead over that failed call — declines as
+		// the generic path does (the `/v` spelling specialises,
+		// TestCallSiteSpecialisationGraduatedShapes).
+		for _, a := range []*Boru{mustNewNoSpec(t), mustNew(t)} {
+			prog, _, _, cerr := a.CompileCheck(src)
+			if cerr == nil && prog != nil {
+				t.Errorf("%s: compiled — a bare fn word at the lead's argument position must decline", src)
+			}
+		}
+		if _, errI := mustNew(t).RunInterp(src); codeOf(errI) != "signature_error" {
+			t.Errorf("%s: interpreter %v, want signature_error (NUR078: the bare name calls)", src, errI)
 		}
 	}
+	// NUR234's `/v` spelling passes the fn on both lanes.
+	agreeOnBothLanes(t, `def inc fn [[x:Integer][Integer][x add 1]] end def h fn [[g:Function n:Integer][Integer][if (n lte 0) [0] [(g n) add (h g/v (n sub 1))]]] end h inc/v 5`, "[20]")
 }
 
-// TestApplyShapesZeroArgLeadIsLoud pins NUR176: a 0-ARG runtime lead under
-// the one-arg window. The interpreter dispatches it with no args and leaves
-// the argument as residual — so a fn-valued argument then APPLIES to the
-// lead's result (`(k inc/v)` with k = `[] -> 7` answers 8), and a literal
-// argument fails the frame's return count (type_error) — where the compiled
-// window no-matches (signature_error). The bar this test holds is that the
-// compiled lane is LOUD on every member of the family: it never answers a
-// value of its own. The interpreter's answers are asserted too, so a moved
-// oracle re-opens the record rather than passing silently.
-func TestApplyShapesZeroArgLeadIsLoud(t *testing.T) {
-	for _, tc := range []struct {
-		src       string
-		wantI     string // the interpreter's value, or "" for an error
-		wantICode string
-	}{
-		{`def z fn [[] [Integer] [7]] end def inc fn [[n:Integer] [Integer] [n add 1]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h z/v`, "[8]", ""},
-		{`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer] [(k 5)]] end h z/v`, "[]", "type_error"},
-		{`def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function] [Integer] [(k ([] => [9]))]] end h app/v`, "[]", "type_error"},
+// TestApplyShapesZeroArgLeadResolves pins NUR176's close: a 0-arg runtime
+// lead under the one-arg leading window `(k x)` — and under a trailing
+// window `(1 2 c)` — fires over NOTHING on the interpreter, which then steps
+// the tokens written after the lead on their own (a fn value dispatching
+// over the result, a literal landing beside it) while the values written
+// before it stay beneath. The window op used to raise the no-match a
+// 1-arg window owes a fn that takes none (`signature_error`); it hands such
+// a lead to the island in the window's written order now, a name-read lead
+// marked applied so an anonymous 0-arg value dispatches as the word did.
+func TestApplyShapesZeroArgLeadResolves(t *testing.T) {
+	for _, src := range []string{
+		`def z fn [[] [Integer] [7]] end def inc fn [[n:Integer] [Integer] [n add 1]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h z/v`,
+		`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer] [(k 5)]] end h z/v`,
+		`def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function] [Integer] [(k ([] => [9]))]] end h app/v`,
+		`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer Integer] [(k 5)]] end h z/v`,
+		`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer Integer Integer] [(1 2 k)]] end h z/v`,
+		`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer Integer] [(1 k 5)]] end h z/v`,
+		`def z fn [[] [Integer] [7]] end def dbl fn [[n:Integer] [Integer] [n mul 2]] end def h fn [[k:Function] [Integer] [(k dbl/v)]] end h z/v`,
+		`def app fn [[g:Function] [Integer Integer] [(g 3)]] end def h fn [[k:Function] [Integer Integer] [(k ([] => [9]))]] end h app/v`,
 	} {
-		gotI, errI := mustNew(t).RunInterp(tc.src)
-		if fmt.Sprint(gotI) != tc.wantI || codeOf(errI) != tc.wantICode {
-			t.Errorf("%s: interpreter oracle moved: got %v err=[%s], want %s err=[%s] — re-derive NUR176", tc.src, gotI, codeOf(errI), tc.wantI, tc.wantICode)
+		requireSameVerdict(t, src)
+		// The generic path's verdict too: a constant lead compiles through
+		// a call-site specialised unit (TestCallSiteSpecialisationGraduatedShapes),
+		// and the window op's own hand-off is the lane with it off.
+		gotC, compiled, errC, gotI, errI := runBothEnginesNoSpec(t, src)
+		if !compiled || fmt.Sprint(gotC) != fmt.Sprint(gotI) || codeOf(errC) != codeOf(errI) {
+			t.Errorf("%s: generic path %v / %v (compiled=%v), interpreter %v / %v", src, gotC, errC, compiled, gotI, errI)
 		}
-		// The GENERIC path's bar. A constant lead the first row passes
-		// compiles through a call-site specialised unit instead, which
-		// answers the interpreter's 8 (TestCallSiteSpecialisationGraduatedShapes).
-		gotC, compiled, errC := mustNewNoSpec(t).RunCompiled(tc.src)
-		if noteCompileDefect(t, tc.src, gotC, errC) {
-			continue // a loud decline satisfies the bar
-		}
-		if !compiled {
-			t.Fatalf("%s: did not run compiled (%v)", tc.src, errC)
-		}
-		if codeOf(errC) != "signature_error" || len(gotC) != 0 {
-			t.Errorf("%s: compiled got %v err=[%s], want a loud signature_error — a 0-arg lead must never answer a value of its own", tc.src, gotC, codeOf(errC))
+	}
+	for _, c := range []struct{ src, want string }{
+		{`def z fn [[] [Integer] [7]] end def inc fn [[n:Integer] [Integer] [n add 1]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h z/v`, "[8]"},
+		{`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer Integer] [(k 5)]] end h z/v`, "[7 5]"},
+		{`def z fn [[] [Integer] [7]] end def h fn [[k:Function] [Integer Integer Integer] [(1 2 k)]] end h z/v`, "[1 2 7]"},
+		{`def app fn [[g:Function] [Integer Integer] [(g 3)]] end def h fn [[k:Function] [Integer Integer] [(k ([] => [9]))]] end h app/v`, "[9 3]"},
+	} {
+		got, err := mustNew(t).RunInterp(c.src)
+		if err != nil || fmt.Sprint(got) != c.want {
+			t.Errorf("%s: interpreter = %v / %v, want %s", c.src, got, err, c.want)
 		}
 	}
 }

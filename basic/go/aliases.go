@@ -457,6 +457,7 @@ var (
 	IsBareTypeNode           = core.IsBareTypeNode
 	IsCapitalisedName        = core.IsCapitalisedName
 	IsConcrete               = core.IsConcrete
+	IsModuleFamilyValue      = core.IsModuleFamilyValue
 	IsSteplessWindow         = core.IsSteplessWindow
 	IsFnValueResidual        = core.IsFnValueResidual
 	IsGenMemoName            = core.IsGenMemoName
@@ -487,6 +488,7 @@ var (
 	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
 	InstallTakenArmDefs      = core.InstallTakenArmDefs
+	InstallDecidedJoinedDefs = core.InstallDecidedJoinedDefs
 	New                      = core.New
 	RunPooled                = core.RunPooled
 	RunPooledTop             = core.RunPooledTop
@@ -526,6 +528,7 @@ var (
 	ResetCheckFnCarrierBinds = core.ResetCheckFnCarrierBinds
 	NewCarrierTypedList      = core.NewCarrierTypedList
 	NewCarrierTypedListValue = core.NewCarrierTypedListValue
+	CarrierTypedListOf       = core.CarrierTypedListOf
 	NewDynamicCarrier        = core.NewDynamicCarrier
 	NewDynamicCarrierValue   = core.NewDynamicCarrierValue
 	// NewClockDuration moved to lang/go/engine/native_temporal.go (Step 8).
@@ -647,6 +650,8 @@ var (
 	ValidateTypeNameParts  = core.ValidateTypeNameParts
 	ValuesEqual            = core.ValuesEqual
 	WithPos                = core.WithPos
+	WithPosAt              = core.WithPosAt
+	DynStackShuffleWords   = core.DynStackShuffleWords
 	// `make` helpers, ported alongside the make word in eng/go/core_make.go.
 	ResolveFieldType = core.ResolveFieldType
 
@@ -654,6 +659,7 @@ var (
 
 	// The kept `if` condition run (NUR212's follow-up).
 	RunCarrierCondBodyKeepDefs = core.RunCarrierCondBodyKeepDefs
+	GeneraliseSpecUndef        = core.GeneraliseSpecUndef
 )
 
 // Sugar roles (eng/go/sugar.go — ADR-012 rule 3, 2026-08-04

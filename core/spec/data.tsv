@@ -19,14 +19,14 @@
 # the OUTER container stops the descent — the inner one is not reached, so
 # its own flag never gets a say.
 run [ addq 1 2 ]	[3]
-run [q addq 1 2 ]	[word(addq) 1 2]
+run [q addq 1 2 ]	[addq 1 2]
 run { a: [ addq 1 2 ] }	{a:[3]}
-run {q a: [ addq 1 2 ] }	{a:[word(addq) 1 2]}
-run { a: [q addq 1 2 ] }	{a:[word(addq) 1 2]}
-run [q [ addq 1 2 ] ]	[[word(addq) 1 2]]
-run [ [q addq 1 2 ] ]	[[word(addq) 1 2]]
-run { a: {q b: [ addq 1 2 ] } }	{a:{b:[word(addq) 1 2]}}
-run [ {q a: [ addq 1 2 ] } ]	[{a:[word(addq) 1 2]}]
+run {q a: [ addq 1 2 ] }	{a:[addq 1 2]}
+run { a: [q addq 1 2 ] }	{a:[addq 1 2]}
+run [q [ addq 1 2 ] ]	[[addq 1 2]]
+run [ [q addq 1 2 ] ]	[[addq 1 2]]
+run { a: {q b: [ addq 1 2 ] } }	{a:{b:[addq 1 2]}}
+run [ {q a: [ addq 1 2 ] } ]	[{a:[addq 1 2]}]
 
 
 # --- an error inside a container propagates — but only if reached ----------
@@ -35,7 +35,7 @@ run [ {q a: [ addq 1 2 ] } ]	[{a:[word(addq) 1 2]}]
 # what caught the missing gate.
 run [ boomq 1 ]	ERROR:fixture_boom
 run { a: [ boomq 1 ] }	ERROR:fixture_boom
-run {q a: [ boomq 1 ] }	{a:[word(boomq) 1]}
+run {q a: [ boomq 1 ] }	{a:[boomq 1]}
 run [ nosuchword ]	ERROR:undefined_word
 run { a: nosuchword }	ERROR:undefined_word
 run [ addq 1 ]	ERROR:signature_error
@@ -69,7 +69,7 @@ run { a: [ [ addq 1 2 ] ] }	{a:[[3]]}
 run { a: { b: [ addq 1 2 ] } }	{a:{b:[3]}}
 run { a: { b: 1 } }	{a:{b:1}}
 run [ { a: [ addq 1 2 ] } ]	[{a:[3]}]
-run [q { a: [ addq 1 2 ] } ]	[{a:[word(addq) 1 2]}]
+run [q { a: [ addq 1 2 ] } ]	[{a:[addq 1 2]}]
 run [ 1 pairq 2 ]	[1 2 2]
 run [ 1 2 sumq ]	[3]
 run { a: [ 1 2 sumq ] }	{a:[3]}

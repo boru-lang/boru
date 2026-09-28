@@ -138,6 +138,39 @@ func (es *EmitState) storedDepRead(name string, v core.Value) bool {
 	return !dispatchingBinding(v)
 }
 
+// storedLiveRead is one bare read a stored-ref unit seats live
+// (NoteLiveRead's stored-dep arm): the name, and the read token's position.
+type storedLiveRead struct {
+	name string
+	pos  core.SrcPos
+}
+
+// seatStoredLiveReads makes a stored-ref unit's live read reach a FN
+// FRAME's binding of the name (NUR284). The unit runs wherever its value is
+// applied, and the interpreter resolves the read against the live def stack
+// there: `def m {c: ([x:Any] => [k])} end def h fn [[][Any] [def k 7 m.c
+// 1]] end h` reads h's k, 7. From the value's home the name looks
+// module-scope (storedDepRead), but the binding the lookup must find is
+// h's frame local, which only a registry-visible install makes findable.
+// So a read some fn that binds the name reaches (the check's binder model:
+// the value's own reader identity, NUR257) joins dynScopeNames, as a unit's
+// dynamic-scope read does (dynScopeRescue), and every binder installs it.
+// Run once, before any unit is lowered.
+func (es *EmitState) seatStoredLiveReads() {
+	if es.reg == nil || es.reg.Check == nil {
+		return
+	}
+	for _, r := range es.storedLiveReads {
+		if !es.reg.Check.AnonScopeReachable(r.name, r.pos) {
+			continue
+		}
+		if es.dynScopeNames == nil {
+			es.dynScopeNames = map[string]bool{}
+		}
+		es.dynScopeNames[r.name] = true
+	}
+}
+
 // markLiveLead marks word a live lead when a stored-ref unit dispatches it
 // as a module-scope fn with declared signatures (fnSigsDeclared — the
 // identity the routed op locates a unit by). Reports whether it did.

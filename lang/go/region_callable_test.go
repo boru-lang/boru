@@ -60,10 +60,11 @@ func TestRegionCarryingACallableFailsToCompile(t *testing.T) {
 		// accident.
 		{g + tu + `TimeUtil.await {mode:'first'} [[g/v]]`,
 			"a branch body can leave a CALLABLE value", "[fn g(Integer)]"},
-		// The LOOP producer, at the two consumers this batch added. Both fall
-		// back to the compile failure each had before the consumer existed.
+		// The LOOP producer: a NAMED fn value the body leaves is the
+		// interpreter's per-iteration re-step, declined at the loop's own
+		// residual (NUR129's narrowing) before any consumer sees it.
 		{g + `5 for 1 [g/v]`,
-			"residual shape beyond Stage 1 (call result above a literal)", "[6]"},
+			"body result is a named fn value the interpreter re-steps per iteration (NUR129)", "[6]"},
 	} {
 		t.Run(tc.src, func(t *testing.T) {
 			a, err := New()

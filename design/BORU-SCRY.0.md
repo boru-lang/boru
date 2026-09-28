@@ -1,6 +1,11 @@
 # boru:scry — a boru system's knowledge of itself, as plain data
 
-**Status: design proposal — not implemented.** Companion note:
+**Status: design proposal — first slice shipped (2026-09-26, NUR063).**
+`lang/go/modules/scry.go` builds `boru:scry` with the seven words §6
+adopts from `boru:debug` (`words`, `defs`, `modules`, `sig`, `body`,
+`deps`, `shape`), from the one constructor both modules use; §6's verdict
+is implemented. Everything else in §4 — the graphs, `types`, `info`,
+`schema`, `trace` — is unbuilt. Companion note:
 [BORU-VIZ.0.md](BORU-VIZ.0.md) specifies `boru:viz`, the diagram-source
 generator that is this module's first consumer and defines the shared
 data contract (its §3). The split is a maintainer decision (2026-08-12):
@@ -189,12 +194,21 @@ Proposal, least-breaking first:
    `module-graph`, `schema`, data `trace`, `info`) lands only in scry;
    the debug copies are frozen at today's seven.
 3. **The dual surface is a non-uniformity, recorded as
-   [NUR063](../NUR.md#nur063) (Pending) in the same commit as this
-   note** — the register requires recording the moment a divergence
-   surfaces in a design note, not when implementation starts. The
-   *verdict* — keep both indefinitely vs deprecate the debug copies —
-   is the maintainer's (§9 Q1), and the record holds that question
-   open.
+   [NUR063](../NUR.md#nur063)** in the same commit as this note. The
+   maintainer's verdict (2026-08-15): scry canonical, the debug copies
+   frozen behind the same handlers and deprecated on a stated timeline.
+   **Implemented 2026-09-26:** one constructor (`selfKnowledge`) builds
+   the seven for both surfaces — the handlers differ only in the name an
+   error gives the word (`Scry.sig` / `Debug.sig`) and the code an
+   unknown word raises (`scry_unknown_word` / the historical
+   `debug_error`); `describe` marks each `Debug.*` copy deprecated,
+   naming its `Scry.*` twin; the copies are removed in the first minor
+   release after the one that ships `boru:scry`.
+
+   The richer census shapes §4 sketches (`Scry.modules` with
+   `{id namespace imported}`, `Scry.words` with filter opts) are scry's
+   growth: they land as new forms of scry's words, never by changing
+   what the shared seven answer while the debug copies exist.
 
 `Debug.trace` (prints) and `Scry.trace` (returns rows) are different
 words for different jobs and both stay.
@@ -259,10 +273,10 @@ export, ADR-008 coverage throughout.
 
 ## 9. Open questions for the maintainer
 
-1. **The debug overlap verdict** (§6): keep both surfaces
-   indefinitely, or deprecate the seven debug copies once scry ships?
-   (Leaning: keep through one release, then decide with usage
-   evidence; NUR063 holds the question open either way.)
+1. **The debug overlap verdict** (§6) — **decided** (maintainer,
+   2026-08-15; implemented 2026-09-26, NUR063): deprecate. The debug
+   copies are kept, frozen and marked, through the release that ships
+   scry, and removed in the next minor release.
 2. **`Scry.info` shape**: is exporting the `help` taxonomy as data
    acceptable, and should `examples` ship in it (they are generated
    into `examples_gen.go` and sizeable)? (Leaning: yes, with

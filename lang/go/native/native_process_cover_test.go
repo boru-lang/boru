@@ -340,7 +340,7 @@ func TestProcessCoverSplitClausePattern(t *testing.T) {
 	r := seam5Reg(t)
 
 	// Non-concrete pattern map is refused.
-	if _, err := splitClausePattern(r, NewTypeLiteral(TMap)); err == nil {
+	if _, err := splitClausePattern(r, NewTypeLiteral(TMap), "receive", "receive_error"); err == nil {
 		t.Fatal("type-literal pattern must be refused")
 	}
 
@@ -348,7 +348,7 @@ func TestProcessCoverSplitClausePattern(t *testing.T) {
 	om := NewOrderedMap()
 	om.Set("cmd", NewString("go"))
 	om.Set("reply", NewTypeLiteral(TPid))
-	c, err := splitClausePattern(r, NewMap(om))
+	c, err := splitClausePattern(r, NewMap(om), "receive", "receive_error")
 	if err != nil {
 		t.Fatal(err)
 	}
@@ -404,29 +404,29 @@ func TestProcessCoverBindClauseRefusals(t *testing.T) {
 	c := recvClause{binds: []recvBind{{name: "n", t: TInteger}}}
 
 	// A non-map message cannot satisfy binding slots.
-	if _, ok := bindClause(c, NewInteger(7)); ok {
+	if _, ok := bindSlots(c.binds, NewInteger(7)); ok {
 		t.Error("non-map message must refuse binding slots")
 	}
 	// Map-conforming value with no OrderedMap payload (AsMap returns nil).
-	if _, ok := bindClause(c, Value{Parent: TMap, Data: core.TableData{}}); ok {
+	if _, ok := bindSlots(c.binds, Value{Parent: TMap, Data: core.TableData{}}); ok {
 		t.Error("map-typed value without an OrderedMap payload must refuse")
 	}
 	// Field missing.
 	missing := NewOrderedMap()
 	missing.Set("other", NewInteger(1))
-	if _, ok := bindClause(c, NewMap(missing)); ok {
+	if _, ok := bindSlots(c.binds, NewMap(missing)); ok {
 		t.Error("message missing the bound field must refuse")
 	}
 	// Field present with the wrong type.
 	wrong := NewOrderedMap()
 	wrong.Set("n", NewString("x"))
-	if _, ok := bindClause(c, NewMap(wrong)); ok {
+	if _, ok := bindSlots(c.binds, NewMap(wrong)); ok {
 		t.Error("field of the wrong type must refuse")
 	}
 	// Positive twin: matching message binds the field.
 	good := NewOrderedMap()
 	good.Set("n", NewInteger(3))
-	binds, ok := bindClause(c, NewMap(good))
+	binds, ok := bindSlots(c.binds, NewMap(good))
 	if !ok || len(binds) != 1 || binds[0].name != "n" {
 		t.Fatalf("matching message must bind, got %v ok=%v", binds, ok)
 	}

@@ -19,8 +19,11 @@ func dynFrameWordsAt(p *compiler.Program, unit, pc int) []compiler.DynFrameWord 
 // pc in the code that holds it (CompiledFn.DynApplyName): only a fn unit
 // carries one — a main-code apply names no frame binding.
 func dynApplyNameAt(p *compiler.Program, unit, pc int) compiler.DynApplyHead {
-	if unit < 0 || p == nil || unit >= len(p.Fns) {
+	if p == nil || unit >= len(p.Fns) {
 		return compiler.DynApplyHead{}
+	}
+	if unit < 0 {
+		return p.DynApplyName[pc]
 	}
 	return p.Fns[unit].DynApplyName[pc]
 }
@@ -78,7 +81,46 @@ func (vc *vmContext) nameStoredClosure(v core.Value, name string) core.Value {
 // (nameFrameFns — the interpreter's frame binding names a fn value bound
 // for a param exactly as installDef names a def, and a compiled closure
 // there rendered `fn (Any)` for the interpreter's `fn g(Any)`).
+// renamesAsData reports whether a def's rename of v changes its name alone,
+// so the value's frame home may take it (GlobalBindSpec.WriteSlot): a
+// boru-bodied fn value (one with a home) that is no delegation wrapper, or
+// a compiled closure. A Go-built value (a dispatch modifier's wrapper) and
+// a wrapper whose body is one word (a module parser's, which the
+// interpreter's def REBINDS to its inner native rather than renames) are
+// dispatched by what the payload rename would change, so their home keeps
+// them as the program's later uses need them (NUR285).
+func renamesAsData(v core.Value) bool {
+	if fd, ok := v.Data.(core.FnDefInfo); ok {
+		if !fd.HasHome() {
+			return false
+		}
+		for i := range fd.Signatures {
+			if b := fd.Signatures[i].Body(); len(b) == 1 && core.IsWord(b[0]) {
+				return false
+			}
+		}
+		return true
+	}
+	_, closure := v.Data.(core.ClosurePayload)
+	return closure
+}
+
 func nameClosureValue(v core.Value, name string) core.Value {
+	// A fn VALUE with its own definition — a factory's non-capturing lambda
+	// baked as a const, a `/v` reference — is renamed as installDef renames
+	// it (`fnDef.Name = name`, unconditionally): a def-bound value that
+	// escapes as data renders under the def's name on both lanes (`def f
+	// (mk 1)  each f/v [1 2 3]` read `fn (String)` for the interpreter's
+	// `fn f(String)`, NUR168). The copy in this slot is renamed; the pooled
+	// const keeps its own payload, as the interpreter's binding copies do.
+	if fd, ok := v.Data.(core.FnDefInfo); ok {
+		if fd.Name == name {
+			return v
+		}
+		fd.Name = name
+		v.Data = fd
+		return v
+	}
 	cl, ok := v.Data.(core.ClosurePayload)
 	if !ok || cl.RetName == name {
 		return v
@@ -95,7 +137,7 @@ func nameClosureValue(v core.Value, name string) core.Value {
 		// renamed FnDefInfo gives (`fn h(Integer)`); no handler is attached,
 		// this value is only ever formatted.
 		if params, ok := closureSigParams(&prog.Fns[cl.Unit]); ok {
-			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: prog.Fns[cl.Unit].Lambda})
+			cl.Render = core.FormatFnDef(core.FnDefInfo{Name: name, Signatures: []core.Signature{{Params: params, BarrierPos: len(params)}}, Anonymous: compiler.ClosureIsAnonymous(&prog.Fns[cl.Unit], cl)})
 		}
 	}
 	v.Data = cl
@@ -287,7 +329,7 @@ func (vc *vmContext) closureAsWord(reg *core.Registry, v core.Value) (core.Value
 	// the bridged signature, args in signature order: SigMatched, so the
 	// invoker applies the unit positionally (ClosurePayload.SigMatched).
 	body := core.ClosureSigMatched(v)
-	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl.Ident, func(args []core.Value) ([]core.Value, error) {
+	fnv, ok := closureFnDef(&prog.Fns[cl.Unit], cl, func(args []core.Value) ([]core.Value, error) {
 		return vc.invokeClosureOn(reg, body, args)
 	})
 	if !ok {
@@ -345,12 +387,12 @@ func closureMatchesArgs(fn *compiler.CompiledFn, args []core.Value) bool {
 // matches under, so a `z:Integer` lambda handed a String no-matches there —
 // whose handler applies the closure through invoke. A unit that recorded no
 // contract (a token body) declines: guessing Any would apply where the
-// interpreter declines. Anonymous mirrors the source fn's flag
-// (CompiledFn.Lambda): it is what parks a 0-arg lambda VALUE nothing calls
-// at the pointer (ADR-016's gate), so the value-path bridge parks in the
-// same places the interpreter's own value does.
-func closureFnDef(fn *compiler.CompiledFn, ident core.FnIdentity, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
-	fd, ok := closureSigView(fn)
+// interpreter declines. Anonymous is the closure's own (closureSigView): it
+// is what parks a 0-arg lambda VALUE nothing calls at the pointer (ADR-016's
+// gate), so the value-path bridge parks in the same places the
+// interpreter's own value does.
+func closureFnDef(fn *compiler.CompiledFn, cl core.ClosurePayload, invoke func(args []core.Value) ([]core.Value, error)) (core.Value, bool) {
+	fd, ok := closureSigView(fn, cl)
 	if !ok {
 		return core.Value{}, false
 	}
@@ -362,16 +404,18 @@ func closureFnDef(fn *compiler.CompiledFn, ident core.FnIdentity, invoke func(ar
 	// function, as the interpreter's copies of the source lambda are
 	// (Codex P1 on PR #444: each bridge minted its own, and `[(mk 3)] each
 	// [dup eq]` answered false for the interpreter's true).
-	return core.NewFunctionIdentified(fd, ident), true
+	return core.NewFunctionIdentified(fd, cl.Ident), true
 }
 
 // closureSigView is closureFnDef's SHAPE without its handler: the one
-// signature over the unit's declared param contract and the source fn's
-// Anonymous flag. It is what a diagnostic describes — callDynTrailTop's
-// named-head no-match raise reads the view and never runs it, so it needs
-// no invoker (the placeholder one it used to build was a function no path
-// could call). ok=false for a unit that recorded no contract.
-func closureSigView(fn *compiler.CompiledFn) (core.FnDefInfo, bool) {
+// signature over the unit's declared param contract and the closure's
+// Anonymous flag — an `afn` / `=>` value, not a named `fn` literal
+// (compiler.ClosureIsAnonymous, NUR321). It is what a diagnostic describes —
+// callDynTrailTop's named-head no-match raise reads the view and never runs
+// it, so it needs no invoker (the placeholder one it used to build was a
+// function no path could call). ok=false for a unit that recorded no
+// contract.
+func closureSigView(fn *compiler.CompiledFn, cl core.ClosurePayload) (core.FnDefInfo, bool) {
 	params, ok := closureSigParams(fn)
 	if !ok {
 		return core.FnDefInfo{}, false
@@ -383,5 +427,92 @@ func closureSigView(fn *compiler.CompiledFn) (core.FnDefInfo, bool) {
 	// diagnostics agree line for line.
 	sig := core.Signature{Params: params, BarrierPos: len(params)}
 	core.NormalizeSig(&sig)
-	return core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: fn.Lambda}, true
+	return core.FnDefInfo{Signatures: []core.Signature{sig}, Anonymous: compiler.ClosureIsAnonymous(fn, cl)}, true
+}
+
+// callWindowAt is the no-match window of the CALL_USER / TAIL_CALL_USER at
+// pc (NUR320): the code's recorded CallWindows entry read over the call's
+// arguments (args, signature order), the stack beneath them and the
+// caller's frame locals — the window the interpreter's failed dispatch
+// reports. ok is false when the call carries no entry, or an entry the
+// frame cannot satisfy; the contract then reports the arguments. A written
+// value that is no concrete value at run time — a type literal, None — ends
+// the interpreter's written values there, and its report falls to the
+// stack prefix (the window's stack values, then its PrefixOnly entries —
+// core.AttemptedTuple over name's live overloads, NUR311).
+func callWindowAt(r *core.Registry, name string, p *compiler.Program, unit, pc int, args, stack, locals []core.Value) ([]core.Value, bool) {
+	if p == nil {
+		return nil, false
+	}
+	table := p.CallWindows
+	if unit >= 0 {
+		if unit >= len(p.Fns) {
+			return nil, false
+		}
+		table = p.Fns[unit].CallWindows
+	}
+	spec, ok := table[pc]
+	if !ok {
+		return nil, false
+	}
+	win := make([]core.Value, 0, len(spec))
+	var prefix []core.Value
+	stop := -1
+	for _, o := range spec {
+		v, ok := callWindowValue(o, args, stack, locals)
+		if !ok {
+			return nil, false
+		}
+		switch {
+		case o.PrefixOnly:
+			prefix = append(prefix, v)
+			continue
+		case !o.Fwd:
+			prefix = append(prefix, v)
+		case stop < 0 && !core.IsConcrete(v):
+			stop = len(win)
+		}
+		win = append(win, v)
+	}
+	if stop >= 0 {
+		return core.AttemptedTuple(r.Lookup(name), win[:stop], prefix), true
+	}
+	return win, true
+}
+
+// callWindowValue reads one window operand over the call's frame.
+func callWindowValue(o compiler.CallWindowOperand, args, stack, locals []core.Value) (core.Value, bool) {
+	var src []core.Value
+	at := o.Idx
+	switch o.Kind {
+	case compiler.WinValue:
+		return o.Value, true
+	case compiler.WinArg:
+		src = args
+	case compiler.WinLocal:
+		src = locals
+	default:
+		src, at = stack, len(stack)-1-o.Idx
+	}
+	if at < 0 || at >= len(src) {
+		return core.Value{}, false
+	}
+	return src[at], true
+}
+
+// landedFnTakesArgs reports whether a landed fn value has an overload that
+// takes an argument (a FnDefInfo's real signature, a fn-value closure's
+// unit): the interpreter's re-step could apply it over values beneath it
+// (LandingBeneathGuard, NUR286).
+func landedFnTakesArgs(v core.Value) bool {
+	fnDef, ok := v.Data.(core.FnDefInfo)
+	if !ok {
+		return compiler.ClosureTakesArgs(v)
+	}
+	for i := range fnDef.Signatures {
+		if !fnDef.Signatures[i].Fallback && fnDef.Signatures[i].TotalArgs() != 0 {
+			return true
+		}
+	}
+	return false
 }

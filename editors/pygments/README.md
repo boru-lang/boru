@@ -63,7 +63,7 @@ language by its alias in fenced code blocks — no extra config needed
 because the entry point makes `boru` a first-class Pygments language:
 
 <pre><code>```boru
-def New fn [[opts:Map] [Service] [ add {op: "create"} ]]
+def new fn [[opts:Map] [Service] [ add {op: "create"} ]]
 ```</code></pre>
 
 If you pin lexers explicitly, add `boru` under
@@ -85,7 +85,7 @@ usable directly:
 ```rst
 .. code-block:: boru
 
-   def New fn [[opts:Map] [Service] [ add {op: "create"} ]]
+   def new fn [[opts:Map] [Service] [ add {op: "create"} ]]
 ```
 
 To make it the default for a whole page, set the `highlight` directive

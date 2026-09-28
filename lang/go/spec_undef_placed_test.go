@@ -182,14 +182,16 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 	}
 	// A dispatch the static match cannot commit — a multi-arm user fn over a
 	// generalised Any or disjunct binding, or beside one — never reaches the
-	// generic seat: the rematch trap's operand layout declines it (the read's
-	// identity is its event's, not the binding's the window resolves), and
-	// the recovery's arm plan declines a plain carrier (review of #465). Both
-	// are upstream of the undef site, and the hatch answers as the
-	// interpreter does.
+	// generic seat: the rematch declines it, and the recovery's arm plan
+	// declines a plain carrier (review of #465). Both are upstream of the
+	// undef site, and the hatch answers as the interpreter does. The
+	// rematch used to decline at its operand layout, over the only value its
+	// report found beneath `g`: the undef branch's phantom None, which is on
+	// no run's stack. The report's prefix is the run's now (NUR253), the
+	// rematch has no tuple to render, and the recovery's failure stands.
 	declined = append(declined, []struct{ src, reason string }{
-		{`def c false end def id fn [[x:Any][Any][x]] end def k (id 5) end def g fn [[x:Integer][Integer][x] [x:String][String][x]] end if c [undef k] [] g k`, "rematch operand is not on top (rematch of g)"},
-		{`def c false end def m {e: true} end def k (if (m "e" get) [7] ["s"]) end def g fn [[x:Integer][Integer][x] [x:String][String][x]] end if c [undef k] [] g k`, "rematch operand is not on top (rematch of g)"},
+		{`def c false end def id fn [[x:Any][Any][x]] end def k (id 5) end def g fn [[x:Integer][Integer][x] [x:String][String][x]] end if c [undef k] [] g k`, "unmatched dispatch recovered at g"},
+		{`def c false end def m {e: true} end def k (if (m "e" get) [7] ["s"]) end def g fn [[x:Integer][Integer][x] [x:String][String][x]] end if c [undef k] [] g k`, "unmatched dispatch recovered at g"},
 		// The recovery's window is the interpreter's since NUR180's fix
 		// (2026-09-23: forward tokens first — `[k, v]`, where the stack-first
 		// gatherer had taken the `if`'s carrier and `k` and left `v` out), so

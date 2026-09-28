@@ -51,7 +51,9 @@ func mayBeFnEngine(t *testing.T, tape []core.Value, maybe map[string]bool) (*cor
 // TestNoteReStepLandingAdmitsMayBeFn: a non-callable carrier lands only when
 // the recorder says its branch may have produced a fn (`if true one/v [2]`
 // is 1 interpreted); the other gates still hold over it — a collectable
-// token after it leaves it unrecorded.
+// token after it leaves it unrecorded, except in a def's operand group,
+// where it is a COLLECTING landing (NUR298) unless the token is a dispatch
+// modifier.
 func TestNoteReStepLandingAdmitsMayBeFn(t *testing.T) {
 	branch := core.NewCarrier(core.TAny)
 	branch.ID = "br-land"
@@ -74,6 +76,50 @@ func TestNoteReStepLandingAdmitsMayBeFn(t *testing.T) {
 	noteReStepLanding(e, 0)
 	if len(rec.landed) != 0 {
 		t.Errorf("a collectable token after the value leaves it unrecorded: %v", rec.landed)
+	}
+
+	group := func(after core.Value) []core.Value {
+		return []core.Value{core.NewWord("def"), core.NewWord("j"), core.NewOpenParen(), core.NewInteger(5), branch, after, core.NewCloseParen()}
+	}
+	e, rec, fin = mayBeFnEngine(t, group(core.NewInteger(7)), map[string]bool{"br-land": true})
+	defer fin()
+	noteReStepLanding(e, 4)
+	if len(rec.landed) != 1 || len(rec.next) != 1 || rec.next[0] != core.LandingNextCollect {
+		t.Errorf("in a def's group a collectable token makes a collecting landing: %v %v", rec.landed, rec.next)
+	}
+	e, rec, fin = mayBeFnEngine(t, group(core.NewDispatchMod(core.DispatchModInfo{Val: true})), map[string]bool{"br-land": true})
+	defer fin()
+	noteReStepLanding(e, 4)
+	if len(rec.landed) != 0 {
+		t.Errorf("a dispatch modifier after the value is data intent: %v", rec.landed)
+	}
+}
+
+// TestInDefGroup pins where a collecting landing is noted (NUR298): directly
+// in the paren group written as a def's operand, which runs before the def
+// dispatches.
+func TestInDefGroup(t *testing.T) {
+	r := covRegistry(t, nil)
+	v := core.NewInteger(1)
+	for _, c := range []struct {
+		name string
+		tape []core.Value
+		at   int
+		want bool
+	}{
+		{"a def's group", []core.Value{core.NewWord("def"), core.NewWord("j"), core.NewOpenParen(), v}, 3, true},
+		{"past a closed inner group", []core.Value{core.NewWord("def"), core.NewWord("j"), core.NewOpenParen(), core.NewOpenParen(), v, core.NewCloseParen(), v}, 6, true},
+		{"inside an inner group", []core.Value{core.NewWord("def"), core.NewWord("j"), core.NewOpenParen(), core.NewOpenParen(), v}, 4, false},
+		{"another word's group", []core.Value{core.NewWord("add"), core.NewWord("j"), core.NewOpenParen(), v}, 3, false},
+		{"a value before the group", []core.Value{core.NewWord("def"), v, core.NewOpenParen(), v}, 3, false},
+		{"a group at the tape's start", []core.Value{core.NewOpenParen(), v}, 1, false},
+		{"no group", []core.Value{core.NewWord("def"), core.NewWord("j"), v}, 2, false},
+	} {
+		e := core.NewTop(r)
+		e.Tape = core.NewTape(c.tape, core.StackHeadroom)
+		if got := inDefGroup(e, c.at); got != c.want {
+			t.Errorf("%s: inDefGroup = %v, want %v", c.name, got, c.want)
+		}
 	}
 }
 
@@ -138,10 +184,13 @@ func TestNoteReStepLandingNotesNext(t *testing.T) {
 		if rec.next[0] != tc.next || rec.beneath[0] != tc.beneath {
 			t.Errorf("%s: next = %v beneath = %v, want %v %v", tc.name, rec.next[0], rec.beneath[0], tc.next, tc.beneath)
 		}
-		// The function word itself rides with the note (the VM's landing
-		// walks the run-time fn's overloads over it, NUR190); nothing else does.
+		// The word itself rides with the note: a function word is what the
+		// VM's landing walks the run-time fn's overloads over (NUR190), and a
+		// collected one is what a `/q` slot captures in place of the value
+		// the pass folds it to (NUR219). A boundary or the tape's end carries
+		// none.
 		wantWord := ""
-		if tc.next == core.LandingNextWord {
+		if tc.next == core.LandingNextWord || tc.next == core.LandingNextValue {
 			w, _ := core.AsWord(tc.tape[1])
 			wantWord = w.Name
 		}

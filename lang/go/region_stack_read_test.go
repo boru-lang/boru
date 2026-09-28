@@ -87,14 +87,28 @@ func TestFallbackRegionMayCarryACallable(t *testing.T) {
 // inputs; a mark opened above one of them leaves the op popping from beneath
 // its own mark, and MAKE_LIST_TO_MARK then collects an empty run.
 //
-// The same concrete-handler rule keeps this one declined (measured with
-// the handler on the dyn-body path: the raise arm ran to a MAKE_LIST
-// underflow — the list literal is a fixed-arity consumer of a result whose
-// count is the handler body's own).
+// This declined while a strip island's result was unchecked, since the list
+// literal is a fixed-arity consumer of a result whose count is the handler
+// body's own. Since the #515 merge the island's run is a checkable region
+// (FallbackSpan.CheckOne, NUR301's single seat): the literal lowers a
+// fixed-count MAKE_LIST over the island's one value — no mark over the
+// input — so the value path answers the interpreter's [[1]], and the raise
+// path, whose handler leaves nothing, is the loud designed defer.
 func TestFallbackInputIsAStackRead(t *testing.T) {
-	rsrDoesNotCompile(t,
-		`def xs [1] [do [1 div (xs 0 getr)] error [drop]]`,
-		"", "[[1]]")
+	const src = `def xs [1] [do [1 div (xs 0 getr)] error [drop]]`
+	requireEngineParity(t, src, true)
+	prog, reason, _, err := mustNew(t).CompileCheck(src)
+	if prog == nil || err != nil || strings.Contains(prog.Disassemble(), "MAKE_LIST_TO_MARK") {
+		t.Fatalf("the island's one value is a fixed-count element: %q / %v", reason, err)
+	}
+	const raising = `def xs [0] [do [1 div (xs 0 getr)] error [drop]]`
+	gotC, _, errC := mustNew(t).RunCompiled(raising)
+	if !isBailDefect(errC) || !strings.Contains(errC.Error(), "error's island left 0") || len(gotC) != 0 {
+		t.Errorf("the raise path's empty run defers loudly, got %v / %v", gotC, errC)
+	}
+	if gotI, errI := mustNew(t).RunInterp(raising); errI != nil || fmt.Sprint(gotI) != "[[]]" {
+		t.Errorf("the interpreter answers [[]], got %v / %v", gotI, errI)
+	}
 }
 
 // TestVariadicUserCallPromotionFailsToCompile — finding 3's witness, whose cause was

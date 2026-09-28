@@ -8,7 +8,7 @@ import (
 )
 
 // §5.1 of design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore — "a capitalised name bound to
-// a function never calls, silently". `def I x:Integer => [add 1 x] end I 5`
+// a function never calls, silently". `def I fnpred x:Integer [add 1 x] end I 5`
 // prints `I 5` and exits 0: the capitalised name minted a TYPE, so writing
 // it in call position placed the lattice node and left the 5 unconsumed.
 // `stranded_type_call` is the hint that shape now costs (recommendation 2).
@@ -46,29 +46,26 @@ func TestStrandedTypeCallFires(t *testing.T) {
 		name  string
 		unpos bool // the placement carries no source token
 	}{
-		// The audit's own repro: an arrow lambda under a capitalised name.
-		{`def I x:Integer => [add 1 x] end I 5`, "I", false},
-		// The combinator that matters most — K is 2-arg, so its minted node is
-		// plainly Function-parented rather than a PREDICATE type. Keying the
-		// gate on the node's fn CONTENT (not on predicate-ness) is what makes
-		// the multi-argument half of the S/K/I/B/C/W/Y set visible.
-		{`def K fn [[a:Any b:Any][Any][a]] end K 1 2`, "K", false},
-		// The verbose fn spelling, 1-arg (this one DOES mint a predicate type).
-		{`def Succ fn [[n:Integer][Integer][n add 1]] end Succ 5`, "Succ", false},
+		// The audit's own repro, as a DECLARED predicate called like a fn —
+		// the one fn-bodied type node left since NUR099 refuses a capitalised
+		// fn body at the declaration (TestStrandedTypeCallRefusedAtDeclaration).
+		{`def I fnpred x:Integer [add 1 x] end I 5`, "I", false},
+		// The spec-list spelling.
+		{`def Succ fnpred [[n:Integer] [n add 1]] end Succ 5`, "Succ", false},
 		// Inside a fn body: the same defect, the same hint. A fn body,
 		// an `if` arm, a `for` body, a `do` region and a paren group all
 		// surface their residual into the top-level one, so judging that
 		// one list reaches every place the stranded pair can still show up.
-		{`def I x:Integer => [add 1 x] end  def g y:Integer => [I y]  g 5`, "I", false},
-		{`def I x:Integer => [add 1 x] end  (I 5)`, "I", false},
-		{`def I x:Integer => [add 1 x] end  do [I 5]`, "I", false},
-		{`def I x:Integer => [add 1 x] end  for [1 2] [I 5]`, "I", false},
+		{`def I fnpred x:Integer [add 1 x] end  def g y:Integer => [I y]  g 5`, "I", false},
+		{`def I fnpred x:Integer [add 1 x] end  (I 5)`, "I", false},
+		{`def I fnpred x:Integer [add 1 x] end  do [I 5]`, "I", false},
+		{`def I fnpred x:Integer [add 1 x] end  for [1 2] [I 5]`, "I", false},
 		// An ALIAS writes one name for another's node: the message follows
 		// what was WRITTEN (`J`), which is also where the caret lands.
-		{`def I x:Integer => [add 1 x] end  def J I  J 5`, "J", false},
+		{`def I fnpred x:Integer [add 1 x] end  def J I  J 5`, "J", false},
 		// A COMPUTED placement carries no source token at all, so there the
 		// node's own name is the only thing left to name it by.
-		{`def I x:Integer => [add 1 x] end  (valof I) 5`, "I", true},
+		{`def I fnpred x:Integer [add 1 x] end  (valof I) 5`, "I", true},
 	}
 	for _, c := range cases {
 		diags := strandedTypeCallDiags(t, c.src)
@@ -108,7 +105,7 @@ func TestStrandedTypeCallFires(t *testing.T) {
 // analysed call; without the dedupe the CLI and the LSP both show the
 // warning twice at the identical row and column.
 func TestStrandedTypeCallDedupesOneSourceDefect(t *testing.T) {
-	const src = `def I x:Integer => [add 1 x] end def g y:Integer => [I y] g 1 g 2`
+	const src = `def I fnpred x:Integer [add 1 x] end def g y:Integer => [I y] g 1 g 2`
 	if diags := strandedTypeCallDiags(t, src); len(diags) != 1 {
 		t.Errorf("two calls into one defective body must yield 1 diagnostic, got %d", len(diags))
 	}
@@ -123,10 +120,10 @@ func TestStrandedTypeCallDedupesOneSourceDefect(t *testing.T) {
 // design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.1 "What it still misses".
 func TestStrandedTypeCallMissesConsumedPair(t *testing.T) {
 	for _, src := range []string{
-		`def I x:Integer => [add 1 x] end I 5 drop`,        // a later word takes the operand
-		`def I x:Integer => [add 1 x] end I 5 print`,       // an output word takes it
-		`def I x:Integer => [add 1 x] end  def r (I 5)  r`, // def binds one of the pair
-		`def I x:Integer => [add 1 x] end  size (I 5)`,     // an enclosing call consumes the node
+		`def I fnpred x:Integer [add 1 x] end I 5 drop`,        // a later word takes the operand
+		`def I fnpred x:Integer [add 1 x] end I 5 print`,       // an output word takes it
+		`def I fnpred x:Integer [add 1 x] end  def r (I 5)  r`, // def binds one of the pair
+		`def I fnpred x:Integer [add 1 x] end  size (I 5)`,     // an enclosing call consumes the node
 	} {
 		if diags := strandedTypeCallDiags(t, src); len(diags) != 0 {
 			t.Errorf("%q: NOW REPORTED (%d) — the residual scan's recall limit is closed; "+
@@ -143,16 +140,16 @@ func TestStrandedTypeCallStaysQuiet(t *testing.T) {
 		why string
 	}{
 		// The DELIBERATE use of a predicate type: `is` consumes it.
-		{`def Even fn n:Integer Boolean [eq 0 (mod 2 n)] end 4 is Even`,
+		{`def Even fnpred n:Integer [eq 0 (mod 2 n)] end 4 is Even`,
 			"the predicate type used as one — `is` consumed the node"},
 		// A statement that merely NAMES a type after an earlier one produced a
 		// value: the node is last, so nothing was being called.
-		{`def Even fn n:Integer Boolean [eq 0 (mod 2 n)] end  4 is Even  Even`,
+		{`def Even fnpred n:Integer [eq 0 (mod 2 n)] end  4 is Even  Even`,
 			"the node is stranded LAST — no operands follow it"},
-		{`def Even fn n:Integer Boolean [eq 0 (mod 2 n)] end  def xs [1 2 3]  xs Even`,
+		{`def Even fnpred n:Integer [eq 0 (mod 2 n)] end  def xs [1 2 3]  xs Even`,
 			"stack-form residual: the node is last, the list precedes it"},
 		// Two adjacent nodes — nothing was being called.
-		{`def Even fn n:Integer Boolean [eq 0 (mod 2 n)] end def Odd fn n:Integer Boolean [eq 1 (mod 2 n)] end Even Odd`,
+		{`def Even fnpred n:Integer [eq 0 (mod 2 n)] end def Odd fnpred n:Integer [eq 1 (mod 2 n)] end Even Odd`,
 			"two type nodes side by side"},
 		// A node whose content is NOT a function: an alias, a builtin, a
 		// signature type, a class. Naming one beside a value is ordinary.
@@ -162,8 +159,8 @@ func TestStrandedTypeCallStaysQuiet(t *testing.T) {
 		{`def C class {a:Integer}  C 5`, "a class node is constructed with make, not called"},
 		// Types as DATA inside a container: boru carries types first-class, so
 		// a node beside a value in a list or map is not a failed call.
-		{`def I x:Integer => [add 1 x] end  [I 5]`, "a list literal holding a type and a value"},
-		{`def I x:Integer => [add 1 x] end  {a:I b:5}`, "a map holding a type and a value"},
+		{`def I fnpred x:Integer [add 1 x] end  [I 5]`, "a list literal holding a type and a value"},
+		{`def I fnpred x:Integer [add 1 x] end  {a:I b:5}`, "a map holding a type and a value"},
 		// The fix itself: the lowercase name binds a callable function.
 		{`def i x:Integer => [add 1 x] end i 5`, "the lowercase spelling calls"},
 	}
@@ -171,6 +168,28 @@ func TestStrandedTypeCallStaysQuiet(t *testing.T) {
 		if diags := strandedTypeCallDiags(t, c.src); len(diags) != 0 {
 			t.Errorf("%q: want no stranded_type_call (%s), got %d: %s",
 				c.src, c.why, len(diags), diags[0].Detail)
+		}
+	}
+}
+
+// TestStrandedTypeCallRefusedAtDeclaration pins NUR099's half of §5.1: a
+// capitalised name bound to an UNDECLARED fn body — the combinator K (two
+// arguments), the arrow lambda, the verbose triple — is refused at the
+// declaration with def_error on the check pass, so the stranded call it used
+// to leave behind never runs.
+func TestStrandedTypeCallRefusedAtDeclaration(t *testing.T) {
+	for _, src := range []string{
+		`def K fn [[a:Any b:Any][Any][a]] end K 1 2`,
+		`def I x:Integer => [add 1 x] end I 5`,
+		`def Succ fn [[n:Integer][Integer][n add 1]] end Succ 5`,
+	} {
+		a, err := lang.New()
+		if err != nil {
+			t.Fatal(err)
+		}
+		_, err = a.Check(src)
+		if err == nil || !strings.Contains(err.Error(), "def_error") {
+			t.Errorf("%q: want the declaration refused with def_error, got %v", src, err)
 		}
 	}
 }

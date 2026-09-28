@@ -70,7 +70,7 @@ def step fn [[a:Integer e:Integer][Integer][a add e]]  0 fold step/v [1 2 3]	6	t
 0 fold ([a:Integer e:Integer] => [a add e]) [1 2 3 4]	10	a `=>` lambda as the callback
 0 fold ([a:Integer e:Integer] => [if (e gt a) [e] [a]]) [3 1 4 1 5]	5	running maximum — a lambda body with a branch
 def k 10 end 0 fold ([a:Integer e:Integer] => [a add e add k]) [1 2]	23	a CLOSURE: the lambda reads an enclosing def
-def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a add e add k])]]  def f (mk 10)  0 fold f [1 2]	23	a closure MADE BY A FACTORY, bound, then folded with — DOES NOT COMPILE: "unmatched dispatch recovered at fold"
+def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a add e add k])]]  def f (mk 10)  0 fold f/v [1 2]	23	a closure MADE BY A FACTORY, bound, then folded with — DOES NOT COMPILE: "unmatched dispatch recovered at fold"
 0 fold ([a:Integer kv:Any] => [a add kv.v]) {a:1 b:2 c:3}	6	over a MAP a lambda is handed a KeyVal — read `.v`
 def Reducer class {step: Function} end def r (make Reducer {step: (fn [[a:Integer e:Integer][Integer][a add e]])}) end 0 fold r.step [1 2 3]	6	the reducer lives in a Function-typed CLASS FIELD — DOES NOT COMPILE: "higher-order `fold` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
 #
@@ -83,10 +83,10 @@ def Reducer class {step: Function} end def r (make Reducer {step: (fn [[a:Intege
 #
 # §5  fold shapes that do NOT dispatch, and leave the callback stranded as
 #     data. Real code writes these and gets no error — just a wrong value.
-0 fold [([a:Integer e:Integer] => [a add e])] [1 2 3]	fn [[a:Integer e:Integer][Any][word(a) word(add) word(e)]]	a lambda WRAPPED IN A CODE BODY is not a callback: fold leaves it as data — DOES NOT COMPILE: "code-body word fold (Stage 2)"
-{a:1} fold ([acc:Map e:Integer] => [acc add e]) [1 2]	fn [[acc:Map e:Integer][Any][word(acc) word(add) word(e)]]	a Map initial accumulator with a lambda callback: fold does not dispatch at all
+0 fold [([a:Integer e:Integer] => [a add e])] [1 2 3]	fn [[a:Integer e:Integer][Any][a add e]]	a lambda WRAPPED IN A CODE BODY is not a callback: fold leaves it as data — DOES NOT COMPILE: "code-body word fold (Stage 2)"
+{a:1} fold ([acc:Map e:Integer] => [acc add e]) [1 2]	fn [[acc:Map e:Integer][Any][acc add e]]	a Map initial accumulator with a lambda callback: fold does not dispatch at all
 10 fold ([a:Integer f:Function] => [(f a)]) [(fn [[n:Integer][Integer][n add 1]])]	fn [[a:Integer f:Function][Any][(f a)]]	folding a LIST OF FUNCTIONS into a value: no dispatch, the lambda strands
-each [([n:Integer] => [n mul 2])] [1 2 3]	[fn [[n:Integer][Any][word(n) word(mul) 2]] fn [[n:Integer][Any][word(n) word(mul) 2]] fn [[n:Integer][Any][word(n) word(mul) 2]]]	the same trap on each — every element maps to the un-applied lambda — DOES NOT COMPILE: "code-body word each (Stage 2)"
+each [([n:Integer] => [n mul 2])] [1 2 3]	[fn [[n:Integer][Any][n mul 2]] fn [[n:Integer][Any][n mul 2]] fn [[n:Integer][Any][n mul 2]]]	the same trap on each — every element maps to the un-applied lambda — DOES NOT COMPILE: "code-body word each (Stage 2)"
 #
 # §6  each as MAP — the transform half of the pipeline
 0 fold [add] (each [size] ['a' 'bb' 'ccc'])	6	map-then-reduce over Strings
@@ -218,15 +218,15 @@ def fs {sum: (fn [[a:Integer e:Integer][Integer][a add e]])} def use fn [[k:Stri
 #
 # §13b a Function-typed PARAMETER or a computed closure reaching the word's
 #      argument slot
-def reduce fn [[f:Function xs:List][Integer][0 fold f xs]]  reduce (fn [[a:Integer e:Integer][Integer][a add e]]) [1 2 3]	6	the reusable reduce helper every codebase writes — DOES NOT COMPILE: "function-valued operand at fold (Stage 3)"
-def keep fn [[f:Function xs:List][List][filter f xs]]  keep (fn [[kv:Map][Boolean][kv.value gt 1]]) [1 2 3]	[2 3]	its filter twin — DOES NOT COMPILE: "function-valued operand at filter (Stage 3)"
-def apply2 fn [[f:Function xs:List][List][each f xs]]  apply2 (fn [[n:Integer][Integer][n mul 2]]) [1 2 3]	[2 4 6]	and its map twin — DOES NOT COMPILE: "function-valued operand at each (Stage 3)"
-def apply-cb fn [[f:Function][Integer][0 fold f [1 2 3]]]  def cb (fn [[a:Integer e:Integer][Integer][a add e]])  apply-cb cb	6	the callback bound first, then handed to the helper — DOES NOT COMPILE: "function-valued operand at fold (Stage 3)"
+def reduce fn [[f:Function xs:List][Integer][0 fold f/v xs]]  reduce (fn [[a:Integer e:Integer][Integer][a add e]]) [1 2 3]	6	the reusable reduce helper every codebase writes — DOES NOT COMPILE: "function-valued operand at fold (Stage 3)"
+def keep fn [[f:Function xs:List][List][filter f/v xs]]  keep (fn [[kv:Map][Boolean][kv.value gt 1]]) [1 2 3]	[2 3]	its filter twin — DOES NOT COMPILE: "function-valued operand at filter (Stage 3)"
+def apply2 fn [[f:Function xs:List][List][each f/v xs]]  apply2 (fn [[n:Integer][Integer][n mul 2]]) [1 2 3]	[2 4 6]	and its map twin — DOES NOT COMPILE: "function-valued operand at each (Stage 3)"
+def apply-cb fn [[f:Function][Integer][0 fold f/v [1 2 3]]]  def cb (fn [[a:Integer e:Integer][Integer][a add e]])  apply-cb cb/v	6	the callback bound first, then handed to the helper — DOES NOT COMPILE: "function-valued operand at fold (Stage 3)"
 def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a add e add k])]]  0 fold (mk 10) [1 2]	23	a closure BUILT AT THE ARGUMENT SLOT of fold — DOES NOT COMPILE: "function-valued operand at fold (Stage 3)"
 def mk fn [[k:Integer][Function][([p:Map] => [p.value gt k])]]  filter (mk 1) [1 2 3]	[2 3]	a predicate closure built at filter's argument slot — DOES NOT COMPILE: "function-valued operand at filter (Stage 3)"
-def mk fn [[k:Integer][Function][([p:Map] => [p.value gt k])]]  def f (mk 1)  filter f [1 2 3]	[2 3]	the same closure bound first — a DIFFERENT compile failure — DOES NOT COMPILE: "unmatched dispatch recovered at filter"
+def mk fn [[k:Integer][Function][([p:Map] => [p.value gt k])]]  def f (mk 1)  filter f/v [1 2 3]	[2 3]	the same closure bound first — a DIFFERENT compile failure — DOES NOT COMPILE: "unmatched dispatch recovered at filter"
 def choose fn [[b:Boolean][Function][if b [(fn [[n:Integer][Integer][n add 1]])] [(fn [[n:Integer][Integer][n sub 1]])]]]  each (choose true) [1 2 3]	[2 3 4]	the map body chosen by a BRANCH — DOES NOT COMPILE: "function-valued operand at each (Stage 3)"
-def choose fn [[b:Boolean][Function][if b [(fn [[n:Integer][Integer][n add 1]])] [(fn [[n:Integer][Integer][n sub 1]])]]]  def f (choose false)  each f [1 2 3]	[0 1 2]	…the same branch result bound first — DOES NOT COMPILE: "unmatched dispatch recovered at each"
+def choose fn [[b:Boolean][Function][if b [(fn [[n:Integer][Integer][n add 1]])] [(fn [[n:Integer][Integer][n sub 1]])]]]  def f (choose false)  each f/v [1 2 3]	[0 1 2]	…the same branch result bound first — DOES NOT COMPILE: "unmatched dispatch recovered at each"
 def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  each (mk 10) [1 2 3]	[11 12 13]	a closure factory feeding each directly — DOES NOT COMPILE: "function-valued operand at each (Stage 3)"
 #
 # §13c a fn VALUE written into a mutable store, then used as the callback —
@@ -237,9 +237,9 @@ def reg (flex {}) end def p fn [[kv:Map][Boolean][kv.value gt 1]] end reg set 'f
 # §13d a code body that names a binding the compiled context holds as a
 #      frame local
 def runner fn [[xs:List][Integer][def step fn [[a:Integer e:Integer][Integer][a add e]] 0 fold [step] xs]]  runner [1 2 3]	6	a fn-LOCAL reducer named inside the quotation body — DOES NOT COMPILE: "code-body word fold (Stage 2)"
-def k 5 end 0 fold [([a:Integer e:Integer] => [a add e add k])] [1 2]	fn [[a:Integer e:Integer][Any][word(a) word(add) word(e) word(add) word(k)]]	a closure wrapped in a code body — declined AND, on the interpreter, not applied — DOES NOT COMPILE: "code-body word fold (Stage 2)"
-{} fold [([acc:Map e:String] => [set e (size e) acc])] ['a' 'bb']	fn [[acc:Map e:String][Any][word(set) word(e) (size e) word(acc)]]	the map-building lambda wrapped in a code body — same double failure — DOES NOT COMPILE: "code-body word fold (Stage 2)"
-def stats fn [[xs:List][Map][{n: (size xs) sum: (0 fold [add] xs) max: (0 fold [([a:Integer e:Integer] => [if (e gt a) [e] [a]])] xs)}]]  stats [1 5 3]	{n:3 sum:9 max:fn [[a:Integer e:Integer][Any][word(if) (e gt a) [word(e)] [word(a)]]]}	the wrapped-lambda trap inside a record-building fn: the `max` field is the raw callback — DOES NOT COMPILE: "code-body word fold (Stage 2)"
+def k 5 end 0 fold [([a:Integer e:Integer] => [a add e add k])] [1 2]	fn [[a:Integer e:Integer][Any][a add e add k]]	a closure wrapped in a code body — declined AND, on the interpreter, not applied — DOES NOT COMPILE: "code-body word fold (Stage 2)"
+{} fold [([acc:Map e:String] => [set e (size e) acc])] ['a' 'bb']	fn [[acc:Map e:String][Any][set e (size e) acc]]	the map-building lambda wrapped in a code body — same double failure — DOES NOT COMPILE: "code-body word fold (Stage 2)"
+def stats fn [[xs:List][Map][{n: (size xs) sum: (0 fold [add] xs) max: (0 fold [([a:Integer e:Integer] => [if (e gt a) [e] [a]])] xs)}]]  stats [1 5 3]	{n:3 sum:9 max:fn [[a:Integer e:Integer][Any][if (e gt a) [e] [a]]]}	the wrapped-lambda trap inside a record-building fn: the `max` field is the raw callback — DOES NOT COMPILE: "code-body word fold (Stage 2)"
 #
 # §13e a gradual-Any collection whose runtime type the static model missed —
 #      these do not merely decline, they abort with an INTERNAL error

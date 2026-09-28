@@ -125,7 +125,7 @@ func (*cmd) Run(args []string, _ io.Reader, stdout, stderr io.Writer) int {
 	checkSkipped := *noCheck || os.Getenv("BORU_NO_CHECK") != ""
 	if !checkSkipped {
 		color := lang.ResolveColor(nil, stderr, "auto")
-		if cerr := check.PreflightColorAt(stderr, cfg.Source, *registry, seed, false, color, cfg.EntryDir); cerr != nil {
+		if cerr := check.PreflightPolicyAt(stderr, cfg.Source, *registry, seed, false, color, cfg.EntryDir, pol); cerr != nil {
 			fmt.Fprintf(stderr, "%s\n", cerr)
 			return 1
 		}

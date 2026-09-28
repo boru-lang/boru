@@ -210,3 +210,25 @@ func TestClosureAsWordDeclines(t *testing.T) {
 		t.Error("the declared params admit their inhabitants")
 	}
 }
+
+// TestLandedFnTakesArgs pins the guard's question (LandingBeneathGuard,
+// NUR286): a landed fn value with an argument-taking overload could be
+// applied over the values beneath it; a nullary one, or one whose only
+// argument-taking signature is a fallback, could not.
+func TestLandedFnTakesArgs(t *testing.T) {
+	fn := func(sigs ...core.Signature) core.Value {
+		return core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Signatures: sigs}}
+	}
+	unary := core.Signature{Args: []*core.Type{core.TInteger}}
+	fallback := unary
+	fallback.Fallback = true
+	if !landedFnTakesArgs(fn(core.Signature{}, unary)) {
+		t.Error("an argument-taking overload takes arguments")
+	}
+	if landedFnTakesArgs(fn(core.Signature{}, fallback)) {
+		t.Error("a nullary fn with a fallback takes none here")
+	}
+	if landedFnTakesArgs(core.NewInteger(1)) {
+		t.Error("a value that is no fn takes nothing")
+	}
+}

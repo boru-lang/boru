@@ -49,6 +49,31 @@ func CarrierOfLiteral(lit Value) Value {
 	return NewCarrier(&lt)
 }
 
+// ValueCarrier is the carrier a check-mode model widens the value v to: a
+// carrier of v's type, keeping its gradual modality. A type literal (a bare
+// type node, IsTypeLiteral) is the one value whose Parent is not its type:
+// its Parent is its supertype in the lattice (the Integer node's is Number),
+// so a carrier of its Parent claims a Number where the run holds a type, and
+// a dispatch commits over it — `sub m.e 3` over `{e: Integer}` ran sub's
+// Number handler on the type literal, where the interpreter's dispatch
+// refuses a type at a value slot (NUR323). It widens to a Type carrier: the
+// value slots refuse it as they refuse the run's type literal, a Type or Any
+// slot takes it, and `is` / `typeof`, which read the node's own place in the
+// lattice, fold nothing over it (as over typeof's own Type carrier). A
+// gradual Type would reach a Function slot, since Function is a Type. The
+// None literal is a value at dispatch and widens to the None carrier.
+func ValueCarrier(v Value) Value {
+	switch {
+	case IsTypeLiteral(v):
+		return NewCarrier(TType)
+	case IsBareTypeNode(v):
+		return NewCarrier(TNone)
+	}
+	c := NewCarrier(v.Parent)
+	c.Dynamic = v.Dynamic
+	return c
+}
+
 // NewDynamicCarrierValue promotes an existing carrier value (e.g. a
 // disjunct carrier for dynamic(A tor B), or a narrowed bound) to the
 // dynamic modality, preserving its Parent/Data bound.
@@ -78,6 +103,30 @@ func NewCarrierTypedListValue(child Value) Value {
 	v := NewTypedList(child)
 	v.Carrier = true
 	return v
+}
+
+// CarrierTypedListOf is the typed-list carrier whose element has v's shape:
+// a disjunct as it stands, a GRADUAL value's type as a dynamic element, and
+// any other value's type strict. A gradual value is one the run may hold
+// something else in place of (a flex element, a typed container's element
+// read at its supertype, a read that may be None); a strict element type
+// lets the next body commit a direct op over it, and the run's value then
+// answers through that op where the interpreter's dispatch raises or picks
+// another overload (NUR316: `ys each [add 1]` over a list `each` built from
+// such a read answered [[1]] for [['s1']]).
+func CarrierTypedListOf(v Value) Value {
+	if IsDisjunct(v) {
+		return NewCarrierTypedListValue(v)
+	}
+	if IsTypeLiteral(v) {
+		return NewCarrierTypedListValue(ValueCarrier(v)) // a type VALUE (NUR323)
+	}
+	if v.Dynamic {
+		c := NewCarrier(v.Parent)
+		c.Dynamic = true
+		return NewCarrierTypedListValue(c)
+	}
+	return NewCarrierTypedList(v.Parent)
 }
 
 // UnionCarrierForType returns the DISTRIBUTING carrier for a user-defined

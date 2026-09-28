@@ -61,8 +61,20 @@ package core
 // a retirement without undoing a mint. Read-only infrastructure and every
 // compile-time product are shared and not captured — see the partition above.
 type BindingSandbox struct {
-	defs      *DefTable
-	typeIDs   map[string]*Type
+	defs    *DefTable
+	typeIDs map[string]*Type
+	// typeParts is the type-part reservation set at capture (TypePartsSnapshot):
+	// a reservation the pass made for a binding the restore rolls back comes
+	// off with the binding (ForgetTypePartsSince), and the binding's twin
+	// reserves it again at its own stream position (applyTwinPush) — the
+	// part is a runtime-visible transition exactly as the binding is, and a
+	// reservation left standing from the pass made a RUN-time mint of the
+	// same name, ahead of the twin's position, the conflicting one (NUR167's
+	// root-def sibling: `def f fn [[n:Integer] [Integer] [def T (class {})
+	// n]]  each f/v [1]  def T (class {})` raised at each's element 0 for
+	// the interpreter's raise at the root def). The minted NODE is still
+	// retained (the partition above); only its name comes free.
+	typeParts map[string]bool
 	modLoaded map[string]ModuleDesc
 	modSeq    int
 	// valid distinguishes a real capture from the zero value, which must never
@@ -80,9 +92,10 @@ func (r *Registry) SnapshotBindings() BindingSandbox {
 		return BindingSandbox{}
 	}
 	s := BindingSandbox{
-		defs:    r.Defs.Clone(),
-		typeIDs: r.Types.idSnapshot(),
-		valid:   true,
+		defs:      r.Defs.Clone(),
+		typeIDs:   r.Types.idSnapshot(),
+		typeParts: r.TypePartsSnapshot(),
+		valid:     true,
 	}
 	if r.Modules != nil {
 		s.modSeq = r.Modules.seq
@@ -110,6 +123,7 @@ func (r *Registry) RestoreBindings(s BindingSandbox) {
 	r.Defs = s.defs
 	r.dispatchCache.reset()
 	r.Types.readmitRetired(s.typeIDs)
+	r.ForgetTypePartsSince(s.typeParts)
 	if r.Modules != nil {
 		r.Modules.seq = s.modSeq
 		r.Modules.Loaded = s.modLoaded
@@ -141,6 +155,7 @@ func (r *Registry) RestoreBindingsForReplay(s BindingSandbox) {
 	r.Defs = s.defs.Clone()
 	r.dispatchCache.reset()
 	r.Types.readmitRetired(s.typeIDs)
+	r.ForgetTypePartsSince(s.typeParts)
 }
 
 // SwapDefs installs dt as the registry's live binding table and returns the

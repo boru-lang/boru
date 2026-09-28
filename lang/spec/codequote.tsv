@@ -15,7 +15,7 @@
 codequote foo	foo/q	bare word -> Atom (data, not a call)
 codequote add	add/q	works on bound names too (pure data)
 codequote 99	99	scalar passes through unchanged
-codequote [1 add 2]	(quote [1 word(add) 2])	list captured raw (unevaluated)
+codequote [1 add 2]	(quote [1 add 2])	list captured raw (unevaluated)
 
 # --- the new behaviour: a paren is captured RAW as code ---
 codequote (1 add 2)	(1 add 2)	paren captured raw — NOT evaluated to 3

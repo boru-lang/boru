@@ -155,6 +155,72 @@ var ControlNatives = []NativeFunc{
 		}},
 	},
 	{
+		// __arm runs a COMPUTED List arm of `if` as the interpreter's arm
+		// splice does (spliceArg): a code body runs — its values land, its
+		// defs leak, and its errors RAISE — and any other value is itself.
+		// `do` is that splice on every axis but one: it traps a body error
+		// as an Error value (NUR293). The compiled `if` synthesizes
+		// `[__arm <arm>]` for such an arm (computedArmDoBody); the dyn-body
+		// machinery compiles it exactly as it compiles `do`. Not
+		// user-facing.
+		Name: "__arm",
+		Callable: &CallableSpec{BodyPos: 0, BodyOut: BodyOutResidual, BodyOnceKeepsDefs: true, Inputs: func(_ []Value) []Value {
+			return []Value{}
+		}},
+		Signatures: []Signature{{
+			Args:          []*Type{TList},
+			NoEvalArgs:    map[int]bool{0: true},
+			Impl:          Go(ArmSpliceHandler),
+			ReturnsFn:     DoListReturnsFn,
+			BarrierPos:    -1,
+			CompileEffect: CompileFallbackBody | CompileDynBody,
+		}},
+	},
+	{
+		// __casesubject is case's scrutinee rule at run time (caseSubject),
+		// which the compiled `case` desugar records ahead of its chain when
+		// the pass holds a forward-form scrutinee that may be a list: a list
+		// is run as a code body and its last result is what the chain
+		// matches (NUR291). Not user-facing.
+		Name: "__casesubject",
+		Signatures: []Signature{{
+			Args:       []*Type{TAny},
+			Impl:       Go(CaseSubjectHandler),
+			Returns:    []*Type{TAny},
+			BarrierPos: 0,
+		}},
+	},
+	{
+		// __casestack is the compiled `case` desugar's guard over a
+		// stack-form scrutinee the pass holds abstractly: a value that is
+		// not a code body passes, and a list defers (CaseStackHandler,
+		// NUR291). Not user-facing.
+		Name: "__casestack",
+		Signatures: []Signature{{
+			Args:       []*Type{TAny},
+			Impl:       Go(CaseStackHandler),
+			Returns:    []*Type{TAny},
+			BarrierPos: 0,
+		}},
+	},
+	{
+		// __codeguard is the compiled `if`'s guard over an arm the pass
+		// holds abstractly: a value that is not a code body passes, a list
+		// of one plain value is that value (the paren splice places it), and
+		// any other list defers (CodeGuardHandler, NUR292). Not user-facing.
+		Name:       "__codeguard",
+		Signatures: []Signature{codeGuardSignature},
+	},
+	{
+		// __condguard is the compiled `if`'s guard over a condition the pass
+		// holds abstractly: a value that is not a code body passes, a list of
+		// plain values is its last one (the inline run's), an empty list
+		// raises the interpreter's "no value", and any other list defers
+		// (CondGuardHandler, NUR292). Not user-facing.
+		Name:       "__condguard",
+		Signatures: []Signature{condGuardSignature},
+	},
+	{
 		Name: "for",
 
 		Signatures: []Signature{
@@ -370,6 +436,7 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 	// (design/legacy/dynamic-modality-report.10.ignore, do/eval hatch.) A concrete
 	// body is analyzed normally; one that runs to nothing stays strict.
 	if !(IsConcrete(body) && body.Parent.ConformsTo(TList)) {
+		generaliseRootValues(r)
 		return []Value{NewDynamicCarrier(TAny)}
 	}
 	// `do` TRAPS every body error at runtime (DoListHandler surfaces it as
@@ -377,10 +444,31 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 	// this body is not a program error — raise CaughtBodyDepth so those
 	// emitters (CheckAddUniqueDiagnostic, emitIndexOOB) stay silent here.
 	r.Check.CaughtBodyDepth++
+	// A body that raises UNCONDITIONALLY at its own level — a module
+	// export's definite no-match, `(true 5 M.dec)` (NUR134) — leaves the
+	// failed call's wreckage in the analysed residual, and the wreckage
+	// escaped the bracket: re-stepped on the enclosing tape, it dispatched
+	// again outside the caught region and was reported as an uncaught
+	// program error. At run time `do` catches the raise and yields ONE
+	// Error value; model exactly that.
+	r.Check.PushRaiseWatch()
 	// Leak fidelity: do-body defs stay bound in the enclosing scope, exactly
 	// as the runtime leaves them (RunCarrierBodyKeepDefs doc).
 	stk := RunCarrierBodyKeepDefs(r, body)
+	raised, snap := r.Check.PopRaiseWatch()
 	r.Check.CaughtBodyDepth--
+	if raised {
+		// The defs the body makes AFTER the raise never happen: `do [raise
+		// bad_input "boom" def x 1] … x` is undefined_word (or the earlier
+		// binding) on the interpreter, and the keep-defs model leaked x = 1
+		// into the enclosing scope, which the compiled lane then folded.
+		for _, k := range r.Defs.Names() {
+			if r.Defs.Depth(k) > snap[k] {
+				r.Defs.Truncate(k, snap[k])
+			}
+		}
+		return []Value{NewCarrier(TError)}
+	}
 	// A def-bound COMPUTED fn read inside the body stands in the residual
 	// as its CARRIER (the side table's; the body's check-time run notes no
 	// read), where the interpreter's word dispatch calls it — over the
@@ -412,7 +500,27 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 		// wrongly admit `do [] convert Map` at check time (Error → Map) while
 		// the runtime leaves `convert` no argument. Distinguish the two by the
 		// body's token count.
+		//
+		// A body with no DEFINITE raise (that returned above) that ran to
+		// nothing may equally have CONSUMED its own values — `do [3 drop]`,
+		// `do [args drop]` — and then `do` nets nothing at run time: the
+		// count is 0 or (caught) 1, runtime-VARIABLE, so the compile pass
+		// latches it like a fallible multi-value body's (SetCatchVariadic,
+		// below) rather than seat the one Error a no-raise run never makes
+		// (NUR242: a promoted seat underflowed, STORE_LOCAL).
 		if bl, err := AsList(body); err == nil && !bl.IsNil() && bl.Len() > 0 {
+			// A body of literals and plain stack shuffles that ran to nothing
+			// without a raise cannot raise at run time either: `do` runs it
+			// isolated (InvokeBody), so each shuffle meets the values the
+			// body itself pushed, exactly as it did here — `do [1 drop]` nets
+			// nothing, and there is no Error to latch (NUR222: `1 do [1 drop]
+			// drop` is [] on both lanes; its consumer had bailed).
+			if shuffleOnlyBody(bl.Slice(), r) {
+				return nil
+			}
+			if r.Check.Compiling {
+				r.Check.Recorder().SetCatchVariadic(true)
+			}
 			r.Check.ValuelessDoBodies++
 			return []Value{NewCarrier(TError)}
 		}
@@ -468,6 +576,75 @@ func DoListReturnsFn(args []Value, r *Registry) []Value {
 		}
 	}
 	return stk
+}
+
+// generaliseRootValues is the model's answer to a COMPUTED `do` body run at
+// the program root (NUR210): the body keeps its defs in the root's scope,
+// and the pass never sees its tokens, so any root value binding may be
+// rebound or unbound by it. Each one is generalised IN PLACE — a fresh
+// carrier of its type, the speculative undef's own transition
+// (GeneraliseSpecUndef) — so no later read can bake the value the pass held
+// before the body: a list or map literal, a def's operand and a forward slot
+// all read live, where they folded the pre-body value (`do (mk) end [x]`
+// answered `[7 [99]]` for `[7 [5]]` over `[def x 5 7]`). The bindings stay,
+// so nothing is reported. Only at the root: inside a fn body the body's
+// defs land in the frame, whose reads the unit's own leak seats live
+// (NUR203), and a body analysed for a call is no statement of the root's.
+// Fn values, types and frame bindings keep their models (the transition's
+// own exclusions).
+func generaliseRootValues(r *Registry) {
+	if r.Check.FnBodyDepth > 0 {
+		return
+	}
+	for _, name := range r.Defs.Names() {
+		GeneraliseSpecUndef(r, name)
+	}
+}
+
+// shuffleOnlyBody reports whether a body's tokens are only scalar or list
+// literals and plain words of the closed stack-shuffle set that still name
+// the registered all-Any native (a user's redefinition may raise), and
+// whether its run over only the values it pushes itself — `do` runs a body
+// isolated — takes no shuffle past them and leaves nothing: such a run
+// cannot raise. `[3 drop]` is one; `[drop]` raises, as `drop` finds nothing
+// to take, and `do` nets that Error.
+func shuffleOnlyBody(toks []Value, r *Registry) bool {
+	depth := 0
+	for _, t := range toks {
+		if IsConcrete(t) && t.Parent != nil && (t.Parent.ConformsTo(TScalar) || t.Parent.Equal(TList)) {
+			depth++
+			continue
+		}
+		w, err := AsWord(t)
+		if err != nil || w.ForceVal || w.ForceStack || w.ForceForward || w.ForceUsurp || !DynStackShuffleWords[w.Name] {
+			return false
+		}
+		fd := r.Lookup(w.Name)
+		if fd == nil || len(fd.Signatures) != 1 || fd.Signatures[0].BarrierPos != 0 {
+			return false
+		}
+		if _, native := fd.Signatures[0].Impl.(*GoImpl); !native {
+			return false
+		}
+		for _, a := range fd.Signatures[0].Args {
+			if a != TAny {
+				return false
+			}
+		}
+		eff := shuffleEffect[w.Name]
+		if depth < eff[0] {
+			return false
+		}
+		depth += eff[1] - eff[0]
+	}
+	return depth == 0
+}
+
+// shuffleEffect is each stack-shuffle word's (takes, leaves) count.
+var shuffleEffect = map[string][2]int{
+	"dup": {1, 2}, "swap": {2, 2}, "drop": {1, 0}, "over": {2, 3}, "rot": {3, 3},
+	"nip": {2, 1}, "tuck": {2, 3}, "dup2": {2, 4}, "swap2": {4, 4}, "drop2": {2, 0},
+	"over2": {4, 6},
 }
 
 // doBodyMayRaise reports whether a `do` body can RAISE at run time — the
@@ -646,7 +823,7 @@ func DoEvalMapValue(r *Registry, v Value) (Value, error) {
 // selects the branch via the IfCont. Returns (nil, false) when cond is not a
 // runnable plain list, so the caller falls back to scalar-condition
 // coercion. Shared by if2Handler (elseBranch=nil) and if3Handler.
-func ifMarkMoveTokens(cond Value, thenBranch, elseBranch []Value) ([]Value, bool) {
+func ifMarkMoveTokens(cond Value, thenBranch, elseBranch []Value, pos SrcPos) ([]Value, bool) {
 	if !(cond.Parent.Equal(TList) && cond.Data != nil && !IsTypedList(cond) && !IsTableType(cond)) {
 		return nil, false
 	}
@@ -656,19 +833,21 @@ func ifMarkMoveTokens(cond Value, thenBranch, elseBranch []Value) ([]Value, bool
 	tokens := make([]Value, 0, len(condSlice)+2)
 	tokens = append(tokens, NewMark(id, condSlice...))
 	tokens = append(tokens, condSlice...)
-	tokens = append(tokens, NewMoveIf(id, "if", &IfCont{
+	// The move carries the `if`'s position: a condition that nets no value
+	// raises there (stepMoveIf), as the compiled guard does (NUR292).
+	tokens = append(tokens, WithPosAt(NewMoveIf(id, "if", &IfCont{
 		Then: thenBranch,
 		Else: elseBranch,
-	}))
+	}), pos))
 	return tokens, true
 }
 
-func if3Handler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+func if3Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	cond := args[0]
 	thenBranch := spliceArg(args[1])
 	elseBranch := spliceArg(args[2])
 
-	if tokens, ok := ifMarkMoveTokens(cond, thenBranch, elseBranch); ok {
+	if tokens, ok := ifMarkMoveTokens(cond, thenBranch, elseBranch, r.Check.CurWordPos); ok {
 		return tokens, nil
 	}
 
@@ -678,11 +857,11 @@ func if3Handler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Val
 	return elseBranch, nil
 }
 
-func if2Handler(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+func if2Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	cond := args[0]
 	thenBranch := spliceArg(args[1])
 
-	if tokens, ok := ifMarkMoveTokens(cond, thenBranch, nil); ok {
+	if tokens, ok := ifMarkMoveTokens(cond, thenBranch, nil, r.Check.CurWordPos); ok {
 		return tokens, nil
 	}
 
@@ -733,19 +912,16 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	var thenStk []Value
 	var thenDefs map[string]Value
 	var thenValue *Value
-	// Both arms of a condition the model cannot decide are bracketed
-	// (EnterSpecArm): a fn def inside one is speculative (core.NoteSpecFnDef,
-	// the seventieth increment). A LITERAL condition takes no bracket — the
-	// model knows which arm runs, and its join is exact for both.
-	_, condKnown := LiteralCondValue(args[0])
-	if IsConcrete(args[0]) && args[0].Parent.Equal(TBoolean) {
-		condKnown = true // a def-bound or folded Boolean: the model has it
-	}
+	// An arm that may not run is bracketed (EnterSpecArm): a fn def inside
+	// one is speculative (core.NoteSpecFnDef, the seventieth increment). Only
+	// the arm a DECIDED condition takes goes unbracketed — its defs are the
+	// post-branch bindings exactly (armsKnownToRun).
+	thenRuns, elseRuns := armsKnownToRun(args[0])
 	if thenIsBody {
 		restoreThen := ApplyGuardNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(thenRuns)()
 			thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
 		}()
 		thenStk = es.Recorder().ArmTailApply(thenStk)
@@ -762,7 +938,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreThen := ApplyGuardNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(thenRuns)()
 			thenStk, thenDefs = RunCarrierBodyWithDefs(r, body)
 		}()
 		thenStk = es.Recorder().ArmTailApply(thenStk)
@@ -787,7 +963,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreElse := ApplyComplementNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(elseRuns)()
 			elseStk, elseDefs = RunCarrierBodyWithDefs(r, args[2])
 		}()
 		elseStk = es.Recorder().ArmTailApply(elseStk)
@@ -798,7 +974,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		restoreElse := ApplyComplementNarrowing(r, args[0])
 		es.Recorder().ArmBranchCapture()
 		func() {
-			defer r.EnterSpecArm(condKnown)()
+			defer r.EnterSpecArm(elseRuns)()
 			elseStk, elseDefs = RunCarrierBodyWithDefs(r, body)
 		}()
 		elseStk = es.Recorder().ArmTailApply(elseStk)
@@ -809,7 +985,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		elseValue = &v
 		elseStk = []Value{v}
 	}
-	joins := InstallJoinedDefs(r, thenDefs, elseDefs)
+	joins := installArmJoins(r, args[0], thenDefs, elseDefs)
 	joined := JoinCarrierStacks(thenStk, elseStk)
 	if len(joined) == 0 {
 		// BOTH arms produce 0 values (empty `[]`, a 0-value word, or a
@@ -819,11 +995,11 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		// mirroring the 2-arg if2 guard. The registered result is a phantom None
 		// the residual reconciliation skips.
 		out := NewCarrier(TNone)
-		recorderState(es).RecordBranch(BranchRecord{
+		recorderState(es).RecordBranch(codeGuardRecord(r, BranchRecord{
 			Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 			Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
 			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: pos, Joins: joins,
-		})
+		}))
 		// The phantom None is only meaningful while bytecode recording is
 		// live (the lowering tracks the zeroOut slot and the top-level
 		// residual strips it). On a plain or uncompilable check there is no
@@ -845,11 +1021,11 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		}
 	}
 	out := joined[len(joined)-1]
-	recorderState(es).RecordBranch(BranchRecord{
+	recorderState(es).RecordBranch(codeGuardRecord(r, BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
 		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: pos, Joins: joins,
-	})
+	}))
 	return []Value{out}
 }
 
@@ -859,8 +1035,8 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 // (`if [true] … …`, lit the literal) and the clause-list `if`'s statically
 // decided clause (ifClauseRecord — a scalar condition, or the lone else,
 // always lit=true). The arm is a code body; the narrowing the condition
-// licenses is installed around it. An arm that nets no value declines: a
-// ConstCond branch lowers a single-result arm only.
+// licenses is installed around it. An arm that nets no value records a
+// 0-value statement (NUR243); one that leaves a fn value declines.
 func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool, pos SrcPos) []Value {
 	es := r.Check
 	var stk []Value
@@ -882,24 +1058,34 @@ func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool, pos SrcPos) []Val
 		joins = InstallTakenArmDefs(r, nil, defs)
 	}
 	frag := recorderState(es).TakeFragment()
-	// Two arms decline. One that nets no value: a ConstCond branch lowers a
-	// single-result arm only. One that leaves a FN VALUE (`if [true] [g/v]
-	// [1]`): the handler splices the arm as a paren, whose fn result stays
-	// a placed value on the interpreter (`fn g`), but handed back from here
-	// it is re-stepped by the check engine, which records the call — 5,
-	// and `10 if [true] [g/v] [1]` applied g to the 10 beneath. A live
-	// miscompile until 2026-09-26; the general path's join never hands back
-	// a bare fn value.
-	if len(stk) == 0 || IsFnValueResidual(stk[len(stk)-1]) {
-		reason := "if: branch produces no value (Stage 2 lowers single-result branches)"
-		if len(stk) > 0 {
-			reason = "if: the taken arm leaves a fn value (the interpreter places it; the compile model would re-step it)"
+	taken := lit
+	if len(stk) == 0 {
+		// The taken arm leaves no value (`if [true] [def x 1] [2]`, NUR243):
+		// a 0-value STATEMENT, recorded like the both-arms-zero branch —
+		// RecordBranch marks it zeroOut, and the registered result is a
+		// phantom None the residual reconciliation skips. A plain check has
+		// no event to strip, so the if nets 0 there, as the run does.
+		out := NewCarrier(TNone)
+		recorderState(es).RecordBranch(BranchRecord{
+			ConstCond: &taken, HasElse: true,
+			Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,
+		})
+		if !es.Recorder().Active() {
+			return nil
 		}
-		es.Recorder().MarkUncompilable(reason)
+		return []Value{out}
+	}
+	// An arm that leaves a FN VALUE (`if [true] [g/v] [1]`) declines: the
+	// handler splices the arm as a paren, whose fn result stays a placed
+	// value on the interpreter (`fn g`), but handed back from here it is
+	// re-stepped by the check engine, which records the call — 5, and `10 if
+	// [true] [g/v] [1]` applied g to the 10 beneath. A live miscompile until
+	// 2026-09-26; the general path's join never hands back a bare fn value.
+	if IsFnValueResidual(stk[len(stk)-1]) {
+		es.Recorder().MarkUncompilable("if: the taken arm leaves a fn value (the interpreter places it; the compile model would re-step it)")
 		return nil
 	}
 	out := stk[len(stk)-1]
-	taken := lit
 	recorderState(es).RecordBranch(BranchRecord{
 		ConstCond: &taken, HasElse: true,
 		Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,
@@ -922,12 +1108,14 @@ func branchRecordPos(r *Registry, cond Value) SrcPos {
 	return r.Check.CurCallPos
 }
 
-// computedArmDoBody synthesizes the `[do <arm>]` body for a COMPUTED
+// computedArmDoBody synthesizes the `[__arm <arm>]` body for a COMPUTED
 // List-conforming branch arm (COMPILE FAILURE-CLOSURE.0 §4): the interpreter's
 // spliceArg EXECUTES a computed list arm as a code body, and probes prove
 // the splice ≡ `do <arm>` (multi-values, def leaking via do's keep-defs,
-// break/continue via the FlowCtrl escape) — so the arm compiles through the
-// ordinary body path with the dyn-body machinery owning the computed `do`.
+// break/continue via the FlowCtrl escape) on every axis but the error one —
+// `do` traps a body error as an Error value where the splice raises it — so
+// the arm runs through __arm, `do` without the trap (NUR293), and compiles
+// through the ordinary body path with the dyn-body machinery owning it.
 // Recording pass only: plain checks keep today's value-arm surface (no
 // ratchet churn), and a concrete arm (a real body or a scalar value) never
 // reaches here (the body/value paths own those).
@@ -938,7 +1126,7 @@ func computedArmDoBody(r *Registry, arm Value) (Value, bool) {
 	if IsConcrete(arm) || arm.Parent == nil || !arm.Parent.ConformsTo(TList) {
 		return Value{}, false
 	}
-	return NewList([]Value{NewWord("do"), arm}), true
+	return NewList([]Value{NewWord("__arm"), arm}), true
 }
 
 // staticCondArm reports the taken arm for a statically-known BARE concrete
@@ -1188,6 +1376,57 @@ func declineCondBinding(r *Registry, pos SrcPos) {
 	})
 }
 
+// installArmJoins is InstallJoinedDefs for an `if` whose arms were both
+// analysed, with the one bind its join cannot replay withheld: a MODULE an
+// arm binds (an `import` inside it) on a path that may skip the arm — either
+// arm of a condition the model cannot decide, or the arm a concrete Boolean
+// does not take. The join's twin replays the check pass's bind at the
+// branch's position whichever arm runs, so the compiled program would bind
+// a name the interpreter leaves unbound (`undefined_word`); noted with the
+// recorder suspended, the twin keeps no placement and the program declines
+// at the twin regime's full-placement gate (NUR205). The arm a decided
+// condition takes runs every time, so its one replay stands.
+// armsKnownToRun reports which arm of a branch the model knows RUNS: the
+// taken arm of a DECIDED condition — a literal, or a def-bound or folded
+// concrete Boolean — whose defs are the post-branch bindings exactly. Every
+// other arm may not run, so a fn def in it is bound at run time only if it
+// does — speculative, as an undecided arm's is. The arm a decided condition
+// skips is the NEVER case of that (NUR244: left unbracketed, the join kept
+// its fn value and a read past the merge called it, `if false [def f fn
+// […]] [] end 3 f` answering the fn's result for undefined_word).
+func armsKnownToRun(cond Value) (thenRuns, elseRuns bool) {
+	if lit, ok := LiteralCondValue(cond); ok {
+		return lit, !lit
+	}
+	if b, ok := cond.Data.(BoolPayload); ok && cond.Parent.Equal(TBoolean) {
+		return b.B, !b.B
+	}
+	return false, false
+}
+
+func installArmJoins(r *Registry, cond Value, thenDefs, elseDefs map[string]Value) []BranchJoin {
+	decided, taken := false, false
+	if IsConcrete(cond) && cond.Parent != nil && cond.Parent.Equal(TBoolean) {
+		if b, err := AsBoolean(cond); err == nil {
+			decided, taken = true, b
+		}
+	}
+	withhold := false
+	for _, v := range thenDefs {
+		withhold = withhold || (IsModuleFamilyValue(v) && !(decided && taken))
+	}
+	for _, v := range elseDefs {
+		withhold = withhold || (IsModuleFamilyValue(v) && !(decided && !taken))
+	}
+	if withhold {
+		defer r.Check.Recorder().Suspend()()
+	}
+	if decided {
+		return InstallDecidedJoinedDefs(r, thenDefs, elseDefs, !taken)
+	}
+	return InstallJoinedDefs(r, thenDefs, elseDefs)
+}
+
 func If2ReturnsFn(args []Value, r *Registry) []Value {
 	pos := branchRecordPos(r, args[0])
 	es := r.Check
@@ -1203,16 +1442,26 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 			return out
 		}
 	}
-	if lit, ok := LiteralCondValue(args[0]); ok && !lit { //covergate:allow native handler defensive error-propagation / same-assertion guard (§native)
+	if lit, ok := LiteralCondValue(args[0]); ok && !lit {
 		EmitUnreachableBranch(r, false, "then")
 	}
 	condFrag, condStk := analyseCondFragment(r, args[0])
 	restore := ApplyGuardNarrowing(r, args[0])
 	es.Recorder().ArmBranchCapture()
-	thenStk, thenDefs := RunCarrierBodyWithDefs(r, args[1])
+	// The arm runs only when the condition holds: bracketed unless the model
+	// decides it true, like if3's arms (NUR244 — unbracketed, a fn def in
+	// the arm was the join's own value, called past the merge on the path
+	// that skipped it).
+	thenRuns, _ := armsKnownToRun(args[0])
+	var thenStk []Value
+	var thenDefs map[string]Value
+	func() {
+		defer r.EnterSpecArm(thenRuns)()
+		thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
+	}()
 	thenFrag := recorderState(es).TakeFragment()
 	restore()
-	joins := InstallJoinedDefs(r, thenDefs, nil)
+	joins := installArmJoins(r, args[0], thenDefs, nil)
 	var out Value
 	zeroGuard := len(thenStk) == 0
 	if zeroGuard {
@@ -1223,10 +1472,10 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 	// 2-arg if: a VARIADIC result (0 or 1 values at run time). An empty
 	// then-stack (a 0-value/diverging then) makes it a 0-value statement
 	// guard — RecordBranch lowers that with no merge slot.
-	recorderState(es).RecordBranch(BranchRecord{
+	recorderState(es).RecordBranch(codeGuardRecord(r, BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: false,
 		Then: thenFrag, ThenStk: thenStk, Out: out, Pos: pos, Joins: joins,
-	})
+	}))
 	// A 0-value statement guard's phantom None only belongs on the carrier
 	// stack while recording is live (mirrors if3ReturnsFn): a plain or
 	// uncompilable check has no recorded event to strip it, so it must net
@@ -1245,7 +1494,7 @@ func IfListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 		return nil, r.BoruError("if_error", "if: clause-list argument must be a concrete list, got a type literal", "if")
 	}
 	_lst, _ := AsList(args[0])
-	return ifClause(_lst.Slice()), nil
+	return ifClause(_lst.Slice(), r.Check.CurWordPos), nil
 }
 
 // CaseHandler implements both call shapes of `case`:
@@ -1266,20 +1515,9 @@ func CaseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 	if isCodeBody(v) && !isCodeBody(clauses) {
 		v, clauses = clauses, v
 	}
-	if isCodeBody(v) {
-		sub := New(r)
-		lst, _ := AsList(v)
-		input := make([]Value, lst.Len())
-		copy(input, lst.Slice())
-		out, err := sub.Run(input)
-		if err != nil {
-			return nil, err
-		}
-		if len(out) == 0 {
-			return nil, r.BoruError("case_error",
-				"case: value expression produced no value to dispatch on", "case")
-		}
-		v = out[len(out)-1]
+	v, err := caseSubject(r, v)
+	if err != nil {
+		return nil, err
 	}
 	if !isCodeBody(clauses) {
 		return nil, r.BoruError("case_error",
@@ -1287,6 +1525,150 @@ func CaseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 	}
 	lst, _ := AsList(clauses)
 	return CaseClauses(r, v, lst.Slice())
+}
+
+// caseSubject is case's scrutinee rule: a code body runs in a sub-engine and
+// its LAST result is the scrutinee — it must produce one, loudly — and any
+// other value is itself.
+func caseSubject(r *Registry, v Value) (Value, error) {
+	if !isCodeBody(v) {
+		return v, nil
+	}
+	lst, _ := AsList(v)
+	input := make([]Value, lst.Len())
+	copy(input, lst.Slice())
+	out, err := New(r).Run(input)
+	if err != nil {
+		return Value{}, err
+	}
+	if len(out) == 0 {
+		return Value{}, r.BoruError("case_error",
+			"case: value expression produced no value to dispatch on", "case")
+	}
+	return out[len(out)-1], nil
+}
+
+// ArmSpliceHandler is the runtime of __arm: spliceArg's reading of a
+// computed arm — a code body runs (InvokeBody, as `do` runs it) and its
+// error propagates, where `do` would trap it as a value (NUR293); a typed
+// list or a table is the arm's one value. The body slot takes a List, so the
+// one other value that reaches it is the compiled closure the VM hands in
+// place of a LITERAL body, which runs as that body.
+func ArmSpliceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	v := args[0]
+	if !isCodeBody(v) && v.Parent != nil && v.Parent.ConformsTo(TList) {
+		return []Value{v}, nil
+	}
+	return InvokeBody(r, v, nil)
+}
+
+// CaseSubjectHandler is the runtime of __casesubject: case's scrutinee rule
+// over the run's value (caseSubject), recorded where the compile pass holds
+// a forward-form scrutinee that may be a list (NUR291).
+func CaseSubjectHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	v, err := caseSubject(r, args[0])
+	if err != nil {
+		return nil, err
+	}
+	return []Value{v}, nil
+}
+
+// CaseStackHandler is the runtime of __casestack, the guard the compiled
+// `case` desugar records ahead of a STACK-form chain whose scrutinee the
+// pass holds abstractly (NUR291): a value that is not a code body passes, as
+// CaseHandler swaps it into the scrutinee's place. A code body makes BOTH
+// operands lists, which CaseHandler reads the forward way round — the clause
+// list runs as the scrutinee and the value is the clauses — and no chain
+// over the written clauses is that: a designed defer (the compiler defect's
+// report), never an answer the interpreter does not give.
+func CaseStackHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	if !isCodeBody(args[0]) {
+		return []Value{args[0]}, nil
+	}
+	err := r.BoruError("internal_error",
+		"case: the stack-form value is a list, so the interpreter runs the clause list as the scrutinee "+
+			"and dispatches over the value's elements; the compiled chain over the written clauses cannot (NUR291)", "case")
+	if ae, ok := err.(*BoruError); ok {
+		ae.VMDefer = true
+	}
+	return nil, err
+}
+
+// CodeGuardHandler is the runtime of __codeguard, the guard the compiled
+// `if` records over an arm the pass holds abstractly (codeGuards, NUR292):
+// a value that is not a code body passes. The interpreter splices a list
+// arm in parens, which places its values, so a list of ONE plain value
+// (plainElems) is that value — the branch's one merge value; any other list
+// leaves a count or a dispatch the merge's one seat cannot hold, a designed
+// defer (the compiler defect's report), never an answer the interpreter does
+// not give.
+func CodeGuardHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	if !isCodeBody(args[0]) {
+		return []Value{args[0]}, nil
+	}
+	if elems, plain := plainElems(args[0]); plain && len(elems) == 1 {
+		return []Value{elems[0]}, nil
+	}
+	return nil, listGuardDefer(r)
+}
+
+// CondGuardHandler is the runtime of __condguard, the guard the compiled
+// `if` records over a condition the pass holds abstractly (codeGuards,
+// NUR292): a value that is not a code body passes. The interpreter runs a
+// list condition INLINE — its tokens between a mark and a move — and
+// branches on the LAST value the run leaves, dropping the rest
+// (stepMoveIf); over a list of plain values (plainElems) that run places
+// them, so the condition is the last one, and an empty list is the
+// interpreter's own "no value" error. A list holding anything the run
+// would dispatch (a word, a fn value) may take the values beneath the `if`,
+// a designed defer.
+func CondGuardHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+	if !isCodeBody(args[0]) {
+		return []Value{args[0]}, nil
+	}
+	elems, plain := plainElems(args[0])
+	switch {
+	case !plain:
+		return nil, listGuardDefer(r)
+	case len(elems) == 0:
+		return nil, r.BoruError("runtime_error", "if: condition produced no value", "if")
+	}
+	return []Value{elems[len(elems)-1]}, nil
+}
+
+// listGuardDefer is the designed defer of a guard over a list the compiled
+// branch cannot run as the interpreter does.
+func listGuardDefer(r *Registry) error {
+	err := r.BoruError("internal_error",
+		"if: a computed condition or arm is a list at run time, which the interpreter runs as code; "+
+			"the compiled branch holds it as a value (NUR292)", "if")
+	if ae, ok := err.(*BoruError); ok {
+		ae.VMDefer = true
+	}
+	return err
+}
+
+// plainElems returns a code body's (isCodeBody) elements when every one is DATA the
+// interpreter's tape pushes as itself when it steps it — a number, a
+// string, a boolean, an atom or a plain list — so running the body only
+// places them, in order; ok is false for any other body (a word, a fn
+// value, a map, which may carry pending entries, …).
+func plainElems(v Value) ([]Value, bool) {
+	l, _ := AsList(v)
+	elems := l.Slice()
+	for _, e := range elems {
+		if !IsConcrete(e) || e.Parent == nil {
+			return nil, false
+		}
+		switch {
+		case e.Parent.ConformsTo(TNumber), e.Parent.ConformsTo(TString),
+			e.Parent.ConformsTo(TBoolean), e.Parent.ConformsTo(TAtom),
+			e.Parent.Equal(TList):
+		default:
+			return nil, false
+		}
+	}
+	return elems, true
 }
 
 // IfListReturnsFn type-checks the clause-list form: the result is the
@@ -1631,11 +2013,7 @@ func forCarrierAnalyse(r *Registry, iterName string, iterType *Type, args []Valu
 	out := NewCarrier(TList)
 	if len(stk) > 0 {
 		top := stk[len(stk)-1]
-		if IsDisjunct(top) {
-			out = NewCarrierTypedListValue(top)
-		} else {
-			out = NewCarrierTypedList(top.Parent)
-		}
+		out = CarrierTypedListOf(top)
 	}
 	if lowerable {
 		// The STATIC region size (trips x per-iteration net) arms the S5

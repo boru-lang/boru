@@ -237,6 +237,9 @@ def f fn [[] [Integer] [def g fn [[] [Integer] [1]] g]]  f end g 1	ERROR:undefin
 def f fn [[x:Integer] [Integer] [def x 9 end x]]  f 5 end x	ERROR:undefined_word	…nor does a local that shadowed a param
 def f fn [[] [Integer] [def a 1 end undef a end a]]  f	ERROR:undefined_word	undef inside a body really removes the local
 def f fn [[] [Integer] [def a 1 end def g fn [[] [Integer] [a]] undef a end g]]  f	1	…but a capture taken BEFORE the undef still answers
+def t 0 end def g fn [[] [Integer] [def t 9 raise 'x']]  do [g] end t	error(x) 0	a raise the caller TRAPS tears the frame down too: the callee's local is gone when the trap resumes, and the read sees the caller's binding (NUR201, closed 2026-09-25 — the interpreter left it bound)
+def t 0 end def g fn [[t:Integer] [Integer] [raise 'x']]  do [g 9] end t	error(x) 0	…and so is its PARAM of the same name
+def t 0 end def h fn [[] [Integer] [def t 7 g]] def g fn [[] [Integer] [def t 9 raise 'x']]  do [h] end t	error(x) 0	…every frame the error leaves open unwinds, the caller's own local with the callee's
 #
 # §6b  a def in an arm with NO binding before the branch — bound only on the path that ran the arm (NUR110, closed 2026-09-22 by the branch-carried def)
 def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f true	9	a name bound in ONE arm, no prior binding, the arm RAN — the read after the merge loads it

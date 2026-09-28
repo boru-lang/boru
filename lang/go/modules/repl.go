@@ -126,13 +126,13 @@ def repl-format-err fn [[m:Any] [String] [ join "" ["error: " m] ]]
 # makes defs persist across sandboxed one-shot evaluations).
 def repl-eval-line fn [[st:Any line:String] [String] [
   if (line eq "/reset") [
-    st set history ""
+    st set history "" drop
     "ok: session reset"
   ] [
     def src (if (st.history eq "") [ line ] [ join "\n" [st.history line] ])
     do [
       def out (canon (Vm.run src))
-      st set history src
+      st set history src drop
       out
     ] error [
       dot message

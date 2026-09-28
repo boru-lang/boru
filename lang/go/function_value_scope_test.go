@@ -58,7 +58,7 @@ func fnScopeCases() []fnScopeCase {
 				"export \"P\" { big: big/v }\n",
 			caller: "import \"%s\" end\n" +
 				"def limit fn [[n:Integer] [Integer] [ 100 ]]\n" +
-				"filter P.big [1 2 3 4]\n",
+				"filter P.big/v [1 2 3 4]\n",
 			want:  "[[3 4]]",
 			wrong: "[[]] (the caller's limit=100 kept nothing)",
 		},
@@ -72,7 +72,7 @@ func fnScopeCases() []fnScopeCase {
 				"export \"Q\" { show: show/v }\n",
 			caller: "import \"%s\" end\n" +
 				"def tag fn [[n:Integer] [String] [ \"CALLER\" ]]\n" +
-				"each Q.show {a:1 b:2}\n",
+				"each Q.show/v {a:1 b:2}\n",
 			want:  "[{a:'P1' b:'P2'}]",
 			wrong: "CALLER1/CALLER2",
 		},
@@ -86,7 +86,7 @@ func fnScopeCases() []fnScopeCase {
 			caller: "import \"boru:struct-util\"\n" +
 				"import \"%s\" end\n" +
 				"def mark fn [[n:Integer] [String] [ \"CALLER\" ]]\n" +
-				"StructUtil.walk W.hook {a:1}\n",
+				"StructUtil.walk W.hook/v {a:1}\n",
 			want:  "[P]",
 			wrong: "[CALLER]",
 		},
@@ -106,7 +106,7 @@ func fnScopeCases() []fnScopeCase {
 				"export \"C\" { hook: hook/v, seen: seen/v }\n",
 			caller: "import \"%s\" end\n" +
 				"def mark fn [[n:Integer] [String] [ \"CALLER\" ]]\n" +
-				"def _ (walk {mode:\"depth\"} {a:1} C.hook)\n" +
+				"def _ (walk {mode:\"depth\"} {a:1} C.hook/v)\n" +
 				"C.seen 0\n",
 			want:  "[['P' 'P']]",
 			wrong: "an `undefined word: acc` error",
@@ -123,7 +123,7 @@ func fnScopeCases() []fnScopeCase {
 			caller: "import \"%s\" end\n" +
 				"def bonus fn [[n:Integer] [Integer] [ n mul 100 ]]\n" +
 				"def svc (service {})\n" +
-				"add {op:\"go\"} H.handler svc\n" +
+				"add {op:\"go\"} H.handler/v svc\n" +
 				"call {op:\"go\"} svc\n",
 			want:  "[6]",
 			wrong: "[500]",

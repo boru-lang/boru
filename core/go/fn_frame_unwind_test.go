@@ -1,6 +1,9 @@
 package core
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // Direct kernel pins for unwindLiveFrames / unwindFrameTail (fn_frame.go):
 // a flow-control rewrite discarding a region must replay the canonical
@@ -205,4 +208,90 @@ func TestUnwindClampsRegionAndHandlesOpenEndedFrame(t *testing.T) {
 	if _, ok, _ := r.Args.Top(); ok {
 		t.Error("open-ended live frame's __pa not replayed")
 	}
+}
+
+// runErrorFrame builds a spliced frame in the canonical shape with its
+// per-call state LIVE on r — exactly as buildFnBodyHandler installs it at
+// dispatch — around the given body, beneath a CALLER binding of the
+// param's own name, so a replay of the tail is measurable twice over:
+// once tears the frame down, twice pops the caller's binding as well.
+func runErrorFrame(t *testing.T, r *Registry, body ...Value) []Value {
+	t.Helper()
+	InstallFrameBinding(r, "uwx", NewInteger(1)) // the caller's own uwx
+	r.PushFnBaseline(r.Defs.Snapshot())
+	if err := r.Args.Push(NewList([]Value{NewInteger(7)})); err != nil {
+		t.Fatal(err)
+	}
+	InstallFrameBinding(r, "uwx", NewInteger(7)) // the frame's param
+	snap := r.Defs.Snapshot()
+	r.Defs.Push("uwlocal", NewInteger(1)) // a body-local def
+	tokens := []Value{NewFrameOpenSpan(fnValueFrameMeta, 1), NewInteger(7)}
+	tokens = append(tokens, body...)
+	tokens = AppendFrameTail(tokens, FrameTailSpec{
+		Registry:     r,
+		Snapshot:     snap,
+		Names:        []string{"uwx"},
+		Returns:      []*Type{TInteger},
+		FuncName:     "uw",
+		EvalResidual: true,
+	})
+	return append(tokens, NewCloseParen())
+}
+
+// requireFrameTornDownOnce asserts the frame runErrorFrame built is gone
+// from the registry — the tail replayed — and the caller's binding beneath
+// it is intact: the tail replayed exactly ONCE.
+func requireFrameTornDownOnce(t *testing.T, r *Registry) {
+	t.Helper()
+	if d := r.Args.Depth(); d != 0 {
+		t.Errorf("per-call args list not popped by the error unwind: depth %d", d)
+	}
+	if len(r.FnBaselines) != 0 {
+		t.Errorf("fn baseline not popped by the error unwind: %d left", len(r.FnBaselines))
+	}
+	if r.Defs.Has("uwlocal") {
+		t.Error("body-local def not truncated by the error unwind (__DC)")
+	}
+	v, ok := r.Defs.Top("uwx")
+	if !ok {
+		t.Fatal("the caller's own binding was popped: the frame tail replayed twice")
+	}
+	if n, _ := AsInteger(v); n != 1 {
+		t.Errorf("the frame's param still shadows the caller's binding: uwx = %v", v)
+	}
+}
+
+// TestRunErrorUnwindsLiveFrame pins the spliced frame's error-path
+// contract (faultReturn, NUR201): an error raised inside a frame's body
+// abandons the tape, and the frame still open on it is torn down as its
+// cleanup tail would have — the body-local defs truncated, the per-call
+// Args list and FnBaseline popped, the params undef'd — so a `do` trapping
+// the error upstream resumes with none of the callee's state leaked into
+// the caller's scope (`def t 0  def g fn [[][Integer][def t 9 raise 'x']]
+// do [g]  t` read 9 on the interpreter for the compiled lane's 0).
+func TestRunErrorUnwindsLiveFrame(t *testing.T) {
+	r := covRegistry(t, registerCraise)
+	e := NewTop(r)
+	_, err := e.Run(runErrorFrame(t, r, NewWord("craise")))
+	if err == nil || !strings.Contains(err.Error(), "craise boom") {
+		t.Fatalf("want the body's error, got %v", err)
+	}
+	requireFrameTornDownOnce(t, r)
+}
+
+// TestRunErrorUnwindsFrameOnceAfterResidualError pins the other frame
+// error site: the in-frame residual evaluation at the DefCleanup marker
+// (a computing body's pending container) raising. The marker no longer
+// replays the tail itself — the frame is still open on the tape, so the
+// run's fault return replays it — and the tail runs exactly once: a
+// second replay would pop the CALLER's args entry and its same-named
+// binding.
+func TestRunErrorUnwindsFrameOnceAfterResidualError(t *testing.T) {
+	r := runReg(t)
+	e := NewTop(r)
+	_, err := e.Run(runErrorFrame(t, r, pendingList(NewWord("cfail"), NewInteger(1))))
+	if err == nil || !strings.Contains(err.Error(), "boom") {
+		t.Fatalf("want the residual's error, got %v", err)
+	}
+	requireFrameTornDownOnce(t, r)
 }

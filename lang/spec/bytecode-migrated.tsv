@@ -113,6 +113,9 @@ def rec fn [ [nd:Any key:Any consumed:Any best:Any] [Any] [ if (nd eq none) [bes
 import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end do [(M.boom 5) "x"] error [dot code]	bad_input/q
 def f fn [[x:Any] [Any] [raise bad_input "nope"]]  do [(f 5) 2] error [dot code]	bad_input/q
 import "boru:struct-util"  def g StructUtil.parse/v  do [(g "") 2] error [dot code]	parse_error/q
+# GRADUATED 2026-09-25 from frontier-do-catch.tsv (NUR134): a module export's definite no-match inside the region, the do-body unit raising it in place.
+import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end def msg (do [(true 5 M.dec) "no-raise"] error [dot code])  msg	uncalled_function/q
+import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end def msg (do [(false 5 M.dec) "no-raise"] error [dot code])  msg	uncalled_function/q
 import module [ def dec fn [[bad:Boolean x:Any] [Any] [ if bad [raise bad_input "boom"] [x] ]] def boom fn [[x:Any] [Any] [ raise bad_input "always" ]] export "M" {dec: dec/v, boom: boom/v} ] end do [(if true [M.boom 5] [7]) 8] error [dot code]	bad_input/q
 5 do [raise aa "x"] error [drop 9] add 1	5 10
 5 do [7] error [drop 9] add 1	5 8

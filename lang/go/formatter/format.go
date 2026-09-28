@@ -864,32 +864,80 @@ func elideFnBrackets(n *Node) {
 				continue
 			}
 		}
+		if ch.Kind == NdWord && ch.Text == "fn" {
+			elideBareTripleRet(n.Children, i+1)
+		}
 		out = append(out, ch)
 		i++
 	}
 	n.Children = out
 }
 
+// elideBareTripleRet is the wrapperless spelling's half of the same rule
+// (NUR088): `fn x:Integer [Integer] [mul 2 x]` — a bare single-param run,
+// a bracketed single-type return, the body — drops the return's brackets
+// in place. The run must reach the return list on one line with no
+// comment in it, and the body must follow the return directly; anything
+// else is left as written.
+func elideBareTripleRet(kids []*Node, from int) {
+	j := from
+	for j < len(kids) && kids[j].Kind != NdList {
+		switch kids[j].Kind {
+		case NdNewline, NdComment, NdParen, NdMap:
+			return
+		}
+		j++
+	}
+	if j == from || j+1 >= len(kids) || kids[j+1].Kind != NdList {
+		return
+	}
+	run := kids[from:j]
+	if paramCount(run) != 1 || !paramUnbracketSafe(run) {
+		return
+	}
+	kids[j] = unbracketRet(kids[j])
+}
+
 // elideFnTriple returns the bracketless triple-form node sequence for a
 // single-overload fn wrapper whose sole parameter is safe to unbracket,
 // or nil when the wrapper must be left as the spec-list form.
+//
+// One signature has several valid spellings — the params bracketed or a
+// bare run, the return bracketed or a bare word — and they build one
+// canon-identical value, so the formatter reads the wrapper as
+// `params… ret body` (the body is the last list, the return the token
+// before it, the params everything else) and collapses each of them to
+// the one-pair form (NUR088). The irreducible shapes stay: two or more
+// params, none, a value-pattern list, a bare `List` param, and a
+// multi-overload spec list (whose "params" are lists, which count as no
+// param head at all).
 func elideFnTriple(wrapper *Node) []*Node {
 	parts := nonTrivial(wrapper.Children)
-	if len(parts) != 3 {
+	if len(parts) < 3 {
 		return nil
 	}
-	for _, p := range parts {
-		if p.Kind != NdList {
-			return nil
-		}
+	body, ret := parts[len(parts)-1], parts[len(parts)-2]
+	if body.Kind != NdList || (ret.Kind != NdList && ret.Kind != NdWord) {
+		return nil
 	}
-	pkids := nonTrivial(parts[0].Children)
+	params := parts[:len(parts)-2]
+	var pkids []*Node
+	if len(params) == 1 && params[0].Kind == NdList {
+		pkids = nonTrivial(params[0].Children)
+	} else {
+		for _, p := range params {
+			if p.Kind == NdList || p.Kind == NdParen {
+				return nil
+			}
+		}
+		pkids = params
+	}
 	if paramCount(pkids) != 1 || !paramUnbracketSafe(pkids) {
 		return nil
 	}
 	out := append([]*Node{}, pkids...)
-	out = append(out, unbracketRet(parts[1]))
-	out = append(out, parts[2])
+	out = append(out, unbracketRet(ret))
+	out = append(out, body)
 	return out
 }
 

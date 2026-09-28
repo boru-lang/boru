@@ -48,22 +48,28 @@ func formatByExt(path, src string) string {
 	}
 }
 
+// printUsage is the contract `boru help fmt` points the reader at.
+func printUsage(w io.Writer) {
+	stdfmt.Fprintln(w, "usage: boru fmt [file ...]")
+	stdfmt.Fprintln(w, "  Formats .boru source files in place. With no files it walks the current")
+	stdfmt.Fprintln(w, "  directory tree (skipping .boru/); .md and .html files have only their")
+	stdfmt.Fprintln(w, "  embedded boru reformatted.")
+	stdfmt.Fprintln(w, "  -h, --help  print this usage and exit 0")
+}
+
 // Run handles `boru fmt [file.boru ...]`.
 func Run(args []string, stdout, stderr io.Writer) int {
+	// -h is a help request, not a file named "-h" and not an error: it
+	// prints the usage and exits 0, as `check` does (NUR084).
+	for _, a := range args {
+		if a == "-h" || a == "--help" || a == "help" {
+			printUsage(stdout)
+			return 0
+		}
+	}
 	var files []string
 	if len(args) == 0 {
-		err := filepath.Walk(".", func(path string, info os.FileInfo, err error) error {
-			if err != nil {
-				return err
-			}
-			if info.IsDir() && info.Name() == ".boru" {
-				return filepath.SkipDir
-			}
-			if !info.IsDir() && strings.HasSuffix(path, ".boru") {
-				files = append(files, path)
-			}
-			return nil
-		})
+		err := pathutil.WalkSources(".", filepath.WalkDir, ".boru", func(path string) { files = append(files, path) })
 		if err != nil {
 			stdfmt.Fprintf(stderr, "error: %s\n", err)
 			return 1

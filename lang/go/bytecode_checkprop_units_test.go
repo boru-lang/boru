@@ -206,11 +206,15 @@ def res (Test.check-prop "gen-raises" [raise bad_input "boom"] [ 0 gte ] 3 1 0)
 	}
 }
 
-// TestCheckPropFailedToCompileBodyFallsBackSound — a gen body the stored-param
-// compile declines (a capitalised type install doesn't lower in a closure
-// unit) falls through to the standing NoEvalArgs replay-hazard gates, which
-// decline the program: it does not compile, and that is a defect —
-// not wrong, exactly the do-registry-replay discipline.
+// TestCheckPropFailedToCompileBodyFallsBackSound — a gen body with a
+// capitalised type install used to decline the stored-param compile (the
+// closure unit dropped the mint) and fall through to the NoEvalArgs
+// replay-hazard gates, which declined the program. Since NUR167's close the
+// unit re-installs the type per call (OpBindFnType — the name checked and
+// reserved, the binding popped with the CallBoru frame runCheckProp opens
+// per trial), so the body compiles natively and the second trial conflicts
+// exactly as the interpreter's does: ok false, the type_error in the
+// report. The name stays for the history; the assertion is parity.
 func TestCheckPropFailedToCompileBodyFallsBackSound(t *testing.T) {
 	const src = `import "boru:test" end
 def res (Test.check-prop "hazard" [def Big Integer 9] [ 0 gte ] 2 1 0)
@@ -227,8 +231,8 @@ res get "ok"`
 	if err != nil {
 		t.Fatalf("RunCompiled: %v", err)
 	}
-	if compiled {
-		t.Fatal("the replay-hazard gen body must decline the compile (the interpreter owns it)")
+	if !compiled {
+		t.Fatal("the type-installing gen body compiles natively now (NUR167's per-call type bind)")
 	}
 	b, err := New()
 	if err != nil {

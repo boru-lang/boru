@@ -52,6 +52,13 @@ func TestQuotationBodyDefReadParity(t *testing.T) {
 		{qdLocal + `each [f/v apply] [1 2 3]`, "[2 3 4]", "the /v read applied (as before)"},
 		{qdTbl + `def f M.tbl.inc end f 5`, "6", "the word call (as before)"},
 		{`def z fn [[][Integer][7]] end def tbl {z: z/v} end def f tbl.z end each [f] [1 2]`, "[7 7]", "a 0-arg member is the landing's at the def (as before)"},
+		// the same read at the MAIN program (TestDefReadWordDispatchPending's
+		// first row until NUR207 gave the root its gradual-read island)
+		{qdLocal + `5 f`, "6", "the def-bound member read at the program root"},
+		// and in a named fn unit (TestDefReadWordDispatchPending until
+		// NUR285: the frame replay's word read takes the data lookup, where
+		// the dispatch lookup deferred on the fn binding)
+		{qdLocal + `def g fn [[Integer][Any][f]] end g 5`, "6", "the def-bound member read in a fn unit"},
 		// the loop-carried root def computed by the /v-marked export under
 		// apply (L104 and its local twin): declined "dynamic-scope def `i` of
 		// unpromoted computed value" until the user-call write-back promoted
@@ -131,33 +138,5 @@ func TestQuotationBodyDefReadSoundCompileFailures(t *testing.T) {
 		if errI != nil || fmt.Sprint(gotI) != c.interp {
 			t.Errorf("%q: interpreter %v err=%v, want %s", c.src, gotI, errI, c.interp)
 		}
-	}
-}
-
-// TestDefReadWordDispatchPending pins what NUR156's fix does NOT reach — the
-// same def-bound member read outside a code-body closure, where no replay
-// window exists yet: at the MAIN program a bare `5 f` pushes the value
-// (`[5 fn]` for the interpreter's 6), and inside a named fn unit the read
-// bails as a dynamic-scope read of a dispatching binding. Both are the
-// read model's open points (NUR123). The pin fails the day a row agrees:
-// move it to TestQuotationBodyDefReadParity.
-func TestDefReadWordDispatchPending(t *testing.T) {
-	src := qdLocal + `5 f`
-	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-	if errI != nil || fmt.Sprint(gotI) != "[6]" {
-		t.Fatalf("%q: interpreter oracle moved: %v err=%v — re-derive NUR156", src, gotI, errI)
-	}
-	if !compiled || errC != nil {
-		t.Errorf("%q: the top-level read became loud (%v) — record that and retire this pin", src, errC)
-	} else if fmt.Sprint(gotC) == fmt.Sprint(gotI) {
-		t.Errorf("%q: the top-level read agrees (%v) — move the row to TestQuotationBodyDefReadParity", src, gotC)
-	}
-	src = qdLocal + `def g fn [[Integer][Any][f]] end g 5`
-	gotC, compiled, errC, gotI, errI = runBothEngines(t, src)
-	if errI != nil || fmt.Sprint(gotI) != "[6]" {
-		t.Fatalf("%q: interpreter oracle moved: %v err=%v — re-derive NUR156", src, gotI, errI)
-	}
-	if !compiled || !isBailDefect(errC) {
-		t.Errorf("%q: the fn-unit read no longer bails (compiled=%v %v err=%v) — retire this pin", src, compiled, gotC, errC)
 	}
 }

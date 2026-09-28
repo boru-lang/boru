@@ -32,6 +32,8 @@ func Cost(form *StackForm) int {
 			c += 1 + litComplexity(o.V)
 		case Call:
 			c += 2
+		case Apply:
+			c += 2
 		case Quote:
 			c += 1 + Cost(o.Body)
 		case DoEval:

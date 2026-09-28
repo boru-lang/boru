@@ -30,7 +30,7 @@ func x5PredFn() Value {
 		Returns: []*Type{TBoolean},
 		Impl:    Boru([]Value{NewBoolean(true)}),
 	}
-	return NewValueRaw(TFunction, FnDefInfo{Signatures: []Signature{sig}})
+	return MarkPredicateFn(NewValueRaw(TFunction, FnDefInfo{Signatures: []Signature{sig}}))
 }
 
 // x5PredType installs the predicate fn as type name and returns the
@@ -61,8 +61,8 @@ func TestX5UnifyRWrapper(t *testing.T) {
 	}
 }
 
-func TestX5IsPredicateFnValueNilParent(t *testing.T) {
-	if isPredicateFnValue(Value{}) {
+func TestX5IsDeclaredPredicateFnNilParent(t *testing.T) {
+	if IsDeclaredPredicateFn(Value{}) {
 		t.Fatal("zero Value has no Parent and is not a predicate fn")
 	}
 }

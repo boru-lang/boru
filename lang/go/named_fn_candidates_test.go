@@ -205,24 +205,34 @@ func TestNamedFnCandidatesWalk(t *testing.T) {
 	}
 }
 
-// TestNamedFnCandidatesOpenShapes pins NUR190's `/q` and Function-typed
-// halves: a DYNAMIC fn value under a FUNCTION word whose arg-taking overload
-// claims the word. The interpreter's `/q` slot captures the word (`y` never
-// runs). The landing's walk honours the claim where the lowering laid the
-// word's call and the residual apply out right after it (LandingWord.Skip,
-// 2026-09-26): it enters the fn over the atom and resumes past both — where
-// it deferred loudly (2026-09-24) and, before that, stood aside so the lead
-// arm applied the fn over the word's RESULT (`[42 42]` for `[y]`, silent;
+// TestNamedFnCandidatesOpenShapes pins NUR190's close: a DYNAMIC fn value
+// under a FUNCTION word whose arg-taking overload claims the word. The
+// interpreter's `/q` slot captures the word (`y` never runs). The landing's
+// walk used to DEFER loudly there (the maintainer's containment,
+// 2026-09-24): the compiled code calls the word and the residual arm applies
+// the fn over its result (`[42 42]` for `[y]` before that, silent;
 // fn-value.tsv's `m.f z` passed by coincidence, z's result being its own
-// atom). A capture the lowering did not lay out that way — a word that
-// collects, a wider residual — still defers, and so does the Function-typed
-// reference (the stored-fn unit it would enter reads a bare Function param
-// as data, NUR220). The mixed twin declines soundly since the islands read
-// the word as a crossing (NUR187).
+// atom). The claim is exact now, by what the lowering laid out: where the
+// word's call and the residual apply follow the landing at once
+// (LandingWord.Skip) the landing enters the fn over the atom and resumes
+// past both, compiled; where the word is in the body at the landing's depth
+// the landing hands the value and the body from the word on to the
+// interpreter (its island); and elsewhere it captures over the value and
+// the word and skips the word's call and the paren apply after it. The
+// mixed twin declines soundly since the islands read the word as a
+// crossing (NUR187).
 func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 	const nfQ = `def z fn [[] [Atom] [(quote z)]] end def y fn [[] [Integer] [42]] end ` +
 		`def h fn [[] [Integer] [42]] end def h fn [[x:Atom/q] [Atom] [x]] end ` +
 		`def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
+	// The landing's overload walk settles the typed slot, the Any-typed
+	// claim and the anonymous park (TestNamedFnCandidatesWalk); the `/q`
+	// capture takes the landing's island (`m.q z` is `[z]` on both lanes —
+	// it bailed, and before that compiled `[42 0]`, the residual apply over
+	// the word's result). The Function-typed half is gone with NUR078: a
+	// bare `z` CALLS at every slot, so `m.g z` is the named no-match on both
+	// lanes (it was 7 interpreted and bailed compiled), and the reference is
+	// `m.g z/v` — a value the residual arms collect, 7 on both lanes.
 	const nfR = `def g fn [[f:Function] [Integer] [7]] end def q fn [[] [Integer] [42]] end def q fn [[x:Atom/q] [Atom] [x]] end ` +
 		`def mk fn [[] [Map] [{g: g/v q: q/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end `
 	const nfA = `def h fn [[x:Atom/q] [Any] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end def z fn [[] [Integer] [0]] end `
@@ -232,13 +242,27 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 	}{
 		{nfQ + `m.f y`, "[y]", "[y]", "", false},
 		{nfQ + `m.f z`, "[z]", "[z]", "", false},
-		{nfQ + `m get 'f' z`, "[z]", "[z]", "", false},
-		{nfR + `m.q z`, "[z]", "[z]", "", false},
-		{nfA + `m.f z`, "[z]", "[z]", "", false},
-		{nfA + `m.f typeof`, "[typeof]", "", "CAPTURES the word `typeof`", true},
-		{nfQ + `m.f y 5`, "[y 5]", "", "CAPTURES the word `y`", true},
 		{nfQ + `7 m.f y`, "[7 y]", "", "dynamic value precedes residual args", false},
-		{nfR + `m.g z`, "[7]", "", "takes the word `z` as its argument", true},
+		{nfR + `m.q z`, "[z]", "[z]", "", false},
+		{nfR + `m.g z/v`, "[7]", "[7]", "", false},
+		// Every placement the capture can take: a user paren (the island
+		// re-opens it), a following statement, a branch arm, a loop body and
+		// a literal's member (the skip past the word's call and the apply),
+		// and a fn body (the unit's island).
+		{nfQ + `(m.f y)`, "[y]", "[y]", "", false},
+		{nfQ + `((m.f y) 3)`, "[y 3]", "[y 3]", "", false},
+		{nfQ + `m.f y def w 3 w`, "[y 3]", "[y 3]", "", false},
+		{nfQ + `if true [(m.f y)] [0]`, "[y]", "[y]", "", false},
+		{nfQ + `for 1 [(m.f y) drop]`, "[]", "[]", "", false},
+		{nfQ + `[(m.f y)]`, "[[y]]", "[[y]]", "", false},
+		{nfQ + `{a: (m.f y)}`, "[{a:y}]", "[{a:y}]", "", false},
+		{nfQ + `def g fn [[] [Any] [(m.f y)]] end g`, "[y]", "[y]", "", false},
+		{nfQ + `def g fn [[b:Boolean] [Any] [if b [(m.f y)] [0]]] end g true`, "[y]", "[y]", "", false},
+		{nfQ + `each ([k:Any] => [m.f y]) [1]`, "[[y]]", "[[y]]", "", false},
+		{nfQ + `m get 'f' z`, "[z]", "[z]", "", false},
+		{nfA + `m.f z`, "[z]", "[z]", "", false},
+		{nfA + `m.f typeof`, "[typeof]", "[typeof]", "", false},
+		{nfQ + `m.f y 5`, "[y 5]", "[y 5]", "", false},
 	}
 	for _, c := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
@@ -259,6 +283,13 @@ func TestNamedFnCandidatesOpenShapes(t *testing.T) {
 		if !compiled || errC != nil || fmt.Sprint(gotC) != c.compiled {
 			t.Errorf("%q: compiled: want %s, got %v err=%v", c.src, c.compiled, gotC, errC)
 		}
+	}
+	// The bare word before the Function-typed slot calls: z's 0 is no
+	// Function, so g's named no-match raises on both lanes, compiled.
+	src := nfR + `m.g z`
+	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+	if !compiled || codeOf(errI) != "uncalled_function" || codeOf(errC) != codeOf(errI) || detailOf(errC) != detailOf(errI) || len(gotC) != 0 || len(gotI) != 0 {
+		t.Errorf("%q: compiled=%v %v [%s] %s, interp %v [%s] %s", src, compiled, gotC, codeOf(errC), detailOf(errC), gotI, codeOf(errI), detailOf(errI))
 	}
 	// The claim's effects are the fn's own, in the interpreter's order: the
 	// captured word never runs (a word that raises would raise), a body that

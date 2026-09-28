@@ -231,6 +231,10 @@ type sweepCompiledRuntime struct{}
 func (sweepCompiledRuntime) InvokeCompiled(*Registry, *Signature, []Value) ([]Value, error, bool) {
 	return []Value{NewInteger(99)}, nil, true
 }
+
+func (sweepCompiledRuntime) InvokeCompiledStrict(*Registry, *Signature, []Value) ([]Value, error, bool) {
+	return []Value{NewInteger(99)}, nil, true
+}
 func (sweepCompiledRuntime) StampDetached(*Registry, FnDefInfo, SrcPos) {}
 func (sweepCompiledRuntime) ClosureAsFnDef(_ *Registry, v Value) (Value, bool) {
 	return v, false

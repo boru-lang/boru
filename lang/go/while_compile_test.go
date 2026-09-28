@@ -212,12 +212,13 @@ func TestWhileEmptyConditionTrapPosition(t *testing.T) {
 	if !strings.Contains(errC.Error(), want) || !strings.Contains(errI.Error(), want) {
 		t.Fatalf("message drifted: compiled=%v interp=%v", errC, errI)
 	}
-	// The POSITION is not (NUR130).
+	// The POSITION too, since NUR130's close: the interpreter anchors at
+	// the condition operand (ForCont.CondPos), where the trap always did.
 	if !strings.Contains(errC.Error(), "1:7") {
 		t.Errorf("the trap must anchor at the condition operand (1:7): %v", errC)
 	}
-	if !strings.Contains(errI.Error(), "1:14") {
-		t.Errorf("NUR130 moved — the interpreter no longer anchors at the tape pointer (1:14): %v", errI)
+	if !strings.Contains(errI.Error(), "1:7") {
+		t.Errorf("the interpreter must anchor at the condition operand too (1:7, NUR130): %v", errI)
 	}
 }
 

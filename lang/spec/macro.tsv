@@ -26,7 +26,7 @@ def myor2 (macro [[a b] [ quote [ def tmp unquote a  if tmp [tmp] [unquote b] ] 
 def defconst (macro [[name val] [ quote [ def unquote name unquote val ] ]])  defconst answer 42  answer	42	intentional user-visible binding via `def unquote name` (escape: not renamed)
 #
 # §4  macroexpand — show the expansion as data (no splice/run).
-def twice (macro [[e] [ quote [ unquote e add unquote e ] ]])  macroexpand (twice 5)	[5 word(add) 5]	expansion is the spliced token list
+def twice (macro [[e] [ quote [ unquote e add unquote e ] ]])  macroexpand (twice 5)	[5 add 5]	expansion is the spliced token list
 #
 # §5  Negatives
 unquote 5	ERROR:unquote: only valid inside a macro template	unquote outside a template
@@ -41,7 +41,7 @@ def inc1 (macro [[a] [ quote [ unquote a add 1 ] ]])  [(inc1 4) (inc1 4) (inc1 9
 #
 # §7  macroexpand is recursive (macroexpand-all): a macro whose expansion calls
 #     another macro is expanded too. A runaway recursive macro errors loudly.
-def innr (macro [[x] [quote [unquote x add 1]]])  def outr (macro [[y] [quote [innr unquote y]]])  macroexpand (outr 5)	[5 word(add) 1]	nested macro fully expanded
+def innr (macro [[x] [quote [unquote x add 1]]])  def outr (macro [[y] [quote [innr unquote y]]])  macroexpand (outr 5)	[5 add 1]	nested macro fully expanded
 def loopy (macro [[a] [quote [loopy unquote a]]])  macroexpand (loopy 1)	ERROR:expansion too deep	recursive macro is caught, not looped
 #
 # §8  Staging (Phase 5, interpreter): a macro is define-before-USE — using it

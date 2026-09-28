@@ -76,10 +76,63 @@ func (es *EmitState) poisonKeptDefs(word, what string) {
 		what + " after it would read the check model's binding, which never saw the body (NUR210)"
 }
 
+// noteKeptDefsRead is NoteDefRead's latch check. A read the recorder seats
+// LIVE observes nothing stale — the lookup (OpLookupDynScope) reads the
+// registry the body installed into, raises the interpreter's undefined_word
+// on a miss and bails on a fn value it would dispatch — so while the latch is
+// armed, a read that may be seated live (a name a computed keep-defs body
+// leaked into the unit, NUR203's noteDynKeepDefsLeak; a root read after a
+// root one, rootDynLeak) waits for the tag hook that follows it
+// (NoteLiveRead). Every other read is an observer now (NUR282).
+func (es *EmitState) noteKeptDefsRead(id, name string) {
+	es.flushKeptRead()
+	if es.keptDefsLevel != 0 && id != "" && (es.keepLeakNames[name] || (es.rootDynLeak && es.TopFrameOnly())) {
+		es.pendingKeptRead, es.pendingKeptName = id, name
+		return
+	}
+	es.noteKeptDefsObserver("the read of `" + name + "`")
+}
+
+// keptReadSeatedLive settles the pending read NoteLiveRead is seating live:
+// it observes nothing stale, and its value becomes a CARRIER of its type, so
+// no container literal or const fold downstream can bake the check model's
+// pre-body value where the live lookup stands (`… each b xs drop [t]` baked
+// [0] for the interpreter's [3] when the read stayed concrete). A read that
+// may hold a fn value stays an observer: a fn is interned as a const, which
+// the carrier would not stop.
+func (es *EmitState) keptReadSeatedLive(v *core.Value) {
+	if v.ID == "" || es.pendingKeptRead != v.ID {
+		return
+	}
+	name := es.pendingKeptName
+	es.pendingKeptRead, es.pendingKeptName = "", ""
+	if core.IsAppliableFn(*v) || v.Parent == nil || v.Parent.ConformsTo(core.TFunction) {
+		es.noteKeptDefsObserver("the read of `" + name + "`")
+		return
+	}
+	if core.IsTypeLiteral(*v) {
+		*v = core.WithPos(core.ValueCarrier(*v), *v) // a type VALUE (NUR323)
+		return
+	}
+	*v = core.WithPos(core.NewCarrier(v.Parent), *v)
+}
+
+// flushKeptRead makes a pending read an observer: nothing seated it live
+// before the next recorded event, dispatch or Finalize.
+func (es *EmitState) flushKeptRead() {
+	if es.pendingKeptRead == "" {
+		return
+	}
+	name := es.pendingKeptName
+	es.pendingKeptRead, es.pendingKeptName = "", ""
+	es.noteKeptDefsObserver("the read of `" + name + "`")
+}
+
 // keptDefsEvent is appendEvent's hook: an event that observes a binding is
 // checked against the latch FIRST (a call of a kept-defs unit observes what
 // ran before it), then an event that may run a kept-defs unit arms it.
 func (es *EmitState) keptDefsEvent(ev *EmitEvent) {
+	es.flushKeptRead()
 	if what := keptDefsObserverEvent(ev); what != "" {
 		es.noteKeptDefsObserver(what)
 		// A user call or a fn-value apply may run code the model did not
@@ -165,6 +218,7 @@ func (es *EmitState) operandMayInvoke(op EmitOperand) bool {
 // latch arms at the current depth.
 func (es *EmitState) runKeptDefs(word string) {
 	es.keptDefsFresh = nil
+	es.generaliseRootValues()
 	for _, u := range es.openUnitRecs {
 		if es.fnRecs[u].runsKeptDefs == "" {
 			es.fnRecs[u].runsKeptDefs = word
@@ -213,6 +267,26 @@ func (es *EmitState) keptDefsHandedOn(rec *fnUnitRec, level int) {
 		es.keptDefsWord = rec.runsKeptDefs
 	}
 	es.keptDefsFresh = nil
+	es.generaliseRootValues()
+}
+
+// generaliseRootValues is NUR281's: a kept-defs body that runs at the PROGRAM
+// level may rebind or unbind any root value binding, and a map literal's value
+// const-folds off the emit path (core AutoEvalMap's fold), where no read
+// reaches the latch — `[1 2] each (mk) end {a: x}` baked the pre-body x. So
+// the pass stops knowing root values there, as `do`'s check half already does
+// (basic generaliseRootValues): each binding becomes a fresh carrier of its
+// type (the speculative undef's transition), which the fold stands aside for
+// and whose read reaches the latch. Only at the root: inside a unit the run's
+// defs land in the unit's frame, and the latch re-arms where the unit runs.
+func (es *EmitState) generaliseRootValues() {
+	r := es.reg
+	if len(es.units) != 1 || r == nil || r.Check == nil || r.Check.FnBodyDepth > 0 {
+		return
+	}
+	for _, name := range r.Defs.Names() {
+		core.GeneraliseSpecUndef(r, name)
+	}
 }
 
 // noteKeptDefsFreshBind records a def of name to the value id made while the

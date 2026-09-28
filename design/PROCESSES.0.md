@@ -276,14 +276,17 @@ pattern into its scalar-tag subset (→ patrun) and its `name:Type` subset (→
 ParseFnParams) is a build-time step over the clause list; neither layer is
 extended and both already exist.
 
-> **The binding layer is specific to `receive`.** Type-slot binding is a property
-> of a `receive` *clause*, not of patrun matching in general. The service-layer
-> `add` (`SERVICES.0.md` §1) deliberately does **not** bind pattern fields: an
-> `add` pattern is scalar-tag routing only, the whole request arrives as `req`,
-> and the handler destructures it by hand (`req.text`). So
-> `add {op:"create" text:String} …` does not bind `text`, whereas the `receive`
-> clause `{op:"create" text:String} […]` does. Same patrun routing underneath; the
-> `name:Type` binding pass is layered on only by `receive`.
+> **One clause pattern, two consumers.** The service-layer `add`
+> (`SERVICES.0.md` §1) reads its pattern with the same two layers
+> (`splitClausePattern`, NUR064, 2026-09-26): scalar fields route, `name:Type`
+> fields are binding slots. A routed clause whose slots decline the message
+> falls back to a slot-free catch-all (`{}`) or raises `no_match`, and a clause
+> that takes it sees each slot's field by name — a `receive` body while it
+> runs, an `add` handler while it runs (the whole request still arrives as
+> `req`). So `add {op:"create" text:String} [ [req state] => [ … text … ] ]`
+> binds `text` exactly as the `receive` clause `{op:"create" text:String} […]`
+> does. Raw patrun (`add {pattern} value patrun`, `find`) stays scalar-only:
+> it stores values, not code, so there is nothing to bind into.
 
 ### patrun routing limits (hard contract)
 

@@ -19,6 +19,7 @@ import {
   setupDecimalUnderscoreMatcher,
   setupMiniLitMatcher,
   setupNumberSub,
+  setupStringEscapeMatcher,
   setupTemplateLiteralMatcher,
 } from './grammar.ts'
 import { setupXmlMatcher } from './xml.ts'
@@ -197,6 +198,7 @@ export function lexTokens(src: string): LexTokensResult {
   const jsonic = safeMake({})
   const { t } = setupBaseTokens(jsonic, loadDeclGrammar())
   setupTemplateLiteralMatcher(jsonic, t)
+  setupStringEscapeMatcher(jsonic)
   setupBigNumberMatcher(jsonic, t)
   // The same Boru decimal-boundary shim is installed in both ports so raw
   // formatter token streams agree even where their stock scanners differ.

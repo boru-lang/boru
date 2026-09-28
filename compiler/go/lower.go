@@ -87,7 +87,7 @@ func (lw *lowerer) lowerLoop(ev *EmitEvent) string {
 	}
 	head := len(*lw.code)
 	fn := lw.emit(OpForNext, 0, lp.pos)
-	lw.loops = append(lw.loops, loopCtx{nextPC: head, iterName: lp.iterName})
+	lw.loops = append(lw.loops, loopCtx{nextPC: head, iterName: lp.iterName, iterSlot: lp.iterSlot})
 	// A CONDITION loop (RecordWhile, `while [cond] [body]`): the condition's
 	// one value is tested at the head of every iteration — falsy jumps to the
 	// FLOW_BREAK placed past the back-edge, which pops the loop frame and
@@ -304,6 +304,43 @@ func rootBindWritesBack(d *emitDynBind) bool {
 	return true
 }
 
+// lowerSpecFnBind lowers the PLACED install of a speculative fn def (the
+// seventieth increment): the fn value bakes unpooled and is installed at its
+// site — inside the arm, so it binds exactly when the arm runs. At root,
+// OpBindResident installs through the interpreter's own installer (an
+// overlapping redefinition drops the standing overload as installDef's
+// filter does) and persists, as the interpreter's module-scope def does;
+// inside a unit the def is a FRAME binding, so OpBindDynScope installs it and
+// the frame's RET unwinds it, as the interpreter's teardown pops it. Never
+// left unlowered.
+func (lw *lowerer) lowerSpecFnBind(d *emitDynBind) {
+	lw.pushOperand(ConstOperand(lw.es.internUnpooled(d.val)), d.pos)
+	if d.root {
+		idx := len(lw.p.ResidentBinds)
+		lw.p.ResidentBinds = append(lw.p.ResidentBinds, ResidentBindSpec{Name: d.name, Twin: -1, Pop: true})
+		lw.emit(OpBindResident, idx, d.pos)
+	} else {
+		lw.emit(OpBindDynScope, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
+	}
+	lw.vm = lw.vm[:len(lw.vm)-1]
+}
+
+// storeIndexBind lowers a body def of an enclosing counted loop's OWN index
+// (lowerDynBind's doc): done is true when the def named a loop's index and
+// was stored into its slot (or declined with reason).
+func (lw *lowerer) storeIndexBind(d *emitDynBind, twin int) (reason string, done bool) {
+	for i := len(lw.loops) - 1; i >= 0; i-- {
+		if lc := lw.loops[i]; lc.iterName != "" && lc.iterName == d.name {
+			if reason := lw.storeBindInto(d, lc.iterSlot, "the loop's own index", true); reason != "" {
+				return reason, true
+			}
+			lw.markTwinWrittenBack(twin)
+			return "", true
+		}
+	}
+	return "", false
+}
+
 // lowerDynBind emits the registry-visible twin of a `def` whose name some
 // OpLookupDynScope reads (the DynScopeNames set): push the bound value's
 // operand, then OpBindDynScope pops it into r.Defs under the name (the VM
@@ -324,25 +361,18 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		return ""
 	}
 	if d.specFn {
-		// The PLACED install of a speculative fn def (the seventieth
-		// increment): the fn value bakes unpooled and is installed at its
-		// site — inside the arm, so it binds exactly when the arm runs. At
-		// root, OpBindResident installs through the interpreter's own
-		// installer (an overlapping redefinition drops the standing
-		// overload as installDef's filter does) and persists, as the
-		// interpreter's module-scope def does; inside a unit the def is a
-		// FRAME binding, so OpBindDynScope installs it and the frame's RET
-		// unwinds it, as the interpreter's teardown pops it. Never left
-		// unlowered.
-		lw.pushOperand(ConstOperand(lw.es.internUnpooled(d.val)), d.pos)
-		if d.root {
-			idx := len(lw.p.ResidentBinds)
-			lw.p.ResidentBinds = append(lw.p.ResidentBinds, ResidentBindSpec{Name: d.name, Twin: -1, Pop: true})
-			lw.emit(OpBindResident, idx, d.pos)
-		} else {
-			lw.emit(OpBindDynScope, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
-		}
-		lw.vm = lw.vm[:len(lw.vm)-1]
+		lw.lowerSpecFnBind(d)
+		return ""
+	}
+	if d.typeInstall && d.fnType != nil && lw.isFnUnit {
+		// A FN unit's own type install (RecordTypeInstall's fn-unit arm):
+		// re-installed per call by OpBindFnType — the name checked and
+		// reserved, the check-time node bound, popped with the frame — the
+		// interpreter's per-call `def T` (NUR167).
+		idx := len(lw.p.FnTypeBinds)
+		lw.p.FnTypeBinds = append(lw.p.FnTypeBinds, FnTypeBindSpec{Name: d.name, Entry: *d.fnType})
+		lw.emit(OpBindFnType, idx, d.pos)
+		lw.note()
 		return ""
 	}
 	if !d.bindsValue() {
@@ -368,17 +398,17 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	// install to the op that has the runtime value (core.ApplyBindTwin).
 	twin := lw.takeTwin(d.name)
 	// A body def of the enclosing counted loop's OWN index — `def i 0  for 3
-	// [def i 9]  i` — declines (NUR204): the interpreter leaves the loop's
-	// index level bound past the loop (2, the last index, at the root; the
-	// outer loop's restore inside a nested one), where the compiled loop
-	// carried the def and wrote the body's value back (9) — a silent
-	// miscompile on main until the user-call write-back promotion reached
-	// the shape, when it declined as "unpromoted" instead. Loud on both
-	// paths until the index level is modelled.
-	for _, lc := range lw.loops {
-		if lc.iterName != "" && lc.iterName == d.name {
-			return "def of the enclosing for loop's own index `" + d.name + "` inside its body (NUR204)"
-		}
+	// [def i 9]  i` — rebinds the ITERATION's binding and nothing else: the
+	// value is stored into the loop's index slot, so the body's later reads
+	// see it, FOR_NEXT overwrites it with the next index, and the pre-loop
+	// binding of the name is untouched — the lexical index scope both lanes
+	// answer now (the interpreter pops the body's level with the iteration
+	// and the index level with the loop, popIterLevels). This used to carry
+	// the def as a loop-carried root def and write the body's value back
+	// (9), then declined loudly (NUR204); the twin is marked written back so
+	// its replay installs no registry level for the iteration's binding.
+	if reason, done := lw.storeIndexBind(d, twin); done {
+		return reason
 	}
 	needDyn := lw.needDynInstall(d)
 	if needDyn && d.root && lw.twinInstalls(twin) {
@@ -442,7 +472,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			lw.markTwinWrittenBack(twin)
 			lw.note()
 			return ""
-		case d.srcSeq >= 0 && !lw.variadic[d.srcSeq] && d.spliceDepth >= 0 && needGlobal:
+		case d.srcSeq >= 0 && !lw.variadic[d.srcSeq] && d.spliceDepth >= 0 && needGlobal && !lw.isPromoted(d.srcSeq):
 			// The S9.1 STATIC-region first-value bind (SplitEventRegionBind):
 			// the bound value is idx 0 of a multi-out event — stack-deepest of
 			// the region, at the STATIC depth nout-1 below its top. Same
@@ -464,6 +494,11 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			}
 			lw.note()
 			return ""
+		// A static region whose results the planner PROMOTED to frame locals
+		// (a spilled value the residual re-pushes under a later result —
+		// `def x (5 dup)  x add 1`, NUR233) is not on the stack to splice:
+		// its first value binds from its local below, as any promoted
+		// computed def does, and the spilled one stays in its own.
 		case d.srcSeq >= 0 && lw.variadic[d.srcSeq]:
 			// A def of a VARIADIC producer (a loop collect) has no single
 			// value to bind — the same Stage-2 boundary every other consumer
@@ -528,11 +563,21 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		// is peeked in place for its downstream consumers.
 		pop := !fastGlobal || lw.dead[d.srcSeq]
 		gi := len(lw.p.GlobalBinds)
-		lw.p.GlobalBinds = append(lw.p.GlobalBinds, GlobalBindSpec{Name: d.name, Depth: d.depth, Pop: pop})
+		// The dyn-scope bind just emitted installed the binding: the
+		// write-back adopts it (GlobalBindSpec.AfterDynScope) rather than
+		// stacking a second entry.
+		lw.p.GlobalBinds = append(lw.p.GlobalBinds, GlobalBindSpec{Name: d.name, Depth: d.depth, Pop: pop, AfterDynScope: needDyn})
 		if !fastGlobal {
 			// Re-push a copy from its resolved home; the bind consumes it
-			// (Pop mode — one op, no separate DROP in the stream).
+			// (Pop mode — one op, no separate DROP in the stream). Like the
+			// dyn-scope bind's, this push is the def's, not a READ of the
+			// name (a root read's point tests at its consumer's push, NUR207).
+			lw.binding = true
 			lw.pushOperand(src, d.pos)
+			lw.binding = false
+			if src.kind == opLocal && src.bound == "" {
+				lw.p.GlobalBinds[gi].WriteSlot, lw.p.GlobalBinds[gi].Slot = true, src.idx
+			}
 		}
 		lw.emit(OpBindGlobal, gi, d.pos)
 		lw.markTwinWrittenBack(twin)
@@ -543,20 +588,28 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 	return ""
 }
 
+// isPromoted reports whether the planner promoted event seq's results to
+// frame locals (lowerer.promoted).
+func (lw *lowerer) isPromoted(seq int) bool {
+	_, ok := lw.promoted[seq]
+	return ok
+}
+
 // needDynInstall reports whether def d lowers the registry-visible
-// OpBindDynScope install: every def under DynEnv, and a def of a deopt name,
-// of a name some OpLookupDynScope reads (dynScopeNames) or of a routed
-// read's name (routedBindsDyn). A KEEP-DEFS unit (`do`'s body) installs
-// EVERY value def: the interpreter runs the body in the caller's frame and
-// the binding leaks, so each is registry-visible — a kept OpBindDynScope the
-// VM leaves standing past this unit's RET (CompiledFn.KeepsDefs). A root
-// arm's store of a split-bound name installs too (splitArmInstall).
-// collectDynBindSources promotes the computed source of each such install
-// for its re-push.
+// OpBindDynScope install: every def under DynEnv, and a def of a deopt name
+// (unless every island makes it itself — emitDynBind.islandMade), of a name
+// some OpLookupDynScope reads (dynScopeNames) or of a routed read's name
+// (routedBindsDyn). A KEEP-DEFS unit (`do`'s body) installs EVERY value def:
+// the interpreter runs the body in the caller's frame and the binding leaks,
+// so each is registry-visible — a kept OpBindDynScope the VM leaves standing
+// past this unit's RET (CompiledFn.KeepsDefs). A top-level read of an S5
+// loop-split name (loopSplitRebind) and a root arm's slot store
+// (rootArmInstall) install too. collectDynBindSources promotes the
+// computed source of each such install for its re-push.
 func (lw *lowerer) needDynInstall(d *emitDynBind) bool {
 	es := lw.es
-	return es != nil && ((lw.keepsDefs && !d.keepSkip) || es.dynEnv || lw.deoptNames[d.name] || es.dynScopeNames[d.name] ||
-		es.routedBindsDyn(d) || es.splitArmInstall(d))
+	return es != nil && ((lw.keepsDefs && !d.keepSkip) || es.dynEnv || (lw.deoptNames[d.name] && !d.islandMade) || es.dynScopeNames[d.name] ||
+		es.routedBindsDyn(d) || es.loopSplitRebind(d) || es.rootArmInstall(d))
 }
 
 // storeArmBind lowers a branch-carried def's store (emitDynBind.armCarried):
@@ -570,31 +623,43 @@ func (lw *lowerer) needDynInstall(d *emitDynBind) bool {
 // literal bakes unpooled exactly as the dyn-scope install bakes one. Any
 // other layout declines under this def's own reason.
 func (lw *lowerer) storeArmBind(d *emitDynBind) string {
+	return lw.storeBindInto(d, d.armSlot, "branch-carried def", false)
+}
+
+// storeBindInto stores a def's bound value into a frame slot at the def's
+// own site — an arm-carried def's cell (storeArmBind) or a counted loop's
+// index slot (a body def of the loop's own index, NUR204) — from wherever
+// the value sits: a promoted local, the top of the stack, or an inert
+// literal. what names the def in the decline reasons. consume pops a
+// stack-top source unconditionally — a def that binds and leaves nothing
+// (the index store); an arm-carried def keeps the value on the stack when
+// its root write-back still needs it.
+func (lw *lowerer) storeBindInto(d *emitDynBind, armSlot int, what string, consume bool) string {
 	src := d.src
 	switch {
 	case d.srcSeq >= 0 && lw.variadic[d.srcSeq]:
-		return "branch-carried def `" + d.name + "` binds loop results (Stage 2)"
+		return what + " `" + d.name + "` binds loop results (Stage 2)"
 	case d.srcSeq >= 0:
 		if slot, ok := lw.promoted[d.srcSeq]; ok {
 			src = localOperand(slot)
 			break
 		}
 		if len(lw.vm) == 0 || lw.vm[len(lw.vm)-1].seq != d.srcSeq || lw.vm[len(lw.vm)-1].idx != 0 {
-			return "branch-carried def `" + d.name + "` source is not on top of the stack"
+			return what + " `" + d.name + "` source is not on top of the stack"
 		}
-		lw.emit(OpStoreLocal, d.armSlot, d.pos)
-		consume := lw.dead[d.srcSeq] && lw.bindConsumes[d.srcSeq] && !(lw.es != nil && rootBindWritesBack(d))
+		lw.emit(OpStoreLocal, armSlot, d.pos)
+		consume = consume || (lw.dead[d.srcSeq] && lw.bindConsumes[d.srcSeq] && !(lw.es != nil && rootBindWritesBack(d)))
 		if consume {
 			lw.vm = lw.vm[:len(lw.vm)-1]
 		} else {
-			lw.emit(OpPushLocal, d.armSlot, d.pos)
+			lw.emit(OpPushLocal, armSlot, d.pos)
 		}
 		lw.note()
 		return ""
 	case src.kind == opNone:
 		// dynBindStorable admitted only an inert literal here.
 		if !core.IsInertConst(d.val) {
-			return "branch-carried def `" + d.name + "` of unknown provenance"
+			return what + " `" + d.name + "` of unknown provenance"
 		}
 		src = ConstOperand(lw.es.internUnpooled(d.val))
 	}
@@ -602,7 +667,7 @@ func (lw *lowerer) storeArmBind(d *emitDynBind) string {
 	lw.pushOperand(src, d.pos)
 	lw.binding = false
 	lw.note()
-	lw.emit(OpStoreLocal, d.armSlot, d.pos)
+	lw.emit(OpStoreLocal, armSlot, d.pos)
 	lw.vm = lw.vm[:len(lw.vm)-1]
 	return ""
 }
@@ -705,9 +770,11 @@ func (lw *lowerer) lowerStore(ev *EmitEvent) string {
 type loopCtx struct {
 	nextPC int
 	// iterName is a counted loop's index name while its body lowers (empty
-	// for a condition loop): lowerDynBind declines a body def of that name
-	// (NUR204).
+	// for a condition loop), and iterSlot its frame slot: lowerDynBind
+	// stores a body def of that name into the slot — the iteration's own
+	// binding, the lexical index scope (NUR204).
 	iterName string
+	iterSlot int
 }
 
 type lowerer struct {
@@ -733,10 +800,65 @@ type lowerer struct {
 	// (Program.LandingWords / CompiledFn.LandingWords), keyed by the
 	// target's own pc — see seatLandingWord.
 	landingWords *map[int]LandingWord
+	// callWindows is the emission target's call-window table
+	// (Program.CallWindows / CompiledFn.CallWindows), keyed by the target's
+	// own pc — see seatCallWindow.
+	callWindows *map[int][]CallWindowOperand
+	// landingBody is the body a landing's `/q` claim resumes (NUR190): the
+	// program's tokens for the root lowerer (landingRoot), a deopt unit's
+	// Body for a unit's; landingDeopts are a unit's planned LANDING points
+	// (planLandingDeopts), keyed by the landed event. See seatLandingWord.
+	landingBody   []core.Value
+	landingRoot   bool
+	landingDeopts map[int]deoptPoint
+	// landingRestarts are the root landings whose `/q` claim has no compiled
+	// answer and whose STATEMENT the interpreter can run again from its
+	// first token (planLandingRestarts), keyed by the landed event; the
+	// walk seats each one's depth at the statement's first op
+	// (noteRestartDepths) and the landing op carries it (seatLandingWord).
+	landingRestarts map[int]*landingRestart
+	// restartMethods are the DynMethods entries this lowerer seated a
+	// statement island on, whose RetPC its finish stamps.
+	restartMethods []int
+	// dynMethodAt is the DynMethods index each shaped apply event lowered
+	// to, by event seq: the residual's parked-result claim sets its spec
+	// after the walk (claimParked).
+	dynMethodAt map[int]int
+	// guardRestarts are the branch guards' planned statement islands, keyed
+	// by guardKey (planGuardRestarts); restartSigs the Sigs entries seated
+	// with one, whose RetPC the finish stamps. curBranch is the branch event
+	// being lowered, whose guards look their island up.
+	guardRestarts map[int]*landingRestart
+	restartSigs   []int
+	// restartFallbacks is the fallback indices seated with a count island
+	// (Program.FallbackCounts), whose RetPC the finish stamps.
+	restartFallbacks []int
+	curBranch        int
+	// substStash are the frame slots stashSubst kept a substituted paren's
+	// value in, by its call's event seq (NUR296): a later event of the
+	// statement may consume the value before the stop.
+	substStash map[int]int
+	// countRestarts are the count islands of the root's `do` calls
+	// (planCountRestarts, SigRef.Count), keyed by the do event's seq.
+	countRestarts map[int]*landingRestart
+	// collectedApplies are the fn-value applies a planned collect takes as
+	// regions (planRegionCollectOver, NUR247/NUR249): lowered count-agnostic,
+	// never in a one-result form.
+	collectedApplies map[int]bool
+	// landingSkips are the walked landings with no island, keyed by the
+	// landed event, holding the landing op's pc: the paren apply that
+	// consumes the value right after the word's call seats their skip
+	// (seatLandingSkip).
+	landingSkips map[int]int
 	// landingSeq is the event each seated landing op lands, keyed by the
 	// op's pc (seatLandingWord): the residual apply reads it to tell that
 	// its fn operand IS the landed value (sealLandingSkip).
 	landingSeq map[int]int
+	// rootBeneathLandings are the body's own-depth landing ops, {pc, landed
+	// event seq}, whose own step had values beneath (noteRootBeneathLanding):
+	// Finalize guards the ones no apply re-steps (guardRootLandings, and
+	// guardUnitLandings in a fn unit, NUR286).
+	rootBeneathLandings [][2]int
 	// storeNames is the emission target's def-name table for promoted
 	// stores of produced fn values (Program.StoreNames / CompiledFn.StoreNames),
 	// keyed by the target's own pc — see seatStoreName.
@@ -781,6 +903,20 @@ type lowerer struct {
 	// consuming half — planRegionPrefix armed it and put an OpStackMark in
 	// markBefore). 0 = not armed. Read once, by seatRegionPrefix.
 	regionPrefixSeq int
+	// rootUnionSigs are the program's union candidates' own SigRefs and the
+	// counts their re-steps must keep (rootUnionCandidate).
+	rootUnionSigs []rootUnionSig
+	// rec is the fn unit this lowerer drives (nil for the program's own):
+	// reStepsResults reads whether its residual takes an apply of its own.
+	rec *fnUnitRec
+	// regionPrefixSig is one past the index in Program.Sigs of the region's
+	// own call SigRef, when its run may hold a fn value
+	// (regionReStepCandidate); seatRegionPrefix flags it. 0 = none.
+	regionPrefixSig int
+	// island is the prefix-island plan (prefix_island.go, NUR210): a
+	// dyn-body run re-stepped over the inert values beneath it. Nil when
+	// the plan is not armed.
+	island *prefixIsland
 	// dynOpPos is the source position Finalize stamps on the program
 	// residual's OpCallDynApplyTop — the `apply` word's own, seated by
 	// resolveDynamicApply's program-pending arm so a runtime no-match raises
@@ -829,6 +965,17 @@ type lowerer struct {
 	// among them binds registry-visibly and its computed source is
 	// promoted, as under dynEnv.
 	deoptNames map[string]bool
+	// boundSlots maps the unit's bound-checked frame slots to their carried
+	// name (boundSlotsOf): a slot some path leaves never stored.
+	boundSlots map[int]string
+	// rootSeqs holds the seqs of the unit's ROOT events (lowerEvents at
+	// depth 0): a promoted producer outside it ran inside a branch arm or a
+	// loop body, on a path the run may not take.
+	rootSeqs map[int]bool
+	// scopes holds the event lists lowerEvents is inside, outermost first
+	// (the unit's root list, then each arm or body being lowered): an event
+	// in one of them recorded before the call dominates it (NUR109).
+	scopes [][]EmitEvent
 	// deopts are the unit's pending deopt points (emitDeoptsBefore lowers
 	// each where its statement begins; deoptTable is the unit's table).
 	deopts     []deoptPoint
@@ -882,6 +1029,12 @@ func (lw *lowerer) spillSeat(ops []EmitOperand, results []int, n int, pos core.S
 		return failMsg
 	}
 	temp := make(map[int]int, ne) // ops index → spill-temp slot
+	for k := 0; k < ne; k++ {
+		if lw.catchPhantom(lw.vm[len(lw.vm)-1-k].seq) {
+			// A value-less body's latched count may be none (NUR222).
+			return failMsg
+		}
+	}
 	for k := 0; k < ne; k++ {
 		slot := lw.vm[len(lw.vm)-1]
 		oi := -1
@@ -964,8 +1117,12 @@ func (lw *lowerer) pushOperand(op EmitOperand, pos core.SrcPos) {
 			// compiled stack holds exactly what the interpreter's held at
 			// the read. Tested once, at the first push.
 			delete(lw.deoptAtSlot, op.idx)
-			if prefix, ok := lw.deoptPrefix(); ok {
-				*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Name: d.name, Pos: d.pos, Slot: op.idx, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1})
+			if d.bail {
+				// A guard needs no island prefix (deoptPoint.bail).
+				*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Name: d.name, Pos: d.pos, Slot: op.idx, Depth: -1, Token: -1, RetPC: -1, Bail: true})
+				lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
+			} else if prefix, ok := lw.deoptPrefix(); ok {
+				*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Name: d.name, Pos: d.pos, Slot: op.idx, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1, Install: d.install})
 				lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
 			}
 		}
@@ -991,6 +1148,9 @@ func (lw *lowerer) pushOperand(op EmitOperand, pos core.SrcPos) {
 	case opType:
 		lw.emit(OpPushType, op.idx, pos)
 	case opDynScope:
+		if op.boundPos.Row != 0 {
+			pos = op.boundPos
+		}
 		lw.emit(OpLookupDynScope, op.idx, pos)
 	case opDataScope:
 		lw.emit(OpLookupDynScopeData, op.idx, pos)
@@ -1024,11 +1184,14 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 			kept = append(kept, d)
 			continue
 		}
-		prefix, ok := lw.deoptPrefix()
-		if !ok {
-			continue
+		var prefix []int
+		if !d.bail {
+			var ok bool
+			if prefix, ok = lw.deoptPrefix(); !ok {
+				continue
+			}
 		}
-		spec := DeoptSpec{Name: d.name, Pos: d.pos, Slot: -1, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1}
+		spec := DeoptSpec{Name: d.name, Pos: d.pos, Slot: -1, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1, Bail: d.bail, Install: d.install}
 		if d.slot >= 0 {
 			spec.Slot = d.slot
 		} else if slot, ok := lw.promoted[d.seq]; ok {
@@ -1112,18 +1275,54 @@ func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) {
 	if c.nout != 1 {
 		return
 	}
-	lw.seatLandingWord(lw.es.landingWordAt(ev.seq), ev.seq)
-	lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos)
+	w := lw.es.landingWordAt(ev.seq)
+	w.ValPos = lw.es.landingValPos[ev.seq]
+	if w.ValPos.Row == 0 {
+		w.ValPos = c.pos
+	}
+	lw.seatLandingWord(w, ev.seq)
+	lw.noteRootBeneathLanding(lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos), ev.seq)
+}
+
+// noteRootBeneathLanding records the landing op at pc when it lands an event's
+// value at the body's own depth — the program's root or a fn unit's — whose
+// own step had values beneath it (landingOwn): once the residual's apply is
+// known, guardRootLandings (guardUnitLandings in a unit) decides whether it
+// owes LandingBeneathGuard (NUR286). A landing inside a fragment keeps
+// today's arms.
+func (lw *lowerer) noteRootBeneathLanding(pc, seq int) {
+	if (lw.landingRoot || lw.isFnUnit) && lw.depth == 0 && (lw.es.landingOwn[seq].beneath || lw.es.landingCollects(seq)) {
+		lw.rootBeneathLandings = append(lw.rootBeneathLandings, [2]int{pc, seq})
+	}
 }
 
 // seatLandingWord records the function word noted after a landing at the pc
 // of the OpReStepLanding about to be emitted (LandingWords), so the VM's
 // landing can walk the run-time fn's overloads over it (NUR190), and the
 // event the op lands (landingSeq). A landing with no word after it records
-// nothing.
+// nothing. A walked landing at the body's own depth whose word is a token of
+// the body also carries the DEOPT its `/q` claim takes (landingDeoptIsland):
+// the island from the word on.
 func (lw *lowerer) seatLandingWord(w LandingWord, seq int) {
-	if lw.landingWords == nil || w.Name == "" {
+	if lw.landingWords == nil {
 		return
+	}
+	if w.Name == "" {
+		lw.seatWordlessRestart(w, seq)
+		return
+	}
+	if opens, island, ok := lw.landingDeoptIsland(seq, w); ok {
+		w.Deopt, w.Root, w.Opens, w.Island, w.RetPC = true, lw.landingRoot, opens, island, -1
+	} else if r := lw.restartAt(seq); r != nil {
+		if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, seq); ok {
+			w.Restart, w.Root, w.Depth, w.Island, w.RetPC, w.PrefixSrc, w.Substs, w.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
+		}
+	}
+	if !w.Deopt && lw.es.landingWalkArmed(seq) {
+		if lw.landingSkips == nil {
+			lw.landingSkips = map[int]int{}
+		}
+		lw.landingSkips[seq] = len(*lw.code)
 	}
 	if *lw.landingWords == nil {
 		*lw.landingWords = map[int]LandingWord{}
@@ -1133,6 +1332,45 @@ func (lw *lowerer) seatLandingWord(w LandingWord, seq int) {
 	}
 	(*lw.landingWords)[len(*lw.code)] = w
 	lw.landingSeq[len(*lw.code)] = seq
+}
+
+// seatWordlessRestart records, for a landing with no word after it, the one
+// thing its entry carries: the statement island of a landing over its own
+// values beneath (NUR286), which the VM takes where LandingBeneathGuard
+// would defer — the interpreter's re-step applies the fn over them — or of
+// a collecting landing (LandingCollects, NUR298), whose re-step applies it
+// over the literal after it.
+func (lw *lowerer) seatWordlessRestart(w LandingWord, seq int) {
+	r := lw.restartAt(seq)
+	if r == nil || !(lw.es.landingOwn[seq].beneath || lw.es.landingCollects(seq)) {
+		return
+	}
+	substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, seq)
+	if !ok {
+		return
+	}
+	w.Restart, w.Root, w.Depth, w.Island, w.RetPC, w.PrefixSrc, w.Substs, w.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
+	if *lw.landingWords == nil {
+		*lw.landingWords = map[int]LandingWord{}
+	}
+	(*lw.landingWords)[len(*lw.code)] = w
+}
+
+// listOwnsLandings clears the COLLECTED mark (LandingWord.Collected) of each
+// landing whose value a list re-step event takes (OpMakeListReStep): the
+// list's island re-steps the element over the word itself (NUR295's
+// ListReStepSpec.Words), so the landing claims nothing and must not defer
+// the capture it leaves to the list (NUR219).
+func (lw *lowerer) listOwnsLandings(c *emitCall) {
+	for _, i := range c.listReStep.Fn {
+		op := c.ops[len(c.ops)-1-i]
+		for pc, seq := range lw.landingSeq {
+			if w := (*lw.landingWords)[pc]; op.kind == opEvent && seq == op.idx && w.Collected {
+				w.Collected = false
+				(*lw.landingWords)[pc] = w
+			}
+		}
+	}
 }
 
 // sealLandingSkip gives a landing its CLAIM target (LandingWord.Skip, NUR190)
@@ -1146,7 +1384,8 @@ func (lw *lowerer) seatLandingWord(w LandingWord, seq int) {
 // — and that is only sound when the three ops are exactly, contiguously:
 //
 //	pc     OpReStepLanding  over the landed event's one result (landingSeq)
-//	pc+1   the word's call  argument-free, one result (the residual's arg)
+//	pc+1   the word's call  argument-free, one result (the residual's arg);
+//	                        for a COLLECTED word, its folded value's push
 //	pc+2   OpCallDynamic /1 the landed value applied over that result
 //
 // Anything else — a promoted or dropped result, a word that collects, a
@@ -1158,10 +1397,12 @@ func (lw *lowerer) sealLandingSkip(dynOp Opcode, ops []EmitOperand) {
 		return
 	}
 	w, seated := (*lw.landingWords)[at]
-	if !seated || ops[0].kind != opEvent || ops[0].idx != lw.landingSeq[at] || ops[0].resIdx != 0 || ops[1].kind != opEvent {
+	if !seated || ops[0].kind != opEvent || ops[0].idx != lw.landingSeq[at] || ops[0].resIdx != 0 {
 		return
 	}
-	if lw.isLandingWordCall(lw.es.eventBySeq(ops[1].idx), w.Name, (*lw.code)[at+1]) {
+	// A COLLECTED word (NUR219) is the folded value's push, not a call.
+	if (w.Collected && ops[1].kind == opConst && (*lw.code)[at+1].Op == OpPushConst) ||
+		(!w.Collected && ops[1].kind == opEvent && lw.isLandingWordCall(lw.es.eventBySeq(ops[1].idx), w.Name, (*lw.code)[at+1])) {
 		w.Skip = at + 3
 		(*lw.landingWords)[at] = w
 	}
@@ -1188,6 +1429,106 @@ func (lw *lowerer) isLandingWordCall(ev *EmitEvent, name string, in Instr) bool 
 	return false
 }
 
+// seatLandingSkip gives a walked landing with no island its SKIP (NUR190,
+// LandingWord.SkipTo): when the paren apply about to be emitted takes the
+// landed value as its lead and one argument, and every op since the
+// landing is that argument's call — the word's, alone, with at most the
+// SWAP that lays the lead beneath it — a `/q` claim at the landing can
+// capture on the interpreter over the value and the word and continue past
+// the apply, whose result count it must then match. Any other layout keeps
+// the landing's loud defer.
+func (lw *lowerer) seatLandingSkip(c *emitCall) {
+	if len(lw.landingSkips) == 0 || c.dynMethod == nil || len(c.ops) != 2 || c.ops[0].kind != opEvent {
+		return
+	}
+	at, pending := lw.landingSkips[c.ops[0].idx]
+	if !pending || lw.landingWords == nil || *lw.landingWords == nil {
+		return
+	}
+	delete(lw.landingSkips, c.ops[0].idx)
+	calls := 0
+	for pc := at + 1; pc < len(*lw.code); pc++ {
+		switch op := (*lw.code)[pc].Op; {
+		case op == OpSwap:
+		case isWordCallOp(op):
+			calls++
+		default:
+			return
+		}
+	}
+	w, ok := (*lw.landingWords)[at]
+	if !ok || calls != 1 {
+		return
+	}
+	w.SkipTo, w.SkipOut = len(*lw.code)+1, c.dynMethod.NOut
+	(*lw.landingWords)[at] = w
+}
+
+// isWordCallOp reports an op that dispatches a word by itself — the one op
+// a function word written after a landed value lowers to.
+func isWordCallOp(op Opcode) bool {
+	switch op {
+	case OpCallUser, OpCallUserPoly, OpCallNative, OpCallNativePoly:
+		return true
+	}
+	return false
+}
+
+// landingDeoptIsland is the island a walked landing's `/q` claim resumes
+// the interpreter with (landingIsland over the lowerer's body), or !ok when
+// the claim has none: the landing sits inside a nested fragment (a branch
+// arm, a loop body, whose enclosing word an island rebuilt from the body
+// would lose), the walk is not armed, the lowerer has no body (a unit
+// outside a deopt environment keeps its names in slots the island cannot
+// read), the word is no token of the body or its user parens, or a unit's
+// unnamed params are still to be seated beneath (the landing hands the
+// island the stack alone). A unit's point is the one planLandingDeopts
+// planned with its island environment.
+func (lw *lowerer) landingDeoptIsland(seq int, w LandingWord) (int, []core.Value, bool) {
+	if lw.depth > 0 || len(lw.landingBody) == 0 || !lw.es.landingWalkArmed(seq) {
+		return 0, nil, false
+	}
+	if !lw.landingRoot {
+		if _, planned := lw.landingDeopts[seq]; !planned {
+			return 0, nil, false
+		}
+		if prefix, ok := lw.deoptPrefix(); !ok || len(prefix) > 0 {
+			return 0, nil, false
+		}
+	}
+	return landingIsland(lw.landingBody, w.Pos)
+}
+
+// landingIsland rebuilds, from a body's tokens, what follows a landed value
+// on the interpreter's tape when the value's word is at wordPos: the word's
+// own token and every token after it, with each user paren the word sits
+// inside CLOSED where its items end — opens is how many such parens the
+// island must re-open before the value (`(m.f y) 5` is `( v y ) 5` from
+// the value on: one paren, the tail `y ) 5`). Items of an enclosing paren
+// BEFORE the value already ran in compiled code and are not repeated —
+// the landing walks only with nothing beneath it, so they left nothing on
+// the stack. ok is false when no token (or paren item) is at wordPos.
+func landingIsland(toks []core.Value, wordPos core.SrcPos) (int, []core.Value, bool) {
+	if wordPos.Row == 0 {
+		return 0, nil, false
+	}
+	for i, t := range toks {
+		if items, err := core.AsParenExpr(t); err == nil && !t.Quoted {
+			if opens, inner, ok := landingIsland(items, wordPos); ok {
+				tail := make([]core.Value, 0, len(inner)+1+len(toks)-i-1)
+				tail = append(tail, inner...)
+				tail = append(tail, core.NewCloseParen())
+				return opens + 1, append(tail, toks[i+1:]...), true
+			}
+			continue
+		}
+		if q := t.Pos(); q.Row == wordPos.Row && q.Col == wordPos.Col {
+			return 0, toks[i:], true
+		}
+	}
+	return 0, nil, false
+}
+
 // emitBranchLanding is emitLandingAfter for a BRANCH event: the landing the
 // check pass noted on the merged value (NoteReStepLanding, admitted through
 // MayBeFn) lowers to an OpReStepLanding right after the merge, over the one
@@ -1204,16 +1545,34 @@ func (lw *lowerer) emitBranchLanding(ev *EmitEvent) {
 	}
 	delete(lw.es.landingAfter, ev.seq)
 	lw.seatLandingWord(lw.es.landingWordAt(ev.seq), ev.seq)
-	lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos)
+	lw.noteRootBeneathLanding(lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos), ev.seq)
+}
+
+// splitLanding reports whether a branch lands its value on its VALUE arm's
+// path alone (NUR313): one arm is a value the interpreter re-steps after `if`
+// returns (NUR159, NUR280), and the other a body whose own paren places its
+// one value (branchPlaces). The merge's one landing re-stepped both, so `def
+// c true if c [(mkf)] 0` over a factory of a no-argument g answered 7 for the
+// interpreter's `fn g`.
+func splitLanding(br *emitBranch) bool {
+	if br == nil || br.constCond != nil || !br.hasThenOut || !br.hasElsOut {
+		return false
+	}
+	placed := func(isVal bool, frag *EmitFragment) bool { return !isVal && frag != nil && frag.residualN == 1 }
+	return (br.thenIsVal && placed(br.elsIsVal, br.els)) || (br.elsIsVal && placed(br.thenIsVal, br.then))
 }
 
 // seatDynApplyName records a trailing fn-value apply's head binding name at
 // the pc of the OpCallDynTrailTop / OpCallDynTrailKeepQ about to be emitted
-// (CompiledFn.DynApplyName), so the op's no-match diagnostic can name and
-// point at the read the interpreter dispatches. An apply with no bare-read
-// head, and the main code (no frame to bind), record nothing.
+// (CompiledFn.DynApplyName, Program.DynApplyName for the main code), so the
+// op's no-match diagnostic can name and point at the read the interpreter
+// dispatches, and a value's no-match knows how its window was written.
 func (lw *lowerer) seatDynApplyName(w DynApplyHead) {
-	if lw.dynApplyName == nil || w.Name == "" {
+	// A nameless head is seated for its window's written order and
+	// delivery (DynApplyHead): the park, and whether a value the window
+	// does not fit is re-stepped as a trailing apply (NUR238). One with
+	// neither records nothing — a trailing value apply is the zero head.
+	if lw.dynApplyName == nil || (w.Name == "" && !w.ValueDelivery && !w.Leading && !w.WrittenFirst) {
 		return
 	}
 	if *lw.dynApplyName == nil {
@@ -1312,6 +1671,13 @@ func (lw *lowerer) verifyMarkWindow(ops []EmitOperand) string {
 	if len(lw.vm) != len(ops) {
 		return "mark-window residual does not match the lowered stack"
 	}
+	// The prefix island's constants were pushed at its mark (NUR210).
+	if is := lw.island; is != nil {
+		if len(ops) < len(is.prefix) || !lw.islandTopIs(ops[len(is.prefix):]) {
+			return "mark-window residual does not match the lowered stack"
+		}
+		return ""
+	}
 	for i, op := range ops {
 		if op.kind != opEvent || lw.vm[i].seq != op.idx || lw.vm[i].idx != op.resIdx {
 			return "mark-window residual does not match the lowered stack"
@@ -1321,14 +1687,26 @@ func (lw *lowerer) verifyMarkWindow(ops []EmitOperand) string {
 }
 
 func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
+	if lw.depth == 0 && lw.rootSeqs == nil {
+		lw.rootSeqs = map[int]bool{}
+		for i := range events {
+			lw.rootSeqs[events[i].seq] = true
+		}
+	}
+	lw.scopes = append(lw.scopes, events)
+	defer func() { lw.scopes = lw.scopes[:len(lw.scopes)-1] }()
 	for i := range events {
 		ev := &events[i]
 		if lw.depth == 0 && len(lw.deopts) > 0 {
 			lw.emitDeoptsBefore(eventPos(*ev))
 		}
+		if lw.depth == 0 {
+			lw.noteRestartDepths(restartAnchor(ev))
+		}
 		if lw.markBefore[ev.seq] {
 			lw.emit(OpStackMark, 0, eventPos(*ev))
 		}
+		lw.openIsland(ev)
 		if scopeFloor > 0 {
 			var crossed bool
 			forEachOperand(ev, func(op EmitOperand) {
@@ -1396,6 +1774,7 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 		if reason := lw.emitReStepAfter(ev); reason != "" {
 			return reason
 		}
+		lw.stashSubst(ev)
 		// A PROMOTED branch value-def (planValueDefLocals marked it, a multiply-read
 		// `def bi (if …)`): store the merge to its frame slot so later references
 		// re-push from the slot (RewritePromotedRefs rewrote them to local operands).
@@ -2140,6 +2519,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 	storeSrc := collectStoreSourceSeqs(events)
 	es.countRefsAndBurials(events, producerIndex, leaverPrefix, storeSrc,
 		refs, fragRef, buried)
+	es.markDynOneResults(events, refs)
 	// A SIDE-EFFECT loop (zeroOut: body nets 0 per iteration) lowers cleanly as an
 	// UNCONSUMED statement (its result is dropped, RecordLoop marked it zeroOut).
 	// But if its (zero-value) RESULT is CONSUMED — bound by `def x (for …)`
@@ -2281,7 +2661,7 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 			// linearisation single-output events use. Only the forceOrder trigger
 			// applies (a multi-output result is never a named value-def nor a
 			// >=2-ref operand in Stage 1); a user fn's multi-return stays Stage 3.
-			if !isUser && nout > 1 && forceOrder[ev.seq] {
+			if !isUser && nout > 1 && es.promotesMultiOut(ev.seq, nout, forceOrder, allEvents) {
 				if promoted == nil {
 					promoted = map[int]int{}
 				}
@@ -2402,6 +2782,40 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 		}
 	}
 	return promoted, dead
+}
+
+// promotesMultiOut reports whether a multi-output native word's results go
+// to consecutive frame slots: an out-of-order residual (forceOrder), or a
+// def binding its FIRST result whose rest a later event consumed (`def j
+// ((mk) dup drop)` — SplitEventRegionBind declines it, NUR217), a named
+// value-def like a single-output one: a capture or a later operand reads it
+// from a slot, and the rest's consumers re-push theirs. A variadic region's
+// count is the run's, which no fixed slots hold.
+func (es *EmitState) promotesMultiOut(seq, nout int, forceOrder map[int]bool, events []*EmitEvent) bool {
+	if forceOrder[seq] {
+		return true
+	}
+	f := es.eventInfo[seq]
+	return f.valueDef && !f.variadicResult && restAllConsumed(events, seq, nout)
+}
+
+// restAllConsumed reports whether every result of the nout-result event seq
+// past its first is some event's operand.
+func restAllConsumed(events []*EmitEvent, seq, nout int) bool {
+	used := make([]bool, nout)
+	for _, ev := range events {
+		forEachOperand(ev, func(op EmitOperand) {
+			if op.kind == opEvent && op.idx == seq && op.resIdx > 0 && op.resIdx < nout {
+				used[op.resIdx] = true
+			}
+		})
+	}
+	for _, u := range used[1:] {
+		if !u {
+			return false
+		}
+	}
+	return true
 }
 
 // layoutMsgs holds the call-site-specific diagnostic wording for
@@ -2593,16 +3007,10 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 					return msgs.variadic
 				}
 			}
-			// A COMPUTED `do` body's run (a dyn-body region that may leave a
-			// callable) seats only as the residual's LAST entries — the
-			// program residual included, which otherwise absorbs a region
-			// anywhere: the interpreter re-steps a fn value the handler
-			// hands back, and it collects what follows it FORWARD (`do (mk)
-			// 5` over `[g/v]` is g applied to 5, where the seated run leaves
-			// `fn g 5`).
-			if lw.dynRegionMayBeFn(op.idx) && !eventRunLast(ops[i:], op.idx) {
-				return dynRegionNotLast
-			}
+			// A COMPUTED `do` body's run that may leave a callable is either
+			// the prefix island's (the residual's last entries, re-stepped
+			// whole) or checked plain at its call (lowerCall's
+			// DynBodyPlain), so it seats as any region does.
 			if len(tail) > 0 {
 				return msgs.aboveLiteral
 			}
@@ -2708,6 +3116,12 @@ func (lw *lowerer) seatResidualRebuild(ops []EmitOperand, pos core.SrcPos) bool 
 			return false
 		}
 	}
+	for _, slot := range lw.vm {
+		if lw.catchPhantom(slot.seq) {
+			// A value-less body's latched count may be none (NUR222).
+			return false
+		}
+	}
 	// Spill top-down. A slot already spilled keeps its FIRST temp: two
 	// residual entries naming one call result (the `pick` shape) read the
 	// same local twice.
@@ -2781,6 +3195,12 @@ func (lw *lowerer) seatRegionPrefix(ops []EmitOperand, pos core.SrcPos) bool {
 		lw.pushOperand(op, pos)
 	}
 	lw.emit(OpSeatBelowMark, n, pos)
+	// Seated beneath its prefix, a run whose outputs may hold a fn takes the
+	// step loop's re-step at its own call (regionReStepCandidate, NUR317).
+	if lw.regionPrefixSig > 0 {
+		s := &lw.p.Sigs[lw.regionPrefixSig-1]
+		s.ReStep, s.ReStepOut = true, -1
+	}
 	// Model the seated layout: the prefix beneath the region's one slot.
 	lw.vm = lw.vm[:0]
 	for range ops[:n] {
@@ -2957,7 +3377,7 @@ func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[st
 		// event, so the peek fast path reads the live top and every lowering
 		// shape stays byte-identical; a source promoted by the ordinary
 		// triggers re-pushes in Pop mode instead.)
-		if es.dynEnv || deoptNames[ev.dyn.name] || (es.dynScopeNames != nil && es.dynScopeNames[ev.dyn.name]) || es.routedBindsDyn(ev.dyn) ||
+		if es.dynEnv || (deoptNames[ev.dyn.name] && !ev.dyn.islandMade) || (es.dynScopeNames != nil && es.dynScopeNames[ev.dyn.name]) || es.routedBindsDyn(ev.dyn) ||
 			// A KEEP-DEFS unit (`do`'s body) installs every value def
 			// (lowerDynBind's keep arm), so every computed source is
 			// promoted for the install's re-push.
@@ -2971,29 +3391,34 @@ func (es *EmitState) collectDynBindSources(events []EmitEvent, deoptNames map[st
 			// store-once / re-push-per-use discipline as the dyn-bound
 			// sources above.
 			es.armResidentDepth > 0 ||
-			// A root arm's store of a split-bound name re-pushes its value
-			// for the registry install beside the slot store.
-			es.splitArmInstall(ev.dyn) {
+			// A root arm's store re-pushes its value for the registry
+			// install beside the slot store.
+			es.rootArmInstall(ev.dyn) {
 			dynBindSrc[ev.dyn.srcSeq] = true
 		}
 	}
 	return dynBindSrc
 }
 
-// splitArmInstall reports whether a def is a ROOT arm's branch-carried store
-// of a top-level SPLIT-bound name (EmitState.rootSplitBind) that needs its
-// registry install beside the slot store: the slot serves this run's reads
-// after the merge, and the install leaves the binding in the def stack as the
-// interpreter's arm does. A split-bound name is the one a root read resolves
-// LIVE, through the registry (dynScopeRescue's split arm), so a binding kept
-// only in the slot is the wrong one for every reader the slot does not reach
-// — a live read, the next request. A def that writes back
-// (rootBindWritesBack) already installs at its own depth; a second install
-// beside it would stack the value twice. The whole name is deliberately NOT
-// committed to dynamic scope (dynScopeNames): that would move the split
-// def's own lowering too.
-func (es *EmitState) splitArmInstall(d *emitDynBind) bool {
-	return d.armCarried && d.root && es.loopSplitBinds[d.name] && !rootBindWritesBack(d)
+// rootArmInstall reports whether a def is a ROOT arm's branch-carried store
+// that needs its registry install beside the slot store: the slot serves
+// this run's reads after the merge, and the install leaves the binding in
+// the def stack as the interpreter's arm does. The run's reads never see
+// the difference; every reader the slot does not reach does — a split-bound
+// name's live read (dynScopeRescue's split arm, main's NUR226, where this
+// began as splitArmInstall), and the NEXT REQUEST on the same instance for
+// every name (NUR232: `if (g 9) [def y 9] [] end 0` left no y, and `def x 5
+// if (g 9) [def x 9] [] end x` left the next request reading 5, where the
+// interpreter's arm pushed 9). The join's twin captures the model's joined
+// CARRIER and its replay installs nothing (core.ApplyBindTwin), so this op
+// is the arm's only install; a taken arm whose twin DOES replay (a constant
+// condition's concrete capture) keeps the replay alone (lowerDynBind's
+// twinInstalls). A def that writes back (rootBindWritesBack) already
+// installs at its own depth; a second install beside it would stack the
+// value twice. The whole name is deliberately NOT committed to dynamic
+// scope (dynScopeNames): that would move the split def's own lowering too.
+func (es *EmitState) rootArmInstall(d *emitDynBind) bool {
+	return d.armCarried && d.root && !rootBindWritesBack(d)
 }
 
 // collectBranchCarriedSources returns the producing seqs of every
@@ -3089,7 +3514,7 @@ func (es *EmitState) promoteLateDynBind(rec *fnUnitRec) {
 		if _, done := rec.promoted[seq]; done {
 			continue
 		}
-		if !es.dynEnv && !rec.deoptNames[ev.dyn.name] {
+		if !es.dynEnv && (!rec.deoptNames[ev.dyn.name] || ev.dyn.islandMade) {
 			// A deopt unit promotes only the defs its islands read.
 			continue
 		}
@@ -3150,21 +3575,6 @@ func eventRunThenInert(ops []EmitOperand, idx int) bool {
 	return true
 }
 
-// dynRegionNotLast is seatResults' decline for a computed `do` body's run
-// with residual entries above it (dynRegionMayBeFn).
-const dynRegionNotLast = "do: a computed body's values seat only as the residual's last entries — the interpreter re-steps a fn value they may hold over what follows (NUR210)"
-
-// eventRunLast reports whether ops is exactly one contiguous run of event
-// idx's results, in result order, and nothing after it.
-func eventRunLast(ops []EmitOperand, idx int) bool {
-	for n, op := range ops {
-		if op.kind != opEvent || op.idx != idx || op.resIdx != n {
-			return false
-		}
-	}
-	return true
-}
-
 // reconcileResults arranges a unit's N result operands (bottom→top) as the
 // final stack, ready for a RET. who prefixes the compile failure reason ("fn name").
 // This is the fn-unit caller of the shared seatResults primitive — it rejects a
@@ -3214,6 +3624,29 @@ func (lw *lowerer) reconcileResults(ops []EmitOperand, who string, noContract, v
 	return reason
 }
 
+// markDynOneResults marks every fn-value apply under a NAMED head, and every
+// `apply`-word event, whose result a later event consumes as an operand —
+// refs counted from the operand scans alone, before the residual's
+// references fold in — so its op raises where the run leaves more than the
+// one value the consumer seats: a 0-arg named lead (DynApplyHead.OneResult,
+// NUR249), or the word's re-step parking the value beside its window
+// (OpCallDynApplyOne, NUR247).
+func (es *EmitState) markDynOneResults(events []EmitEvent, refs map[int]int) {
+	for i := range events {
+		ev := &events[i]
+		if ev.kind == evCall && ev.call.dynApply > 0 && (ev.call.dynApplyName.Name != "" || ev.call.dynApplyUnquote) && refs[ev.seq] > 0 {
+			f := es.eventInfo[ev.seq]
+			f.dynOneResult = true
+			es.eventInfo[ev.seq] = f
+		}
+		for _, frag := range childFragments(ev) {
+			if frag != nil {
+				es.markDynOneResults(frag.events, refs)
+			}
+		}
+	}
+}
+
 // dynRegionMayBeFn reports whether seq is a dyn-body dispatch recorded as a
 // variadic REGION whose run may leave a callable (eventFlags.regionMayBeFn):
 // a computed `do` body, whose tokens the recorder never saw.
@@ -3243,6 +3676,39 @@ func (lw *lowerer) opsHaveVariadicResult(ops []EmitOperand) bool {
 	return false
 }
 
+// catchPhantom reports whether the event at seq is a value-less `do` body's
+// catch-latched result (eventFlags.catchPhantom, NUR222): the one Error the
+// latch seats for a caught raise, where a clean run leaves nothing.
+func (lw *lowerer) catchPhantom(seq int) bool {
+	return lw.es != nil && lw.es.eventInfo[seq].catchPhantom
+}
+
+// opsHaveCatchVariadic reports whether any operand names an event the
+// do-catch latch made runtime-variable (eventFlags.catchVariadic).
+func (lw *lowerer) opsHaveCatchVariadic(ops []EmitOperand) bool {
+	for _, op := range ops {
+		if op.kind == opEvent && lw.es.eventInfo[op.idx].catchVariadic {
+			return true
+		}
+	}
+	return false
+}
+
+// slotStoredInScope reports whether an event recorded before the call at
+// seq, in the call's own event list or an enclosing one, stores frame slot:
+// a def the call's own arm or loop body made dominates it, so the name is
+// bound there whatever the join after the arm leaves (NUR109).
+func (lw *lowerer) slotStoredInScope(slot, seq int) bool {
+	for _, events := range lw.scopes {
+		for i := range events {
+			if s, ok := lw.promoted[events[i].seq]; ok && s == slot && events[i].seq < seq {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	c := &ev.call
 	if c.live {
@@ -3260,6 +3726,33 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	}
 	if lw.collectRegionTop(ev) {
 		return ""
+	}
+	if reason, closed := lw.closeListIsland(ev); closed {
+		return reason
+	}
+	// A parser NAME (parselang-fn-dispatch's data slot) the checker resolved
+	// through the registry to a BRANCH-CARRIED def some path leaves unbound:
+	// the quoted atom bypassed the join's guarded carrier, so the promoted
+	// operand would push the zero slot and the handler would raise
+	// `parse_error: the parser is not a usable function value`, where the
+	// interpreter, finding no binding, resolves the atom as a registered
+	// KIND (`parse_unknown_lang`). No op re-resolves a name at run time;
+	// the unit declines and the interpreter answers (NUR109). Only the
+	// PARSER operand (ops[0]) resolves as a kind: the source and the opts
+	// are plain operands whose bound-checked push raises the interpreter's
+	// undefined_word itself (NUR243 — checking every operand declined
+	// `parse p s` over a branch-bound `s`). A parser is a fn value, which
+	// the join never carries (carryBranchJoin leaves fn values to their own
+	// machinery), so the operand is the ARM's own promoted event, pushed
+	// from its slot; a branch-carried kind NAME fails the check pass first.
+	if c.word == "parselang-fn-dispatch" && len(c.ops) > 0 {
+		if op := c.ops[0]; op.kind == opLocal && !lw.slotStoredInScope(op.idx, ev.seq) {
+			for seq, slot := range lw.promoted {
+				if slot == op.idx && lw.rootSeqs != nil && !lw.rootSeqs[seq] {
+					return "parser name is bound only on a branch — an unbound name resolves as a kind at run time (NUR109)"
+				}
+			}
+		}
 	}
 	n := len(c.ops)
 	if reason := lw.layoutOperands(c.ops, c.pos, layoutMsgs{
@@ -3286,6 +3779,18 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	// carries the runtime count check (dyn_body_one.go), and the run seats
 	// as the one value below rather than as a region.
 	dynOne := lw.dynBodyOneAt(ev.seq)
+	if lw.island != nil && lw.island.region == ev.seq {
+		// The prefix island re-steps the run whole, whatever its count
+		// (prefix_island.go): the single-value check a list literal's
+		// demotion armed does not apply to the run it seats.
+		dynOne = false
+	}
+	// Any other computed run that may leave a callable — values beneath it,
+	// entries after it, a fn's result — is seated under a runtime check that
+	// it left none (NUR213): a plain run is data on both lanes wherever it
+	// lands, and a run holding a fn value the interpreter would re-step over
+	// its neighbours is the loud vm:dyn-body-plain defer.
+	plainChk := !dynOne && lw.dynRegionMayBeFn(ev.seq) && (lw.island == nil || lw.island.region != ev.seq)
 	if c.generic {
 		// The routed native dispatch (region_route.go): the operands stay
 		// pushed as the record's claim and the descriptor drives the
@@ -3310,6 +3815,18 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		ti := len(lw.p.TypedBinds)
 		lw.p.TypedBinds = append(lw.p.TypedBinds, *c.typedBind)
 		lw.emit(OpBindTyped, ti, c.pos)
+	} else if c.typeRun != nil {
+		// A root type def's run-time install (NUR308): pop the body operand
+		// (laid out above), install it as the interpreter does, forward the
+		// pass's node to the run's.
+		ti := len(lw.p.TypeRuns)
+		lw.p.TypeRuns = append(lw.p.TypeRuns, *c.typeRun)
+		lw.emit(OpBindTypeRun, ti, c.pos)
+	} else if c.word == wordDynApply && c.dynApply == 0 {
+		// A dyn-apply record over NO argument has no signature to call
+		// under (its SigRef would carry none — NUR162's crash); the arms
+		// that record one decline it, and this is the belt.
+		return "fn-value apply over no argument (no signature to lower under)"
 	} else if c.dynApply > 0 {
 		// Apply the TOP operand (a runtime fn VALUE) to the `dynApply` trailing args
 		// laid out below it — a paren-bounded trailing fn-value apply (`(a b comp)`)
@@ -3323,8 +3840,14 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		if c.dynApplyUnquote {
 			op = OpCallDynApplyTop
 		}
-		if c.dynApplyOne {
+		// A collected region (planRegionCollectOver, NUR247/NUR249) takes the
+		// run's count through its mark: never a one-result form.
+		collected := lw.collectedApplies[ev.seq]
+		if !collected && (c.dynApplyOne || (c.dynApplyUnquote && lw.es != nil && lw.es.eventInfo[ev.seq].dynOneResult)) {
 			// A GRADUAL lead under the apply word: exactly one result or defer.
+			// So is any `apply`-word event a later event consumes (NUR247): the
+			// word's re-step leaves the window beside a value it parks, and the
+			// consuming layout seats one.
 			op = OpCallDynApplyOne
 		}
 		if c.dynApplyKeepQuote {
@@ -3337,7 +3860,9 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// against the whole preceding stack, a different dispatch whose
 		// diagnostics this pair does not describe.
 		if op != OpCallDynApplyTop && op != OpCallDynApplyOne {
-			lw.seatDynApplyName(c.dynApplyName)
+			head := c.dynApplyName
+			head.OneResult = lw.es != nil && lw.es.eventInfo[ev.seq].dynOneResult
+			lw.seatDynApplyName(head)
 		}
 		lw.emit(op, c.dynApply, c.pos)
 	} else if c.dynMixed {
@@ -3357,12 +3882,39 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// failure raises internal_error → interpreter re-run (never a wrong
 		// stack). The spec rides in DynMethods like a trap/map spec.
 		di := len(lw.p.DynMethods)
-		lw.p.DynMethods = append(lw.p.DynMethods, *c.dynMethod)
+		spec := *c.dynMethod
+		if r := lw.restartAt(ev.seq); r != nil {
+			if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, -1); ok {
+				spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc, spec.Substs, spec.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
+				lw.restartMethods = append(lw.restartMethods, di)
+			}
+		}
+		lw.p.DynMethods = append(lw.p.DynMethods, spec)
+		if lw.dynMethodAt == nil {
+			lw.dynMethodAt = map[int]int{}
+		}
+		lw.dynMethodAt[ev.seq] = di
+		lw.seatLandingSkip(c)
 		lw.emit(OpCallDynMethod, di, c.pos)
 	} else if c.makeList {
 		// Assemble the n laid-out operands into a list (a computed list literal,
 		// `[1 add 2]`). No sig, no dispatch — OpMakeList pops the n and pushes one.
-		lw.emit(OpMakeList, n, c.pos)
+		// n counts SEATS: an operand whose count the do-catch latch made
+		// runtime-variable (`[do [3 drop] 7]` nets one value clean and two
+		// caught — NUR242) is not n values at run time, so the list declines
+		// rather than pop a count the run did not leave.
+		// A dyn-body run is not one value either (NUR210): the island
+		// (prefix_island.go) collects the ones it can seat.
+		if lw.opsHaveCatchVariadic(c.ops) || lw.opsHaveDynBodyRun(c.ops) {
+			return "list literal over a result of runtime-variable count"
+		}
+		if c.listReStep != nil {
+			lw.p.ListReSteps = append(lw.p.ListReSteps, *c.listReStep)
+			lw.emit(OpMakeListReStep, len(lw.p.ListReSteps)-1, c.pos)
+			lw.listOwnsLandings(c)
+		} else {
+			lw.emit(OpMakeList, n, c.pos)
+		}
 	} else if c.makeMap {
 		// Assemble the n laid-out VALUE operands into a map (a computed make
 		// body, `make Outer {i:(make Inner …)}`); the keys ride in MakeMaps.
@@ -3393,20 +3945,27 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// Runtime-matched dispatch: no baked sig, the VM re-matches over the
 		// word's signatures against the n stack values.
 		pi := len(lw.p.PolyRefs)
-		pref := PolyRef{Word: c.word, Arity: n, NOut: c.nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, DynBodyOne: dynOne}
+		nout := c.nout
+		if lw.seatsAsRegion(ev.seq) {
+			// A variadic region's run (a computed `do` body over a gradual
+			// operand): the region's own seat rules own its count, as they
+			// do for the CALL_NATIVE twin, so the op commits no claim.
+			nout = PolyNOutRegion
+		}
+		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk}
 		if c.polySeed != nil && (c.polySeed.tags == nil || len(c.polySeed.tags) == n) {
 			pref.Seed, pref.SeedTags = c.polySeed.sig, c.polySeed.tags
 		}
 		lw.p.PolyRefs = append(lw.p.PolyRefs, pref)
 		lw.emit(OpCallNativePoly, pi, c.pos)
-	} else if c.hostSplice || dynOne {
-		// A hosted splice (a computed `for` body): its own SigRef, never
-		// shared with a plain call of the same signature — the flag is the
-		// call site's, and the VM runs the handler's tokens on its island.
-		// A runtime-checked single value (dynOne) takes its own SigRef for
-		// the same reason.
-		lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne})
-		lw.emit(OpCallNative, len(lw.p.Sigs)-1, c.pos)
+	} else if lw.es != nil && lw.es.phantomConsumed[ev.seq] && !dynOne && !plainChk && !c.hostSplice && c.nativeSplit == nil {
+		// A do whose run's count the seat may miss (NUR222): its own SigRef
+		// checks the count, and carries the statement island a miss takes
+		// where the walk seated one (planCountRestarts).
+		lw.emitCountedSig(SigRef{Word: c.word, Sig: c.sig, CountCheck: true, CountClaim: c.nout}, ev.seq, c.pos)
+	} else if ref, own := lw.siteSigRef(ev.seq, c, dynOne, plainChk); own {
+		lw.emitCountedSig(ref, ev.seq, c.pos)
+		lw.noteReStepCandidate(ev.seq, c.nout)
 	} else {
 		si, ok := lw.sigIdx[c.sig]
 		if !ok {
@@ -3428,7 +3987,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	// exactly nout values, a dead-result drop pops exactly one — so neither
 	// can serve a run whose size is a runtime value; decline instead, the
 	// earliest true diagnosis, and the interpreter owns the program.
-	if lw.es != nil && (lw.es.eventInfo[ev.seq].variadicRegion || lw.regionPrefixSeq == ev.seq) {
+	if lw.seatsAsRegion(ev.seq) {
 		if _, prom := lw.promoted[ev.seq]; prom {
 			return c.word + ": variadic region promoted to a frame slot (the runtime count is not the static seat)"
 		}
@@ -3441,6 +4000,124 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		return ""
 	}
 	return lw.seatCallResults(ev, c)
+}
+
+// rootUnionSig is one program-level union candidate's SigRef index and the
+// count its re-step must keep (lowerer.rootUnionSigs).
+type rootUnionSig struct {
+	sig, out int
+}
+
+// siteSigRef is the call's OWN SigRef, when it needs one (own): a hosted
+// splice (a computed `for` body) is never shared with a plain call of the
+// same signature — the flag is the call site's, and the VM runs the
+// handler's tokens on its island — and a runtime-checked single value
+// (dynOne), a computed run's plain check (plainChk), an optimistic bake's
+// layout (nativeSplit), a `do` whose results the interpreter re-steps
+// (NUR317) and a run the region's prefix seat may flag so
+// (regionReStepCandidate) take their own for the same reason.
+func (lw *lowerer) siteSigRef(seq int, c *emitCall, dynOne, plainChk bool) (SigRef, bool) {
+	reStep := lw.reStepsResults(seq)
+	if !c.hostSplice && !dynOne && !plainChk && c.nativeSplit == nil && !reStep && !lw.regionReStepCandidate(seq) && !lw.rootUnionCandidate(seq) {
+		return SigRef{}, false
+	}
+	ref := SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit}
+	if reStep {
+		ref.ReStep, ref.ReStepOut = true, lw.reStepOut(seq, c.nout)
+	}
+	return ref, true
+}
+
+// reStepsResults reports whether the call seq's results take the step
+// loop's re-step at the call (SigRef.ReStep, NUR317): a `do` whose model had
+// stepped them already (eventFlags.reStepResults), or whose modelled union
+// nothing re-steps — in a fn unit whose residual takes no apply of its own
+// (a body-tail apply, a frame replay, an `apply` chain), so the union reaches
+// the RET as the data the model left (eventFlags.unionReStep). The program's
+// residual apply is resolved only after its events lower, so a root union
+// takes no flag.
+func (lw *lowerer) reStepsResults(seq int) bool {
+	if lw.es == nil || lw.landingNoted(seq) {
+		return false
+	}
+	f := lw.es.eventInfo[seq]
+	return f.reStepResults || (f.unionReStep && lw.rec != nil && lw.rec.rebuildableResidual() && len(lw.rec.applyChain) == 0)
+}
+
+// landingNoted reports whether the call seq's result takes a guarded
+// landing after it (EmitState.landingAfter, emitLandingAfter): the landing
+// re-steps the one value itself (`do [if c [l/v] [0]]` lands its union), so
+// the call takes no re-step of its own.
+func (lw *lowerer) landingNoted(seq int) bool {
+	_, noted := lw.es.landingAfter[seq]
+	return noted
+}
+
+// noteReStepCandidate remembers the call seq's own SigRef, just emitted, for
+// the decision the residual's lowering makes: the region's prefix seat
+// (regionPrefixSig) and the program residual's apply (rootUnionSigs).
+func (lw *lowerer) noteReStepCandidate(seq, nout int) {
+	if lw.regionReStepCandidate(seq) {
+		lw.regionPrefixSig = len(lw.p.Sigs)
+	}
+	if lw.rootUnionCandidate(seq) {
+		lw.rootUnionSigs = append(lw.rootUnionSigs, rootUnionSig{sig: len(lw.p.Sigs) - 1, out: lw.reStepOut(seq, nout)})
+	}
+}
+
+// rootUnionCandidate reports whether the call seq is a program-level `do`
+// whose modelled union may hold the fn its compiled body leaves
+// (eventFlags.unionReStep): the program residual's apply may take the union
+// (`do [if c [l/v] [0]] 5` applies it over the 5), and it is resolved only
+// after the events lower, so the call takes its own SigRef here and
+// flagRootUnionReSteps decides.
+func (lw *lowerer) rootUnionCandidate(seq int) bool {
+	return lw.es != nil && lw.rec == nil && lw.es.eventInfo[seq].unionReStep && !lw.landingNoted(seq)
+}
+
+// flagRootUnionReSteps flags the program's union candidates for the step
+// loop's re-step at their calls (SigRef.ReStep, NUR317) when the residual
+// takes no apply of its own (dynOp 0): nothing else re-steps the union, which
+// the interpreter's `do` re-stepped where it stood — `def c m.c do [if c
+// [g/v] [0] 5]` over a map member was `fn g 5` for `7 5`.
+func (lw *lowerer) flagRootUnionReSteps(dynOp Opcode) {
+	if dynOp != 0 {
+		return
+	}
+	for _, u := range lw.rootUnionSigs {
+		s := &lw.p.Sigs[u.sig]
+		s.ReStep, s.ReStepOut = true, u.out
+	}
+}
+
+// regionReStepCandidate reports whether the call seq is a run the region
+// plan may seat beneath its prefix (planRegionPrefix) whose modelled outputs
+// may hold a fn value: seated so, nothing else re-steps it, where the
+// interpreter's `1 do [if c [(mkf)] [0] 5]` fires the fn (NUR317). The plan
+// is armed before the events lower, but whether the seat takes the residual
+// is known only when the residual lowers — the program's own apply may take
+// the run instead (`7 do [if true inc/v [2]]` applies its fn over the 7) —
+// so the call takes its own SigRef here and seatRegionPrefix flags it.
+func (lw *lowerer) regionReStepCandidate(seq int) bool {
+	return lw.es != nil && lw.regionPrefixSeq == seq && lw.es.eventInfo[seq].outsMayBeFn
+}
+
+// reStepOut is the count a re-stepped `do`'s results must leave
+// (SigRef.ReStepOut): the recorded seat count, or -1 where the result is a
+// run whose count only the run knows — a variadic result the program's
+// region rules own.
+func (lw *lowerer) reStepOut(seq, nout int) int {
+	if lw.seatsAsRegion(seq) || lw.es.eventInfo[seq].variadicResult {
+		return -1
+	}
+	return nout
+}
+
+// seatsAsRegion reports whether the event's result seats as a VARIADIC
+// REGION (NUR067's growing direction): a run the recorder marked one, or
+// the prefix island's own region. Such a result carries no static count.
+func (lw *lowerer) seatsAsRegion(seq int) bool {
+	return lw.es != nil && (lw.es.eventInfo[seq].variadicRegion || lw.regionPrefixSeq == seq)
 }
 
 // seatCallResults seats a call's results on the simulated stack: a promoted
@@ -3472,8 +4149,11 @@ func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 		// to this one. A SINGLE-out variadic (`def ok (do b error [drop
 		// false])` — the dyn-env stored-handler shape) keeps its promotion:
 		// its one store matches the one value BOTH the success and the
-		// caught path deliver.
-		if lw.es != nil && c.nout >= 2 && lw.es.eventInfo[ev.seq].variadicResult {
+		// caught path deliver. A value-less `do` body's is not that: the
+		// latch (catchVariadic) seats the one Error a caught raise leaves,
+		// and the clean run leaves nothing (NUR222: `if [true] [do [1 drop]
+		// 2] [3]` underflowed STORE_LOCAL).
+		if lw.es != nil && ((c.nout >= 2 && lw.es.eventInfo[ev.seq].variadicResult) || lw.catchPhantom(ev.seq)) {
 			return c.word + ": variadic result promoted to frame slots (runtime count differs from the static seat)"
 		}
 		for i := c.nout - 1; i >= 0; i-- {
@@ -3494,6 +4174,11 @@ func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 		// A single-result value-def referenced zero times: the call ran for its
 		// side effects, but the result is discarded — drop it so it is not left
 		// unconsumed on the stack (planValueDefLocals marks only nout==1 events).
+		// A catch-latched count may be none at all (NUR222), and a drop of
+		// it would pop a value beneath.
+		if lw.catchPhantom(ev.seq) {
+			return c.word + ": variadic result promoted to frame slots (runtime count differs from the static seat)"
+		}
 		lw.emit(OpDrop, 0, c.pos)
 		lw.note()
 		return ""
@@ -3528,12 +4213,19 @@ func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 // gone by the time the store runs.
 func (lw *lowerer) collectRegionTop(ev *EmitEvent) bool {
 	c := &ev.call
-	if lw.collectAtSeq != ev.seq || len(c.ops) != 1 || len(lw.vm) == 0 ||
-		lw.vm[len(lw.vm)-1].seq != c.ops[0].idx || lw.dead[ev.seq] {
+	k := len(c.ops)
+	if lw.collectAtSeq != ev.seq || k == 0 || len(lw.vm) < k || lw.dead[ev.seq] {
 		return false
 	}
+	// The regions' sim slots are the top k; the list's operands name them
+	// top-first.
+	for n, op := range c.ops {
+		if lw.vm[len(lw.vm)-1-n].seq != op.idx {
+			return false
+		}
+	}
 	lw.emit(OpMakeListToMark, 0, c.pos)
-	lw.vm[len(lw.vm)-1] = vmSlot{seq: ev.seq, idx: 0}
+	lw.vm = append(lw.vm[:len(lw.vm)-k], vmSlot{seq: ev.seq, idx: 0})
 	if slot, prom := lw.promoted[ev.seq]; prom {
 		lw.seatStoreName(ev.seq, 0)
 		lw.emit(OpStoreLocal, slot, c.pos)
@@ -3783,8 +4475,9 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 		// swap. The window then reads [region-top, const] — exactly the
 		// [merge-carrier, const] the static match examined — for either arm
 		// depth (deeper region values sit below the window and the raise
-		// consumes nothing). The offset-form render bound keeps the raise
-		// byte-identical (the written tuple is the const, arm-independent).
+		// consumes nothing). The index-form render tuple keeps the raise
+		// byte-identical (the const, and the region top the attempted
+		// window lists beneath it — arm-independent either way).
 		if ops := ev.trap.rematchOps; len(ops) == 2 &&
 			ops[0].kind == opEvent && lw.variadic[ops[0].idx] &&
 			ops[1].kind != opEvent {
@@ -3795,11 +4488,15 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 			lw.emit(OpSwap, 0, ev.trap.pos)
 			idx := len(lw.p.Dispatches)
 			lw.p.Dispatches = append(lw.p.Dispatches, DispatchSpec{
-				Word:       ev.trap.rematchWord,
-				NArgs:      len(ops),
-				NWritten:   ev.trap.rematchNWritten,
-				WrittenOff: ev.trap.rematchWrittenOff,
-				Pos:        ev.trap.pos,
+				Word:        ev.trap.rematchWord,
+				NArgs:       len(ops),
+				NFwd:        ev.trap.rematchNFwd,
+				Written:     ev.trap.rematchWritten,
+				Prefix:      ev.trap.rematchPrefix,
+				PrefixKnown: ev.trap.rematchPrefixKnown,
+				Pos:         ev.trap.pos,
+				OnMatch:     ev.trap.rematchOnMatch,
+				OnMatchPos:  ev.trap.onMatchPos,
 			})
 			lw.emit(OpDispatchRematch, idx, ev.trap.pos)
 			return ""
@@ -3822,11 +4519,15 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 		}
 		idx := len(lw.p.Dispatches)
 		lw.p.Dispatches = append(lw.p.Dispatches, DispatchSpec{
-			Word:       ev.trap.rematchWord,
-			NArgs:      len(ev.trap.rematchOps),
-			NWritten:   ev.trap.rematchNWritten,
-			WrittenOff: ev.trap.rematchWrittenOff,
-			Pos:        ev.trap.pos,
+			Word:        ev.trap.rematchWord,
+			NArgs:       len(ev.trap.rematchOps),
+			NFwd:        ev.trap.rematchNFwd,
+			Written:     ev.trap.rematchWritten,
+			Prefix:      ev.trap.rematchPrefix,
+			PrefixKnown: ev.trap.rematchPrefixKnown,
+			Pos:         ev.trap.pos,
+			OnMatch:     ev.trap.rematchOnMatch,
+			OnMatchPos:  ev.trap.onMatchPos,
 		})
 		lw.emit(OpDispatchRematch, idx, ev.trap.pos)
 		return ""
@@ -3879,6 +4580,7 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 		lw.vm = lw.vm[:len(lw.vm)-n]
 		return lw.lowerUserCallResult(ev, uc)
 	}
+	lw.seatCallWindow(uc.window, n)
 	if uc.tail {
 		lw.emit(OpTailCallUser, uc.unit, uc.callPos())
 		lw.vm = lw.vm[:len(lw.vm)-n]
@@ -3887,6 +4589,52 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 	lw.emit(OpCallUser, uc.unit, uc.callPos())
 	lw.vm = lw.vm[:len(lw.vm)-n]
 	return lw.lowerUserCallResult(ev, uc)
+}
+
+// seatCallWindow lowers a user call's no-match window (emitUserCall.window)
+// to the emission target's CallWindows entry at the pc of the call about to
+// be emitted, its n operands already laid out on top: an argument by its
+// signature position, a definite scalar by value, an event result by where
+// it sits when the call runs — its promoted frame slot, else its depth
+// beneath the call's operands on the simulated stack, which the VM's stack
+// mirrors. An event the layout does not hold there seats no entry, and the
+// call reports its arguments.
+func (lw *lowerer) seatCallWindow(win []callWinOp, n int) {
+	if win == nil || lw.callWindows == nil {
+		return
+	}
+	out := make([]CallWindowOperand, len(win))
+	for i, w := range win {
+		out[i] = CallWindowOperand{Kind: w.kind, Idx: w.idx, Value: w.value, Fwd: w.fwd, PrefixOnly: w.prefixOnly}
+		if w.kind != WinStack {
+			continue
+		}
+		if slot, ok := lw.promoted[w.op.idx]; ok {
+			out[i] = CallWindowOperand{Kind: WinLocal, Idx: slot + w.op.resIdx, Fwd: w.fwd, PrefixOnly: w.prefixOnly}
+			continue
+		}
+		d := simDepthBeneath(lw.vm, n, w.op)
+		if d < 0 {
+			return
+		}
+		out[i].Idx = d
+	}
+	if *lw.callWindows == nil {
+		*lw.callWindows = map[int][]CallWindowOperand{}
+	}
+	(*lw.callWindows)[len(*lw.code)] = out
+}
+
+// simDepthBeneath is how deep event operand op sits beneath the top n
+// simulated slots (0 = directly beneath them), or -1 when it is not there.
+func simDepthBeneath(vm []vmSlot, n int, op EmitOperand) int {
+	top := len(vm) - n - 1
+	for j := top; j >= 0; j-- {
+		if slotIs(vm[j], op) {
+			return top - j
+		}
+	}
+	return -1
 }
 
 // lowerUserCallResult seats a user call's result once the call op is
@@ -4023,6 +4771,20 @@ func (lw *lowerer) lowerUserPolyCall(ev *EmitEvent) string {
 // value. Multiple threaded inputs are a documented follow-on.
 func (lw *lowerer) lowerFallback(ev *EmitEvent) string {
 	fb := &ev.fb
+	// A strip word's island a single-value seat consumes (dynBodyOneAt):
+	// the VM checks its run left exactly the one value the seat takes.
+	if lw.es != nil && lw.es.eventInfo[ev.seq].stripIsland && lw.dynBodyOneAt(ev.seq) {
+		lw.es.fallbacks[fb.spanIdx].CheckOne = true
+		// A run the check refuses takes the statement's count island where
+		// the walk seated one (countPoint's island arm).
+		if cnt := lw.countIsland(ev.seq); cnt != nil {
+			if lw.p.FallbackCounts == nil {
+				lw.p.FallbackCounts = map[int]*StmtIsland{}
+			}
+			lw.p.FallbackCounts[fb.spanIdx] = cnt
+			lw.restartFallbacks = append(lw.restartFallbacks, fb.spanIdx)
+		}
+	}
 	// A REGION island (`error` over a maybe-raising body): the one sim slot
 	// this pushes below already IS the region's representation — runFallback
 	// appends whatever the re-run produced, 0 values or 1 — so the mark is
@@ -4138,6 +4900,13 @@ func (es *EmitState) tailCompatibleReturns(calleeUnit int, callerReturns []*core
 	return true
 }
 
+// unitRefusesFnArgs reports whether unit records parameter slots it reads
+// bare under a gradual carrier (fnUnitRec.fnReadParams): a call of it with a
+// fn there runs on the interpreter (NUR218).
+func (es *EmitState) unitRefusesFnArgs(unit int) bool {
+	return unit >= 0 && unit < len(es.fnRecs) && len(es.fnRecs[unit].fnReadParams) > 0
+}
+
 func (es *EmitState) markTailCalls(frag *EmitFragment, out *EmitOperand, hasOut bool, callerReturns []*core.Type) (stillHasOut bool) {
 	if frag == nil || len(frag.events) == 0 || !hasOut || out.kind != opEvent {
 		return hasOut
@@ -4148,7 +4917,11 @@ func (es *EmitState) markTailCalls(frag *EmitFragment, out *EmitOperand, hasOut 
 		// A POLY user call (uc.poly != nil, unit -1) is never tail-marked: the
 		// arm is only known at run time, and OpCallUserPoly always pushes a
 		// frame (the caller's RET check must still run over the arm's result).
-		if last.uc.poly == nil && !last.uc.generic && last.seq == out.idx && fragSingleResidual(frag) && es.tailCompatibleReturns(last.uc.unit, callerReturns) {
+		// A callee that hands a fn argument in a bare-read slot to the
+		// interpreter (fnReadParams, NUR218) keeps its own frame: the VM runs
+		// such a call there and returns to this caller, which a frame-
+		// replacing tail call leaves no caller to return to.
+		if last.uc.poly == nil && !last.uc.generic && last.seq == out.idx && fragSingleResidual(frag) && es.tailCompatibleReturns(last.uc.unit, callerReturns) && !es.unitRefusesFnArgs(last.uc.unit) {
 			// Tail position requires the call's result to be the fragment's WHOLE
 			// residual — nothing left BELOW it. A multi-value arm (`[n mul 2 m (n
 			// sub 1)]`, where n*2 sits below the recursive call) is NOT tail: a
@@ -4197,6 +4970,8 @@ func (es *EmitState) markTailCalls(frag *EmitFragment, out *EmitOperand, hasOut 
 
 func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 	br := ev.br
+	defer func(prev int) { lw.curBranch = prev }(lw.curBranch)
+	lw.curBranch = ev.seq
 	// Every carried-slot seed init is a re-pushable operand: an event-sourced
 	// one was force-promoted to a frame local by planValueDefLocals
 	// (collectBranchCarriedSources); one that still reads as an event
@@ -4213,7 +4988,7 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 	if br.constCond != nil {
 		// Statically-taken branch: inline the taken fragment (always a body in
 		// const-cond form — never a value-then).
-		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, true, br.pos); reason != "" {
+		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, true, br.pos, armGuardRef{}); reason != "" {
 			return reason
 		}
 		thenMulti := lw.fragMulti
@@ -4242,12 +5017,12 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 			!slotIs(lw.vm[len(lw.vm)-1], br.cond) || !slotIs(lw.vm[len(lw.vm)-2], br.elsVal) {
 			return "if: variadic-else claim stack layout (Stage 2)"
 		}
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1] // cond consumed
 		// TRUE: discard the 0-or-1 eager (truncate to the mark) and run the then arm.
 		lw.emit(OpDropToMark, 0, br.pos)
 		lw.vm = lw.vm[:len(lw.vm)-1] // eager folded into the merge
-		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, false, br.pos); reason != "" {
+		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, false, br.pos, lw.armGuard(br, true)); reason != "" {
 			return reason
 		}
 		jend := lw.emit(OpJmp, 0, br.pos)
@@ -4328,7 +5103,7 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 		lw.seedCarried(br)
 		// The Boolean is on the runtime stack but not in the parent
 		// scope's sim — JMP_IF_FALSE consumes it net-zero.
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		return lw.lowerArms(ev, jf)
 	case br.cond.kind == opEvent:
 		if lw.variadic[br.cond.idx] {
@@ -4337,12 +5112,12 @@ func (lw *lowerer) lowerBranch(ev *EmitEvent) string {
 		if len(lw.vm) == 0 || !slotIs(lw.vm[len(lw.vm)-1], br.cond) {
 			return "if: condition is not on top of the stack"
 		}
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1] // cond consumed
 		return lw.lowerArms(ev, jf)
 	default:
 		lw.pushOperand(br.cond, br.pos)
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1]
 		return lw.lowerArms(ev, jf)
 	}
@@ -4373,19 +5148,253 @@ func (lw *lowerer) seedCarried(br *emitBranch) {
 	}
 }
 
+// emitBranchJump emits the branch's JMP_IF_FALSE over the condition on top,
+// guarded first when the pass held a value condition abstractly that may be
+// a list at run time (NUR292): the interpreter runs such a list as code.
+func (lw *lowerer) emitBranchJump(br *emitBranch) int {
+	if br.condGuard {
+		lw.emitGuardCallAt("__condguard", br.condCheck, br.condCheckPos, guardCond, br.cond)
+	}
+	return lw.emit(OpJmpIfFalse, 0, br.pos)
+}
+
+// emitCodeGuard calls the branch's run-time arm guard over the COMPUTED
+// value on top — the then arm's, or the else arm's — when that arm is
+// guarded: a one-in, one-out native call, so the simulated stack is
+// unchanged.
+func (lw *lowerer) emitCodeGuard(br *emitBranch, then bool) {
+	switch {
+	case then && br.thenGuard:
+		lw.emitGuardCallAt("__codeguard", br.guard, br.pos, guardThen, br.thenVal)
+	case !then && br.elsGuard:
+		lw.emitGuardCallAt("__codeguard", br.guard, br.pos, guardElse, br.elsVal)
+	}
+}
+
+// emitCodeGuardOver is emitCodeGuard on a path whose run holds the frame
+// region's first base entries and then the arm's value, arm, where the walk
+// still lists the branch's other operands: the guard's statement island
+// reads the stack as the run holds it (restartSubstSrcs).
+func (lw *lowerer) emitCodeGuardOver(br *emitBranch, then bool, base int, arm vmSlot) {
+	saved := lw.vm
+	lw.vm = append(append(make([]vmSlot, 0, base+1), saved[:base]...), arm)
+	lw.emitCodeGuard(br, then)
+	lw.vm = saved
+}
+
+// armGuardRef is the guard a value arm takes on the path that runs it —
+// the branch's guard signature (nil: none) and which arm it guards
+// (guardThen / guardElse), whose statement island it looks up.
+type armGuardRef struct {
+	sig  *core.Signature
+	kind int
+}
+
+// armGuard is the guard a value arm takes on the path that runs it: the
+// branch's guard when that arm is flagged, else none.
+func (lw *lowerer) armGuard(br *emitBranch, then bool) armGuardRef {
+	switch {
+	case then && br.thenGuard:
+		return armGuardRef{sig: br.guard, kind: guardThen}
+	case !then && br.elsGuard:
+		return armGuardRef{sig: br.guard, kind: guardElse}
+	}
+	return armGuardRef{}
+}
+
+// emitGuardCallAt is emitGuardCall for the guard of kind in the branch being
+// lowered, over operand op: where that guard's statement island is planned
+// and seated (guardRestarts), the call takes a SigRef of its own carrying it
+// (SigRef.Restart, NUR292).
+func (lw *lowerer) emitGuardCallAt(word string, guard *core.Signature, pos core.SrcPos, kind int, op EmitOperand) {
+	r := lw.guardRestarts[guardKey(lw.curBranch, kind)]
+	substs, ok := lw.restartSubstSrcs(r, op, -1)
+	if guard == nil || !r.seated() || !ok {
+		lw.emitGuardCall(word, guard, pos)
+		return
+	}
+	lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: word, Sig: guard, Restart: &StmtIsland{
+		Island: lw.landingBody[r.token:], Depth: r.depth, RetPC: -1, Root: lw.landingRoot, PrefixSrc: r.srcs, Substs: substs, FirstIter: r.first,
+	}})
+	lw.restartSigs = append(lw.restartSigs, len(lw.p.Sigs)-1)
+	lw.emit(OpCallNative, len(lw.p.Sigs)-1, pos)
+}
+
+// restartSubstSrcs is where the compiled code holds, at the stop being
+// emitted, the value of each paren r's island substitutes (substPlan), its
+// path made relative to the island: the guarded operand's — guarded, an
+// event's result when a guard is the stop — is the value the guard checks,
+// off the stack when the island runs; the landed value's — landed, the
+// landing's event when a landing is the stop — is the stack's top entry,
+// which its call just left and nothing has seated yet (a promotion's store
+// comes after the landing); any other, its call's promoted slot or its
+// frame-region entry (heldAt). ok is false for no island, or a value held
+// nowhere the island can read.
+func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, landed int) ([]RestartSubst, bool) {
+	if r == nil {
+		return nil, false
+	}
+	out := make([]RestartSubst, 0, len(r.substs))
+	for _, sp := range r.substs {
+		src, ok := RestartSrc{Kind: RestartGuard}, true
+		switch {
+		case sp.results:
+			src = RestartSrc{Kind: RestartResults}
+		case sp.none:
+			src = RestartSrc{Kind: RestartNone}
+		case guarded.kind == opEvent && guarded.idx == sp.seq:
+		case sp.seq == landed && landed >= 0:
+			src = RestartSrc{Kind: RestartStack, Idx: lw.landedIdx(landed)}
+		default:
+			src, ok = lw.heldAt(sp.seq)
+			if t, stashed := lw.substStash[sp.seq]; !ok && stashed {
+				src, ok = RestartSrc{Kind: RestartLocal, Idx: t}, true
+			}
+		}
+		if !ok {
+			return nil, false
+		}
+		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Span: sp.span, Src: src, Placed: sp.run})
+	}
+	return out, true
+}
+
+// emitCountedSig appends ref and emits its CALL_NATIVE, carrying the do's
+// count island (SigRef.Count) where its call checks the run's count: a
+// caught body's phantom consumed (CountCheck, NUR222), or a computed body's
+// run a single seat takes (DynBodyOne, NUR282) — a run the check refuses
+// then re-runs its statement over the run instead of deferring.
+func (lw *lowerer) emitCountedSig(ref SigRef, seq int, pos core.SrcPos) {
+	if ref.CountCheck || (ref.DynBodyOne && !ref.HostSplice && !ref.DynBodyPlain && ref.Split == nil) {
+		ref.Count = lw.countIsland(seq)
+	}
+	lw.p.Sigs = append(lw.p.Sigs, ref)
+	if ref.Count != nil {
+		lw.restartSigs = append(lw.restartSigs, len(lw.p.Sigs)-1)
+	}
+	lw.emit(OpCallNative, len(lw.p.Sigs)-1, pos)
+}
+
+// countIsland is the count island of the do event seq (SigRef.Count), when
+// the walk seated one: the statement from its first token, its prefix, and
+// the runs it writes — the do's own run last. nil when none is.
+func (lw *lowerer) countIsland(seq int) *StmtIsland {
+	r := lw.countRestarts[seq]
+	if !r.seated() {
+		return nil
+	}
+	substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, -1)
+	if !ok {
+		return nil
+	}
+	return &StmtIsland{Island: lw.landingBody[r.token:], Depth: r.depth, RetPC: -1, Root: lw.landingRoot, PrefixSrc: r.srcs, Substs: substs}
+}
+
+// stashSubst keeps, in a frame slot of its own, the value event ev left on
+// the stack's top when a planned statement island writes it in its paren's
+// place (substSeq): a later event of the statement may consume it before
+// the stop — `[(g) drop (l.0 true)]` — which leaves the island nowhere else
+// to read it (NUR296). A promoted value keeps its slot instead.
+func (lw *lowerer) stashSubst(ev *EmitEvent) {
+	if n := len(lw.vm); n == 0 || lw.vm[n-1] != (vmSlot{seq: ev.seq}) || !lw.substSeq(ev.seq) {
+		return
+	}
+	if _, promoted := lw.promoted[ev.seq]; promoted {
+		return
+	}
+	t := lw.allocLocal()
+	pos := eventPos(*ev)
+	lw.emit(OpStoreLocal, t, pos)
+	lw.emit(OpPushLocal, t, pos)
+	if lw.substStash == nil {
+		lw.substStash = map[int]int{}
+	}
+	lw.substStash[ev.seq] = t
+}
+
+// substSeq reports whether a planned statement island (a landing's or a
+// branch guard's) writes event seq's value in its paren's place.
+func (lw *lowerer) substSeq(seq int) bool {
+	for _, plans := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts} {
+		for _, r := range plans {
+			for _, sp := range r.substs {
+				// The stop's own run is written from the stop, never read
+				// from a slot (RestartResults).
+				if sp.seq == seq && !sp.results {
+					return true
+				}
+			}
+		}
+	}
+	return false
+}
+
+// landedIdx is the frame-region entry of the value event seq's landing
+// re-steps: the walk's top slot when the walk has seated it there (a
+// branch's merge), else the entry just above the walk's stack, where its
+// call left it (a call's landing runs before its result is seated).
+func (lw *lowerer) landedIdx(seq int) int {
+	if n := len(lw.vm); n > 0 && lw.vm[n-1].seq == seq && lw.vm[n-1].idx == 0 {
+		return n - 1
+	}
+	return len(lw.vm)
+}
+
+// heldAt is where the compiled code holds event seq's one result now: its
+// promoted slot, or its entry in the frame region, which the simulated stack
+// mirrors below any region whose count the run decides. ok is false for a
+// result consumed, or above such a region. An entry the run has already
+// dropped at the stop — a branch's unselected eager arm, which the walk
+// still lists — lies past the stack the island reads, which the VM refuses
+// as the compiler's own fault.
+func (lw *lowerer) heldAt(seq int) (RestartSrc, bool) {
+	if slot, ok := lw.promoted[seq]; ok {
+		return RestartSrc{Kind: RestartLocal, Idx: slot}, true
+	}
+	for i := len(lw.vm) - 1; i >= 0; i-- {
+		if lw.vm[i].seq != seq || lw.vm[i].idx != 0 {
+			continue
+		}
+		for _, below := range lw.vm[:i] {
+			if below.seq >= 0 && lw.variadic[below.seq] {
+				return RestartSrc{}, false
+			}
+		}
+		return RestartSrc{Kind: RestartStack, Idx: i}, true
+	}
+	return RestartSrc{}, false
+}
+
+// emitGuardCall emits a CALL_NATIVE of the guard word over the value on top
+// (a nil signature: nothing), interning its SigRef as a plain call's.
+func (lw *lowerer) emitGuardCall(word string, guard *core.Signature, pos core.SrcPos) {
+	if guard == nil {
+		return
+	}
+	si, ok := lw.sigIdx[guard]
+	if !ok {
+		lw.p.Sigs = append(lw.p.Sigs, SigRef{Word: word, Sig: guard})
+		si = len(lw.p.Sigs) - 1
+		lw.sigIdx[guard] = si
+	}
+	lw.emit(OpCallNative, si, pos)
+}
+
 // lowerArm emits one if-arm as a single (or zero) merge value: a plain value
 // operand is pushed; a body fragment is lowered with its out (nil when the arm
 // nets nothing or diverges — it still runs). allowVariadic passes through to
 // lowerFragment (the merge of two body arms may be variadic; a computed-branch
 // arm may not). Shared by lowerArms, lowerBranch's const-cond inline, and the
 // non-eager arm of lowerComputedBranch.
-func (lw *lowerer) lowerArm(kind armKind, val EmitOperand, frag *EmitFragment, out *EmitOperand, allowVariadic bool, pos core.SrcPos) string {
+func (lw *lowerer) lowerArm(kind armKind, val EmitOperand, frag *EmitFragment, out *EmitOperand, allowVariadic bool, pos core.SrcPos, guard armGuardRef) string {
 	lw.fragMulti = false
 	switch kind {
 	case armValue:
 		// Push the literal/local/type operand as the arm's single result
-		// (pushOperand tracked it; the merge slot owns the count).
+		// (pushOperand tracked it; the merge slot owns the count), guarded
+		// on this path when the pass holds it abstractly (NUR292).
 		lw.pushOperand(val, pos)
+		lw.emitGuardCallAt("__codeguard", guard.sig, pos, guard.kind, val)
 		lw.vm = lw.vm[:len(lw.vm)-1]
 		return ""
 	case armBodyOut:
@@ -4402,10 +5411,14 @@ func (lw *lowerer) lowerArm(kind armKind, val EmitOperand, frag *EmitFragment, o
 // (no else) merges with 0-or-1 values — a VARIADIC result.
 func (lw *lowerer) lowerArms(ev *EmitEvent, jf int) string {
 	br := ev.br
-	if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, true, br.pos); reason != "" {
+	split := splitLanding(br)
+	if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, true, br.pos, lw.armGuard(br, true)); reason != "" {
 		return reason
 	}
 	thenMulti := lw.fragMulti
+	if split && br.thenIsVal {
+		lw.emitBranchLanding(ev)
+	}
 	if !br.hasElse {
 		// 2-arg if: false path jumps straight to the merge.
 		(*lw.code)[jf].Arg = int32(len(*lw.code))
@@ -4425,10 +5438,13 @@ func (lw *lowerer) lowerArms(ev *EmitEvent, jf int) string {
 		jend = lw.emit(OpJmp, 0, br.pos)
 	}
 	(*lw.code)[jf].Arg = int32(len(*lw.code))
-	if reason := lw.lowerArm(br.elseArm(), br.elsVal, br.els, &br.elsOut, true, br.pos); reason != "" {
+	if reason := lw.lowerArm(br.elseArm(), br.elsVal, br.els, &br.elsOut, true, br.pos, lw.armGuard(br, false)); reason != "" {
 		return reason
 	}
 	elseMulti := lw.fragMulti
+	if split && br.elsIsVal {
+		lw.emitBranchLanding(ev)
+	}
 	if jend >= 0 {
 		(*lw.code)[jend].Arg = int32(len(*lw.code))
 	}
@@ -4436,8 +5452,9 @@ func (lw *lowerer) lowerArms(ev *EmitEvent, jf int) string {
 		lw.vm = append(lw.vm, vmSlot{seq: ev.seq})
 		// The guarded landing over the merged value, where both arms net one
 		// (the landing tests ONE value): a fn-valued arm's result is what the
-		// interpreter re-steps after `if` returns (NUR159).
-		if br.hasThenOut && br.hasElsOut && !thenMulti && !elseMulti {
+		// interpreter re-steps after `if` returns (NUR159). A split branch
+		// landed on its value arm's path above.
+		if br.hasThenOut && br.hasElsOut && !thenMulti && !elseMulti && !split {
 			lw.emitBranchLanding(ev)
 		}
 		// A MULTI-VALUE arm (either side leaves >1 runtime value) makes the merge
@@ -4504,16 +5521,18 @@ func (lw *lowerer) lowerBothComputed(ev *EmitEvent) string {
 	lw.emit(OpReverse, 3, br.pos)
 	n := len(lw.vm)
 	lw.vm[n-3], lw.vm[n-1] = lw.vm[n-1], lw.vm[n-3]
-	jf := lw.emit(OpJmpIfFalse, 0, br.pos) // pop cond → [elsVal, thenVal]
+	jf := lw.emitBranchJump(br) // pop cond → [elsVal, thenVal]
 	// TRUE/fall-through: the result is thenVal (now on top), so drop elsVal
 	// beneath it: SWAP then DROP → [thenVal].
 	lw.emit(OpSwap, 0, br.pos)
 	lw.emit(OpDrop, 0, br.pos)
+	lw.emitCodeGuardOver(br, true, n-3, lw.vm[n-2])
 	jend := lw.emit(OpJmp, 0, br.pos)
 	// FALSE: stack is [elsVal, thenVal] (thenVal on top); the result is elsVal,
 	// so drop thenVal → [elsVal].
 	(*lw.code)[jf].Arg = int32(len(*lw.code))
 	lw.emit(OpDrop, 0, br.pos)
+	lw.emitCodeGuardOver(br, false, n-3, lw.vm[n-3])
 	(*lw.code)[jend].Arg = int32(len(*lw.code))
 	// Sim: the three input slots (cond/then/else) collapse to one merge slot.
 	lw.vm = lw.vm[:len(lw.vm)-3]
@@ -4547,17 +5566,20 @@ func (lw *lowerer) lowerBothComputedMatCond(ev *EmitEvent) string {
 			return reason
 		}
 		lw.seedCarried(br)
-		jf = lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf = lw.emitBranchJump(br)
 	} else {
 		lw.pushOperand(br.cond, br.pos)
-		jf = lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf = lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1]
 	}
+	n := len(lw.vm)
 	lw.emit(OpDrop, 0, br.pos)
+	lw.emitCodeGuardOver(br, true, n-2, lw.vm[n-2])
 	jend := lw.emit(OpJmp, 0, br.pos)
 	(*lw.code)[jf].Arg = int32(len(*lw.code))
 	lw.emit(OpSwap, 0, br.pos)
 	lw.emit(OpDrop, 0, br.pos)
+	lw.emitCodeGuardOver(br, false, n-2, lw.vm[n-1])
 	(*lw.code)[jend].Arg = int32(len(*lw.code))
 	lw.vm = lw.vm[:len(lw.vm)-2]
 	lw.vm = append(lw.vm, vmSlot{seq: ev.seq})
@@ -4586,7 +5608,7 @@ func (lw *lowerer) lowerComputedCond(br *emitBranch, condOnTop bool) (int, strin
 			return 0, reason
 		}
 		lw.seedCarried(br)
-		return lw.emit(OpJmpIfFalse, 0, br.pos), ""
+		return lw.emitBranchJump(br), ""
 	case br.cond.kind == opEvent:
 		if !condOnTop {
 			if len(lw.vm) < 2 || !slotIs(lw.vm[len(lw.vm)-2], br.cond) {
@@ -4594,12 +5616,12 @@ func (lw *lowerer) lowerComputedCond(br *emitBranch, condOnTop bool) (int, strin
 			}
 			lw.swapTop2(br.pos)
 		}
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1] // cond consumed; eager value stays on top
 		return jf, ""
 	default:
 		lw.pushOperand(br.cond, br.pos)
-		jf := lw.emit(OpJmpIfFalse, 0, br.pos)
+		jf := lw.emitBranchJump(br)
 		lw.vm = lw.vm[:len(lw.vm)-1] // cond consumed; eager value stays on top
 		return jf, ""
 	}
@@ -4618,29 +5640,49 @@ func (lw *lowerer) lowerComputedCond(br *emitBranch, condOnTop bool) (int, strin
 //     the FALSE (jump-target) path drops it and runs the else arm.
 func (lw *lowerer) lowerComputedBranch(ev *EmitEvent, jf int) string {
 	br := ev.br
+	multi, split := false, splitLanding(br)
+	base, eager := len(lw.vm)-1, lw.vm[len(lw.vm)-1]
 	if br.thenComputed {
 		// TRUE/fall-through keeps the eager then value; jump over the else arm.
+		lw.emitCodeGuard(br, true)
+		if split {
+			lw.emitBranchLanding(ev)
+		}
 		jend := lw.emit(OpJmp, 0, br.pos)
 		(*lw.code)[jf].Arg = int32(len(*lw.code)) // FALSE lands here
 		lw.emit(OpDrop, 0, br.pos)                // discard the eager then value
 		lw.vm = lw.vm[:len(lw.vm)-1]
-		if reason := lw.lowerArm(br.elseArm(), br.elsVal, br.els, &br.elsOut, false, br.pos); reason != "" {
+		if reason := lw.lowerArm(br.elseArm(), br.elsVal, br.els, &br.elsOut, false, br.pos, lw.armGuard(br, false)); reason != "" {
 			return reason
 		}
+		multi = lw.fragMulti
 		(*lw.code)[jend].Arg = int32(len(*lw.code))
 	} else {
 		// TRUE/fall-through drops the eager else value and runs the then arm;
 		// the FALSE path falls through with the eager value intact.
 		lw.emit(OpDrop, 0, br.pos)
 		lw.vm = lw.vm[:len(lw.vm)-1]
-		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, false, br.pos); reason != "" {
+		if reason := lw.lowerArm(br.thenArm(), br.thenVal, br.then, &br.thenOut, false, br.pos, lw.armGuard(br, true)); reason != "" {
 			return reason
 		}
+		multi = lw.fragMulti
 		jend := lw.emit(OpJmp, 0, br.pos)
 		(*lw.code)[jf].Arg = int32(len(*lw.code)) // FALSE lands here, eager value intact
+		lw.emitCodeGuardOver(br, false, base, eager)
+		if split {
+			lw.emitBranchLanding(ev)
+		}
 		(*lw.code)[jend].Arg = int32(len(*lw.code))
 	}
 	lw.vm = append(lw.vm, vmSlot{seq: ev.seq})
+	// The guarded landing over the merged value, as the general merge lands
+	// it: the eager arm is a COMPUTED value — a member read over a container
+	// the pass cannot see into (`if true m.h [2]` over a flex) — which the
+	// interpreter re-steps after `if` returns, firing a 0-arg fn (NUR280). A
+	// split branch landed on the eager value's own path above.
+	if !multi && !split {
+		lw.emitBranchLanding(ev)
+	}
 	lw.note()
 	return ""
 }

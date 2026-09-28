@@ -237,11 +237,11 @@ func (d s3DelegateWrap) DelegatesMatchTo() TypeBehavior { return d.to }
 
 func TestS3IsPredicateTypeNodeShapes(t *testing.T) {
 	r := newTestRegistry(t)
-	pred := NewFunction(FnDefInfo{Name: "s3p", Signatures: []Signature{{
+	pred := MarkPredicateFn(NewFunction(FnDefInfo{Name: "s3p", Signatures: []Signature{{
 		Args:    []*Type{TInteger},
 		Params:  []FnParam{{Name: "x", Type: TInteger}},
 		Returns: []*Type{TBoolean},
-	}}})
+	}}}))
 	if err := InstallType(r, "S3Pos", pred); err != nil {
 		t.Fatalf("install predicate: %v", err)
 	}
@@ -274,11 +274,11 @@ func TestS3IsPredicateTypeNodeShapes(t *testing.T) {
 // category with no concrete base (design/legacy/TYPE-REPRESENTATION.1.ignore §N3).
 func TestS3AnyInputPredicateMintsUnderFunction(t *testing.T) {
 	r := newTestRegistry(t)
-	pred := NewFunction(FnDefInfo{Name: "s3any", Signatures: []Signature{{
+	pred := MarkPredicateFn(NewFunction(FnDefInfo{Name: "s3any", Signatures: []Signature{{
 		Args:    []*Type{TAny},
 		Params:  []FnParam{{Name: "x", Type: TAny}},
 		Returns: []*Type{TBoolean},
-	}}})
+	}}}))
 	if err := InstallType(r, "S3Gate", pred); err != nil {
 		t.Fatalf("install any-input predicate: %v", err)
 	}

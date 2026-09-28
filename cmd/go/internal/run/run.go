@@ -10,6 +10,7 @@ import (
 	"fmt"
 	"io"
 	"os"
+	"path/filepath"
 	"strings"
 
 	"github.com/boru-lang/boru/cmd/go/internal/buildrt"
@@ -150,6 +151,10 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 	var source string
 	var hasSource bool
 	var scriptArgs []string
+	// baseDir anchors the script's relative imports at the script's own
+	// directory, as `check` and `build` do; `-e` has no file and keeps the
+	// process cwd (NUR083).
+	var baseDir string
 
 	if *evalExpr != "" {
 		source = *evalExpr
@@ -173,6 +178,9 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		hasSource = true
 		// Positionals after the script path reach the program as IO.args.
 		scriptArgs = fs.Args()[1:]
+		if abs, aerr := filepath.Abs(filename); aerr == nil {
+			baseDir = filepath.Dir(abs)
+		}
 	}
 
 	if hasSource {
@@ -185,18 +193,21 @@ func Execute(args []string, stdin io.Reader, stdout, stderr io.Writer) int {
 		// Sequenced after the guard-narrowing legalization per the plan's
 		// FP-honesty rule; `boru check --soft` remains the advisory surface.
 		color := lang.ResolveColor(nil, stderr, *colorMode)
-		if !*noCheck && os.Getenv("BORU_NO_CHECK") == "" {
-			if err := check.PreflightColor(stderr, source, reg, *seed, *checkFirst, color); err != nil {
-				fmt.Fprintf(stderr, "%s\n", err)
-				return 1
-			}
-		}
+		// The policy resolves BEFORE the pre-flight: the check executes an
+		// imported module's body, and it must run under the profile the run
+		// does (NUR079).
 		pol, err := pf.Resolve()
 		if err != nil {
 			fmt.Fprintf(stderr, "error: %s\n", err)
 			return 1
 		}
-		o := lang.Options{Registry: reg, Seed: *seed, Policy: pol, ScriptArgs: scriptArgs,
+		if !*noCheck && os.Getenv("BORU_NO_CHECK") == "" {
+			if err := check.PreflightPolicyAt(stderr, source, reg, *seed, *checkFirst, color, baseDir, pol); err != nil {
+				fmt.Fprintf(stderr, "%s\n", err)
+				return 1
+			}
+		}
+		o := lang.Options{Registry: reg, Seed: *seed, Policy: pol, ScriptArgs: scriptArgs, BaseDir: baseDir,
 			// The CLI is a host that hands the program the real environment
 			// and the real answer about its own streams.
 			Env: capabilities.OSEnvOps{}, Streams: capabilities.OSStreamProbe{}}

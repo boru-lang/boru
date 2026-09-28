@@ -87,8 +87,8 @@ func TestBranchArmsRetPinnedBothArmsDiverge(t *testing.T) {
 }
 
 // TestRecordRuntimeBindDispatchUnresolvedOperand — a run-time binder's
-// dispatch (NoteRuntimeBind's latch — unpack over a source the pass cannot
-// read) is emitted as a plain 0-result CALL_NATIVE only when every operand
+// dispatch (RecordRuntimeDispatch under NoteRuntimeBind's latch — unpack
+// over a source the pass cannot read) is emitted as a plain 0-result CALL_NATIVE only when every operand
 // has a compiled home. An operand with none hands the dispatch to
 // RecordCall, whose compile-time-word arm declines it loudly: no event, and
 // the latch is consumed.
@@ -106,7 +106,7 @@ func TestRecordRuntimeBindDispatchUnresolvedOperand(t *testing.T) {
 	es.reg = r
 	es.NoteRuntimeBind("a")
 	before := len(es.frames[0])
-	es.RecordRuntimeBindDispatch("unpack", sig, []core.Value{names, src}, core.SrcPos{})
+	es.RecordRuntimeDispatch("unpack", sig, []core.Value{names, src}, nil, core.SrcPos{})
 	if es.Compilable || !strings.Contains(es.Reason, "compile-time word unpack") {
 		t.Errorf("an operand with no compiled home must decline the dispatch, got compilable=%v reason=%q", es.Compilable, es.Reason)
 	}
@@ -118,7 +118,7 @@ func TestRecordRuntimeBindDispatchUnresolvedOperand(t *testing.T) {
 	es = NewEmitState()
 	es.reg = r
 	es.NoteRuntimeBind("a")
-	es.RecordRuntimeBindDispatch("unpack", sig, []core.Value{names, constMapWith("a", core.NewInteger(1))}, core.SrcPos{})
+	es.RecordRuntimeDispatch("unpack", sig, []core.Value{names, constMapWith("a", core.NewInteger(1))}, nil, core.SrcPos{})
 	fr := es.frames[0]
 	if !es.Compilable || len(fr) != 1 || fr[0].call.word != "unpack" || fr[0].call.nout != 0 || len(fr[0].call.ops) != 2 {
 		t.Errorf("placed operands emit one 0-result call, got compilable=%v reason=%q events=%d", es.Compilable, es.Reason, len(fr))

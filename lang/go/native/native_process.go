@@ -439,7 +439,7 @@ func parseReceiveClauses(r *Registry, list Value) ([]recvClause, *recvAfter, err
 		}
 		body := make([]Value, bodyList.Len())
 		copy(body, bodyList.Slice())
-		clause, cErr := splitClausePattern(r, e)
+		clause, cErr := splitClausePattern(r, e, "receive", "receive_error")
 		if cErr != nil {
 			return nil, nil, cErr
 		}
@@ -455,9 +455,13 @@ func parseReceiveClauses(r *Registry, list Value) ([]recvClause, *recvAfter, err
 
 // splitClausePattern splits a clause pattern map into routing tags
 // (concrete Scalars) and binding slots (type literals). Anything else is
-// a loud error, matching patrun's pattern strictness.
-func splitClausePattern(r *Registry, pat Value) (recvClause, error) {
-	mp, err := RequireConcreteMap(pat, "receive")
+// a loud error, matching patrun's pattern strictness. It is the ONE clause
+// pattern reading: `receive` (op "receive") and a service `add` (op "add")
+// both call it, so a pattern means the same thing to either (NUR064). A raw
+// map (receive's clause list is NoEvalArgs) spells a slot's type as a word;
+// an evaluated one (add's) as a type literal.
+func splitClausePattern(r *Registry, pat Value, op, code string) (recvClause, error) {
+	mp, err := RequireConcreteMap(pat, op)
 	if err != nil {
 		return recvClause{}, err
 	}
@@ -476,9 +480,9 @@ func splitClausePattern(r *Registry, pat Value) (recvClause, error) {
 				c.binds = append(c.binds, recvBind{name: k, t: CanonicalType(r, t)})
 				continue
 			}
-			return recvClause{}, r.BoruErrorHint("receive_error",
-				fmt.Sprintf("receive: pattern field %q names unknown type %q", k, w.Name),
-				"receive", "route on top-level scalar tags ({cmd: \"inc\"}); bind typed fields ({reply: Pid})")
+			return recvClause{}, r.BoruErrorHint(code,
+				fmt.Sprintf("%s: pattern field %q names unknown type %q", op, k, w.Name),
+				op, "route on top-level scalar tags ({cmd: \"inc\"}); bind typed fields ({reply: Pid})")
 		}
 		switch {
 		case IsConcrete(v) && v.Parent.ConformsTo(TScalar):
@@ -490,9 +494,9 @@ func splitClausePattern(r *Registry, pat Value) (recvClause, error) {
 			}
 			c.binds = append(c.binds, recvBind{name: k, t: CanonicalType(r, t)})
 		default:
-			return recvClause{}, r.BoruErrorHint("receive_error",
-				fmt.Sprintf("receive: pattern field %q must be a Scalar routing tag or a Type binding slot, got %s", k, v.Parent.String()),
-				"receive", "route on top-level scalar tags ({cmd: \"inc\"}); bind typed fields ({reply: Pid})")
+			return recvClause{}, r.BoruErrorHint(code,
+				fmt.Sprintf("%s: pattern field %q must be a Scalar routing tag or a Type binding slot, got %s", op, k, v.Parent.String()),
+				op, "route on top-level scalar tags ({cmd: \"inc\"}); bind typed fields ({reply: Pid})")
 		}
 	}
 	c.isCatch = len(c.route) == 0
@@ -548,10 +552,10 @@ func routeSig(route map[string]string) string {
 	return s
 }
 
-// bindClause type-checks and collects the clause's binding slots against
-// the message. ok=false means the message does not satisfy the slots.
-func bindClause(c recvClause, msg Value) ([]recvBinding, bool) {
-	if len(c.binds) == 0 {
+// bindSlots type-checks and collects a clause's binding slots against the
+// message. ok=false means the message does not satisfy the slots.
+func bindSlots(slots []recvBind, msg Value) ([]recvBinding, bool) {
+	if len(slots) == 0 {
 		return nil, true
 	}
 	if !IsConcrete(msg) || !msg.Parent.ConformsTo(TMap) {
@@ -561,8 +565,8 @@ func bindClause(c recvClause, msg Value) ([]recvBinding, bool) {
 	if mp == nil {
 		return nil, false
 	}
-	out := make([]recvBinding, 0, len(c.binds))
-	for _, b := range c.binds {
+	out := make([]recvBinding, 0, len(slots))
+	for _, b := range slots {
 		v, ok := mp.Get(b.name)
 		if !ok {
 			return nil, false
@@ -583,17 +587,23 @@ type recvBinding struct {
 // runClauseBody runs a clause body with the bound fields installed as
 // frame bindings (shadowing, torn down afterwards).
 func runClauseBody(r *Registry, binds []recvBinding, body []Value) ([]Value, error) {
-	names := make([]string, 0, len(binds))
+	return withSlotBindings(r, binds, func() ([]Value, error) {
+		tokens := make([]Value, len(body))
+		copy(tokens, body)
+		return New(r).Run(tokens)
+	})
+}
+
+// withSlotBindings runs code with a clause's bound fields installed as frame
+// bindings (shadowing, torn down afterwards) — a receive clause's body and a
+// service handler's run alike (NUR064).
+func withSlotBindings(r *Registry, binds []recvBinding, code func() ([]Value, error)) ([]Value, error) {
 	for _, b := range binds {
 		core.InstallFrameBinding(r, b.name, b.val)
-		names = append(names, b.name)
 	}
-	tokens := make([]Value, len(body))
-	copy(tokens, body)
-	sub := New(r)
-	res, err := sub.Run(tokens)
-	for i := len(names) - 1; i >= 0; i-- {
-		UninstallDef(r, names[i])
+	res, err := code()
+	for i := len(binds) - 1; i >= 0; i-- {
+		UninstallDef(r, binds[i].name)
 	}
 	return res, err
 }
@@ -628,7 +638,7 @@ func receiveHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 			"receive: message matches no clause: "+ValToString(msg),
 			"receive", "add a catch-all {} clause to accept unmatched messages")
 	}
-	binds, ok := bindClause(clauses[idx], msg)
+	binds, ok := bindSlots(clauses[idx].binds, msg)
 	if !ok {
 		// Routing matched but a binding slot declined (missing field or
 		// type mismatch) — fall back to a catch-all clause if one exists.

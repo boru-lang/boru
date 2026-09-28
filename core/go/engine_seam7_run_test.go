@@ -230,26 +230,38 @@ func TestS7RunBareTypePathWord(t *testing.T) {
 	}
 }
 
-// --- pending forward expecting Function (stepWord fn-ref arm) --------------
+// --- pending forward expecting Function: no reference intercept (NUR078) ---
 
 func TestS7StepWordForwardExpectingFunction(t *testing.T) {
 	r := runReg(t)
 	// Hand-build a pending forward whose NEXT slot (CollectedArgs=1) is a
-	// Function; a bare def-fn word at the pointer is resolved to a
-	// Function reference (NewFunction) rather than executed.
+	// Function. A bare def-fn word at the pointer is NOT resolved to a
+	// reference any more: the name CALLS whatever slot is open (ADR-011 as
+	// amended), so it is a function word beginning its own dispatch while the
+	// forward still waits — the strict-rule barrier error.
 	sig := &Signature{Params: []FnParam{{Type: TInteger}, {Type: TFunction}}, BarrierPos: -1}
 	fwd := NewForward(ForwardInfo{FuncName: "capply", Sig: sig, CollectedArgs: 1, FuncIndex: 0})
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{fwd, NewWord("cadd")}, StackHeadroom)
 	e.Pointer = 1
-	if err := e.stepWord(e.Tape.At(1)); err != nil {
-		t.Fatalf("stepWord: %v", err)
+	err := e.stepWord(e.Tape.At(1))
+	if err == nil || !strings.Contains(err.Error(), "begins its own dispatch") {
+		t.Fatalf("a bare fn name before a Function slot must dispatch, not arrive as a reference: %v", err)
 	}
-	// The raw `cadd` word must no longer sit unresolved on the tape — it
-	// was resolved to a Function reference and collected by the forward.
+	// The reference is explicit: `cadd/v` arrives as the Function value.
+	e = NewTop(r)
+	w := NewWord("cadd")
+	info, _ := AsWord(w)
+	info.ForceVal = true
+	w = NewValueRaw(TWord, info)
+	e.Tape = NewTape([]Value{fwd, w}, StackHeadroom)
+	e.Pointer = 1
+	if err := e.stepWord(e.Tape.At(1)); err != nil {
+		t.Fatalf("stepWord cadd/v: %v", err)
+	}
 	for i := 0; i < e.Tape.Len(); i++ {
 		if IsWord(e.Tape.At(i)) {
-			t.Errorf("cadd left unresolved as a Word at %d", i)
+			t.Errorf("cadd/v left unresolved as a Word at %d", i)
 		}
 	}
 }

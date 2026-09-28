@@ -493,3 +493,22 @@ func (dt *DefTable) Clone() *DefTable {
 	}
 	return &DefTable{stacks: stacks, gen: gen}
 }
+
+// HoldsType reports whether any LIVE entry, under any name, binds def — the
+// question a type binding's pop asks before retiring the node it minted:
+// a node pushed under one name more than once (a bind twin replaying one
+// captured entry per element) is retired by the LAST pop, not the first,
+// so the surviving levels keep resolving through LookupByID (NUR135).
+func (dt *DefTable) HoldsType(def *Type) bool {
+	if dt == nil || def == nil {
+		return false
+	}
+	for _, stack := range dt.stacks {
+		for i := range stack {
+			if stack[i].TypeDef == def {
+				return true
+			}
+		}
+	}
+	return false
+}

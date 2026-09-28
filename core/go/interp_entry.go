@@ -1,6 +1,9 @@
 package core
 
-import "sync/atomic"
+import (
+	"strings"
+	"sync/atomic"
+)
 
 // Observability seams for the runtime-independence program
 // (design/legacy/RUNTIME-INDEPENDENCE-COMPLETION-PLAN.0.ignore, C4 + Phase 10): two
@@ -173,8 +176,12 @@ func (r *Registry) noteInterp(seam string) {
 		return
 	}
 	att := r.interpAttribution
-	check := r.analysisActive()
-	if check {
+	// A "check:"-attributed entry is the check pass's own concrete sub-run
+	// with analysis suspended around it (the const fold, a predicate over a
+	// concrete candidate — NUR141): check-mode work, not a compiled
+	// program's island.
+	check := r.analysisActive() || strings.HasPrefix(att, "check:")
+	if check && att == "" {
 		att = "check-mode"
 	}
 	(*fp)(InterpEntry{Seam: seam, Attribution: att, CheckMode: check})

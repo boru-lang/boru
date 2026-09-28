@@ -133,7 +133,7 @@ func checkBodyReturnConformance(r *core.Registry, name string, declared []*core.
 		// the pattern doubles as the "expected" rendering.
 		if k < len(patterns) && patterns[k] != nil &&
 			!got.Dynamic && got.Parent != nil && !core.IsBareTypeNode(got) && !got.Parent.Equal(core.TNone) {
-			if _, ok := core.Unify(*patterns[k], got); !ok {
+			if _, ok := core.Unify(*patterns[k], got); !ok && !refinementUndecided(*patterns[k], got) {
 				detail, _ := core.ReturnTypeErrorText(name, k+1, patterns[k], got)
 				if !hasCheckDiagnostic(r, "type_error", detail) {
 					r.Check.AddDiagnostic(core.CheckDiagnostic{
@@ -312,12 +312,14 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 	}
 	declaredReturns := append([]*core.Type(nil), s.Returns...)
 	declaredReturnPatterns := append([]*core.Value(nil), s.ReturnPatterns...)
+	bodyTraps := bodyTrapsErrors(s.Body())
 	// The compiled unit's RET contract: a named fn's declaration as written;
 	// an anonymous lambda's placeholder count (LambdaCountContract), which
 	// stands at run time even though the ANALYSER below infers past it.
 	compileReturns := declaredReturns
+	lambdaReturns := len(s.Returns)
 	if fnDef.Anonymous {
-		compileReturns = LambdaCountContract(len(s.Returns))
+		compileReturns = LambdaCountContract(lambdaReturns)
 		declaredReturns = nil
 		declaredReturnPatterns = nil
 	}
@@ -358,7 +360,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// is the (word, position) the region capture was offered under
 		// (compiler/go/region_record.go) — the word's own position, which is
 		// not args[0]'s, the blame position the call event carries.
-		call := callSite{word: caller.Check.CurCallWord, pos: caller.Check.CurCallPos}
+		call := callSite{word: caller.Check.CurCallWord, pos: caller.Check.CurCallPos, anonymous: fnDef.Anonymous}
 		checkRecordShapeArgs(r, nameCopy, paramPatterns, args)
 		if r.Check.SpecParamNames[call.word] && specParamCallMayRefuse(sigParams, args) {
 			r.Check.SpecDeclined = true
@@ -418,6 +420,12 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// The memo key mirrors AnalyseFnBody's so the unit is compiled
 		// exactly when the body is analysed.
 		es := r.Check.Recorder()
+		// A shaped flex container passed to a user fn may be written through
+		// the parameter's alias, which the body analysis (over a plain
+		// carrier) does not see: its claims are stale from here (NUR315).
+		for _, a := range args {
+			PoisonFlexShapes(a)
+		}
 		// Take this call's Phase-A offer out of the pool NOW, before the body
 		// analysis below can re-offer under the same (word, row, col) from
 		// another source and consume it (compiler/go/region_record.go,
@@ -502,16 +510,15 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 						continue
 					}
 				}
-				if a.Parent == nil {
-					// A root-node carrier (None / Any / Never) has a nil Parent
-					// because it IS its own lattice node — it is already an
-					// abstract, constant-free generalisation, so keep it (with the
-					// Carrier flag set) rather than calling NewCarrier(nil), which
-					// would propagate a nil-typed value into the body analysis.
-					g := a
-					g.Carrier = true
-					g.Data = nil
-					genArgs[i] = g
+				if a.Parent == nil || core.IsTypeLiteral(a) {
+					// A type literal's Parent is its supertype, not its type
+					// (NUR323), and a root node's (None / Any / Never) is nil:
+					// core.ValueCarrier widens a type to a Type carrier and the
+					// None literal to the None carrier. The root node itself,
+					// flagged a carrier, carried no type at all, and a union
+					// naming None refused it where the run's None literal binds
+					// (NUR324: `k None` over `[[y:Any]…[f y]]`, `x:Maybe`).
+					genArgs[i] = core.ValueCarrier(a)
 					continue
 				}
 				genArgs[i] = core.NewCarrier(a.Parent)
@@ -538,63 +545,11 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 			if len(bodyCopy) > 0 {
 				fnPos = bodyCopy[0].Pos()
 			}
-			// compileUnit compiles — or, on a memo hit, reuses — the unit for
-			// one arg vector and returns its index (-1 when the recorder
-			// declines). keySuffix separates a call-site specialisation's unit
-			// key and body summary from the generic unit's (SpecKeySuffix).
-			compileUnit := func(unitArgs []core.Value, keySuffix string) int {
-				key := FnAnalysisKey(r.AnalysisScopeID(), nameCopy, unitArgs, capturesCopy, bodyCopy) + keySuffix
-				unit, finish, ok := es.StartFnCompile(key, nameCopy, r, unitArgs, compileReturns, paramNames, capturesCopy, genSpec != nil, fnPos)
-				if !ok {
-					return -1
-				}
-				// Record the declared PARAM types so the VM enforces them at
-				// CALL_USER entry (the gradual-Any param-guard, mirroring the RET
-				// return-check). A gradual (Dynamic) arg optimistically matched a
-				// concrete param at check time; the compiled call must re-check the
-				// runtime value, or a laundered mismatch silently runs the body.
-				pts := make([]*core.Type, len(sigParams))
-				pats := make([]*core.Value, len(sigParams))
-				for i := range sigParams {
-					pts[i] = sigParams[i].Type
-					pats[i] = sigParams[i].Pattern
-				}
-				es.SetUnitParamTypes(unit, pts, pats)
-				// The body tokens: what a per-read deopt hands to the
-				// interpreter (compiler planDeopts, NUR123).
-				es.SetUnitBody(unit, bodyCopy)
-				// The RET-side twin: a declared union return degrades its
-				// *Type to Any, so without the pattern the compiled path —
-				// the DEFAULT path — enforces nothing while the interpreter
-				// and the check pass both reject.
-				es.SetUnitReturnPatterns(unit, declaredReturnPatterns)
-				// The return-contract declaration site, so a compiled RET
-				// return error labels the declaration exactly as the
-				// interpreter's ReturnCheck does.
-				es.SetUnitDecl(unit, declSite)
-				if finish != nil {
-					// A fresh compilation must RECORD the body into THIS unit — drop any
-					// summary cached by a prior analysis (the install-time synthetic
-					// example eval, or a DISCARDED closure PROBE compile that shares
-					// r.Check.FnSummaries) so AnalyseFnBody re-runs and re-records the
-					// body's events instead of returning the cached residual with an
-					// empty fragment. The cache (and the AnalyseFnBody call below) is
-					// keyed on the unit's args, NOT the call's — deleting the args key
-					// left the genArgs-keyed probe summary live, so a fn dispatched under
-					// a recursive closure probe (boru:test run-case) compiled to an EMPTY
-					// stub unit in the real pass (silent 0-cases miscompile).
-					delete(r.Check.FnSummaries, key)
-					r.Check.SpecKeySuffix = keySuffix
-					stkGen := AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, unitArgs, capturesCopy, declaredReturns, fnDef.Anonymous)
-					if keySuffix != "" && !specResidualMeetsReturns(stkGen, compileReturns) {
-						r.Check.SpecDeclined = true
-					}
-					finish(stkGen)
-				}
-				return unit
-			}
-			if fnUnit = specialiseCallSite(r, es, compileUnit, fnDef, core.FnHomeForeign(caller, &fnDef), nameCopy, bodyCopy, sigParams, args, genArgs); fnUnit < 0 {
-				fnUnit = compileUnit(genArgs, "")
+			uc := &fnUnitCompile{r: r, es: es, name: nameCopy, body: bodyCopy, captures: capturesCopy, params: sigParams, paramNames: paramNames,
+				compileReturns: compileReturns, returns: declaredReturns, returnPatterns: declaredReturnPatterns, decl: declSite,
+				generic: genSpec != nil, anonymous: fnDef.Anonymous, pos: fnPos}
+			if fnUnit = specialiseCallSite(r, es, uc.compile, fnDef, core.FnHomeForeign(caller, &fnDef), nameCopy, bodyCopy, sigParams, args, genArgs); fnUnit < 0 {
+				fnUnit = uc.compile(genArgs, "")
 			}
 		}
 		stk := AnalyseFnBody(r, nameCopy, paramNames, bodyCopy, narrowArgsToParams(args, sigParams), capturesCopy, declaredReturns, fnDef.Anonymous)
@@ -712,7 +667,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// (provenNarrowerReturn): the caller sees the proven type, so its
 				// dispatches over the result commit instead of re-matching at
 				// run time. The TYPE only — never the residual's value.
-				if rc, ok := refinedDeclaredReturn(r, t, sigParams, declaredReturnPatterns, i, len(declaredReturns), stk); ok {
+				if rc, ok := refinedDeclaredReturn(r, t, sigParams, declaredReturnPatterns, i, len(declaredReturns), stk, bodyTraps); ok {
 					out[i] = rc
 					continue
 				}
@@ -766,7 +721,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 				// closure uses it: the snapshot at the top of
 				// BuildFnBodyReturnsFn is what the closure is entitled to read.
 				noteBakedCallTarget(es, r, nameCopy)
-				es.RecordUserCall(fnUnit, call.word, args, nil, pos, call.pos)
+				es.RecordUserCall(fnUnit, call.word, args, nil, callAnchor(call, pos), call.pos)
 				return nil
 			}
 			// A ZERO-declared-return POLY set (COMPILE FAILURE-CLOSURE.0 §6a): every
@@ -802,11 +757,94 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 		// those N carriers so downstream resolves them to this dispatch — or,
 		// for a construction-scope-capture unit, the fn-VALUE apply fallback
 		// (the anonymous-lambda factory result is exactly this arm's shape).
+		// An anonymous lambda's frame keeps its placeholder count off the top
+		// and drops the unnamed args pushed beneath the body, as its unit's
+		// RET does (trimUnnamedArgs, NUR255).
+		if fnDef.Anonymous {
+			stk = trimUnnamedArgs(stk, lambdaReturns, unnamedParamCount(sigParams))
+		}
 		if fnUnit >= 0 {
 			stk = recordUserCallOrApply(es, r, nameCopy, capturesCopy, bodyRef, fnUnit, call, args, freshResidual(stk))
 		}
 		return stk
 	}
+}
+
+// fnUnitCompile is BuildFnBodyReturnsFn's unit compile for one call: what the
+// generic unit and a call-site specialised one share — the fn's name, body,
+// captures, params and contracts, and the call's registry and recorder.
+type fnUnitCompile struct {
+	r              *core.Registry
+	es             core.EmitRecorder
+	name           string
+	body           []core.Value
+	captures       []core.CapturedBinding
+	params         []core.FnParam
+	paramNames     []string
+	compileReturns []*core.Type
+	returns        []*core.Type
+	returnPatterns []*core.Value
+	decl           core.DeclSite
+	generic        bool
+	anonymous      bool
+	pos            core.SrcPos
+}
+
+// compile compiles — or, on a memo hit, reuses — the unit for one arg vector
+// and returns its index (-1 when the recorder declines). keySuffix separates
+// a call-site specialisation's unit key and body summary from the generic
+// unit's (SpecKeySuffix).
+func (c *fnUnitCompile) compile(unitArgs []core.Value, keySuffix string) int {
+	r, es := c.r, c.es
+	key := FnAnalysisKey(r.AnalysisScopeID(), c.name, unitArgs, c.captures, c.body) + keySuffix
+	unit, finish, ok := es.StartFnCompile(key, c.name, r, unitArgs, c.compileReturns, c.paramNames, c.captures, c.generic, c.pos)
+	if !ok {
+		return -1
+	}
+	// Record the declared PARAM types so the VM enforces them at
+	// CALL_USER entry (the gradual-Any param-guard, mirroring the RET
+	// return-check). A gradual (Dynamic) arg optimistically matched a
+	// concrete param at check time; the compiled call must re-check the
+	// runtime value, or a laundered mismatch silently runs the body.
+	pts := make([]*core.Type, len(c.params))
+	pats := make([]*core.Value, len(c.params))
+	for i := range c.params {
+		pts[i] = c.params[i].Type
+		pats[i] = c.params[i].Pattern
+	}
+	es.SetUnitParamTypes(unit, pts, pats)
+	// The body tokens: what a per-read deopt hands to the
+	// interpreter (compiler planDeopts, NUR123).
+	es.SetUnitBody(unit, c.body)
+	// The RET-side twin: a declared union return degrades its
+	// *Type to Any, so without the pattern the compiled path —
+	// the DEFAULT path — enforces nothing while the interpreter
+	// and the check pass both reject.
+	es.SetUnitReturnPatterns(unit, c.returnPatterns)
+	// The return-contract declaration site, so a compiled RET
+	// return error labels the declaration exactly as the
+	// interpreter's ReturnCheck does.
+	es.SetUnitDecl(unit, c.decl)
+	if finish != nil {
+		// A fresh compilation must RECORD the body into THIS unit — drop any
+		// summary cached by a prior analysis (the install-time synthetic
+		// example eval, or a DISCARDED closure PROBE compile that shares
+		// r.Check.FnSummaries) so AnalyseFnBody re-runs and re-records the
+		// body's events instead of returning the cached residual with an
+		// empty fragment. The cache (and the AnalyseFnBody call below) is
+		// keyed on the unit's args, NOT the call's — deleting the args key
+		// left the genArgs-keyed probe summary live, so a fn dispatched under
+		// a recursive closure probe (boru:test run-case) compiled to an EMPTY
+		// stub unit in the real pass (silent 0-cases miscompile).
+		delete(r.Check.FnSummaries, key)
+		r.Check.SpecKeySuffix = keySuffix
+		stkGen := AnalyseFnBody(r, c.name, c.paramNames, c.body, unitArgs, c.captures, c.returns, c.anonymous)
+		if keySuffix != "" && !specResidualMeetsReturns(stkGen, c.compileReturns) {
+			r.Check.SpecDeclined = true
+		}
+		finish(stkGen)
+	}
+	return unit
 }
 
 // freshResidual re-mints every value of an analysed body residual under its
@@ -936,6 +974,27 @@ func noteBakedCallTarget(es core.EmitRecorder, r *core.Registry, name string) {
 }
 
 // recordUserCallOrApply records a compiled-unit dispatch at a ReturnsFunc
+// callAnchor is the source position a recorded user call carries into the
+// CALL_USER instruction's debug entry: the call WORD's, where the
+// interpreter's ReturnCheck marker anchors a return-contract error (`h` in
+// `def h fn [[][Integer][1 2]] end h`, 1:33) — the first argument's only
+// for a call whose word carries none. Before this the entry was the first
+// argument's position, so a 0-argument call's contract error rendered
+// "source position unknown" and a 1-argument call's anchored at the
+// argument (NUR118).
+//
+// An ANONYMOUS lambda's call takes no argument fallback: the interpreter
+// anchors its return check at the fn value's own position, and a lambda
+// built in place has none, so both lanes report no position. The argument's
+// anchor made `[(0 ([0] => [1 2])) 7]` report 1:3 compiled beside the
+// interpreter's unknown position (NUR259).
+func callAnchor(call callSite, arg core.SrcPos) core.SrcPos {
+	if call.pos.Row > 0 || call.anonymous {
+		return call.pos
+	}
+	return arg
+}
+
 // record site: the §4.3 fn-value apply fallback where the call qualifies
 // (the outs slice is then COPIED with the freshened carrier in slot 0),
 // else the ordinary RecordUserCall. Returns the outs to hand downstream.
@@ -960,7 +1019,7 @@ func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, 
 		return outs
 	}
 	noteBakedCallTarget(es, r, name)
-	es.RecordUserCall(fnUnit, call.word, args, outs, pos, call.pos)
+	es.RecordUserCall(fnUnit, call.word, args, outs, callAnchor(call, pos), call.pos)
 	return outs
 }
 
@@ -970,6 +1029,10 @@ func recordUserCallOrApply(es core.EmitRecorder, r *core.Registry, name string, 
 type callSite struct {
 	word string
 	pos  core.SrcPos
+	// anonymous marks a literal lambda's call: the interpreter anchors its
+	// return check at the fn VALUE's own position (execFnDefSig's callPos),
+	// which a lambda built in place does not carry (callAnchor, NUR259).
+	anonymous bool
 }
 
 // recordPendingClosureApply routes the re-step dispatch of a closure this
@@ -1196,6 +1259,33 @@ func checkFnBodyAtConstruction(r *core.Registry, name string, fnDef core.FnDefIn
 	}
 }
 
+// refinementUndecided reports whether a return pattern's failed Unify is a
+// value-level refinement's — a DepScalar, `[(Integer gt 3)]`, or a union
+// carrying one — over a residual the pass does not know: membership is the
+// VALUE's, which only the run has, and the RET check asks it there. The
+// named spelling (`[Big]`) defers exactly this case already (the scalar-fold
+// gate below), so an inline refinement return refused an abstract Integer at
+// check time that both lanes then returned (NUR309). A residual provably
+// outside the refinement's base, or a compile-time-known scalar, still
+// decides.
+func refinementUndecided(pattern, got core.Value) bool {
+	if ScalarFoldOperand(got) {
+		return false
+	}
+	if pattern.IsDepScalar() {
+		return !residualProvablyDisjoint(got, pattern.Parent)
+	}
+	if core.IsDisjunct(pattern) {
+		di, _ := core.AsDisjunct(pattern) // IsDisjunct: the payload is a DisjunctInfo
+		for _, alt := range di.Alternatives {
+			if refinementUndecided(alt, got) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
 // narrowToDeclaredParam is the RECOVERED call's generalisation of one arg: a
 // carrier that could not statically commit to the CONCRETELY-typed param pt
 // (matchSignature failed, dispatch recovered — tryRecordRecoveredUserFn)
@@ -1286,9 +1376,28 @@ func allParamsTyped(params []core.FnParam) bool {
 // refinedDeclaredReturn is the carrier a declared return slot refines to
 // from what the body shows: a record return's schema (nur068ReturnCarrier),
 // else an exact leaf scalar proven under `Any` (provenNarrowerReturn).
-func refinedDeclaredReturn(r *core.Registry, t *core.Type, params []core.FnParam, patterns []*core.Value, i, n int, stk []core.Value) (core.Value, bool) {
+func refinedDeclaredReturn(r *core.Registry, t *core.Type, params []core.FnParam, patterns []*core.Value, i, n int, stk []core.Value, bodyTraps bool) (core.Value, bool) {
 	if rc, ok := nur068ReturnCarrier(r, t, patterns, i, n, stk); ok {
 		return rc, true
 	}
+	if bodyTraps {
+		return core.Value{}, false
+	}
 	return provenNarrowerReturn(t, params, stk, n, i)
+}
+
+// bodyTrapsErrors reports whether a fn body holds a `do`, which traps its
+// body's raise into an Error value (DoListHandler) that the modelled residual
+// does not carry: such a residual proves no exact leaf for
+// provenNarrowerReturn. `def rpt fn [[] [Any] [do [def Big Integer 15 is
+// Big]]]` answers true on its first call and a trapped conflict Error on its
+// second, where the narrowed return claimed Boolean for both.
+func bodyTrapsErrors(body []core.Value) bool {
+	traps := false
+	core.WalkBodyWords(body, func(w core.WordInfo, _ core.Value) {
+		if w.Name == "do" {
+			traps = true
+		}
+	})
+	return traps
 }

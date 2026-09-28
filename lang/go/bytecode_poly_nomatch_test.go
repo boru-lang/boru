@@ -155,13 +155,16 @@ def x (get-k {k:[1 2]})
 	}
 }
 
-// TestPolyNoMatchUngatedAfterEffectKeepsInternal — the bounded edge: the
-// deeper-stack native shape both declines the faithful spec (the written
-// tuple is wider than the window) AND fails the alt's arity-uniformity
-// screen (`add` has 3-arg overloads), so the bail keeps the
-// honest internal error + note. When either bound is later lifted, this pin
-// forces the re-diagnosis.
-func TestPolyNoMatchUngatedAfterEffectKeepsInternal(t *testing.T) {
+// TestPolyNoMatchDeeperStackShapeRaisesCanonical — the former bounded edge:
+// the deeper-stack native shape (`9 1 x add`, the whole prefix beneath the
+// word) used to decline the faithful spec (the written tuple was wider than
+// the poly's window) AND fail the alt's arity-uniformity screen (`add` has
+// 3-arg overloads), so the bail kept an internal error. The attempted-window
+// twin (NUR172: rematchWritten derives the tuple sigError renders) lets the
+// record prove the raise over the three values the interpreter reports, so
+// the shape raises the canonical signature_error on both lanes, after the
+// effect ran exactly once.
+func TestPolyNoMatchDeeperStackShapeRaisesCanonical(t *testing.T) {
 	const src = `print "pre-effect"
 def m (flex {k:[1 2]})
 def x (m get "k")
@@ -169,11 +172,21 @@ def x (m get "k")
 	var out strings.Builder
 	a := mustNew(t)
 	a.SetOutput(&out)
-	_, _, err := a.RunCompiled(src)
-	if noteCompileDefect(t, src, nil, err) {
+	_, _, errC := a.RunCompiled(src)
+	if noteCompileDefect(t, src, nil, errC) {
 		return
 	}
-	if codeOf(err) != "internal_error" || !strings.Contains(err.Error(), "report this as a compiler bug") {
-		t.Errorf("the ungated shape must keep the fence-blocked internal error, got %v", err)
+	var outI strings.Builder
+	b := mustNew(t)
+	b.SetOutput(&outI)
+	_, errI := b.RunInterp(src)
+	if errC == nil || errI == nil || errC.Error() != errI.Error() {
+		t.Fatalf("the deeper-stack shape must raise byte-identically:\n=== COMPILED ===\n%v\n=== INTERP ===\n%v", errC, errI)
+	}
+	if !strings.Contains(errC.Error(), "the arguments were [1 2] (a FlexList), 1 (an Integer) and 9 (an Integer)") {
+		t.Errorf("the raise must report the attempted window:\n%v", errC)
+	}
+	if strings.Count(out.String(), "pre-effect") != 1 {
+		t.Errorf("the effect must run exactly once, output %q", out.String())
 	}
 }

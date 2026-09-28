@@ -111,7 +111,7 @@ undef foo
 // literal. `is` should consult the active binding.
 func TestTypeShadow_PredicateOverLiteral(t *testing.T) {
 	got := runOne(t, `def Foo Integer
-def Foo fn [x:Any Any [if (x is String) [x] [None]]]
+def Foo fnpred x:Any [if (x is String) [x] [None]]
 42 is Foo
 "hi" is Foo
 undef Foo

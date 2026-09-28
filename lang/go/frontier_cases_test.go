@@ -193,7 +193,7 @@ var frontierCases = []frontierCase{
 
 	// Phase 6 — stamping extensions.
 	{"p6/predicate-stamps-and-runs-vm", func() error {
-		return fcStampedRun(`def Pos fn [[n:Integer] [Boolean] [n gt 0]] def x:Pos 5 x`, "Pos")
+		return fcStampedRun(`def Pos fnpred [[n:Integer] [n gt 0]] def x:Pos 5 x`, "Pos")
 	}},
 	{"p6/model-action-stamps", func() error {
 		return fcStampedRun(`import "boru:model" def m (Model.new {src:'a: 1 b: 2', actions:{gen:([mod:Any] => [true])}}) (Model.run m) get 'ok'`, "gen")

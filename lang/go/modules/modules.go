@@ -49,6 +49,7 @@ var modules = map[string]func(parent *native.Registry) (native.ModuleDesc, error
 	"log":         BuildLogModule,
 	"repl":        BuildReplModule,
 	"debug":       BuildDebugModule,
+	"scry":        BuildScryModule,
 	"fmt":         BuildFmtModule,
 	"vault":       BuildVaultModule,
 	"vault-tui":   BuildVaultTuiModule,
@@ -65,15 +66,26 @@ var modules = map[string]func(parent *native.Registry) (native.ModuleDesc, error
 func Resolve(name string, parent *native.Registry) (native.ModuleDesc, error) {
 	moduleID := "boru:" + name
 	if pol := native.HostPolicy(parent); pol != nil {
-		if !pol.Installed("modules") {
-			return native.ModuleDesc{}, fmt.Errorf("modules disabled by policy %q", pol.Name())
-		}
-		if err := pol.Check("modules", "import", policy.Args{"module": moduleID}); err != nil {
-			return native.ModuleDesc{}, err
+		// kind is always supplied: a where-predicate on an ABSENT arg passes
+		// vacuously, so without it a profile's `where: {kind: ["file"]}`
+		// admission (NUR079's file-module gate) would admit every native
+		// module too. A refusal carries its policy code (PolicyRefusal), as
+		// the file-module gate's does; the scope-level install:false is
+		// Check's own first step.
+		args := policy.Args{"module": moduleID, "kind": "native"}
+		if err := pol.Check("modules", "import", args); err != nil {
+			return native.ModuleDesc{}, native.PolicyRefusal(parent, "import", err)
 		}
 		// Per-module install:false check via the subscope.
 		if !pol.Scope("modules").Scopes[moduleID].Installed() {
-			return native.ModuleDesc{}, fmt.Errorf("module %s: install=false in policy %q", moduleID, pol.Name())
+			return native.ModuleDesc{}, native.PolicyRefusal(parent, "import", &policy.Denied{
+				Code:    policy.CodeCapabilityNotInstalled,
+				Scope:   "modules",
+				Op:      "import",
+				Profile: pol.Name(),
+				Blame:   "modules.scopes." + moduleID + ".install=false",
+				Args:    args,
+			})
 		}
 	}
 	fn, ok := modules[name]

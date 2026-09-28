@@ -196,7 +196,7 @@ def lst (quote [ 10 20 ]) { xs:lst }	{xs:(quote [10 20])}	canonical render prese
 		
 lengthq ( quote [ 1 addq 2 ] )	3	quoted list keeps all 3 raw tokens — including word(addq)
 firstq ( quote [ 1 addq 2 ] )	1	quoted; first element is the integer 1
-quote [ 1 addq 2 ]	(quote [1 word(addq) 2])	a residual quoted list is NOT auto-evaluated at end of Run
+quote [ 1 addq 2 ]	(quote [1 addq 2])	a residual quoted list is NOT auto-evaluated at end of Run
 quote [ ]	(quote [])	quoted empty list
 lengthq ( quote [ [ 1 2 ] [ 3 4 5 ] ] )	2	quote suppresses only the outer eval flag; structure intact
 firstq ( quote [ [ 1 2 ] [ 3 4 5 ] ] )	[1 2]	first element is still the inner list

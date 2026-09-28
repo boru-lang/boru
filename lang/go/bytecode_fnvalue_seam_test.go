@@ -42,7 +42,7 @@ var fnValueSeamRows = []fnValueSeamRow{
 	{"a def-bound fn value, reading a module-scope def", `def k 5 end def f fn [[n:Integer][Integer][n add k]] end each f/v [1 2]`, true},
 	{"a class-field callback (S1a's callbacks.tsv:57)", `def Handler class {cb: Function} def h (make Handler {cb: (fn [[n:Integer][Integer][n add 1]])}) each h.cb [1 2 3]`, true},
 	{"a factory-built capturing lambda", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end each (mk 10) [1 2 3]`, true},
-	{"a module export applied from main", `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end each M.inc [1 2 3]`, true},
+	{"a module export applied from main", `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end each M.inc/v [1 2 3]`, true},
 	{"an unnamed-param fn leaves its input at the frame bottom", `def u fn [[Integer][Integer][add 1 0]] end each u/v [1 2]`, true},
 	{"a lambda over a gradual collection that is a List (S1a)", `def f fn [[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f [1 2]`, true},
 	{"a KeyVal lambda at the map arm", `each ([kv:KeyVal] => [kv.v add 1]) {a:1 b:2}`, true},
@@ -64,18 +64,18 @@ var fnValueSeamRows = []fnValueSeamRow{
 	{"a named fn the map arm cannot match raises", `def two fn [[n:Integer][Integer][n 1]] end each two/v {a:1}`, false},
 	// S1b-2: a COMPUTED fn value def-bound at the top level — a factory's
 	// result, whose analysis-pass binding is the fn-carrier side table, not
-	// Defs — read at a higher-order word's forward slot, bare or through
-	// `/v`. The collection seat resolves the table (Engine.DefTop), so the
-	// dispatch matches the Function overload and the value rides as the
-	// STORE_LOCAL's operand; the seam then runs it natively. Each shape was
-	// "unmatched dispatch recovered at <word>" before (callbacks.tsv:82,
-	// :154, each-variants.tsv:203, fold-map-filter.tsv:73, :227, :229,
-	// module-composition.tsv:95).
+	// Defs — read at a higher-order word's forward slot through `/v` (a
+	// BARE name bound to a fn calls, NUR078 — TestNUR078BareFnNameCalls
+	// pins that side). The collection seat resolves the table
+	// (Engine.DefTop), so the dispatch matches the Function overload and
+	// the value rides as the STORE_LOCAL's operand; the seam then runs it
+	// natively. Each shape was "unmatched dispatch recovered at <word>"
+	// before (callbacks.tsv:82, :154, each-variants.tsv:203,
+	// fold-map-filter.tsv:73, :227, :229, module-composition.tsv:95).
 	{"a factory-built value at each, /v", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def a5 (mk 5) end each a5/v [1 2 3]`, true},
-	{"a factory-built value at each, bare", `def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 10) end each f [1 2 3]`, true},
-	{"a factory-built value at fold", `def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a add e add k])]] end def f (mk 10) end 0 fold f [1 2]`, true},
-	{"a factory-built value at filter", `def mk fn [[k:Integer][Function][([p:Map] => [p.value gt k])]] end def f (mk 1) end filter f [1 2 3]`, true},
-	{"a branch-chosen value at each", `def choose fn [[b:Boolean][Function][if b [(fn [[n:Integer][Integer][n add 1]])] [(fn [[n:Integer][Integer][n sub 1]])]]] end def f (choose false) end each f [1 2 3]`, true},
+	{"a factory-built value at fold", `def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a add e add k])]] end def f (mk 10) end 0 fold f/v [1 2]`, true},
+	{"a factory-built value at filter", `def mk fn [[k:Integer][Function][([p:Map] => [p.value gt k])]] end def f (mk 1) end filter f/v [1 2 3]`, true},
+	{"a branch-chosen value at each", `def choose fn [[b:Boolean][Function][if b [(fn [[n:Integer][Integer][n add 1]])] [(fn [[n:Integer][Integer][n sub 1]])]]] end def f (choose false) end each f/v [1 2 3]`, true},
 	{"a module factory's value at each", `import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def a5 (M.mk 5) end each a5/v [1 2 3]`, true},
 	// FnUtil.compose's result is a fn-util wrapper whose body applies its
 	// captured values through the module's own seam — still stepped, one of

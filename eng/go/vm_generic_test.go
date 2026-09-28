@@ -164,7 +164,7 @@ func TestDispatchGenericDefers(t *testing.T) {
 			t.Fatal("fixture")
 		}
 		reg.Defs.Push("k", core.NewInteger(5))
-		_, _, _, err := (&vmContext{p: p, r: reg}).dispatchGeneric(p, &p.Generics[0], []core.Value{core.NewInteger(1), core.NewInteger(5)}, nil, 0, reg, nil, 0)
+		_, _, _, err := (&vmContext{p: p, r: reg}).dispatchGeneric(p, &p.Generics[0], []core.Value{core.NewInteger(1), core.NewInteger(5)}, nil, 0, reg, nil, 0, -1)
 		if err != nil {
 			t.Fatalf("the seat runs the committed unit's path: %v", err)
 		}

@@ -21,6 +21,11 @@ type CompiledRuntime interface {
 	// replay is attributed rather than counted a second time
 	// (bailReplayAttribution).
 	InvokeCompiled(r *Registry, sig *Signature, args []Value) (res []Value, err error, ran bool)
+	// InvokeCompiledStrict is InvokeCompiled for a NAMED fn call — the
+	// module-fn dispatch (InvokeCallbackStrict): the unit's root RET takes
+	// the frame's return contract (count and types, as __RC enforces them)
+	// instead of the fn-VALUE seam's trim discipline (NUR191).
+	InvokeCompiledStrict(r *Registry, sig *Signature, args []Value) (res []Value, err error, ran bool)
 	// StampDetached compiles and stamps a detached fn at install time
 	// (InstallType's runtime-stamping route). A decline is silent: the
 	// binding stays interpreter-dispatched.
@@ -48,6 +53,9 @@ type CompiledRuntime interface {
 type noCompiledRuntime struct{}
 
 func (noCompiledRuntime) InvokeCompiled(*Registry, *Signature, []Value) ([]Value, error, bool) {
+	return nil, nil, false
+}
+func (noCompiledRuntime) InvokeCompiledStrict(*Registry, *Signature, []Value) ([]Value, error, bool) {
 	return nil, nil, false
 }
 func (noCompiledRuntime) StampDetached(*Registry, FnDefInfo, SrcPos) {}

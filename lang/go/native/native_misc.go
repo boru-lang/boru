@@ -1,10 +1,13 @@
 package native
 
 import (
+	"errors"
 	"fmt"
 	"strings"
 	"time"
 
+	check "github.com/boru-lang/boru/check/go"
+	core "github.com/boru-lang/boru/core/go"
 	"github.com/boru-lang/boru/lang/go/native/help"
 )
 
@@ -727,6 +730,7 @@ func importFileHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 	// back to an opaque Module carrier and let analysis continue.
 	if r.Check.IsActive() {
 		if err := loadImportForCheck(r, path); err != nil {
+			mirrorImportRefusal(r, err, importWordPos(r, args[0]))
 			return []Value{NewCarrier(TModuleInst)}, nil
 		}
 		return nil, nil
@@ -753,6 +757,38 @@ func importFileHandler(args []Value, _ map[string]Value, _ []Value, r *Registry)
 		return nil, err
 	}
 	return nil, installExports(r, desc, nil)
+}
+
+// mirrorImportRefusal is the check pass's half of a POLICY-refused import
+// (NUR079). The run raises the coded refusal right here, so where the import
+// is reached unconditionally it is a guaranteed error, not an opaque module
+// to analyse past: the compile pass records it as the top-level trap (the
+// compiled program raises the byte-identical coded error at this import —
+// what follows is unreachable), and the check reports it as the mirror it
+// is. Any other load failure keeps the opaque-module degradation, and so
+// does a refusal under a branch, loop or fn body, whose reach the model
+// cannot promise.
+func mirrorImportRefusal(r *Registry, err error, pos SrcPos) {
+	var be *BoruError
+	if !errors.As(err, &be) || (be.Code != "permission_denied" && be.Code != "capability_not_installed") {
+		return
+	}
+	if !check.CheckAtUncaughtTopLevel(r) {
+		return
+	}
+	r.Check.Recorder().RecordTrapErr(be, pos)
+	core.CheckAddUniqueDiagnostic(r, be.Code, be.Detail, "import", pos)
+}
+
+// importWordPos is where the run's refusal points: the `import` word
+// itself (CheckState.CurWordPos, which the engine publishes for the handler
+// it is running — the position stampErrPos gives the run's error), else —
+// with none recorded — the path operand's.
+func importWordPos(r *Registry, path Value) SrcPos {
+	if p := r.Check.CurWordPos; p.Row != 0 {
+		return p
+	}
+	return path.Pos()
 }
 
 // loadImportForCheck resolves an import in check mode for its export

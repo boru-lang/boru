@@ -23,7 +23,7 @@ func wt5KindMap(kind string) Value {
 // wt5Predicate builds a single-arg predicate fn whose body is the given
 // token run, declared over the given input type.
 func wt5Predicate(r *Registry, input *Type, body []Value) Value {
-	return NewFunction(FnDefInfo{
+	return MarkPredicateFn(NewFunction(FnDefInfo{
 		Name:     "Wt5Pred",
 		Registry: r,
 		Signatures: []Signature{{
@@ -31,7 +31,7 @@ func wt5Predicate(r *Registry, input *Type, body []Value) Value {
 			Impl:       Boru(body),
 			BarrierPos: 0,
 		}},
-	})
+	}))
 }
 
 // --- match.go: patternsOk -------------------------------------------------

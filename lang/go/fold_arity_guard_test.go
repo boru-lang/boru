@@ -18,8 +18,9 @@ import (
 func TestAssumedSigFoldArityGuard(t *testing.T) {
 	for _, src := range []string{
 		// The predicate type's body divides by zero: both lanes raise its
-		// arith_error at the typed def.
-		`def Boom fn [[n:Integer] [Boolean] [n div 0 gt 0]] end def x:Boom 5 end x`,
+		// arith_error at the typed def (a capitalised predicate is declared
+		// with fnpred — NUR099).
+		`def Boom fnpred [[n:Integer] [n div 0 gt 0]] end def x:Boom 5 end x`,
 		// Defined and never called: it compiles (the recovery used to fail
 		// the check pass with an internal_error).
 		`def f fn [[n:Integer] [Boolean] [n div 0 gt 0]] end 1`,

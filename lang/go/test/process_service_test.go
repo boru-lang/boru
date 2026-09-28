@@ -340,7 +340,9 @@ func TestServiceSharedAcrossProcesses(t *testing.T) {
 		`def svc (service {n: 0})`,
 		`add {op:"bump"} ([req:Map state:Any] => [ state set n (add 1 state.n) drop None ]) svc`,
 		`add {op:"read"} ([req:Map state:Any] => [ state.n ]) svc`,
-		`def worker fn [[main:Pid] [Any] [
+		// worker returns nothing: `send` leaves no value, and a named call's
+		// declared count is the frame's contract on every path (NUR191).
+		`def worker fn [[main:Pid] [] [
 		   send {op:"bump"} svc
 		   send {op:"bump"} svc
 		   send {done: 1} main

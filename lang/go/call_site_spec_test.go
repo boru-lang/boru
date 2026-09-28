@@ -353,9 +353,13 @@ func TestCallSiteSpecialisationResidualMissDeclines(t *testing.T) {
 // generic pin stays in its own test, run with specialisation off.
 func TestCallSiteSpecialisationGraduatedShapes(t *testing.T) {
 	for _, src := range []string{
-		// apply_shapes_test.go — a bare fn word at the lead's argument position
-		`def inc fn [[n:Integer] [Integer] [n add 1]] end def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function] [Integer] [(k inc)]] end h app/v`,
-		`def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function g:Function] [Integer] [(k g)]] end def inc fn [[n:Integer] [Integer] [n add 1]] end h app/v inc/v`,
+		// apply_shapes_test.go — a fn REFERENCE at the lead's argument
+		// position. The bare-word spelling `(k inc)` is not a reference on
+		// this branch: a bare fn name calls at every slot (NUR078), so the
+		// interpreter calls `inc` over nothing and raises signature_error,
+		// and both paths decline it (TestApplyShapesBareFnWordArgDeclines).
+		`def inc fn [[n:Integer] [Integer] [n add 1]] end def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h app/v`,
+		`def app fn [[g:Function] [Integer] [(g 3)]] end def h fn [[k:Function g:Function] [Integer] [(k g/v)]] end def inc fn [[n:Integer] [Integer] [n add 1]] end h app/v inc/v`,
 		// apply_shapes_test.go — NUR176's 0-arg lead: the interpreter's 8
 		`def z fn [[] [Integer] [7]] end def inc fn [[n:Integer] [Integer] [n add 1]] end def h fn [[k:Function] [Integer] [(k inc/v)]] end h z/v`,
 		// arm_tail_apply_test.go

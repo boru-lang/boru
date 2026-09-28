@@ -73,8 +73,9 @@ func TestWordReadDispatchParity(t *testing.T) {
 		{`def mk fn [[k:Integer][Function][([a:Integer b:String] => [k])]]  def f fn [[g:Function][Any][g 1 2]]  [(mk 3)] each [f]`, "cannot call `g` — was [3]"},
 		{`def mk fn [[k:Integer][Function][([a:Integer b:String] => [k])]]  def f fn [[g:Function][Any][g 1 "b"]]  [(mk 3)] each [f]`, "[3]"},
 		{`def mk fn [[k:Integer][Function][(z:Integer => [mul k z])]]  def f fn [[g:Function x:Integer][Any][x g]]  [(mk 3)] each [f 5]`, "[15] — the closure bridged, collecting the frame's x"},
-		// value deliveries stay values: a Function-expecting forward, `/v`
-		{`def h fn [[k:Function][Any][typeof k/v]]  def f fn [[g:Function][Any][h g]]  f ([] => [42])`, "Function — delivered, not dispatched"},
+		// value deliveries stay values: the `/v` reference, whatever the
+		// slot (a bare `h g` CALLS g — NUR078; the declines below pin it)
+		{`def h fn [[k:Function][Any][typeof k/v]]  def f fn [[g:Function][Any][h g/v]]  f ([] => [42])`, "Function — delivered, not dispatched"},
 		{wrF + `[g/v]]  f ([] => [42]) typeof`, "Function"},
 		{`[1 2] each ([g:Function] => [g])`, "[fn (Function) fn (Function)] — an unmatched lambda stays data"},
 	}
@@ -98,6 +99,10 @@ func TestWordReadDispatchFailsToCompile(t *testing.T) {
 		{wrF + `[{a: g}]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
 		{wrF + `[if true [g] [0]]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
 		{`def h fn [[k:Function][Any][k/v]]  def f fn [[g:Function][Any][g h]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},
+		// a bare read before a Function-typed slot CALLS (NUR078): the word
+		// is a boundary, so h is left with nothing and raises — a no-match
+		// inside a unit, which has no trap to lower it to
+		{`def h fn [[k:Function][Any][typeof k/v]]  def f fn [[g:Function][Any][h g]]  f ([] => [42])`, "unmatched dispatch recovered at h"},
 		{wrF + `[g drop  g/v]]  f ([] => [42])`, "read both bare and by /v"},
 		{wrF + `[g/v drop  g]]  f ([] => [42])`, "read both bare and by /v"},
 		{wrF + `[g typeof]]  f ([] => [42])`, "consumed where the interpreter dispatches it"},

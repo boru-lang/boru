@@ -33,15 +33,8 @@ func TestNUR059WordModifierRenders(t *testing.T) {
 	}
 	for _, c := range cases {
 		got := CanonValue(NewValueRaw(TWord, c.w))
-		if c.want == "foo" {
-			// A BARE word keeps its existing debug spelling: rendering every
-			// word bare is a far larger change and a different question,
-			// which this record does not decide.
-			if got == "foo" {
-				t.Errorf("a bare word must keep its existing spelling, got %q", got)
-			}
-			continue
-		}
+		// A plain word renders bare too (NUR072): `word(foo)` re-parsed as
+		// the `word` splice over a group, so it was never source.
 		if got != c.want {
 			t.Errorf("canon %+v = %q, want %q", c.w, got, c.want)
 		}
@@ -67,23 +60,46 @@ func TestNUR059SugarAngleRenders(t *testing.T) {
 	}
 }
 
-// The NEGATIVE half, and the reason it is a negative: the other sugar kinds
-// were tried and withdrawn. A per-row fixpoint check showed `+m'src'`
-// rendering `+m<src>` — SugarInfo does not retain the source delimiter, so
-// the render re-parses with a stray `>` — and `w/t` rendering `[w/q]/t`,
-// which does not parse at all. A spelling that does not round-trip is worse
-// than the debug form, because it looks like source. They keep the
-// fallback, and this pins that they do.
-func TestNUR059OtherSugarKindsKeepTheFallback(t *testing.T) {
-	for _, info := range []SugarInfo{
-		{Kind: SugarMini, Name: "m", Src: "src"},
-		{Kind: SugarTypeBound, Items: []Value{NewList([]Value{NewAtom("w")})}},
-		{Kind: SugarLambda},
-		{Kind: SugarForceArity, N: 2},
+// TestNUR072SugarKindsSpellTheirSource pins the three sugar kinds NUR059
+// withdrew and NUR072 spelled: the lambda marker as `=>`, a mini literal in
+// the canonical `'` delimiter with the lexer's escapes, the type bound as
+// `name/t`. (The parser corpus pins that each re-parses to its marker.)
+func TestNUR072SugarKindsSpellTheirSource(t *testing.T) {
+	for _, c := range []struct {
+		info SugarInfo
+		want string
+	}{
+		{SugarInfo{Kind: SugarLambda}, "=>"},
+		{SugarInfo{Kind: SugarMini, Name: "m", Src: "src"}, "+m'src'"},
+		{SugarInfo{Kind: SugarMini, Name: "re", Src: `\d+`}, `+re'\d+'`},
+		{SugarInfo{Kind: SugarMini, Name: "m", Src: `it's a b\`}, `+m'it\'s\ a\ b\\'`},
+		{SugarInfo{Kind: SugarMini, Name: "m", Src: "a\tb\\'"}, "+m'a\\\tb\\\\\\''"},
+		{SugarInfo{Kind: SugarMini, Name: "hb-2", Src: ""}, "+hb-2''"},
+		{SugarInfo{Kind: SugarTypeBound, Items: []Value{NewList([]Value{NewAtom("w")})}}, "w/t"},
 	} {
-		got := CanonValue(NewSugar(info))
-		if _, handled := canonSugar(info); handled {
-			t.Errorf("%v must NOT claim a source spelling (got %q)", info.Kind, got)
+		if got := CanonValue(NewSugar(c.info)); got != c.want {
+			t.Errorf("canon %+v = %q, want %q", c.info, got, c.want)
+		}
+	}
+}
+
+// The NEGATIVE half: a marker no source can produce keeps the fallback — a
+// force-arity marker (its `/N` rides on the word), a mini source holding a
+// newline or a kind the lexer would not read, a bound that is not one
+// quoted name.
+func TestNUR072UnspellableSugarKeepsTheFallback(t *testing.T) {
+	for _, info := range []SugarInfo{
+		{Kind: SugarForceArity, N: 2},
+		{Kind: SugarMini, Name: "m", Src: "a\nb"},
+		{Kind: SugarMini, Name: "M", Src: "x"},
+		{Kind: SugarMini, Name: "", Src: "x"},
+		{Kind: SugarMini, Name: "m_x", Src: "x"},
+		{Kind: SugarTypeBound, Items: []Value{NewList([]Value{NewAtom("w"), NewAtom("v")})}},
+		{Kind: SugarTypeBound, Items: []Value{NewAtom("w")}},
+		{Kind: SugarTypeBound},
+	} {
+		if out, handled := canonSugar(info); handled {
+			t.Errorf("%+v must NOT claim a source spelling (got %q)", info, out)
 		}
 	}
 }

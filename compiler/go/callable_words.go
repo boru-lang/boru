@@ -1,6 +1,8 @@
 package compiler
 
 import (
+	"slices"
+
 	check "github.com/boru-lang/boru/check/go"
 	core "github.com/boru-lang/boru/core/go"
 )
@@ -139,6 +141,7 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 		// the unit resolves each input to its param slot (PUSH_LOCAL i … RET).
 		stk = append(stk, inputs...)
 	}
+	es.fnRecs[unit].mayReturnFn = slices.ContainsFunc(stk, valueMayBeFn)
 	finish(stk)
 	return unit, es.Compilable
 }
@@ -323,7 +326,7 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// typechecks, then record the dispatch with the body as a closure the
 	// handler drives through InvokeBody.
 	if fd, isFn := body.Data.(core.FnDefInfo); isFn {
-		return tryRecordLambdaClosure(r, word, spec, sig, args, &fd, body.Pos(), extraLamSlots, outs, pos)
+		return tryRecordLambdaClosure(r, word, spec, sig, args, body, &fd, extraLamSlots, outs, pos)
 	}
 
 	// A token-list body (`filter [body] data`): the body consumes its inputs
@@ -382,7 +385,19 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// STARTED from (unit_memo.go): claimed here, applied around every
 	// compile inside recordClosureDispatch.
 	env := es.takeBodyEnv(body, spec)
-	if !recordClosureDispatch(r, word, spec, sig, args, bodyToks, inputs, nil, captures, ClosureInValue, extraLamSlots, outs, nil, nil, false, pos, env) {
+	// A TOKEN body's residual evaluates in the body's own run — the
+	// InvokeBody seam's sub-engine sweeps a pending container at its end,
+	// with the body's inputs and bindings live — never deferred past it:
+	// bodyInFrame is true, the interpreter's rule for a body that is not an
+	// anonymous lambda (ResidualEvalsInFrame). Passed false, a single
+	// container literal body (`do [[i]]` under a `for`, `do [{a:i}]`)
+	// analysed as a deferring lambda: its residual recorded no assembly,
+	// the closure declined on the unknown provenance, and the dyn-body
+	// backstop baked the literal as a const the handler re-ran through the
+	// interpreter — where the loop's `i` is a frame slot the registry never
+	// held, `error(undefined word: i)` for the interpreter's `[0]` (NUR197's
+	// do-body twin on the compiled lane).
+	if !recordClosureDispatch(r, word, spec, sig, args, bodyToks, inputs, nil, captures, ClosureInValue, extraLamSlots, outs, nil, nil, true, pos, env) {
 		return false
 	}
 	// A once-run defs-keeping body (`do`) compiled to a closure unit makes
@@ -418,7 +433,8 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 // (`p.value`, `kv.v`, `acc`+`kv.v`) typechecks. Returns false — leaving the
 // compile failure to stand — for a shape the word has no lambda convention for, an
 // arity mismatch, or a body that does not compile.
-func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpec, sig *core.Signature, args []core.Value, fd *core.FnDefInfo, fnPos core.SrcPos, extraLamSlots []int, outs []core.Value, pos core.SrcPos) bool {
+func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpec, sig *core.Signature, args []core.Value, body core.Value, fd *core.FnDefInfo, extraLamSlots []int, outs []core.Value, pos core.SrcPos) bool {
+	fnPos := body.Pos()
 	inputs, shape, ok := lambdaCallbackInputs(r, word, spec, args)
 	if !ok {
 		return false
@@ -484,11 +500,26 @@ func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpe
 	if foreignFnHome(r, fd) {
 		restore := check.ShareCheckStateFrom(fd.Registry, r)
 		defer restore()
-		return recordClosureDispatch(fd.Registry, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, fnValueRetSpec(fd, lam, fnPos), lamParamContract(lam), !fd.Anonymous, pos, nil)
+		return recordClosureDispatch(fd.Registry, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, callbackSourceSpec(fnValueRetSpec(fd, lam, fnPos), body), lamParamContract(lam), !fd.Anonymous, pos, nil)
 	}
 	// A lambda body is a fn body: its defs are frame-locals and nothing
 	// leaks, so it needs no re-run environment.
-	return recordClosureDispatch(r, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, fnValueRetSpec(fd, lam, fnPos), lamParamContract(lam), !fd.Anonymous, pos, nil)
+	return recordClosureDispatch(r, word, spec, sig, args, lam.Body(), inputs, names, captures, shape, extraLamSlots, outs, callbackSourceSpec(fnValueRetSpec(fd, lam, fnPos), body), lamParamContract(lam), !fd.Anonymous, pos, nil)
+}
+
+// callbackSourceSpec carries the callback fn VALUE on its push's spec
+// (ClosureRetSpec.Source → ClosurePayload.Source): a callback body unit whose
+// body reads a param bare under a gradual carrier runs over data, and the VM
+// hands an invocation with a fn in such a slot to the interpreter's own step
+// of the value, which dispatches it there as a word (NUR268). The contract
+// fields ride as fnValueRetSpec built them — none when it built none.
+func callbackSourceSpec(ret *ClosureRetSpec, src core.Value) *ClosureRetSpec {
+	out := ClosureRetSpec{}
+	if ret != nil {
+		out = *ret
+	}
+	out.Source = &src
+	return &out
 }
 
 // lamParamContract is a lambda's declared PARAM contract — the types and
@@ -759,6 +790,14 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	for i, cb := range captures {
 		op, ok := real.resolveOperand(cb.Value)
 		if !ok {
+			// The dyn-body backstop takes the body instead, and it trusts a
+			// LITERAL body's modelled count; a residual holding a run is not
+			// that (NUR294), so the probe that would have found it runs here
+			// and leaves the backstop its answer.
+			if spec.BodyOut == core.BodyOutResidual && len(extraLamSlots) == 0 &&
+				probeResidualRuns(r, real, word, spec, bodyToks, inputs, paramNames, paramSpec, captures, shape, bodyInFrame, pos, env) {
+				real.noteBodyRun(args[spec.BodyPos])
+			}
 			return false
 		}
 		capOps[i] = op
@@ -837,6 +876,13 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	probe := real.forkForProbe()
 	r.Check.Emit = probe
 	probeUnit, probeOk := compile(bodyToks, paramNames, captures)
+	// A body the probe finds may leave a fn value no modelled output shows
+	// is one whose results the interpreter re-steps, whichever strategy
+	// takes it (NUR317): the dyn-body backstop reads the note when the
+	// closure declines.
+	if spec.BodyOut == core.BodyOutResidual && probeUnit >= 0 && probe.fnRecs[probeUnit].mayReturnFn && !slices.ContainsFunc(outs, valueMayBeFn) {
+		real.noteBodyReStep(args[spec.BodyPos])
+	}
 	for _, ex := range extras {
 		if !probeOk { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			break
@@ -872,9 +918,26 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// The dispatch's recorded seats then stand for a run of its own length —
 	// the do-catch model — so the event is marked VARIADIC below and the
 	// program residual absorbs it.
+	//
+	// A residual holding a RUN is never exact, whatever the seat count: the
+	// run's values are its own runtime count (runOperand). A one-out body
+	// ending in one — `do [do (mk)]`, `do [if c (mk) [3]]` over a List arm —
+	// took the one seat and was promoted or rotated as one value (NUR294:
+	// `9 do [do (mk)]` over [1 2] answered [1 9 2]); now it is a region or
+	// declines to the dyn-body strategy.
 	regionResidual := false
-	if spec.BodyOut == core.BodyOutResidual && len(outs) > 1 && !closureResidualExact(probe, probeUnit, len(outs)) {
+
+	if spec.BodyOut == core.BodyOutResidual &&
+		((len(outs) > 1 && !closureResidualExact(probe, probeUnit, len(outs))) || closureResidualRuns(probe, probeUnit)) {
 		if !closureResidualRegion(probe, probeUnit) {
+			// The dyn-body backstop takes the body next, and it trusts a
+			// LITERAL body's modelled count; a residual holding a run is not
+			// that (NUR301: `do [do [raise oops 'x'] error (mk)]` seated a
+			// handler's two values as one), so it takes a computed body's
+			// marks, as the capture arm above leaves it.
+			if closureResidualRuns(probe, probeUnit) {
+				real.noteBodyRun(args[spec.BodyPos])
+			}
 			return false
 		}
 		regionResidual = true
@@ -977,6 +1040,44 @@ func closureResidualExact(es *EmitState, unit, want int) bool {
 	}
 	rec := es.fnRecs[unit]
 	return !rec.variadic && rec.dynTrailArity == 0 && rec.dynFrameW == 0 && len(rec.outOps) == want
+}
+
+// probeResidualRuns compiles a whole-residual body in a throwaway probe, as
+// recordClosureDispatch's own probe does, and reports whether its residual
+// holds a run (closureResidualRuns) — for a dispatch whose closure declines
+// before its probe, so the backstop that takes the body knows (NUR294).
+func probeResidualRuns(r *core.Registry, real *EmitState, word string, spec core.CallableSpec, bodyToks, inputs []core.Value, paramNames []string, paramSpec *ClosureParamSpec, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos, env *bodyRunEnv) bool {
+	diagBase := len(r.Check.Diagnostics)
+	defer r.Check.TruncateDiagnostics(diagBase)
+	// The environment refuses only a multi-run body's re-run; a failed enter
+	// returns no table, which exit leaves alone.
+	prev, ok := env.enter(r)
+	defer env.exit(r, prev)
+	return ok && probedResidualRuns(r, real, word, spec, bodyToks, inputs, paramNames, paramSpec, captures, shape, bodyInFrame, pos)
+}
+
+// probedResidualRuns is probeResidualRuns' probe compile, in the environment
+// it entered.
+func probedResidualRuns(r *core.Registry, real *EmitState, word string, spec core.CallableSpec, bodyToks, inputs []core.Value, paramNames []string, paramSpec *ClosureParamSpec, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos) bool {
+	probe := real.forkForProbe()
+	r.Check.Emit = probe
+	unit, probeOk := compileClosureBody(r, word, spec.BodyOut, spec.EmptyBodyErrors || spec.StripsUnconsumedInput, bodyToks, inputs, paramNames, paramSpecPatterns(paramSpec), captures, shape, bodyInFrame, pos)
+	r.Check.Emit = real
+	probe.undoProbeStamps()
+	return probeOk && closureResidualRuns(probe, unit)
+}
+
+// closureResidualRuns reports whether a probe-compiled closure unit's
+// residual holds a RUN (runOperand): values whose runtime count is their
+// own, which no seat count describes (NUR294).
+func closureResidualRuns(es *EmitState, unit int) bool {
+	rec := es.fnRecs[unit]
+	for _, op := range rec.outOps {
+		if rec.frag != nil && es.runOperand(op, rec.frag.events, 0) {
+			return true
+		}
+	}
+	return false
 }
 
 // closureResidualRegion reports whether a probe-compiled closure unit's
@@ -1155,7 +1256,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// position descriptor even over a list, which is why the two cases
 		// here differ rather than sharing a branch.
 		if isList {
-			return []core.Value{check.NewElementCarrier(elem)}, ClosureInValue, true
+			return []core.Value{check.ElementCarrierOf(data)}, ClosureInValue, true
 		}
 	case "fold":
 		// NOT an arity rule. `fold` declares TWO signatures — one taking a seed
@@ -1169,7 +1270,11 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// the accumulator carries the seed's type, the entry rides as a KeyVal.
 		if isMap && len(args) > spec.BodyPos+2 {
 			acc := args[spec.BodyPos+2]
-			return []core.Value{core.NewCarrier(acc.Parent), keyValCarrier(r, elem)}, ClosureInKeyVal, true
+			accC := core.NewCarrier(acc.Parent)
+			if core.IsTypeLiteral(acc) {
+				accC = core.ValueCarrier(acc) // a type VALUE seed (NUR323)
+			}
+			return []core.Value{accC, keyValCarrier(r, elem)}, ClosureInKeyVal, true
 		}
 		// A LIST fold's lambda declares (element, accumulator) — the
 		// interpreter's top-down assignment over the stack InvokeBody hands it
@@ -1185,7 +1290,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 			if len(args) > spec.BodyPos+2 {
 				accT = args[spec.BodyPos+2].Parent
 			}
-			return []core.Value{check.NewElementCarrier(elem), core.NewCarrier(accT)}, ClosureInStackPair, true
+			return []core.Value{check.ElementCarrierOf(data), core.NewCarrier(accT)}, ClosureInStackPair, true
 		}
 	case "scan":
 		// scan seeds the accumulator from the first value (no init operand): the
@@ -1197,7 +1302,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// slots carry the element type; the order and the permutation are the
 		// list fold's.
 		if isList {
-			return []core.Value{check.NewElementCarrier(elem), core.NewCarrier(elem)}, ClosureInStackPair, true
+			return []core.Value{check.ElementCarrierOf(data), check.ElementCarrierOf(data)}, ClosureInStackPair, true
 		}
 	}
 	return nil, ClosureInValue, false

@@ -13,7 +13,7 @@ import (
 // VM's dynamic-apply sites (eng dynApplyForeign, runForeignUnit's
 // discipline) where dynApplyEnter, which enters only an in-program unit as a
 // frame, used to decline it to an island. The unit runs where its Program
-// put it, so the module fn's free words resolve at the module (`apply1 A.pub
+// put it, so the module fn's free words resolve at the module (`apply1 A.pub/v
 // 5` beside a main-program `secret` answers the module's 6), a raise inside
 // it is the interpreter's error, and a value the window does not fit, or a
 // site's result-count claim the contract does not promise, keeps the island
@@ -25,12 +25,12 @@ var foreignFnValueApplyRows = []struct {
 	label, src, want string
 	native           bool
 }{
-	{"one export passed into another as its callback (L146)", `import module [def inc fn [[n:Integer][Integer][n add 1]] def run fn [[f:Function x:Integer][Integer][(f x)]] export "M" {inc: inc/v, run: run/v}] end M.run M.inc 5`, "[6]", true},
+	{"one export passed into another as its callback (L146)", `import module [def inc fn [[n:Integer][Integer][n add 1]] def run fn [[f:Function x:Integer][Integer][(f x)]] export "M" {inc: inc/v, run: run/v}] end M.run M.inc/v 5`, "[6]", true},
 	{"an export fetched by get and applied (L100)", modInc + `def m {f: M.inc/v} end 5 (m 'f' get) apply`, "[6]", true},
-	{"a named Function param keeps the argument's scope (L51)", `import module [def secret fn [[n:Integer] [Integer] [n add 1]] def pub fn [[n:Integer] [Integer] [secret n]] export "A" {pub: pub/v}] end def secret fn [[n:Integer] [Integer] [n mul 100]] def apply1 fn [[f:Function n:Integer] [Integer] [f n]] apply1 A.pub 5`, "[6]", true},
-	{"a paren apply of a Function param", modInc + `def run fn [[f:Function x:Integer][Integer][(f x)]] end run M.inc 5`, "[6]", true},
+	{"a named Function param keeps the argument's scope (L51)", `import module [def secret fn [[n:Integer] [Integer] [n add 1]] def pub fn [[n:Integer] [Integer] [secret n]] export "A" {pub: pub/v}] end def secret fn [[n:Integer] [Integer] [n mul 100]] def apply1 fn [[f:Function n:Integer] [Integer] [f n]] apply1 A.pub/v 5`, "[6]", true},
+	{"a paren apply of a Function param", modInc + `def run fn [[f:Function x:Integer][Integer][(f x)]] end run M.inc/v 5`, "[6]", true},
 	{"a callback lambda applying its Function param over a module value", modInc + `each ([f:Function] => [(f 5)]) [M.inc/v]`, "[[6]]", true},
-	{"the module value under a Function param, twice", modInc + `def twice fn [[f:Function x:Integer][Integer][(f (f x))]] end twice M.inc 5`, "[7]", true},
+	{"the module value under a Function param, twice", modInc + `def twice fn [[f:Function x:Integer][Integer][(f (f x))]] end twice M.inc/v 5`, "[7]", true},
 	{"a callback lambda applying a module fn fetched from an exported map (L75)", `import module [def h1 fn n:Integer Integer [n add 1] def h2 fn n:Integer Integer [n mul 10] def tbl {inc: h1/v ten: h2/v} export "M" {tbl: tbl}] end each ([k:String] => [((M.tbl k get) 4)]) ['inc' 'ten']`, "[[5 40]]", true},
 }
 
@@ -88,8 +88,8 @@ func TestForeignFnValueApplyParity(t *testing.T) {
 // named, detailed and positioned alike.
 func TestForeignFnValueApplyRaisesAlike(t *testing.T) {
 	for _, src := range []string{
-		`import module [def boom fn [[n:Integer][Integer][raise bad_input "boom"]] export "M" {boom: boom/v}] end def run fn [[f:Function x:Integer][Integer][(f x)]] end run M.boom 5`,
-		modInc + `def run fn [[f:Function x:Any][Any][(f x)]] end run M.inc 's'`,
+		`import module [def boom fn [[n:Integer][Integer][raise bad_input "boom"]] export "M" {boom: boom/v}] end def run fn [[f:Function x:Integer][Integer][(f x)]] end run M.boom/v 5`,
+		modInc + `def run fn [[f:Function x:Any][Any][(f x)]] end run M.inc/v 's'`,
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 		if !compiled || errI == nil || codeOf(errC) != codeOf(errI) || detailOf(errC) != detailOf(errI) || len(gotC) != 0 || len(gotI) != 0 {

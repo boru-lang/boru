@@ -528,8 +528,10 @@ func TestMatchSignatureDeepTypeHierarchy(t *testing.T) {
 	}
 	SortSignatures(sigs)
 
-	// A value with the deepest type should match the most specific signature
-	val := Value{Parent: mustTestType(t, "Data/Num/Int/I32/Signed/Big/Huge"), Data: nil}
+	// A value with the deepest type should match the most specific signature.
+	// A carrier stands for the value: a payload-less non-carrier is a TYPE
+	// literal, which a value slot refuses (NUR323).
+	val := Value{Parent: mustTestType(t, "Data/Num/Int/I32/Signed/Big/Huge"), Carrier: true}
 	stack := []Value{val}
 	m := MatchSignature(sigs, stack, WordInfo{ArgCount: -1})
 	if m == nil {
@@ -551,7 +553,7 @@ func TestMatchSignatureMidLevelType(t *testing.T) {
 	SortSignatures(sigs)
 
 	// A value at depth 6 should match the deepest available signature (depth 4)
-	val := Value{Parent: mustTestType(t, "Data/Num/Int/I32/Signed/Big"), Data: nil}
+	val := Value{Parent: mustTestType(t, "Data/Num/Int/I32/Signed/Big"), Carrier: true} // a value, not the type (NUR323)
 	stack := []Value{val}
 	m := MatchSignature(sigs, stack, WordInfo{ArgCount: -1})
 	if m == nil {
@@ -734,7 +736,7 @@ func TestMatchSignatureEfficiencyThousandsOfSiblings(t *testing.T) {
 
 	start := time.Now()
 	for i := 0; i < numSiblings; i++ {
-		val := Value{Parent: mustTestType(t, fmt.Sprintf("A/B/%d", i)), Data: nil}
+		val := Value{Parent: mustTestType(t, fmt.Sprintf("A/B/%d", i)), Carrier: true} // a value, not the type (NUR323)
 		m := MatchSignature(sigs, []Value{val}, WordInfo{ArgCount: -1})
 		if m == nil {
 			t.Fatalf("A/B/%d should match signature [A/B]", i)

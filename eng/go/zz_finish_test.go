@@ -473,7 +473,7 @@ func TestInvokeCallbackBusyRegistryFallsBack(t *testing.T) {
 	}}}
 	ref := &compiler.CompiledFnRef{Prog: p, Unit: 0}
 	// Direct: no VM path applies, so ran=false.
-	if _, _, ran := invokeCompiledUnit(r, ref, nil); ran {
+	if _, _, ran := invokeCompiledUnit(r, ref, nil, false); ran {
 		t.Fatal("a busy registry with no nestedRunner must report ran=false")
 	}
 	// Via InvokeCallback: it falls through to CallBoru over the body.

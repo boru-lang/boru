@@ -30,7 +30,9 @@ func TestInactiveCheckBraid(t *testing.T) {
 		t.Fatal("inactive exprRefsCarrier must be false")
 	}
 	inactiveNoteSpeculativeBarrierCommit(nil, ForwardInfo{})
-	inactiveDeclineForwardStackDrift(nil, nil, nil)
+	if inactiveDeclineForwardStackDrift(nil, nil, nil) {
+		t.Fatal("inactive declineForwardStackDrift declines nothing")
+	}
 	inactiveDeclineStrandedMemberFn(nil, nil)
 	inactiveShareCheckState(nil, nil)() // the restore closure is a no-op
 	if err := inactiveSpliceAnonCheckResult(nil, 0, 0, nil, nil, nil); err != nil {

@@ -10,7 +10,7 @@ package core
 // on-write is the stage-4 flow-sensitivity step; join keeps every
 // sandbox/branch interaction monotone).
 func (s *StoreShapeInfo) RecordKey(key string, v Value) {
-	if s == nil || key == "" {
+	if s == nil || key == "" || s.KeysPoisoned {
 		return
 	}
 	if s.KeyTypes == nil {
@@ -27,7 +27,7 @@ func (s *StoreShapeInfo) RecordKey(key string, v Value) {
 // store, or ok=false when this store never saw the key written (the
 // caller then falls back to the flat map — today's behaviour).
 func (s *StoreShapeInfo) LookupKey(key string) (Value, bool) {
-	if s == nil {
+	if s == nil || s.KeysPoisoned {
 		return Value{}, false
 	}
 	v, ok := s.KeyTypes[key]
@@ -55,6 +55,21 @@ func (s *StoreShapeInfo) RecordVal(v Value) {
 	s.Vals = JoinCarriers(s.Vals, v)
 }
 
+// Poison marks every claim of the shape unusable, keyed and unkeyed alike:
+// the container reached a writer the shape cannot see — a user fn it was
+// passed to, which may write through its parameter's alias (NUR315: `poke
+// fl drop def j (fl get 0) j`, where poke sets a fn at 0, read the stale
+// Integer claim and answered `fn j` for the interpreter's 42). Readers keep
+// the dynamic(Any) hatch from then on; a declared element type (a typed
+// patrun's) is a declaration, not a claim, and stands.
+func (s *StoreShapeInfo) Poison() {
+	if s == nil {
+		return
+	}
+	s.KeysPoisoned, s.KeyTypes = true, nil
+	s.ValsPoisoned, s.Vals = true, Value{}
+}
+
 // LookupVals returns the unkeyed value join, or ok=false when nothing
 // was recorded or the join is poisoned.
 func (s *StoreShapeInfo) LookupVals() (Value, bool) {
@@ -74,7 +89,7 @@ func (s *StoreShapeInfo) CloneShape() *StoreShapeInfo {
 	if s == nil {
 		return nil
 	}
-	cp := &StoreShapeInfo{Scope: s.Scope, Vals: s.Vals, ValsPoisoned: s.ValsPoisoned, DeclaredVal: s.DeclaredVal}
+	cp := &StoreShapeInfo{Scope: s.Scope, Vals: s.Vals, ValsPoisoned: s.ValsPoisoned, KeysPoisoned: s.KeysPoisoned, DeclaredVal: s.DeclaredVal}
 	if s.KeyTypes != nil {
 		cp.KeyTypes = make(map[string]Value, len(s.KeyTypes))
 		for k, v := range s.KeyTypes {

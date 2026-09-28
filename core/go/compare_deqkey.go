@@ -148,7 +148,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// lists included, via deqListElems; NUR033). DeqUnkeyed remains only
 	// for a list carrier — a type-level operand DeepEqual still compares
 	// by render, so it must be scanned pairwise within its family.
-	if nodeFamily(v.Parent).Equal(TList) {
+	if containerFamily(v.Parent).Equal(TList) {
 		elems, ok := deqListElems(v)
 		if !ok {
 			return "", DeqUnkeyed
@@ -176,7 +176,7 @@ func deqKeyAtDepth(v Value, depth int) (string, DeqKeyClass) {
 	// VALUES (populated typed maps included, via deqMapEntries; NUR033).
 	// DeqUnkeyed remains only for a map carrier or a Record/Options type
 	// constructor, which DeepEqual still compares by render.
-	if nodeFamily(v.Parent).Equal(TMap) {
+	if containerFamily(v.Parent).Equal(TMap) {
 		m, ok := deqMapEntries(v)
 		if !ok {
 			return "", DeqUnkeyed

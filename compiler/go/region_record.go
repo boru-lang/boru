@@ -158,6 +158,9 @@ type heldRegion struct {
 	off      pendingRegion
 	ok       bool // an offer was in the pool at hold time
 	consumed bool // the record has completed it
+	// win is the dispatch window offered under the same key, held beside
+	// the region for the same reason (call_window.go).
+	win pendingWindow
 }
 
 // HoldRegion takes the Phase-A offer for the dispatching word token out of
@@ -170,7 +173,7 @@ func (es *EmitState) HoldRegion(word string, pos core.SrcPos) func() {
 	}
 	off, ok := es.takePendingRegion(word, pos)
 	depth := len(es.heldRegions)
-	es.heldRegions = append(es.heldRegions, heldRegion{key: keyOf(word, pos), off: off, ok: ok})
+	es.heldRegions = append(es.heldRegions, heldRegion{key: keyOf(word, pos), off: off, ok: ok, win: es.takePendingWindow(word, pos)})
 	return func() {
 		if len(es.heldRegions) > depth {
 			es.heldRegions = es.heldRegions[:depth]

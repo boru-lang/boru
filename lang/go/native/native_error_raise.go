@@ -97,6 +97,10 @@ var errorNatives = []NativeFunc{
 // the compile failure loop skips mirrors, so the row still compiles and raises
 // identically. The residual model is unchanged: raise produces no value.
 func raiseReturns(args []Value, r *Registry) []Value {
+	// A raise always raises when reached: at a `do` body's own level it
+	// ends the body (NoteDefiniteRaise — the body's result is the caught
+	// Error and nothing after the raise runs).
+	r.Check.NoteDefiniteRaise(r.Defs.Snapshot)
 	if atUncaughtTopLevel(r) && len(args) > 0 {
 		detail := "raise: this raise is unconditionally reached — the program always errors"
 		if msg, err := args[len(args)-1].AsConcreteString(); err == nil && len(args) <= 2 {

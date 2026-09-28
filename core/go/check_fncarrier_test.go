@@ -443,3 +443,44 @@ func TestCheckFnCarrierBindDepthWithoutDepthTable(t *testing.T) {
 		t.Errorf("no depth table: the name has no bind depth, got %d %v", d, bound)
 	}
 }
+
+// TestStepWordCarrierFnIsABarrier pins NUR216's barrier: a name def-bound to
+// a FUNCTION carrier is a function word on the run, so its read under an
+// analysis pass is a forward-collection barrier exactly as a registered fn
+// word's is — a parked forward that can fire commits first, one that cannot
+// strands — where the pass used to hand the carrier to the pending word as
+// data. A gradual carrier (it may hold data) is no barrier.
+func TestStepWordCarrierFnIsABarrier(t *testing.T) {
+	setStrict(t, true)
+	// Stranded: the uncommittable parked forward below the read.
+	r := compileCheckRegistry(t)
+	NoteCheckFnCarrierBind(r, "h", NewCarrier(TFunction))
+	e := NewTop(r)
+	e.Tape = NewTape([]Value{NewInteger(1), NewWord("waiting"), fwdMarker("waiting", 1, 1, 0), NewWord("h")}, StackHeadroom)
+	e.Pointer = 3
+	err := e.stepWord(e.Tape.At(3))
+	if err == nil || !strings.Contains(err.Error(), "strict rule") {
+		t.Fatalf("a fn word read under a pending forward strands it, got %v", err)
+	}
+	// Committed: a fully-claimed forward fires first, and the read waits.
+	r = compileCheckRegistry(t)
+	NoteCheckFnCarrierBind(r, "h", NewCarrier(TFunction))
+	e = NewTop(r)
+	e.Tape = NewTape([]Value{fwdMarker("cadd", 3, 2, 0), NewInteger(3), NewInteger(4), NewWord("cadd"), NewWord("h")}, StackHeadroom)
+	e.Pointer = 4
+	if err := e.stepWord(e.Tape.At(4)); err != nil {
+		t.Fatalf("a committing barrier returns nil, got %v", err)
+	}
+	if IsWord(e.Tape.At(e.Tape.Len()-1)) == false {
+		t.Error("the read stays a word for its own step once the forward fires")
+	}
+	// A gradual carrier is no barrier: it is substituted as before.
+	r = compileCheckRegistry(t)
+	NoteCheckFnCarrierBind(r, "g", NewDynamicCarrier(TAny))
+	e = NewTop(r)
+	e.Tape = NewTape([]Value{NewInteger(1), NewWord("waiting"), fwdMarker("waiting", 1, 1, 0), NewWord("g")}, StackHeadroom)
+	e.Pointer = 3
+	if err := e.stepWord(e.Tape.At(3)); err != nil {
+		t.Errorf("a gradual carrier's read is not a barrier, got %v", err)
+	}
+}

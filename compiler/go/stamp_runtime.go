@@ -448,7 +448,7 @@ func LazyStampFnSig(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, po
 // continue / return, storedSigEligible's rule). ok=false is the seam's
 // interpreter path, byte-identical to before.
 func StampTokenBody(r *core.Registry, tokens []core.Value, inputTypes []*core.Type, pos core.SrcPos) (*CompiledFnRef, bool) {
-	if r == nil || !r.RuntimeStampingEnabled() || len(tokens) == 0 || bodyHasReplayHazard(core.NewList(tokens)) {
+	if r == nil || !r.RuntimeStampingEnabled() || len(tokens) == 0 || bodyHasReplayHazard(core.NewList(tokens)) || bodyUndefs(tokens) {
 		return nil, false
 	}
 	params := make([]core.FnParam, len(inputTypes))
@@ -460,6 +460,34 @@ func StampTokenBody(r *core.Registry, tokens []core.Value, inputTypes []*core.Ty
 	}
 	fd := core.FnDefInfo{Name: "codebody", Anonymous: true, Signatures: []core.Signature{{Params: params, Impl: &core.BoruImpl{Body: tokens}}}}
 	return stampDetachedSig(r, fd, 0, pos, true)
+}
+
+// bodyUndefs reports whether a token body unbinds a name with `undef`, in a
+// nested list or group included (NUR267). The stamp compiles the body as a
+// detached fn unit, whose frame does not model an unbind of a binding it
+// did not make — the interpreter's `do` runs the body in its caller's scope,
+// where the unbind takes effect — so a read after it answered the value the
+// name held before: `[undef x x]` over `def x 99` was 99 compiled, where the
+// interpreter raises `undefined word: x`, and `[def x 5 undef x x]` was 5 for
+// 99. Such a body stays the interpreter's, as every declined body does.
+func bodyUndefs(tokens []core.Value) bool {
+	for _, tok := range tokens {
+		switch d := tok.Data.(type) {
+		case core.WordInfo:
+			if d.Name == "undef" {
+				return true
+			}
+		case core.ListPayload:
+			if bodyUndefs(d.Elems) {
+				return true
+			}
+		case core.ParenExprPayload:
+			if bodyUndefs(d.Toks) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // bodyDefNames collects the names a token body binds with `def` (and the

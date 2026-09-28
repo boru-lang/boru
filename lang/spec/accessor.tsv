@@ -94,6 +94,12 @@ do [raise bad_input 'boom'] error [get 'message']	'boom'	get reads the message b
 # ---- None: forgiving access propagates None ----
 None get 'a'	None	get over None short-circuits to None
 None dot (quote x)	None	dot over None with a materialised atom key → None
+None dot x	None	…and with a bare-word key, quoted like every other receiver's (NUR198, closed 2026-09-25: the word used to step on its own as undefined_word)
+{a:1}.b.c	None	a chained read through a missing member stays None all the way down
+{a:1} dot b dot c	None	…the lowered spelling
+def m {a:1} end 5 m.b.c	5 None	…and the read consumes exactly its receiver: the value beneath stays
+None dotr x	ERROR:not_found	the strict twin over None raises the family's not_found for a bare-word key too, never undefined_word
+{a:1}.b!.c	ERROR:not_found	…a strict hop after a forgiving miss raises
 
 # ---- Chained access composes left to right ----
 {a:{b:7}} dot a dot b	7	dot chains: a then b

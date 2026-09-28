@@ -347,12 +347,17 @@ func TestEdgeFindingConditionalFnShadowFailsToCompile(t *testing.T) {
 	fnB := `fn [[x:Any] [Integer] [x add 1]]`
 	want := "redefined inside a conditional body"
 
-	// DECLINE: every conditionally-reached redefinition of an outer fn.
-	mustFailToCompileWithParity(t, `def g `+fnA+` if false [def g `+fnB+`] g 1`, want) // branch not taken
-	mustFailToCompileWithParity(t, `def c false def g `+fnA+` if c [def g `+fnB+`] g 1`, want)
+	// DECLINE: a conditionally-reached redefinition of an outer fn the
+	// compiled program cannot place.
 	mustFailToCompileWithParity(t, `def g `+fnA+` if true [def g `+fnB+`] g 1`, want) // taken, still unsound-at-shape
 	mustFailToCompileWithParity(t, `def g `+fnA+` for 2 [def g `+fnB+`] g 1`, want)   // loop body
 	mustFailToCompileWithParity(t, `def g `+fnA+` ([1 2] each [def g `+fnB+`]) g 1`, want)
+
+	// COMPILE (NUR244): the arm a DECIDED condition skips is bracketed as
+	// speculative, so its redefinition is placed at its site and the call
+	// routes live — the outer fn answers, on both lanes.
+	mustCompileWithParity(t, `def g `+fnA+` if false [def g `+fnB+`] g 1`, "[101]") // branch not taken
+	mustCompileWithParity(t, `def c false def g `+fnA+` if c [def g `+fnB+`] g 1`, "[101]")
 
 	// COMPILE (must NOT over-decline): the redefinition is UNCONDITIONAL.
 	mustCompileWithParity(t, `def g `+fnA+` def g `+fnB+` g 1`, "[2]")      // top-level shadow

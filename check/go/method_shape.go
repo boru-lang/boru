@@ -98,6 +98,21 @@ func evalFixedWindowToken(v core.Value) bool {
 	return false
 }
 
+// modifiedAsData reports whether a dispatch modifier (`/v`, `/q`) follows
+// the carrier at valIdx — directly, or after the close of the reach group
+// it stands alone in (`( m dot f ) /v`): the marker says DATA, so the member
+// the read delivers stays a value where the interpreter's peek leaves it —
+// `def m {f: g/v} m.f/v` is `fn g`, where a 0-arg member's arrival model
+// fired it (7; NUR318). The marker then quotes the carrier (the
+// standalone-marker drop, NUR277).
+func modifiedAsData(e *core.Engine, valIdx int) bool {
+	i := valIdx + 1
+	if i < e.Tape.Len() && core.IsCloseParen(e.Tape.At(i)) && valIdx > 0 && core.IsOpenParen(e.Tape.At(valIdx-1)) {
+		i++
+	}
+	return i < e.Tape.Len() && core.IsDispatchMod(e.Tape.At(i))
+}
+
 // TryShapedMethodDispatch models the interpreter's auto-dispatch of an
 // annotated dynamic method-read carrier sitting at the pointer (see the
 // file comment). Returns true when it consumed the dispatch (tape spliced,
@@ -106,7 +121,7 @@ func evalFixedWindowToken(v core.Value) bool {
 func TryShapedMethodDispatch(e *core.Engine, valIdx int) bool {
 	r := e.Registry
 	v := e.Tape.At(valIdx)
-	if !v.Dynamic || v.Quoted || v.ID == "" {
+	if !v.Dynamic || v.Quoted || v.ID == "" || modifiedAsData(e, valIdx) {
 		return false
 	}
 	member, ok := r.Check.MethodShapeMember(v.ID)
@@ -388,7 +403,7 @@ func tryDynamicFnValueDispatch(e *core.Engine, valIdx int) bool {
 	if r.Check.Compiling || r.Check.Recorder().Active() {
 		return false
 	}
-	if tryShapedFnReadWindow(e, valIdx) {
+	if tryFnShapeTypedWindow(e, valIdx) || tryShapedFnReadWindow(e, valIdx) {
 		return true
 	}
 	v := e.Tape.At(valIdx)
@@ -481,7 +496,7 @@ func tryMemberFnArrivalDispatch(e *core.Engine, valIdx int) bool {
 		return true
 	}
 	v := e.Tape.At(valIdx)
-	if !v.Dynamic || v.Quoted || v.ID == "" {
+	if !v.Dynamic || v.Quoted || v.ID == "" || modifiedAsData(e, valIdx) {
 		return false
 	}
 	member, ok := es.MemberFnReadValue(v.ID)
@@ -759,6 +774,84 @@ func tryShapedFnReadWindow(e *core.Engine, valIdx int) bool {
 	return true
 }
 
+// tryFnShapeTypedWindow is the plain check's model of a fn-SHAPE-typed
+// carrier's apply (NUR096). A value typed by a fn shape (`def T fnsig
+// [[Integer] [Integer Integer]]`, then a T-typed class field read) IS a
+// function at run time — the shape's membership, enforced at make and set,
+// admits nothing else — and the interpreter re-steps it here, collecting
+// its argument window: `c.op 10` is [10 10]. The pass held the carrier and
+// its argument instead, [T Integer], which a single-return shape hid (the
+// top slot matched) and a multi-return shape exposed. The shape's declared
+// signature is the model: its parameter count of evaluation-fixed tokens
+// that fit its parameter types is consumed, and one carrier per declared
+// return takes their place — sound for any stored fn, whose returns the
+// shape covers. Anything else is left as it was: an arity-0 shape (whether
+// a stored 0-arg fn fires depends on the fn, not the shape), a parameter
+// the types alone do not decide, a window the claim cannot fill.
+func tryFnShapeTypedWindow(e *core.Engine, valIdx int) bool {
+	v := e.Tape.At(valIdx)
+	if v.Quoted || v.Dynamic || v.ID == "" || !v.Carrier || !core.TypeIsFnShape(v.Parent) {
+		return false
+	}
+	shape, ok := fnShapeTypedClaim(e.Registry, v)
+	if !ok || shape.Arity == 0 {
+		return false
+	}
+	if _, why := shapedFnReadWindow(e, valIdx, shape); why != "" {
+		return false
+	}
+	out := make([]core.Value, len(shape.Returns))
+	for i, rt := range shape.Returns {
+		if rt == nil || rt.Equal(core.TAny) {
+			out[i] = core.NewDynamicCarrier(core.TAny)
+		} else {
+			out[i] = core.NewCarrier(rt)
+		}
+	}
+	e.Tape.Splice(valIdx, 1+shape.Arity, out...)
+	return true
+}
+
+// fnShapeTypedClaim is the declared signature a fn-shape-typed carrier
+// stands for: the claim noted where the carrier was minted (an anonymous
+// shape's field read — the carrier's own type is then the bare
+// FunctionSignature node, which has lost the shape), else the content of
+// the named shape node that types it. One signature of plain parameters,
+// or no claim.
+func fnShapeTypedClaim(r *core.Registry, v core.Value) (core.FnShape, bool) {
+	if s, ok := r.Check.FnShapeOf(v.ID); ok {
+		return s, s.ReturnsKnown
+	}
+	content, ok := core.TypeContentOf(*v.Parent)
+	if !ok {
+		return core.FnShape{}, false
+	}
+	info, ok := content.Data.(core.FnUndefInfo)
+	if !ok {
+		return core.FnShape{}, false
+	}
+	return FnShapeOfSpec(info)
+}
+
+// FnShapeOfSpec is the exact claim a fn-shape spec makes: its one
+// signature's parameter types and declared returns. A shape of several
+// signatures, or a parameter that is optional, patterned or quoted (whose
+// arity or admission the types alone do not decide), makes no claim.
+func FnShapeOfSpec(info core.FnUndefInfo) (core.FnShape, bool) {
+	if len(info.Sigs) != 1 {
+		return core.FnShape{}, false
+	}
+	spec := info.Sigs[0]
+	params := make([]*core.Type, len(spec.Params))
+	for i, p := range spec.Params {
+		if p.Optional || p.Pattern != nil || p.Quote {
+			return core.FnShape{}, false
+		}
+		params[i] = p.Type
+	}
+	return core.FnShape{Arity: len(params), Params: params, Returns: spec.Returns, ReturnsKnown: true}, true
+}
+
 // shapedReadOut mints the read models' one result for the carrier id's
 // claim: a dynamic value, or — when the claim says the wrapper RETURNS a
 // claimed fn (a curried chain's next level, a factory's factory) — a
@@ -818,6 +911,7 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	if v.Quoted || v.ID == "" || core.IsConcrete(v) {
 		return
 	}
+	es.NoteDelivery(v)
 	// CALLABLE-OR-NOTHING. The pass is standing exactly where the interpreter
 	// stands: noteReStepLanding is called FROM stepLiteral, in the branch whose
 	// very next act is execFnDefLiteral on a Function value. A value the loop
@@ -835,7 +929,13 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	// so neither static test above sees it, and the interpreter re-steps
 	// whatever `if` returned — `if true one/v [2]` fires the named 0-arg fn
 	// and answers 1 (NUR159).
-	if !core.IsFnTypedCarrier(v) && !(v.Dynamic && core.SigTypeMatches(v, core.TFunction)) && !es.MayBeFn(v.ID) {
+	//
+	// A UNION carrier one of whose alternatives is a fn is callable on that
+	// alternative too: a word that hands a branch's join back to the loop
+	// (`do [if c [g/v] [0]]`, whose re-step fires g — 7) returns it where
+	// the branch's own MayBeFn, which only a value arm sets, does not say so
+	// (NUR317).
+	if !core.IsFnTypedCarrier(v) && !(v.Dynamic && core.SigTypeMatches(v, core.TFunction)) && !es.MayBeFn(v.ID) && !core.UnionMayBeFn(v) {
 		return
 	}
 	// ALONE INSIDE A LIVE REACH GROUP is not the landing — it is the step
@@ -860,6 +960,16 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	// shapes the alone-island models faithfully; an inert VALUE after it is not,
 	// and the landing stands aside (never declines — see emitLandingAfter).
 	if !nothingToCollectAfter(e, valIdx) {
+		// Inside a `def`'s operand group the re-step's collection is
+		// noted all the same, as a COLLECTING landing (NUR298): the def
+		// takes the group's first value, so the fn the re-step applies to
+		// the literal after it reaches the residual arms only after the
+		// def — `def j (5 do [(mk)] 7) end 1 j` is `[8 1 5]`, and the arms
+		// saw `fn 7 1 5`. A dispatch modifier is data intent, no collection.
+		if !core.IsDispatchMod(e.Tape.At(valIdx+1)) && inDefGroup(e, valIdx) {
+			es.NoteReStepLanding(v, v.Pos())
+			es.NoteLandingNext(v, core.LandingNextCollect, len(e.EffectiveResolved()) > 0, core.Value{})
+		}
 		return
 	}
 	es.NoteReStepLanding(v, v.Pos())
@@ -874,16 +984,40 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 	// result) the re-step matches over them first, and the residual arms
 	// model that apply (NUR175's rule: the landing never consumes a stack
 	// operand); the note carries the fact beside what follows.
+	// The word itself rides with the note either way: a function word is
+	// the walk's candidate, and a collected one is what a `/q` slot captures
+	// in place of the value the pass folds it to (NUR219).
 	next, word := core.LandingNextEnd, core.Value{}
 	if valIdx+1 < e.Tape.Len() {
 		next = core.LandingNextBoundary
 		if tv := e.Tape.At(valIdx + 1); core.IsWord(tv) {
-			if next = landingNextForWord(e, tv); next == core.LandingNextWord {
-				word = tv
-			}
+			next, word = landingNextForWord(e, tv), tv
 		}
 	}
 	es.NoteLandingNext(v, next, len(e.EffectiveResolved()) > 0, word)
+}
+
+// inDefGroup reports whether valIdx sits directly in the paren group written
+// as a `def`'s operand: the group runs before the def dispatches, so its
+// open paren follows the def word and the binding's name.
+func inDefGroup(e *core.Engine, valIdx int) bool {
+	depth := 0
+	for i := valIdx - 1; i >= 0; i-- {
+		t := e.Tape.At(i)
+		switch {
+		case core.IsCloseParen(t):
+			depth++
+		case core.IsOpenParen(t) && depth > 0:
+			depth--
+		case core.IsOpenParen(t):
+			if i < 2 || !core.IsWord(e.Tape.At(i-1)) {
+				return false
+			}
+			w, _ := core.AsWord(e.Tape.At(i - 2))
+			return w.Name == "def"
+		}
+	}
+	return false
 }
 
 // landingNextForWord classifies the word after a landed value the way the
@@ -900,6 +1034,14 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 // and a name DefTop misses has no stack for Lookup to aggregate either.
 func landingNextForWord(e *core.Engine, tv core.Value) core.LandingNext {
 	ww, _ := core.AsWord(tv)
+	// A `/v` word denotes its binding's VALUE — a fn binding's reference —
+	// and the forward phase collects it like any value-bound word (NUR078:
+	// the modifier, never the slot type, makes a fn name a reference): `m.g
+	// z/v` is g over z's reference, 7 interpreted. Read as a function word,
+	// the landing walked a BARE `z` and raised `uncalled_function`.
+	if ww.ForceVal {
+		return core.LandingNextValue
+	}
 	if top, ok := e.DefTop(ww.Name); ok {
 		if _, isFn := top.Data.(core.FnDefInfo); !isFn {
 			return core.LandingNextValue

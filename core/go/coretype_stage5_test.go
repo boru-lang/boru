@@ -235,14 +235,14 @@ func TestWt5InstallTypePredicateStamping(t *testing.T) {
 	r.EnableRuntimeStamping()
 	defer r.DisableRuntimeStamping()
 
-	body := NewFunction(FnDefInfo{
+	body := MarkPredicateFn(NewFunction(FnDefInfo{
 		Registry: r,
 		Signatures: []Signature{{
 			Params:     []FnParam{{Name: "n", Type: TInteger}},
 			Impl:       Boru([]Value{NewBoolean(true)}),
 			BarrierPos: 0,
 		}},
-	})
+	}))
 	if err := InstallType(r, "Wt5PredT", body); err != nil {
 		t.Fatalf("InstallType predicate body: %v", err)
 	}

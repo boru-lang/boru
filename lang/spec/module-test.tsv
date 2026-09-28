@@ -52,6 +52,8 @@ import "boru:test"  Test.check-prop "vacuous" [r.int 0 10] [false] 0 1 0	ERROR:r
 import "boru:test"  Test.check-prop "vacuous" [r.int 0 10] [false] -3 1 0	ERROR:range_error	a negative `runs` is the same caller mistake
 import "boru:test"  Test.check-prop "bad-shrinks" [r.int 0 10] [false] 5 1 -7	ERROR:range_error	a negative `max-shrinks` raises (0 = the no-shrink setting)
 import "boru:test"  (Test.skip "wip" [r.int 0 9] [false] 10 1 0) get "skipped"	true	`skip` records a parked property without running it
+import "boru:test"  Test.skip "wip" [r.int 0 9] [false] 0 1 0	ERROR:range_error	NUR081: `skip` keeps check-prop's argument contract — runs below 1 is refused before the park
+import "boru:test"  Test.skip "wip" [r.int 0 9] [false] 10 1 -7	ERROR:range_error	NUR081: max-shrinks below 0 is refused the same way
 #
 # §7  record / table types — constructed via make, asserted via istype
 import "boru:test"  (make Test.TestCase {name: "a" in: [1] out: 2}) get "out"	2	TestCase record carries name/in/out

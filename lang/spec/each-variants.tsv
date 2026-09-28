@@ -81,8 +81,8 @@ def n 3 end each ([x:Integer] => [x mul n]) [1 2]	[3 6]	the capture rides the cl
 def k 5 end def addk x:Integer => [x add k] end each addk/v [1 2]	[6 7]	a def-bound closure reached through /v
 def cfg {scale:3} end each ([x:Integer] => [x mul (cfg.scale)]) [1 2]	[3 6]	the capture is a MAP FIELD read
 def cfg {scale:3} end each [mul (cfg.scale)] [1 2]	[3 6]	…and a code body captures it just as well
-def n 2 end def f ([x:Integer] => [x mul n]) end each f [1 2]	[2 4]	captured before any shadow
-def n 2 end def f ([x:Integer] => [x mul n]) end def n 10 end each f [1 2]	[10 20]	a later shadow push changes what the SAME closure computes
+def n 2 end def f ([x:Integer] => [x mul n]) end each f/v [1 2]	[2 4]	captured before any shadow
+def n 2 end def f ([x:Integer] => [x mul n]) end def n 10 end each f/v [1 2]	[10 20]	a later shadow push changes what the SAME closure computes
 def xs [1 2 3] end each ([x:Integer] => [0 fold [add] xs add x]) xs	[7 8 9]	the callback captures the very list being walked
 #
 # §8  NESTED each
@@ -195,14 +195,14 @@ def m {f: (fn [[x:Integer][Integer][x mul 3]])} end each (m.f) [1 2]	[3 6]	…th
 def handler ([x:Integer] => [x add 1]) end def hs {h: handler/v} end each (hs.h) [1 2]	[2 3]	…and with the lambda bound first, then stored [DOES NOT COMPILE: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
 def tbl {d:([a:Integer] => [mul 2 a])} end def k 'd' end each (tbl get k) [1 2]	[2 4]	callback chosen by a DYNAMIC KEY [DOES NOT COMPILE: higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match]
 def apply-all fn [[f:Function xs:List][List][each f/v xs]] end apply-all ([x:Integer] => [x mul 2]) [1 2 3]	[2 4 6]	the callback arrives as a fn PARAMETER [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
-def apply-all fn [[f:Function xs:List][List][each f xs]] end apply-all ([x:Integer] => [x mul 2]) [1 2 3]	[2 4 6]	…same, spelled without /v [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
+def f ([x:Integer] => [x mul 2]) end each f [1 2 3]	ERROR:cannot call `each`	…spelled without /v the bare name CALLS (NUR078: a bare name bound to a function calls whatever slot is open), so `each` gets no callback — the reference is f/v, the rows above
 def mk fn [[n:Integer][Function][([x:Integer] => [x mul n])]] end each (mk 3) [1 2]	[3 6]	a callback built by a FACTORY fn [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
 def make-scaler fn [[k:Integer][Function][([x:Integer] => [x mul k])]] end each (make-scaler 5) [1 2]	[5 10]	…the scaler-factory spelling [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
 def dispatch fn [[name:String][Function][if (name eq 'dbl') [([x:Integer] => [x mul 2])] [([x:Integer] => [x add 1])]]] end each (dispatch 'dbl') [1 2]	[2 4]	a callback selected by a BRANCH inside a factory [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
 def compose fn [[f:Function g:Function][Function][([x:Integer] => [g (f x)])]] end each (compose ([a:Integer] => [a add 1]) ([b:Integer] => [b mul 10])) [1 2]	[20 30]	a COMPOSED callback [DOES NOT COMPILE: function-valued operand at each (Stage 3)]
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 10) end each f/v [1 2 3]	[11 12 13]	a computed closure bound, then driven through /v [DOES NOT COMPILE: unmatched dispatch recovered at each]
 def mk fn [[a:Integer][Function][( fn [[b:Integer][Integer][add a b]] )]] end def f (mk 1) end each [(f 1)] [1 2 3]	[2 2 2]	a code body that CALLS a computed closure (the body ignores the element) [DOES NOT COMPILE: code-body word each (Stage 2)]
-def m {f:([x:Integer] => [x mul 2])} end each [(m.f)] [1 2]	[fn [[x:Integer][Any][word(x) word(mul) 2]] fn [[x:Integer][Any][word(x) word(mul) 2]]]	a code body whose only token is a stored fn — the interpreter leaves the fn value itself [DOES NOT COMPILE: fn each$body: result above a literal (Stage 3)]
+def m {f:([x:Integer] => [x mul 2])} end each [(m.f)] [1 2]	[fn [[x:Integer][Any][x mul 2]] fn [[x:Integer][Any][x mul 2]]]	a code body whose only token is a stored fn — the interpreter leaves the fn value itself [DOES NOT COMPILE: fn each$body: result above a literal (Stage 3)]
 import module [export "M" {dbl: (fn [[x:Integer][Integer][x mul 2]])}] end each [M.dbl] [1 2]	[2 4]	a module export inside a CODE BODY (the lambda spelling in §11 compiles) [DOES NOT COMPILE: twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it]
 each [if [gt 1] ['big'] ['small']] [1 2 3]	['small' 'big' 'big']	a bare `if` in a code body — force-compile CRASHES with an internal engine error [DOES NOT COMPILE: HARD ERROR: error: [boru/internal_error]: internal engine error: runtime error: index out of range [1] with length 1]
 #
@@ -213,4 +213,4 @@ each [if [gt 1] ['big'] ['small']] [1 2 3]	['small' 'big' 'big']	a bare `if` in 
 #      which a differential run must flag. Recorded deliberately.
 #
 # compiled answer diverges from the interpreter
-each ([x:Integer] => [typeof x]) [1 'a' [2] {b:1} true none]	[Integer fn [[x:Integer][Any][word(typeof) word(x)]] fn [[x:Integer][Any][word(typeof) word(x)]] fn [[x:Integer][Any][word(typeof) word(x)]] fn [[x:Integer][Any][word(typeof) word(x)]] fn [[x:Integer][Any][word(typeof) word(x)]]]	an Integer-typed lambda over a HETEROGENEOUS list: the interpreter leaves the unmatched callback as data per element [COMPILED ANSWER DIVERGES: compiled answer '[Integer ProperString List Map Boolean None]' != interpreter '[Integer fn (Integer) fn (Integer) fn (Integer) fn (Integer) fn (Integer)]']
+each ([x:Integer] => [typeof x]) [1 'a' [2] {b:1} true none]	[Integer fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]] fn [[x:Integer][Any][typeof x]]]	an Integer-typed lambda over a HETEROGENEOUS list: the interpreter leaves the unmatched callback as data per element [COMPILED ANSWER DIVERGES: compiled answer '[Integer ProperString List Map Boolean None]' != interpreter '[Integer fn (Integer) fn (Integer) fn (Integer) fn (Integer) fn (Integer)]']

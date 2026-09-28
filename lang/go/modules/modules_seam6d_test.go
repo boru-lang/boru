@@ -198,9 +198,11 @@ func TestSeam6DResolvePerModuleInstallFalse(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
+	// The refusal is CODED (NUR079), blaming the module's own subscope.
 	if _, rerr := Resolve("math-util", r); rerr == nil ||
-		!strings.Contains(rerr.Error(), "install=false in policy") {
-		t.Errorf("Resolve under per-module install=false: got %v, want install=false compile failure", rerr)
+		!strings.Contains(rerr.Error(), "capability_not_installed") ||
+		!strings.Contains(rerr.Error(), "modules.scopes.boru:math-util.install=false") {
+		t.Errorf("Resolve under per-module install=false: got %v, want the coded install=false refusal", rerr)
 	}
 	// A sibling module stays importable — the compile failure is per-module.
 	if _, okErr := Resolve("array-util", r); okErr != nil {

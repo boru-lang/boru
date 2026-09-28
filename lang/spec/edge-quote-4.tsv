@@ -73,7 +73,7 @@ def n 10 [1 2] each [add n]	[11 12]	an each body reads an outer value binding
 def n 10 [1 2] each [add n] size	2	…and maps one result per element
 iota 3 each [add 10]	[10 11 12]	iota feeds each — the body sees each element
 def f fn [[][List][iota 2 each [add 5]]] f	[5 6]	an each inside a fn body resolves at call time
-if true [quote [add 1 2]] [9]	(quote [word(add) 1 2])	a branch may hold code of its own — still held after the branch runs
+if true [quote [add 1 2]] [9]	(quote [add 1 2])	a branch may hold code of its own — still held after the branch runs
 def r (if false [0] [quote [add 1 2]]) r size	3	…bind the branch result and the held size reads through
 if true [do [add 1 2]] [0]	3	a branch may run held code of its own via do
 quote [1 2 3] each [add 1]	[2 3 4]	a HELD data list is still a real List for each

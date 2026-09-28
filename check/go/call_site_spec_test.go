@@ -51,6 +51,31 @@ func TestSpecialisableFnArg(t *testing.T) {
 	}
 }
 
+// A fn LITERAL is pushed with a fresh identity each time a fn or closure
+// unit runs it (NUR288), so passed from inside a fn body's analysis or a
+// closure unit it does not specialise — its guard would never hold. At the
+// root it keeps one identity, and a named reference keeps one everywhere.
+func TestSpecialisableFnArgFreshLiteral(t *testing.T) {
+	r, _ := core.NewRegistry()
+	gParam := core.FnParam{Name: "g", Type: core.TFunction}
+	lit := specFn("")
+	if _, ok := specialisableFnArg(r, gParam, lit); !ok {
+		t.Fatal("a root fn literal keeps one identity and specialises")
+	}
+	r.Check.FnBodyDepth = 1
+	if _, ok := specialisableFnArg(r, gParam, lit); ok {
+		t.Error("a fn literal inside a fn body's analysis must not specialise")
+	}
+	if _, ok := specialisableFnArg(r, gParam, specFn("inc")); !ok {
+		t.Error("a named fn reference specialises inside a fn body")
+	}
+	r.Check.FnBodyDepth = 0
+	r.Check.Emit = &covCDEmit{EmitRecorder: core.TheInactiveEmit, inClosure: true}
+	if _, ok := specialisableFnArg(r, gParam, lit); ok {
+		t.Error("a fn literal inside a closure unit must not specialise")
+	}
+}
+
 // specialisedArgs keeps each qualifying constant fn (under a fresh value ID),
 // generalises the rest as the generic unit does, and names them in the key
 // suffix; with none qualifying there is nothing to specialise.
@@ -237,5 +262,17 @@ func TestProvenNarrowerReturn(t *testing.T) {
 	}
 	if !allParamsTyped([]core.FnParam{{Name: "x", Type: core.TInteger}}) {
 		t.Error("an Integer param is typed")
+	}
+	// A body holding a `do` may answer a trapped Error in the proven slot.
+	do := core.NewWord("do")
+	if !bodyTrapsErrors([]core.Value{core.NewList([]core.Value{do})}) || bodyTrapsErrors([]core.Value{core.NewInteger(1)}) {
+		t.Error("a body's do traps; a body without one does not")
+	}
+	reg, _ := core.NewRegistry()
+	if _, ok := refinedDeclaredReturn(reg, core.TAny, typed, nil, 0, 1, []core.Value{ints}, true); ok {
+		t.Error("a trapping body's residual narrows nothing")
+	}
+	if _, ok := refinedDeclaredReturn(reg, core.TAny, typed, nil, 0, 1, []core.Value{ints}, false); !ok {
+		t.Error("a plain body's Integer residual narrows")
 	}
 }

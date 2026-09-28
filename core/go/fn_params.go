@@ -491,7 +491,51 @@ func EvalSigTypeExpr(r *Registry, typeVal Value, what string) (Value, error) {
 	if len(result) != 1 {
 		return Value{}, fmt.Errorf("function spec: type annotation for %q must produce one type, got %d values", what, len(result))
 	}
+	if r.analysisActive() && AnnotationRunDependent(result[0]) {
+		// The pass evaluated the annotation to a value only the run
+		// computes — `x:(1 add 2)` is the value pattern 3 and
+		// `x:(typeof v)` the type the run reads — so the signature the pass
+		// builds is not the run's, and a compiled unit would carry it (the
+		// bind twin replays the pass's fn, which bound 4 where the run
+		// refuses it). The building word declines as the compile-time word
+		// it is (NUR325).
+		r.analysisRecorder().NoteRuntimeDependent()
+	}
+	if v := result[0]; v.Carrier && IsNegation(v) {
+		// A negation the pass built exactly (tnot's ReturnsFn negates the
+		// operand itself) but flagged a carrier: the annotation is that
+		// type, as the run's is. Kept a carrier, the signature's pattern
+		// was an abstract value the pass's match admitted 5 at, where the
+		// run's `(tnot Integer)` refuses it (NUR326).
+		v.Carrier = false
+		return v, nil
+	}
 	return result[0], nil
+}
+
+// AnnotationRunDependent reports whether the pass's value for a type
+// annotation stands for a value only the run computes: a carrier with no
+// type content — the pass's stand-in for the scalar `(1 add 2)` or the type
+// `(typeof v)` computes — itself, as an alternative of a union built over
+// one, or as a typed container's child. A carrier that holds the type
+// content itself (`(tnot Integer)`, whose ReturnsFn builds the negation
+// exactly) is the run's type.
+func AnnotationRunDependent(v Value) bool {
+	if v.Carrier && !IsTypeBody(v) {
+		return true
+	}
+	if IsTypedList(v) || IsTypedMap(v) {
+		ci, _ := AsChildType(v)
+		return AnnotationRunDependent(ci.Child)
+	}
+	if di, err := AsDisjunct(v); err == nil {
+		for _, alt := range di.Alternatives {
+			if AnnotationRunDependent(alt) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // unwrapNamedReturn resolves the `name:Type` spelling of a RETURN
@@ -586,6 +630,18 @@ func looksLikeTypeName(name string) bool {
 
 // ResolveSigType converts a Value (from a pair's value side) to a *Type
 // plus an optional pattern Value for structural matching.
+// noteRuntimeSigType — a typed container's child holding a refinement over
+// a bound the analysis pass does not know (`xs:[:(Integer gt (size s))]`):
+// the child is no node a forward could stand in for, and a compiled unit
+// would carry the pass's placeholder for the bound, so the word building
+// the signature declines as the compile-time word it is (NUR308). A
+// refinement or union slot compiles (runSigPattern), as a named type does.
+func noteRuntimeSigType(r *Registry, v Value) {
+	if r != nil && r.analysisActive() && HasUnknownRefinement(v) {
+		r.analysisRecorder().NoteRuntimeDependent()
+	}
+}
+
 func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	if IsBareTypeNode(v) {
 		return ValueType(v), nil, nil
@@ -709,12 +765,30 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// pattern path (Unify's disjunct fold), exactly like the named form
 	// constrains through its minted Behavior. Previously this fell to
 	// the TAny tail: a silent wildcard that dispatched EVERYTHING.
-	if IsDisjunct(v) {
+	// An inline negation (`x:(tnot Integer)`) the same way: it fell to the
+	// TAny tail and admitted the very values it excludes, where the named
+	// form refuses them (NUR326).
+	if IsDisjunct(v) || IsNegation(v) {
+		if p, ok := runSigPattern(r, v); ok {
+			return TAny, &p, nil
+		}
 		pattern := v
 		return TAny, &pattern, nil
 	}
 	if IsRecordType(v) {
 		return ResolveDefType(r, v)
+	}
+	// An inline refinement (`n:(Integer gt 0)`, `b:(Bytes gt …)`): the slot
+	// is its base — the refinement's Parent, whichever type declared itself a
+	// base (DeclareRefinementBase) — and the refinement rides as the pattern.
+	// The literal arm below hand-lists five bases, and a Bytes refinement fell
+	// to the TAny tail: a wildcard slot (NUR009).
+	if v.IsDepScalar() {
+		if p, ok := runSigPattern(r, v); ok {
+			return v.Parent, &p, nil
+		}
+		pattern := v
+		return v.Parent, &pattern, nil
 	}
 	if v.Data != nil && (v.Parent.ConformsTo(TInteger) ||
 		v.Parent.ConformsTo(TFloat) ||
@@ -744,6 +818,7 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 				return nil, nil, err
 			}
 			resolved = ResolveSigChildParam(r, resolved)
+			noteRuntimeSigType(r, resolved)
 			return TMap, &resolved, nil
 		}
 		// An INLINE record pattern (`o:{pretty:Boolean}`) resolves its
@@ -764,6 +839,7 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 				return nil, nil, err
 			}
 			resolved = ResolveSigChildParam(r, resolved)
+			noteRuntimeSigType(r, resolved)
 			return TList, &resolved, nil
 		}
 		return TList, &v, nil

@@ -216,10 +216,10 @@ func checkForwardStrandsOperand(e *core.Engine, w core.WordInfo, sig *core.Signa
 // Without the top-is-dynamic and trailing-token gates a genuine all-stack
 // dynamic dispatch (`get key dyn`, `dyn 5 add`) would be declined although it
 // compiles faithfully, so both gates are load-bearing.
-func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []int) {
+func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []int) bool {
 	es := e.Registry.Check.Recorder()
 	if !es.Active() || sig == nil || sig.BarrierPos == 0 || sig.FullStack() || len(positions) < 2 {
-		return
+		return false
 	}
 	// A word with NoEvalArgs (code-body / quoted) positions — `if`, `for`, the
 	// higher-order words — forward-collects THOSE body/quote tokens, never a
@@ -231,34 +231,32 @@ func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []i
 	// and the trailing `0` is a separate statement, so compiled == interpreter.
 	// Firing here is a false positive that declines a faithfully-compilable `if`.
 	if len(sig.NoEvalArgs) > 0 {
-		return
+		return false
 	}
-	// Find the top-of-stack matched arg (highest tape position) and whether any
-	// deeper matched arg is non-dynamic.
-	topPos, deeperConcrete := -1, false
+	// Find the top-of-stack matched arg (highest tape position). Its operands
+	// beneath may be dynamic too: the match over carriers reached past the
+	// top either way (NUR287, `mk mk add 1` over two Any results).
+	topPos := -1
 	for _, p := range positions {
 		if p < 0 || p >= e.Tape.Len() {
-			return
+			return false
 		}
 		if p > topPos {
 			topPos = p
 		}
 	}
-	for _, p := range positions {
-		if p != topPos && !e.Tape.At(p).Dynamic {
-			deeperConcrete = true
-		}
-	}
-	if !e.Tape.At(topPos).Dynamic || !deeperConcrete {
-		return
+	if !e.Tape.At(topPos).Dynamic {
+		return false
 	}
 	nxt := e.Pointer + 1
 	if nxt >= e.Tape.Len() {
-		return
+		return false
 	}
-	if core.ForwardLiteralOperand(e.Tape.At(nxt)) {
+	if _, ok := e.ForwardOperandValue(e.Tape.At(nxt)); ok {
 		es.MarkUncompilable("forward operand accounting across a dynamic/island residual (Stage 3)")
+		return true
 	}
+	return false
 }
 
 // declineStrandedMemberFn declines (compile mode only) a dispatch that consumes a
@@ -437,11 +435,28 @@ func spliceAnonCheckResult(e *core.Engine, valIdx, nArgs int, sig *core.FnSig, a
 		paramNames[i] = p.Name
 	}
 	result := AnalyseFnBody(e.Registry, "", paramNames, sig.Body(), args, captures, sig.Returns, true)
+	result = trimUnnamedArgs(result, len(sig.Returns), unnamedParamCount(sig.Params))
 	if len(result) == 0 {
 		result = []core.Value{core.NewCarrier(core.TAny)}
 	}
 	spliceFnCheckTail(e, valIdx, nArgs, result)
 	return nil
+}
+
+// trimUnnamedArgs is the frame return's discipline over an analysed
+// anonymous body's residual (the interpreter's ReturnCheck): the UNNAMED
+// params were pushed beneath the body, and the frame keeps its nret returns
+// off the top, discarding up to unnamed unconsumed args from the bottom. So
+// `(0 ([0] => [1]))` nets the one value 1 on the interpreter, and the call's
+// model must seat one: it seated the pushed 0 beside it, and a list after
+// the call underflowed at run time (NUR255). A residual the unnamed args
+// cannot account for is left as it is, since the interpreter raises its
+// count error there.
+func trimUnnamedArgs(result []core.Value, nret, unnamed int) []core.Value {
+	if extra := len(result) - nret; nret > 0 && extra > 0 && extra <= unnamed {
+		return result[extra:]
+	}
+	return result
 }
 
 // SpliceFnValueCheckResult is the check-mode dispatch for a NON-anonymous
@@ -1142,7 +1157,14 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 				resume := es.Suspend()
 				dres := CarrierResults(e.Registry, w.Name, dsig, dargs, pos, nil, false)
 				resume()
-				if dispatchTryRecordDynBody(e.Registry, w.Name, dsig, core.SigOrderArgs(dargs, dn), dres, pos) {
+				sargs := core.SigOrderArgs(dargs, dn)
+				// The window's exact layout on this failed-dispatch tape — the
+				// interpreter's at the same failure — rides the record, so the
+				// run's no-match plans and reports over it (NUR242).
+				restoreLayout := e.PublishLayout(sargs, core.SigOrderPositions(dpos, dn), pos)
+				recorded := dispatchTryRecordDynBody(e.Registry, w.Name, dsig, sargs, dres, pos)
+				restoreLayout()
+				if recorded {
 					spliceCheckResults(e, dpos, dres)
 					return nil
 				}
@@ -1426,6 +1448,7 @@ func installCheckBraid() {
 	core.CheckBraid.DeclineForwardStackDrift = DeclineForwardStackDrift
 	core.CheckBraid.DeclineStrandedMemberFn = declineStrandedMemberFn
 	core.CheckBraid.ShareCheckState = shareCheckState
+	core.CheckBraid.ShareCheckStateFrom = shareCheckStateFrom
 	core.CheckBraid.SpliceAnonCheckResult = spliceAnonCheckResult
 	core.CheckBraid.SpliceCheckResults = spliceCheckResults
 	core.CheckBraid.SpliceFnValueCheckResult = SpliceFnValueCheckResult
@@ -1461,11 +1484,15 @@ func init() { installAnalysisImpl() }
 
 // noteStrandedTypeCall reports §5.1's silent wrong answer: a capitalised
 // name bound to a FUNCTION body is a TYPE, so writing it in call position
-// never calls. `def I x:Integer => [add 1 x] end I 5` prints `I 5` and
+// never calls. `def I fnpred x:Integer [add 1 x] end I 5` prints `I 5` and
 // exits 0 — the minted lattice node is placed, the 5 is never consumed,
 // and nothing anywhere says so. The combinator literature is all capitals
 // (S, K, I, B, C, W, Y), so a reader transcribing it lands here first
 // (design/legacy/HIGHER-ORDER-FUNCTIONS.0.ignore §5.1, recommendation 2).
+// Since NUR099 the undeclared spelling (`def I x:Integer => [add 1 x]`, a
+// plain `fn` body under a capitalised name) is refused at the declaration
+// with def_error, so the one fn-bodied type node left to strand is a
+// DECLARED predicate written as a call.
 //
 // The gate is deliberately narrow, because this is a hint and a false one
 // costs more than a missed one. It fires on a bare lattice node whose
@@ -1531,8 +1558,8 @@ func noteStrandedTypeCall(e *core.Engine, residual []core.Value) {
 			Col:  v.Pos().Col,
 			Src:  v.Pos().Src,
 			Notes: []string{
-				"a def whose name is capitalised and whose body is a fn mints a TYPE " +
-					"(`4 is " + name + "` is the intended use); the fn body survives only as that type's content",
+				"a capitalised def binds a TYPE, and a fnpred body is that type's membership test " +
+					"(`4 is " + name + "` is the intended use), never a function to call",
 			},
 			// No Replacement: the fix is a COORDINATED rename — the
 			// declaration and every reference — and this diagnostic points at

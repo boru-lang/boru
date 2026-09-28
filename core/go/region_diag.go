@@ -58,17 +58,17 @@ func ReorderForwardCandidates(tape *Tape, pointer int) []Value {
 	return written
 }
 
-// NoMatchOverWindow is sigError's derivation over a window: the failing
-// tuple in assignment order — the unclaimed forward tokens after the word
-// (source order) when there are any, else the stack prefix top-first — and
-// the reorder probe over both views, then the shared no-match builder.
-// Everything sigError adds beyond this is a tape-only layer (see the file
-// doc).
+// NoMatchOverWindow is sigError's derivation over a window: the attempted
+// window in assignment order (attemptedWindowOver — the unclaimed forward
+// tokens after the word, filled from the stack prefix to the smallest
+// overload's arity, else the stack prefix top-first) and the reorder probe
+// over both views, then the shared no-match builder. Everything sigError
+// adds beyond this is a tape-only layer (see the file doc). It used to
+// render the forward tokens alone, so a window that also read the stack
+// (`b.data 0 fold [add]` — one written operand, fold's smallest arity two)
+// named one argument where the interpreter names two (NUR242).
 func NoMatchOverWindow(src string, win *Tape, pointer int, name string, fn *FnDefInfo, pos SrcPos) *BoruError {
-	written := ReorderForwardCandidates(win, pointer)
-	if len(written) == 0 {
-		written = ReorderCandidates(win.Prefix(pointer))
-	}
+	written := attemptedWindowOver(win, pointer, fn, ReorderForwardCandidates(win, pointer), ReorderCandidates(win.Prefix(pointer)))
 	reorder := ReorderHintFor(name, fn, written)
 	if reorder == "" {
 		reorder = ReorderHintFor(name, fn, ReorderCandidates(win.Prefix(pointer)))

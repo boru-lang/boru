@@ -141,6 +141,18 @@ func ClosureAsFnDef(r *Registry, v Value) (Value, bool) {
 // (signature_error, type_error, …) are the interpreter's answer too and are
 // returned as-is.
 func InvokeCallback(r *Registry, sig *Signature, args []Value, captures []CapturedBinding) ([]Value, error) {
+	return invokeCallback(r, sig, args, captures, false, "", SrcPos{})
+}
+
+// InvokeCallbackStrict is InvokeCallback for a NAMED fn call — the module-fn
+// dispatch at run time: a stamped unit runs on the VM as before (its RET
+// enforces the frame's contract), and the interpreter fallback is
+// CallBoruStrict, which enforces the frame's return count (NUR191).
+func InvokeCallbackStrict(r *Registry, sig *Signature, args []Value, captures []CapturedBinding, label string, pos SrcPos) ([]Value, error) {
+	return invokeCallback(r, sig, args, captures, true, label, pos)
+}
+
+func invokeCallback(r *Registry, sig *Signature, args []Value, captures []CapturedBinding, strict bool, label string, pos SrcPos) ([]Value, error) {
 	// sig is the matched signature (callers dispatch it via MatchFnSig and check
 	// it non-nil first — serve-raw's handler dispatch is the canonical caller).
 	// depsFresh guards RUNTIME-stamped refs (StampDetachedFn): a module dep
@@ -156,7 +168,14 @@ func InvokeCallback(r *Registry, sig *Signature, args []Value, captures []Captur
 	// back with ran=false so the body was retried here, guarded by the
 	// effect fence, and that retry is gone: it is a compiler defect and
 	// it surfaces.
-	res, err, ran := compiledRuntime.InvokeCompiled(r, sig, args)
+	var res []Value
+	var err error
+	var ran bool
+	if strict {
+		res, err, ran = compiledRuntime.InvokeCompiledStrict(r, sig, args)
+	} else {
+		res, err, ran = compiledRuntime.InvokeCompiled(r, sig, args)
+	}
 	if ran {
 		return res, err
 	}
@@ -169,6 +188,9 @@ func InvokeCallback(r *Registry, sig *Signature, args []Value, captures []Captur
 	// fallback — its own name so the C4 decline tag can attach later without
 	// conflating it with a direct CallBoru.
 	r.noteInterp("InvokeCallback:callboru")
+	if strict {
+		return r.CallBoruStrict(sig, args, captures, label, pos)
+	}
 	return r.CallBoru(sig, args, captures)
 }
 
