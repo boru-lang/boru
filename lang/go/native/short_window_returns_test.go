@@ -7,7 +7,9 @@ import "testing"
 // shorter than their signature (`fold`, `outer`, `inner`, `as` and `behave`
 // stranded with too few operands panicked the check pass). The check pass no
 // longer hands a short window to a ReturnsFn; each also refuses to index one:
-// the dynamic Any (behave: nothing).
+// the dynamic Any (behave and the Service `add` check half: nothing — the
+// latter's guard predates NUR332 and was reached only through the recovery's
+// short window, which declaredReturnCarriers now refuses at the source).
 func TestNativeReturnsFnsGuardShortWindow(t *testing.T) {
 	r, err := DefaultRegistry()
 	if err != nil {
@@ -25,6 +27,7 @@ func TestNativeReturnsFnsGuardShortWindow(t *testing.T) {
 		{"inner", innerReturnsFn, 4, 1},
 		{"as", asReturns, 2, 1},
 		{"behave", behaveReturns, 2, 0},
+		{"service add", serviceAddCheck, 2, 0},
 	} {
 		for n := 0; n < c.full; n++ {
 			args := make([]Value, n)
