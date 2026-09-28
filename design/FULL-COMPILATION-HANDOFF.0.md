@@ -16089,3 +16089,53 @@ read is None), so nothing downstream committed; and seeding a recursive
 lambda's self-call with an unarmed pre-analysis needs a second body
 analysis per armed recursive fn and cannot be unwound if the armed residual
 disagrees — its sites are cache hits after 1.
+
+## Facts the passes dropped: real programs run compiled, the check passes agree (2026-09-28)
+
+A review asked where the compiler or checker works a fact out and then
+discards it. Two patterns explained almost everything it found: a value the
+collection kernel evaluates IN PLACE gets a fresh identity, so the record
+cannot tie it back to the slot it came from; and a fact one check pass
+computes (plain `boru check`, or CompileCheck's compile-armed pass) never
+reaches the other. The work that followed, in the order it was ranked:
+
+1. **Real programs are RUN, not only compiled** (`TestRealProgramsRun`,
+   shard 1). Every utils and kg suite runs on both lanes in a subprocess with
+   its own working directory and must give the interpreter's error, result
+   and Test.summary. Every corpus gate was green while four kg programs
+   failed compiled; this gate fails on exactly those three suites when the
+   fixes below are removed.
+2. **The four failures.** (a) A routed dispatch (DISPATCH_GENERIC) whose
+   forward slot is an interpolation: the kernel evaluates it in place and
+   the region completion's identity check cut the claim there, leaving a raw
+   token the VM host cannot evaluate. The recorder now links the value to its
+   token (NoteInPlaceSlot) — `make -C kg graph` died here, and the kg gate
+   was off because of it. (b) A unit whose every path tail-calls never sized
+   its frame for its spill temps. (c) A fixed-count apply over two results of
+   one runtime-variable call (a fallible multi-value `do`) underflowed on the
+   caught path's single Error value; such a residual now re-steps from its
+   mark (OpCallDynMixedFromMark), and a shaped method apply over one
+   declines. (d) The VM charged every nested body to one program step
+   counter, where the interpreter gives each sub-engine its own budget;
+   enterBodyUnit now does the same. The compiled kg pipeline runs in 37 s
+   (2 m 12 s interpreted) with byte-identical output, and the kg gate is
+   active again.
+3. **Diagnostic parity 350 → 30.** The armed pass had proven `no_signature`
+   (it baked the trap) and then said nothing — it now reports it as a
+   runtime mirror; the static-if dead-arm warning ran only when the recorder
+   was idle — it now runs in both passes; duplicate findings from the armed
+   pass's second body analysis are deduped. Armed-only 8 → 4.
+4. **Numeric result typing.** Integer only when both operands are Integer,
+   otherwise Number (type soundness 4 → 3). A strict non-Number operand still
+   types Integer: typing it Number stopped two lang programs compiling.
+5. **Interp-entry census 27 → 21 rows** (Engine.Run 171 → 164): Rand.map-from
+   bodies go through InvokeBody, stepless behave bodies answer without an
+   engine, and an FnDefInfo value that no signature matches parks natively.
+   Not done, each large: a closure body with a dynamic lead (needs the
+   whole-frame replay in closure units), break/continue in a stored fn (≈53
+   consumers of a compiled ref to audit), and an `if` condition inside `each`
+   (the condition model must read the enclosing stack).
+
+Recorded rather than fixed, all pre-existing on main: NUR237 (a def inside a
+rand generator body), NUR238 (a seeded generator read through a map member)
+and NUR239 (the check pass panics on an `if` stranded in a case clause list).
