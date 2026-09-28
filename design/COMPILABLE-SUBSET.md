@@ -593,6 +593,29 @@ user still gets an answer while the case is open:
   which the interpreter's landing dispatches and raises on, and the
   compiled unit returns.
 
+- **Compile refusals recorded 2026-09-28** (moved from NUR.md under its
+  scope ruling — the lanes do not disagree about an answer; the program
+  fails to compile where the interpreter answers or raises):
+  - A seeded generator's method read through a map member (formerly
+    NUR331): `import "boru:rand" def s (Rand.with-seed 3) end def m {r: s}
+    m.r.int 0 100` is `[61]` interpreted; the check pass stops at
+    `undefined word: rand-int` — the member's delegate body appears to
+    resolve in the program's registry instead of the rand module's. (It
+    compiled to a wrong sequence before main e8702ac.)
+  - An `if` stranded in a `case` clause list (formerly NUR332): `case 7
+    [[lt 3] "low" [lt 10] if (1 eq 1) ["mid"] ["x"] "high"]` raises the
+    interpreter's signature_error; the check pass's failed-dispatch
+    recovery calls the `if` handlers over a short window and PANICS
+    (recovered as internal_error) — a Panic Prevention defect as well as a
+    refusal.
+  - `def P (refine Integer) def drop fn [[x:P] [] []] end do [1 drop]
+    depth` (`[0]` interpreted): "residual value of unknown provenance".
+  - `[1 Integer] each [add 1]`: the interpreter's signature_error is owed a
+    trap; the pass declines "unmatched dispatch recovered at add".
+  - `def mk fn [[][Any][7]] end def j (mk) end j 5 j typeof` (also `j 5
+    [j]`, `j (range 0 3)`): "residual shape beyond Stage 1 (call result
+    above a literal)".
+
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
 reused after the join now compiles.
