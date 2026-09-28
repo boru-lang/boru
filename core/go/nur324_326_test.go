@@ -128,3 +128,43 @@ func TestInstallTypeResolvesAParenChild(t *testing.T) {
 		t.Error("a child that cannot run is the install's error")
 	}
 }
+
+// TestParamAdmitsAndTypeCarriers pins NUR328's kernel half: a parameter
+// admits a value as the interpreter's dispatch does (the type match and its
+// type-literal rule), and the check pass's Type and None carriers — its
+// stand-ins for a type value and the None literal — are Type members.
+func TestParamAdmitsAndTypeCarriers(t *testing.T) {
+	for _, c := range []struct {
+		name string
+		v    Value
+		t    *Type
+		want bool
+	}{
+		{"a value", NewInteger(5), TInteger, true},
+		{"its type", NewTypeLiteral(TInteger), TInteger, false},
+		{"a type at Type", NewTypeLiteral(TInteger), TType, true},
+		{"the None literal at None", NewTypeLiteral(TNone), TNone, true},
+		{"a List node at List", NewTypeLiteral(TList), TList, false},
+		{"a String at Integer", NewString("s"), TInteger, false},
+	} {
+		if got := ParamAdmits(c.v, c.t); got != c.want {
+			t.Errorf("%s: ParamAdmits = %v, want %v", c.name, got, c.want)
+		}
+	}
+	for _, c := range []struct {
+		name string
+		v    Value
+		want bool
+	}{
+		{"Type carrier", NewCarrier(TType), true},
+		{"None carrier", NewCarrier(TNone), true},
+		{"gradual Type", NewDynamicCarrier(TType), false},
+		{"Integer carrier", NewCarrier(TInteger), false},
+		{"type literal", NewTypeLiteral(TInteger), true},
+		{"a value", NewInteger(5), false},
+	} {
+		if got := TypeMembership(c.v); got != c.want {
+			t.Errorf("%s: TypeMembership = %v, want %v", c.name, got, c.want)
+		}
+	}
+}

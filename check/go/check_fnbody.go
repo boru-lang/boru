@@ -502,21 +502,14 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 						continue
 					}
 				}
-				if a.Parent == nil {
-					// A root-node carrier (None / Any / Never) has a nil Parent
-					// because it IS its own lattice node — it is already an
-					// abstract, constant-free generalisation, so keep it (with the
-					// Carrier flag set) rather than calling NewCarrier(nil), which
-					// would propagate a nil-typed value into the body analysis.
-					g := a
-					g.Carrier = true
-					g.Data = nil
-					genArgs[i] = g
-					continue
-				}
-				if core.IsTypeLiteral(a) {
+				if a.Parent == nil || core.IsTypeLiteral(a) {
 					// A type literal's Parent is its supertype, not its type
-					// (NUR323): core.ValueCarrier widens it to a Type carrier.
+					// (NUR323), and a root node's (None / Any / Never) is nil:
+					// core.ValueCarrier widens a type to a Type carrier and the
+					// None literal to the None carrier. The root node itself,
+					// flagged a carrier, carried no type at all, and a union
+					// naming None refused it where the run's None literal binds
+					// (NUR324: `k None` over `[[y:Any]…[f y]]`, `x:Maybe`).
 					genArgs[i] = core.ValueCarrier(a)
 					continue
 				}

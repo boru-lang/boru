@@ -170,3 +170,35 @@ func TestNUR327TypedContainerParenChild(t *testing.T) {
 		}
 	}
 }
+
+// TestNUR328TypeValuesAtUserParams pins NUR328's close. A type value or a
+// None read met a user fn's parameter three ways the lanes disagreed on:
+// the compiled contract asked the type match alone and bound the Integer
+// TYPE at `x:Integer` (the interpreter's plan refuses a type at a value
+// slot); the check pass refused its own Type and None carriers at a Type
+// slot, which takes the run's type literal and None; and a root node (None)
+// passed into a fn unit carried no type at all.
+func TestNUR328TypeValuesAtUserParams(t *testing.T) {
+	const pre = `def Maybe (Integer tor None) end def m {a: 1 e: Integer} end def xs [1 Integer] end `
+	const fi = `def f fn [[x:Integer][Any][[x]]] end `
+	const ft = `def f fn [[x:Type][Any][[x]]] end `
+	const fm = `def f fn [[x:Maybe][Any][[x]]] end `
+	const noF = "ERROR:cannot call `f`"
+	for _, c := range []struct{ src, want string }{
+		{pre + fi + `7 m.e f`, noF},
+		{pre + fi + `def g fn [[][Any][f m.e]] end g`, noF},
+		{pre + fi + `def h fn [[y:Any][Any][f y]] end h m.e`, noF},
+		{pre + fi + `def h fn [[y:Any][Any][f y]] end h Integer`, noF},
+		{pre + fi + `def h fn [[y:Any][Any][f y]] end h (xs get 1)`, noF},
+		{pre + fi + `def h fn [[y:Any][Any][f y]] end h 5`, "[[5]]"},
+		{pre + ft + `7 f m.e`, "[7 [Integer]]"},
+		{pre + ft + `f m.e`, "[[Integer]]"},
+		{pre + ft + `m.e f`, "[[Integer]]"},
+		{pre + ft + `7 f m.b`, "[7 [None]]"},
+		{pre + fm + `def k fn [[y:Any][Any][[7 f y]]] end k None`, "[[7 [None]]]"},
+		{pre + fm + `def k fn [[y:Any][Any][[f y]]] end k None`, "[[[None]]]"},
+		{pre + fm + `def k fn [[y:Any][Any][[7 f y]]] end k 's'`, "[[[7] 's']]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+}

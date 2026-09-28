@@ -77,10 +77,16 @@ func AsBoundedType(v Value) (*Type, error) {
 // list/map, disjunct, fn-shape, bounded Type), or a Type-branch value
 // (Function, Disjunct, Enum). Carriers are abstract VALUES; concrete
 // scalars/lists/maps and `none` (whose sentinel payload makes
-// IsBareTypeNode false) are not types.
+// IsBareTypeNode false) are not types. Two carriers are types: the strict
+// Type carrier, the check pass's stand-in for a type value (a type literal
+// read from a container, `typeof`'s result — ValueCarrier, NUR323), and the
+// strict None carrier, its stand-in for the None literal a missing member
+// reads as — a bare node, which a Type slot takes as it takes the run's
+// (NUR328). A widened `none` value shares the None carrier and is no type;
+// the pass takes the literal, the common case.
 func TypeMembership(v Value) bool {
 	if v.Carrier {
-		return false
+		return !v.Dynamic && v.Parent != nil && (v.Parent.Equal(TType) || v.Parent.Equal(TNone))
 	}
 	return IsBareTypeNode(v) || IsTypeBody(v) || IsRecordShape(v) ||
 		(v.Parent != nil && v.Parent.ConformsTo(TType))

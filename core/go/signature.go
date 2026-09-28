@@ -525,6 +525,20 @@ func rejectsTypeLiteral(v Value, expectedType *Type) bool {
 	return true
 }
 
+// ParamAdmits reports whether a declared parameter type t admits the value v
+// the way the interpreter's dispatch does: the type match (SigTypeMatches)
+// and the type-literal rule positionalMatch applies over it — a type is no
+// value of its Parent, so a bare type node is refused at a Map or List slot
+// and wherever rejectsTypeLiteral refuses it. The compiled lane's parameter
+// contract asked the type match alone, and a Type value bound an Integer
+// parameter the interpreter refuses it at (NUR328).
+func ParamAdmits(v Value, t *Type) bool {
+	if !SigTypeMatches(v, t) {
+		return false
+	}
+	return !IsBareTypeNode(v) || !(t.ConformsTo(TMap) || t.ConformsTo(TList) || rejectsTypeLiteral(v, t))
+}
+
 // positionalMatch checks whether values match the signature's types in order.
 // Handles the /q modifier: a Word value at a QuoteArgs position is treated
 // as an Atom for type matching purposes.

@@ -5342,7 +5342,7 @@ func checkParamContract(r *core.Registry, fn *compiler.CompiledFn, locals []core
 		// bounded / structural) is NOT threaded into Params and so is not enforced
 		// here — see design/legacy/PARAM-GUARD-SKIP-MISCOMPILE.0.ignore; this guard catches the
 		// plain-type laundering (the reported bug) without over-raising.
-		if !core.SigTypeMatches(locals[i], pt) {
+		if !core.ParamAdmits(locals[i], pt) {
 			return core.RuntimeNoMatch(r, fn.Name, guardArgs(locals, fn.NArgs))
 		}
 	}

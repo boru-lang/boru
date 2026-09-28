@@ -250,6 +250,8 @@ keep the two in sync in the same commit.
 | [NUR325](#nur325) | FIXED 2026-09-28 (loud: the building word declines — the handoff log's entry of that date): a parameter annotation the check pass evaluates to a carrier — `x:(1 add 2)`, `x:(typeof 5)`, `x:(not Integer)` — built a signature the run's is not, and the bind twin replayed it: `def f fn [[x:(1 add 2)][Any][[x]]] end f 4` answered `[[4]]` compiled for the interpreter's `signature_error`; silent on main too |
 | [NUR326](#nur326) | FIXED 2026-09-28 (an inline negation constrains through its pattern — the handoff log's entry of that date): `x:(tnot Integer)` fell to ResolveSigType's TAny tail and admitted 5 on BOTH lanes, where `5 is (tnot Integer)` and the named form refuse it |
 | [NUR327](#nur327) | FIXED 2026-09-28 (a typed container's paren child evaluates at `is` and at a type def — the handoff log's entry of that date): `[:(Integer tor None)]` reached `is` and `def T` with its child unevaluated, so `['a' 1] is [:(Integer tor String)]` was false on the interpreter and `def T [:(Integer tor None)] end [5 1] is T` false on BOTH lanes; only a fn parameter and a typed def resolved the paren |
+| [NUR328](#nur328) | FIXED 2026-09-28 (a parameter admits a value as the interpreter's dispatch does — the handoff log's entry of that date): a type value or a None read at a user fn's parameter — `7 m.e f` over `{e: Integer}` and `x:Integer` answered `[7 [Integer]]` compiled for the interpreter's `signature_error` (so did a fn body's `f y` over a type), `7 f m.b` over `x:Type` raised compiled for `[7 [None]]`, and `k None` into a fn unit's Any parameter bound nothing a union takes; found by a generated sweep, silent on main too |
+| [NUR329](#nur329) | PENDING (notes only; the code, message and caret agree): a no-match over a reach-led forward operand the plan refused — `7 f m.a` over `x:Type` — names the reach's value interpreted (`the argument was 1`) and the stack's compiled (`the argument was 7`) |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14829,3 +14831,62 @@ the run does not meet (`def xs:[:(typeof y)] [5]`, silent on main).
 Pinned: lang `TestNUR327TypedContainerParenChild`; core
 `TestInstallTypeResolvesAParenChild`, `TestAnnotationRunDependent`,
 `TestEvalSigTypeExprAnalysedAnnotations`.
+
+## NUR328 — a type value or a None read at a user fn's parameter {#nur328}
+
+**Status:** FIXED 2026-09-28 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-28 · **Surfaced by:** a generated sweep crossing ten
+parameter types, ten call forms and fourteen values (1400 programs; nine
+silent rows, twelve defers). Present on main (91e97dd), silent there too.
+
+```
+def m {e: Integer} end def f fn [[x:Integer][Any][[x]]] end 7 m.e f
+  interpreted   signature_error: cannot call `f` — no signature matches the arguments
+  compiled      [7 [Integer]]
+def m {a: 1} end def f fn [[x:Type][Any][[x]]] end 7 f m.b
+  interpreted   [7 [None]]
+  compiled      signature_error: cannot call `f` — no signature matches the arguments
+```
+
+**Cause.** Three gaps, one per lane crossing. (1) The compiled CALL_USER's
+parameter contract (eng `checkParamContract`) asked `SigTypeMatches`
+alone, which takes a type literal at its own type's slot; the
+interpreter's plan refuses a type at a value slot (`rejectsTypeLiteral`,
+NUR323). A recovered call whose check-pass match failed records a guarded
+CALL_USER on the promise that the contract asks the interpreter's
+question, so a Type value bound `x:Integer` (and a fn body's `f y` over
+one). (2) `TypeMembership` refused every carrier, so the check pass's own
+Type carrier (a type read, `typeof`) and None carrier (a missing read)
+missed a Type slot that takes the run's type literal and the None literal:
+`7 f m.b` fell to the stack's 7 and raised, and `f m.e` deferred. (3) A
+root node passed into a fn unit (`k None`) was generalised as the node
+itself flagged a carrier, with a nil Parent, which a union naming None
+refused where the run binds it (NUR324's rule).
+
+**Fix.** `core.ParamAdmits` is the type match plus positionalMatch's
+type-literal rule, and the contract asks it. `TypeMembership` takes the
+strict Type and None carriers; a widened `none` value shares the None
+carrier and is no type, and the pass takes the literal, the common case.
+The fn unit's generalisation routes a root node through
+`core.ValueCarrier`. The sweep's nine silent rows and twelve defers agree
+now; eight rows differ in their notes only (NUR329). Pinned: lang
+`TestNUR328TypeValuesAtUserParams`; core `TestParamAdmitsAndTypeCarriers`.
+
+## NUR329 — a no-match over a refused reach names the stack operand compiled {#nur329}
+
+**Status:** PENDING, notes only (the code, message and caret agree) ·
+**Recorded:** 2026-09-28 · **Surfaced by:** the NUR328 sweep (eight rows).
+
+```
+def m {a: 1} end def f fn [[x:Type][Any][[x]]] end 7 f m.a
+  interpreted   … = note: the argument was 1 (an Integer)
+  compiled      … = note: the argument was 7 (an Integer)
+```
+
+The interpreter's report walks the written operands at its failure point,
+where the reach's paren has already run, so it names the reach's value
+(1). The check pass's walk (`rematchWrittenSplit`) stops at the reach's
+paren, so the recorded tuple is the stack prefix (7). A fix records the
+reach's result as a written operand, which the VM's NUR311 stop rule then
+cuts where the run's value is no concrete value. The same shape gives
+`x:None`, `x:[:Maybe]` and `x:N` over a refused reach or a refused `none`.

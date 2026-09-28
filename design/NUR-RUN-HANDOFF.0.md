@@ -9,6 +9,38 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## A generated sweep over parameters: NUR328 closed, NUR329 recorded (2026-09-28)
+
+A sweep crossed ten parameter types (a named and an inline union, a
+negation, Any, Integer, Type, None, an optional, a typed list), ten call
+forms (forward, stack, split, paren, list, `do`, a fn body, an Any
+parameter passed on) and fourteen values (members present, missing and
+type-valued, `none`, `None`, `Integer`, list reads in and out of range),
+1400 programs in all. Nine rows were silent and twelve deferred; all
+agree now, and eight differ only in their notes (NUR329).
+
+- **The contract.** eng's `checkParamContract` asked `SigTypeMatches`
+  alone, which takes a type literal at its own type's slot, so a Type value
+  bound `x:Integer` wherever the check pass recovered the call into a
+  guarded CALL_USER (`7 m.e f`, a fn body's `f y`). It asks
+  `core.ParamAdmits` now: the type match plus positionalMatch's
+  type-literal rule.
+- **Type members.** `TypeMembership` refused every carrier, so the pass's
+  Type carrier and None carrier missed a Type slot that takes the run's type
+  literal and None literal: `7 f m.b` fell to the stack's 7, and `f m.e`
+  deferred. The strict Type and None carriers are Type members; a widened
+  `none` shares the None carrier, and the pass takes the literal.
+- **A root node into a fn unit.** `k None` generalised the None node
+  itself, flagged a carrier with a nil Parent, which `x:Maybe` refused where
+  the run binds it; it widens through `core.ValueCarrier` now.
+- **Tried and reverted.** Admitting a gradual bound wherever the slot's
+  own membership admits it (a union naming None and dynamic(None)) fixed
+  nothing the sweep saw, and it would run predicate memberships over
+  carriers.
+- **NUR329 (notes only).** Over a refused reach the interpreter's report
+  names the reach's value, the compiled one the stack's, because the check
+  pass's written walk stops at the unevaluated paren.
+
 ## A typed container's paren child evaluates: NUR327; the return text names None (2026-09-28)
 
 Probing NUR324 over typed containers found `[:(Integer tor None)]` reaching
