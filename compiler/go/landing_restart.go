@@ -140,6 +140,7 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 		if tok < 0 {
 			continue
 		}
+		tok = literalDefsBefore(tree, es.rootBody, tok, eventPos(*at.ev))
 		d := deoptPoint{seq: seq, slot: -1, start: es.rootBody[tok].Pos(), token: tok}
 		if d.start.Row == 0 || es.deoptDeferred(es.units[0], rec, &d, -1) {
 			continue
@@ -148,7 +149,7 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 		if !reruns {
 			continue
 		}
-		srcs, held, ok := es.rootPreStart(lw, residual, d.start, statementFirstSeq(tree, seq, d.start))
+		srcs, held, ok := es.rootPreStart(lw, tree, residual, d.start, statementFirstSeq(tree, seq, d.start))
 		if !ok {
 			continue
 		}
@@ -157,6 +158,31 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 		}
 		lw.landingRestarts[seq] = &landingRestart{token: tok, start: d.start, depth: -1, srcs: srcs, held: held, substs: substs, first: first}
 	}
+}
+
+// literalDefsBefore is where a statement island may take over the statement
+// at body token tok that holds position p: past the defs of a literal it
+// opens with (`def k 3 k (m.f 7)`, NUR336). Such a def collects its name and
+// its value and leaves nothing pending, so the tokens after it run on the
+// interpreter exactly as a statement of their own would — and the island
+// need not bind the name a second time (a def is no re-runnable read). Each
+// is the three tokens `def`, a name and a scalar literal whose def the pass
+// recorded at that name (a def's event stands at its NAME token), all before
+// the token holding p.
+func literalDefsBefore(tree map[int]treeEvent, body []core.Value, tok int, p core.SrcPos) int {
+	defs := map[core.SrcPos]bool{}
+	for _, te := range tree {
+		if d := te.ev.dyn; te.ev.kind == evDynBind && d != nil && d.srcSeq < 0 && d.src.kind == opNone {
+			defs[d.pos] = true
+		}
+	}
+	for at := bodyTokenContaining(body, p); tok+3 <= at; tok += 3 {
+		if w, err := core.AsWord(body[tok]); err != nil || w.Name != "def" || !core.IsWord(body[tok+1]) ||
+			!core.IsSteplessValue(body[tok+2]) || !defs[body[tok+1].Pos()] {
+			break
+		}
+	}
+	return tok
 }
 
 // The guards of a branch (NUR292) a statement island may take over: the
@@ -223,7 +249,7 @@ func (es *EmitState) planGuardRestarts(lw *lowerer, residual []core.Value) {
 		if !ok {
 			continue
 		}
-		srcs, held, ok := es.rootPreStart(lw, residual, d.start, statementFirstSeq(tree, g.seq, d.start))
+		srcs, held, ok := es.rootPreStart(lw, tree, residual, d.start, statementFirstSeq(tree, g.seq, d.start))
 		if !ok {
 			continue
 		}
@@ -290,7 +316,7 @@ func (es *EmitState) planCountRestarts(lw *lowerer, residual []core.Value) {
 			continue
 		}
 		start := es.rootBody[tok].Pos()
-		srcs, held, ok := es.rootPreStart(lw, residual, start, statementFirstSeq(tree, seq, start))
+		srcs, held, ok := es.rootPreStart(lw, tree, residual, start, statementFirstSeq(tree, seq, start))
 		if !ok {
 			continue
 		}
@@ -588,7 +614,13 @@ func parenOf(ev *EmitEvent, body []core.Value, tok int) ([]int, bool) {
 	for i, at := range path {
 		inner, nested := nestedToks(toks[at])
 		if core.IsParenExpr(toks[at]) && len(inner) > 0 && inner[0].Pos() == p {
-			return path[:i+1], nout == 1 && len(ops) == len(inner)-1
+			// A paren's shaped apply takes its method from the paren's
+			// first token too.
+			method := 0
+			if ev.kind == evCall && ev.call.dynMethod != nil {
+				method = 1
+			}
+			return path[:i+1], nout == 1 && len(ops) == len(inner)-1+method
 		}
 		if !nested {
 			return path, i == len(path)-1 && core.IsWord(toks[at]) && toks[at].Pos() == p && nout == 1 && len(ops) == 0
@@ -862,18 +894,35 @@ func (es *EmitState) guardReruns(tree map[int]treeEvent, seq int, body []core.Va
 
 // rootPreStart reads the program residual's entries the interpreter's stack
 // holds when the statement begins at start — the residual's leading entries,
-// up to the first the statement (or a later one) leaves: an event's result
-// recorded at or after its first event firstSeq, or a literal written at or
-// after start. Each is found where the compiled root keeps it, in stack
-// order: a literal it pushes only at the program's end (a constant), an
-// earlier result it promoted (its frame slot), or one it left on the stack
-// — held of those, the region beneath the statement. ok is false for a
-// leading literal with no position, which the walk cannot place.
-func (es *EmitState) rootPreStart(lw *lowerer, residual []core.Value, start core.SrcPos, firstSeq int) (srcs []RestartSrc, held int, ok bool) {
-	for _, rv := range residual {
+// up to the first the statement (or a later one) leaves. Each is found where
+// the compiled root keeps it, in stack order: a literal it pushes only at the
+// program's end (a constant), an earlier result it promoted (its frame slot),
+// or one it left on the stack — held of those, the region beneath the
+// statement. ok is false for a leading entry the walk cannot place.
+//
+// Which statement pushed an entry is read from where it was pushed, never
+// from where its value came from (NUR335): an event's result from the
+// event's position (its seq only when it has none — the pass may record a
+// literal's assembly late, `[m] end m (m.f 7)`), a literal from its token,
+// and a READ of a def-bound value from the reads (boundReadsBefore) — the
+// value itself carries the def's earlier position, so `def k 3 end k (m.f
+// 7)` counted the statement's own `k` beneath it, and the island, running
+// the statement again, pushed it twice.
+func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual []core.Value, start core.SrcPos, firstSeq int) (srcs []RestartSrc, held int, ok bool) {
+	before, reads, ok := es.boundReadsBefore(tree, residual, start)
+	if !ok {
+		return nil, 0, false
+	}
+	for i, rv := range residual {
 		pr, produced := es.producedBy[rv.ID]
-		q := rv.Pos()
-		if (produced && pr.seq >= firstSeq) || (!produced && q.Row > 0 && !posAfter(start, q)) {
+		if reads[i] {
+			if before[rv.ID] == 0 {
+				break
+			}
+			before[rv.ID]--
+		} else if own, known := es.statementPushed(tree, rv, start, firstSeq); !known {
+			return nil, 0, false
+		} else if own {
 			break
 		}
 		switch {
@@ -884,13 +933,149 @@ func (es *EmitState) rootPreStart(lw *lowerer, residual []core.Value, start core
 			}
 			srcs = append(srcs, RestartSrc{Kind: RestartStack, Idx: held})
 			held++
-		case q.Row == 0 || !core.IsConcrete(rv) || rv.Carrier || rv.Dynamic:
+		case !core.IsConcrete(rv) || rv.Carrier || rv.Dynamic:
 			return nil, 0, false
 		default:
 			srcs = append(srcs, RestartSrc{Kind: RestartConst, Val: rv})
 		}
 	}
 	return srcs, held, true
+}
+
+// statementPushed reports whether residual entry rv — no read of a def-bound
+// value — was pushed by the statement beginning at start or a later one
+// (own), and whether that can be told (known). An event's result is its
+// event's: written at or after start, or, for an event with no position,
+// recorded at or after the statement's first event firstSeq. A literal is its
+// token's; a compound the fold re-minted without a position (`{a:1}`) is told
+// by the top-level tokens spelling it, when they all stand on one side of
+// start.
+func (es *EmitState) statementPushed(tree map[int]treeEvent, rv core.Value, start core.SrcPos, firstSeq int) (own, known bool) {
+	if pr, produced := es.producedBy[rv.ID]; produced {
+		if te, in := tree[pr.seq]; in {
+			if p := eventPos(*te.ev); p.Row > 0 {
+				return !posAfter(start, p), true
+			}
+		}
+		return pr.seq >= firstSeq, true
+	}
+	if q := rv.Pos(); q.Row > 0 {
+		return !posAfter(start, q), true
+	}
+	if !isCompoundValue(rv) {
+		return false, false
+	}
+	canon := core.CanonValue(rv)
+	pre, in := 0, 0
+	for _, t := range es.rootBody {
+		q := t.Pos()
+		if core.IsWord(t) || !isCompoundValue(t) || q.Row == 0 || core.CanonValue(t) != canon {
+			continue
+		}
+		if posAfter(start, q) {
+			pre++
+		} else {
+			in++
+		}
+	}
+	return in > 0, (pre > 0) != (in > 0)
+}
+
+// boundReadsBefore finds the residual's entries that are READS of a
+// def-bound value (reads[i]) — the value a root def consumed, found again on
+// the residual under the def's own value (its ID and, for a literal, its
+// position: a type or another shared value carries one ID wherever it is
+// spelled) — and, per value, how many of its leading occurrences were read
+// before start (before). The reads' positions are the root's bare reads
+// (NoteLocalRead): all before start, or none, decide it; so does a residual
+// holding every read, none consumed. Anything else — a `/v` read, whose
+// position the pass does not keep, more copies than reads, or reads on both
+// sides some of which a word consumed (`m end m (m.f 7)`: the member read
+// takes one) — cannot be told, and ok is false.
+func (es *EmitState) boundReadsBefore(tree map[int]treeEvent, residual []core.Value, start core.SrcPos) (before map[string]int, reads []bool, ok bool) {
+	bound := map[string][]core.SrcPos{}
+	for _, te := range tree {
+		if d := te.ev.dyn; te.ev.kind == evDynBind && d != nil && d.val.ID != "" {
+			bound[d.val.ID] = append(bound[d.val.ID], d.val.Pos())
+		}
+	}
+	reads = make([]bool, len(residual))
+	occ := map[string]int{}
+	for i, rv := range residual {
+		poss, isBound := bound[rv.ID]
+		if !isBound {
+			continue
+		}
+		if _, produced := es.producedBy[rv.ID]; !produced && !containsPos(poss, rv.Pos()) {
+			continue
+		}
+		reads[i] = true
+		occ[rv.ID]++
+	}
+	before = map[string]int{}
+	receivers := map[core.SrcPos]bool{}
+	reachReceivers(es.rootBody, receivers)
+	for id, n := range occ {
+		if es.valReadNoted[id] {
+			return nil, nil, false
+		}
+		pre, in := 0, 0
+		for _, p := range es.rootLocalReads[id] {
+			if receivers[p] {
+				// A reach's receiver (`m` of `m.f`): the reach takes it.
+				continue
+			}
+			if posAfter(start, p) {
+				pre++
+			} else {
+				in++
+			}
+		}
+		switch {
+		case n > pre+in:
+			// More copies than reads: one came some other way.
+			return nil, nil, false
+		case in == 0:
+			before[id] = n
+		case pre == 0:
+			before[id] = 0
+		case n == pre+in:
+			before[id] = pre
+		default:
+			return nil, nil, false
+		}
+	}
+	return before, reads, true
+}
+
+// reachReceivers notes the positions of the words a reach reads as its
+// receiver (`m` of `m.f`), through parens and list literals: a read there is
+// the reach's own operand and never stays on the stack.
+func reachReceivers(toks []core.Value, at map[core.SrcPos]bool) {
+	for _, t := range toks {
+		if ri, err := core.AsReach(t); err == nil {
+			for _, r := range ri.Receiver {
+				if core.IsWord(r) {
+					at[r.Pos()] = true
+				}
+			}
+			reachReceivers(ri.Receiver, at)
+			continue
+		}
+		if inner, nested := nestedToks(t); nested {
+			reachReceivers(inner, at)
+		}
+	}
+}
+
+// containsPos reports whether ps holds p.
+func containsPos(ps []core.SrcPos, p core.SrcPos) bool {
+	for _, q := range ps {
+		if q == p {
+			return true
+		}
+	}
+	return false
 }
 
 // statementFirstSeq is the first event the statement beginning at start

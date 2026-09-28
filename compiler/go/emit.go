@@ -18892,6 +18892,15 @@ func collectWordNames(tokens []core.Value, names map[string]bool) {
 			names[w.Name] = true
 			continue
 		}
+		// A reach (`q.f`, `m.(k)`) reads its receiver's names, and a
+		// computed segment's: an island stepping `(q.f 7)` resolves q.
+		if ri, err := core.AsReach(t); err == nil {
+			collectWordNames(ri.Receiver, names)
+			for _, seg := range ri.Segments {
+				collectWordNames(seg.KeyExpr, names)
+			}
+			continue
+		}
 		if inner, err := core.AsParenExpr(t); err == nil {
 			collectWordNames(inner, names)
 			continue

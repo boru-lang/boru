@@ -157,13 +157,13 @@ func TestRootPreStart(t *testing.T) {
 	es.producedBy["mine"] = producer{seq: 8}
 	start := core.SrcPos{Row: 2, Col: 1}
 	residual := []core.Value{val("k", 1, 1), val("held", 0, 0), val("slot", 0, 0), val("mine", 0, 0), val("after", 3, 1)}
-	srcs, held, ok := es.rootPreStart(lw, residual, start, 8)
+	srcs, held, ok := es.rootPreStart(lw, nil, residual, start, 8)
 	if !ok || held != 1 || len(srcs) != 3 ||
 		srcs[0].Kind != RestartConst || srcs[1].Kind != RestartStack || srcs[1].Idx != 0 ||
 		srcs[2].Kind != RestartLocal || srcs[2].Idx != 8 {
 		t.Errorf("the leading entries, each where the root keeps it: %+v held=%d ok=%v", srcs, held, ok)
 	}
-	if _, _, ok := es.rootPreStart(lw, []core.Value{val("np", 0, 0)}, start, 8); ok {
+	if _, _, ok := es.rootPreStart(lw, nil, []core.Value{val("np", 0, 0)}, start, 8); ok {
 		t.Error("a leading literal with no position cannot be placed")
 	}
 	if got := statementFirstSeq(map[int]treeEvent{5: {ev: &EmitEvent{kind: evCall, call: emitCall{pos: core.SrcPos{Row: 2, Col: 4}}}}, 1: {ev: &EmitEvent{kind: evCall, call: emitCall{pos: core.SrcPos{Row: 1, Col: 1}}}}}, 9, start); got != 5 {
