@@ -72,18 +72,17 @@ func TestVariadicDoResultsAreNotApplied(t *testing.T) {
 
 // A shaped method value and its operands that are all results of one
 // runtime-variable call (the check pass left `do [m.r.int 0 100]`'s body as
-// `[fn 0 100]`) were applied inside the body at run time: the compiler
-// declines the apply it would have laid after the call, which underflowed
-// (REVERSE underflow where the interpreter answers 61). The same method read
-// outside a do still compiles.
+// `[fn 0 100]`) were applied inside the body at run time, which underflowed
+// (REVERSE underflow where the interpreter answers 61). The program must not
+// compile to that: it declines, soundly. (The same method read outside a do
+// no longer compiles either since main's NUR run — NUR331 — so both shapes
+// are pinned sound: no program, and no error in its place.)
 func TestVariadicShapedMethodDeclines(t *testing.T) {
 	const pre = `import "boru:rand" def s (Rand.with-seed 3) end def m {r: s} `
-	prog, reason, _, err := mustNew(t).CompileCheck(pre + `do [m.r.int 0 100]`)
-	if prog != nil || err != nil || !strings.Contains(reason, "shaped method apply") {
-		t.Errorf("want the shaped-apply decline, got prog=%v reason=%q err=%v", prog != nil, reason, err)
-	}
-	if prog, reason, _, err := mustNew(t).CompileCheck(pre + `m.r.int 0 100`); prog == nil || err != nil {
-		t.Errorf("the method read outside a do compiles: reason=%q err=%v", reason, err)
+	for _, src := range []string{pre + `do [m.r.int 0 100]`, pre + `m.r.int 0 100`} {
+		if prog, reason, _, err := mustNew(t).CompileCheck(src); prog != nil || err != nil {
+			t.Errorf("%s: want a sound decline, got prog=%v reason=%q err=%v", src, prog != nil, reason, err)
+		}
 	}
 }
 
@@ -119,4 +118,36 @@ func mustNewOpts(t *testing.T, o Options) *Boru {
 		t.Fatal(err)
 	}
 	return a
+}
+
+// The compile pass mirrors a DECIDED no-match as a RuntimeMirror
+// no_signature — decided by the PROGRAM's recorder. A throwaway probe's
+// decision is not one: boru:repl's service handler is compiled as a stored
+// fn on a probe recorder (compileStoredFnUnit), whose `set` over the
+// handler's state misses there, and the program compiles and runs
+// regardless. The plain pass never sees that analysis, so a mirror of it is
+// a finding neither the plain pass nor the runtime makes. A no-match the
+// program's own recorder decides still reports.
+func TestDecidedNoMatchMirrorIsTheProgramsOwn(t *testing.T) {
+	const repl = `import "boru:repl" def l (Repl.serve {port: 0}) Repl.close l; "stopped"`
+	prog, reason, res, err := mustNew(t).CompileCheck(repl)
+	if prog == nil || err != nil {
+		t.Fatalf("compile: %q %v", reason, err)
+	}
+	for _, d := range res.Diagnostics {
+		if d.Code == "no_signature" {
+			t.Errorf("a throwaway recorder's no-match was mirrored: %s", d.Detail)
+		}
+	}
+	_, _, res, err = mustNew(t).CompileCheck(`def f fn [[x:Integer] [] []] def r (f 1)`)
+	if err != nil {
+		t.Fatal(err)
+	}
+	found := false
+	for _, d := range res.Diagnostics {
+		found = found || (d.Code == "no_signature" && d.RuntimeMirror)
+	}
+	if !found {
+		t.Errorf("the program's decided no-match must still report as a RuntimeMirror: %+v", res.Diagnostics)
+	}
 }

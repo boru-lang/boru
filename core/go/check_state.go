@@ -445,6 +445,14 @@ type CheckState struct {
 	// gated to !Compiling. Set by the compile entry points after Begin.
 	Compiling bool
 
+	// ProgramEmit is the recorder BeginCompilePass installed: the one whose
+	// recording becomes the executed Program. Every other recorder a compile
+	// pass swaps into Emit is a throwaway — IsolateEmit's, or a probe a
+	// compile path arms to try a body and discard it (compileStoredFnUnit,
+	// tryReturnedClosure) — and nothing it records or declines decides
+	// anything for the program. Nil outside a compile pass.
+	ProgramEmit EmitRecorder
+
 	// FnCarrierReadSubstituted marks that this compile pass resolved at
 	// least one read of a name def-bound to a computed fn through the
 	// fn-carrier side table (stepWord's Stage 1 consult). Before Stage 1
@@ -1252,6 +1260,7 @@ func (c *CheckState) Begin() func() {
 	c.FnMemberReads = nil
 	c.SlotBoundReads = nil
 	c.Emit = TheInactiveEmit
+	c.ProgramEmit = nil
 	c.CodeEffectDepth = 0
 	c.FnBodyDepth = 0
 	c.CallShapeDepth = 0
@@ -2026,6 +2035,7 @@ func (c *CheckState) BeginCompilePass() func() {
 		return done
 	}
 	c.Emit = NewEmitStateHook()
+	c.ProgramEmit = c.Emit
 	c.Compiling = true
 	c.FnSummaries = nil
 	c.FnInflight = nil

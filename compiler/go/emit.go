@@ -3,6 +3,7 @@ package compiler
 import (
 	"maps"
 	"math"
+	"slices"
 	"sort"
 	"strconv"
 
@@ -9878,6 +9879,17 @@ func (es *EmitState) dynBodySettledOp(residual []core.Value) (Opcode, bool) {
 	return 0, true
 }
 
+// regionSettledOp is resolveDynamicApply's first question: a residual
+// holding a VARIADIC REGION entry takes no fn-value-call op (0, settled —
+// residualHasVariadicRegion), and a dyn body's settled lead takes
+// dynBodySettledOp's.
+func (es *EmitState) regionSettledOp(residual []core.Value) (Opcode, bool) {
+	if es.residualHasVariadicRegion(residual) {
+		return 0, true
+	}
+	return es.dynBodySettledOp(residual)
+}
+
 // regionValsMayBeCallable reports whether any value a region's run is modelled
 // to leave could be CALLABLE at run time. A fn value or a Function-typed
 // carrier plainly can; so can a DYNAMIC one, whose runtime type the model does
@@ -15725,6 +15737,13 @@ func (es *EmitState) variadicSiblings(vals []core.Value) bool {
 		}
 	}
 	f := es.eventInfo[first.seq]
+	// A `do` the VM re-steps itself (reStepResults, NUR317's doReStep) is
+	// settled at the call: its island steps the results only where nothing
+	// follows the call in the unit, so an apply laid after it would both
+	// re-step them twice and defeat that test (`do [if c [l/v] [0] 5 6]`).
+	if f.reStepResults {
+		return false
+	}
 	return f.callVariadic || (f.dynBodyResult && f.variadicResult)
 }
 
@@ -15794,10 +15813,7 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// lead — it is a count. Asked of one, the scan answered yes for the
 	// zero-netting handler's 0-or-1 run and declined a program that has no
 	// fn value in it at all.
-	if es.residualHasVariadicRegion(residual) {
-		return residual, 0, ""
-	}
-	if op, settled := es.dynBodySettledOp(residual); settled {
+	if op, settled := es.regionSettledOp(residual); settled {
 		return residual, op, ""
 	}
 	// A fn-value lead a later dispatch collected past, ANYWHERE in the
@@ -15806,10 +15822,8 @@ func (es *EmitState) resolveDynamicApply(lw *lowerer, residual []core.Value) ([]
 	// the model's drop took the 2 the frame's rewind would have applied the
 	// lead to, leaving the lead alone), declines before any arm can apply it;
 	// a placed (lazy) lead is the arms' own business (hazardLead).
-	for _, v := range residual {
-		if es.hazardLead(v) {
-			return residual, 0, "fn-value lead's argument was collected by a later dispatch (NUR121)"
-		}
+	if slices.ContainsFunc(residual, es.hazardLead) {
+		return residual, 0, "fn-value lead's argument was collected by a later dispatch (NUR121)"
 	}
 	// The program unit's pending `apply`-WORD application on the residual's
 	// top (the dynamic-lead group, 2026-09-22): the word's own op over the

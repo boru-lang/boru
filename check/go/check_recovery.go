@@ -1364,6 +1364,16 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	if decided && e.LastUnmatchedRematched {
 		decided = false
 	}
+	// Nor is a decision on a THROWAWAY recorder — a probe a compile path
+	// arms to try a body and discard (compileStoredFnUnit's stored handler,
+	// IsolateEmit's construction-time analysis): its trap or decline goes
+	// with it, and the program compiles and runs regardless. boru:repl's
+	// service handler reaches here for its internal `set`
+	// (module-repl.tsv:L12..L18) — a no-match neither the plain pass nor the
+	// runtime sees.
+	if decided && es != e.Registry.Check.ProgramEmit {
+		decided = false
+	}
 	if (!e.Registry.Check.Compiling || decided) && !recoverableUnknownType {
 		// Expected-vs-actual: name the operand types the dispatch saw and
 		// the nearest candidate's declared types, so the user can see the

@@ -31,9 +31,10 @@ var fnValueParkRows = []struct {
 	{"token seam: fold's accumulator the lambda rejects", `{a:1} fold ([acc:Map e:Integer] => [acc add e]) [1 2]`, true},
 	{"token seam: a list of functions folded", `10 fold ([a:Integer f:Function] => [(f a)]) [(fn [[n:Integer][Integer][n add 1]])]`, true},
 	{"token seam: rejected elements", `0 fold ([a:Integer b:Integer] => [a add b]) ['a' 'b']`, true},
-	// The step would DISPATCH: a predicate-typed param admits 5 (the plan's
-	// own matcher runs the predicate), so the fork is not this one.
-	{"a predicate-typed param that admits (open)", `def P (Integer gt 0) def m {f: (fn [[a:P][Integer][a add 1]])}  m.f 5`, false},
+	// The step DISPATCHES: a predicate-typed param admits 5 (the plan's own
+	// matcher runs the predicate). Pinned open when this test landed; it runs
+	// natively since the merge of main e8702ac.
+	{"a predicate-typed param that admits", `def P (Integer gt 0) def m {f: (fn [[a:P][Integer][a add 1]])}  m.f 5`, true},
 	// A forward list is stepped by the island after the park: not stepless.
 	{"a forward list (open)", parkLam + `m.f [1 2]`, false},
 	{"trailing: a list beneath (open)", parkLam + `[1 2] m.f`, false},
