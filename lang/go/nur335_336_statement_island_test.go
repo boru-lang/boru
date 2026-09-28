@@ -91,3 +91,74 @@ func TestNUR336UnitIslandReadsTheReceiver(t *testing.T) {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
 }
+
+// TestNUR335IslandSeatsTheStackAtTheStatement: the island seats the stack the
+// pass stepped into the statement with (the `end` before it tells it), not the
+// program residual's leading entries — a value the statement consumes is on
+// the interpreter's stack there and on no residual: `m end drop (m.f 7)` ran
+// the island's `drop` over an empty stack (a signature_error for `[5 7]`).
+// A value the compiled stack holds beneath the statement must still be there
+// at the stop, or the island is not taken.
+func TestNUR335IslandSeatsTheStackAtTheStatement(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{nurDataMk + `m end drop (m.f 7)`, "[5 7]"},
+		{nurDataMk + `m end m drop (m.f 7)`, "[{f:5} 5 7]"},
+		{nurDataMk + `m end drop m (m.f 7)`, "[{f:5} 5 7]"},
+		{nurDataMk + `def k 3 end k end drop (m.f 7)`, "[5 7]"},
+		{nurDataMk + `def k 3 end k end k drop k (m.f 7)`, "[3 3 5 7]"},
+		{nurDataMk + `def k 3 end def j k/v end j (m.f 7)`, "[3 5 7]"},
+		{nurDataMk + `3 end drop (m.f 7)`, "[5 7]"},
+		{nurDataMk + `{a:1} end drop (m.f 7)`, "[5 7]"},
+		{nurDataMk + `{a:1} end {a:1} (m.f 7)`, "[{a:1} {a:1} 5 7]"},
+		{nurDataMk + `[m] end m (m.f 7)`, "[[{f:5}] {f:5} 5 7]"},
+		{nurDataMk + `def k 3 end k end 1 add (m.f 7)`, "[3 1 12]"},
+		{nurDataMk + `(mk) end drop (m.f 7)`, "[5 7]"},
+		{nurDataMk + `(mk) end 4 swap drop (m.f 7)`, "[4 5 7]"},
+		{nurDataMk + `(mk) end (mk) end swap (m.f 7)`, "[{f:5} {f:5} 5 7]"},
+		{nurFnMk + `m end drop (m.f 7)`, "[8]"},
+		{nurFnMk + `m end m drop (m.f 7)`, "[{f:fn (Integer)} 8]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+}
+
+// TestNUR336PlacedParenApply: a paren apply whose lead is data where no
+// island can be planned — a call written after the lead (`(m.f y)`) — is
+// placed by the VM itself where nothing after it reads beneath what it
+// leaves (the paren's own placement: the lead, then the values after it), and
+// an apply there claims no result count, so a fn member taking fewer values
+// than the paren holds leaves the rest as the paren does. A lead the landing
+// before it parked is applied as the interpreter's paren applies it.
+func TestNUR336PlacedParenApply(t *testing.T) {
+	const y = `def y fn [[] [Integer] [42]] end `
+	for _, c := range []struct{ src, want string }{
+		{nurDataMk + y + `(m.f y)`, "[5 42]"},
+		{nurDataMk + y + `(m.f y) 9`, "[5 42 9]"},
+		{nurDataMk + y + `(m.f y 8)`, "[5 42 8]"},
+		{nurDataMk + y + `(m.f 8 y)`, "[5 8 42]"},
+		{nurDataMk + y + `3 end (m.f y)`, "[3 5 42]"},
+		{nurDataMk + y + `(m.f y) (m.f y)`, "[5 42 5 42]"},
+		{nurDataMk + y + `(m.f y) add 1`, "[5 43]"},
+		{nurDataMk + y + `(m.f y) size`, "[5 42]"},
+		{nurDataMk + y + `[(m.f y) 1]`, "[[5 42 1]]"},
+		{nurDataMk + y + `if true [(m.f y)] [0]`, "[5 42]"},
+		{nurDataMk + y + `def g fn [[] [Any] [(m.f y) drop]] end (g)`, "[5]"},
+		{nurDataMk + `3 end (m.f "a") end`, "[3 5 a]"},
+		{`def reg (flex {}) end reg set 'cb' 3 drop end ((reg.cb) 5)`, "[3 5]"},
+		{nurFnMk + y + `(m.f y)`, "[43]"},
+		{nurFnMk + y + `(m.f y) 9`, "[43 9]"},
+		{nurFnMk + y + `(m.f y 8)`, "[43 8]"},
+		{nurFnMk + y + `[(m.f y)]`, "[[43]]"},
+		{nurFnMk + y + `(m.f y) (m.f y)`, "[43 43]"},
+		{nurFnMk + y + `if true [(m.f y)] [0]`, "[43]"},
+		{nurFnMk + y + `def g fn [[] [Any] [(m.f y)]] end (g)`, "[43]"},
+		{nurFnMk + `(m.f/v 7)`, "[8]"},
+		{`def mk fn [[] [Map] [{f: ([] => [9])}]] end def m (mk) end ` + y + `(m.f y)`, "[fn 42]"},
+		{`def mk fn [[] [Map] [{f: ([x:String] => [x])}]] end def m (mk) end ` + y + `(m.f y)`, "[fn (String) 42]"},
+		// A named fn member the landing fires before the paren: the paren's
+		// lead is its result, which the island writes as it is.
+		{`def h fn [[] [Integer] [42]] end def h fn [[n:Integer] [Integer] [n add 1]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end ` + y + `3 end (m.f y)`, "[3 42 42]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+}

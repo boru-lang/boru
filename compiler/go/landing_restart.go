@@ -46,6 +46,14 @@ type landingRestart struct {
 	// unseatable marks a unit's island whose frame, at the statement's
 	// start, holds unnamed params the walk cannot place (deoptPrefix).
 	unseatable bool
+	// beneath is the compiled stack beneath the statement when it began
+	// (the root's; noteRestartDepth): the island reads the held values
+	// there, so they must still be there at the stop (restartAt).
+	beneath []vmSlot
+	// heldAt, where the pass told the stack at the statement's start
+	// (seatStack), is the held values' producers, bottom first: the stack
+	// at the stop must hold exactly those beneath the statement.
+	heldAt []vmSlot
 	// substs are the parens the island writes the compiled code's values in
 	// place of (restartSubsts).
 	substs []substPlan
@@ -142,21 +150,25 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 		}
 		tok = literalDefsBefore(tree, es.rootBody, tok, eventPos(*at.ev))
 		d := deoptPoint{seq: seq, slot: -1, start: es.rootBody[tok].Pos(), token: tok}
-		if d.start.Row == 0 || es.deoptDeferred(es.units[0], rec, &d, -1) {
+		// Where the pass told the stack at the statement's start the island
+		// seats exactly that (stackAtStart), and the walk checks each value
+		// the compiled stack holds is still there at the stop (heldIntact):
+		// the deferred-operand accounting the residual's prefix needs is moot.
+		if _, told := es.stackAtStart(d.start); d.start.Row == 0 || (!told && es.deoptDeferred(es.units[0], rec, &d, -1)) {
 			continue
 		}
 		substs, first, reruns := es.restartReruns(tree, at, seq, es.rootBody, tok)
 		if !reruns {
 			continue
 		}
-		srcs, held, ok := es.rootPreStart(lw, tree, residual, d.start, statementFirstSeq(tree, seq, d.start))
+		srcs, held, slots, ok := es.rootPreStart(lw, tree, residual, d.start, statementFirstSeq(tree, seq, d.start))
 		if !ok {
 			continue
 		}
 		if lw.landingRestarts == nil {
 			lw.landingRestarts = map[int]*landingRestart{}
 		}
-		lw.landingRestarts[seq] = &landingRestart{token: tok, start: d.start, depth: -1, srcs: srcs, held: held, substs: substs, first: first}
+		lw.landingRestarts[seq] = &landingRestart{token: tok, start: d.start, depth: -1, srcs: srcs, held: held, heldAt: slots, substs: substs, first: first}
 	}
 }
 
@@ -249,7 +261,7 @@ func (es *EmitState) planGuardRestarts(lw *lowerer, residual []core.Value) {
 		if !ok {
 			continue
 		}
-		srcs, held, ok := es.rootPreStart(lw, tree, residual, d.start, statementFirstSeq(tree, g.seq, d.start))
+		srcs, held, _, ok := es.rootPreStart(lw, tree, residual, d.start, statementFirstSeq(tree, g.seq, d.start))
 		if !ok {
 			continue
 		}
@@ -316,7 +328,7 @@ func (es *EmitState) planCountRestarts(lw *lowerer, residual []core.Value) {
 			continue
 		}
 		start := es.rootBody[tok].Pos()
-		srcs, held, ok := es.rootPreStart(lw, tree, residual, start, statementFirstSeq(tree, seq, start))
+		srcs, held, _, ok := es.rootPreStart(lw, tree, residual, start, statementFirstSeq(tree, seq, start))
 		if !ok {
 			continue
 		}
@@ -540,8 +552,8 @@ func (es *EmitState) countSeat(seq int) bool {
 // (doBody), binding nothing there, and the island writes each outermost one
 // as the value its call left: the run is the compiled code's, never
 // repeated. The plans are in token order (pathLess). ok is false otherwise.
-func (es *EmitState) restartSubsts(tree map[int]treeEvent, body []core.Value, tok int, pending []int) ([]substPlan, bool) {
-	var cands []substPlan
+func (es *EmitState) restartSubsts(tree map[int]treeEvent, body []core.Value, tok int, pending []int, pre ...substPlan) ([]substPlan, bool) {
+	cands := append([]substPlan(nil), pre...)
 	for _, s := range pending {
 		ev := tree[s].ev
 		if restartRead(ev) {
@@ -908,10 +920,13 @@ func (es *EmitState) guardReruns(tree map[int]treeEvent, seq int, body []core.Va
 // value itself carries the def's earlier position, so `def k 3 end k (m.f
 // 7)` counted the statement's own `k` beneath it, and the island, running
 // the statement again, pushed it twice.
-func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual []core.Value, start core.SrcPos, firstSeq int) (srcs []RestartSrc, held int, ok bool) {
+func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual []core.Value, start core.SrcPos, firstSeq int) (srcs []RestartSrc, held int, slots []vmSlot, ok bool) {
+	if stack, told := es.stackAtStart(start); told {
+		return es.seatStack(lw, stack)
+	}
 	before, reads, ok := es.boundReadsBefore(tree, residual, start)
 	if !ok {
-		return nil, 0, false
+		return nil, 0, nil, false
 	}
 	for i, rv := range residual {
 		pr, produced := es.producedBy[rv.ID]
@@ -921,7 +936,7 @@ func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual 
 			}
 			before[rv.ID]--
 		} else if own, known := es.statementPushed(tree, rv, start, firstSeq); !known {
-			return nil, 0, false
+			return nil, 0, nil, false
 		} else if own {
 			break
 		}
@@ -934,12 +949,56 @@ func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual 
 			srcs = append(srcs, RestartSrc{Kind: RestartStack, Idx: held})
 			held++
 		case !core.IsConcrete(rv) || rv.Carrier || rv.Dynamic:
-			return nil, 0, false
+			return nil, 0, nil, false
 		default:
 			srcs = append(srcs, RestartSrc{Kind: RestartConst, Val: rv})
 		}
 	}
-	return srcs, held, true
+	return srcs, held, nil, true
+}
+
+// stackAtStart is the stack the pass stepped into the statement beginning at
+// start with, when the `end` before the statement told it
+// (NoteStatementStack): the interpreter's own stack there, values the
+// statement then consumes included — the residual no longer holds those, so
+// `m end drop (m.f 7)` seated nothing and the island's `drop` found an empty
+// stack. An island taking over past the statement's opening literal defs
+// (literalDefsBefore) sees the same stack: a def pushes nothing.
+func (es *EmitState) stackAtStart(start core.SrcPos) ([]core.Value, bool) {
+	s := statementToken(es.rootBody, start)
+	if s <= 0 || !core.IsEnd(es.rootBody[s-1]) {
+		return nil, false
+	}
+	stack, told := es.rootStmtStacks[es.rootBody[s-1].Pos()]
+	return stack, told
+}
+
+// seatStack finds each value of the stack at a statement's start where the
+// compiled root keeps it (rootPreStart's placement): an event's result in the
+// slot it was promoted to, or on the compiled stack beneath the statement
+// (held of those, whose producers are slots, bottom first), and a literal
+// known to the bottom as a constant. Anything
+// else — a carrier, a dynamic value, a type — cannot be seated, and ok is
+// false.
+func (es *EmitState) seatStack(lw *lowerer, stack []core.Value) (srcs []RestartSrc, held int, slots []vmSlot, ok bool) {
+	slots = []vmSlot{}
+	for _, v := range stack {
+		if pr, produced := es.producedBy[v.ID]; produced {
+			if slot, promoted := lw.promoted[pr.seq]; promoted {
+				srcs = append(srcs, RestartSrc{Kind: RestartLocal, Idx: slot + pr.idx})
+				continue
+			}
+			srcs = append(srcs, RestartSrc{Kind: RestartStack, Idx: held})
+			slots = append(slots, vmSlot(pr))
+			held++
+			continue
+		}
+		if v.Carrier || v.Dynamic || !core.DeepConcrete(v) {
+			return nil, 0, nil, false
+		}
+		srcs = append(srcs, RestartSrc{Kind: RestartConst, Val: v})
+	}
+	return srcs, held, slots, true
 }
 
 // statementPushed reports whether residual entry rv — no read of a def-bound
@@ -1185,10 +1244,34 @@ func outsProducedBefore(outs []EmitOperand, firstSeq int) bool {
 // not the residual's results the plan counted (rootPreStart), and in a unit
 // whose frame's unnamed params the walk could not place.
 func (lw *lowerer) restartAt(seq int) *landingRestart {
-	if r := lw.landingRestarts[seq]; r.seated() {
+	if r := lw.landingRestarts[seq]; r.seated() && lw.heldIntact(r) {
 		return r
 	}
 	return nil
+}
+
+// heldIntact reports whether the compiled stack at the stop still holds, at
+// the bottom of the frame, the values the island seats from it (held of
+// them): the statement ran stack words before the stop, and one that took a
+// value from beneath the statement (`(mk) end drop (m.f 7)`) left another in
+// its slot.
+func (lw *lowerer) heldIntact(r *landingRestart) bool {
+	if r.held <= 0 {
+		return true
+	}
+	want := r.beneath
+	if r.heldAt != nil {
+		want = r.heldAt
+	}
+	if len(lw.vm) < r.held || len(want) < r.held {
+		return false
+	}
+	for i := 0; i < r.held; i++ {
+		if lw.vm[i] != want[i] {
+			return false
+		}
+	}
+	return true
 }
 
 // noteRestartDepths seats the compiled stack's depth on every planned
@@ -1212,6 +1295,7 @@ func (lw *lowerer) noteRestartDepth(r *landingRestart, p core.SrcPos) {
 	}
 	r.depth = len(lw.vm)
 	if lw.landingRoot {
+		r.beneath = append([]vmSlot(nil), lw.vm...)
 		return
 	}
 	params, ok := lw.deoptPrefix()
@@ -1435,7 +1519,25 @@ func (es *EmitState) restartRunsReadsOnly(tree map[int]treeEvent, seq int, body 
 		}
 	}
 	sort.Ints(pending)
-	return es.restartSubsts(tree, body, tok, pending)
+	return es.restartSubsts(tree, body, tok, pending, parenLead(tree[seq].ev, body, tok)...)
+}
+
+// parenLead is the island's plan for a paren apply's own lead (NUR336): the
+// island writes the value the apply found in the lead's place, placed —
+// what the paren had in hand, past any landing that re-stepped the read
+// (`(m.f y)` over a named fn of no argument holds its result) — so the
+// island neither reads the member again nor lets it collect: a word after
+// it the island writes as its value (`y`) meets no collection
+// (inertBefore). None for another stop, or a lead no event produced.
+func parenLead(ev *EmitEvent, body []core.Value, tok int) []substPlan {
+	if ev.kind != evCall || ev.call.dynMethod == nil || !ev.call.dynMethod.Paren || methodSeq(ev) < 0 {
+		return nil
+	}
+	path := tokenPath(body, eventPos(*ev))
+	if len(path) < 2 || path[0] < tok {
+		return nil
+	}
+	return []substPlan{{path: path, span: 1, seq: methodSeq(ev), run: true}}
 }
 
 // restartRead reports whether ev runs no user code, binds nothing and has

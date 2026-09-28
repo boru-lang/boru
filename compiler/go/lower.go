@@ -1447,11 +1447,16 @@ func (lw *lowerer) seatLandingSkip(c *emitCall) {
 	}
 	delete(lw.landingSkips, c.ops[0].idx)
 	calls := 0
-	for pc := at + 1; pc < len(*lw.code); pc++ {
-		switch op := (*lw.code)[pc].Op; {
+	code := *lw.code
+	for pc := at + 1; pc < len(code); pc++ {
+		switch op := code[pc].Op; {
 		case op == OpSwap:
 		case isWordCallOp(op):
 			calls++
+		case op == OpStoreLocal && pc+1 < len(code) && code[pc+1].Op == OpPushLocal && code[pc+1].Arg == code[pc].Arg:
+			// The call's result stashed for the apply's statement island
+			// (substStash) and pushed back: the stack is as it was.
+			pc++
 		default:
 			return
 		}
@@ -3884,7 +3889,8 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		di := len(lw.p.DynMethods)
 		spec := *c.dynMethod
 		if r := lw.restartAt(ev.seq); r != nil {
-			if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, -1); ok {
+			// The lead's plan (parenLead) writes the value the apply holds.
+			if substs, ok := lw.restartSubstSrcs(r, c.ops[0], -1); ok {
 				spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc, spec.Substs, spec.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
 				lw.restartMethods = append(lw.restartMethods, di)
 			}

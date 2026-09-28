@@ -1529,6 +1529,17 @@ type DynMethodSpec struct {
 	// FirstIter is the loops' first-iteration check the island takes at run
 	// time (RestartFirst); empty outside loops.
 	FirstIter []RestartFirst
+	// Paren marks a paren's leading apply (core's recordParenLeadingApply,
+	// `(m.f 7)`): the interpreter's paren applies its lead over the values
+	// after it — a lead the landing before it parked included, `(m.f y)` over
+	// a lambda that could not take the word y — and PLACES a lead that is no
+	// fn, the lead then the values, as a paren leaves them (NUR336).
+	Paren bool
+	// Place marks a paren apply at the program root after which the code only
+	// pushes (stampRootRestarts): a data lead with no statement island is
+	// placed where the apply stands, the program's residual taking the extra
+	// values as the interpreter's does (NUR336).
+	Place bool
 	// Parks is the residual's claim that the apply's result is placed where
 	// it lands: a def-bound name's dispatch over a callee the compiler cannot
 	// see (`j j` over a factory's lambda, NUR282), whose result the

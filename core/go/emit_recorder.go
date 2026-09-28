@@ -429,6 +429,14 @@ type EmitRecorder interface {
 	// past a boundary its re-step did not cross — `7 m.f ; 3` islanded to
 	// `[7 4]` for the interpreter's `[8 3]` (NUR187). Inactive: no-op.
 	NoteStatementEnd(pos SrcPos)
+	// NoteStatementStack records the stack a statement boundary at pos left
+	// for the next statement — told only where the boundary closed nothing
+	// (no pending forward) and the stack beneath it holds values alone. A
+	// statement island seats exactly these beneath the statement it runs
+	// again (NUR335): the interpreter's stack there, including values the
+	// statement then consumes, which the program's residual no longer
+	// shows (`m end drop (m.f 7)`). Inactive: no-op.
+	NoteStatementStack(pos SrcPos, stack []Value)
 	// PendingClosureApply reports the fn VALUE of a pending `apply`-word
 	// application over a closure this pass PRODUCED whose body is `body`
 	// (matched by the body's first token position — one lambda source, one
@@ -783,6 +791,7 @@ func (inactiveEmit) RegisterTrailingApply(string, int)                      {}
 func (inactiveEmit) ApplyPending(string) bool                               { return false }
 func (inactiveEmit) MayBeFn(string) bool                                    { return false }
 func (inactiveEmit) NoteStatementEnd(SrcPos)                                {}
+func (inactiveEmit) NoteStatementStack(SrcPos, []Value)                     {}
 func (inactiveEmit) NoteLandingNext(Value, LandingNext, bool, Value)        {}
 func (inactiveEmit) PendingClosureApply([]Value) (Value, bool)              { return Value{}, false }
 func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}

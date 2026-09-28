@@ -1462,6 +1462,11 @@ type EmitState struct {
 	// tape (its own position, when it had one): the interpreter's re-step
 	// raises there (LandingWord.ValPos, NUR289's caret).
 	landingValPos map[int]core.SrcPos
+	// rootStmtStacks holds, by the position of a ROOT statement boundary
+	// that closed nothing, the stack it left for the next statement
+	// (NoteStatementStack): a root statement island seats exactly these
+	// beneath the statement (rootPreStart, NUR335).
+	rootStmtStacks map[core.SrcPos][]core.Value
 	// stmtEnds holds the source positions of every statement boundary (`;`
 	// / `end`) the pass stepped (NoteStatementEnd). The residual's fn-value
 	// apply arms ask crossesBoundary before laying a value's apply over the
@@ -10938,7 +10943,7 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	}
 	call := emitCall{
 		word: word, ops: ops, nout: len(outs), pos: pos,
-		dynMethod: &DynMethodSpec{Word: word, NArgs: len(args), NOut: len(outs), DefRead: defRead},
+		dynMethod: &DynMethodSpec{Word: word, NArgs: len(args), NOut: len(outs), DefRead: defRead, Paren: word == parenApplyWord},
 	}
 	// The method value's own producer, when it is a compiled closure (the
 	// factory pattern): the call is a user call by another route and its
@@ -11126,6 +11131,19 @@ func (es *EmitState) NoteStatementEnd(pos core.SrcPos) {
 		return
 	}
 	es.stmtEnds = append(es.stmtEnds, pos)
+}
+
+// NoteStatementStack keeps the stack a ROOT statement boundary left for the
+// next statement (EmitRecorder; the rootStmtStacks field). A boundary inside
+// an open unit's body, or one with no position, is not the root's.
+func (es *EmitState) NoteStatementStack(pos core.SrcPos, stack []core.Value) {
+	if !es.Active() || pos.Row == 0 || len(es.openUnitRecs) > 0 {
+		return
+	}
+	if es.rootStmtStacks == nil {
+		es.rootStmtStacks = map[core.SrcPos][]core.Value{}
+	}
+	es.rootStmtStacks[pos] = append([]core.Value(nil), stack...)
 }
 
 // NoteLandingNext records what followed a noted landing's value on the tape
@@ -18381,6 +18399,7 @@ func stampUnitRestarts(flw *lowerer, cf *CompiledFn, retPC int) {
 // residual is the program's.
 func stampRootRestarts(lw *lowerer) {
 	end := len(lw.p.Code)
+	markTailPlacements(lw.p)
 	stampLandingRet(lw.p.LandingWords, end)
 	for _, di := range lw.restartMethods {
 		lw.p.DynMethods[di].RetPC = end
@@ -18391,6 +18410,42 @@ func stampRootRestarts(lw *lowerer) {
 	for _, fi := range lw.restartFallbacks {
 		lw.p.FallbackCounts[fi].RetPC = end
 	}
+}
+
+// parenApplyWord is the word core's paren-bounded leading apply records
+// under (recordParenLeadingApply).
+const parenApplyWord = "(paren apply)"
+
+// markTailPlacements marks every root paren apply after which the program
+// only pushes (DynMethodSpec.Place, NUR336): nothing after it reads the
+// stack beneath what it leaves, so a lead that is data at run time is placed
+// with the values after it where the apply stands, and an apply's results
+// stand whatever their count — the program's residual is the interpreter's
+// (`(m.f y) 9` is `[5 42 9]` over a data member, `(m.f y 8)` `[43 8]` over
+// a one-argument fn), with no statement island to run.
+func markTailPlacements(p *Program) {
+	for pc, in := range p.Code {
+		if in.Op != OpCallDynMethod {
+			continue
+		}
+		// The lowering emits the op over the spec it appended (lowerCall).
+		if spec := &p.DynMethods[in.Arg]; spec.Paren && onlyPushes(p.Code[pc+1:]) {
+			spec.Place = true
+		}
+	}
+}
+
+// onlyPushes reports whether code only pushes values — a constant, a local, a
+// type — reading nothing beneath them.
+func onlyPushes(code []Instr) bool {
+	for _, in := range code {
+		switch in.Op {
+		case OpPushConst, OpPushConstFresh, OpPushLocal, OpPushType:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // stampSigRestart seats retPC on a SigRef's statement island — a branch

@@ -13,12 +13,16 @@ import "testing"
 // no-op.
 type mayBeFnRecorder struct {
 	inactiveEmit
-	maybe map[string]bool
-	ends  []SrcPos
+	maybe  map[string]bool
+	ends   []SrcPos
+	stacks [][]Value
 }
 
 func (m *mayBeFnRecorder) MayBeFn(id string) bool    { return m.maybe[id] }
 func (m *mayBeFnRecorder) NoteStatementEnd(p SrcPos) { m.ends = append(m.ends, p) }
+func (m *mayBeFnRecorder) NoteStatementStack(_ SrcPos, stack []Value) {
+	m.stacks = append(m.stacks, stack)
+}
 
 // TestMightBeCallableAsksRecorder: a value neither fn-typed nor dynamic —
 // a branch result whose merge widened the fn arm's type — is marked by
@@ -107,6 +111,20 @@ func TestStepEndNotesBoundary(t *testing.T) {
 	if len(rec.ends) != 1 || rec.ends[0].Row != 3 || rec.ends[0].Col != 9 {
 		t.Errorf("the boundary's position is noted once: %+v", rec.ends)
 	}
+	// A boundary that closed nothing tells the stack it leaves (NUR335).
+	if len(rec.stacks) != 1 || len(rec.stacks[0]) != 1 {
+		t.Errorf("the stack the boundary leaves is noted: %+v", rec.stacks)
+	}
+	// Beneath an open paren there is no statement's stack to tell.
+	e.Tape = NewTape([]Value{NewOpenParen(), NewInteger(1), end}, StackHeadroom)
+	e.Pointer = 2
+	if err := e.stepEnd(); err != nil {
+		t.Fatalf("stepEnd: %v", err)
+	}
+	if len(rec.stacks) != 1 {
+		t.Errorf("no stack is noted inside a paren: %+v", rec.stacks)
+	}
+	rec.ends = rec.ends[:1]
 	// Outside an analysis pass the recorder hears nothing.
 	fin()
 	e.Tape = NewTape([]Value{NewInteger(1), end}, StackHeadroom)
