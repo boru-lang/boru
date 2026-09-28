@@ -678,6 +678,15 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 		if res, err, ran := vc.invokeTokenBody(reg, body, inputs); ran {
 			return res, err
 		}
+		// A fn value no signature admits over the inputs parks on top of
+		// them — RunResolved's residual — or raises, as its step would
+		// (vm_fnvalue_park.go): the inputs are the stack beneath it.
+		switch verdict, fd := fnValueNoMatchVerdict(reg, body, inputs, nil); verdict {
+		case noMatchPark:
+			return append(append([]core.Value(nil), inputs...), body), nil
+		case noMatchRaise:
+			return nil, uncalledAt(reg, body, fd, inputs)
+		}
 		return core.RunResolved(reg, inputs, core.BodyTokens(body))
 	}
 	// A fn-VALUE closure — a capturing `fn` / `=>` literal minted at run
@@ -1255,6 +1264,15 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 		if results, ran, err := vc.dynApplyForeign(inner, iargs, 0); ran {
 			return vc.dynForeignResults(results, err, stack, base, "dynamic result", curDebug, pc, reg)
 		}
+	}
+	// A fn VALUE the window does not fit at all: the interpreter's step
+	// parks it (the window as written) or, for a named one, raises
+	// uncalled_function — answered here with the step's own matchers
+	// (vm_fnvalue_park.go). The LEADING form steps the value over the args
+	// as forward tokens; the TRAILING form places the args first, so they
+	// are the stack beneath it (and are stepped, so each must be stepless).
+	if st, handled, err := vc.callDynamicNoMatch(reg, fnVal, args, stack, base, trailing, curDebug, pc); handled {
+		return st, nil, err
 	}
 	// Non-trivial fn (user body): apply via the island sub-engine, which
 	// auto-applies the Function to the forward args exactly as a nested Run.
@@ -2291,6 +2309,18 @@ func (vc *vmContext) callDynFrame(reg *core.Registry, w, frameBase int, stack []
 	if len(words) > 0 {
 		if st, handled, err := vc.callDynFrameWords(reg, words, frameBase, base, stack, curDebug, pc); handled {
 			return st, nil, err
+		}
+	}
+	// A fn value leading the region that nothing admits parks — the region
+	// stands, the frame's residual as it is — or raises, as the island's step
+	// would (vm_fnvalue_park.go): the prefix is the stack beneath it, the rest
+	// of the region its forward tokens.
+	if len(tokens) > 0 {
+		switch verdict, fd := fnValueNoMatchVerdict(reg, tokens[0], prefix, tokens[1:]); verdict {
+		case noMatchPark:
+			return stack, nil, nil
+		case noMatchRaise:
+			return nil, nil, stampAt(uncalledAt(reg, tokens[0], fd, append(append([]core.Value(nil), prefix...), tokens[1:]...)), curDebug, pc, reg)
 		}
 	}
 	results, err := runIslandResolved(reg, prefix, tokens)
