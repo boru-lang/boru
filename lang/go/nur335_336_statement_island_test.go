@@ -1,6 +1,9 @@
 package lang
 
-import "testing"
+import (
+	"fmt"
+	"testing"
+)
 
 // nur335_336_statement_island_test.go pins the root paren apply over a
 // container member the pass could not type, `(m.f 7)`: the interpreter's
@@ -205,5 +208,40 @@ func TestNUR336PlacingFnLeadDefers(t *testing.T) {
 		{str + `def k 3 end k (m.f 7) drop`, "[3 fn (String)]"},
 	} {
 		requireLoudDefer(t, c.src, "NUR297", c.want)
+	}
+}
+
+// TestNUR336PlacementNeedsWrittenAfterPushes: a paren apply is a PLACING one
+// (DynMethodSpec.Place) only when every push after it is a value the program
+// WROTE after the paren. A folded shuffle that re-seats an operand written
+// beneath the paren (`3 (m.f 7) swap` pushes the 3 after the apply) placed a
+// data lead's values beneath it — [5 7 3] for the interpreter's [3 7 5] —
+// a silent wrong answer the first NUR336 round introduced; the written-order
+// pushes after a paren (`(m.f y) 9`) keep the placement.
+func TestNUR336PlacementNeedsWrittenAfterPushes(t *testing.T) {
+	const d = `def mk fn [[] [Map] [{f: 5}]] end def m (mk) end `
+	const f = `def mk fn [[] [Map] [{f: ([x:Integer] => [x add 1])}]] end def m (mk) end def y 42 end `
+	for _, src := range []string{
+		d + `3 (m.f 7) swap`,
+		d + `def k 3 end k (m.f 7) swap`,
+		d + `[1] (m.f 7) swap`,
+		d + `3 end (m.f 7) swap`,
+		f + `3 (m.f y) swap`,
+		// the placement the rule keeps
+		d + `def y 42 end (m.f y) 9`,
+		d + `def y 42 end (m.f y 8)`,
+		f + `(m.f y 8)`,
+		f + `(m.f y) 9`,
+		`def reg (flex {}) end reg set 'cb' 3 drop end ((reg.cb) 5)`,
+	} {
+		requireCompiledParity(t, src)
+	}
+	// Without the statement's `end` the island cannot be planned: loud,
+	// never the placed wrong answer.
+	src := `def mk fn [[] [Map] [{f: 5}]] def m (mk) 3 (m.f 7) swap`
+	gotC, compiled, errC := mustNew(t).RunCompiled(src)
+	gotI, errI := mustNew(t).RunInterp(src)
+	if compiled && errC == nil && fmt.Sprint(gotC) != fmt.Sprint(gotI) {
+		t.Errorf("%q: compiled %v silently, interpreter %v [%v]", src, gotC, gotI, errI)
 	}
 }

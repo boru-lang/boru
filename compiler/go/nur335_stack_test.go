@@ -139,11 +139,16 @@ func TestMarkTailPlacements(t *testing.T) {
 			{Op: OpCallDynMethod, Arg: 1}, {Op: OpPushConst}, {Op: OpPushConstFresh}, {Op: OpPushLocal}, {Op: OpPushType},
 		},
 	}
+	// Every instruction written after the one before it (pushesWrittenAfter).
+	for i := range p.Code {
+		p.Debug = append(p.Debug, core.SrcPos{Row: 1, Col: i + 1})
+	}
 	markTailPlacements(p)
 	if p.DynMethods[0].Place || !p.DynMethods[1].Place {
 		t.Errorf("only the apply the program only pushes after: %+v", p.DynMethods)
 	}
 	p.Code = append(p.Code, Instr{Op: OpCallDynMethod, Arg: 2})
+	p.Debug = append(p.Debug, core.SrcPos{Row: 1, Col: len(p.Code)})
 	markTailPlacements(p)
 	if p.DynMethods[2].Place {
 		t.Error("a shaped method apply is no paren's")

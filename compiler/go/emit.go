@@ -18705,10 +18705,33 @@ func markTailPlacements(p *Program) {
 			continue
 		}
 		// The lowering emits the op over the spec it appended (lowerCall).
-		if spec := &p.DynMethods[in.Arg]; spec.Paren && onlyPushes(p.Code[pc+1:]) {
+		if spec := &p.DynMethods[in.Arg]; spec.Paren && onlyPushes(p.Code[pc+1:]) && pushesWrittenAfter(p, pc) {
 			spec.Place = true
 		}
 	}
+}
+
+// pushesWrittenAfter reports whether every instruction after pc carries a
+// source position AFTER the apply's own: the values pushed there are the
+// ones the program WROTE after the paren. A value written BEFORE the apply
+// that the lowering pushes after it — a statically folded shuffle
+// re-seating an operand beneath the paren (`3 (m.f 7) swap` pushes the 3
+// after the apply) — is not one the paren's placement leaves above its
+// window, so the apply is not a placing one (a data lead there placed the
+// 3 last: [5 7 3] for the interpreter's [3 7 5]). A push with no position
+// is not known to be written after, and refuses too.
+func pushesWrittenAfter(p *Program, pc int) bool {
+	if len(p.Debug) != len(p.Code) {
+		return false
+	}
+	at := p.Debug[pc]
+	for i := pc + 1; i < len(p.Code); i++ {
+		d := p.Debug[i]
+		if d.Row == 0 || d.Row < at.Row || (d.Row == at.Row && d.Col <= at.Col) {
+			return false
+		}
+	}
+	return true
 }
 
 // onlyPushes reports whether code only pushes values — a constant, a local, a
