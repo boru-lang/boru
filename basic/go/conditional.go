@@ -320,7 +320,9 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		// context-boundary region so an ambient-context write inside a clause
 		// declines (NUR054) instead of compiling one scope too shallow.
 		es.PushInlineCtxBoundary()
+		mark := len(r.Check.Diagnostics)
 		out := if3ReturnsFn([]Value{cond, then, NewList(rest)}, r)
+		dropSynthesizedDeadArmWarnings(r, mark)
 		es.PopInlineCtxBoundary()
 		return out
 	}
@@ -331,6 +333,28 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	// and a non-re-pushable case narrow instead of poisoning the result with
 	// Any.
 	return CaseBranchJoin(r, v, elems)
+}
+
+// dropSynthesizedDeadArmWarnings removes, from the diagnostics added since
+// mark, the unreachable_branch warnings of the case desugar's SYNTHESIZED
+// `if` tokens (buildCaseChain). A clause guard folds to a concrete Boolean
+// (`case 7 [[lt 3] … [lt 10] …]`), so the chain's nested `if` sees a static
+// condition and warns (warnStaticIfDeadArm) — about code the user never
+// wrote, at no source position (a synthesized token has none), and only on
+// the recording pass: a plain check types the `case` by CaseBranchJoin and
+// never builds the chain. The `case`'s own coverage pass
+// (checkCaseExhaustiveness) is what speaks for its clauses. A user `if`
+// inside a clause block carries its own position and keeps its warning.
+func dropSynthesizedDeadArmWarnings(r *Registry, mark int) {
+	mark = min(mark, len(r.Check.Diagnostics))
+	kept := r.Check.Diagnostics[:mark]
+	for _, d := range r.Check.Diagnostics[mark:] {
+		if d.Code == "unreachable_branch" && d.Row == 0 && d.Col == 0 {
+			continue
+		}
+		kept = append(kept, d)
+	}
+	r.Check.Diagnostics = kept
 }
 
 // caseCodeBodyRecord is CaseReturnsFn's RECORDING path for a code-body
