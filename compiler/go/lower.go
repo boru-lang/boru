@@ -3040,7 +3040,7 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 // Split out of Finalize rather than written inline because Finalize sits on
 // the gocyclo ceiling: one more branch there is one branch too many, and this
 // choice belongs beside the two seatings anyway.
-func (lw *lowerer) seatProgramResidual(ops []EmitOperand, vals []core.Value, pos core.SrcPos) string {
+func (lw *lowerer) seatProgramResidual(ops []EmitOperand, vals []core.Value, exempt map[string]bool, pos core.SrcPos) string {
 	if lw.seatRegionPrefix(ops, pos) {
 		return ""
 	}
@@ -3055,7 +3055,7 @@ func (lw *lowerer) seatProgramResidual(ops []EmitOperand, vals []core.Value, pos
 	// seatResults declined, and it emits nothing when it does — so the
 	// rebuild below starts from the same stack it saw. A residual that may
 	// carry a CALLABLE does not take it: see seatResidualRebuild.
-	if !regionValsMayBeCallable(vals) && lw.seatResidualRebuild(ops, pos) {
+	if !residualMayBeCallable(vals, exempt) && lw.seatResidualRebuild(ops, pos) {
 		return ""
 	}
 	return reason
@@ -3145,6 +3145,18 @@ func (lw *lowerer) seatResidualRebuild(ops []EmitOperand, pos core.SrcPos) bool 
 	}
 	lw.note()
 	return true
+}
+
+// residualMayBeCallable is the rebuild's CALLABLE screen
+// (regionValsMayBeCallable) over the entries it is owed against — every
+// entry but the exempt ones (EmitState.residualCallableExempt).
+func residualMayBeCallable(vals []core.Value, exempt map[string]bool) bool {
+	for _, v := range vals {
+		if !exempt[v.ID] && regionValsMayBeCallable([]core.Value{v}) {
+			return true
+		}
+	}
+	return false
 }
 
 // simHolds reports whether an event operand's value is on the simulated

@@ -139,6 +139,14 @@ type Registry struct {
 	// forward compatibility the day core claims the tuple as a locked
 	// signature. See design/OPEN-WORDS.0.md "Implementation notes".
 	ModuleScope bool
+	// ShapeModel marks a registry minted by a check-mode MODEL of a module
+	// instance — the shape-only twin a ReturnsFn builds for Rand.with-seed /
+	// Log.with / Log.span so a dot read resolves its method wrappers
+	// (MarkShapeModel). The model's state is a stand-in, not the run's (a
+	// generator seeded 0, a logger named ""), so a fn value homed here is no
+	// constant a program may bake: the run builds its own instance, and the
+	// value it reads is that one (NUR331).
+	ShapeModel bool
 	// ModuleRef is the resolved import id when this registry is a
 	// MODULE's sub-registry ("boru:time-util", "./lib.boru") — the
 	// module half of the per-export policy identity. Stamped once by

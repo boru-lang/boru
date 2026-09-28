@@ -74,16 +74,17 @@ func TestVariadicDoResultsAreNotApplied(t *testing.T) {
 // runtime-variable call (the check pass left `do [m.r.int 0 100]`'s body as
 // `[fn 0 100]`) were applied inside the body at run time, which underflowed
 // (REVERSE underflow where the interpreter answers 61). The program must not
-// compile to that: it declines, soundly. (The same method read outside a do
-// no longer compiles either since main's NUR run — NUR331 — so both shapes
-// are pinned sound: no program, and no error in its place.)
+// compile to that: it declines, soundly. The same method read outside a do
+// compiles and agrees since the member map is assembled over the generator's
+// event instead of baking the check pass's shape model (NUR331,
+// TestSeededGeneratorThroughAMember).
 func TestVariadicShapedMethodDeclines(t *testing.T) {
 	const pre = `import "boru:rand" def s (Rand.with-seed 3) end def m {r: s} `
-	for _, src := range []string{pre + `do [m.r.int 0 100]`, pre + `m.r.int 0 100`} {
-		if prog, reason, _, err := mustNew(t).CompileCheck(src); prog != nil || err != nil {
-			t.Errorf("%s: want a sound decline, got prog=%v reason=%q err=%v", src, prog != nil, reason, err)
-		}
+	src := pre + `do [m.r.int 0 100]`
+	if prog, reason, _, err := mustNew(t).CompileCheck(src); prog != nil || err != nil {
+		t.Errorf("%s: want a sound decline, got prog=%v reason=%q err=%v", src, prog != nil, reason, err)
 	}
+	requireCompiledParity(t, pre+`m.r.int 0 100`)
 }
 
 // A nested body the VM enters (a callback a handler invokes per element) runs

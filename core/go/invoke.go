@@ -281,6 +281,26 @@ func FnHomeForeign(r *Registry, fnDef *FnDefInfo) bool {
 	return fnDef != nil && fnDef.HasHome() && !fnDef.Registry.SameHome(r)
 }
 
+// ShapeModelHomed reports whether the fn value is a method of a check-mode
+// instance MODEL (Registry.ShapeModel): a stand-in for the run's method, never
+// a constant to bake.
+func (fd *FnDefInfo) ShapeModelHomed() bool {
+	return fd.HasHome() && fd.Registry.ShapeModel
+}
+
+// MarkShapeModel marks the home registry of every method wrapper in a
+// check-mode instance MODEL (Registry.ShapeModel), so no const gate takes the
+// model's methods for the run's. A ReturnsFn that surfaces a shape-only
+// instance calls it on the map it returns.
+func MarkShapeModel(inst *OrderedMap) {
+	for _, k := range inst.Keys() {
+		mv, _ := inst.Get(k)
+		if fd, ok := mv.Data.(FnDefInfo); ok && fd.HasHome() {
+			fd.Registry.ShapeModel = true
+		}
+	}
+}
+
 // HasHome reports whether the fn value carries the registry that minted it.
 // Every boru-bodied fn does (FnConstruct, `=>`, `macro`, and a module's own
 // exports); a Go-built value — a registered native read as `add/v`, a wrapper

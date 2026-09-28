@@ -152,7 +152,6 @@ func TestBranchFnValueSoundCompileFailures(t *testing.T) {
 		{bfM + `7 m.f ; 3`, "dynamic value precedes residual args", "[8 3]"},
 		{bfM + `1 7 m.f ; 3`, "dynamic value precedes residual args", "[1 8 3]"},
 		{bfM + `7 m.f end 3`, "dynamic value precedes residual args", "[8 3]"},
-		{bfM + `7 (m get f/q) ; 3`, "call result above a literal", "[7 fn inc(Integer) 3]"},
 	}
 	for _, c := range rows {
 		a, err := New()

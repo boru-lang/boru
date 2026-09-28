@@ -39,9 +39,11 @@ func TestReachValueMarkerIsNoArgument(t *testing.T) {
 	} {
 		requireSameVerdict(t, src)
 	}
-	// The trailing spelling declines at an existing residual limit ("call
-	// result above a literal") and the fallback answers as the interpreter.
-	requireEngineParity(t, "def m {f: (fn [[a:Integer] [Integer] [a add 1]])} 5 m.f/v", false)
+	// The trailing spelling compiles and agrees: the program residual's
+	// rebuild seats the member read's result above the literal (it declined
+	// "call result above a literal" until the rebuild's callable screen let
+	// a call result held once through — residualCallableExempt).
+	requireEngineParity(t, "def m {f: (fn [[a:Integer] [Integer] [a add 1]])} 5 m.f/v", true)
 	for _, c := range []struct{ src, want string }{
 		{mod1 + "def g M.up1/v end g 1", "[UP]"},
 		{mod2 + "def g M.up/v end g 1 {}", "[UP]"},
@@ -97,9 +99,9 @@ func TestNamedValueNoMatchOnTheSeamRaises(t *testing.T) {
 // carrier lead arm (`c.op/v 5` compiled 6 for `fn (Integer) 5`) and the
 // verbatim window islands (`3 c.op/v 2` compiled [3 3], `3 4 c.op/v`
 // compiled [3 5]; the map twins likewise). The class shapes compile and
-// agree; the map window twins decline at the existing residual limit ("call
-// result above a literal"), as NUR277's `5 m.f/v` does, and the fallback
-// answers as the interpreter. The unmarked reads still apply.
+// agree, and so do the map window twins, as NUR277's `5 m.f/v` does: the
+// program residual's rebuild seats the member read's result above the
+// literal (residualCallableExempt). The unmarked reads still apply.
 func TestClassMemberValueMarkerIsData(t *testing.T) {
 	const cls = `def T fnsig Integer Integer def C class {op:T} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) `
 	const anon = `def C class {op:(fnsig Integer Integer)} def c (make C {op:(fn [[x:Integer] [Integer] [x add 1]])}) `
@@ -125,7 +127,7 @@ func TestClassMemberValueMarkerIsData(t *testing.T) {
 		{m + "3 m.f/v 2", "[3 fn (Integer) 2]"},
 		{m + "3 4 m.f/v", "[3 4 fn (Integer)]"},
 	} {
-		requireEngineParity(t, c.src, false)
+		requireEngineParity(t, c.src, true)
 		if got, err := mustNew(t).RunInterp(c.src); err != nil || fmt.Sprint(got) != c.want {
 			t.Errorf("%s: interpreter = %v / %v, want %s", c.src, got, err, c.want)
 		}

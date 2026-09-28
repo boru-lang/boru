@@ -566,6 +566,7 @@ var (
 	NewList               = core.NewList
 	NewFlexList           = core.NewFlexList
 	NewMap                = core.NewMap
+	MarkShapeModel        = core.MarkShapeModel
 	NewFlexMap            = core.NewFlexMap
 	NewMark               = core.NewMark
 	NewMove               = core.NewMove

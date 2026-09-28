@@ -937,6 +937,11 @@ type EmitFragment struct {
 // Finalize afterwards. All methods are nil-receiver-safe so hook
 // sites need no guards.
 type EmitState struct {
+	// shuffleFolded latches when a `pick` / `roll` fold (FoldFullStack)
+	// permuted or copied stack values as data, where the interpreter splices
+	// them back onto the tape and re-steps them: the program residual's
+	// rebuild then keeps its whole callable screen (residualCallableExempt).
+	shuffleFolded bool
 	// deliveries counts each value's step-loop deliveries by ID
 	// (NoteDelivery, branchPlacedHere, NUR313).
 	deliveries map[string]int
@@ -9352,6 +9357,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		if idx < 0 {
 			return nil, false
 		}
+		es.shuffleFolded = true
 		if word == "pick" {
 			picked := preserved[idx]
 			es.MarkValueDef(picked)
@@ -17053,7 +17059,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		}
 	}
 	if es.trapAt == 0 && dynOp != OpCallDynMixedFromMark {
-		if reason := lw.seatProgramResidual(ops, residual, lastPos); reason != "" {
+		if reason := lw.seatProgramResidual(ops, residual, es.residualCallableExempt(residual, rootResidualReads), lastPos); reason != "" {
 			// Reachable: a dirty-stack prefix under a dynamic-apply residual
 			// (the variation sweep's prefix-stack transform) seats a shape
 			// this declines — a genuine Stage-1 failure path, not a fault arm.
@@ -17431,6 +17437,48 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 		start = r.reads[0]
 	}
 	lw.deopts = append(lw.deopts, deoptPoint{seq: seq, slot: -1, name: r.name, pos: r.reads[0], start: start, token: -1, bail: true})
+}
+
+// residualCallableExempt names the program residual entries the rebuild's
+// CALLABLE screen (seatProgramResidual) need not hold against it. The screen
+// exists for a SHUFFLE's data (`5 (mk 3) 0 pick`): a fold models the
+// permutation as data where the interpreter splices it back onto the tape and
+// re-steps it, and a re-push would answer data where the interpreter applied
+// a fn. With no pick/roll fold in the program, no residual entry is such a
+// copy, and two kinds are the interpreter's own stack entries whatever they
+// hold:
+//
+//   - a root read of a gradual def-bound value (NUR207), which its own test
+//     owns where the residual is laid out (seatRootResidualReads: an island
+//     resumes the interpreter at the read's token when it holds a fn, a
+//     guard bails), held no more often than the program reads it;
+//   - a call result held once, whose arrival the dispatch that produced it
+//     already modelled.
+//
+// So `def j (mk) end j 5 j typeof` seats [j 5 Integer] where the in-place
+// seating cannot put typeof's result above the literal.
+func (es *EmitState) residualCallableExempt(residual []core.Value, reads map[string]rootWordRead) map[string]bool {
+	if es.shuffleFolded {
+		return nil
+	}
+	count := map[string]int{}
+	for _, rv := range residual {
+		count[rv.ID]++
+	}
+	exempt := map[string]bool{}
+	for _, rv := range residual {
+		if rv.ID == "" {
+			continue
+		}
+		if r, ok := reads[rv.ID]; ok {
+			exempt[rv.ID] = count[rv.ID] <= len(r.reads)
+			continue
+		}
+		if _, produced := es.producedBy[rv.ID]; produced && count[rv.ID] == 1 {
+			exempt[rv.ID] = true
+		}
+	}
+	return exempt
 }
 
 // readIsDeepestOperand reports whether the value result idx of event seq is

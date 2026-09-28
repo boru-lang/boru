@@ -340,6 +340,17 @@ func valueCarriesCarrier(v core.Value) bool {
 	return false
 }
 
+// bindingProduced reports whether a def binding's current value is the output
+// of a recorded dispatch event — a runtime computation (`def s (Rand.with-seed
+// 3)`). Its check-time value is the analysis MODEL of that output, which need
+// not be the run's value: Rand.with-seed's model is a shape-only instance whose
+// generator is not the run's, and a fold over it baked that instance into the
+// program (NUR331). The event is the value's truth, so the fold declines and the
+// container records over it.
+func bindingProduced(r *core.Registry, bound core.Value) bool {
+	return bound.ID != "" && r.Check.Recorder().AlreadyProduced(bound.ID)
+}
+
 // exprRefsCarrier reports whether a folded container expression references a
 // def-bound name whose current value is a CARRIER — a computed value or a loop
 // iterator, abstract at check time. Folding such an expression runs the handler
@@ -358,7 +369,7 @@ func exprRefsCarrier(e *core.Engine, items []core.Value) bool {
 			}
 			if core.IsWord(v) {
 				if w, err := core.AsWord(v); err == nil {
-					if bound, ok := r.Defs.Top(w.Name); ok && bound.Carrier {
+					if bound, ok := r.Defs.Top(w.Name); ok && (bound.Carrier || bindingProduced(r, bound)) {
 						found = true
 						return
 					}

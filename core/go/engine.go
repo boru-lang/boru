@@ -5856,7 +5856,13 @@ func (e *Engine) constFoldContainerVal(items []Value) (Value, bool) {
 // containsCapturingFn does.
 func noteFoldedFnBodies(r *Registry, v Value) {
 	if fd, ok := v.Data.(FnDefInfo); ok {
-		noteFnBodyPending(r, r, fd)
+		// In the registry it was WRITTEN in (FnHome), as the module-export
+		// queue does (NoteFnBodyPendingIn): a folded value can carry a fn
+		// another module minted — a seeded generator's method, whose delegate
+		// (`rand-int`) exists only in its home — and analysed in this registry
+		// it read as an undefined word (NUR331).
+		home, _ := FnHome(r, &fd)
+		noteFnBodyPending(r, home, fd)
 		return
 	}
 	if !IsConcrete(v) {
