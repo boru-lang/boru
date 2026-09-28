@@ -1772,11 +1772,14 @@ func (r *Registry) SpecUndefBlocked(name string) bool {
 // def (`def f fn […g…] f 1 def g …`) errors at run time but is
 // rescued here — the checker doesn't order call sites against defs.
 //
-// Call at end of a check pass, before reading Diagnostics.
+// Call at end of a check pass, before reading Diagnostics. It also
+// collapses exact duplicate findings (DedupeFindings), which every
+// end-of-pass site owes for the same reason.
 func (r *Registry) RescueForwardRefDiagnostics() {
 	if r == nil || r.Check.Diagnostics == nil {
 		return
 	}
+	defer r.Check.DedupeFindings()
 	kept := r.Check.Diagnostics[:0]
 	for _, d := range r.Check.Diagnostics {
 		if d.Code == "undefined_word" && d.FnBody && d.Word != "" {
@@ -1800,6 +1803,57 @@ func (r *Registry) RescueForwardRefDiagnostics() {
 		kept = append(kept, d)
 	}
 	r.Check.Diagnostics = kept
+}
+
+// findingKey is a finding's identity for DedupeFindings: every scalar field
+// a reader can see or a gate can act on. Notes and Suggestions are derived
+// from the same emission and are not compared.
+type findingKey struct {
+	code, detail, word, src, fnName string
+	row, col                        int
+	severity                        CheckSeverity
+	fnBody, mirror, caught          bool
+}
+
+// DedupeFindings drops every FINDING (error or warning) that repeats an
+// earlier one exactly — the same code, detail, word and position, and the
+// same flags. The analysis can reach one
+// token twice: the compile-armed pass drops the fn-summary memo
+// (BeginCompilePass) and analyses a fn body once to record its unit and
+// again at the call, so a single defect in the body surfaced as two
+// identical lines on that pass alone (diagnostic_parity_test.go's
+// duplicate rows, 2026-09-27: edge-quote-1.tsv:L103's undefined_word,
+// fn-locals-scope.tsv:L158/L159's fn_body_error, the constant-condition
+// unreachable_branch of an `if` in a called fn body). A duplicate says
+// nothing the first line did not, and a user reading two cannot tell
+// they are one.
+//
+// End-of-pass only (RescueForwardRefDiagnostics calls it), never in
+// AddDiagnostic: several in-pass consumers read the diagnostics a
+// sub-analysis ADDED (compiler/go/code_effect.go's clean-body test among
+// them), and a duplicate of an earlier finding is still evidence there.
+// Identical flags are part of the identity, so the copy that survives
+// carries exactly the verdict the dropped one did (a RuntimeMirror never
+// absorbs a model-undermining twin). Info advisories are left alone —
+// module_body_executed_in_check is one per body execution by design. A
+// position-less finding (fn_body_error carries its position in the
+// detail) dedupes like any other: two lines no reader can tell apart are
+// one finding to that reader.
+func (c *CheckState) DedupeFindings() {
+	seen := make(map[findingKey]bool, len(c.Diagnostics))
+	kept := c.Diagnostics[:0]
+	for _, d := range c.Diagnostics {
+		if d.Severity == SeverityError || d.Severity == SeverityWarning {
+			k := findingKey{d.Code, d.Detail, d.Word, d.Src, d.FnName, d.Row, d.Col,
+				d.Severity, d.FnBody, d.RuntimeMirror, d.CaughtAtRuntime}
+			if seen[k] {
+				continue
+			}
+			seen[k] = true
+		}
+		kept = append(kept, d)
+	}
+	c.Diagnostics = kept
 }
 
 // cloneNestedSet deep-copies a name→set map so a sandbox's mutation of an
