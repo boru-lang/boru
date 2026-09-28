@@ -29,9 +29,16 @@ func TestStoreShapeDelWidensKey(t *testing.T) {
 		// Positive: del widens the key to dynamic Any (join-only model).
 		{`def f (flex {}) set k 1 f end del k f end f.k`,
 			"FlexMap FlexMap dynamic(Any)", "del widens the deleted key"},
-		// The widened read still feeds downstream dispatch cleanly.
+		// The widened read still feeds downstream dispatch cleanly. Its sum
+		// is dynamic(Number): the widened key may hold a Float at run time,
+		// so Integer (what the numeric tower's old blanket default said)
+		// was unsound (check/go carrier.go ReturnsNumericBinary, 2026-09-27).
 		{`def f (flex {}) set k 1 f end del k f end (f.k) add 1`,
-			"FlexMap FlexMap dynamic(Integer)", "widened key composes without a false error"},
+			"FlexMap FlexMap dynamic(Number)", "widened key composes without a false error"},
+		// ...while the del-free twin's narrowed Integer key still sums to an
+		// Integer: the Number result is the widening's, not add's.
+		{`def f (flex {}) set k 1 f end (f.k) add 1`,
+			"FlexMap dynamic(Integer)", "the narrowed key's sum stays Integer"},
 		// String-key spelling routes through the same twin.
 		{`def f (flex {}) set 'k' 1 f end del 'k' f end f.k`,
 			"FlexMap FlexMap dynamic(Any)", "string-key del widens too"},
