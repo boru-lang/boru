@@ -1762,6 +1762,12 @@ type EmitState struct {
 	// lookup that would raise before the op's own plan could (the
 	// sixty-ninth increment). Nil until first use.
 	liveReadIDs map[string]bool
+	// liveDataIDs is the subset of liveReadIDs seated by a BARE read: its
+	// OpLookupDynScope defers on a binding the interpreter would dispatch (a
+	// fn, a class, an active token), so a value it pushes is DATA whatever
+	// its static modality — a gradual one included (computedLeakGradual).
+	// The frame replay counts no possible call in it (noteDynFrameReplay).
+	liveDataIDs map[string]bool
 	// liveLeadNames is every module-scope fn a stored-ref unit dispatches by
 	// name with declared signatures (markLiveLead): its routed dispatches
 	// resolve the lead live, and every rebind compiles the new binding's
@@ -7076,6 +7082,7 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 	}
 	if keepLive || rootLive {
 		es.keptReadSeatedLive(v)
+		es.computedLeakGradual(v, name, rootLive)
 	}
 	es.seatLiveRead(v, name, pos, false)
 }
@@ -7110,6 +7117,12 @@ func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, r
 		es.liveReadIDs = map[string]bool{}
 	}
 	es.liveReadIDs[v.ID] = true
+	if !ref {
+		if es.liveDataIDs == nil {
+			es.liveDataIDs = map[string]bool{}
+		}
+		es.liveDataIDs[v.ID] = true
+	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)), liveRef: ref,
 	}})
@@ -10872,7 +10885,18 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		es.declineUndef(n, fwdReadAfterSpecUndef)
 		return true
 	}
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, polySeed: es.takePolySeed(), region: region, generic: generic}})
+	call := emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, polySeed: es.takePolySeed(), region: region, generic: generic}
+	// The dispatch's exact layout, when the pass published one for these
+	// operands (an optimistic or gradual match — core optimisticLayout):
+	// the run's no-match lays them out as the interpreter's tape and raises
+	// its signature_error there (PolyRef.Split, NUR242), where it deferred.
+	// Not in a run-time stamp: its unit's tape is the stamped body's, and
+	// the interpreter reports a lens's no-match at the caller's position
+	// (`5 $.name apply` points at 1:1, the unit's layout at the `.name`).
+	if l := es.layoutFor(args); l != nil && !es.inStampCompile {
+		call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
+	}
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	es.noteArgSites(seq, args)
 	switch len(outs) {
 	case 0:
@@ -17692,6 +17716,13 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 		// [g/v 5]]` is the count error over `[fn g 5]`, where the replay
 		// fired g first and listed `[7 5]` (NUR318).
 		if es.placedNotReStepped(v) || v.Quoted || es.placedValRead(v.ID) {
+			continue
+		}
+		// A bare read seated live pushes data or defers (liveDataIDs): its
+		// gradual modality after a computed body (computedLeakGradual) is
+		// the TYPE's, never a possible call — `t t` over `quote [def t 5
+		// 1]` is the frame's count error over `[5 5]`.
+		if es.liveDataIDs[v.ID] {
 			continue
 		}
 		if v.Dynamic || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {

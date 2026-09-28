@@ -373,18 +373,19 @@ func (es *EmitState) NoteValReadLive(v *core.Value, name string, pos core.SrcPos
 	es.seatLiveRead(v, name, pos, true)
 }
 
-// computedLeakGradual makes a `/v` read seated live after a COMPUTED
-// keep-defs body gradual (NoteValReadLive; rootDynLeak's root read, a name
-// noteDynKeepDefsLeak leaked in the unit): the body's tokens exist only at
-// run time, so it may have bound the name to a value of any type, and a
-// carrier of the pre-body type let the consumer commit to that type's
-// overload — `do (mk) end x/v add 1` over `quote [def x "s"]` would run
-// Integer add and answer 1 for the interpreter's "s1". The dynamic modality
-// keeps the bound as a best static guess and leaves the consumer's dispatch
-// to the run. A literal body's leak keeps its exact type (the pass ran its
-// tokens), and a value that may be a fn stays as keptReadSeatedLive left it.
-// (The bare read's seat keeps the static carrier: a gradual bare read is a
-// word the run may dispatch, which the residual rules decline.)
+// computedLeakGradual makes a read seated live after a COMPUTED keep-defs
+// body gradual — a bare read (NoteLiveRead) or a `/v` read (NoteValReadLive)
+// of rootDynLeak's root, or of a name noteDynKeepDefsLeak leaked in the unit:
+// the body's tokens exist only at run time, so it may have bound the name to
+// a value of any type, and a carrier of the pre-body type let the consumer
+// commit to that type's overload — `do (mk) end x add 1` over `quote [def x
+// "s"]` ran Integer add and answered 1 for the interpreter's "s1". The
+// dynamic modality keeps the bound as a best static guess and leaves the
+// consumer's dispatch to the run (the poly re-match). It is the value's TYPE
+// that is gradual, not its kind: the live lookup pushes data or defers, so
+// the frame replay counts no possible call in a bare one (liveDataIDs). A
+// literal body's leak keeps its exact type (the pass ran its tokens), and a
+// value that may be a fn stays as keptReadSeatedLive left it.
 func (es *EmitState) computedLeakGradual(v *core.Value, name string, rootLive bool) {
 	if !(rootLive || es.dynLeakNames[name]) || !v.Carrier || keptReadMayBeFn(*v) {
 		return

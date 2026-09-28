@@ -147,6 +147,30 @@ func TestNoteValReadLiveLiteralLeakKeepsItsType(t *testing.T) {
 	}
 }
 
+// A BARE read seated live after a computed body is gradual too (the body may
+// have rebound the name to any type) and is DATA to the frame replay: its
+// lookup defers on a fn, so it joins liveDataIDs; a `/v` seat does not (its
+// lookup pushes a fn as data, and the replay reads it as a `/v` read).
+func TestBareLiveReadAfterComputedBodyIsGradualData(t *testing.T) {
+	es := NewEmitState()
+	es.latchKeptDefs("do")
+	es.keepLeakNames = map[string]bool{"t": true}
+	es.dynLeakNames = map[string]bool{"t": true}
+	v := core.NewInteger(0)
+	v.ID = "gd-t"
+	es.noteKeptDefsRead(v.ID, "t")
+	es.NoteLiveRead(&v, "t", core.SrcPos{Row: 1, Col: 2})
+	if !v.Carrier || !v.Dynamic || !v.Parent.Equal(core.TInteger) || !es.liveDataIDs[v.ID] {
+		t.Fatalf("a bare live read after a computed body is gradual data: %+v data=%v", v, es.liveDataIDs[v.ID])
+	}
+	w := core.NewInteger(0)
+	w.ID = "gd-w"
+	es.NoteValReadLive(&w, "t", core.SrcPos{Row: 1, Col: 4})
+	if !w.Dynamic || es.liveDataIDs[w.ID] || !es.liveReadIDs[w.ID] {
+		t.Errorf("a /v seat is gradual and live, not a bare data read: %+v", w)
+	}
+}
+
 // keepInstallable's type-node arm (NUR333): a keep-defs def of a lowercase
 // name to a type node that existed before this pass installs it (the kept
 // install pushes it by OpPushType), and one to a node this pass minted keeps

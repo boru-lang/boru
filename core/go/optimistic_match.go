@@ -16,7 +16,21 @@ package core
 //   - optimisticLayout publishes the dispatch's exact layout for its own
 //     record (CheckState.CurLayout, NUR242's channel), so a committed call
 //     can raise the interpreter's report when the live value matches no
-//     overload (NUR263).
+//     overload (NUR263). A dispatch over a GRADUAL operand publishes it too
+//     (gradualMatch), even where the gradual bound conforms: the record is a
+//     poly re-match, and the live value may still match nothing — a read
+//     after a computed body that rebound the name to a List (`x add 1`).
+
+// gradualMatch reports whether some operand of match is gradual (Dynamic):
+// its bound is the pass's best guess, so the run re-matches the live value.
+func gradualMatch(match *MatchResult) bool {
+	for _, a := range match.Args {
+		if a.Dynamic {
+			return true
+		}
+	}
+	return false
+}
 
 // optimisticMatch reports whether some operand of match is a carrier (or a
 // dynamic) whose type does not conform to its slot's.
@@ -90,7 +104,7 @@ func (e *Engine) optimisticOuter(match *MatchResult, indices []int) *OuterMatch 
 func (e *Engine) optimisticLayout(match *MatchResult, indices []int) *DispatchLayout {
 	n := len(match.Args)
 	if n == 0 || len(indices) != n || match.Sig == nil || !e.Registry.analysisRecorder().Active() ||
-		!optimisticMatch(match) || e.Pointer >= e.Tape.Len() {
+		!(optimisticMatch(match) || gradualMatch(match)) || e.Pointer >= e.Tape.Len() {
 		return nil
 	}
 	w, err := AsWord(e.Tape.At(e.Pointer))
