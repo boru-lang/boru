@@ -31,11 +31,13 @@ func TestNUR318MemberReadModifiedAsData(t *testing.T) {
 		{m + `def h m.f/v h`, "[7]"},
 		{`def m {f: l/v} m.f 5`, "[6]"},
 		{`def m {f: l/v} m.f/v 5`, "[fn l(Integer) 5]"},
+		// The data member above a literal: the program residual's rebuild
+		// seats the member's read result where the in-place seating cannot.
+		{m + `5 m.f/v`, "[5 fn g]"},
 	} {
 		agreeOnBothLanes(t, nur312Pre+c.src, c.want)
 	}
 	requireLoudDecline(t, nur312Pre+m+`m.f/v dup`, "function value reaches dup", "[7 7]")
-	requireLoudDecline(t, nur312Pre+m+`5 m.f/v`, "call result above a literal", "[5 fn g]")
 }
 
 // TestNUR319DefReadOfBranchUnion pins NUR319. A bare read of a def bound to a

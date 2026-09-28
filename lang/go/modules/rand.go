@@ -110,6 +110,9 @@ func randWithSeedReturns(_ []native.Value, _ *native.Registry) []native.Value {
 		// impossible) build error; the row simply declines as before.
 		return []native.Value{native.NewCarrier(native.TMap)}
 	}
+	// A MODEL, not the run's instance: its generator is seeded 0, so no const
+	// gate may bake its methods in place of the run's (NUR331).
+	native.MarkShapeModel(instance)
 	return []native.Value{native.NewMap(instance)}
 }
 

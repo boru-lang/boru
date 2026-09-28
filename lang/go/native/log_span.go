@@ -528,6 +528,7 @@ func spanShapeReturns(lsr *LogSinkRegistry) func([]Value, *Registry) []Value {
 		if err != nil {
 			return []Value{NewCarrier(TMap)}
 		}
+		MarkShapeModel(inst) // a model span, never the run's
 		return []Value{NewMap(inst)}
 	}
 }
