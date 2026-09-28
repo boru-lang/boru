@@ -16149,3 +16149,44 @@ reaches the other. The work that followed, in the order it was ranked:
 Recorded rather than fixed, all pre-existing on main: NUR330 (a def inside a
 rand generator body), NUR331 (a seeded generator read through a map member)
 and NUR332 (the check pass panics on an `if` stranded in a case clause list).
+
+## The merge of main's NUR run into #518 — where the two sides met (2026-09-28)
+
+Main e8702ac (the NUR run to NUR329, 175 commits) merged into #518. Four
+code conflicts resolved by keeping both sides: main's `stackSlotAdmits`
+(NUR328) moved into #518's shared `stackParamMatches`; main's undecided
+pattern window beside `UncalledRaisePos`; main's rematch prefix note beside
+`LastUnmatchedRematched`; main's `dynBodySettledOp` / `branchLeadDecline`
+beside `variadicSiblingLead`. #518's NUR237-239 collided with main's numbers
+and became NUR330-332.
+
+The full gate on the merged tree found three interactions no conflict marker
+showed, and one of main's own reds:
+
+1. **A throwaway recorder's decision was mirrored.** #518 reports a no-match
+   the compile pass has DECIDED (a trap or a decline) as a RuntimeMirror
+   no_signature. Main compiles a stored service handler on a PROBE EmitState
+   (`compileStoredFnUnit`), and boru:repl's handler misses `set` there — the
+   probe declines, the program compiles regardless, and the finding was one
+   neither the plain pass nor the runtime makes (module-repl.tsv:L12..L18).
+   `CheckState.ProgramEmit`, set by `BeginCompilePass`, names the recorder
+   whose decisions count; the mirror stands down on any other.
+2. **Two re-steps of one `do`.** Main's NUR317 lets the VM re-step a token
+   body `do`'s results itself (`doReStep`), but only when nothing follows the
+   call in its unit. #518's mark-window redirect laid an
+   `OpCallDynMixedFromMark` after the same call, so `do [if c [l/v] [0] 5 6]`
+   deferred as an internal error. `variadicSiblings` now excludes a call the
+   VM re-steps (`reStepResults`).
+3. **gocyclo.** The two sides' arms put `resolveDynamicApply` at 72; the
+   region / settled-lead arms moved into `regionSettledOp`.
+4. **Main's red test-core.** check's `TestZzFmReturnsFnArmedCompile` expected
+   a root type node kept as a type-less carrier; NUR323/NUR324 deliberately
+   widen it to its Type carrier. The test now asserts main's rule.
+
+The gates, live on the merged tree: diagnostic parity 46 (main 355, #518
+48), engine entries 176 (189 / 164), interp-entry rows 29 (39 / 21), type
+soundness 6 (7 / 3), armed-only 2 (8 / 4). Main's own corpus compile failure
+(code-bodies L142, NUR154's sound decline) and sweep compile failure carry
+over unchanged. NUR331 changed on main: the member-read generator now fails
+to compile (`undefined word: rand-int`) where it answered wrong — sound, a
+compile gap.
