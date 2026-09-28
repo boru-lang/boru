@@ -539,7 +539,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			// instance the program uses). Anything else declines.
 			if core.IsInertConst(d.val) {
 				src = ConstOperand(lw.es.internUnpooled(d.val))
-			} else if op, ok := lw.es.resolveOperand(d.val); ok && (op.kind == opConst || op.kind == opLocal) {
+			} else if op, ok := lw.es.resolveOperand(d.val); ok && (op.kind == opConst || op.kind == opLocal || op.kind == opType) {
 				src = op
 			} else {
 				return "dynamic-scope def `" + d.name + "` of unknown provenance"
@@ -3729,9 +3729,13 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// read that is a ROUTED dispatch's forward word slot, an inert
 		// placeholder the op pops unread (it resolves the slot from its own
 		// window; EmitState.livePlaceholders).
-		if lw.es != nil && lw.es.livePlaceholders[ev.seq] {
+		switch {
+		case lw.es != nil && lw.es.livePlaceholders[ev.seq]:
 			lw.emit(OpPushConst, c.liveName, c.pos)
-		} else {
+		case c.liveRef:
+			// A `/v` read (NoteValReadLive): the value spelling's lookup.
+			lw.emit(OpLookupDynScopeRef, c.liveName, c.pos)
+		default:
 			lw.emit(OpLookupDynScope, c.liveName, c.pos)
 		}
 		return lw.seatCallResults(ev, c)

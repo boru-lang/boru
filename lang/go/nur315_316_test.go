@@ -42,10 +42,9 @@ func TestNUR316GradualElementsStayGradual(t *testing.T) {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
 	// An out-of-range read's None reaches add on the run: the interpreter's
-	// signature_error, and the compiled poly re-match's loud defer.
-	src := `def f fn [[xs:[:Integer]] [Any] [ def ys ([0] each [drop (xs get 5)]) ys each [add 1] ]] f [1 2 3]`
-	gotC, _, errC := mustNew(t).RunCompiled(src)
-	if !isBailDefect(errC) || len(gotC) != 0 {
-		t.Errorf("%q: want the loud poly defer, got %v / %v", src, gotC, errC)
-	}
+	// signature_error on both lanes — the compiled poly re-match raises it
+	// over the gradual operand's published layout (it deferred loudly
+	// before core optimisticLayout's gradual arm).
+	agreeOnBothLanes(t, `def f fn [[xs:[:Integer]] [Any] [ def ys ([0] each [drop (xs get 5)]) ys each [add 1] ]] f [1 2 3]`,
+		"ERROR:cannot call `add`")
 }

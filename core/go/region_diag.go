@@ -159,7 +159,21 @@ func UndefinedWordDiagWith(r *Registry, src, name string, pos SrcPos, extra []st
 		ae.Suggestions = append(ae.Suggestions, DidYouMeanOver(r, name)...)
 		return ae
 	}
-	cands := append(append([]string(nil), r.SuggestionCandidates()...), extra...)
+	// A local the frame ALSO installed in the registry (a dynamic-scope
+	// bind) is one name, as the interpreter's single def stack has it:
+	// listed twice, the near-miss offered it twice — "`b`, `b`, or `f`"
+	// for the interpreter's "`b`, `f`, or `gt`".
+	cands := append([]string(nil), r.SuggestionCandidates()...)
+	seen := make(map[string]bool, len(cands)+len(extra))
+	for _, c := range cands {
+		seen[c] = true
+	}
+	for _, x := range extra {
+		if !seen[x] {
+			seen[x] = true
+			cands = append(cands, x)
+		}
+	}
 	if matches := SuggestNames(name, cands); len(matches) > 0 {
 		ae.Suggestions = append(ae.Suggestions, DiagSuggestion{Message: didYouMeanMessage(matches)})
 		if r.IsBuiltinWord(matches[0]) {

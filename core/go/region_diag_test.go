@@ -101,6 +101,17 @@ func TestUndefinedWordDiagWithExtraCandidates(t *testing.T) {
 		t.Errorf("a builtin near-miss adds the describe pointer, got %+v", ae.Suggestions)
 	}
 
+	// A local the registry ALSO holds (a compiled frame's dynamic-scope
+	// bind), or one listed twice, is offered once — the interpreter's one
+	// def stack names it once.
+	r.Defs.Push("frobnicatorq", NewInteger(1))
+	ae = UndefinedWordDiagWith(r, "src", "frobnicatorx", pos, []string{"frobnicatorq", "frobnicatorz", "frobnicatorz"})
+	if len(ae.Suggestions) != 1 || strings.Count(ae.Suggestions[0].Message, "`frobnicatorq`") != 1 ||
+		strings.Count(ae.Suggestions[0].Message, "`frobnicatorz`") != 1 {
+		t.Errorf("each candidate is offered once, got %+v", ae.Suggestions)
+	}
+	r.Defs.Pop("frobnicatorq")
+
 	// No extras: the plain UndefinedWordDiag path.
 	if plain := UndefinedWordDiag(r, "src", "frobnicatorx", pos); len(plain.Suggestions) != 0 {
 		t.Errorf("without the local the registry alone has no near miss, got %+v", plain.Suggestions)

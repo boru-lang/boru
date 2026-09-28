@@ -4862,17 +4862,22 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, vmErrAt(curDebug, pc, "UNDEF_DYN_SCOPE bad name const")
 			}
 			core.PopLiveBinding(curReg, name)
-		case compiler.OpLookupDynScope:
+		case compiler.OpLookupDynScope, compiler.OpLookupDynScopeRef:
 			// The interpreter's stepWord simple-value substitution, at run
 			// time: read the name's live binding. A miss, or a binding the
 			// substitution would DISPATCH instead of push (a Function / class /
 			// splice / reach), defers to the interpreter — containment for a
 			// shape the VM cannot yet read, not a sanctioned outcome.
+			// OpLookupDynScopeRef is the `/v` read's twin (stepWordVal):
+			// ResolveRef's value, a fn or class binding pushed as data.
 			name, nerr := p.Consts[in.Arg].AsConcreteString()
 			if nerr != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 				return nil, vmErrAt(curDebug, pc, "LOOKUP_DYN_SCOPE bad name const")
 			}
 			v, ok := curReg.Defs.Top(name)
+			if in.Op == compiler.OpLookupDynScopeRef {
+				v, ok = core.ResolveRef(curReg, name)
+			}
 			if !ok {
 				// A name a placed speculative undef may have popped
 				// (Program.SpecUndefNames): the miss IS the interpreter's
@@ -4886,6 +4891,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			switch v.Data.(type) {
 			case core.FnDefInfo, *core.ClassTypeInfo:
+				if in.Op == compiler.OpLookupDynScopeRef {
+					// The value spelling never dispatches: a fn binding is
+					// the aggregate Function value, a class the class — the
+					// interpreter delivers the read as data.
+					stack = append(stack, v)
+					continue
+				}
 				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-dispatching", "dynamic-scope read of a dispatching binding `"+name+"`; the compiled runtime cannot execute it")
 			}
 			if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {

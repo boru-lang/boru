@@ -2785,6 +2785,16 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 	// question two ways.
 	e.noteBindingRead(w.Name, v)
 	if e.Registry.analysisActive() {
+		// The kept-defs discipline, the `/v` READ (NUR334): a computed
+		// keep-defs body may have rebound the name, and a bare read of it
+		// is seated live at its token or declines (NoteDefRead + the tag
+		// hook). The value spelling reads the same binding, so it takes the
+		// same note — first, since seating it mints the read's own identity.
+		// Tag a COPY and write it back, as stepWord's tag does: &v toward
+		// the recorder would heap-allocate every `/v` read.
+		tagged := v
+		e.Registry.analysisRecorder().NoteValReadLive(&tagged, w.Name, val.Pos())
+		v = tagged
 		e.Registry.analysisRecorder().NoteValRead(v.ID, w.Name)
 	}
 	v.pos = val.pos

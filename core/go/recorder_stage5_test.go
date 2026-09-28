@@ -188,6 +188,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.NoteDefRead("id", "n")
 	e.NoteWordRead(Value{}, "n", SrcPos{})
 	e.NoteValRead("id", "n")
+	e.NoteValReadLive(&Value{}, "n", SrcPos{})
 	e.NoteFrozenRead("n", FrozenBakeValue, 0)
 	e.NotifyNameRebound("n")
 	if got := e.RegisterLocal("id"); got != -1 {

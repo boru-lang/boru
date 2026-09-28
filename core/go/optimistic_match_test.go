@@ -199,6 +199,19 @@ func TestOptimisticLayoutIsReplayableOrNothing(t *testing.T) {
 			t.Errorf("%s: no layout, got %+v", c.name, l)
 		}
 	}
+	// A GRADUAL operand whose bound conforms publishes the layout too
+	// (gradualMatch): the poly record re-matches the live value, which may
+	// still match nothing — the run raises the interpreter's report there.
+	eg, mg, _ := optimisticEngine(t)
+	gm := withID(NewDynamicCarrier(TMap))
+	eg.Tape.Set(1, gm)
+	gmatch := &MatchResult{Sig: mg.Sig, Args: []Value{mg.Args[0], gm, mg.Args[2]}, Name: "fold"}
+	if optimisticMatch(gmatch) {
+		t.Fatal("a dynamic(Map) at the Map slot conforms: no optimistic match")
+	}
+	if l := eg.optimisticLayout(gmatch, []int{2, 1, 0}); l == nil || l.NFwd != 2 {
+		t.Errorf("a conforming gradual operand still publishes the layout, got %+v", l)
+	}
 	// The group and statement boundaries close the two sides.
 	e, m, _ := optimisticEngine(t)
 	e.Tape.Insert(0, NewOpenParen())

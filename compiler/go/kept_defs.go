@@ -106,7 +106,7 @@ func (es *EmitState) keptReadSeatedLive(v *core.Value) {
 	}
 	name := es.pendingKeptName
 	es.pendingKeptRead, es.pendingKeptName = "", ""
-	if core.IsAppliableFn(*v) || v.Parent == nil || v.Parent.ConformsTo(core.TFunction) {
+	if keptReadMayBeFn(*v) {
 		es.noteKeptDefsObserver("the read of `" + name + "`")
 		return
 	}
@@ -334,4 +334,70 @@ func keepsComputedDefs(spec *core.CallableSpec, body core.Value) bool {
 func (es *EmitState) bodyProvenFn(body core.Value) bool {
 	op, ok := es.resolveOperand(body)
 	return ok && es.strictFnOperandProven(body, op)
+}
+
+// NoteValReadLive gives a `/v` read the discipline a bare read of the same
+// binding takes (NUR334). A bare read reaches the latch through NoteDefRead
+// and is seated live by the tag hook (NoteLiveRead); stepWordVal resolves
+// the binding its own way and used to note neither, so after a computed
+// keep-defs body the value spelling baked the check model's stale binding:
+// `def f fn [[b:List][Any][def t 0 do b drop t/v]] end f (quote [def t 5
+// 1])` answered 0 compiled for the interpreter's 5. Now the read is a def
+// read to the latch (an observer, or pending), and a read of a leaked name
+// seats live at its token as the bare read's does — lowered to
+// OpLookupDynScopeRef, the value spelling's lookup, which pushes whatever the
+// binding holds at run time (a fn or a class as data) as stepWordVal does. A
+// value the model holds as a possible fn (keptReadMayBeFn) stays unseated, as
+// the bare read's does, so a pending one becomes an observer and declines.
+func (es *EmitState) NoteValReadLive(v *core.Value, name string, pos core.SrcPos) {
+	if !es.Active() || v == nil || v.ID == "" || name == "" {
+		return
+	}
+	if !es.keptDefsFreshRead(v.ID, name) {
+		es.noteKeptDefsRead(v.ID, name)
+	}
+	keepLive, rootLive := es.keptLeakLive(*v, name)
+	if !keepLive && !rootLive {
+		return
+	}
+	if keptReadMayBeFn(*v) {
+		es.flushKeptRead()
+		return
+	}
+	if es.liveReadNames == nil {
+		es.liveReadNames = map[string]bool{}
+	}
+	es.liveReadNames[name] = true
+	es.keptReadSeatedLive(v)
+	es.computedLeakGradual(v, name, rootLive)
+	es.seatLiveRead(v, name, pos, true)
+}
+
+// computedLeakGradual makes a read seated live after a COMPUTED keep-defs
+// body gradual — a bare read (NoteLiveRead) or a `/v` read (NoteValReadLive)
+// of rootDynLeak's root, or of a name noteDynKeepDefsLeak leaked in the unit:
+// the body's tokens exist only at run time, so it may have bound the name to
+// a value of any type, and a carrier of the pre-body type let the consumer
+// commit to that type's overload — `do (mk) end x add 1` over `quote [def x
+// "s"]` ran Integer add and answered 1 for the interpreter's "s1". The
+// dynamic modality keeps the bound as a best static guess and leaves the
+// consumer's dispatch to the run (the poly re-match). It is the value's TYPE
+// that is gradual, not its kind: the live lookup pushes data or defers, so
+// the frame replay counts no possible call in a bare one (liveDataIDs). A
+// literal body's leak keeps its exact type (the pass ran its tokens), and a
+// value that may be a fn stays as keptReadSeatedLive left it.
+func (es *EmitState) computedLeakGradual(v *core.Value, name string, rootLive bool) {
+	if !(rootLive || es.dynLeakNames[name]) || !v.Carrier || keptReadMayBeFn(*v) {
+		return
+	}
+	v.Dynamic = true
+}
+
+// keptReadMayBeFn reports whether a read the latch would seat live holds a
+// possible fn value in the model — an appliable fn, an untyped value (the
+// Any node), a Function carrier — which stays an observer: a fn is interned
+// as a const the carrier would not stop, and an untyped value has no type
+// to carry.
+func keptReadMayBeFn(v core.Value) bool {
+	return core.IsAppliableFn(v) || v.Parent == nil || v.Parent.ConformsTo(core.TFunction)
 }
