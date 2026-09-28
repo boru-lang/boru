@@ -161,6 +161,8 @@ def Maybe (Integer tor none) 'hi' is Maybe	false	String is not an alternative
 def Maybe (Integer tor None) none is Maybe	true	None type literal alternative admits the none value
 none is (Integer tor None)	true	anonymous disjunct: none matches the None alternative
 none is (Integer tor String)	false	none is NOT a member when None is not an alternative
+def Maybe (Integer tor None) def m {a: 1} m.b is Maybe	true	a missing member's read (the None literal) is a member as none is (NUR324)
+def U (Integer tor String) def m {a: 1} m.b is U	false	…and no member of a union without None
 'x' is (Integer tor None)	false	String is not an alternative of (Integer tor None)
 5 is (Integer tor None)	true	Integer 5 matches the Integer alternative
 

@@ -4647,7 +4647,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// declared type. Raises the same signature_error the interpreter raises,
 			// over the window the interpreter's failed dispatch reports (NUR320).
 			if err := checkParamContract(r, fn, nl); err != nil {
-				if win, ok := callWindowAt(p, curUnit, pc, nl, stack, locals); ok {
+				if win, ok := callWindowAt(r, fn.Name, p, curUnit, pc, nl, stack, locals); ok {
 					err = core.RuntimeNoMatch(r, fn.Name, win)
 				}
 				return nil, stampAt(err, curDebug, pc, curReg)

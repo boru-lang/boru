@@ -1926,11 +1926,18 @@ const (
 )
 
 // CallWindowOperand is one value of a call's no-match window
-// (CompiledFn.CallWindows), in the window's own order.
+// (CompiledFn.CallWindows), in the window's own order. Fwd marks a value
+// written after the word; PrefixOnly an entry past the window that carries
+// the rest of the stack prefix beneath it. The interpreter's report stops
+// its written values at the first that is no concrete value at run time and
+// falls to that prefix — the window's stack values, then the PrefixOnly ones
+// (NUR311). A window with no Fwd mark is rendered as recorded.
 type CallWindowOperand struct {
-	Kind  CallWindowKind
-	Idx   int
-	Value core.Value
+	Kind       CallWindowKind
+	Idx        int
+	Value      core.Value
+	Fwd        bool
+	PrefixOnly bool
 }
 
 // DynApplyHead is one entry of CompiledFn.DynApplyName: the binding NAME the

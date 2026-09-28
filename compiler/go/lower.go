@@ -4605,12 +4605,12 @@ func (lw *lowerer) seatCallWindow(win []callWinOp, n int) {
 	}
 	out := make([]CallWindowOperand, len(win))
 	for i, w := range win {
-		out[i] = CallWindowOperand{Kind: w.kind, Idx: w.idx, Value: w.value}
+		out[i] = CallWindowOperand{Kind: w.kind, Idx: w.idx, Value: w.value, Fwd: w.fwd, PrefixOnly: w.prefixOnly}
 		if w.kind != WinStack {
 			continue
 		}
 		if slot, ok := lw.promoted[w.op.idx]; ok {
-			out[i] = CallWindowOperand{Kind: WinLocal, Idx: slot + w.op.resIdx}
+			out[i] = CallWindowOperand{Kind: WinLocal, Idx: slot + w.op.resIdx, Fwd: w.fwd, PrefixOnly: w.prefixOnly}
 			continue
 		}
 		d := simDepthBeneath(lw.vm, n, w.op)

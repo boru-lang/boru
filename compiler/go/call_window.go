@@ -29,6 +29,10 @@ import core "github.com/boru-lang/boru/core/go"
 // pendingWindow is one NoteCallWindow offer.
 type pendingWindow struct {
 	win []core.Value
+	// nFwd counts win's leading entries written after the word, and prefix
+	// is the stack prefix beneath it (NoteCallWindow, NUR311).
+	nFwd   int
+	prefix []core.Value
 	// known marks a derived window; a speculative plan's dispatch offers
 	// none (its runtime twin can fail at the re-step instead).
 	known bool
@@ -42,16 +46,21 @@ type pendingWindow struct {
 	// that analysis pushes and pops the callee's own params — a same-named
 	// binding's generation moves though the caller's never did.
 	stable []bool
+	// prefixStable is stable for prefix.
+	prefixStable []bool
 }
 
 // callWinOp is one window value as the record resolved it: kind and idx as
 // the lowered CallWindowOperand's, except that a WinStack entry is still
-// the event op names — the lowering seats it (seatCallWindow).
+// the event op names — the lowering seats it (seatCallWindow). fwd and
+// prefixOnly are the operand's Fwd and PrefixOnly marks.
 type callWinOp struct {
-	kind  CallWindowKind
-	idx   int
-	value core.Value
-	op    EmitOperand
+	kind       CallWindowKind
+	idx        int
+	value      core.Value
+	op         EmitOperand
+	fwd        bool
+	prefixOnly bool
 }
 
 // NoteCallWindow pools a dispatch's no-match window under its word token
@@ -59,7 +68,7 @@ type callWinOp struct {
 // offer: the window is the first step's. A suspended recorder (not Active)
 // pools nothing and drops any offer under the key — the record it may
 // still fire must claim no window rather than an earlier execution's.
-func (es *EmitState) NoteCallWindow(word string, pos core.SrcPos, window []core.Value, deferred, restep bool) {
+func (es *EmitState) NoteCallWindow(word string, pos core.SrcPos, window []core.Value, nFwd int, prefix []core.Value, deferred, restep bool) {
 	if es == nil {
 		return
 	}
@@ -80,7 +89,11 @@ func (es *EmitState) NoteCallWindow(word string, pos core.SrcPos, window []core.
 	for i, v := range window {
 		stable[i] = es.residualReadStable(v)
 	}
-	es.pendingWindows[k] = pendingWindow{win: window, known: window != nil, deferred: deferred, ok: true, stable: stable}
+	prefixStable := make([]bool, len(prefix))
+	for i, v := range prefix {
+		prefixStable[i] = es.residualReadStable(v)
+	}
+	es.pendingWindows[k] = pendingWindow{win: window, nFwd: nFwd, prefix: prefix, known: window != nil, deferred: deferred, ok: true, stable: stable, prefixStable: prefixStable}
 }
 
 // takePendingWindow removes and returns the offer for (word, pos).
@@ -116,6 +129,30 @@ func (es *EmitState) callWindowOps(word string, pos core.SrcPos, args []core.Val
 		if !ok {
 			return nil
 		}
+		op.fwd = i < pw.nFwd
+		out = append(out, op)
+	}
+	return windowStopPrefix(es, out, pw, args)
+}
+
+// windowStopPrefix appends the stack prefix the window's stack values do
+// not already cover (PrefixOnly), so the run can rebuild the interpreter's
+// report where a written value stops it (NUR311). A prefix value with no
+// home the run can read leaves the window unmarked: rendered as recorded.
+func windowStopPrefix(es *EmitState, out []callWinOp, pw pendingWindow, args []core.Value) []callWinOp {
+	fill := len(out) - pw.nFwd
+	if pw.nFwd == 0 || fill > len(pw.prefix) {
+		return out
+	}
+	for i := fill; i < len(pw.prefix); i++ {
+		op, ok := es.callWindowOp(pw.prefix[i], pw.prefixStable[i], args)
+		if !ok {
+			for j := range out {
+				out[j].fwd = false
+			}
+			return out[:len(pw.win)]
+		}
+		op.prefixOnly = true
 		out = append(out, op)
 	}
 	return out

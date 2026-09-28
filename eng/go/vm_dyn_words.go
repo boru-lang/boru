@@ -435,8 +435,12 @@ func closureSigView(fn *compiler.CompiledFn, cl core.ClosurePayload) (core.FnDef
 // arguments (args, signature order), the stack beneath them and the
 // caller's frame locals — the window the interpreter's failed dispatch
 // reports. ok is false when the call carries no entry, or an entry the
-// frame cannot satisfy; the contract then reports the arguments.
-func callWindowAt(p *compiler.Program, unit, pc int, args, stack, locals []core.Value) ([]core.Value, bool) {
+// frame cannot satisfy; the contract then reports the arguments. A written
+// value that is no concrete value at run time — a type literal, None — ends
+// the interpreter's written values there, and its report falls to the
+// stack prefix (the window's stack values, then its PrefixOnly entries —
+// core.AttemptedTuple over name's live overloads, NUR311).
+func callWindowAt(r *core.Registry, name string, p *compiler.Program, unit, pc int, args, stack, locals []core.Value) ([]core.Value, bool) {
 	if p == nil {
 		return nil, false
 	}
@@ -452,26 +456,48 @@ func callWindowAt(p *compiler.Program, unit, pc int, args, stack, locals []core.
 		return nil, false
 	}
 	win := make([]core.Value, 0, len(spec))
+	var prefix []core.Value
+	stop := -1
 	for _, o := range spec {
-		var src []core.Value
-		at := o.Idx
-		switch o.Kind {
-		case compiler.WinValue:
-			win = append(win, o.Value)
-			continue
-		case compiler.WinArg:
-			src = args
-		case compiler.WinLocal:
-			src = locals
-		default:
-			src, at = stack, len(stack)-1-o.Idx
-		}
-		if at < 0 || at >= len(src) {
+		v, ok := callWindowValue(o, args, stack, locals)
+		if !ok {
 			return nil, false
 		}
-		win = append(win, src[at])
+		switch {
+		case o.PrefixOnly:
+			prefix = append(prefix, v)
+			continue
+		case !o.Fwd:
+			prefix = append(prefix, v)
+		case stop < 0 && !core.IsConcrete(v):
+			stop = len(win)
+		}
+		win = append(win, v)
+	}
+	if stop >= 0 {
+		return core.AttemptedTuple(r.Lookup(name), win[:stop], prefix), true
 	}
 	return win, true
+}
+
+// callWindowValue reads one window operand over the call's frame.
+func callWindowValue(o compiler.CallWindowOperand, args, stack, locals []core.Value) (core.Value, bool) {
+	var src []core.Value
+	at := o.Idx
+	switch o.Kind {
+	case compiler.WinValue:
+		return o.Value, true
+	case compiler.WinArg:
+		src = args
+	case compiler.WinLocal:
+		src = locals
+	default:
+		src, at = stack, len(stack)-1-o.Idx
+	}
+	if at < 0 || at >= len(src) {
+		return core.Value{}, false
+	}
+	return src[at], true
 }
 
 // landedFnTakesArgs reports whether a landed fn value has an overload that

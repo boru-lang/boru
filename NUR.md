@@ -246,6 +246,9 @@ keep the two in sync in the same commit.
 | [NUR321](#nur321) | FIXED 2026-09-26 (numbered NUR235 until the merge of main's #516, where main's NUR235 kept the number; a named fn value's push carries its name — the handoff log's entry of that date): a member read of a nullary fn value from a `fn` literal fires on both lanes; the closure's unit is shared with anonymous values over the same body, so the name rides on the push. The original text: a fn-body-local fn def bound into a returned map: the member read returns the fn compiled, calls it interpreted — `def mkg fn [[c:Any][Any][def g fn [[][Any][c]] {g: g/v}]] end def m (mkg 5) end m.g` answers `[fn g]` compiled, `[5]` interpreted. A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR322](#nur322) | FIXED 2026-09-26 (numbered NUR236 until the merge of main's #516, where main's NUR236 kept the number; a spliced consumer is ordered by the stream — the handoff log's entry of that date): a gradual def read consumed by a spliced word's expansion carries its deopt, so a read that holds a fn at run time dispatches it on both lanes. The original text: a word splice over a def-bound gradual read of a fn: `def tp word [typeof] def h fn [[m:Map][Any][def j (m get "f") j tp]] h {f: ([] => [42])}` answers `[Function]` compiled (typeof over the fn value) and `[Integer]` interpreted (`j` calls the fn). A silent wrong answer | closing #505's merged-coverage gap (ADR-008), 2026-09-26 |
 | [NUR323](#nur323) | FIXED 2026-09-27 (a type value widens to a Type carrier, and the VM's re-match refuses it at a value slot — the handoff log's entry of that date): a type literal's Parent is its supertype, not its type, and every check-mode widening to a carrier of its Parent claimed a value of it — `def m {e: Integer} end sub m.e 3` answered `[3]` compiled for the interpreter's `signature_error`, as did `m.e add 1`, `f Integer` into an Any or Type parameter, `if c [Integer] [5]` and a list element; silent on main too |
+| [NUR324](#nur324) | FIXED 2026-09-28 (the None literal is a member of a union naming None — the handoff log's entry of that date): a missing member's read at a named union parameter — `7 f m.b` over `def Maybe (Integer tor None)` — answered `[[7] None]` interpreted (the union refused the None literal, so x took the stack's 7) and raised `signature_error` compiled (the check pass's None carrier matched); `m.b is Maybe` was false while the inline `(m.b) is (Integer tor None)` was true. An INTERPRETER change: the maintainer's ruling is invited |
+| [NUR325](#nur325) | FIXED 2026-09-28 (loud: the building word declines — the handoff log's entry of that date): a parameter annotation the check pass evaluates to a carrier — `x:(1 add 2)`, `x:(typeof 5)`, `x:(not Integer)` — built a signature the run's is not, and the bind twin replayed it: `def f fn [[x:(1 add 2)][Any][[x]]] end f 4` answered `[[4]]` compiled for the interpreter's `signature_error`; silent on main too |
+| [NUR326](#nur326) | FIXED 2026-09-28 (an inline negation constrains through its pattern — the handoff log's entry of that date): `x:(tnot Integer)` fell to ResolveSigType's TAny tail and admitted 5 on BOTH lanes, where `5 is (tnot Integer)` and the named form refuse it |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14174,6 +14177,11 @@ fills from its `StackTuple`. Without a recorded prefix the recorded tuple
 stands. The poly's best-effort report over a plan-less window
 (`bestEffortNoMatch`) keeps its documented full-window tuple:
 `9 sub m.e 3` names both operands there, where the interpreter names 9.
+A user call's contract window (NUR320) takes the same stop (2026-09-28):
+its operands record which were written (`CallWindowOperand.Fwd`) and the
+stack prefix the walk fills from (`PrefixOnly`), so `9 f m.b 3` over two
+Integer params names 9 compiled as interpreted (lang
+`TestNUR311CallWindowStopsAtAMissingRead`).
 Pinned: lang `TestNUR311TupleStopsAtATypeOperand` (eight rows),
 `TestNUR229To231OnTheMergedTree`; eng `TestRematchStoppedTuple`,
 `TestPolyNoMatchRaiseStopsAtATypeOperand`; compiler
@@ -14702,3 +14710,86 @@ now the loud `vm:poly-no-match` defer (`(f) add 1` over `def f fn [[][Any]
 value, where the check pass halted on a Parent-less carrier. Pinned: lang
 `TestNUR323TypeValueIsNoValueOfItsParent` (19 agreeing rows, three loud
 defers); core `TestValueCarrier`, `TestGeneraliseSpecUndef`.
+
+## NUR324 — a missing member's read is no member of a named union {#nur324}
+
+**Status:** FIXED 2026-09-28 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-28 · **Surfaced by:** probing NUR311's stop at a
+None read. Present on main (91e97dd), silent there too.
+
+```
+def Maybe (Integer tor None) end def f fn [[x:Maybe][Any][[x]]] end def m {a: 1} end 7 f m.b
+  interpreted   [[7] None]
+  compiled      signature_error: cannot call `f` — no signature matches the arguments
+```
+
+**Cause.** A missing member reads as the None literal, which dispatch
+treats as a value (the kernel guide's payload table). A union's Match took
+any bare node for "the type itself, not an inhabitant"
+(`DisjunctUnifier.matchR` keyed on `IsBareTypeNode`, which includes None),
+and `rejectsTypeLiteral` admitted the None literal only at a None slot. So
+the union refused it, x took the stack's 7 and the None stayed; the check
+pass's None carrier matched the union's None arm and committed m.b to x.
+`m.b is Maybe` was false while `(m.b) is (Integer tor None)` was true: the
+spelling of the union changed its membership.
+
+**Fix (an interpreter change).** The union's Match keys on `IsTypeLiteral`
+(None excluded), and `rejectsTypeLiteral` admits the None literal wherever
+the slot's own match admitted it. The None literal is now a member wherever
+`none` is: `7 f m.b` is `[7 [None]]` on both lanes and `m.b is Maybe` is
+true. A type literal is still no member of a value union. The negation's
+Match keeps the bare-node rule; an inline negation's params were a wildcard
+(NUR326). **Ruling invited:** whether a missing read should bind a Maybe
+parameter was never decided; the alternative is refusing it on both lanes
+(the check pass would then need a None-literal carrier distinct from
+`none`'s). Pinned: lang `TestNUR324NoneLiteralIsAUnionMember` (12 rows);
+core `TestNoneLiteralIsAUnionMember`. The inline `x:(Integer tor None)`
+form is an OPTIONAL Integer parameter and declines loudly compiled
+(`call results reordered`, a compile owed).
+
+## NUR325 — a run-dependent parameter annotation {#nur325}
+
+**Status:** FIXED 2026-09-28, loudly (the handoff log's entry of that
+date) · **Recorded:** 2026-09-28 · **Surfaced by:** the NUR324 probes
+(`x:(not Integer)` is the value pattern `true`). Present on main (91e97dd),
+silent there too.
+
+```
+def f fn [[x:(1 add 2)][Any][[x]]] end f 4      interp: signature_error   compiled: [[4]]
+def f fn [[x:(typeof 5)][Any][[x]]] end f 's'   interp: signature_error   compiled: [['s']]
+def f fn [[x:(1 add 2)][Any][[x]] [x:Integer][Any][['other' x]]] end f 3
+                                                interp: [[3]]             compiled: [['other' 3]]
+```
+
+**Cause.** A parenthesised annotation is RUN to build the signature
+(`EvalSigTypeExpr`). The check pass runs it over carriers: `(1 add 2)` —
+the run's value pattern 3 — is an Integer carrier and became an Integer
+slot, and `(typeof 5)` a Type carrier. The bind twin replays the pass's fn,
+so the compiled lane matched with a signature the run's is not.
+
+**Fix.** An annotation the pass evaluates to a carrier with no type
+content (`annotationRunDependent`: itself or a union's alternative) is a
+value only the run computes: the building word notes it
+(`NoteRuntimeDependent`, NUR308's latch) and declines as the compile-time
+word it is, with no decline site of its own. `(tnot Integer)`, whose
+carrier holds the negation itself, still compiles. Compiling the run's
+signature is owed. Pinned: lang `TestNUR325RunDependentAnnotationDeclines`;
+core `TestAnnotationRunDependent`, `TestEvalSigTypeExprAnalysedAnnotations`.
+
+## NUR326 — an inline negation parameter enforced nothing {#nur326}
+
+**Status:** FIXED 2026-09-28 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-28 · **Surfaced by:** the NUR325 probes. Present on
+main (91e97dd) on BOTH lanes: a wrong answer, not a lane divergence.
+
+```
+def f fn [[x:(tnot Integer)][Any][[x]]] end f 5    both lanes: [[5]]   (5 is (tnot Integer) is false)
+```
+
+**Cause.** `ResolveSigType` has an arm per type value an annotation can
+deliver; a negation had none and fell to the TAny tail, the silent wildcard
+the inline union's arm closed long ago. **Fix.** An inline negation
+constrains through the pattern path as the union does, and the check pass
+keeps tnot's exact negation as that pattern rather than a carrier its match
+admitted 5 at. Pinned: lang `TestNUR326InlineNegationParamIsEnforced`
+(eight rows); core `TestEvalSigTypeExprAnalysedAnnotations`.

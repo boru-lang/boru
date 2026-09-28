@@ -491,7 +491,46 @@ func EvalSigTypeExpr(r *Registry, typeVal Value, what string) (Value, error) {
 	if len(result) != 1 {
 		return Value{}, fmt.Errorf("function spec: type annotation for %q must produce one type, got %d values", what, len(result))
 	}
+	if r.analysisActive() && annotationRunDependent(result[0]) {
+		// The pass evaluated the annotation to a value only the run
+		// computes — `x:(1 add 2)` is the value pattern 3 and
+		// `x:(typeof v)` the type the run reads — so the signature the pass
+		// builds is not the run's, and a compiled unit would carry it (the
+		// bind twin replays the pass's fn, which bound 4 where the run
+		// refuses it). The building word declines as the compile-time word
+		// it is (NUR325).
+		r.analysisRecorder().NoteRuntimeDependent()
+	}
+	if v := result[0]; v.Carrier && IsNegation(v) {
+		// A negation the pass built exactly (tnot's ReturnsFn negates the
+		// operand itself) but flagged a carrier: the annotation is that
+		// type, as the run's is. Kept a carrier, the signature's pattern
+		// was an abstract value the pass's match admitted 5 at, where the
+		// run's `(tnot Integer)` refuses it (NUR326).
+		v.Carrier = false
+		return v, nil
+	}
 	return result[0], nil
+}
+
+// annotationRunDependent reports whether the pass's value for a type
+// annotation stands for a value only the run computes: a carrier with no
+// type content — the pass's stand-in for the scalar `(1 add 2)` or the type
+// `(typeof v)` computes — itself or as an alternative of a union built over
+// one. A carrier that holds the type content itself (`(tnot Integer)`,
+// whose ReturnsFn builds the negation exactly) is the run's type.
+func annotationRunDependent(v Value) bool {
+	if v.Carrier && !IsTypeBody(v) {
+		return true
+	}
+	if di, err := AsDisjunct(v); err == nil {
+		for _, alt := range di.Alternatives {
+			if annotationRunDependent(alt) {
+				return true
+			}
+		}
+	}
+	return false
 }
 
 // unwrapNamedReturn resolves the `name:Type` spelling of a RETURN
@@ -721,7 +760,10 @@ func ResolveSigType(r *Registry, v Value) (*Type, *Value, error) {
 	// pattern path (Unify's disjunct fold), exactly like the named form
 	// constrains through its minted Behavior. Previously this fell to
 	// the TAny tail: a silent wildcard that dispatched EVERYTHING.
-	if IsDisjunct(v) {
+	// An inline negation (`x:(tnot Integer)`) the same way: it fell to the
+	// TAny tail and admitted the very values it excludes, where the named
+	// form refuses them (NUR326).
+	if IsDisjunct(v) || IsNegation(v) {
 		if p, ok := runSigPattern(r, v); ok {
 			return TAny, &p, nil
 		}

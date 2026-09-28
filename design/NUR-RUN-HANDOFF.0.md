@@ -9,6 +9,42 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## A None read joins its union; run-dependent annotations decline: NUR324-326, NUR311's third path, gate64's fallout (2026-09-28)
+
+Gate64 on 326a0ee was green but for three ledger findings, all fallout of
+NUR323's one matching rule: lang/native's three `MatchSignature` stand-ins
+were Data-nil values the rule now refuses at a List slot (they are
+carriers); the dispatch census's `emit`, `gt` and `lt` divergences stopped
+occurring, so their ledger entries went; and specgen's "runs clean, the
+checker errors" row `[None] get 0` now checks clean, replaced by an
+untaken branch's undefined word.
+
+- **NUR311's third path.** A user call's contract window renders the
+  attempted window too; it records which operands were written and the
+  prefix it fills from, and the VM stops at a non-concrete written operand
+  as the rematch and the poly do: `9 f m.b 3` names 9.
+- **NUR324 (an interpreter change).** `7 f m.b` over `x:Maybe` answered
+  `[[7] None]` interpreted and raised compiled. The union's Match took the
+  None literal, a value at dispatch, for "the type itself", and
+  `rejectsTypeLiteral` admitted it only at a None slot; the inline
+  `(m.b) is (Integer tor None)` was already true. The union now admits it
+  where it admits `none`, so both lanes answer `[7 [None]]`. The ruling is
+  invited in the record. Refusing it on both lanes was the alternative, and
+  would need a None-literal carrier distinct from `none`'s: returning the
+  None node itself from the missing read collided in the emitter's
+  provenance (every None literal shares the node's ID), and a strict None
+  carrier cannot tell the literal from `none`.
+- **NUR325 (loud).** `x:(1 add 2)` is the value pattern 3, but the check
+  pass ran the annotation over carriers, built an Integer slot, and the
+  bind twin replayed that fn, so `f 4` answered `[[4]]` compiled; `(typeof
+  5)` the same over a Type carrier. A carrier annotation with no type
+  content now notes NUR308's run-dependent latch, and `fn` declines as a
+  compile-time word: no new decline site.
+- **NUR326.** `x:(tnot Integer)` fell to ResolveSigType's TAny tail on both
+  lanes and bound 5. It constrains through the pattern now, and the pass
+  keeps tnot's exact negation as the pattern instead of a carrier its match
+  admitted 5 at.
+
 ## A type value is no value of its Parent: NUR323 found and closed, NUR311 closed (2026-09-27)
 
 Probing NUR311's reach-led windows over other type-valued members found

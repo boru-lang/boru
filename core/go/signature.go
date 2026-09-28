@@ -498,10 +498,11 @@ func rejectsTypeLiteral(v Value, expectedType *Type) bool {
 	if expectedType.Equal(TAny) {
 		return false
 	}
-	if expectedType.Equal(TNone) {
-		// At a TNone slot, the None type literal is the canonical
-		// inhabitant; sigTypeMatches has already verified the value
-		// is None-typed.
+	if !IsTypeLiteral(v) {
+		// The None literal is a VALUE — what a missing member reads as
+		// (IsTypeLiteral excludes it) — admitted wherever the slot's own
+		// match admitted it: a None slot, and a union that names None
+		// (NUR324).
 		return false
 	}
 	if expectedType.Equal(TType) {

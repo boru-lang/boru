@@ -25,11 +25,11 @@ func TestCallWindowAt(t *testing.T) {
 		Fns:         []compiler.CompiledFn{{CallWindows: map[int][]compiler.CallWindowOperand{5: {}}}},
 	}
 	args, locals, stack := []core.Value{one}, []core.Value{two, three}, []core.Value{two, one}
-	win, ok := callWindowAt(p, -1, 3, args, stack, locals)
+	win, ok := callWindowAt(nil, "", p, -1, 3, args, stack, locals)
 	if !ok || len(win) != 4 || win[0].Data != one.Data || win[1].Data != four.Data || win[2].Data != three.Data || win[3].Data != one.Data {
 		t.Fatalf("main-code window: %v %v", win, ok)
 	}
-	if win, ok := callWindowAt(p, 0, 5, nil, nil, nil); !ok || len(win) != 0 {
+	if win, ok := callWindowAt(nil, "", p, 0, 5, nil, nil, nil); !ok || len(win) != 0 {
 		t.Fatalf("a unit's empty window is a window: %v %v", win, ok)
 	}
 	for name, c := range map[string]struct {
@@ -49,7 +49,7 @@ func TestCallWindowAt(t *testing.T) {
 		if c.ops != nil {
 			prog = &compiler.Program{CallWindows: map[int][]compiler.CallWindowOperand{0: c.ops}}
 		}
-		if win, ok := callWindowAt(prog, c.unit, c.pc, args, stack, locals); ok {
+		if win, ok := callWindowAt(nil, "", prog, c.unit, c.pc, args, stack, locals); ok {
 			t.Errorf("%s: no window, got %v", name, win)
 		}
 	}

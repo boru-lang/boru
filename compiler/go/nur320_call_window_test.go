@@ -12,15 +12,15 @@ import (
 // drops the key's offer; the take removes it.
 func TestNoteCallWindowPool(t *testing.T) {
 	var nilES *EmitState
-	nilES.NoteCallWindow("f", core.SrcPos{}, nil, false, false) // no-op, no panic
+	nilES.NoteCallWindow("f", core.SrcPos{}, nil, 0, nil, false, false) // no-op, no panic
 
 	at := core.SrcPos{Row: 1, Col: 5}
 	first := []core.Value{core.NewInteger(7)}
 	later := []core.Value{core.NewInteger(9)}
 
 	es := NewEmitState()
-	es.NoteCallWindow("f", at, first, true, false)
-	es.NoteCallWindow("f", at, later, false, true) // the re-step keeps the deferred offer
+	es.NoteCallWindow("f", at, first, 0, nil, true, false)
+	es.NoteCallWindow("f", at, later, 0, nil, false, true) // the re-step keeps the deferred offer
 	if w := es.takePendingWindow("f", at); !w.ok || !w.known || len(w.win) != 1 || intOf(w.win[0], 0) != 7 {
 		t.Fatalf("a re-step keeps the first step's window: %+v", w)
 	}
@@ -28,25 +28,25 @@ func TestNoteCallWindowPool(t *testing.T) {
 		t.Fatal("the take removes the offer")
 	}
 
-	es.NoteCallWindow("f", at, first, false, false)
-	es.NoteCallWindow("f", at, later, false, true) // no deferred offer: replaced
+	es.NoteCallWindow("f", at, first, 0, nil, false, false)
+	es.NoteCallWindow("f", at, later, 0, nil, false, true) // no deferred offer: replaced
 	if w := es.takePendingWindow("f", at); intOf(w.win[0], 0) != 9 {
 		t.Fatalf("a re-step over a settled offer replaces it: %+v", w)
 	}
-	es.NoteCallWindow("f", at, first, true, false)
-	es.NoteCallWindow("f", at, later, true, false) // a fresh first step replaces
+	es.NoteCallWindow("f", at, first, 0, nil, true, false)
+	es.NoteCallWindow("f", at, later, 0, nil, true, false) // a fresh first step replaces
 	if w := es.takePendingWindow("f", at); intOf(w.win[0], 0) != 9 {
 		t.Fatalf("a new first step replaces a deferred offer: %+v", w)
 	}
 
-	es.NoteCallWindow("f", at, nil, true, false)
+	es.NoteCallWindow("f", at, nil, 0, nil, true, false)
 	if w := es.takePendingWindow("f", at); !w.ok || w.known {
 		t.Fatalf("a speculative plan offers an unknown window: %+v", w)
 	}
 
-	es.NoteCallWindow("f", at, first, false, false)
+	es.NoteCallWindow("f", at, first, 0, nil, false, false)
 	resume := es.Suspend()
-	es.NoteCallWindow("f", at, later, false, false)
+	es.NoteCallWindow("f", at, later, 0, nil, false, false)
 	resume()
 	if w := es.takePendingWindow("f", at); w.ok {
 		t.Fatalf("a suspended note pools nothing and drops the key's offer: %+v", w)
@@ -60,8 +60,8 @@ func TestClaimHeldWindow(t *testing.T) {
 	at := core.SrcPos{Row: 2, Col: 1}
 	other := core.SrcPos{Row: 3, Col: 1}
 	es := NewEmitState()
-	es.NoteCallWindow("f", at, []core.Value{core.NewInteger(1)}, false, false)
-	es.NoteCallWindow("g", other, []core.Value{core.NewInteger(2)}, false, false)
+	es.NoteCallWindow("f", at, []core.Value{core.NewInteger(1)}, 0, nil, false, false)
+	es.NoteCallWindow("g", other, []core.Value{core.NewInteger(2)}, 0, nil, false, false)
 	release := es.HoldRegion("f", at)
 	defer release()
 	if w := es.claimHeldWindow("f", at); !w.ok || intOf(w.win[0], 0) != 1 {
@@ -92,18 +92,18 @@ func TestCallWindowOps(t *testing.T) {
 	if es.callWindowOps("f", at, nil) != nil {
 		t.Fatal("no offer: no window")
 	}
-	es.NoteCallWindow("f", at, nil, false, false)
+	es.NoteCallWindow("f", at, nil, 0, nil, false, false)
 	if es.callWindowOps("f", at, nil) != nil {
 		t.Fatal("an unknown window: no window")
 	}
-	es.NoteCallWindow("f", at, []core.Value{}, false, false)
+	es.NoteCallWindow("f", at, []core.Value{}, 0, nil, false, false)
 	if w := es.callWindowOps("f", at, nil); w == nil || len(w) != 0 {
 		t.Fatalf("an empty window is a window: %#v", w)
 	}
 
 	es.producedBy["ev"] = producer{seq: 4, idx: 1}
 	es.units[0].localByID["loc"] = 3
-	es.NoteCallWindow("f", at, []core.Value{arg, core.NewInteger(7), ev, core.NewAtom("q")}, false, false)
+	es.NoteCallWindow("f", at, []core.Value{arg, core.NewInteger(7), ev, core.NewAtom("q")}, 0, nil, false, false)
 	w := es.callWindowOps("f", at, []core.Value{arg})
 	if len(w) != 4 || w[0].kind != WinArg || w[0].idx != 0 || w[1].kind != WinValue ||
 		intOf(w[1].value, 0) != 7 || w[2].kind != WinStack || w[2].op.idx != 4 || w[2].op.resIdx != 1 ||
@@ -112,7 +112,7 @@ func TestCallWindowOps(t *testing.T) {
 	}
 
 	// A local read resolves only while its binding has not moved.
-	es.NoteCallWindow("f", at, []core.Value{loc}, false, false)
+	es.NoteCallWindow("f", at, []core.Value{loc}, 0, nil, false, false)
 	if es.callWindowOps("f", at, nil) != nil {
 		t.Fatal("a local read with no stable binding: no window")
 	}
@@ -123,23 +123,23 @@ func TestCallWindowOps(t *testing.T) {
 	reg.Defs.Push("a", loc)
 	es.reg = reg
 	es.NoteDefRead("loc", "a")
-	es.NoteCallWindow("f", at, []core.Value{loc}, false, false)
+	es.NoteCallWindow("f", at, []core.Value{loc}, 0, nil, false, false)
 	if w := es.callWindowOps("f", at, nil); len(w) != 1 || w[0].kind != WinLocal || w[0].idx != 3 {
 		t.Fatalf("a stable local read: %#v", w)
 	}
 
-	es.NoteCallWindow("f", at, []core.Value{lost}, false, false)
+	es.NoteCallWindow("f", at, []core.Value{lost}, 0, nil, false, false)
 	if es.callWindowOps("f", at, nil) != nil {
 		t.Fatal("a value with no home: no window")
 	}
-	es.NoteCallWindow("f", at, []core.Value{core.NewCarrier(core.TAny)}, false, false)
+	es.NoteCallWindow("f", at, []core.Value{core.NewCarrier(core.TAny)}, 0, nil, false, false)
 	if es.callWindowOps("f", at, nil) != nil {
 		t.Fatal("a carrier with no identity: no window")
 	}
 
 	// Inside a unit, an event the unit did not produce has no home here.
 	es.units = append(es.units, &emitUnit{localByID: map[string]int{}})
-	es.NoteCallWindow("f", at, []core.Value{ev}, false, false)
+	es.NoteCallWindow("f", at, []core.Value{ev}, 0, nil, false, false)
 	if es.callWindowOps("f", at, nil) != nil {
 		t.Fatal("an enclosing unit's event: no window")
 	}

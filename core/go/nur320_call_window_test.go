@@ -95,11 +95,14 @@ type callWindowEmit struct {
 	deferred bool
 	restep   bool
 	calls    int
+	nFwd     int
+	prefix   []Value
 }
 
 func (c *callWindowEmit) Active() bool { return true }
-func (c *callWindowEmit) NoteCallWindow(word string, _ SrcPos, window []Value, deferred, restep bool) {
+func (c *callWindowEmit) NoteCallWindow(word string, _ SrcPos, window []Value, nFwd int, prefix []Value, deferred, restep bool) {
 	c.word, c.window, c.deferred, c.restep = word, window, deferred, restep
+	c.nFwd, c.prefix = nFwd, prefix
 	c.calls++
 }
 

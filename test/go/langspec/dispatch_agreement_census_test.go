@@ -55,20 +55,18 @@ import (
 // The two MECHANISMS behind the shapes:
 //   - split-sensitive selection: for a window two overloads accept, the
 //     planner's choice depends on the CALL FORM (forward-phase candidate
-//     order) — the two-map Store shapes and emit's Function+map — or on
-//     bare type-node operands tripping the planner-vs-kernel
-//     rejectsTypeLiteral scope difference (gt/lt). The generic lane must
-//     re-create the planner's selection from OpCollect's descriptor
-//     (which carries the split), never from the bare window.
+//     order) — the two-map Store shapes. The generic lane must re-create
+//     the planner's selection from OpCollect's descriptor (which carries
+//     the split), never from the bare window. (emit's Function+map shape
+//     and gt/lt over bare type-node operands — the planner-vs-kernel
+//     rejectsTypeLiteral scope difference — closed with NUR323, whose one
+//     positionalMatch rule both sides now share.)
 //   - pattern-admission difference: /q- and pattern-heavy sigs (def,
 //     use, 1-arg remove) whose QuoteArgs/pattern admission the kernel's
 //     pattern loop answers differently from the planner's patternsOk.
 var agreementLedger = map[string]string{
 	"kernel-different-overload/create": "split-sensitive selection (two-map Store shape)",
-	"kernel-different-overload/emit":   "split-sensitive selection (Function+map service shape)",
-	"kernel-different-overload/gt":     "rejectsTypeLiteral scope difference on bare type-node operands",
 	"kernel-different-overload/load":   "split-sensitive selection (two-map Store shape)",
-	"kernel-different-overload/lt":     "rejectsTypeLiteral scope difference on bare type-node operands",
 	"kernel-different-overload/remove": "split-sensitive selection (two-map Store shape)",
 	"kernel-different-overload/update": "split-sensitive selection (two-map Store shape)",
 	"kernel-no-match/def":              "pattern-admission difference (/q + type-operand sig)",

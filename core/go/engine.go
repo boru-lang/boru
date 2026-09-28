@@ -1080,14 +1080,16 @@ func (e *Engine) noteCallWindow(w WordInfo, fn *FnDefInfo, sig *Signature, posit
 			break
 		}
 	}
-	var win []Value
+	var win, prefix []Value
+	nFwd := 0
 	if specAt < 0 {
-		win = e.rematchWritten(fn)
+		win, nFwd = e.rematchWrittenSplit(fn)
 		if win == nil {
 			win = []Value{}
 		}
+		prefix = e.runPrefix()
 	}
-	es.NoteCallWindow(w.Name, pos, win, deferred, w.ForceStack)
+	es.NoteCallWindow(w.Name, pos, win, nFwd, prefix, deferred, w.ForceStack)
 }
 
 // fnHasBoruSig reports whether any of fn's signatures runs a boru body — a

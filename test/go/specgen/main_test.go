@@ -839,7 +839,9 @@ func TestExtractPassingSkipsNonQualifyingRows(t *testing.T) {
 		"0\t0\t1-elem → 1 value(s)",                   // passes all three gates
 		"dup\tERROR:signature_error\t1-elem rejected", // error row: never passing
 		"0 true not lt\tbogus\t4-elem → 1 value(s)",   // errors at run (incomparable)
-		"[None] get 0\t[None]\t3-elem → 1 value(s)",   // runs clean, but the checker errors
+		// runs clean, but the checker errors (the untaken branch's undefined
+		// word; `[None] get 0` served here until NUR323 made it check clean)
+		"def f fn [[b:Boolean][Any][if b [nope] [1]]] end f false\t1\tchecker-only error",
 		"def One (typeof (const 1)) end 1 is One\ttrue\tchecks \u0026 runs clean, but the compiler fails on it", // checks clean, but the compiler declines
 	}, "\n")+"\n")
 	out := filepath.Join(t.TempDir(), "mini-passing.tsv")

@@ -270,8 +270,12 @@ type EmitRecorder interface {
 	// offer rather than replacing it. Keyed and held exactly as the region
 	// offer is (HoldRegion); a user-fn record claims it for its
 	// param-contract no-match. A nil window offers that no window is known.
+	// nFwd counts the window's leading entries written after the word, and
+	// prefix is the stack prefix beneath it as the run holds it: the
+	// interpreter's report stops its written entries at the first that is no
+	// concrete value at run time and falls to that prefix (NUR311).
 	// Inactive: a no-op.
-	NoteCallWindow(word string, pos SrcPos, window []Value, deferred, restep bool)
+	NoteCallWindow(word string, pos SrcPos, window []Value, nFwd int, prefix []Value, deferred, restep bool)
 	// RecordDynApply records a paren-bounded TRAILING fn-value apply and
 	// reports how many of `args` the lowered apply CONSUMES, counted from the
 	// TOP of the window (the values nearest the fn). That is normally all of
@@ -723,9 +727,9 @@ func (inactiveEmit) RecordPolyCall(string, []Value, []Value, SrcPos, *Registry, 
 func (inactiveEmit) RecordUserCall(int, string, []Value, []Value, SrcPos, SrcPos) {}
 func (inactiveEmit) RecordUserPolyCall(string, *Registry, []int, []int, []SigImpl, []Signature, []Value, []Value, SrcPos, string, SrcPos) {
 }
-func (inactiveEmit) HoldRegion(string, SrcPos) func()                         { return func() {} }
-func (inactiveEmit) NoteCallWindow(string, SrcPos, []Value, bool, bool)       {}
-func (inactiveEmit) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool) { return 0, false }
+func (inactiveEmit) HoldRegion(string, SrcPos) func()                                 { return func() {} }
+func (inactiveEmit) NoteCallWindow(string, SrcPos, []Value, int, []Value, bool, bool) {}
+func (inactiveEmit) RecordDynApply([]Value, Value, Value, SrcPos) (int, bool)         { return 0, false }
 func (inactiveEmit) RecordDynApplyLead([]Value, Value, Value, SrcPos) (int, bool) {
 	return 0, false
 }

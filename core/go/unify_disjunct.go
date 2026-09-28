@@ -42,7 +42,10 @@ func (d *DisjunctUnifier) Match(v Value, t *Type) bool {
 // matchR is Match with the enclosing unify chain's registry threaded
 // into the alternatives walk (see isR).
 func (d *DisjunctUnifier) matchR(v Value, t *Type, r *Registry) bool {
-	if IsBareTypeNode(v) {
+	// A TYPE literal is the type itself, not an inhabitant. The None literal
+	// is not one: it is the value a missing member reads as, and a union
+	// that names None admits it as it admits `none` (NUR324).
+	if IsTypeLiteral(v) {
 		return baseBehavior(d.prev).Match(v, t)
 	}
 	_, err := unifyDisjunct(DisjunctInfo{Alternatives: d.Alternatives}, v, r)
