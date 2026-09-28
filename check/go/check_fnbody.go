@@ -49,7 +49,15 @@ func checkBodyReturnConformance(r *core.Registry, name string, declared []*core.
 		return
 	}
 	if len(stk) < len(declared) {
-		if len(stk) == 0 && argsConcrete && CheckAtUncaughtTopLevel(r) &&
+		// Not under SuppressBodyErrors: there the call is an ASSUMED dispatch
+		// over args the real match already rejected (checkModeAssumeSig) or a
+		// narrowed recursive re-entry, and "the call always errors" is the
+		// cascade of the one honest finding at the call site — the
+		// no_signature. Measured: `def p word [1 add 2] def f fn
+		// [[x:Integer][Integer][x mul 10]] f p` (word-splice.tsv:L115) drew
+		// this on the compile-armed pass alone, the fn-memo drop there
+		// re-running the body the plain pass served from its summary.
+		if len(stk) == 0 && argsConcrete && r.Check.SuppressBodyErrors == 0 && CheckAtUncaughtTopLevel(r) &&
 			!fnBodyUndefinedWordShield(r, name, pos, bodyEnd) {
 			detail := fmt.Sprintf(
 				"%s: the body produces no return value for this call (declared %d) — the call always errors",
