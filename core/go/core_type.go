@@ -367,6 +367,13 @@ func isFnBodiedValue(v Value) bool {
 }
 
 func InstallType(r *Registry, name string, body Value) error {
+	// A typed container body whose child is a paren expression
+	// (`def T [:(Integer tor None)]`) evaluates it, as a fn parameter's and a
+	// typed def's annotation do; the raw paren admitted no element (NUR327).
+	body, err := ResolveChildTypeExpr(r, body)
+	if err != nil {
+		return err
+	}
 	if !IsTypeBody(body) && !IsLiteralTypeBody(body) {
 		return &BoruError{
 			Code:   "type_error",

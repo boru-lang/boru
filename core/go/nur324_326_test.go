@@ -1,6 +1,9 @@
 package core
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestNoneLiteralIsAUnionMember pins NUR324's kernel half: the None literal —
 // what a missing member reads as, and a VALUE at dispatch — is a member of a
@@ -32,6 +35,10 @@ func TestNoneLiteralIsAUnionMember(t *testing.T) {
 	if MatchSignature(sig, []Value{NewTypeLiteral(TInteger)}, WordInfo{ArgCount: -1}) != nil {
 		t.Error("a Maybe slot refuses a type literal")
 	}
+	// A None literal the return contract refuses is named, not `<nil>`.
+	if detail, _ := ReturnTypeErrorText("f", 1, TInteger, noneLit); !strings.Contains(detail, "got None") {
+		t.Errorf("return text %q must name the None literal", detail)
+	}
 }
 
 // TestAnnotationRunDependent pins NUR325's predicate: a carrier with no type
@@ -52,9 +59,11 @@ func TestAnnotationRunDependent(t *testing.T) {
 		{"union of types", NewDisjunct([]Value{NewTypeLiteral(TString), NewTypeLiteral(TInteger)}), false},
 		{"value", NewInteger(3), false},
 		{"type", NewTypeLiteral(TInteger), false},
+		{"typed list over a carrier child", NewTypedList(NewCarrier(TType)), true},
+		{"typed list of a type", NewTypedList(NewTypeLiteral(TInteger)), false},
 	} {
-		if got := annotationRunDependent(c.v); got != c.want {
-			t.Errorf("%s: annotationRunDependent = %v, want %v", c.name, got, c.want)
+		if got := AnnotationRunDependent(c.v); got != c.want {
+			t.Errorf("%s: AnnotationRunDependent = %v, want %v", c.name, got, c.want)
 		}
 	}
 }
@@ -76,8 +85,13 @@ func TestEvalSigTypeExprAnalysedAnnotations(t *testing.T) {
 	if err != nil || !got.Carrier || rec.dependents != 1 {
 		t.Fatalf("a carrier annotation notes the word run-dependent: %v %v %d", got, err, rec.dependents)
 	}
+	// A typed container whose paren child the pass evaluates to a carrier
+	// notes the building word run-dependent too (NUR327).
+	if _, err := ResolveChildTypeExpr(r, NewTypedList(NewParenExpr([]Value{NewWord("zzsum")}))); err != nil || rec.dependents != 2 {
+		t.Fatalf("a run-dependent child notes the word: %v %d", err, rec.dependents)
+	}
 	got, err = EvalSigTypeExpr(r, NewParenExpr([]Value{NewWord("zzneg")}), "x")
-	if err != nil || got.Carrier || !IsNegation(got) || rec.dependents != 1 {
+	if err != nil || got.Carrier || !IsNegation(got) || rec.dependents != 2 {
 		t.Fatalf("tnot's negation is the type itself and notes nothing: %v %v %d", got, err, rec.dependents)
 	}
 	kind, pat, err := ResolveSigType(r, got)
@@ -89,5 +103,28 @@ func TestEvalSigTypeExprAnalysedAnnotations(t *testing.T) {
 	}
 	if _, ok := Unify(NewString("s"), *pat); !ok {
 		t.Error("the pattern admits 's'")
+	}
+}
+
+// TestInstallTypeResolvesAParenChild pins NUR327's kernel half: a typed
+// container body whose child is a paren expression evaluates it at the
+// install, as a fn parameter's annotation does; a child that cannot run is
+// the install's error, not a raw paren no element satisfies.
+func TestInstallTypeResolvesAParenChild(t *testing.T) {
+	r, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	body := NewTypedList(NewParenExpr([]Value{NewWord("Integer")}))
+	if err := InstallType(r, "Zints", body); err != nil {
+		t.Fatalf("InstallType: %v", err)
+	}
+	got, ok := r.TopTypeBody("Zints")
+	ci, cerr := AsChildType(got)
+	if !ok || cerr != nil || IsParenExpr(ci.Child) || !(&ci.Child).Equal(TInteger) {
+		t.Fatalf("the installed child is Integer, not a paren: %v %v", got, cerr)
+	}
+	if err := InstallType(r, "Zbad", NewTypedList(NewParenExpr([]Value{NewWord("nosuchword")}))); err == nil {
+		t.Error("a child that cannot run is the install's error")
 	}
 }

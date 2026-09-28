@@ -9,6 +9,30 @@ rows NUR.md gained in that run names an entry here. Read it as a
 continuation of that log: its doctrine, and every entry before and after
 the run, stay there.
 
+## A typed container's paren child evaluates: NUR327; the return text names None (2026-09-28)
+
+Probing NUR324 over typed containers found `[:(Integer tor None)]` reaching
+`is` and a type def with its paren child unevaluated (only a fn parameter
+and a typed def ran it), so no element satisfied it: `['a' 1] is [:(Integer
+tor String)]` was false on the interpreter, and `def T [:(Integer tor
+None)] end [5 1] is T` false on both lanes. Recorded and closed as NUR327.
+
+- **The fix.** `is` resolves its type operand's paren child and
+  `core.InstallType` a body's (`core.ResolveChildTypeExpr`); a child that
+  cannot run is an error, as at a parameter.
+- **The trap it opened.** Resolving the child in the check pass turned a
+  run-dependent child into a replayed carrier: `def T [:(typeof x)] end [5]
+  is T` answered `[false]` compiled for `[true]`. `ResolveChildTypeExpr`
+  notes such a child run-dependent (NUR325's rule, now
+  `core.AnnotationRunDependent`, which reads a container's child), so the
+  building def or fn declines. A typed def over a run-dependent annotation
+  binds a gradual value in the pass and declines, where it raised a
+  mismatch the run does not meet: `def xs:[:(typeof y)] [5]` was silent on
+  main.
+- **The return text.** A narrower return contract that refuses the None
+  literal printed its missing Parent: `expected Integer, got <nil>`. The
+  shared text names a lattice root itself (`got None`).
+
 ## A None read joins its union; run-dependent annotations decline: NUR324-326, NUR311's third path, gate64's fallout (2026-09-28)
 
 Gate64 on 326a0ee was green but for three ledger findings, all fallout of

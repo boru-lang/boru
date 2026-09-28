@@ -237,6 +237,12 @@ func ResolveChildTypeExpr(r *Registry, v Value) (Value, error) {
 		return v, fmt.Errorf("child type expression must produce one type, got %d values", len(out))
 	}
 	child := out[0]
+	if r.analysisActive() && AnnotationRunDependent(child) {
+		// A child only the run computes (`[:(typeof x)]`, `[:(1 add 2)]`):
+		// the container the pass builds is not the run's, and the bind twin
+		// would replay it — the building word declines (NUR325, NUR327).
+		r.analysisRecorder().NoteRuntimeDependent()
+	}
 	if IsTypedMap(v) {
 		if len(ci.Entries) > 0 {
 			return NewTypedMapWithEntries(child, ci.Entries), nil

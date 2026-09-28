@@ -491,7 +491,7 @@ func EvalSigTypeExpr(r *Registry, typeVal Value, what string) (Value, error) {
 	if len(result) != 1 {
 		return Value{}, fmt.Errorf("function spec: type annotation for %q must produce one type, got %d values", what, len(result))
 	}
-	if r.analysisActive() && annotationRunDependent(result[0]) {
+	if r.analysisActive() && AnnotationRunDependent(result[0]) {
 		// The pass evaluated the annotation to a value only the run
 		// computes — `x:(1 add 2)` is the value pattern 3 and
 		// `x:(typeof v)` the type the run reads — so the signature the pass
@@ -513,19 +513,24 @@ func EvalSigTypeExpr(r *Registry, typeVal Value, what string) (Value, error) {
 	return result[0], nil
 }
 
-// annotationRunDependent reports whether the pass's value for a type
+// AnnotationRunDependent reports whether the pass's value for a type
 // annotation stands for a value only the run computes: a carrier with no
 // type content — the pass's stand-in for the scalar `(1 add 2)` or the type
-// `(typeof v)` computes — itself or as an alternative of a union built over
-// one. A carrier that holds the type content itself (`(tnot Integer)`,
-// whose ReturnsFn builds the negation exactly) is the run's type.
-func annotationRunDependent(v Value) bool {
+// `(typeof v)` computes — itself, as an alternative of a union built over
+// one, or as a typed container's child. A carrier that holds the type
+// content itself (`(tnot Integer)`, whose ReturnsFn builds the negation
+// exactly) is the run's type.
+func AnnotationRunDependent(v Value) bool {
 	if v.Carrier && !IsTypeBody(v) {
 		return true
 	}
+	if IsTypedList(v) || IsTypedMap(v) {
+		ci, _ := AsChildType(v)
+		return AnnotationRunDependent(ci.Child)
+	}
 	if di, err := AsDisjunct(v); err == nil {
 		for _, alt := range di.Alternatives {
-			if annotationRunDependent(alt) {
+			if AnnotationRunDependent(alt) {
 				return true
 			}
 		}

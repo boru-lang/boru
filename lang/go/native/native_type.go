@@ -800,6 +800,14 @@ func asReturns(args []Value, r *Registry) []Value {
 
 func isHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	a, b := args[1], args[0]
+	// A typed container whose child is a paren expression (`[:(Integer tor
+	// None)]`) arrives with the paren unevaluated, as a fn parameter's and a
+	// typed def's do, and they resolve it: every element failed the raw
+	// paren, so `[5 1] is [:(Integer tor None)]` was false (NUR327).
+	b, err := core.ResolveChildTypeExpr(r, b)
+	if err != nil {
+		return nil, err
+	}
 	// A NAMED structural type RHS evaluates to its minted node (the
 	// Stage 2 flip); recover the declared content so the redirect and
 	// Unify arms below see the body shapes they have always answered

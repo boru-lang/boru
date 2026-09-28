@@ -1,6 +1,9 @@
 package lang
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // TestNUR324NoneLiteralIsAUnionMember pins NUR324's close. A missing member
 // reads as the None literal, which dispatch treats as a value — yet a union
@@ -28,6 +31,8 @@ func TestNUR324NoneLiteralIsAUnionMember(t *testing.T) {
 		{`def U (Integer tor String) end def m {a: 1} end m.b is U`, "[false]"},
 		{maybe + `f Integer`, "ERROR:cannot call `f`"},
 		{maybe + `Integer is Maybe`, "[false]"},
+		// Past the union, a narrower return contract names the None it met.
+		{`def Maybe (Integer tor None) end def m {a: 1} end def f fn [[x:Maybe][Integer][x]] end f m.b`, "ERROR:expected Integer, got None"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
@@ -114,5 +119,54 @@ func TestNUR311CallWindowStopsAtAMissingRead(t *testing.T) {
 		{`def f fn [[x:Integer][Any][x]] end def m {e: Integer} end 5 f m.e`, "[5 Integer]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
+	}
+}
+
+// TestNUR327TypedContainerParenChild pins NUR327's close. A typed
+// container's paren child (`[:(Integer tor None)]`) reaches `is` and a type
+// def unevaluated — only a fn parameter and a typed def resolved it — so no
+// element satisfied the raw paren: `['a' 1] is [:(Integer tor String)]` was
+// false on the interpreter, and `def T [:(Integer tor None)]` refused every
+// list on both lanes. The inline `is` form declines compiled (its operand
+// has no compiled home), as it did.
+func TestNUR327TypedContainerParenChild(t *testing.T) {
+	const noHome = "operand of unknown provenance"
+	for _, c := range []struct{ src, want string }{
+		{`[5 1] is [:(Integer tor None)]`, "[true]"},
+		{`['a' 1] is [:(Integer tor String)]`, "[true]"},
+		{`[5.5 1] is [:(Integer tor String)]`, "[false]"},
+		{`{a: 5} is {:(Integer tor None)}`, "[true]"},
+	} {
+		requireLoudDecline(t, c.src, noHome, c.want)
+	}
+	const tl = `def T [:(Integer tor None)] end `
+	for _, c := range []struct{ src, want string }{
+		{tl + `[5 1] is T`, "[true]"},
+		{tl + `[5.5] is T`, "[false]"},
+		{tl + `def f fn [[xs:T][Any][xs]] end f [5 1]`, "[[5 1]]"},
+		{tl + `def f fn [[xs:T][Any][xs]] end f ['s']`, "ERROR:cannot call `f`"},
+		{`def T {:(Integer tor String)} end {a: 5 b: 's'} is T`, "[true]"},
+		{`def T {:(Integer tor String)} end {a: 5.5} is T`, "[false]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// A child only the run computes declines the def that builds the
+	// container, a type def's and a typed def's alike (the pass replayed a
+	// Type-carrier child: `def xs:[:(typeof y)] [5]` raised compiled).
+	for _, c := range []struct{ src, want string }{
+		{`def x 5 end def T [:(typeof x)] end [5] is T`, "[true]"},
+		{`def T [:(1 add 2)] end [3] is T`, "[true]"},
+		{`def y 5 end def xs:[:(typeof y)] [5] xs`, "[[5]]"},
+		{`def xs:(typeof 5) 5 xs`, "[5]"},
+		{`def f fn [[xs:[:(typeof 5)]][Any][xs]] end f [5]`, "[[5]]"},
+	} {
+		requireLoudDecline(t, c.src, "compile-time word", c.want)
+	}
+	requireLoudDeclineErr(t, `def xs:[:(typeof 5)] ["s"] xs`, "compile-time word", "type_error")
+	// A child that cannot run is an error where it was a silent refusal.
+	for _, src := range []string{`[5] is [:(nosuchword)]`, `def T [:(nosuchword)] end 1`} {
+		if _, err := mustNew(t).RunInterp(src); err == nil || !strings.Contains(err.Error(), "undefined word: nosuchword") {
+			t.Errorf("%s: want the child's undefined_word, got %v", src, err)
+		}
 	}
 }

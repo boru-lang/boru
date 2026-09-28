@@ -1299,6 +1299,14 @@ func DefTypedHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) (
 	} else {
 		constraint = evaluated
 	}
+	if r.Check.IsActive() && core.AnnotationRunDependent(constraint) {
+		// An annotation only the run computes (`def xs:[:(typeof y)] …`): the
+		// pass can decide no membership over its stand-in, where it raised a
+		// mismatch the run does not meet. The def binds a gradual value and
+		// declines as the compile-time word it is (NUR327).
+		r.Check.Recorder().NoteRuntimeDependent()
+		return InstallAndRecordDef(r, name, core.NewDynamicCarrier(TAny), defPos)
+	}
 	var typeName string
 	constraint, typeName, _ = r.ResolveTypedNameValue(constraint)
 	if !IsTypeBody(constraint) {

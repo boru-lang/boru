@@ -249,6 +249,7 @@ keep the two in sync in the same commit.
 | [NUR324](#nur324) | FIXED 2026-09-28 (the None literal is a member of a union naming None — the handoff log's entry of that date): a missing member's read at a named union parameter — `7 f m.b` over `def Maybe (Integer tor None)` — answered `[[7] None]` interpreted (the union refused the None literal, so x took the stack's 7) and raised `signature_error` compiled (the check pass's None carrier matched); `m.b is Maybe` was false while the inline `(m.b) is (Integer tor None)` was true. An INTERPRETER change: the maintainer's ruling is invited |
 | [NUR325](#nur325) | FIXED 2026-09-28 (loud: the building word declines — the handoff log's entry of that date): a parameter annotation the check pass evaluates to a carrier — `x:(1 add 2)`, `x:(typeof 5)`, `x:(not Integer)` — built a signature the run's is not, and the bind twin replayed it: `def f fn [[x:(1 add 2)][Any][[x]]] end f 4` answered `[[4]]` compiled for the interpreter's `signature_error`; silent on main too |
 | [NUR326](#nur326) | FIXED 2026-09-28 (an inline negation constrains through its pattern — the handoff log's entry of that date): `x:(tnot Integer)` fell to ResolveSigType's TAny tail and admitted 5 on BOTH lanes, where `5 is (tnot Integer)` and the named form refuse it |
+| [NUR327](#nur327) | FIXED 2026-09-28 (a typed container's paren child evaluates at `is` and at a type def — the handoff log's entry of that date): `[:(Integer tor None)]` reached `is` and `def T` with its child unevaluated, so `['a' 1] is [:(Integer tor String)]` was false on the interpreter and `def T [:(Integer tor None)] end [5 1] is T` false on BOTH lanes; only a fn parameter and a typed def resolved the paren |
 | [NUR174](#nur174) | The re-step landing was recorded at the REACH-GROUP COLLAPSE, which made it a WHITELIST OF PRODUCERS — and `m get 'f'` is the same member read written as a word call, so no collapse ever saw it: `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m get 'f'` answered 42 interpreted and `fn h` compiled. FIXED 2026-09-20 by reading the fact where check's model already stands — inside `stepLiteral`, on the branch whose next act is `execFnDefLiteral` — and deleting the recording apparatus. Three rungs of `execFnDefLiteral` the landing had to mirror came with it, each caught by a probe and each a wrong answer on its own: the ANONYMOUS-0-ARG PARK, a DISPATCH MODIFIER, and a value still alone inside a LIVE reach group | measurement, 2026-09-20 |
 | [NUR173](#nur173) | A REACH-lowered group (`m.f` is `( m dot f )`) never parks, so its collapse rewinds onto the one value it leaves and re-steps it — a callable one DISPATCHES. The check pass holds a carrier there and steps past it as data, and no fn-value-call arm could see the shape because every one of them needs a second residual entry. `def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end m.f` answered 42 interpreted and `fn h` compiled, silently. FIXED 2026-09-20 by recording the landing and letting the RUNTIME value decide (`OpReStepLanding`); the SEAT of that recording was then corrected by [NUR174](#nur174), which closed the `get`-WORD twin. A variadic region's top remains. This is NUR169's defect, and NUR169's "no case for `count == 1`" named its mechanism correctly | measurement, 2026-09-20 |
 | [NUR169](#nur169) | SUPERSEDED BY [NUR173](#nur173), which fixed it. The mechanism recorded below — no case for `count == 1`, so a one-survivor collapse reaches no fn-value-call arm — is CORRECT; the seat is one function out. Original text: a paren that nets exactly ONE value which is a FUNCTION is AUTO-APPLIED by the interpreter and silently NOT applied on the compiled lane | a Codex review of PR #475, 2026-09-19 |
@@ -14742,8 +14743,11 @@ Match keeps the bare-node rule; an inline negation's params were a wildcard
 (NUR326). **Ruling invited:** whether a missing read should bind a Maybe
 parameter was never decided; the alternative is refusing it on both lanes
 (the check pass would then need a None-literal carrier distinct from
-`none`'s). Pinned: lang `TestNUR324NoneLiteralIsAUnionMember` (12 rows);
-core `TestNoneLiteralIsAUnionMember`. The inline `x:(Integer tor None)`
+`none`'s). Past the union, a narrower return contract that refuses the
+None literal names it (`expected Integer, got None`), where the shared
+text printed the root's missing Parent as `<nil>`. Pinned: lang
+`TestNUR324NoneLiteralIsAUnionMember` (13 rows); core
+`TestNoneLiteralIsAUnionMember`. The inline `x:(Integer tor None)`
 form is an OPTIONAL Integer parameter and declines loudly compiled
 (`call results reordered`, a compile owed).
 
@@ -14793,3 +14797,35 @@ constrains through the pattern path as the union does, and the check pass
 keeps tnot's exact negation as that pattern rather than a carrier its match
 admitted 5 at. Pinned: lang `TestNUR326InlineNegationParamIsEnforced`
 (eight rows); core `TestEvalSigTypeExprAnalysedAnnotations`.
+
+## NUR327 — a typed container's paren child stayed unevaluated {#nur327}
+
+**Status:** FIXED 2026-09-28 (the handoff log's entry of that date) ·
+**Recorded:** 2026-09-28 · **Surfaced by:** the NUR324 probes over typed
+containers. Present on main (91e97dd): the inline `is` form an interpreter
+wrong answer the compiled lane declines, the named form a wrong answer on
+both lanes.
+
+```
+['a' 1] is [:(Integer tor String)]                interp: [false]   compiled: declines
+def T [:(Integer tor None)] end [5 1] is T         both lanes: [false]
+```
+
+**Cause.** The parser leaves a typed container's paren child as a raw
+ParenExpr, and only a fn parameter (`ResolveSigType`) and a typed def ran
+it (`core.ResolveChildTypeExpr`). At `is` and at a type def the child
+stayed the paren, which no element satisfies. **Fix.** `is` resolves its
+type operand's paren child, and `core.InstallType` resolves a body's; a
+child that cannot run is the error it is at a parameter, where it was a
+silent refusal. The inline `is` form still declines compiled (its operand
+has no compiled home). A child only the run computes (`[:(typeof x)]`,
+`[:(1 add 2)]`) is NUR325's case: the check pass evaluated it to a carrier
+and the bind twin replayed that container, so resolving the child turned
+`def T [:(typeof x)] end [5] is T` into `[false]` compiled for `[true]`.
+`ResolveChildTypeExpr` notes it run-dependent, and the def, fn or typed
+def building the container declines; a typed def over a run-dependent
+annotation binds a gradual value in the pass, where it raised a mismatch
+the run does not meet (`def xs:[:(typeof y)] [5]`, silent on main).
+Pinned: lang `TestNUR327TypedContainerParenChild`; core
+`TestInstallTypeResolvesAParenChild`, `TestAnnotationRunDependent`,
+`TestEvalSigTypeExprAnalysedAnnotations`.
