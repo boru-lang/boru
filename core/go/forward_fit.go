@@ -107,11 +107,7 @@ func (e *Engine) forwardFits(match *MatchResult) map[int][]ForwardFit {
 	// laid the operands out (optimisticLayout's rule): the forward phase
 	// the plan ran was the unmodified word's.
 	w.ForceStack = false
-	reg := e.Registry
-	if match.Reg != nil {
-		reg = match.Reg
-	}
-	fn := reg.Lookup(match.Name)
+	fn := match.DispatchRegistry(e.Registry).Lookup(match.Name)
 	if fn == nil {
 		return nil
 	}

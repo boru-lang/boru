@@ -37,7 +37,7 @@ import (
 // one per predicate that reads a sentinel. Pinned in BOTH directions — a new
 // marker is a new reading and must be argued here; a lost one means a
 // predicate's compare moved out of its home.
-const sentinelHomes = 5 // HasHome, NamedDef, IsModule, Home, FrameOn — all in core; the VM's dispatchRegistry compares its ARGUMENT, not a field, so it needs none
+const sentinelHomes = 6 // HasHome, NamedDef, IsModule, Home, FrameOn, DispatchRegistry (a MatchResult's nil Reg: the dispatch matched in main, read by the NUR357 forward fits) — all in core; the VM's dispatchRegistry compares its ARGUMENT, not a field, so it needs none
 
 // sentinelFields are the selector names whose nil / "" / pointer compares the
 // gate forbids outside a marked home.
