@@ -355,7 +355,7 @@ func (es *EmitState) planRootLiveReads(lw *lowerer, residual []core.Value) {
 // beneath it: a deopt island's prefix is that stack, where a statement
 // island's may also seat a slot or a constant.
 func (es *EmitState) rootHeldBeneath(lw *lowerer, tree map[int]treeEvent, residual []core.Value, start core.SrcPos, seq int) bool {
-	srcs, _, _, ok := es.rootPreStart(lw, tree, residual, start, statementFirstSeq(tree, seq, start))
+	srcs, _, _, ok := es.rootPreStart(lw, tree, residual, statementToken(es.rootBody, start), start, statementFirstSeq(tree, seq, start))
 	if !ok {
 		return false
 	}
