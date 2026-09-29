@@ -41,10 +41,10 @@ func TestNoteStatementStack(t *testing.T) {
 	end := core.NewEnd()
 	end.SetPos(pos)
 	es.rootBody = []core.Value{restartTok(1, 1), end, restartTok(1, 11)}
-	if got, told := es.stackAtStart(core.SrcPos{Row: 1, Col: 11}); !told || len(got) != 1 {
+	if got, told := es.stackAtStart(2); !told || len(got) != 1 {
 		t.Errorf("the statement after the end: %v %v", got, told)
 	}
-	if _, told := es.stackAtStart(core.SrcPos{Row: 1, Col: 1}); told {
+	if _, told := es.stackAtStart(0); told {
 		t.Error("the program's first statement follows no end")
 	}
 }
@@ -73,7 +73,7 @@ func TestSeatStack(t *testing.T) {
 	end.SetPos(core.SrcPos{Row: 1, Col: 3})
 	es.rootBody = []core.Value{restartTok(1, 1), end, restartTok(1, 5)}
 	es.rootStmtStacks = map[core.SrcPos][]core.Value{end.Pos(): {n335Val("lit", 1, 1)}}
-	if srcs, _, slots, ok := es.rootPreStart(lw, nil, nil, core.SrcPos{Row: 1, Col: 5}, 0); !ok || len(srcs) != 1 || slots == nil {
+	if srcs, _, slots, ok := es.rootPreStart(lw, nil, nil, 2, core.SrcPos{Row: 1, Col: 5}, 0); !ok || len(srcs) != 1 || slots == nil {
 		t.Errorf("a told stack is seated as told: %+v %v %v", srcs, slots, ok)
 	}
 }
@@ -110,10 +110,12 @@ func TestParenLead(t *testing.T) {
 	body := []core.Value{paren}
 	apply := EmitEvent{kind: evCall, call: emitCall{word: parenApplyWord, nout: 1, pos: head.Pos(),
 		ops: []EmitOperand{EventOperand(1, 0), EventOperand(2, 0)}, dynMethod: &DynMethodSpec{NArgs: 1, NOut: 1, Paren: true}}}
-	if got := parenLead(&apply, body, 0); len(got) != 1 || got[0].seq != 1 || !got[0].run || len(got[0].path) != 2 {
+	es := &EmitState{}
+	tree := map[int]treeEvent{}
+	if got := es.parenLead(tree, &apply, body, 0); len(got) != 1 || got[0].seq != 1 || !got[0].run || len(got[0].path) != 2 {
 		t.Errorf("the lead's own plan: %+v", got)
 	}
-	if got := parenLead(&apply, body, 1); got != nil {
+	if got := es.parenLead(tree, &apply, body, 1); got != nil {
 		t.Errorf("a lead before the statement: %+v", got)
 	}
 	local := apply
@@ -123,7 +125,7 @@ func TestParenLead(t *testing.T) {
 	bare := apply
 	bare.call.pos = core.SrcPos{Row: 1, Col: 1}
 	for _, ev := range []*EmitEvent{&local, &shaped, {kind: evBranch}, &bare} {
-		if got := parenLead(ev, body, 0); got != nil {
+		if got := es.parenLead(tree, ev, body, 0); got != nil {
 			t.Errorf("no lead plan: %+v", got)
 		}
 	}

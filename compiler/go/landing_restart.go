@@ -79,6 +79,13 @@ type substPlan struct {
 	// run marks a call run (callRun): its value, placed by the interpreter,
 	// must not dispatch where the island writes it (RestartSubst.Placed).
 	run bool
+	// reach marks a paren apply's lead that is a member read's own value
+	// (parenLead): the island writes it as the reach group the read's token
+	// lowers to (RestartSubst.Reach).
+	reach bool
+	// named marks a paren apply's lead that is a def-bound word (parenLead):
+	// the island writes its fn as the name's call runs it (RestartSubst.Named).
+	named bool
 }
 
 // covers reports whether path lies in the run of tokens p replaces: it
@@ -127,16 +134,23 @@ func (r *landingRestart) seated() bool {
 // method may be data at run time — the paren then places the values), its
 // event in the root's tree outside any loop, whose statement begins at a
 // program token with nothing deferred past it, and before which the
-// statement ran member reads only.
+// statement ran member reads only. Where the program ends in a terminal
+// trap only a shaped apply recorded before it plans, over a stack the pass
+// told: its island runs the statement and the program after it, the trap's
+// region included (`3 1 (m.f 7) add add` over a data member, NUR336).
 func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
-	if len(es.rootBody) == 0 || es.trapAt != 0 {
+	if len(es.rootBody) == 0 {
 		return
 	}
 	tree := rootTreeEvents(es.frames[0], false)
 	seqs := make([]int, 0, len(es.landingAfter))
 	for seq, te := range tree {
 		_, landed := es.landingAfter[seq]
-		if (landed && (es.landingWord[seq].Name != "" || es.landingOwn[seq].beneath || es.landingCollects(seq))) || (te.ev.kind == evCall && te.ev.call.dynMethod != nil) {
+		shaped := te.ev.kind == evCall && te.ev.call.dynMethod != nil
+		if es.trapAt != 0 && (!shaped || seq > es.trapAt) {
+			continue
+		}
+		if (landed && (es.landingWord[seq].Name != "" || es.landingOwn[seq].beneath || es.landingCollects(seq))) || shaped {
 			seqs = append(seqs, seq)
 		}
 	}
@@ -144,24 +158,24 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 	rec := &fnUnitRec{frag: &EmitFragment{events: es.frames[0]}, body: es.rootBody, localReads: es.rootLocalReads}
 	for _, seq := range seqs {
 		at := tree[seq]
-		tok := statementToken(es.rootBody, eventPos(*at.ev))
+		tok := statementToken(es.rootBody, stopPos(at.ev))
 		if tok < 0 {
 			continue
 		}
-		tok = literalDefsBefore(tree, es.rootBody, tok, eventPos(*at.ev))
-		d := deoptPoint{seq: seq, slot: -1, start: es.rootBody[tok].Pos(), token: tok}
+		tok = es.toldAfter(literalDefsBefore(tree, es.rootBody, tok, stopPos(at.ev)), stopPos(at.ev))
+		d := deoptPoint{seq: seq, slot: -1, start: statementStart(es.rootBody, tok), token: tok}
 		// Where the pass told the stack at the statement's start the island
 		// seats exactly that (stackAtStart), and the walk checks each value
 		// the compiled stack holds is still there at the stop (heldIntact):
 		// the deferred-operand accounting the residual's prefix needs is moot.
-		if _, told := es.stackAtStart(d.start); d.start.Row == 0 || (!told && es.deoptDeferred(es.units[0], rec, &d, -1)) {
+		if _, told := es.stackAtStart(tok); d.start.Row == 0 || (!told && (es.trapAt != 0 || es.deoptDeferred(es.units[0], rec, &d, -1))) {
 			continue
 		}
 		substs, first, reruns := es.restartReruns(tree, at, seq, es.rootBody, tok)
 		if !reruns {
 			continue
 		}
-		srcs, held, slots, ok := es.rootPreStart(lw, tree, residual, d.start, statementFirstSeq(tree, seq, d.start))
+		srcs, held, slots, ok := es.rootPreStart(lw, tree, residual, tok, d.start, statementFirstSeq(tree, seq, d.start))
 		if !ok {
 			continue
 		}
@@ -169,7 +183,133 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 			lw.landingRestarts = map[int]*landingRestart{}
 		}
 		lw.landingRestarts[seq] = &landingRestart{token: tok, start: d.start, depth: -1, srcs: srcs, held: held, heldAt: slots, substs: substs, first: first}
+		es.noteLeadRead(tree, at.ev)
 	}
+}
+
+// defsBefore is a unit's twin of literalDefsBefore: past the defs its
+// statement opens with, each of a value the def took whole from the one
+// token after its name — a scalar literal, or a paren or a reach an event
+// inside which produced the value (`def m (mk) def k 3 k (m.f 7)` in a fn
+// body, NUR336). Such a def leaves nothing pending and ran in the compiled
+// code, never again; the island seats the frame region the compiled code
+// holds after it (noteRestartDepth) — what a paren left beneath the bound
+// value included — and reads the names it bound through the unit's island
+// environment.
+func defsBefore(tree map[int]treeEvent, body []core.Value, tok int, p core.SrcPos) int {
+	defs := map[core.SrcPos]*emitDynBind{}
+	for _, te := range tree {
+		if d := te.ev.dyn; te.ev.kind == evDynBind && d != nil {
+			defs[d.pos] = d
+		}
+	}
+	for at := bodyTokenContaining(body, p); tok+3 <= at; tok += 3 {
+		w, err := core.AsWord(body[tok])
+		if err != nil || w.Name != "def" || !core.IsWord(body[tok+1]) {
+			break
+		}
+		if d := defs[body[tok+1].Pos()]; d == nil || !tookWhole(tree, d, body, tok+2) {
+			break
+		}
+	}
+	return tok
+}
+
+// tookWhole reports whether def d took its value whole from body token at: a
+// scalar literal the def bound as it is, or a paren or a reach the value's
+// producing event stands inside.
+func tookWhole(tree map[int]treeEvent, d *emitDynBind, body []core.Value, at int) bool {
+	if d.srcSeq < 0 {
+		return d.src.kind == opNone && core.IsSteplessValue(body[at])
+	}
+	te, in := tree[d.srcSeq]
+	return in && (core.IsParenExpr(body[at]) || core.IsReach(body[at])) && bodyTokenContaining(body, eventPos(*te.ev)) == at
+}
+
+// toldAfter is where a statement island may take over the statement it would
+// run from body token tok when stopped at position p: the last token from tok
+// up to the one holding p whose stack the pass told as a def completed right
+// before it (the engine's noteDefStack) — every run before it stays the
+// compiled code's, and what it left beneath is seated as told (`def k (3
+// dup) k (m.f 7)`, NUR336) — or tok itself.
+func (es *EmitState) toldAfter(tok int, p core.SrcPos) int {
+	at := tok
+	for i, stop := tok+1, bodyTokenContaining(es.rootBody, p); i <= stop; i++ {
+		if _, told := es.rootStmtStacks[es.rootBody[i].Pos()]; told {
+			at = i
+		}
+	}
+	return at
+}
+
+// statementStart is the position a statement island beginning at body token
+// tok orders the program's events by: the token's own, or — for a token the
+// parser mints without one (a bare pair, `a:1 (m.f 7)`) — the point just
+// past the `end` before it, which every later token follows (the program's
+// first token, when none precedes it). Zero where neither is known.
+func statementStart(body []core.Value, tok int) core.SrcPos {
+	if p := body[tok].Pos(); p.Row > 0 {
+		return p
+	}
+	if tok == 0 {
+		return core.SrcPos{Row: 1}
+	}
+	if e := body[tok-1].Pos(); core.IsEnd(body[tok-1]) && e.Row > 0 {
+		return core.SrcPos{Row: e.Row, Col: e.Col + 1}
+	}
+	return core.SrcPos{}
+}
+
+// planRematchRestart plans the statement island of the root's runtime
+// rematch trap (DispatchSpec.Restart): the pass's match of a word failed
+// over a value it holds as a carrier the run may match — a paren apply's
+// result, which the pass holds as any value (`k (m.f 7) add add`, NUR336) —
+// and the compiled program ends at the trap. Where the run matches, the
+// interpreter runs the statement and the program after it from the
+// statement's first token instead, seated on the stack the pass told there:
+// every event of the statement before the trap re-runs or is written as the
+// value its call left (restartSubsts), so nothing runs twice. A trap inside a
+// loop, one armed with a trap of its own (NUR264), or a statement whose stack
+// was not told plans none: the rematch keeps its defer.
+func (es *EmitState) planRematchRestart(lw *lowerer, residual []core.Value) {
+	if len(es.rootBody) == 0 || es.trapAt == 0 {
+		return
+	}
+	tree := rootTreeEvents(es.frames[0], false)
+	te, in := tree[es.trapAt]
+	if !in || te.inLoop || te.ev.kind != evTrap || te.ev.trap.rematchWord == "" || te.ev.trap.rematchOnMatch != nil {
+		return
+	}
+	p := te.ev.trap.pos
+	tok := statementToken(es.rootBody, p)
+	if tok < 0 {
+		return
+	}
+	tok = es.toldAfter(literalDefsBefore(tree, es.rootBody, tok, p), p)
+	start := statementStart(es.rootBody, tok)
+	if _, told := es.stackAtStart(tok); !told {
+		return
+	}
+	first := statementFirstSeq(tree, es.trapAt, start)
+	var pending []int
+	for s := range tree {
+		if s >= first && s < es.trapAt {
+			pending = append(pending, s)
+		}
+	}
+	sort.Ints(pending)
+	substs, ok := es.restartSubsts(tree, es.rootBody, tok, pending)
+	if !ok {
+		return
+	}
+	srcs, held, slots, ok := es.rootPreStart(lw, tree, residual, tok, start, first)
+	if !ok {
+		return
+	}
+	if lw.landingRestarts == nil {
+		lw.landingRestarts = map[int]*landingRestart{}
+	}
+	lw.landingRestarts[es.trapAt] = &landingRestart{token: tok, start: start, depth: -1, srcs: srcs, held: held, heldAt: slots, substs: substs}
 }
 
 // literalDefsBefore is where a statement island may take over the statement
@@ -261,7 +401,7 @@ func (es *EmitState) planGuardRestarts(lw *lowerer, residual []core.Value) {
 		if !ok {
 			continue
 		}
-		srcs, held, _, ok := es.rootPreStart(lw, tree, residual, d.start, statementFirstSeq(tree, g.seq, d.start))
+		srcs, held, _, ok := es.rootPreStart(lw, tree, residual, d.token, d.start, statementFirstSeq(tree, g.seq, d.start))
 		if !ok {
 			continue
 		}
@@ -327,8 +467,8 @@ func (es *EmitState) planCountRestarts(lw *lowerer, residual []core.Value) {
 		if !ok {
 			continue
 		}
-		start := es.rootBody[tok].Pos()
-		srcs, held, _, ok := es.rootPreStart(lw, tree, residual, start, statementFirstSeq(tree, seq, start))
+		start := statementStart(es.rootBody, tok)
+		srcs, held, _, ok := es.rootPreStart(lw, tree, residual, tok, start, statementFirstSeq(tree, seq, start))
 		if !ok {
 			continue
 		}
@@ -420,7 +560,7 @@ func (es *EmitState) countPoint(tree map[int]treeEvent, seq int, body []core.Val
 	case !es.doBodyAfter(tree, seq, toks, at):
 		return 0, nil, false
 	}
-	first := statementFirstSeq(tree, seq, body[tok].Pos())
+	first := statementFirstSeq(tree, seq, statementStart(body, tok))
 	var pending []int
 	for s, te := range tree {
 		if s >= first && s < seq && !inSpan(body, eventPos(*te.ev), path, span) {
@@ -893,7 +1033,7 @@ func (es *EmitState) guardReruns(tree map[int]treeEvent, seq int, body []core.Va
 			arms[s] = true
 		}
 	}
-	first := statementFirstSeq(tree, seq, body[tok].Pos())
+	first := statementFirstSeq(tree, seq, statementStart(body, tok))
 	var pending []int
 	for s := range tree {
 		if s >= first && s < seq && !arms[s] {
@@ -920,8 +1060,8 @@ func (es *EmitState) guardReruns(tree map[int]treeEvent, seq int, body []core.Va
 // value itself carries the def's earlier position, so `def k 3 end k (m.f
 // 7)` counted the statement's own `k` beneath it, and the island, running
 // the statement again, pushed it twice.
-func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual []core.Value, start core.SrcPos, firstSeq int) (srcs []RestartSrc, held int, slots []vmSlot, ok bool) {
-	if stack, told := es.stackAtStart(start); told {
+func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual []core.Value, tok int, start core.SrcPos, firstSeq int) (srcs []RestartSrc, held int, slots []vmSlot, ok bool) {
+	if stack, told := es.stackAtStart(tok); told {
 		return es.seatStack(lw, stack)
 	}
 	before, reads, ok := es.boundReadsBefore(tree, residual, start)
@@ -957,16 +1097,28 @@ func (es *EmitState) rootPreStart(lw *lowerer, tree map[int]treeEvent, residual 
 	return srcs, held, nil, true
 }
 
-// stackAtStart is the stack the pass stepped into the statement beginning at
-// start with, when the `end` before the statement told it
-// (NoteStatementStack): the interpreter's own stack there, values the
-// statement then consumes included — the residual no longer holds those, so
-// `m end drop (m.f 7)` seated nothing and the island's `drop` found an empty
-// stack. An island taking over past the statement's opening literal defs
-// (literalDefsBefore) sees the same stack: a def pushes nothing.
-func (es *EmitState) stackAtStart(start core.SrcPos) ([]core.Value, bool) {
-	s := statementToken(es.rootBody, start)
-	if s <= 0 || !core.IsEnd(es.rootBody[s-1]) {
+// stackAtStart is the stack the pass stepped the island's first token, root
+// body token tok, over, when the pass told it (NoteStatementStack): the
+// interpreter's own stack there, values the statement then consumes included
+// — the residual no longer holds those, so `m end drop (m.f 7)` seated
+// nothing and the island's `drop` found an empty stack. It was told at tok
+// when a def completed right before it (toldAfter), or else by the `end`
+// before tok's statement; an island taking over past the statement's opening
+// literal defs (literalDefsBefore) sees that stack too: a def pushes nothing.
+func (es *EmitState) stackAtStart(tok int) ([]core.Value, bool) {
+	if tok < 0 || tok >= len(es.rootBody) {
+		return nil, false
+	}
+	if p := es.rootBody[tok].Pos(); p.Row > 0 {
+		if stack, told := es.rootStmtStacks[p]; told {
+			return stack, true
+		}
+	}
+	s := tok
+	for s > 0 && !core.IsEnd(es.rootBody[s-1]) {
+		s--
+	}
+	if s == 0 {
 		return nil, false
 	}
 	stack, told := es.rootStmtStacks[es.rootBody[s-1].Pos()]
@@ -976,10 +1128,10 @@ func (es *EmitState) stackAtStart(start core.SrcPos) ([]core.Value, bool) {
 // seatStack finds each value of the stack at a statement's start where the
 // compiled root keeps it (rootPreStart's placement): an event's result in the
 // slot it was promoted to, or on the compiled stack beneath the statement
-// (held of those, whose producers are slots, bottom first), and a literal
-// known to the bottom as a constant. Anything
-// else — a carrier, a dynamic value, a type — cannot be seated, and ok is
-// false.
+// (held of those, whose producers are slots, bottom first), a literal known
+// to the bottom as a constant, and a type node the run resolves by its ID
+// (RestartType, as OpPushType does — `Integer end (m.f 7)`). Anything else —
+// a carrier, a dynamic value — cannot be seated, and ok is false.
 func (es *EmitState) seatStack(lw *lowerer, stack []core.Value) (srcs []RestartSrc, held int, slots []vmSlot, ok bool) {
 	slots = []vmSlot{}
 	for _, v := range stack {
@@ -991,6 +1143,10 @@ func (es *EmitState) seatStack(lw *lowerer, stack []core.Value) (srcs []RestartS
 			srcs = append(srcs, RestartSrc{Kind: RestartStack, Idx: held})
 			slots = append(slots, vmSlot(pr))
 			held++
+			continue
+		}
+		if core.IsBareTypeNode(v) && v.ID != "" && !v.Dynamic {
+			srcs = append(srcs, RestartSrc{Kind: RestartType, Val: v})
 			continue
 		}
 		if v.Carrier || v.Dynamic || !core.DeepConcrete(v) {
@@ -1178,11 +1334,12 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 	sort.Ints(seqs)
 	for _, seq := range seqs {
 		at := tree[seq]
-		tok := statementToken(rec.body, eventPos(*at.ev))
+		tok := statementToken(rec.body, stopPos(at.ev))
 		if tok < 0 {
 			continue
 		}
-		d := deoptPoint{seq: seq, slot: -1, start: rec.body[tok].Pos(), token: tok, restart: true}
+		tok = defsBefore(tree, rec.body, tok, stopPos(at.ev))
+		d := deoptPoint{seq: seq, slot: -1, start: statementStart(rec.body, tok), token: tok, restart: true}
 		if d.start.Row == 0 || es.deoptDeferred(u, rec, &d, -1) || outsProducedBefore(rec.outOps, statementFirstSeq(tree, seq, d.start)) {
 			continue
 		}
@@ -1192,6 +1349,7 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 		}
 		d.substs, d.first = substs, first
 		rec.deopts = append(rec.deopts, d)
+		es.noteLeadRead(tree, at.ev)
 	}
 	// The unit's branch guards (NUR292), as the root's (planGuardRestarts).
 	for _, g := range branchGuards(tree) {
@@ -1314,13 +1472,14 @@ func (lw *lowerer) noteRestartDepth(r *landingRestart, p core.SrcPos) {
 // restartAnchor is where root event ev stands in its statement for the
 // islands' depth (noteRestartDepths): a guarded branch at its `if` word
 // (BranchRecord.CondCheckPos) — its own position is its condition value's,
-// which an earlier statement may have written — and any other event at its
-// own position.
+// which an earlier statement may have written — a paren apply at its lead's
+// token (stopPos), for the same reason, and any other event at its own
+// position.
 func restartAnchor(ev *EmitEvent) core.SrcPos {
 	if ev.kind == evBranch && ev.br.condCheckPos.Row > 0 {
 		return ev.br.condCheckPos
 	}
-	return eventPos(*ev)
+	return stopPos(ev)
 }
 
 // treeEvent is one event of the root's tree: the event, whether a loop
@@ -1421,7 +1580,7 @@ func statementToken(body []core.Value, p core.SrcPos) int {
 // re-runnable, the branches and loops that hold them aside, over a stop
 // that fires on the first iteration or never (restartSpanReruns).
 func (es *EmitState) restartReruns(tree map[int]treeEvent, at treeEvent, seq int, body []core.Value, tok int) ([]substPlan, []RestartFirst, bool) {
-	start := body[tok].Pos()
+	start := statementStart(body, tok)
 	if !at.inLoop {
 		substs, ok := es.restartRunsReadsOnly(tree, seq, body, tok, core.SrcPos{})
 		return substs, nil, ok
@@ -1509,7 +1668,7 @@ func containsInt(xs []int, x int) bool {
 // the stop has not run either, whatever order the pass recorded it in — the
 // tape runs left to right — so it is not the run's.
 func (es *EmitState) restartRunsReadsOnly(tree map[int]treeEvent, seq int, body []core.Value, tok int, after core.SrcPos) ([]substPlan, bool) {
-	first := statementFirstSeq(tree, seq, body[tok].Pos())
+	first := statementFirstSeq(tree, seq, statementStart(body, tok))
 	var pending []int
 	for s, te := range tree {
 		written := eventPos(*te.ev)
@@ -1519,7 +1678,7 @@ func (es *EmitState) restartRunsReadsOnly(tree map[int]treeEvent, seq int, body 
 		}
 	}
 	sort.Ints(pending)
-	return es.restartSubsts(tree, body, tok, pending, parenLead(tree[seq].ev, body, tok)...)
+	return es.restartSubsts(tree, body, tok, pending, es.parenLead(tree, tree[seq].ev, body, tok)...)
 }
 
 // parenLead is the island's plan for a paren apply's own lead (NUR336): the
@@ -1529,15 +1688,73 @@ func (es *EmitState) restartRunsReadsOnly(tree map[int]treeEvent, seq int, body 
 // island neither reads the member again nor lets it collect: a word after
 // it the island writes as its value (`y`) meets no collection
 // (inertBefore). None for another stop, or a lead no event produced.
-func parenLead(ev *EmitEvent, body []core.Value, tok int) []substPlan {
-	if ev.kind != evCall || ev.call.dynMethod == nil || !ev.call.dynMethod.Paren || methodSeq(ev) < 0 {
+func (es *EmitState) parenLead(tree map[int]treeEvent, ev *EmitEvent, body []core.Value, tok int) []substPlan {
+	if ev.kind != evCall || ev.call.dynMethod == nil || !ev.call.dynMethod.Paren {
 		return nil
 	}
-	path := tokenPath(body, eventPos(*ev))
+	named := ev.call.dynMethod.LeadName != ""
+	if !named && methodSeq(ev) < 0 {
+		return nil
+	}
+	path := tokenPath(body, stopPos(ev))
 	if len(path) < 2 || path[0] < tok {
 		return nil
 	}
-	return []substPlan{{path: path, span: 1, seq: methodSeq(ev), run: true}}
+	if named {
+		// A def-bound word: the island writes the value the apply holds,
+		// as the name's call treats it (the stop's own, RestartGuard).
+		return []substPlan{{path: path, span: 1, seq: methodSeq(ev), run: true, named: true}}
+	}
+	return []substPlan{{path: path, span: 1, seq: methodSeq(ev), run: true, reach: es.rawReachLead(tree, methodSeq(ev), body, path)}}
+}
+
+// rawRead reports whether event seq is a member read whose value nothing
+// changed before its consumer took it: a `dot` or `get` read with no landing
+// noted on it (NoteReStepLanding), whose re-step the compiled code may fire.
+func (es *EmitState) rawRead(tree map[int]treeEvent, seq int) bool {
+	te, in := tree[seq]
+	if !in || te.ev.kind != evCall || (te.ev.call.word != "dot" && te.ev.call.word != "get") {
+		return false
+	}
+	_, landed := es.landingAfter[seq]
+	return !landed
+}
+
+// noteLeadRead records whether the island of paren apply ev, stopping its
+// statement, steps the paren's lead as the interpreter does (leadUnrun): the
+// lead is a raw member read (rawRead) — written as its reach, or read again
+// with the statement — or no event's value at all.
+func (es *EmitState) noteLeadRead(tree map[int]treeEvent, ev *EmitEvent) {
+	if ev.kind != evCall || ev.call.dynMethod == nil || !ev.call.dynMethod.Paren || len(ev.call.ops) == 0 {
+		return
+	}
+	if lead := ev.call.ops[0]; ev.call.dynMethod.LeadName == "" && lead.kind == opEvent && !es.rawRead(tree, lead.idx) {
+		return
+	}
+	if es.leadReads == nil {
+		es.leadReads = map[int]bool{}
+	}
+	es.leadReads[ev.seq] = true
+}
+
+// rawReachLead reports whether a paren apply's lead, the method event seq,
+// is the value its member read left as it is (rawRead), read by the
+// evaluated reach token at path (`m.f` of `(m.f 7)`). The interpreter lowers
+// that token to a group of its read (expandReach), so a group holding the
+// read's value — the value alone, in a reach-lowered group — is the token as
+// the interpreter steps it: a fn that takes no argument dispatches there, any
+// other waits for the paren's values (RestartSubst.Reach, NUR336).
+func (es *EmitState) rawReachLead(tree map[int]treeEvent, seq int, body []core.Value, path []int) bool {
+	if !es.rawRead(tree, seq) {
+		return false
+	}
+	toks := body
+	for _, at := range path[:len(path)-1] {
+		toks, _ = nestedToks(toks[at])
+	}
+	t := toks[path[len(path)-1]]
+	ri, err := core.AsReach(t)
+	return err == nil && ri.Eval && !t.Quoted
 }
 
 // restartRead reports whether ev runs no user code, binds nothing and has

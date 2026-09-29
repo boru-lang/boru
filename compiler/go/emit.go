@@ -429,6 +429,11 @@ type emitCall struct {
 	// (claim failure → internal_error → interpreter re-run). Riding emitCall
 	// keeps the generic evCall machinery working unchanged for the result.
 	dynMethod *DynMethodSpec
+	// leadAt, on a paren apply whose lead's value carries another token's
+	// position (a def-bound read's value carries its def's — `(g 7)` over
+	// `def g m.f/v`), is the paren's lead token (parenLeadToken): where the
+	// apply stands for its statement island (stopPos).
+	leadAt core.Value
 	// calleeUnit (valid when calleeKnown) is the compiled closure UNIT a
 	// dyn-method apply's runtime method value was PRODUCED as (a factory
 	// call's returned closure, an earlier apply's), resolved at the
@@ -1491,6 +1496,10 @@ type EmitState struct {
 	// (NoteStatementStack): a root statement island seats exactly these
 	// beneath the statement (rootPreStart, NUR335).
 	rootStmtStacks map[core.SrcPos][]core.Value
+	// leadReads holds the paren applies whose statement island steps the
+	// paren's lead as the interpreter does (noteLeadRead): a raw member read
+	// or no event's value, which the island may run before the lead ran.
+	leadReads map[int]bool
 	// stmtEnds holds the source positions of every statement boundary (`;`
 	// / `end`) the pass stepped (NoteStatementEnd). The residual's fn-value
 	// apply arms ask crossesBoundary before laying a value's apply over the
@@ -11184,6 +11193,14 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 		word: word, ops: ops, nout: len(outs), pos: pos,
 		dynMethod: &DynMethodSpec{Word: word, NArgs: len(args), NOut: len(outs), DefRead: defRead, Paren: word == parenApplyWord},
 	}
+	if lead, moved := es.parenLeadToken(word, pos, args); moved {
+		call.leadAt = lead
+		if w, err := core.AsWord(lead); err == nil && es.defReads[fn.ID] == w.Name && es.readPos[fn.ID] == lead.Pos() {
+			// The lead is the word's read of a def-bound value, which the
+			// paren dispatches by its NAME (NUR336) — not a call's result.
+			call.dynMethod.LeadName, call.dynMethod.LeadPos = w.Name, lead.Pos()
+		}
+	}
 	// The method value's own producer, when it is a compiled closure (the
 	// factory pattern): the call is a user call by another route and its
 	// result parks (calleeUnit's doc).
@@ -11197,6 +11214,52 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 		es.setProducedAt(outs[i], seq, i)
 	}
 	return true
+}
+
+// parenLeadToken is the lead token of the paren a paren apply (word) records
+// over args, when the lead's value carries another token's position than its
+// own (moved): a def-bound read's value carries its def's (`def g m.f/v end
+// … (g 7)`), so the apply's own position names the def's statement. The
+// paren is the one of the body being recorded — the open unit's, else the
+// program's — that holds a token standing at the position of one of args, as
+// its own token after its first.
+func (es *EmitState) parenLeadToken(word string, pos core.SrcPos, args []core.Value) (core.Value, bool) {
+	if word != parenApplyWord {
+		return core.Value{}, false
+	}
+	body := es.rootBody
+	if n := len(es.openUnitRecs); n > 0 {
+		body = es.fnRecs[es.openUnitRecs[n-1]].body
+	}
+	for _, a := range args {
+		q := a.Pos()
+		if q.Row == 0 {
+			continue
+		}
+		toks := body
+		for _, at := range tokenPath(body, q) {
+			inner, nested := nestedToks(toks[at])
+			if !nested {
+				break
+			}
+			if core.IsParenExpr(toks[at]) && len(inner) > 1 && bodyTokenAt(inner, q) > 0 {
+				lead := inner[0]
+				return lead, lead.Pos().Row > 0 && lead.Pos() != pos
+			}
+			toks = inner
+		}
+	}
+	return core.Value{}, false
+}
+
+// stopPos is where a statement island's stop ev stands in its body: its own
+// position, or a paren apply's lead token's where the lead's value carries
+// another's (emitCall.leadAt).
+func stopPos(ev *EmitEvent) core.SrcPos {
+	if ev.kind == evCall && ev.call.leadAt.Pos().Row > 0 {
+		return ev.call.leadAt.Pos()
+	}
+	return eventPos(*ev)
 }
 
 // NoteReStepLanding marks the event that produced v as owing a GUARDED
@@ -11381,6 +11444,12 @@ func (es *EmitState) NoteStatementStack(pos core.SrcPos, stack []core.Value) {
 	}
 	if es.rootStmtStacks == nil {
 		es.rootStmtStacks = map[core.SrcPos][]core.Value{}
+	}
+	// A position's first note is its token's own: a later one there is a
+	// value the token left, re-stepped where it stood (the engine's
+	// noteDefStack over a def's leftovers).
+	if _, told := es.rootStmtStacks[pos]; told {
+		return
 	}
 	es.rootStmtStacks[pos] = append([]core.Value(nil), stack...)
 }
@@ -17172,6 +17241,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	es.planLandingRestarts(lw, residual)
 	es.planGuardRestarts(lw, residual)
 	es.planCountRestarts(lw, residual)
+	es.planRematchRestart(lw, residual)
 	// Seed the lowerer's frame-local counter from the unit's planned locals;
 	// spillSeat bumps it for spill temps. Written back below so Program.NumLocals
 	// covers them.
@@ -18760,6 +18830,9 @@ func stampRootRestarts(lw *lowerer) {
 	}
 	for _, fi := range lw.restartFallbacks {
 		lw.p.FallbackCounts[fi].RetPC = end
+	}
+	for _, di := range lw.restartRematches {
+		lw.p.Dispatches[di].Restart.RetPC = end
 	}
 }
 

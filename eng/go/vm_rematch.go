@@ -13,11 +13,24 @@ import (
 // the concrete values, byte-identical to the interpreter's sigError at the
 // same point. A MATCH means the static model was wrong (a refined runtime
 // tag, a satisfied predicate); the tail was truncated at this terminal op,
-// so the run defers to the interpreter. Always returns a non-nil error.
-func (vc *vmContext) dispatchRematch(ds *compiler.DispatchSpec, stack []core.Value, curDebug []core.SrcPos, pc int) error {
+// so the run defers to the interpreter — or, where the trap's statement has
+// an island (DispatchSpec.Restart, NUR336), the interpreter runs the
+// statement and the program after it, and the run continues at its end.
+func (vc *vmContext) dispatchRematch(reg *core.Registry, ds *compiler.DispatchSpec, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	matched, err := vc.rematchOutcome(ds, stack, curDebug, pc)
+	if matched && ds.Restart != nil {
+		return vc.stopRestart(reg, ds.Restart, nil, frameBase, stack, curDebug, pc)
+	}
+	return nil, nil, err
+}
+
+// rematchOutcome is the rematch's terminal error over the live window: the
+// interpreter's raise, a trap recorded under the word's optimistic match, or
+// the defer where the run matches the word (matched).
+func (vc *vmContext) rematchOutcome(ds *compiler.DispatchSpec, stack []core.Value, curDebug []core.SrcPos, pc int) (bool, error) {
 	r := vc.r
 	if len(stack) < ds.NArgs {
-		return vmErrAt(curDebug, pc, "DISPATCH_REMATCH underflow at "+ds.Word)
+		return false, vmErrAt(curDebug, pc, "DISPATCH_REMATCH underflow at "+ds.Word)
 	}
 	window := make([]core.Value, ds.NArgs)
 	for i := 0; i < ds.NArgs; i++ {
@@ -48,9 +61,9 @@ func (vc *vmContext) dispatchRematch(ds *compiler.DispatchSpec, stack []core.Val
 			ae := core.MakeBoruError(ds.OnMatch.Code, ds.OnMatch.Detail, ds.OnMatch.Word, r.Source, ds.OnMatch.Hint)
 			ae.Spans, ae.Notes, ae.Suggestions = ds.OnMatch.Spans, ds.OnMatch.Notes, ds.OnMatch.Suggestions
 			ae.Row, ae.Col = ds.OnMatchPos.Row, ds.OnMatchPos.Col
-			return stampAt(ae, curDebug, pc, r)
+			return false, stampAt(ae, curDebug, pc, r)
 		}
-		return vmDefer(r, curDebug, pc, "vm:rematch-matched",
+		return true, vmDefer(r, curDebug, pc, "vm:rematch-matched",
 			"DISPATCH_REMATCH at "+ds.Word+" matched at run time where the static model failed; the compiled runtime cannot execute it")
 	}
 	// The diagnostic renders over the RENDER TUPLE (window[Written[i]]) —
@@ -59,12 +72,12 @@ func (vc *vmContext) dispatchRematch(ds *compiler.DispatchSpec, stack []core.Val
 	// the failed static match examined).
 	written, ok := tupleAt(window, ds.Written)
 	if !ok || len(written) == 0 {
-		return vmErrAt(curDebug, pc, "DISPATCH_REMATCH written tuple out of range at "+ds.Word)
+		return false, vmErrAt(curDebug, pc, "DISPATCH_REMATCH written tuple out of range at "+ds.Word)
 	}
 	written = rematchStoppedTuple(ds, fn, window, written)
 	ae := core.RuntimeNoMatch(r, ds.Word, written)
 	ae.Row, ae.Col = ds.Pos.Row, ds.Pos.Col
-	return stampAt(ae, curDebug, pc, r)
+	return false, stampAt(ae, curDebug, pc, r)
 }
 
 // rematchSplitMatches plans a failed window NFwd of whose operands were

@@ -166,55 +166,203 @@ func TestNUR336PlacedParenApply(t *testing.T) {
 	}
 }
 
-// TestNUR336IslandNotPlanned: statements whose island the root planner
-// refuses (compiler planLandingRestarts). A statement opening with a bare
-// pair (`a:1`), which the parser mints without a position, has no start the
-// planner can place; a stack told at the statement's start that holds a type
-// cannot be seated (seatStack). No island is planned for either: a fn member
-// applies, a data member the VM places where nothing after the apply reads
-// beneath it, and elsewhere a data member stays the loud defer it was —
-// never a wrong answer.
-func TestNUR336IslandNotPlanned(t *testing.T) {
+// TestNUR336IslandPastAPositionlessPairAndTypes: a statement opening with a
+// bare pair (`a:1`), which the parser mints without a position, starts just
+// past the `end` before it (compiler statementStart), and a stack told at a
+// statement's start that holds a type seats the canonical node by its ID
+// (RestartType) — both used to plan no island, and the data member's apply
+// failed inside the compiled runtime.
+func TestNUR336IslandPastAPositionlessPairAndTypes(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
 		{nurFnMk + `a:1 drop (m.f 7)`, "[8]"},
 		{nurFnMk + `x:Integer drop (m.f 7)`, "[8]"},
 		{nurFnMk + `a:1 (m.f 7)`, "[{a:1} 8]"},
 		{nurDataMk + `a:1 drop (m.f 7)`, "[5 7]"},
 		{nurFnMk + `Integer end (m.f 7)`, "[Integer 8]"},
+		{nurDataMk + `a:1 (m.f 7)`, "[{a:1} 5 7]"},
+		{nurDataMk + `a:1 (m.f 7) drop`, "[{a:1} 5]"},
+		{nurDataMk + `a:1 b:2 (m.f 7)`, "[{a:1} {b:2} 5 7]"},
+		{nurDataMk + `x:Integer (m.f 7)`, "[{x:Integer} 5 7]"},
+		{nurDataMk + `3 end a:1 (m.f 7)`, "[3 {a:1} 5 7]"},
+		{nurDataMk + `Integer end (m.f 7)`, "[Integer 5 7]"},
+		{nurDataMk + `Integer end String end (m.f 7)`, "[Integer String 5 7]"},
+		{nurDataMk + `Integer end (m.f 7) swap`, "[Integer 7 5]"},
+		{nurDataMk + `Integer end drop (m.f 7)`, "[5 7]"},
+		{nurDataMk + `def T Integer end T end (m.f 7)`, "[Integer 5 7]"},
+		{nurDataMk + `def Foo (refine Integer) end Foo end (m.f 7)`, "[Foo 5 7]"},
+		{nurDataMk + `[Integer] end (m.f 7)`, "[[Integer] 5 7]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	for _, c := range []struct{ src, want string }{
-		{nurDataMk + `a:1 (m.f 7)`, "[{a:1} 5 7]"},
-		{nurDataMk + `Integer end (m.f 7)`, "[Integer 5 7]"},
-	} {
-		requireLoudDefer(t, c.src, "not an appliable function", c.want)
-	}
 }
 
-// TestNUR336PlacingFnLeadDefers: a paren apply over a fn member that takes
-// none of the values after it — a lambda of no argument, a signature the
-// values miss — PLACES its lead and values, as the interpreter's paren does.
-// Where the program reads beneath what it leaves (no placement claim) the
-// compiled apply has already run the lead, and never re-runs the statement
-// over it (the Codex review of #520): loud, never a wrong answer.
-func TestNUR336PlacingFnLeadDefers(t *testing.T) {
+// TestNUR336LeadTakingNoneRunsItsIsland: a paren apply over a fn member no
+// signature of which takes the paren's values — a lambda of none, one of a
+// String over an Integer, one of two Integers over one — is not applied over
+// them by the interpreter's paren: it places a lambda that takes none, and
+// re-steps any other where it reaches beneath the paren (`3 (m.f 7)` over
+// two Integers is 4). The VM tells so from the value before it runs it
+// (parenMissesWindow) and takes the statement's island, which writes the
+// lead as the reach group its member read lowers to (RestartSubst.Reach):
+// the lead never ran, so nothing runs twice (the Codex review of #520).
+func TestNUR336LeadTakingNoneRunsItsIsland(t *testing.T) {
 	const zero = `def mk fn [[] [Map] [{f: ([] => [9])}]] end def m (mk) end `
 	const str = `def mk fn [[] [Map] [{f: ([x:String] => [x])}]] end def m (mk) end `
+	const two = `def mk fn [[] [Map] [{f: ([x:Integer y:Integer] => [x sub y])}]] end def m (mk) end `
+	const named = `def h fn [[] [Integer] [42]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
 	for _, c := range []struct{ src, want string }{
 		{zero + `(m.f 7) drop`, "[fn]"},
 		{zero + `def k 3 end k (m.f 7) drop`, "[3 fn]"},
 		{str + `def k 3 end k (m.f 7) drop`, "[3 fn (String)]"},
+		{zero + `3 end (m.f 7)`, "[3 fn 7]"},
+		{zero + `3 end (m.f 7) swap`, "[3 7 fn]"},
+		{zero + `3 end (m.f 7 8) drop`, "[3 fn 7]"},
+		{zero + `for 2 [(m.f 7) drop]`, "[fn fn]"},
+		{zero + `[(m.f 7) 8]`, "[[fn 7 8]]"},
+		{zero + `if true [(m.f 7)] [0]`, "[fn 7]"},
+		{zero + `def g fn [[] [Any] [def k 3 end k (m.f 7) drop drop]] end (g)`, "[3]"},
+		{str + `"s" end (m.f 7)`, "[s 7]"},
+		{str + `"s" (m.f 7)`, "[s 7]"},
+		{str + `"s" end (m.f 7) drop`, "[s]"},
+		{str + `def g fn [[] [Any] [def k 3 end k (m.f 7) drop drop]] end (g)`, "[3]"},
+		{two + `3 (m.f 7)`, "[4]"},
+		{two + `3 end (m.f 7)`, "[4]"},
+		{two + `3 end (m.f 7) drop`, "[]"},
+		{two + `(m.f 7) 9`, "[-2]"},
+		{named + `3 end (m.f 7)`, "[3 42 7]"},
+		{named + `3 end (m.f 7) drop`, "[3 42]"},
+		{named + `3 end (m.f 7) add`, "[3 49]"},
+		{`def h fn [[x:String] [String] [x]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end "s" end (m.f 7)`, "ERROR:matched no signature"},
+		// A lead a signature of which takes the values applies as before.
+		{nurFnMk + `3 end (m.f 7) add`, "[11]"},
 	} {
-		gotC, compiled, errC := mustNew(t).RunCompiled(c.src)
-		gotI, errI := mustNew(t).RunInterp(c.src)
-		if errI != nil || fmt.Sprint(gotI) != c.want {
-			t.Errorf("%q: interpreter %v / %v, want %s", c.src, gotI, errI, c.want)
-		}
-		if compiled && errC == nil {
-			t.Errorf("%q: compiled %v silently (interpreter %v); want a loud failure until it agrees", c.src, gotC, gotI)
-		}
+		agreeOnBothLanes(t, c.src, c.want)
 	}
+}
+
+// TestNUR336PlacedLeadNeverReachesPastItsWindow: a placing apply
+// (DynMethodSpec.Place) ran a lead that takes none of the paren's values over
+// them alone and took whatever it left, where the interpreter's paren
+// re-steps it over the stack beneath — `("s" dup drop) end (m.f y)` over a
+// lambda of one String took the "s" (`[s 42]`), and the placed run answered
+// `[s fn (String) 42]`, a silent wrong answer on main (found on the way,
+// NUR336). The run is the paren's only where nothing stands beneath the
+// window and nothing follows (placesAlone); elsewhere such a lead defers,
+// unrun, loud.
+func TestNUR336PlacedLeadNeverReachesPastItsWindow(t *testing.T) {
+	const str = `def mk fn [[] [Map] [{f: ([x:String] => [x])}]] end def m (mk) end def y fn [[] [Integer] [42]] end `
+	const two = `def mk fn [[] [Map] [{f: ([x:Integer y:Integer] => [x sub y])}]] end def m (mk) end def y fn [[] [Integer] [42]] end `
+	requireLoudDefer(t, str+`("s" dup drop) end (m.f y)`, "no signature of the lead takes the paren's values", "[s 42]")
+	requireLoudDefer(t, two+`(3 dup drop) end (m.f y)`, "no signature of the lead takes the paren's values", "[39]")
+	// Alone, the run is the paren's.
+	agreeOnBothLanes(t, str+`(m.f y)`, "[fn (String) 42]")
+	agreeOnBothLanes(t, two+`(m.f y)`, "[fn (Integer, Integer) 42]")
+}
+
+// TestNUR336DefBoundWordLead: a paren whose lead is the word of a def-bound
+// lambda (`def g m.f/v end … (g 7)`) is the interpreter's dispatch of the
+// NAME — which always calls: a lambda of none runs before the 7, and one of a
+// String raises the word's no-match — where the compiled apply held only the
+// value, whose position is the def's: the statement island was planned in
+// the def's statement, or not at all, and the placing apply stepped the value
+// as a lambda, which stays data (`[fn g 7]` for `[9 7]`, a silent wrong
+// answer on main). The recorder finds the lead's own token by the paren's
+// argument (compiler parenLeadToken, DynMethodSpec.LeadName); the island
+// writes the value as the name's call runs it (RestartSubst.Named), and a
+// miss raises the name's no-match on a fork holding the name as the
+// interpreter's def binds it (namedMissRaise).
+func TestNUR336DefBoundWordLead(t *testing.T) {
+	const zero = `def mk fn [[] [Map] [{f: ([] => [9])}]] end def m (mk) end `
+	const str = `def mk fn [[] [Map] [{f: ([x:String] => [x])}]] end def m (mk) end `
+	for _, c := range []struct{ src, want string }{
+		{zero + `def g m.f/v end def k 3 end k (g 7) drop`, "[3 9]"},
+		{zero + `def g m.f/v end (g 7)`, "[9 7]"},
+		{zero + `def g m.f/v end def k 3 end k (g 7 8) drop drop`, "[3 9]"},
+		{str + `def g (m.f/v) end def k 3 end k (g 7)`, "ERROR:cannot call `g`"},
+		{str + `def g m.f/v end (g 7)`, "ERROR:cannot call `g`"},
+		{str + `def g m.f/v end "s" end (g 7)`, "ERROR:cannot call `g`"},
+		{nurFnMk + `def g (m.f/v) end def k 3 end k (g 7)`, "[3 8]"},
+		{nurFnMk + `def g m.f/v end def k 3 end k (g 7) add`, "[11]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// Still loud: an island that dispatches the word again after the stop
+	// meets the name bound by the compiled bind, which the interpreter's
+	// word path cannot run (its def compiles the lambda's signatures; the
+	// bind keeps the value) — never a wrong answer.
+	src := zero + `def g m.f/v end def k 3 end k (g 7) (g 8) drop`
+	gotC, compiled, errC := mustNew(t).RunCompiled(src)
+	gotI, errI := mustNew(t).RunInterp(src)
+	if errI != nil || fmt.Sprint(gotI) != "[3 9 7 9]" || (compiled && errC == nil) {
+		t.Errorf("%q: compiled %v / %v, interpreter %v / %v: want the interpreter's answer and a loud compiled run", src, gotC, errC, gotI, errI)
+	}
+}
+
+// TestNUR336ComputedDefOpener: a statement opening with a def of a COMPUTED
+// value (`def k (3 dup) k (m.f 7)`) planned no island — the island may not
+// run the def's paren again, and the stack after it is not the one the `end`
+// before the statement told. The engine tells the stack it steps the token
+// after a completed def over (Engine.noteDefStack), and the island takes the
+// statement over from the last such token before its stop (compiler
+// toldAfter), the def's leftovers seated as told. A fn body has no told
+// stack: its island takes over past the defs its statement opens with, each
+// of a value the def took whole (defsBefore), over the frame the compiled
+// code holds there.
+func TestNUR336ComputedDefOpener(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{nurDataMk + `def k (3 dup) k (m.f 7)`, "[3 3 5 7]"},
+		{nurDataMk + `def k (3 dup) end k (m.f 7)`, "[3 3 5 7]"},
+		{nurDataMk + `def k (3 dup) def j (4 dup) k j (m.f 7)`, "[3 4 3 4 5 7]"},
+		{nurDataMk + `3 dup def k (4) k (m.f 7)`, "[3 3 4 5 7]"},
+		{nurDataMk + `def k (3 dup) k (m.f 7) add`, "[3 3 12]"},
+		{nurDataMk + `def k (3 dup) k (m.f 7) swap`, "[3 3 7 5]"},
+		{nurFnMk + `def k (3 dup) k (m.f 7)`, "[3 3 8]"},
+		{nurFnMk + `def k (3 dup) k (m.f 7) add`, "[3 11]"},
+		{`def mk fn [[] [Map] [{f: ([] => [9])}]] end def m (mk) end def k (3 dup) k (m.f 7) drop`, "[3 3 fn]"},
+		{`def k 3 def mk fn [[] [Map] [{f: 5}]] def m (mk) k/v (m.f 7) add`, "[3 12]"},
+		{`def k 3 def mk fn [[] [Map] [{f: 5}]] def m (mk) k (m.f 7) add`, "[3 12]"},
+		{`def mk fn [[] [Map] [{f: 5}]] def m (mk) 3 (m.f 7) add`, "[3 12]"},
+		{`def mk fn [[] [Map] [{f: 5}]] def m (mk) def k (m.f 7) k`, "[7 5]"},
+		{`def mk fn [[] [Map] [{f: 5}]] end def g fn [[][Any][def m (mk) def k 3 k (m.f 7)]] end (g)`, "ERROR:expected 1 return value(s), got 3"},
+		{`def mk fn [[] [Map] [{f: 5}]] end def g fn [[][Any][def m (mk) def k 3 k (m.f 7) drop drop]] end (g)`, "[3]"},
+		{`def mk fn [[] [Map] [{f: 5}]] end def g fn [[][Any][def m (mk) k (m.f 7)]] end def k 3 end (g)`, "ERROR:expected 1 return value(s), got 3"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// Not planned (a paren right after the def is expanded before the
+	// engine steps it; a fn body's computed def leaves a value its frame
+	// cannot seat): loud, never a wrong answer.
+	requireLoudDefer(t, nurDataMk+`def k (3 dup) (m.f 7)`, "not an appliable function", "[3 5 7]")
+}
+
+// TestNUR336RematchTakesItsIsland: the pass holds a paren apply's result as
+// any value, and a nested forward call over it (`k (m.f 7) add add`) fails
+// the pass's match — the compiled program ends in a runtime rematch trap,
+// which the run matches (DISPATCH_REMATCH's internal_error). Where the trap's
+// statement has an island (compiler planRematchRestart) the interpreter runs
+// the statement and the program after it, the apply written as the value it
+// left.
+func TestNUR336RematchTakesItsIsland(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{nurFnMk + `def y 42 end 3 end def k 1 k (m.f 7) add add`, "[12]"},
+		{nurFnMk + `3 end def k 1 end k (m.f 7) add add`, "[12]"},
+		{nurFnMk + `3 end 1 (m.f 7) add add`, "[12]"},
+		{nurFnMk + `3 1 (m.f 7) add add`, "[12]"},
+		{nurFnMk + `3 1 (m.f 7) add add 1`, "[3 10]"},
+		{nurFnMk + `3 1 (m.f 7) add add end 5`, "[12 5]"},
+		{nurFnMk + `1 (m.f 7) add add`, "ERROR:cannot call `add`"},
+		{nurDataMk + `3 1 (m.f 7) add add`, "[3 13]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+}
+
+// TestNUR336RematchWithoutIslandDefers: a rematch trap whose statement no
+// island can take over — a loop ran in it before the trap, which no island
+// may run again (restartSubsts) — keeps the designed defer where the run
+// matches: loud, never the truncated compiled run.
+func TestNUR336RematchWithoutIslandDefers(t *testing.T) {
+	requireLoudDefer(t, nurFnMk+`for 2 [0 drop] 3 1 (m.f 7) add add`, "matched at run time", "[12]")
 }
 
 // TestNUR336PlacementNeedsWrittenAfterPushes: a paren apply is a PLACING one

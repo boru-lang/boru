@@ -18,17 +18,17 @@ func TestW8DispatchRematchVMGuard(t *testing.T) {
 	_ = r
 	// VM underflow guard.
 	vc := &vmContext{r: r}
-	if err := vc.dispatchRematch(&compiler.DispatchSpec{Word: "w", NArgs: 2, Written: []int{0, 1}}, nil, nil, 0); err == nil {
+	if _, err := vc.rematchOutcome(&compiler.DispatchSpec{Word: "w", NArgs: 2, Written: []int{0, 1}}, nil, nil, 0); err == nil {
 		t.Error("a short stack must error")
 	}
 	// VM render-tuple guard: a spec whose written tuple is empty or reaches
 	// outside the window is malformed (the recorder proves the tuple before
 	// recording).
-	if err := vc.dispatchRematch(&compiler.DispatchSpec{Word: "w", NArgs: 1},
+	if _, err := vc.rematchOutcome(&compiler.DispatchSpec{Word: "w", NArgs: 1},
 		[]core.Value{core.NewInteger(1)}, nil, 0); err == nil || !strings.Contains(err.Error(), "written tuple") {
 		t.Errorf("an empty written tuple must raise the tuple guard, got %v", err)
 	}
-	if err := vc.dispatchRematch(&compiler.DispatchSpec{Word: "w", NArgs: 1, Written: []int{1}},
+	if _, err := vc.rematchOutcome(&compiler.DispatchSpec{Word: "w", NArgs: 1, Written: []int{1}},
 		[]core.Value{core.NewInteger(1)}, nil, 0); err == nil || !strings.Contains(err.Error(), "written tuple") {
 		t.Errorf("a written index past the window must raise the tuple guard, got %v", err)
 	}

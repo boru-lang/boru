@@ -19,7 +19,7 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 	resetByBegin := map[string]bool{
 		"Diagnostics": true, "StepCount": true, "BudgetTripped": true,
 		"SuppressedRuntimeError": true, "AmbiguousGradualSplit": true,
-		"DefsInstalled": true, "DefsUsed": true, "FnNameStack": true,
+		"DefsInstalled": true, "DefsDone": true, "DefsUsed": true, "FnNameStack": true,
 		"BindLedger": true, "PendingBindPos": true, "PassEndCleanups": true,
 		"FnBinders": true, "FnCallGraph": true, "ContextTypes": true, "CtxShapes": true,
 		"MethodShapes": true, "PendingMethodApply": true, "FnShapes": true,

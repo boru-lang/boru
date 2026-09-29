@@ -213,6 +213,13 @@ type Engine struct {
 	// neighbour. The collection-hazard scan (noteCollectionHazards, NUR121)
 	// stops at it.
 	inertPrefix int
+	// defsSeen is the check run's completed-def count (CheckState.DefsDone)
+	// this engine last saw: when it moves, the stack the engine steps its
+	// next token over is told to the recorder (noteDefStack). Seated at Run.
+	defsSeen int
+	// defNotePending holds noteDefStack's notes on over the values a def's
+	// operand left, up to the token after them.
+	defNotePending bool
 	// stmtEnds are the positions of the statement ends this engine stepped
 	// on an ANALYSIS pass (stepEnd): the collection-hazard scan skips a
 	// candidate a statement end separates from the collected value, whose
@@ -1734,6 +1741,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 			break
 		}
 
+		e.noteDefStack(step == 0)
 		val := e.Tape.At(e.Pointer)
 
 		// Line-coverage seam (coverage.go): record the executing token's source
@@ -8439,6 +8447,28 @@ func (e *Engine) stepEnd() error {
 
 	e.curryOrStack(funcIdx, fwd.CollectedArgs, fwd.StackArgs)
 	return nil
+}
+
+// noteDefStack tells the recorder the stack the engine is about to step the
+// token at the pointer over (EmitRecorder NoteStatementStack, by that token's
+// position) after a def completed: a statement island may take over the
+// statement from the program's next token, the def's run and whatever it
+// left beneath seated as they stand (`def k (3 dup) k (m.f 7)`, NUR336).
+// What the def's operand left over is re-stepped first, so the notes go on
+// over the plain values at the pointer up to the first token that does work;
+// the recorder keeps a position's first note, the token's own.
+// noteStatementStack's conditions hold: values alone beneath the pointer.
+// A run's first step seats the count it starts from.
+func (e *Engine) noteDefStack(first bool) {
+	if n := e.Registry.Check.defsDone(); n != e.defsSeen {
+		e.defsSeen = n
+		e.defNotePending = !first
+	}
+	if !e.defNotePending {
+		return
+	}
+	e.noteStatementStack(e.Pointer)
+	e.defNotePending = IsSteplessValue(e.Tape.At(e.Pointer))
 }
 
 // noteStatementStack tells the recorder the stack an `end` at endIdx that

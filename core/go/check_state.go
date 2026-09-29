@@ -622,6 +622,11 @@ type CheckState struct {
 	// to emit unused_def warnings.
 	DefsInstalled map[string]SrcPos
 
+	// DefsDone counts the defs the check run completed (RecordDef): an
+	// engine that sees it move tells the recorder the stack it steps its
+	// next token over (Engine.noteDefStack, NUR336).
+	DefsDone int
+
 	// DefsUsed records names looked up via Registry.Lookup or
 	// simple-value substitution in check mode. Used to filter out
 	// defs that were referenced at least once.
@@ -1245,6 +1250,7 @@ func (c *CheckState) Begin() func() {
 	c.SuppressedRuntimeError = false
 	c.AmbiguousGradualSplit = false
 	c.DefsInstalled = nil
+	c.DefsDone = 0
 	c.BindLedger = nil
 	c.PassEndCleanups = nil
 	c.PendingBindPos = SrcPos{}
@@ -1569,8 +1575,21 @@ func (c *CheckState) IsolateFnAnalysis() func() {
 // RecordDef remembers a name the user bound during a check run so
 // end-of-run analysis can flag defs that were never referenced. Names
 // starting with "_" (engine internals) are ignored.
+// defsDone is the completed-def count of an active check run (DefsDone), 0
+// on any other.
+func (c *CheckState) defsDone() int {
+	if !c.IsActive() {
+		return 0
+	}
+	return c.DefsDone
+}
+
 func (c *CheckState) RecordDef(name string, pos SrcPos) {
-	if !c.IsActive() || name == "" || strings.HasPrefix(name, "_") {
+	if !c.IsActive() {
+		return
+	}
+	c.DefsDone++
+	if name == "" || strings.HasPrefix(name, "_") {
 		return
 	}
 	if c.DefsInstalled == nil {

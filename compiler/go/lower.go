@@ -833,6 +833,9 @@ type lowerer struct {
 	// restartFallbacks is the fallback indices seated with a count island
 	// (Program.FallbackCounts), whose RetPC the finish stamps.
 	restartFallbacks []int
+	// restartRematches are the Dispatches entries seated with the root
+	// rematch trap's statement island (planRematchRestart).
+	restartRematches []int
 	curBranch        int
 	// substStash are the frame slots stashSubst kept a substituted paren's
 	// value in, by its call's event seq (NUR296): a later event of the
@@ -3919,6 +3922,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 			// The lead's plan (parenLead) writes the value the apply holds.
 			if substs, ok := lw.restartSubstSrcs(r, c.ops[0], -1); ok {
 				spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc, spec.Substs, spec.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
+				spec.LeadUnrun = lw.leadUnrunAt(ev.seq, substs)
 				lw.restartMethods = append(lw.restartMethods, di)
 			}
 		}
@@ -4579,6 +4583,7 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 			OnMatch:     ev.trap.rematchOnMatch,
 			OnMatchPos:  ev.trap.onMatchPos,
 		})
+		lw.seatRematchRestart(ev.seq, idx)
 		lw.emit(OpDispatchRematch, idx, ev.trap.pos)
 		return ""
 	}
@@ -5270,6 +5275,43 @@ func (lw *lowerer) emitGuardCallAt(word string, guard *core.Signature, pos core.
 	lw.emit(OpCallNative, len(lw.p.Sigs)-1, pos)
 }
 
+// leadUnrunAt is DynMethodSpec.LeadUnrun for the paren apply seq whose
+// island writes substs: its lead a raw member read or no event's value
+// (EmitState.leadReads), stepped as the paren steps it (leadUnrun).
+func (lw *lowerer) leadUnrunAt(seq int, substs []RestartSubst) bool {
+	return lw.es != nil && lw.es.leadReads[seq] && leadUnrun(substs)
+}
+
+// leadUnrun reports whether a paren apply's statement island, whose lead is a
+// raw member read or no event's value (EmitState.leadReads), steps that lead
+// as the interpreter's paren does, never a run of it (DynMethodSpec.LeadUnrun):
+// the island writes it as the reach its read lowers to (RestartSubst.Reach),
+// or writes nothing in its place — reading it again with the statement, or
+// dispatching a word itself (`(g 7)` over a def-bound lambda).
+func leadUnrun(substs []RestartSubst) bool {
+	for _, sb := range substs {
+		if sb.Src.Kind == RestartGuard {
+			return sb.Reach || sb.Named
+		}
+	}
+	return true
+}
+
+// seatRematchRestart seats the statement island planned for the rematch trap
+// seq (planRematchRestart) on its DispatchSpec idx, where the walk seated it
+// and every value it writes is held where the island reads it.
+func (lw *lowerer) seatRematchRestart(seq, idx int) {
+	r := lw.restartAt(seq)
+	substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, -1)
+	if !ok {
+		return
+	}
+	lw.p.Dispatches[idx].Restart = &StmtIsland{
+		Island: lw.landingBody[r.token:], Depth: r.depth, RetPC: -1, Root: lw.landingRoot, PrefixSrc: r.srcs, Substs: substs,
+	}
+	lw.restartRematches = append(lw.restartRematches, idx)
+}
+
 // restartSubstSrcs is where the compiled code holds, at the stop being
 // emitted, the value of each paren r's island substitutes (substPlan), its
 // path made relative to the island: the guarded operand's — guarded, an
@@ -5292,7 +5334,7 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 			src = RestartSrc{Kind: RestartResults}
 		case sp.none:
 			src = RestartSrc{Kind: RestartNone}
-		case guarded.kind == opEvent && guarded.idx == sp.seq:
+		case sp.named, guarded.kind == opEvent && guarded.idx == sp.seq:
 		case sp.seq == landed && landed >= 0:
 			src = RestartSrc{Kind: RestartStack, Idx: lw.landedIdx(landed)}
 		default:
@@ -5304,7 +5346,7 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 		if !ok {
 			return nil, false
 		}
-		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Span: sp.span, Src: src, Placed: sp.run})
+		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Span: sp.span, Src: src, Placed: sp.run, Reach: sp.reach, Named: sp.named})
 	}
 	return out, true
 }

@@ -1448,11 +1448,17 @@ type TrapSpec struct {
 // written operands and the stack fills the rest. `3 for (mk)` matched `for 3
 // [i]` flat where the interpreter raises, so the rematch plans that window
 // as the interpreter does instead.
+//
+// Restart is the trap's statement island (compiler's planRematchRestart):
+// where the run matches the word the pass's model failed on, the
+// interpreter runs the statement, and the program after it, from its first
+// token instead of the defer (NUR336). Nil where none was planned.
 type DispatchSpec struct {
 	Word    string
 	NArgs   int
 	NFwd    int
 	Written []int
+	Restart *StmtIsland
 	// Prefix is the window indices, top first, of the stack prefix beneath
 	// the word the interpreter's report reads, and PrefixKnown marks it
 	// recorded (every value a window operand). The check pass renders a
@@ -1553,6 +1559,23 @@ type DynMethodSpec struct {
 	// placed where the apply stands, the program's residual taking the extra
 	// values as the interpreter's does (NUR336).
 	Place bool
+	// LeadName is the word a paren's lead token is (compiler's
+	// parenLeadToken): a def-bound read, which the interpreter's paren
+	// dispatches by that NAME — a lambda bound to it runs where it takes
+	// none of the values, and raises where it takes the wrong ones — so the
+	// apply runs such a lead where the paren's values miss it only if the
+	// name's call runs it (a fn of no argument), and its island writes it so
+	// (RestartSubst.Named, NUR336); where its signatures miss the values it
+	// raises the name's no-match at LeadPos, the word's token.
+	LeadName string
+	LeadPos  core.SrcPos
+	// LeadUnrun marks a Restart island that steps the paren's lead itself
+	// (compiler's leadUnrun, NUR336): its member read's value written as the
+	// reach the read lowers to, or a word the island dispatches. A lead that
+	// no signature of which takes the paren's values is then the island's
+	// before it runs — the interpreter's paren places it, runs it over fewer
+	// or reaches beneath the paren — so the VM never runs it first.
+	LeadUnrun bool
 	// Parks is the residual's claim that the apply's result is placed where
 	// it lands: a def-bound name's dispatch over a callee the compiler cannot
 	// see (`j j` over a factory's lambda, NUR282), whose result the
@@ -1891,11 +1914,24 @@ type RestartFirst struct {
 // interpreter placed as a paren's is — a bare call and the arguments written
 // after it (NUR296's call run): a call's returned fn value is parked, never
 // stepped, so the VM defers on one as it does on a paren's.
+//
+// Reach marks a paren apply's lead that is its member read's own value, in
+// place of the evaluated reach token that read it (compiler's rawReachLead,
+// NUR336): the VM writes the value as the reach-lowered group the token
+// steps as — the value alone in the group — so a fn value there is stepped
+// as the interpreter steps the read's, never the NUR297 defer.
+//
+// Named marks a paren apply's lead that is a def-bound word
+// (DynMethodSpec.LeadName): the interpreter's paren calls it by name, so a fn
+// value there of no argument is written to run where it is stepped
+// (FnDefInfo.Applied), never parked as a lambda value would be.
 type RestartSubst struct {
 	Path   []int
 	Span   int
 	Src    RestartSrc
 	Placed bool
+	Reach  bool
+	Named  bool
 }
 
 // RestartSrc is one value a root statement island seats beneath the
@@ -1932,6 +1968,10 @@ const (
 	// (`print "a"`) is written as no token, so the island never runs it
 	// again (a RestartSubst only, NUR296).
 	RestartNone
+	// RestartType is the type node Val names, resolved by its ID when the
+	// island runs — the canonical node, as OpPushType pushes it (a
+	// RestartSrc of a prefix only, NUR336).
+	RestartType
 )
 
 // CallWindowKind names where one CallWindowOperand's value lives when the
