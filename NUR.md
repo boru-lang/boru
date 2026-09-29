@@ -93,12 +93,11 @@ list only by becoming **Resolved** (the record is then deleted) or
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
 | [NUR235](#nur235) | A typed-map param pattern over an inline map literal with a computed member: both lanes refuse the call, the `signature_error` notes differ | call-site specialisation's investigation (2026-09-27) |
-| [NUR329](#nur329) | A no-match over two refused reaches names the stack operand compiled (notes only) | the NUR328 sweep (2026-09-28); narrowed 2026-09-29 |
 | [NUR334](#nur334) | A read after a computed keep-defs body: the shapes the live-read deopt does not serve stay loud | main's 50 uncovered statements (2026-09-28); remainder after the live-read deopt (2026-09-29) |
-| [NUR336](#nur336) | A paren apply over a member that is data at run time: the shapes the statement island does not serve stay loud | main's 50 uncovered statements (2026-09-28); remainder after the NUR336 pass (2026-09-29) |
+| [NUR336](#nur336) | A paren apply over a member that is data at run time: a `/v` lead, a landing lead in a loop body, and two leftover shapes stay loud | main's 50 uncovered statements (2026-09-28); narrowed twice 2026-09-29 |
 | [NUR343](#nur343) | A union-typed branch at `each` whose arm holds an effect or a binding defers at run time (loud) | the NUR340 pass (2026-09-29); narrowed 2026-09-29 |
 | [NUR344](#nur344) | A parked fn value before `do [lam/v]` raises a compiled internal_error (loud) | the NUR342/NUR337 pass (2026-09-29); narrowed 2026-09-29 |
-| [NUR347](#nur347) | A named closure stepped through `h/v` under a native call anchors its contract error at the `h/v` token interpreted, at no position compiled (loud; caret only) | the interp-entry census pass (2026-09-29); narrowed 2026-09-29 |
+| [NUR347](#nur347) | A named closure read with `/v` into a runtime-built map anchors its contract error at the member read compiled (loud; caret only) | the interp-entry census pass (2026-09-29); narrowed twice 2026-09-29 |
 | [NUR348](#nur348) | Three computed-body shapes the compiled runtime still defers (loud) | the live-read deopt pass (2026-09-29); narrowed 2026-09-29 |
 | [NUR350](#nur350) | Whether a computed body or a late word macro sees a fn's `args` depends on whether the fn's own body mentions `args` or needs frame state (the interpreter's leaf-frame elision, now mirrored compiled) | the NUR346 fix (2026-09-29) |
 | [NUR351](#nur351) | A forward collection stops at a live read's stale type after a computed body: a wrong error compiled where the interpreter answers | the NUR348 pass (2026-09-29) |
@@ -818,24 +817,6 @@ agree. Changes the oracle; needs the maintainer's ruling.
 
 ---
 
-## NUR329 — a no-match over two refused reaches names the stack operand {#nur329}
-
-**Status:** Pending (notes only; code, message and caret agree) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-29
-
-```
-def m {a: 1 b: 2} end def f fn [[x:Type][Any][[x]]] end 7 f m.a m.b
-  interpreted   … the arguments were 1 and m.b (a Reach), plus an arity note
-  compiled      … the argument was 7
-```
-
-The single-reach shape (`7 f m.a` over `x:Type`, `x:None`, `x:[:Maybe]`)
-was fixed 2026-09-29: a stack-only window takes the written run when it
-holds a carrier (core `withGradualWrittenOperands`), so the failure goes to
-the runtime rematch, which renders the interpreter's tuple. A report that
-names a Reach is left out of that rule.
-
----
-
 ## NUR334 — a read after a computed keep-defs body: the loud remainder {#nur334}
 
 **Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-29
@@ -860,22 +841,25 @@ Pinned by lang `TestLiveDeoptSpliceReturnedStaysLoud`,
 
 ## NUR336 — a paren apply over a data member: the loud remainder {#nur336}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-29
+**Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-29 (twice)
 
 A shaped paren apply `(m.f …)` whose member is data at run time takes its
-statement's island, which re-steps the statement as the interpreter does
-(eng `parenMissesWindow` / `namedMissRaise`, compiler `landing_restart.go`).
-These shapes still end in a loud compiled defer where the interpreter
-answers:
+statement's island (eng `parenMissesWindow`, `survivorIsland`; compiler
+`landing_restart.go`, `defLeftovers`). Still a loud compiled defer where
+the interpreter answers:
 
-- a statement opening with a def of a computed value followed directly by
-  the paren, `def k (3 dup) (m.f 7)`, and its fn-body twin (a paren right
-  after the def is expanded to markers before the engine reaches it, so no
-  stack is recorded there);
-- a lead that went through a landing (`W (m.f y) 9` over a lambda of two
-  Integers) — the VM cannot tell whether the landing fired;
+- a `/v` lead, `(m.f/v y) 9` — the pass plans no island for it (this is the
+  designed defer `TestArmRuntimeBailHookForwarder` drives);
+- a landing lead inside a loop body, `for 2 [(m.f y) 9 drop]`;
+- a leftover of a user fn's multi-result call whose name the island would
+  have to bind (`def k (two) (q.f 7) …`);
+- a unit value an earlier statement left off the frame
+  (`(1 add 2) end (q.f 7)` in a body).
 
-Pinned in lang `nur335_336_statement_island_test.go`.
+Fixed 2026-09-29: a paren right after a computed def (`def k (3 dup)
+(m.f 7)`, core `statementStackPos`, compiler `toldAt`) and its fn-body twin
+(a wrong error on main: a def binds its call's first result only), and a
+lead that went through a landing (`(m.f y) 9`, the survivors island).
 
 ---
 
@@ -919,24 +903,23 @@ result after it (`("s" lam/v) (2 add 3)` was `[s fn lam(Integer) 5]` for
 
 ---
 
-## NUR347 — a closure's contract error under `h/v`: the caret {#nur347}
+## NUR347 — a closure stored by `/v` in a runtime-built map: the caret {#nur347}
 
 **Status:** Pending (loud; the caret differs) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
 
 ```
 def mk fn [[k:Integer] [Function] [(fn [[a:Integer][String] [a add k]])]] end
-def h (mk 1) end each h/v [5]
-  interpreted   the contract error at 1:101 (the h/v token)
-  compiled      "source position unknown"
+def h (mk 1) end def m {f: h/v} end each m.f [5]
+  interpreted   the contract error at 1:106 (the h/v inside the map)
+  compiled      at 1:120 (the m.f read)
 ```
 
-The bytecode records no op for the `h/v` read, so nothing carries its
-position; the lambda twin and the `FnUtil.compose` form behave the same.
-Fixed 2026-09-29: the frame name (`<fn>` for a nameless verbose value, eng
-`closureFrameName`) and every other anchor — a returned closure's `fn`
-token, a native call's positionless fn result (`stampFnResultPos`), a
-positionless lambda's "source position unknown" (`BoruError.AnchorFinal`),
-a binding's name. Pinned: lang `TestNUR347ClosureContractAnchor`.
+The map built at run time stores the positionless named closure, and the
+dot read's `stampFnResultPos` then stamps it at `m.f`; `MAKE_MAP` needs the
+treatment call arguments got (`SigRef.FnArgPos`, `stampFnArgPos`).
+Fixed 2026-09-29: the frame name, a returned closure's anchor, a native
+call's positionless fn result, a positionless lambda, a binding's name, and
+a `/v`-read callback argument (`each h/v [5]`, `fold`, `FnUtil.compose`).
 
 ---
 
