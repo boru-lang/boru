@@ -1007,6 +1007,10 @@ Mention `args` or use `do` in `w`'s body and the same computed body reads
 (`FnFrameMeta.ArgsElided`, `CompiledFn.ArgsElided`), so the lanes agree —
 NUR346 is closed — but the language rule is not uniform.
 
+A further edge, unprobed: inside a forked registry (await / timer
+branches) the VM treats a same-scope fork as the fn's home and passes the
+empty list where the interpreter passes the real args.
+
 **Proposed verdict:** resolve by fix (elide only where no code the frame
 runs can read `args`, e.g. never for a frame that runs a computed body or
 a word macro), or Allowed with the rule restated. A maintainer decision.

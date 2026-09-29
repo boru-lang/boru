@@ -679,6 +679,14 @@ user still gets an answer while the case is open:
     (`def k 5 Rand.map-from {a:[def k 1 k]} drop 0`), which compiled and
     agreed before — the price of refusing the silent case. Bodies that bind
     nothing compile as before.
+  - A module fn whose frame skips the args list (NUR346's leaf elision) and
+    reads `args` through a word macro bound after it declines with
+    "context-dependent word args" (2026-09-29, the Codex review of #522):
+    one compiled unit serves both the importer's call (real args, via
+    CallBoru) and the module's own (the empty list), and the VM keeps the
+    args stack on the program's registry where the module's `args` reads its
+    own. The importer-side call compiled correctly before; the inside-module
+    call was a silent wrong answer. Owed: per-registry args frames in the VM.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
