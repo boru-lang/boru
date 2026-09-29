@@ -45,9 +45,12 @@ func TestMerge519RootFnCarrierReadAfterComputedBody(t *testing.T) {
 // member whose value is a fn at run time plans a statement island
 // (compiler landing_restart.go planLandingRestarts) only when the program
 // residual's entries before the statement can all be placed
-// (rootPreStart). A leading literal the walk cannot place — a map literal, a
-// list holding one, a def-bound type — plans no island, and the compiled
-// paren apply answers the interpreter's value itself.
+// (rootPreStart). A leading map literal the fold re-minted without a
+// position, a list holding one and a def-bound type used to be entries the
+// walk could not place, and the island was not planned; they are placed now
+// (NUR335/NUR336: a compound by the tokens spelling it, a def-bound read by
+// where it was read), and over a fn member the island is never taken — the
+// compiled paren apply answers the interpreter's value itself.
 func TestMerge519StatementIslandUnplacedLeadingValue(t *testing.T) {
 	const pre = `def h fn [[x:Integer] [Any] [x add 1]] end def mk fn [[] [Map] [{f: h/v}]] end def m (mk) end `
 	for _, c := range []struct{ src, want string }{

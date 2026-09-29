@@ -108,13 +108,13 @@ func TestSeatProgramResidualScreensACallable(t *testing.T) {
 
 	lw := rbLowerer(1)
 	lw.p.Consts = []core.Value{core.NewInteger(9)}
-	if reason := lw.seatProgramResidual(ops, plain, core.SrcPos{}); reason != "" {
+	if reason := lw.seatProgramResidual(ops, plain, nil, core.SrcPos{}); reason != "" {
 		t.Fatalf("a non-callable residual must rebuild, got %q", reason)
 	}
 
 	lw = rbLowerer(1)
 	lw.p.Consts = []core.Value{core.NewInteger(9)}
-	reason := lw.seatProgramResidual(ops, callable, core.SrcPos{})
+	reason := lw.seatProgramResidual(ops, callable, nil, core.SrcPos{})
 	if reason == "" {
 		t.Fatal("a residual that may carry a callable must keep the seating's compile failure")
 	}
@@ -127,7 +127,7 @@ func TestSeatProgramResidualScreensACallable(t *testing.T) {
 	dyn.Dynamic = true
 	lw = rbLowerer(1)
 	lw.p.Consts = []core.Value{core.NewInteger(9)}
-	if lw.seatProgramResidual(ops, []core.Value{core.NewInteger(9), dyn}, core.SrcPos{}) == "" {
+	if lw.seatProgramResidual(ops, []core.Value{core.NewInteger(9), dyn}, nil, core.SrcPos{}) == "" {
 		t.Error("a dynamic residual entry must keep the compile failure")
 	}
 }

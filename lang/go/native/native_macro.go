@@ -501,7 +501,7 @@ func miniHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 			r.Check.Recorder().RecordTrap("mini_unknown_lang",
 				fmt.Sprintf("mini: no mini-language %q is registered", kind), "mini",
 				`import "boru:minilang" first; the kinds are fixed (MiniLang.kinds lists them) — pass a custom mini-language as a fn value: mini <fn> '…'`,
-				args[0].Pos())
+				r.Check.CurWordPos) // the interpreter's error stamps the word (NUR338)
 			macroDegradedAdvisory(r, "mini", "the boru:minilang import is outside the checked fragment", args[0].Pos())
 			return []Value{NewDynamicCarrier(TAny)}, nil
 		}
@@ -884,7 +884,7 @@ func parseHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 			r.Check.Recorder().RecordTrap("parse_unknown_lang",
 				fmt.Sprintf("parse: no parser %q is registered", kind), "parse",
 				`import "boru:parselang" first; the kinds are fixed (ParseLang.kinds lists them) — pass a custom parser as a fn value: parse <fn> '…'`,
-				args[0].Pos())
+				r.Check.CurWordPos) // the interpreter's error stamps the word (NUR338)
 			macroDegradedAdvisory(r, "parse", "the boru:parselang import is outside the checked fragment", args[0].Pos())
 			return []Value{NewDynamicCarrier(TAny)}, nil
 		}
@@ -1350,7 +1350,7 @@ func emitHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Va
 			r.Check.Recorder().RecordTrap("emit_unknown_lang",
 				fmt.Sprintf("emit: no emitter %q is registered", kind), "emit",
 				`import "boru:emitlang" first; the kinds are fixed (EmitLang.kinds lists them) — pass a custom emitter as a fn value: emit <fn> <data>`,
-				args[0].Pos())
+				r.Check.CurWordPos) // the interpreter's error stamps the word (NUR338)
 			return []Value{NewDynamicCarrier(TString)}, nil
 		}
 		return nil, r.BoruErrorHint("emit_unknown_lang",

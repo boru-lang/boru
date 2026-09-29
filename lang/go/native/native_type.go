@@ -765,6 +765,12 @@ func asHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Valu
 // as a carrier at the target (the runtime validation proves conformance
 // before any consumer dispatches on it).
 func asReturns(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 2 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	degrade := func(err error) []Value {
 		if check.CheckAtUncaughtTopLevel(r) {
 			code, detail := "as_error", err.Error()

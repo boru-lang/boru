@@ -40,6 +40,7 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"SpecUndefGen":             true,
 		"SpecFnNames":              true,
 		"SpecArmDepth":             true,
+		"UnsealedArmDepth":         true,
 		"LoopBodyDepth":            true,
 		"CodeEffectDepth":          true,
 		"Compiling":                true,
@@ -69,6 +70,9 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"CurLayout": "scoped: published around one recovered dispatch's record and " +
 			"restored when it returns (PublishLayout), so it is nil outside a record and " +
 			"no pass can begin with one set; a reader asks for its own operand slice (LayoutFor)",
+		"BareCallPos": "scoped: published by execMatch around one dispatch's carrier " +
+			"results and restored when they return, so it is zero outside a dispatch " +
+			"and no pass can begin with one set",
 		"OptimisticOuter": "scoped: published by execMatch around one optimistic " +
 			"dispatch's argument evaluation and cleared by its defer when that returns, " +
 			"so it is nil outside the dispatch and no pass can begin with one set",

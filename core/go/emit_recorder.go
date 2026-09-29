@@ -324,6 +324,10 @@ type EmitRecorder interface {
 	// body unit — scoped to that unit, never the program's terminal trap
 	// (NUR134: a module export's no-match inside a `do` body).
 	RecordUnitTrapErr(ae *BoruError, pos SrcPos) bool
+	// RecordArmTrapErr records a definite runtime raise inside the SEALED
+	// branch arm being recorded (ArmSealedBranchCapture) — scoped to that
+	// arm, which raises only when it runs (NUR332). Inactive: declines.
+	RecordArmTrapErr(ae *BoruError, pos SrcPos) bool
 	RecordDispatchRematchValues(word string, vals []Value, nFwd int, written []int, pos SrcPos) bool
 	// NoteRematchPrefix attaches to the rematch RecordDispatchRematchValues
 	// just recorded the window indices (top first) of the stack prefix the
@@ -429,6 +433,14 @@ type EmitRecorder interface {
 	// past a boundary its re-step did not cross — `7 m.f ; 3` islanded to
 	// `[7 4]` for the interpreter's `[8 3]` (NUR187). Inactive: no-op.
 	NoteStatementEnd(pos SrcPos)
+	// NoteStatementStack records the stack a statement boundary at pos left
+	// for the next statement — told only where the boundary closed nothing
+	// (no pending forward) and the stack beneath it holds values alone. A
+	// statement island seats exactly these beneath the statement it runs
+	// again (NUR335): the interpreter's stack there, including values the
+	// statement then consumes, which the program's residual no longer
+	// shows (`m end drop (m.f 7)`). Inactive: no-op.
+	NoteStatementStack(pos SrcPos, stack []Value)
 	// PendingClosureApply reports the fn VALUE of a pending `apply`-word
 	// application over a closure this pass PRODUCED whose body is `body`
 	// (matched by the body's first token position — one lambda source, one
@@ -533,6 +545,14 @@ type EmitRecorder interface {
 	// binding (ResolveRef), so the compiler traces it to the bound value
 	// by name (the thirty-first increment).
 	NoteValRead(id, name string)
+	// NoteValReadLive gives a `/v` read of name the kept-defs discipline a
+	// bare read takes through NoteDefRead and the tag hook (NUR334): after
+	// a computed keep-defs body that may have rebound the name, the read is
+	// seated live at its token (a fresh identity, the live lookup) or the
+	// compile declines, never baked from the check model's stale binding.
+	// Called before NoteValRead, which then notes the read's own identity.
+	// A no-op for every other read, and when inactive.
+	NoteValReadLive(v *Value, name string, pos SrcPos)
 	// NoteFrozenRead's gen is the binding's DefTable generation
 	// (DefTable.Gen) at the read, taken by the caller from the registry the
 	// read resolved in. It is the staleness key of the binding-sensitive
@@ -615,6 +635,10 @@ type EmitRecorder interface {
 	// deciding each iteration. Inactive: no-op.
 	RecordWhile(cond, body EmitFragmentRef, condStk, bodyStk []Value, iterID string, out Value, pos SrcPos)
 	ArmBranchCapture()
+	// ArmSealedBranchCapture is ArmBranchCapture for a SEALED branch arm:
+	// one the interpreter runs over its own tokens alone, so a trap may be
+	// recorded inside it (RecordArmTrapErr). Inactive: no-op.
+	ArmSealedBranchCapture()
 	PeekCaptureArm() bool
 	ArmLoopCapture()
 	ConsumeLoopArm() bool
@@ -755,6 +779,7 @@ func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { 
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }
 func (inactiveEmit) RecordUnitTrapErr(*BoruError, SrcPos) bool                { return false }
+func (inactiveEmit) RecordArmTrapErr(*BoruError, SrcPos) bool                 { return false }
 func (inactiveEmit) RecordDispatchRematchValues(string, []Value, int, []int, SrcPos) bool {
 	return false
 }
@@ -783,6 +808,7 @@ func (inactiveEmit) RegisterTrailingApply(string, int)                      {}
 func (inactiveEmit) ApplyPending(string) bool                               { return false }
 func (inactiveEmit) MayBeFn(string) bool                                    { return false }
 func (inactiveEmit) NoteStatementEnd(SrcPos)                                {}
+func (inactiveEmit) NoteStatementStack(SrcPos, []Value)                     {}
 func (inactiveEmit) NoteLandingNext(Value, LandingNext, bool, Value)        {}
 func (inactiveEmit) PendingClosureApply([]Value) (Value, bool)              { return Value{}, false }
 func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}
@@ -808,6 +834,7 @@ func (inactiveEmit) RecordSpeculativeFnDef(*Registry, string, Value, Value, SrcP
 func (inactiveEmit) RecordSpecFnUndef(string, SrcPos)           {}
 func (inactiveEmit) DeclineSpeculativeUndef(string)             {}
 func (inactiveEmit) NoteLiveRead(*Value, string, SrcPos)        {}
+func (inactiveEmit) NoteValReadLive(*Value, string, SrcPos)     {}
 func (inactiveEmit) NoteInPlaceSlot(Value, Value)               {}
 func (inactiveEmit) NotifyNameRebound(string)                   {}
 func (inactiveEmit) NoteFrozenRead(string, FrozenBake, int64)   {}
@@ -817,6 +844,7 @@ func (inactiveEmit) RememberOriginal(Value)                     {}
 func (inactiveEmit) RememberStrippedOriginals([]Value, []Value) {}
 
 func (inactiveEmit) ArmBranchCapture()                                {}
+func (inactiveEmit) ArmSealedBranchCapture()                          {}
 func (inactiveEmit) PeekCaptureArm() bool                             { return false }
 func (inactiveEmit) ArmLoopCapture()                                  {}
 func (inactiveEmit) ConsumeLoopArm() bool                             { return false }

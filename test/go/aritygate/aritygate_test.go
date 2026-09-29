@@ -189,7 +189,13 @@ var pinnedAritySites = map[string]int{
 	// reachability rule, read to know whether a dynamic operand reaches an
 	// overload whose return the union cannot name. Matching, not
 	// arity-keyed behaviour.
-	"check/go/carrier.go": 15,
+	// 15 -> 16 (2026-09-28, the stranded `if` — formerly NUR332):
+	// declaredReturnCarriers never calls a ReturnsFn with fewer operands
+	// than its signature declares (`len(args) < sig.TotalArgs()`) — the
+	// recovery's best-fit overload over a SHORT window answers its declared
+	// Returns instead. A bounds check against the signature the argument
+	// rule matched, never behaviour keyed on a function's count.
+	"check/go/carrier.go": 16,
 	// 1 -> 2 (2026-09-24, the written argument's fit, NUR194):
 	// shapedFnReadWindow guards `i-1 < len(shape.Params)` — a BOUNDS check
 	// on the claim's parameter-type slice, which may be shorter than the
@@ -546,8 +552,21 @@ var pinnedAritySites = map[string]int{
 	// appended to `drop` may raise. An OVERLOAD-LIST presence test on a
 	// native basic itself registers, never a decision about a user fn's
 	// shape; the shuffle's stack effect is the word's own table.
-	"basic/go/native_control.go":    2,
+	// 2 -> 3 (2026-09-28, the user `drop` in a `do` body): shuffleDispatchSafe
+	// admits a user overload that only CONSUMES its arguments with the
+	// shuffle's own stack effect — its param count must equal the effect's
+	// input count (`len(s.Params) != eff[0]`). Matching the word's stack
+	// effect against the parameters it binds, the argument rule's own
+	// question, not a choice of behaviour by arity.
+	"basic/go/native_control.go":    3,
 	"basic/go/native_definition.go": 1,
+	// 2026-09-28 (NUR342, a `case` clause block that is a bare function
+	// word): callReachesContext asks whether any signature takes an operand
+	// or reads the whole stack (`TotalArgs() > 0`) — whether the block's
+	// re-step at the case can COLLECT from the values around it, which is
+	// how the argument rule reaches past the word. A block that can declines
+	// the sealed-arm desugar; every arity that collects is treated alike.
+	"basic/go/conditional.go": 1,
 	// The list re-step asks whether a fn value's first declared slot QUOTES
 	// (a `/q` slot captures the next word — NUR219, NUR295): the params
 	// presence test guards the index it reads. How the argument rule

@@ -1854,6 +1854,12 @@ func foldWithInitHandler(args []Value, _ map[string]Value, _ []Value, reg *Regis
 // its accumulator types correctly. The join with the init covers the
 // empty-list case (result IS the init).
 func foldWithInitReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 3 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	acc, ok := foldAccumFixedPoint(r, args[0], args[2], ElementCarrierFromValue(args[1]))
 	if !ok {
 		return []Value{NewCarrier(TAny)}
@@ -1885,6 +1891,12 @@ func foldNoInitHandler(args []Value, _ map[string]Value, _ []Value, reg *Registr
 // No init — accumulator type and element type both come from the
 // data list; same bounded fixed point as the init form.
 func foldNoInitReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 2 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	// A statically-EMPTY collection with no initial value is fold's own
 	// GUARANTEED runtime error (the accumulator has nothing to seed from) —
 	// flag it here with the byte-identical runtime message. Before the
@@ -2136,6 +2148,12 @@ func outerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 }
 
 func outerReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 3 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	stk := analyseHigherOrderBodyVals(r, args[0],
 		ElementCarrierFromValue(args[1]), ElementCarrierFromValue(args[2]))
 	// outer produces a 2D list: TList<TList<body-result>>.
@@ -2247,6 +2265,12 @@ func innerHandler(args []Value, _ map[string]Value, _ []Value, reg *Registry) ([
 }
 
 func innerReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 4 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	// pair op consumes (left-elem, right-elem); agg consumes
 	// (accumulator, pair-result). Without carrier list element
 	// tracking we use the pair output as TAny for the agg input.

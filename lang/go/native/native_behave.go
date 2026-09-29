@@ -287,6 +287,12 @@ func behaveTarget(name string, fnVal Value, r *Registry) (behaviorEntry, *core.T
 // computed name — and a call the handler would refuse note nothing; the run
 // raises the refusal where it happens.
 func behaveReturns(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 2 {
+		return nil
+	}
 	if r == nil || !r.Check.IsActive() || !IsConcrete(args[0]) {
 		return nil
 	}

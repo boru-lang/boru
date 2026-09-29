@@ -41,14 +41,16 @@ func TestNUR323TypeValueIsNoValueOfItsParent(t *testing.T) {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
 	// A poly in a fn unit whose operand is a type at run time meets its
-	// no-match without a faithful raise plan: the loud defer, where it
-	// answered the handler over the type literal ([1]).
+	// no-match — it answered the handler over the type literal ([1]), then
+	// deferred loudly for want of a raise plan. The gradual operand's
+	// dispatch now publishes its layout (core optimisticLayout's gradual
+	// arm), so the run raises the interpreter's signature_error itself.
 	for _, src := range []string{
 		`def f fn [[][Any][Integer]] end (f) add 1`,
 		`def f fn [[m:Map][Any][m.e add 1]] end f {e: Integer}`,
 		`each ([e:Any] => [e add 1]) [Integer]`,
 	} {
-		requireLoudDefer(t, src, "CALL_NATIVE_POLY no match for add", "ERROR:cannot call `add`")
+		agreeOnBothLanes(t, src, noAdd)
 	}
 }
 

@@ -205,6 +205,7 @@ func loggerShapeReturns(lsr *LogSinkRegistry) func([]Value, *Registry) []Value {
 		if err != nil {
 			return []Value{NewCarrier(TMap)}
 		}
+		MarkShapeModel(inst) // a model named "", never the run's logger
 		return []Value{NewMap(inst)}
 	}
 }

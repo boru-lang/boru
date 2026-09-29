@@ -2641,8 +2641,12 @@ func (e *Engine) stepWordUsurp(val Value, w WordInfo) error {
 			// trap so a compiled program raises the byte-identical error in place
 			// instead of declining on the downstream Undefined placeholder. Only a
 			// top-level trap is recordable; a nested /u keeps the placeholder path
-			// and declines (falls back) as before.
-			e.Registry.analysisRecorder().RecordTrap("illegal_ref", detail, w.Name, "", e.currentPos())
+			// and declines (falls back) as before. The trap raises at the
+			// error's own position below — the token's row and column with the
+			// bare NAME as its source text, so the caret underlines `x`, not
+			// the whole `x/u` token its pos would widen it to (NUR338).
+			e.Registry.analysisRecorder().RecordTrap("illegal_ref", detail, w.Name, "",
+				SrcPos{Row: val.Pos().Row, Col: val.Pos().Col, Src: w.Name})
 			placeholder := NewAtom(w.Name)
 			placeholder.pos = val.pos
 			placeholder.Undefined = true
@@ -2781,6 +2785,16 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 	// question two ways.
 	e.noteBindingRead(w.Name, v)
 	if e.Registry.analysisActive() {
+		// The kept-defs discipline, the `/v` READ (NUR334): a computed
+		// keep-defs body may have rebound the name, and a bare read of it
+		// is seated live at its token or declines (NoteDefRead + the tag
+		// hook). The value spelling reads the same binding, so it takes the
+		// same note — first, since seating it mints the read's own identity.
+		// Tag a COPY and write it back, as stepWord's tag does: &v toward
+		// the recorder would heap-allocate every `/v` read.
+		tagged := v
+		e.Registry.analysisRecorder().NoteValReadLive(&tagged, w.Name, val.Pos())
+		v = tagged
 		e.Registry.analysisRecorder().NoteValRead(v.ID, w.Name)
 	}
 	v.pos = val.pos
@@ -3786,7 +3800,13 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// A behave-installed capability may run in this frame over a value
 		// of its type (NUR257).
 		e.Registry.Check.NoteBehaveDispatch(match.Args)
+		prevBare := e.Registry.Check.BareCallPos
+		e.Registry.Check.BareCallPos = SrcPos{}
+		if e.bareCallContext(sortedIndices, callEnd) {
+			e.Registry.Check.BareCallPos = pos
+		}
 		results := e.Registry.analysisCarrierResults(name, match.Sig, match.Args, pos, match.Reg, tailConsumed)
+		e.Registry.Check.BareCallPos = prevBare
 		restoreLayout()
 		e.Registry.Check.NoteFnMemberRead(name, match.Args, results)
 		// Stamp a positionless FUNCTION result with this call's position,
@@ -4115,6 +4135,34 @@ func (e *Engine) stmtEndBetween(from, to SrcPos) bool {
 // srcPosBefore reports whether a lies strictly before b in the source.
 func srcPosBefore(a, b SrcPos) bool {
 	return a.Row < b.Row || (a.Row == b.Row && a.Col < b.Col)
+}
+
+// bareCallContext reports whether the dispatch at the pointer — its operands
+// at sortedIndices (ascending), its last consumed tape index callEnd — sits
+// in a BARE context (CheckState.BareCallPos): the top-level program's own
+// stream (the top engine, outside every nested body and fn body analysis),
+// nothing on the tape beneath its first operand but an open paren (which
+// seals the stack at run time) or the tape's start, and nothing after
+// callEnd but a close paren, a statement end or the tape's end. A word the
+// dispatch's handler hands back to be re-stepped there collects exactly
+// nothing from around it, on both engines.
+func (e *Engine) bareCallContext(sortedIndices []int, callEnd int) bool {
+	c := e.Registry.Check
+	if !e.IsTop || c.NestedBodyDepth != 0 || c.FnBodyDepth != 0 {
+		return false
+	}
+	first := e.Pointer
+	if len(sortedIndices) > 0 && sortedIndices[0] < first {
+		first = sortedIndices[0]
+	}
+	if first > 0 && !IsOpenParen(e.Tape.At(first-1)) {
+		return false
+	}
+	if next := callEnd + 1; next < e.Tape.Len() {
+		v := e.Tape.At(next)
+		return IsCloseParen(v) || IsEnd(v)
+	}
+	return true
 }
 
 // spliceMatchResults replaces the word and its matched args on the
@@ -5818,7 +5866,13 @@ func (e *Engine) constFoldContainerVal(items []Value) (Value, bool) {
 // containsCapturingFn does.
 func noteFoldedFnBodies(r *Registry, v Value) {
 	if fd, ok := v.Data.(FnDefInfo); ok {
-		noteFnBodyPending(r, r, fd)
+		// In the registry it was WRITTEN in (FnHome), as the module-export
+		// queue does (NoteFnBodyPendingIn): a folded value can carry a fn
+		// another module minted — a seeded generator's method, whose delegate
+		// (`rand-int`) exists only in its home — and analysed in this registry
+		// it read as an undefined word (NUR331).
+		home, _ := FnHome(r, &fd)
+		noteFnBodyPending(r, home, fd)
 		return
 	}
 	if !IsConcrete(v) {
@@ -8322,6 +8376,7 @@ func (e *Engine) stepEnd() error {
 	}
 
 	if fwdIdx < 0 {
+		e.noteStatementStack(endIdx)
 		e.Tape.Remove(endIdx)
 		return nil
 	}
@@ -8355,6 +8410,26 @@ func (e *Engine) stepEnd() error {
 
 	e.curryOrStack(funcIdx, fwd.CollectedArgs, fwd.StackArgs)
 	return nil
+}
+
+// noteStatementStack tells the recorder the stack an `end` at endIdx that
+// closed nothing leaves for the next statement (EmitRecorder
+// NoteStatementStack) — when the tape beneath it holds values alone: an open
+// paren, a pending forward or an engine marker there is no statement
+// boundary's stack.
+func (e *Engine) noteStatementStack(endIdx int) {
+	if e.Registry == nil || e.Registry.Check == nil || !e.Registry.analysisActive() {
+		return
+	}
+	stack := make([]Value, 0, endIdx)
+	for i := 0; i < endIdx; i++ {
+		v := e.Tape.At(i)
+		if IsOpenParen(v) || IsForward(v) || isEngineMarker(v) {
+			return
+		}
+		stack = append(stack, v)
+	}
+	e.Registry.Check.Recorder().NoteStatementStack(e.Tape.At(endIdx).Pos(), stack)
 }
 
 // stepMark records the mark's ID in the marks hash table and advances.
@@ -9258,6 +9333,7 @@ func (e *Engine) recordParenProducedLeadApply(es EmitRecorder, w producedLeadWin
 // Returns the possibly-shrunk closeIdx. Extracted from stepCloseParen for
 // its complexity cap (NUR038).
 func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx, closeIdx, lastIdx, count int) int {
+	e.evalTrailingWindowContainers(last, openIdx, closeIdx, lastIdx)
 	var argVals []Value
 	var argIdxs []int
 	for i := openIdx + 1; i < closeIdx; i++ {
@@ -9312,6 +9388,104 @@ func (e *Engine) recordParenTrailingFnApply(es EmitRecorder, last Value, openIdx
 		es.RegisterTrailingApply(last.ID, count-1)
 	}
 	return closeIdx
+}
+
+// evalTrailingWindowContainers evaluates the PENDING CONTAINER arguments of
+// a trailing fn-value apply window — a map or list literal still holding
+// tokens the interpreter evaluates, `({a:(1 add 2)} lam/v)` — before
+// recordParenTrailingFnApply collects the window, so the recorded apply
+// consumes the value the interpreter's apply consumes (NUR337). The check
+// pass never applies the lead here (the recorder collapses the window to a
+// carrier), so nothing else evaluates the literal: the op received the RAW
+// token and the VM, which does not re-evaluate an argument, answered
+// `{a:paren([1 word(add) 2])}` for the interpreter's `{a:3}`.
+//
+// The interpreter evaluates such an argument at two different moments. An
+// apply that MATCHES evaluates it at the bind (execFnDefSig's consumed
+// auto-eval) — the moment of this collapse — while a lead that PARKS or
+// raises leaves it raw for the end-of-run sweep or a later consumer. So an
+// argument is evaluated eagerly, the bind's way, only under a window that
+// provably fits the lead's one signature; otherwise only a pure constant
+// fold (the top frame, no carrier read, no effect — the value every later
+// evaluation would produce) replaces it. A container the signature takes
+// RAW (NoEvalArgs / NoEvalMapArgs) stays raw, marked consumed under a
+// fitting window. Anything left pending the recorder never takes as a raw
+// operand (recordDynApply's container arm): it stays on the tape for the
+// residual's own sweep, or the program declines.
+func (e *Engine) evalTrailingWindowContainers(last Value, openIdx, closeIdx, lastIdx int) {
+	fd, ok := last.Data.(FnDefInfo)
+	if !ok {
+		return
+	}
+	own := fd.OwnSigs()
+	if len(own) != 1 {
+		return
+	}
+	sig := &own[0]
+	var idxs []int
+	for i := openIdx + 1; i < closeIdx; i++ {
+		if i != lastIdx && IsRecordableLiteral(e.Tape.At(i)) {
+			idxs = append(idxs, i)
+		}
+	}
+	n := len(sig.Params)
+	if n == 0 || n > len(idxs) {
+		return
+	}
+	// The window binds top-down: the top argument to the first param.
+	idxs = idxs[len(idxs)-n:]
+	sigArgs := make([]Value, n)
+	for p := range sigArgs {
+		sigArgs[p] = e.Tape.At(idxs[n-1-p])
+	}
+	fits := trailingWindowFits(last, sigArgs)
+	for p, v := range sigArgs {
+		if !IsPendingActiveContainer(v) {
+			continue
+		}
+		if ev, ok := e.evalTrailingContainer(v, sig, p, fits); ok {
+			e.Tape.Set(idxs[n-1-p], ev)
+		}
+	}
+}
+
+// trailingWindowFits reports whether the lead's signature provably admits
+// the window (ProvenWindowMatch — the compiler's applyWindowFits asks the
+// same) under a lead the collapse applies: unquoted and not gradual.
+func trailingWindowFits(last Value, sigArgs []Value) bool {
+	return !last.Quoted && !last.Dynamic && ProvenWindowMatch(last, sigArgs)
+}
+
+// evalTrailingContainer evaluates one pending container argument at sig
+// position p per evalTrailingWindowContainers' rule, reporting whether the
+// returned value replaces it (the value is meaningless when it does not).
+func (e *Engine) evalTrailingContainer(v Value, sig *Signature, p int, fits bool) (Value, bool) {
+	isMap := v.Parent.Equal(TMap)
+	if (isMap && sig.NoEvalMapArgs[p]) || (!isMap && sig.NoEvalArgs[p]) {
+		v.Eval = !fits
+		return v, fits
+	}
+	var ev Value
+	var err error
+	switch {
+	case fits && isMap:
+		ev, err = e.AutoEvalMap(v, false, true)
+	case fits:
+		ev, err = e.autoEvalList(v, true)
+	case !e.Registry.analysisRecorder().TopFrameOnly() || CheckBraid.ExprRefsCarrier(e, []Value{v}):
+		return v, false
+	default:
+		var folded bool
+		ev, folded = e.constFoldContainerVal([]Value{v})
+		if !folded || containsSharedMutable(ev) || containsCapturingFn(ev) {
+			return v, false
+		}
+	}
+	// A bind-time evaluation that raised replaces nothing (ok false): the
+	// literal stays pending, and the recorder never takes it raw.
+	ev.Eval = false
+	ev.pos = v.pos
+	return ev, err == nil
 }
 
 // parenFeedsPendingForward reports whether the paren opening at openIdx is
@@ -10406,10 +10580,14 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 // sigError's stack-snapshot hint is advisory DX text, not part of the error
 // taxonomy (code + detail + position) the differential gates.
 //
-// RecordTrap's own guard keeps this top-level-only (frames and units both at
-// depth 1): a trap inside a branch arm or fn unit is conditional and stays a
-// compile failure. Returns true when the trap now owns the program's tail; false
-// leaves the caller's MarkUncompilable compile failure to stand.
+// RecordTrap's own guard keeps the terminal trap top-level-only (frames and
+// units both at depth 1). Below it the trap is recorded only inside a SEALED
+// branch arm — an `if` word's literal arm, which the interpreter runs over
+// its own tokens alone, so the no-match is the run's whenever the arm runs
+// (RecordArmTrapErr, NUR332); anywhere else it is conditional on context the
+// pass does not see and stays a compile failure. Returns true when a trap
+// now owns the program's tail or the arm's; false leaves the caller's
+// MarkUncompilable compile failure to stand.
 func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos SrcPos) bool {
 	e.LastUnmatchedRematched = false
 	es := e.Registry.analysisRecorder()
@@ -10611,10 +10789,14 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 	// notes + suggestions). Definiteness (screened above) guarantees the
 	// runtime values equal what sigError saw here, so the error built now
 	// is the error the interpreter builds at run time.
-	if verr := e.voidArgErrorFor(w.Name, pos); verr != nil {
-		return es.RecordTrapErr(verr, pos)
+	// Below the top level the trap is recorded only inside a SEALED branch
+	// arm (RecordArmTrapErr, NUR332): the arm raises when it runs, as the
+	// interpreter's does, and every other nested region declines.
+	ae := e.voidArgErrorFor(w.Name, pos)
+	if ae == nil {
+		ae = e.sigError(w.Name, fn, pos)
 	}
-	return es.RecordTrapErr(e.sigError(w.Name, fn, pos), pos)
+	return es.RecordTrapErr(ae, pos) || es.RecordArmTrapErr(ae, pos)
 }
 
 // rematchRenderTuple resolves the attempted written tuple to distinct

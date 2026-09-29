@@ -695,6 +695,16 @@ const (
 	// list's evaluation would and the list holds what it leaves, and
 	// elsewhere the op is a designed defer.
 	OpMakeListReStep
+	// OpLookupDynScopeRef is the `/v` READ's twin of OpLookupDynScope
+	// (NUR334): a `/v` read the recorder seats live (NoteValReadLive — a
+	// name a computed keep-defs body may have rebound) resolves the binding
+	// at its token as the interpreter's stepWordVal does, through
+	// core.ResolveRef: the binding's value, a fn binding as the aggregate
+	// Function value and a class as the class, pushed as data where
+	// OpLookupDynScope defers on both. An active token keeps the defer, and
+	// a miss is the read's undefined_word, as OpLookupDynScope's is for a
+	// live-read name.
+	OpLookupDynScopeRef
 )
 
 // opcodeNames is the single source of each opcode's disassembler mnemonic,
@@ -765,6 +775,7 @@ var opcodeNames = [...]string{
 	OpBindDynScopePeek:     "BIND_DYN_SCOPE_PEEK",
 	OpBindTypeRun:          "BIND_TYPE_RUN",
 	OpMakeListReStep:       "MAKE_LIST_RESTEP",
+	OpLookupDynScopeRef:    "LOOKUP_DYN_SCOPE_REF",
 }
 
 func (o Opcode) String() string {
@@ -1529,6 +1540,17 @@ type DynMethodSpec struct {
 	// FirstIter is the loops' first-iteration check the island takes at run
 	// time (RestartFirst); empty outside loops.
 	FirstIter []RestartFirst
+	// Paren marks a paren's leading apply (core's recordParenLeadingApply,
+	// `(m.f 7)`): the interpreter's paren applies its lead over the values
+	// after it — a lead the landing before it parked included, `(m.f y)` over
+	// a lambda that could not take the word y — and PLACES a lead that is no
+	// fn, the lead then the values, as a paren leaves them (NUR336).
+	Paren bool
+	// Place marks a paren apply at the program root after which the code only
+	// pushes (stampRootRestarts): a data lead with no statement island is
+	// placed where the apply stands, the program's residual taking the extra
+	// values as the interpreter's does (NUR336).
+	Place bool
 	// Parks is the residual's claim that the apply's result is placed where
 	// it lands: a def-bound name's dispatch over a callee the compiler cannot
 	// see (`j j` over a factory's lambda, NUR282), whose result the
@@ -2350,7 +2372,7 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 	for i, in := range code {
 		fmt.Fprintf(sb, "%04d %-11s", i, in.Op.String())
 		switch in.Op {
-		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope:
+		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpLookupDynScopeRef, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope:
 			c := p.Consts[in.Arg]
 			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent.Leaf())
 		case OpCallNative:

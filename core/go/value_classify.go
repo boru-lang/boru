@@ -38,6 +38,16 @@ func BearsActiveTokens(v Value) bool {
 	return false
 }
 
+// IsPendingActiveContainer reports whether v is a map or list literal the
+// interpreter still owes an evaluation (a pending residual container: Eval,
+// unquoted, untyped) AND whose members hold a token that evaluation changes
+// (BearsActiveTokens) — `{a:(1 add 2)}`, `[1 add 2]`. Such a value is not
+// its own data: the consuming dispatch evaluates it first, so a compiled
+// operand must never carry it as a baked raw token (NUR337).
+func IsPendingActiveContainer(v Value) bool {
+	return isPendingResidualContainer(v) && BearsActiveTokens(v)
+}
+
 // ModuleScopeBinding reports whether name's active binding sits at module /
 // global scope — NOT an enclosing fn's param or body-local (the
 // ComputeCaptures depth rule: Depth > baseline means enclosing-fn-local). A
@@ -222,7 +232,7 @@ func IsInertConst(v Value) bool {
 		// value is a separate dispatch path (a bare `(fn …) args` auto-dispatch
 		// records the fn-body splice and declines; a `/v`-referenced fn does not
 		// auto-dispatch, so `f/v` / `{b:f/v}` are pure data).
-		if len(d.Captured) > 0 {
+		if len(d.Captured) > 0 || d.ShapeModelHomed() {
 			return false
 		}
 		// A HOMED fn value bakes as DATA — a bare residual (`MathUtil.sqrt`),
@@ -684,8 +694,10 @@ func IsInertConstMember(v Value) bool {
 			// nothing about mutability: the value is immutable code either
 			// way, and the fn-value-call boundary applies it against that home
 			// (FnHome) exactly as the interpreter does. Only a lexical capture
-			// makes it non-inert — the captured cell is live state.
-			return len(fd.Captured) == 0
+			// makes it non-inert — the captured cell is live state — and a
+			// check-mode instance model's method is a stand-in, not the run's
+			// (Registry.ShapeModel).
+			return len(fd.Captured) == 0 && !fd.ShapeModelHomed()
 		}
 		// A dot-access reach (`r.int`, `m.a.b`) riding inside a NEVER-evaluated
 		// compound — a NoEvalArgs code body the driving word stores or drops

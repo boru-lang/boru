@@ -233,7 +233,18 @@ func CaseClauses(r *Registry, v Value, elems []Value) ([]Value, error) {
 // Faithfulness rides the differential gate (runtime stays
 // CaseHandler/CaseClauses; __casematch reuses its UnifyR).
 func CaseReturnsFn(args []Value, r *Registry) []Value {
+	// A ReturnsFn reads its operands positionally, so a window shorter than
+	// its signature (a failed dispatch's recovery, NUR332) is answered with
+	// the dynamic Any, never indexed.
+	if len(args) < 2 {
+		return []Value{NewDynamicCarrier(TAny)}
+	}
 	dynAny := []Value{NewDynamicCarrier(TAny)}
+	// The `case` token itself — where the interpreter's CaseHandler error
+	// lands (stampErrPos stamps the dispatching word) and so where a trap
+	// below must raise (NUR338). Read at entry: running a code-body
+	// scrutinee dispatches, which overwrites CurCallPos.
+	casePos := r.Check.CurCallPos
 	v, clauses := args[0], args[1]
 	swapped := isCodeBody(v) && !isCodeBody(clauses)
 	if swapped {
@@ -263,7 +274,7 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		// Plain check (no emit) keeps the prior dynAny; a compile pass's
 		// SUSPENDED run keeps the scrutinee's bindings (keepScrutineeBindings).
 		if es := r.Check.Recorder(); es.Active() {
-			return caseCodeBodyRecord(r, es, v, clauses, dynAny)
+			return caseCodeBodyRecord(r, es, v, clauses, dynAny, casePos)
 		}
 		keepScrutineeBindings(r, v)
 		return dynAny
@@ -289,7 +300,7 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		if !clauses.Dynamic && !clauses.Carrier {
 			r.Check.Recorder().RecordTrap("case_error",
 				"case: clause list must be a concrete list of match/block pairs (optional trailing default)",
-				"case", "", args[0].Pos())
+				"case", "", casePos)
 		}
 		return dynAny
 	}
@@ -325,6 +336,9 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	// lowering.
 	es := r.Check.Recorder()
 	seatable := es.CanSeatAcrossFragment(v)
+	if seatable && caseReStepDeclined(r, es, elems) {
+		return dynAny
+	}
 	if seatable && mayRunAsCode(v) {
 		v, seatable = recordCaseSubject(r, v, swapped, r.Check.CurCallPos)
 	}
@@ -352,6 +366,90 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	// and a non-re-pushable case narrow instead of poisoning the result with
 	// Any.
 	return CaseBranchJoin(r, v, elems)
+}
+
+// caseReStepDeclined declines the compile desugar of a clause list holding a
+// block that is a bare FUNCTION word (caseReStepsBlock), and reports that it
+// did. Such a block is not an arm: the handler hands the word back and the
+// tape re-steps it AT THE CASE, over the values beneath it and the tokens
+// after it (`1 2 case 7 [[lt 10] add]` answers 3), where the chain would run
+// it sealed in its own arm. Only a bare call (caseCallBare) has nothing
+// around it for the word to reach, so there the chain is exact; anywhere
+// else the block is an arm the chain cannot capture, and it declines as the
+// clause-list `if`'s re-stepped arm does (ifClauseDecline, NUR332). A
+// suspended pass decides nothing: its enclosing dispatch owns the compile.
+func caseReStepDeclined(r *Registry, es EmitRecorder, elems []Value) bool {
+	if !es.Active() || !caseReStepsBlock(r, elems) || caseCallBare(r, es) {
+		return false
+	}
+	taken := true
+	recorderState(r.Check).RecordBranch(BranchRecord{
+		ConstCond: &taken, HasElse: true, Pos: r.Check.CurCallPos,
+		Uncaptured: "case: a clause block that is a bare function word, re-stepped over the values around the case",
+	})
+	return true
+}
+
+// caseReStepsBlock reports whether a (normalized) clause list holds a block
+// — the element after each match, or the trailing default — that the tape
+// re-steps as a call (caseBlockReSteps).
+func caseReStepsBlock(r *Registry, elems []Value) bool {
+	for i := 1; i < len(elems); i += 2 {
+		if caseBlockReSteps(r, elems[i]) {
+			return true
+		}
+	}
+	return len(elems)%2 == 1 && caseBlockReSteps(r, elems[len(elems)-1])
+}
+
+// caseBlockReSteps reports whether a clause block is a bare word the tape
+// DISPATCHES when CaseClauses hands it back (runCaseBody returns a non-body
+// block as itself) over what surrounds the case: a word bound to a
+// function or a registered word that takes an operand or reads the whole
+// stack (callReachesContext), or a word whose binding the pass holds only
+// abstractly (a computed def may be such a function at run time). A word
+// naming a value or a type steps to that value, and a function of no
+// operands runs alike wherever it is stepped, as the chain's arm runs it;
+// a `/v` reference parks the value.
+func caseBlockReSteps(r *Registry, b Value) bool {
+	if !IsWord(b) {
+		return false
+	}
+	w, _ := AsWord(b)
+	if w.ForceVal {
+		return false
+	}
+	if top, ok := r.Defs.Top(w.Name); ok {
+		if fd, isFn := top.Data.(FnDefInfo); isFn {
+			return callReachesContext(&fd)
+		}
+		// A splice marker (`def g word [add]`) spills its tokens where the
+		// block is re-stepped, and those tokens reach the values around the
+		// case (`1 2 case 7 [[lt 10] g 0]` is 3) — the Codex review of #520.
+		return top.Carrier || top.Dynamic || IsSplice(top)
+	}
+	fn := r.Lookup(w.Name)
+	return fn != nil && callReachesContext(fn)
+}
+
+// callReachesContext reports whether some signature of fn takes an operand
+// or reads the whole stack — a dispatch whose outcome depends on the
+// values around the word. A macro is always one: `macro` refuses a
+// definition with no parameter, so its expansion's operands are its own.
+func callReachesContext(fn *FnDefInfo) bool {
+	for i := range fn.Signatures {
+		if fn.Signatures[i].TotalArgs() > 0 || fn.Signatures[i].FullStack() {
+			return true
+		}
+	}
+	return false
+}
+
+// caseCallBare reports whether the `case` whose ReturnsFn is running sits
+// in a BARE context (CheckState.BareCallPos) on the program's root stream.
+func caseCallBare(r *Registry, es EmitRecorder) bool {
+	pos := r.Check.CurCallPos
+	return es.TopFrameOnly() && pos.Row > 0 && r.Check.BareCallPos == pos
 }
 
 // dropSynthesizedDeadArmWarnings removes, from the diagnostics added since
@@ -466,7 +564,8 @@ func recordCaseSubject(r *Registry, v Value, swapped bool, pos SrcPos) (Value, b
 // scrutinee (the shapes are listed at its call): the terminal trap for a
 // body that nets nothing, the single-clause desugar, or the conservative
 // dynAny that leaves the dispatch to the generic record.
-func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny []Value) []Value {
+// casePos is the `case` token, where the trap raises.
+func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny []Value, casePos SrcPos) []Value {
 	nDiag := len(r.Check.Diagnostics)
 	stk, binds, ran := condResidual(r, v)
 	r.Check.TruncateDiagnostics(nDiag)
@@ -489,13 +588,16 @@ func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny [
 	if len(stk) == 0 {
 		es.RecordTrap("case_error",
 			"case: value expression produced no value to dispatch on",
-			"case", "", v.Pos())
+			"case", "", casePos)
 		return dynAny
 	}
 	if isCodeBody(clauses) {
 		if lst, _ := AsList(clauses); !lst.IsNil() {
 			elems := caseNormalizeClauses(r, lst.Slice())
 			if len(elems) == 3 && !isCodeBody(elems[1]) && !isCodeBody(elems[2]) {
+				if caseReStepDeclined(r, es, elems) {
+					return dynAny
+				}
 				// `[do]` + the normal guard tokens: do runs the body once,
 				// leaving its value as the scrutinee for the match.
 				cond := NewList(append([]Value{NewWord("do")}, caseGuardTokens(v, elems[0])...))

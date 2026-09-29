@@ -6,6 +6,7 @@ import (
 	"slices"
 	"sort"
 	"strconv"
+	"strings"
 
 	check "github.com/boru-lang/boru/check/go"
 	core "github.com/boru-lang/boru/core/go"
@@ -408,6 +409,7 @@ type emitCall struct {
 	diverges          bool          // the word ALWAYS raises (CompileDiverges, e.g. raise): control never returns past this call
 	live              bool          // a LIVE READ seated as an event (NoteLiveRead): no dispatch — OpLookupDynScope of liveName at the read token, one result; rides evCall so the result seats, promotes and drops as any computed value does
 	liveName          int           // the read name's const index, meaningful only when live
+	liveRef           bool          // a live `/v` read (NoteValReadLive): OpLookupDynScopeRef, the value spelling's lookup
 	// typedBind, when non-nil, marks this event as a typed value-def's runtime
 	// validate/reparent step (OpBindTyped over the single operand) instead of a
 	// word dispatch — recorded by RecordTypedBind from the def handler's
@@ -936,6 +938,11 @@ type EmitFragment struct {
 // Finalize afterwards. All methods are nil-receiver-safe so hook
 // sites need no guards.
 type EmitState struct {
+	// shuffleFolded latches when a `pick` / `roll` fold (FoldFullStack)
+	// permuted or copied stack values as data, where the interpreter splices
+	// them back onto the tape and re-steps them: the program residual's
+	// rebuild then keeps its whole callable screen (residualCallableExempt).
+	shuffleFolded bool
 	// deliveries counts each value's step-loop deliveries by ID
 	// (NoteDelivery, branchPlacedHere, NUR313).
 	deliveries map[string]int
@@ -1255,6 +1262,11 @@ type EmitState struct {
 	// pendingKeptName is its binding's name.
 	pendingKeptRead string
 	pendingKeptName string
+	// passMintedTypes is every type node a type install of THIS pass minted
+	// (RecordTypeInstall, by node ID): a keep-defs def of a lowercase name
+	// to such a node keeps its skip, where one to a node that existed before
+	// the pass installs it (keepTypeNode, NUR333).
+	passMintedTypes map[string]bool
 	// storedGradualDepth marks a DETACHED stamp compile (StampDetachedFn
 	// sets it on the fork's private EmitState). While non-zero,
 	// buildFnBodyReturnsFn generalises an Any arg into an Any param as a
@@ -1462,6 +1474,11 @@ type EmitState struct {
 	// tape (its own position, when it had one): the interpreter's re-step
 	// raises there (LandingWord.ValPos, NUR289's caret).
 	landingValPos map[int]core.SrcPos
+	// rootStmtStacks holds, by the position of a ROOT statement boundary
+	// that closed nothing, the stack it left for the next statement
+	// (NoteStatementStack): a root statement island seats exactly these
+	// beneath the statement (rootPreStart, NUR335).
+	rootStmtStacks map[core.SrcPos][]core.Value
 	// stmtEnds holds the source positions of every statement boundary (`;`
 	// / `end`) the pass stepped (NoteStatementEnd). The residual's fn-value
 	// apply arms ask crossesBoundary before laying a value's apply over the
@@ -1612,6 +1629,18 @@ type EmitState struct {
 	// root stream is, so the do-body adoption's root fence admits it
 	// (rootLikeStream).
 	fragUncond []bool
+	// fragSealed parallels the open fragment frames (frames[1:]) with
+	// whether each is a SEALED branch arm (ArmSealedBranchCapture): an arm
+	// the interpreter runs over its own tokens alone — no value beneath it,
+	// no token after it — exactly as the check pass's fresh arm sub-engine
+	// runs it, so a statically-definite no-match inside it is the run's
+	// (recordArmTrap). fragTrapped marks the sealed arms whose trap has
+	// been recorded: the rest of the arm is unreachable.
+	fragSealed  []bool
+	fragTrapped []bool
+	// captureSealed rides captureArm: the fragment the next body run records
+	// is a SEALED branch arm (ArmSealedBranchCapture).
+	captureSealed bool
 	// fragReads / bindHazard / storeHazard drive the residual-order hazard
 	// (unit_memo.go residualReadHazard), keyed by fragment id: the names a
 	// fragment has read, and the names (by name) or loop-carried slots (by
@@ -1756,6 +1785,12 @@ type EmitState struct {
 	// lookup that would raise before the op's own plan could (the
 	// sixty-ninth increment). Nil until first use.
 	liveReadIDs map[string]bool
+	// liveDataIDs is the subset of liveReadIDs seated by a BARE read: its
+	// OpLookupDynScope defers on a binding the interpreter would dispatch (a
+	// fn, a class, an active token), so a value it pushes is DATA whatever
+	// its static modality — a gradual one included (computedLeakGradual).
+	// The frame replay counts no possible call in it (noteDynFrameReplay).
+	liveDataIDs map[string]bool
 	// liveLeadNames is every module-scope fn a stored-ref unit dispatches by
 	// name with declared signatures (markLiveLead): its routed dispatches
 	// resolve the lead live, and every rebind compiles the new binding's
@@ -2872,6 +2907,22 @@ func (es *EmitState) ArmBranchCapture() {
 		return
 	}
 	es.captureArm = true
+	es.captureSealed = false
+}
+
+// ArmSealedBranchCapture is ArmBranchCapture for a SEALED branch arm — the
+// `if` word's literal then/else body, which the interpreter runs over its
+// own tokens alone (`5 if c [add 1] [0]` raises add's no-match over the 1,
+// never the 5 beneath the if). The fragment it opens admits an arm trap
+// (recordArmTrap). A condition (a list condition runs inline, over the
+// values beneath the `if`), a loop body, and the clause-list form's arms (a
+// body re-stepped at the `if`) are armed with the plain ArmBranchCapture.
+func (es *EmitState) ArmSealedBranchCapture() {
+	if !es.Active() {
+		return
+	}
+	es.captureArm = true
+	es.captureSealed = true
 }
 
 // consumeCaptureArm reports and clears the one-shot capture flag.
@@ -2908,6 +2959,8 @@ func (es *EmitState) beginFragment() func() {
 	es.fragIDs = append(es.fragIDs, es.fragSeq)
 	es.fragUnits = append(es.fragUnits, len(es.units))
 	es.fragUncond = append(es.fragUncond, false)
+	es.fragSealed = append(es.fragSealed, false)
+	es.fragTrapped = append(es.fragTrapped, false)
 	return func() {
 		n := len(es.frames) - 1
 		es.captured = &EmitFragment{
@@ -2920,6 +2973,8 @@ func (es *EmitState) beginFragment() func() {
 		es.fragIDs = es.fragIDs[:len(es.fragIDs)-1]
 		es.fragUnits = es.fragUnits[:len(es.fragUnits)-1]
 		es.fragUncond = es.fragUncond[:len(es.fragUncond)-1]
+		es.fragSealed = es.fragSealed[:len(es.fragSealed)-1]
+		es.fragTrapped = es.fragTrapped[:len(es.fragTrapped)-1]
 	}
 }
 
@@ -2960,7 +3015,11 @@ func (es *EmitState) inRolledBackRegion() bool {
 // single replay (see keepTaints). Nil-safe.
 func (es *EmitState) BodyAnalysisGuard() func() {
 	if es.consumeCaptureArm() {
-		return es.beginFragment()
+		sealed := es.captureSealed
+		es.captureSealed = false
+		end := es.beginFragment()
+		es.fragSealed[len(es.fragSealed)-1] = sealed
+		return end
 	}
 	if es == nil || es.keepBodyDepth == 0 {
 		return es.Suspend()
@@ -3230,7 +3289,17 @@ func (es *EmitState) RecordDynUndef(name string, pos core.SrcPos) {
 // (AdoptBodyTwins — `do [def Big Integer] 15 is Big` lowers BIND_FN_TYPE in
 // the unit and BIND_TWIN after the call, `[true]` on both lanes).
 func (es *EmitState) RecordTypeInstall(name string, entry core.DefEntry, pos core.SrcPos) {
-	if es == nil || !es.Active() || name == "" {
+	if es == nil {
+		return
+	}
+	if entry.Minted && entry.TypeDef != nil {
+		// Suspended or not: the node is this pass's (keepTypeNode).
+		if es.passMintedTypes == nil {
+			es.passMintedTypes = map[string]bool{}
+		}
+		es.passMintedTypes[entry.TypeDef.ID] = true
+	}
+	if !es.Active() || name == "" {
 		return
 	}
 	if es.armResidentDepth == 0 {
@@ -3292,6 +3361,11 @@ func (es *EmitState) appendEvent(ev EmitEvent) int {
 			es.seq++
 			return es.seq
 		}
+	}
+	// The same for a sealed arm's trap (recordArmTrap): the arm raises there.
+	if n > 0 && es.fragTrapped[n-1] {
+		es.seq++
+		return es.seq
 	}
 	es.seq++
 	ev.seq = es.seq
@@ -7016,8 +7090,7 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		}
 		es.defReadPos[v.ID] = append(es.defReadPos[v.ID], pos)
 	}
-	keepLive := es.keepLeakNames[name] && (!es.readHasHome(*v) || es.dynLeakNames[name])
-	rootLive := es.rootDynLeak && es.TopFrameOnly() && !es.fnLikeResidual(*v)
+	keepLive, rootLive := es.keptLeakLive(*v, name)
 	// A stored-ref unit's bare read of a module-scope value is live too
 	// (the seventy-first increment): the unit is invoked by the host after
 	// the store, when the binding may have moved, so the read is seated
@@ -7061,7 +7134,26 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 	}
 	if keepLive || rootLive {
 		es.keptReadSeatedLive(v)
+		es.computedLeakGradual(v, name, rootLive)
 	}
+	es.seatLiveRead(v, name, pos, false)
+}
+
+// keptLeakLive reports the two kept-defs arms of NoteLiveRead: keepLive, a
+// read of a name a keep-defs body leaked (NoteKeepDefsLeak,
+// noteDynKeepDefsLeak) with no compiled home of its own — or any home, for
+// a computed body's leak — and rootLive, a root read after a computed body
+// ran at the program level (rootDynLeak) of a value no window may apply.
+func (es *EmitState) keptLeakLive(v core.Value, name string) (keepLive, rootLive bool) {
+	keepLive = es.keepLeakNames[name] && (!es.readHasHome(v) || es.dynLeakNames[name])
+	rootLive = es.rootDynLeak && es.TopFrameOnly() && !es.fnLikeResidual(v)
+	return keepLive, rootLive
+}
+
+// seatLiveRead is NoteLiveRead's seating: the read gets an identity of its
+// own and a one-result live event lowering to OpLookupDynScope at pos —
+// OpLookupDynScopeRef for a `/v` read (ref, NoteValReadLive).
+func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, ref bool) {
 	v.ID = core.GenerateID(core.IDPrefixForType(v.Parent))
 	if pos.Row > 0 {
 		if es.defReadPos == nil {
@@ -7077,8 +7169,14 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		es.liveReadIDs = map[string]bool{}
 	}
 	es.liveReadIDs[v.ID] = true
+	if !ref {
+		if es.liveDataIDs == nil {
+			es.liveDataIDs = map[string]bool{}
+		}
+		es.liveDataIDs[v.ID] = true
+	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
-		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)),
+		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)), liveRef: ref,
 	}})
 	es.setProduced(*v, seq)
 }
@@ -7691,7 +7789,10 @@ func (es *EmitState) StartFnCompile(key, name string, fnReg *core.Registry, args
 					}
 				}
 				if a > 0 && a == len(bodyStk)-1 {
-					argsOK := true
+					// A pending container argument is owed the bind's
+					// evaluation the op never performs (NUR337): not a
+					// plain operand either.
+					argsOK := !anyPendingActiveContainer(bodyStk[:len(bodyStk)-1])
 					for _, v := range bodyStk[:len(bodyStk)-1] {
 						if core.IsFnValueResidual(v) {
 							argsOK = false
@@ -8366,16 +8467,11 @@ func (es *EmitState) applyWindowFits(fn core.Value, args []core.Value) bool {
 		}
 		sigArgs[i] = a
 	}
-	if sig := core.MatchFnSig(fn, sigArgs); sig != nil {
-		for i, p := range sig.Params {
-			if p.Pattern != nil && !p.Pattern.Carrier && !core.IsConcrete(sigArgs[i]) {
-				return false
-			}
-		}
+	if core.ProvenWindowMatch(fn, sigArgs) {
 		return true
 	}
 	if _, isFn := fn.Data.(core.FnDefInfo); isFn {
-		return false // own signatures, none of which admits the window
+		return false // own signatures, none of which provably admits the window
 	}
 	s, ok := es.producerReturnedClosureShape(fn.ID)
 	if !ok || len(s.Params) != len(sigArgs) {
@@ -8398,6 +8494,19 @@ func raisesTrailNoMatch(fn core.Value, fnOp EmitOperand, head DynApplyHead) bool
 	fd, ok := fn.Data.(core.FnDefInfo)
 	return ok && fnOp.kind == opConst && !head.Leading && !head.WrittenFirst &&
 		!fd.Anonymous && !fd.Macro && len(fd.OwnSigs()) > 0 && !core.IsDelegationFnDef(fd)
+}
+
+// anyPendingActiveContainer reports whether an apply window holds an
+// argument the interpreter's dispatch still evaluates before binding it
+// (core.IsPendingActiveContainer) — a value no fn-value apply op may take
+// as its operand.
+func anyPendingActiveContainer(args []core.Value) bool {
+	for _, a := range args {
+		if core.IsPendingActiveContainer(a) {
+			return true
+		}
+	}
+	return false
 }
 
 func (es *EmitState) RecordDynApply(args []core.Value, fn, out core.Value, pos core.SrcPos) (int, bool) {
@@ -8543,6 +8652,19 @@ func (es *EmitState) recordDynApply(args []core.Value, fn, out core.Value, pos c
 		// An EVENT lead with no provable arity keeps the standing failure: the
 		// KeepQ lowering would consume the whole window on the unquoted path.
 		decline = "trailing fn-value apply over a call result (runtime quote state unknown)"
+	}
+	// A window argument still a PENDING container (`{a:(1 add 2)}`, `[1 add
+	// 2]`) is owed an evaluation this op never performs: the op would bind
+	// the raw token where the interpreter's apply evaluates it at the bind
+	// or its park leaves it for the frame's residual sweep (NUR337). The
+	// collapse evaluated every one it could evaluate exactly (core's
+	// evalTrailingWindowContainers); one it left pending stays on the tape
+	// UNRECORDED, where the residual's own sweep evaluates it — the program's
+	// end-of-run fold, a fn frame's in-frame close — before the fallback
+	// lowering applies it (RegisterTrailingApply), and a residual that sweep
+	// could not place declines there (the tail lowering's argsOK guard).
+	if decline == "" && anyPendingActiveContainer(args) {
+		return 0, false
 	}
 	// ONE failure site for both arms, deliberately: the failure-site census is
 	// a downward ratchet (test/go/langspec compileFailureSiteCeiling), so a second
@@ -9286,6 +9408,7 @@ func (es *EmitState) FoldFullStack(word string, args, preserved []core.Value) ([
 		if idx < 0 {
 			return nil, false
 		}
+		es.shuffleFolded = true
 		if word == "pick" {
 			picked := preserved[idx]
 			es.MarkValueDef(picked)
@@ -9452,6 +9575,50 @@ func (es *EmitState) RecordTrapErr(ae *core.BoruError, pos core.SrcPos) bool {
 		return es.recordGuardedTrap(outer, spec, pos)
 	}
 	es.trapAt = es.appendEvent(EmitEvent{kind: evTrap, trap: EmitTrap{spec: spec, pos: pos}})
+	return true
+}
+
+// RecordArmTrapErr records a fully-built interpreter error as a trap inside
+// the SEALED branch arm being recorded (recordArmTrap) — never the terminal
+// top-level one. Declines outside one.
+func (es *EmitState) RecordArmTrapErr(ae *core.BoruError, pos core.SrcPos) bool {
+	if ae == nil || !es.Active() {
+		return false
+	}
+	return es.recordArmTrap(EmitTrap{
+		spec: TrapSpec{
+			Code: ae.Code, Detail: ae.Detail, Word: ae.Src, Hint: ae.Hint,
+			Spans: ae.Spans, Notes: ae.Notes, Suggestions: ae.Suggestions,
+		},
+		pos: pos,
+	})
+}
+
+// recordArmTrap records a definite raise INSIDE a sealed branch arm (NUR332's
+// closure): the trap the top level compiles, scoped to the arm, which raises
+// only when the arm runs. Sound because the arm is SEALED
+// (ArmSealedBranchCapture): the interpreter runs it over its own tokens
+// alone, as the check pass's fresh arm sub-engine did, so the no-match the
+// pass proved over the values it saw is the one the run meets whenever the
+// arm is taken. Only the INNERMOST frame counts — a trap met in a
+// condition, a loop body or an unsealed arm is not the run's — and not
+// under an optimistically matched outer dispatch (NUR264), whose rematch
+// owns the raise at the top level only. The first trap per arm wins; the
+// arm's later events are unreachable and appendEvent drops them, so the
+// fragment ends in the trap and diverges (fragDiverges), exactly as an arm
+// ending in `raise`. A mark the arm's later analysis makes still declines
+// the program, as after a `raise`: that analysis also shapes the join's
+// model of the arm, which the compile then rides.
+func (es *EmitState) recordArmTrap(t EmitTrap) bool {
+	n := len(es.fragSealed)
+	if n == 0 || !es.fragSealed[n-1] || es.optimisticOuter() != nil {
+		return false
+	}
+	if es.fragTrapped[n-1] {
+		return true
+	}
+	es.appendEvent(EmitEvent{kind: evTrap, trap: t})
+	es.fragTrapped[n-1] = true
 	return true
 }
 
@@ -10839,7 +11006,25 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		es.declineUndef(n, fwdReadAfterSpecUndef)
 		return true
 	}
-	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, polySeed: es.takePolySeed(), region: region, generic: generic}})
+	call := emitCall{word: word, ops: ops, nout: len(outs), pos: pos, poly: true, polyReg: ownerReg, polyNoMatch: noMatch, polySeed: es.takePolySeed(), region: region, generic: generic}
+	// The dispatch's exact layout, when the pass published one for these
+	// operands (an OPTIMISTIC match — a carrier operand whose type misses its
+	// slot, the joined element of `[1 Integer] each [add 1]`, NUR263 — or a
+	// GRADUAL one, core optimisticLayout): with no no-match plan of its own,
+	// the run's no-match lays the operands out as the interpreter's tape and
+	// raises its signature_error there (PolyRef.Split, the channel the
+	// dyn-body poly already rides — NUR242), where it deferred as
+	// vm:poly-no-match. The raise is positioned at the record's word, so the
+	// word must be the one the source wrote there — the token the
+	// interpreter's report underlines; a word the pass synthesized (the `dot`
+	// a compiled lens expands to sits on its key, NUR171) keeps the defer.
+	// Not in a run-time stamp either: its unit's tape is the stamped body's,
+	// and the interpreter reports a lens's no-match at the caller's position
+	// (`5 $.name apply` points at 1:1, the unit's layout at the `.name`).
+	if l := es.layoutFor(args); l != nil && noMatch == nil && !es.inStampCompile && es.reg != nil && wordWrittenAt(es.reg.Source, word, pos) {
+		call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
+	}
+	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	es.noteArgSites(seq, args)
 	switch len(outs) {
 	case 0:
@@ -10875,6 +11060,23 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		}
 	}
 	return true
+}
+
+// wordWrittenAt reports whether src spells word as a whole token at pos (a
+// modifier suffix — `add/s` — may follow it).
+func wordWrittenAt(src, word string, pos core.SrcPos) bool {
+	lines := strings.Split(src, "\n")
+	if pos.Row < 1 || pos.Row > len(lines) || pos.Col < 1 {
+		return false
+	}
+	// The parser counts columns in RUNES; the line is sliced in bytes, so a
+	// multibyte rune before the word must not shift the probe.
+	runes := []rune(lines[pos.Row-1])
+	if pos.Col-1 > len(runes) {
+		return false
+	}
+	rest, ok := strings.CutPrefix(string(runes[pos.Col-1:]), word)
+	return ok && (rest == "" || strings.ContainsRune(" \t\r,()[]{};/", rune(rest[0])))
 }
 
 // RecordDynMethod records a GUARDED shaped-instance-method apply (Stage M2c):
@@ -10938,7 +11140,7 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 	}
 	call := emitCall{
 		word: word, ops: ops, nout: len(outs), pos: pos,
-		dynMethod: &DynMethodSpec{Word: word, NArgs: len(args), NOut: len(outs), DefRead: defRead},
+		dynMethod: &DynMethodSpec{Word: word, NArgs: len(args), NOut: len(outs), DefRead: defRead, Paren: word == parenApplyWord},
 	}
 	// The method value's own producer, when it is a compiled closure (the
 	// factory pattern): the call is a user call by another route and its
@@ -11126,6 +11328,19 @@ func (es *EmitState) NoteStatementEnd(pos core.SrcPos) {
 		return
 	}
 	es.stmtEnds = append(es.stmtEnds, pos)
+}
+
+// NoteStatementStack keeps the stack a ROOT statement boundary left for the
+// next statement (EmitRecorder; the rootStmtStacks field). A boundary inside
+// an open unit's body, or one with no position, is not the root's.
+func (es *EmitState) NoteStatementStack(pos core.SrcPos, stack []core.Value) {
+	if !es.Active() || pos.Row == 0 || len(es.openUnitRecs) > 0 {
+		return
+	}
+	if es.rootStmtStacks == nil {
+		es.rootStmtStacks = map[core.SrcPos][]core.Value{}
+	}
+	es.rootStmtStacks[pos] = append([]core.Value(nil), stack...)
 }
 
 // NoteLandingNext records what followed a noted landing's value on the tape
@@ -12161,8 +12376,11 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,
 		root: root, depth: depth, spliceDepth: spliceDepth,
 		residentTwin: -1, carried: carried, specFn: specFn, replace: replace,
-		keepSkip: cur.keepsDefs && !keepInstallable(src, srcSeq, v),
+		keepSkip: cur.keepsDefs && !es.keepInstallable(src, srcSeq, v),
 	}})
+	if cur.keepsDefs && es.inStampCompile && !es.keepInstallable(src, srcSeq, v) {
+		es.stampKeepSkipped(name)
+	}
 	es.noteBindHazard(name)
 }
 
@@ -12183,7 +12401,8 @@ func (es *EmitState) loopSplitRebind(d *emitDynBind) bool {
 // keepInstallable reports whether a KEEP-DEFS unit's def can install its
 // value at run time: the value has a home the install re-pushes from — a
 // producing event (promoted to a frame slot for the re-push), a frame
-// slot, or an inert const baked as it stands under a BUILTIN type.
+// slot, an inert const baked as it stands under a BUILTIN type, or a type
+// node that exists before this pass (keepTypeNode).
 // Anything else — a fn value, a splice marker, a macro, and a literal
 // REPARENTED to a user type (`def y:P 5` over a refinement `P` the same
 // body mints: installed at run time BEFORE the body's type twin replays
@@ -12191,11 +12410,43 @@ func (es *EmitState) loopSplitRebind(d *emitDynBind) bool {
 // analysis-order suite; the twin's replay, after the type's, keeps the
 // order the interpreter had) — is emitDynBind.keepSkip and keeps the
 // lowering it had.
-func keepInstallable(src EmitOperand, srcSeq int, v core.Value) bool {
-	if srcSeq >= 0 || src.kind == opLocal {
+func (es *EmitState) keepInstallable(src EmitOperand, srcSeq int, v core.Value) bool {
+	if srcSeq >= 0 || src.kind == opLocal || es.keepTypeNode(v) {
 		return true
 	}
 	return core.IsInertConst(v) && (v.Parent == nil || v.Parent.Origin == core.OriginBuiltin)
+}
+
+// stampKeepSkipped declines a RUN-TIME stamp (a token body, StampTokenBody)
+// whose keep-defs unit skipped the install of name's def. At compile time a
+// skipped install keeps the lowering it had — the program's bind twin
+// replays the def after the unit — but a run-time stamp has no such twin:
+// the def the interpreter keeps in the caller's scope was silently dropped,
+// and a read after the body answered the name's earlier value (`quote [def
+// y:P 5]` over a refinement P read 0, `quote [def y word [1 2]]` 0 — NUR333's
+// siblings). Declined through the arm-read seam's Finalize decline (no new
+// compile-failure site), the stamp is dropped and the interpreter runs the
+// body, as for every declined stamp.
+func (es *EmitState) stampKeepSkipped(name string) {
+	if es.trapAt == 0 && es.armReadCompileFailure == "" {
+		es.armReadCompileFailure = "keep-defs body def `" + name + "` of a value its unit cannot install: a run-time stamp has no bind twin to replay it"
+	}
+}
+
+// keepTypeNode reports whether a keep-defs def binds a bare type NODE — a
+// lowercase name bound to a type (`def x Integer`) — that its install can
+// re-push as a type operand (OpPushType, the canonical node resolved by ID at
+// run time), exactly as a read of the node would (resolveOperand's type arm).
+// Such a value is no inert const (a pooled by-value copy of a node goes
+// stale), so a keep-defs unit skipped its install, and a COMPUTED `do` body —
+// run as a stamped unit, with no twin to replay the def after it — never
+// bound the name: `def x 99 … do (mk) end x` over `quote [def x Integer]`
+// read 99 for the interpreter's Integer (NUR333). A node THIS pass minted
+// (`def P (refine Integer) def x P` in a literal body) keeps the skip, for
+// the reparented literal's reason above: the body's type twin replays the
+// node after the unit, and the twin of `x` binds the replayed node.
+func (es *EmitState) keepTypeNode(v core.Value) bool {
+	return core.IsBareTypeNode(v) && v.ID != "" && !es.passMintedTypes[v.ID]
 }
 
 // dynScopeRescue is resolveOperand's last resort inside a fn unit: a value
@@ -16917,7 +17168,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		}
 	}
 	if es.trapAt == 0 && dynOp != OpCallDynMixedFromMark {
-		if reason := lw.seatProgramResidual(ops, residual, lastPos); reason != "" {
+		if reason := lw.seatProgramResidual(ops, residual, es.residualCallableExempt(residual, rootResidualReads), lastPos); reason != "" {
 			// Reachable: a dirty-stack prefix under a dynamic-apply residual
 			// (the variation sweep's prefix-stack transform) seats a shape
 			// this declines — a genuine Stage-1 failure path, not a fault arm.
@@ -17297,6 +17548,48 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 	lw.deopts = append(lw.deopts, deoptPoint{seq: seq, slot: -1, name: r.name, pos: r.reads[0], start: start, token: -1, bail: true})
 }
 
+// residualCallableExempt names the program residual entries the rebuild's
+// CALLABLE screen (seatProgramResidual) need not hold against it. The screen
+// exists for a SHUFFLE's data (`5 (mk 3) 0 pick`): a fold models the
+// permutation as data where the interpreter splices it back onto the tape and
+// re-steps it, and a re-push would answer data where the interpreter applied
+// a fn. With no pick/roll fold in the program, no residual entry is such a
+// copy, and two kinds are the interpreter's own stack entries whatever they
+// hold:
+//
+//   - a root read of a gradual def-bound value (NUR207), which its own test
+//     owns where the residual is laid out (seatRootResidualReads: an island
+//     resumes the interpreter at the read's token when it holds a fn, a
+//     guard bails), held no more often than the program reads it;
+//   - a call result held once, whose arrival the dispatch that produced it
+//     already modelled.
+//
+// So `def j (mk) end j 5 j typeof` seats [j 5 Integer] where the in-place
+// seating cannot put typeof's result above the literal.
+func (es *EmitState) residualCallableExempt(residual []core.Value, reads map[string]rootWordRead) map[string]bool {
+	if es.shuffleFolded {
+		return nil
+	}
+	count := map[string]int{}
+	for _, rv := range residual {
+		count[rv.ID]++
+	}
+	exempt := map[string]bool{}
+	for _, rv := range residual {
+		if rv.ID == "" {
+			continue
+		}
+		if r, ok := reads[rv.ID]; ok {
+			exempt[rv.ID] = count[rv.ID] <= len(r.reads)
+			continue
+		}
+		if _, produced := es.producedBy[rv.ID]; produced && count[rv.ID] == 1 {
+			exempt[rv.ID] = true
+		}
+	}
+	return exempt
+}
+
 // readIsDeepestOperand reports whether the value result idx of event seq is
 // the deepest operand of the plain call ev — its last signature position,
 // which the lowering seats first, every other operand pushed above it.
@@ -17623,6 +17916,13 @@ func (es *EmitState) noteDynFrameReplay(u *emitUnit, rec *fnUnitRec, vals []core
 		// [g/v 5]]` is the count error over `[fn g 5]`, where the replay
 		// fired g first and listed `[7 5]` (NUR318).
 		if es.placedNotReStepped(v) || v.Quoted || es.placedValRead(v.ID) {
+			continue
+		}
+		// A bare read seated live pushes data or defers (liveDataIDs): its
+		// gradual modality after a computed body (computedLeakGradual) is
+		// the TYPE's, never a possible call — `t t` over `quote [def t 5
+		// 1]` is the frame's count error over `[5 5]`.
+		if es.liveDataIDs[v.ID] {
 			continue
 		}
 		if v.Dynamic || (v.Parent != nil && v.Parent.ConformsTo(core.TFunction)) {
@@ -18381,6 +18681,7 @@ func stampUnitRestarts(flw *lowerer, cf *CompiledFn, retPC int) {
 // residual is the program's.
 func stampRootRestarts(lw *lowerer) {
 	end := len(lw.p.Code)
+	markTailPlacements(lw.p)
 	stampLandingRet(lw.p.LandingWords, end)
 	for _, di := range lw.restartMethods {
 		lw.p.DynMethods[di].RetPC = end
@@ -18391,6 +18692,65 @@ func stampRootRestarts(lw *lowerer) {
 	for _, fi := range lw.restartFallbacks {
 		lw.p.FallbackCounts[fi].RetPC = end
 	}
+}
+
+// parenApplyWord is the word core's paren-bounded leading apply records
+// under (recordParenLeadingApply).
+const parenApplyWord = "(paren apply)"
+
+// markTailPlacements marks every root paren apply after which the program
+// only pushes (DynMethodSpec.Place, NUR336): nothing after it reads the
+// stack beneath what it leaves, so a lead that is data at run time is placed
+// with the values after it where the apply stands, and an apply's results
+// stand whatever their count — the program's residual is the interpreter's
+// (`(m.f y) 9` is `[5 42 9]` over a data member, `(m.f y 8)` `[43 8]` over
+// a one-argument fn), with no statement island to run.
+func markTailPlacements(p *Program) {
+	for pc, in := range p.Code {
+		if in.Op != OpCallDynMethod {
+			continue
+		}
+		// The lowering emits the op over the spec it appended (lowerCall).
+		if spec := &p.DynMethods[in.Arg]; spec.Paren && onlyPushes(p.Code[pc+1:]) && pushesWrittenAfter(p, pc) {
+			spec.Place = true
+		}
+	}
+}
+
+// pushesWrittenAfter reports whether every instruction after pc carries a
+// source position AFTER the apply's own: the values pushed there are the
+// ones the program WROTE after the paren. A value written BEFORE the apply
+// that the lowering pushes after it — a statically folded shuffle
+// re-seating an operand beneath the paren (`3 (m.f 7) swap` pushes the 3
+// after the apply) — is not one the paren's placement leaves above its
+// window, so the apply is not a placing one (a data lead there placed the
+// 3 last: [5 7 3] for the interpreter's [3 7 5]). A push with no position
+// is not known to be written after, and refuses too.
+func pushesWrittenAfter(p *Program, pc int) bool {
+	if len(p.Debug) != len(p.Code) {
+		return false
+	}
+	at := p.Debug[pc]
+	for i := pc + 1; i < len(p.Code); i++ {
+		d := p.Debug[i]
+		if d.Row == 0 || d.Row < at.Row || (d.Row == at.Row && d.Col <= at.Col) {
+			return false
+		}
+	}
+	return true
+}
+
+// onlyPushes reports whether code only pushes values — a constant, a local, a
+// type — reading nothing beneath them.
+func onlyPushes(code []Instr) bool {
+	for _, in := range code {
+		switch in.Op {
+		case OpPushConst, OpPushConstFresh, OpPushLocal, OpPushType:
+		default:
+			return false
+		}
+	}
+	return true
 }
 
 // stampSigRestart seats retPC on a SigRef's statement island — a branch
@@ -18890,6 +19250,15 @@ func collectWordNames(tokens []core.Value, names map[string]bool) {
 		}
 		if w, err := core.AsWord(t); err == nil {
 			names[w.Name] = true
+			continue
+		}
+		// A reach (`q.f`, `m.(k)`) reads its receiver's names, and a
+		// computed segment's: an island stepping `(q.f 7)` resolves q.
+		if ri, err := core.AsReach(t); err == nil {
+			collectWordNames(ri.Receiver, names)
+			for _, seg := range ri.Segments {
+				collectWordNames(seg.KeyExpr, names)
+			}
 			continue
 		}
 		if inner, err := core.AsParenExpr(t); err == nil {

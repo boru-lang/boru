@@ -101,6 +101,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.RecordUnitTrapErr(nil, SrcPos{}) {
 		t.Fatal("inactive RecordUnitTrapErr must decline")
 	}
+	if e.RecordArmTrapErr(nil, SrcPos{}) {
+		t.Fatal("inactive RecordArmTrapErr must decline")
+	}
 	if e.RecordDispatchRematchValues("w", nil, 0, nil, SrcPos{}) {
 		t.Fatal("inactive RecordDispatchRematchValues must decline")
 	}
@@ -149,6 +152,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 		t.Fatal("inactive MayBeFn must be false")
 	}
 	e.NoteStatementEnd(SrcPos{Row: 1, Col: 1})
+	e.NoteStatementStack(SrcPos{Row: 1, Col: 1}, nil)
 	e.NoteLandingNext(Value{}, LandingNextEnd, false, Value{})
 	if _, ok := e.PendingClosureApply(nil); ok {
 		t.Fatal("inactive PendingClosureApply must miss")
@@ -185,6 +189,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.NoteDefRead("id", "n")
 	e.NoteWordRead(Value{}, "n", SrcPos{})
 	e.NoteValRead("id", "n")
+	e.NoteValReadLive(&Value{}, "n", SrcPos{})
 	e.NoteFrozenRead("n", FrozenBakeValue, 0)
 	e.NotifyNameRebound("n")
 	if got := e.RegisterLocal("id"); got != -1 {
@@ -194,6 +199,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 
 	// --- branches / loops.
 	e.ArmBranchCapture()
+	e.ArmSealedBranchCapture()
 	if e.PeekCaptureArm() {
 		t.Fatal("inactive PeekCaptureArm must be false")
 	}

@@ -539,7 +539,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			// instance the program uses). Anything else declines.
 			if core.IsInertConst(d.val) {
 				src = ConstOperand(lw.es.internUnpooled(d.val))
-			} else if op, ok := lw.es.resolveOperand(d.val); ok && (op.kind == opConst || op.kind == opLocal) {
+			} else if op, ok := lw.es.resolveOperand(d.val); ok && (op.kind == opConst || op.kind == opLocal || op.kind == opType) {
 				src = op
 			} else {
 				return "dynamic-scope def `" + d.name + "` of unknown provenance"
@@ -1447,11 +1447,16 @@ func (lw *lowerer) seatLandingSkip(c *emitCall) {
 	}
 	delete(lw.landingSkips, c.ops[0].idx)
 	calls := 0
-	for pc := at + 1; pc < len(*lw.code); pc++ {
-		switch op := (*lw.code)[pc].Op; {
+	code := *lw.code
+	for pc := at + 1; pc < len(code); pc++ {
+		switch op := code[pc].Op; {
 		case op == OpSwap:
 		case isWordCallOp(op):
 			calls++
+		case op == OpStoreLocal && pc+1 < len(code) && code[pc+1].Op == OpPushLocal && code[pc+1].Arg == code[pc].Arg:
+			// The call's result stashed for the apply's statement island
+			// (substStash) and pushed back: the stack is as it was.
+			pc++
 		default:
 			return
 		}
@@ -3040,7 +3045,7 @@ func (lw *lowerer) seatResults(ops []EmitOperand, rejectVariadic, allowVariadicT
 // Split out of Finalize rather than written inline because Finalize sits on
 // the gocyclo ceiling: one more branch there is one branch too many, and this
 // choice belongs beside the two seatings anyway.
-func (lw *lowerer) seatProgramResidual(ops []EmitOperand, vals []core.Value, pos core.SrcPos) string {
+func (lw *lowerer) seatProgramResidual(ops []EmitOperand, vals []core.Value, exempt map[string]bool, pos core.SrcPos) string {
 	if lw.seatRegionPrefix(ops, pos) {
 		return ""
 	}
@@ -3055,7 +3060,7 @@ func (lw *lowerer) seatProgramResidual(ops []EmitOperand, vals []core.Value, pos
 	// seatResults declined, and it emits nothing when it does — so the
 	// rebuild below starts from the same stack it saw. A residual that may
 	// carry a CALLABLE does not take it: see seatResidualRebuild.
-	if !regionValsMayBeCallable(vals) && lw.seatResidualRebuild(ops, pos) {
+	if !residualMayBeCallable(vals, exempt) && lw.seatResidualRebuild(ops, pos) {
 		return ""
 	}
 	return reason
@@ -3145,6 +3150,18 @@ func (lw *lowerer) seatResidualRebuild(ops []EmitOperand, pos core.SrcPos) bool 
 	}
 	lw.note()
 	return true
+}
+
+// residualMayBeCallable is the rebuild's CALLABLE screen
+// (regionValsMayBeCallable) over the entries it is owed against — every
+// entry but the exempt ones (EmitState.residualCallableExempt).
+func residualMayBeCallable(vals []core.Value, exempt map[string]bool) bool {
+	for _, v := range vals {
+		if !exempt[v.ID] && regionValsMayBeCallable([]core.Value{v}) {
+			return true
+		}
+	}
+	return false
 }
 
 // simHolds reports whether an event operand's value is on the simulated
@@ -3717,9 +3734,13 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// read that is a ROUTED dispatch's forward word slot, an inert
 		// placeholder the op pops unread (it resolves the slot from its own
 		// window; EmitState.livePlaceholders).
-		if lw.es != nil && lw.es.livePlaceholders[ev.seq] {
+		switch {
+		case lw.es != nil && lw.es.livePlaceholders[ev.seq]:
 			lw.emit(OpPushConst, c.liveName, c.pos)
-		} else {
+		case c.liveRef:
+			// A `/v` read (NoteValReadLive): the value spelling's lookup.
+			lw.emit(OpLookupDynScopeRef, c.liveName, c.pos)
+		default:
 			lw.emit(OpLookupDynScope, c.liveName, c.pos)
 		}
 		return lw.seatCallResults(ev, c)
@@ -3884,7 +3905,8 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		di := len(lw.p.DynMethods)
 		spec := *c.dynMethod
 		if r := lw.restartAt(ev.seq); r != nil {
-			if substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, -1); ok {
+			// The lead's plan (parenLead) writes the value the apply holds.
+			if substs, ok := lw.restartSubstSrcs(r, c.ops[0], -1); ok {
 				spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc, spec.Substs, spec.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
 				lw.restartMethods = append(lw.restartMethods, di)
 			}

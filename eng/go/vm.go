@@ -2644,8 +2644,31 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 	for i := 0; i < n; i++ {
 		args[i] = stack[top-1-i]
 	}
+	restart := func() ([]core.Value, *dynEnter, error) {
+		if !vc.firstIteration(spec.FirstIter) {
+			return nil, nil, laterIterationDefer(reg, curDebug, pc)
+		}
+		// The lead's own run (compiler's parenLead) is written as the value
+		// the apply found.
+		island, err := vc.substIsland(spec.Island, spec.Substs, []core.Value{fnVal}, frameBase, stack, curDebug, pc)
+		if err != nil {
+			return nil, nil, err
+		}
+		return vc.statementRestart(reg, spec.PrefixSrc, island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
+	}
 	guard := func(results []core.Value) ([]core.Value, *dynEnter, error) {
-		if len(results) != spec.NOut {
+		// A placing apply (DynMethodSpec.Place) claims no count: nothing
+		// after it reads beneath what it leaves, so the paren's own count
+		// stands — `(m.f y 8)` over a one-argument fn leaves its result and
+		// the 8, as the interpreter's paren does (NUR336).
+		if len(results) != spec.NOut && !spec.Place {
+			// No statement island here, even where the results LOOK like
+			// the paren's placement (the lead then its values): the apply
+			// has already run, and a run value carries no identity to tell
+			// "took none of them" from "ran and returned them" — re-running
+			// the statement could repeat its effects (the Codex review of
+			// #520). A lead the island may take is one that never ran: the
+			// not-appliable arm below.
 			// A boru fn's own return COUNT never reaches here: every path
 			// that runs one enforces it first — the island (the
 			// interpreter's named dispatch, NUR191), the foreign arm (the
@@ -2668,6 +2691,13 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		}
 		return append(stack[:base], results...), nil, nil
 	}
+	if spec.Paren && fnVal.Quoted && core.IsAppliableFn(fnVal) {
+		// A paren applies its lead over the values after it however the
+		// landing before it left the lead: parked, where the lead could not
+		// take the word after it (`(m.f y)` over a lambda of one Integer is
+		// 43), as a `/v` read of it is applied (`(m.f/v 7)`). NUR336.
+		fnVal.Quoted = false
+	}
 	if _, ok := fnVal.Data.(core.ClosurePayload); ok && !fnVal.Quoted {
 		results, err := vc.invokeClosurePositional(vc.r, fnVal, args)
 		if err != nil {
@@ -2678,18 +2708,18 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 	if !core.IsAppliableFn(fnVal) || fnVal.Quoted {
 		// The shape claim failed outright: the read did not surface a live
 		// method value. The interpreter would leave it as data and continue
-		// with a DIFFERENT stack shape, which this program cannot express —
+		// with a DIFFERENT stack shape: where nothing after the apply reads
+		// beneath it the VM places the values itself (DynMethodSpec.Place,
+		// NUR336) — the lead, then the values after it in the order written
+		// (args are in signature order, the first written first); otherwise
 		// its statement's island runs it (DynMethodSpec.Restart, NUR242),
-		// and with none the apply defers wholesale.
+		// and with neither the apply defers wholesale.
+		if spec.Place {
+			placed := append(stack[:base:base], fnVal)
+			return append(placed, args...), nil, nil
+		}
 		if spec.Restart {
-			if !vc.firstIteration(spec.FirstIter) {
-				return nil, nil, laterIterationDefer(reg, curDebug, pc)
-			}
-			island, err := vc.substIsland(spec.Island, spec.Substs, nil, frameBase, stack, curDebug, pc)
-			if err != nil {
-				return nil, nil, err
-			}
-			return vc.statementRestart(reg, spec.PrefixSrc, island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
+			return restart()
 		}
 		return nil, nil, vmDefer(vc.r, curDebug, pc, "vm:shaped-method-not-appliable", "shaped method apply "+spec.Word+
 			": value is not an appliable function at run time; the compiled runtime cannot execute it")
@@ -4862,17 +4892,22 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, vmErrAt(curDebug, pc, "UNDEF_DYN_SCOPE bad name const")
 			}
 			core.PopLiveBinding(curReg, name)
-		case compiler.OpLookupDynScope:
+		case compiler.OpLookupDynScope, compiler.OpLookupDynScopeRef:
 			// The interpreter's stepWord simple-value substitution, at run
 			// time: read the name's live binding. A miss, or a binding the
 			// substitution would DISPATCH instead of push (a Function / class /
 			// splice / reach), defers to the interpreter — containment for a
 			// shape the VM cannot yet read, not a sanctioned outcome.
+			// OpLookupDynScopeRef is the `/v` read's twin (stepWordVal):
+			// ResolveRef's value, a fn or class binding pushed as data.
 			name, nerr := p.Consts[in.Arg].AsConcreteString()
 			if nerr != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 				return nil, vmErrAt(curDebug, pc, "LOOKUP_DYN_SCOPE bad name const")
 			}
 			v, ok := curReg.Defs.Top(name)
+			if in.Op == compiler.OpLookupDynScopeRef {
+				v, ok = core.ResolveRef(curReg, name)
+			}
 			if !ok {
 				// A name a placed speculative undef may have popped
 				// (Program.SpecUndefNames): the miss IS the interpreter's
@@ -4886,6 +4921,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			switch v.Data.(type) {
 			case core.FnDefInfo, *core.ClassTypeInfo:
+				if in.Op == compiler.OpLookupDynScopeRef {
+					// The value spelling never dispatches: a fn binding is
+					// the aggregate Function value, a class the class — the
+					// interpreter delivers the read as data.
+					stack = append(stack, v)
+					continue
+				}
 				return nil, vmDefer(vc.r, curDebug, pc, "vm:dyn-scope-dispatching", "dynamic-scope read of a dispatching binding `"+name+"`; the compiled runtime cannot execute it")
 			}
 			if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {
