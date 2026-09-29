@@ -196,13 +196,45 @@ func TestLiveDeoptPlainBindings(t *testing.T) {
 	}
 }
 
-// TestLiveDeoptSpliceReturnedStaysLoud: the one shape the island cannot
-// finish. A unit's `/v` read of a splice is its RESULT, which the
-// interpreter's caller steps again (`f` answers the splice's tokens); the
-// island's residual goes back to a compiled caller that would keep it as
-// data, so the run keeps a designed defer — loud, never the data.
-func TestLiveDeoptSpliceReturnedStaysLoud(t *testing.T) {
-	requireLoudDefer(t, unitHead+`t/v]] end f (quote [def t word [1 2] 1])`, "tape-coupled deopt result", "[1 2]")
+// TestLiveDeoptSpliceReturned: a unit's `/v` read of a splice is its RESULT,
+// which the interpreter steps again where the call stood (`f` answers the
+// splice's tokens). The island's residual went back to a compiled caller
+// that would keep it as data, and the screen deferred ("tape-coupled deopt
+// result"). Where the call is the program's last op — the unit returns
+// straight to the root's end — the RET steps the results there on the
+// interpreter over the stack beneath (vmContext.rootEndStep,
+// rootEndResults, NUR334). Any other caller keeps the screen's defer: loud,
+// never the data.
+func TestLiveDeoptSpliceReturned(t *testing.T) {
+	const call = `f (quote [def t word [1 2] 1])`
+	for _, c := range []struct{ src, want string }{
+		{unitHead + `t/v]] end ` + call, "[1 2]"}, // the register's witness
+		{unitHead + `t/v]] end ` + call + ` end`, "[1 2]"},
+		{unitHead + `t/v]] end print "z" ` + call, "[1 2]"},
+		{unitHead + `t/v]] end def h fn [[][Any][` + call + `]] end (h)`, "[1 2]"},
+		{unitHead + `t/v]] end f (quote [def t word [[1 add 2]] 1])`, "[[3]]"},
+		{unitHead + `t/v]] end f (quote [def t word [] 1])`, "[]"},
+		{`def g fn [[][Integer][7]] end ` + unitHead + `t/v]] end f (quote [def t word [g] 1])`, "[7]"},
+		{unitHead + `t/v]] end f (quote [def t word [add] 1])`, "ERROR:cannot call `add`"},
+		{unitHead + `t/v]] end f (quote [def t word [nosuch] 1])`, "ERROR:undefined word: nosuch"},
+		{`def f fn [[b:List][Integer][def t 0 do b drop t/v]] end ` + call, "ERROR:expected Integer, got word()"},
+		// The negative half: a binding the statement takes stays compiled.
+		{unitHead + `t/v]] end f (quote [def t 5 1])`, "[5]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// A caller that goes on after the call — a value it pushes at the
+	// program's end, a word, a list literal, a paren — keeps the screen's
+	// designed defer.
+	for _, c := range []struct{ src, want string }{
+		{unitHead + `t/v]] end 9 ` + call, "[9 1 2]"},
+		{unitHead + `t/v]] end ` + call + ` 5`, "[1 2 5]"},
+		{unitHead + `t/v]] end [` + call + `]`, "[[1 2]]"},
+		{unitHead + `t/v]] end def r (` + call + `) end r`, "[2 1]"},
+		{unitHead + `t/v]] end 4 5 f (quote [def t word [add] 1])`, "[9]"},
+	} {
+		requireLoudDefer(t, c.src, "tape-coupled deopt result", c.want)
+	}
 }
 
 // TestLiveDeoptIslandMadeLoopDef: a unit whose island's names include a def

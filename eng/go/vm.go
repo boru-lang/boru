@@ -183,6 +183,14 @@ type vmContext struct {
 	// root statement island seats an earlier result the root promoted from
 	// its slot (compiler.RestartLocal).
 	restartLocals []core.Value
+	// rootEndReturn is set by the run loop around an OpDeoptIfFn whose unit
+	// returns straight to the program root's end (the root's CALL_USER is its
+	// last op), and rootEndStep by a live-read island there that left a
+	// tape-coupled result — a `/v` read of a splice (NUR334): the interpreter
+	// steps the frame's results where the call stood, so the RET into the
+	// root's end runs them on the interpreter over the stack beneath
+	// (rootEndResults) instead of the screen's defer.
+	rootEndReturn, rootEndStep bool
 	// landingSkip is a landing's CLAIM jump (NUR190): set by landingQuoteClaim when
 	// the re-step claimed the word after the landed value, and read — then
 	// cleared — by the run loop right after the op, which resumes at that pc
@@ -4125,12 +4133,32 @@ func (vc *vmContext) liveDeopt(reg *core.Registry, body []core.Value, root bool,
 	if err != nil {
 		return nil, false, stampAt(err, curDebug, pc, reg)
 	}
-	if !root {
+	switch {
+	case !root && vc.rootEndReturn && tapeCoupled(results):
+		// The unit returns straight to the program's end, where the
+		// interpreter steps its results (rootEndResults).
+		vc.rootEndStep = true
+	case !root:
 		if err := vc.screenResults(results, "deopt result", curDebug, pc); err != nil {
 			return nil, false, err
 		}
 	}
 	return append(stack[:frameBase], results...), true, nil
+}
+
+// rootEndResults steps a unit's tape-coupled results where the root's
+// CALL_USER that ended the program stood (vmContext.rootEndStep, NUR334): the
+// interpreter splices a fn frame's results back on its tape and steps them —
+// a `/v` read of a `word` value fires its splice there — so an island runs
+// them as tokens over the stack beneath as the resolved prefix, and its
+// residual is the program's.
+func (vc *vmContext) rootEndResults(reg *core.Registry, stack []core.Value, base int, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	vc.rootEndStep = false
+	results, err := runIslandResolved(reg, stack[:base], append([]core.Value(nil), stack[base:]...))
+	if err != nil {
+		return nil, stampAt(err, curDebug, pc, reg)
+	}
+	return results, nil
 }
 
 // reStepIfFn executes a RE-STEP deopt (compiler.DeoptSpec.Results, NUR124).
@@ -5388,7 +5416,9 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// The main code carries its own table and body (Program.Deopts,
 			// NUR207): a root point's island runs to the program's end.
 			spec, body := deoptEntry(p, curUnit, int(in.Arg))
+			vc.rootEndReturn = curUnit >= 0 && len(frames) == 1 && frames[0].retUnit < 0 && frames[0].retPC >= len(p.Code)
 			ns, fired, err := vc.deoptIfFn(curReg, body, curUnit < 0, spec, fb, stack, locals, curDebug, pc)
+			vc.rootEndReturn = false
 			if err != nil {
 				return nil, err
 			}
@@ -5682,6 +5712,15 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			locals = f.locals
 			enterUnit(f.retUnit)
 			pc = f.retPC - 1
+			if vc.rootEndStep && len(frames) == 0 && f.retUnit < 0 {
+				// A live-read island's splice, returned to the program's end
+				// (NUR334).
+				ns, err := vc.rootEndResults(curReg, stack, f.stackBase, curDebug, pc)
+				if err != nil {
+					return nil, err
+				}
+				stack = ns
+			}
 		case compiler.OpFlowBreak, compiler.OpFlowContinue:
 			// A break/continue raised in a fn body with no enclosing loop in its
 			// own unit targets the nearest open loop in an ANCESTOR frame — the
