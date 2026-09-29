@@ -93,12 +93,11 @@ list only by becoming **Resolved** (the record is then deleted) or
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
 | [NUR235](#nur235) | A typed-map param pattern over an inline map literal with a computed member: both lanes refuse the call, the `signature_error` notes differ | call-site specialisation's investigation (2026-09-27) |
-| [NUR334](#nur334) | A read after a computed keep-defs body: the shapes the live-read deopt does not serve stay loud | main's 50 uncovered statements (2026-09-28); remainder after the live-read deopt (2026-09-29) |
+| [NUR334](#nur334) | A read after a computed keep-defs body: a unit returning a `/v`-read splice, and a read inside a spliced word's body, stay loud | main's 50 uncovered statements (2026-09-28); narrowed twice 2026-09-29 |
 | [NUR336](#nur336) | A paren apply over a member that is data at run time: a `/v` lead, a landing lead in a loop body, and two leftover shapes stay loud | main's 50 uncovered statements (2026-09-28); narrowed twice 2026-09-29 |
 | [NUR343](#nur343) | A union-typed branch at `each` whose arm holds an effect or a binding defers at run time (loud) | the NUR340 pass (2026-09-29); narrowed 2026-09-29 |
-| [NUR344](#nur344) | A parked fn value before `do [lam/v]` raises a compiled internal_error (loud) | the NUR342/NUR337 pass (2026-09-29); narrowed 2026-09-29 |
 | [NUR347](#nur347) | A named closure read with `/v` into a runtime-built map anchors its contract error at the member read compiled (loud; caret only) | the interp-entry census pass (2026-09-29); narrowed twice 2026-09-29 |
-| [NUR348](#nur348) | Three computed-body shapes the compiled runtime still defers (loud) | the live-read deopt pass (2026-09-29); narrowed 2026-09-29 |
+| [NUR348](#nur348) | A fn unit's `do b` over a computed splice, and a computed `do` whose statement opens with an infix call in a paren, still defer compiled (loud) | the live-read deopt pass (2026-09-29); narrowed twice 2026-09-29 |
 | [NUR350](#nur350) | Whether a computed body or a late word macro sees a fn's `args` depends on whether the fn's own body mentions `args` or needs frame state (the interpreter's leaf-frame elision, now mirrored compiled) | the NUR346 fix (2026-09-29) |
 | [NUR351](#nur351) | A forward collection stops at a live read's stale type after a computed body: a wrong error compiled where the interpreter answers | the NUR348 pass (2026-09-29) |
 | [NUR352](#nur352) | Four loud neighbours of the union-branch rematch and the member apply: a static trap, an eager arm body, a pre-evaluated argument note, a gradual def-bound fn read | the NUR343/349 pass (2026-09-29) |
@@ -830,12 +829,12 @@ compiled statement cannot take it (compiler `kept_live_deopt.go`, eng
 
 - a unit returning a `/v`-read splice to its caller ("tape-coupled deopt
   result") — the caller's splice of the returned value has no compiled seat;
-- a read whose unit cannot make its island names registry-visible (a `def`
-  inside a later `for` body);
 - a read inside a spliced word's body (`def w word [do (mk) end x] w`).
 
 Pinned by lang `TestLiveDeoptSpliceReturnedStaysLoud`,
-`TestLiveDeoptUnservedStaysLoud`.
+`TestLiveDeoptSplicedWordStaysLoud`. A `def` inside a later `for` body was
+fixed 2026-09-29 (`markIslandMadeDefs`: a def inside an arm or loop body
+written after every island's start is island-made).
 
 ---
 
@@ -884,25 +883,6 @@ Likewise an arm `[def q 3 q]`. Pinned by lang
 
 ---
 
-## NUR344 — a parked fn value before `do [lam/v]` defers compiled {#nur344}
-
-**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
-
-```
-def lam ([x:Integer] => [x add 100]) end ({a:1} lam/v) do [lam/v]
-  interpreted   [{a:1} fn lam(Integer) fn lam(Integer)]
-  compiled      internal_error (the NUR286 defer in reStepLanding)
-```
-
-The VM cannot tell whether a forward token after the landing would be
-collected, so ruling it out needs a flag from the compiler. The silent
-half — a parked fn value not applied to a paren, reach, template or splice
-result after it (`("s" lam/v) (2 add 3)` was `[s fn lam(Integer) 5]` for
-`[s 105]`) — was fixed 2026-09-29 (core `trailingFnCollectsPastClose`,
-`CheckState.TrailingDeferredFnIDs`).
-
----
-
 ## NUR347 — a closure stored by `/v` in a runtime-built map: the caret {#nur347}
 
 **Status:** Pending (loud; the caret differs) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
@@ -925,22 +905,19 @@ a `/v`-read callback argument (`each h/v [5]`, `fold`, `FnUtil.compose`).
 
 ## NUR348 — computed-body shapes the compiled runtime defers {#nur348}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29 (twice)
 
-Still loud (internal_error compiled, the interpreter answers):
+- A fn unit's `do b` over a computed splice:
+  `def w word [1 2] end def f fn [[b:List][Any][do b]] end f (quote [w/v])`
+  — units plan no count island for a computed run.
+- `def x 0 end def mk fn [[][List][quote [def x [1 2]]]] end (3 add 4) do (mk) x.0`
+  ("left 0 value(s)") — `restartSubsts` cannot substitute an infix call
+  inside a paren, so no count island is placed.
 
-- the no-`end` twin `do (mk) x.0` over `def x 0` and a body
-  `quote [def x [1 2]]` — the statement's first token is the `do`, so a
-  live-read test there would run before the body;
-- a value beneath the run: `5 end do (mk) end x.0` over a run leaving a fn;
-- a computed body leaving a splice: `do (mk)` over `quote [w/v]`
-  ("tape-coupled handler result at do").
-
-Fixed 2026-09-29: `do (mk) end x.0` (the live point planned under a
-terminal trap, compiler `trapHeldBeneath`) and `do [w/v]` over
-`def w word [1 2]` (a fired splice leaves the `do`'s results,
-`EmitRecorder.NoteSpliceFired`, `SigRef.SpliceOuts`). Pinned in lang
-`nur348_computed_body_test.go`.
+Fixed 2026-09-29: `do (mk) end x.0`, `do [w/v]`, the no-`end` twin
+`do (mk) x.0`, a value beneath the run, and a computed body leaving a splice
+(compiler `planCountRestarts`, `SigRef.CountAlways`, eng
+`dynBodyPlainRefuses`). Pinned in lang `nur348_computed_body_test.go`.
 
 ---
 
@@ -992,7 +969,10 @@ The gradual Integer bound on `x` (the model's pre-body type) is disjoint
 from `keys`' Map slot, so the model's `keys` takes the body's run from the
 stack and the live-read point lands after it. Twin: `… quote [4] … x keys`
 raises on both lanes with different notes ("the arguments were 0 … and 4"
-interpreted, "the argument was 0" compiled). Pre-existing on main b37ddca.
+interpreted, "the argument was 0" compiled). A further witness:
+`def mk fn [[][List][quote [4]]] end (1 add 2) do (mk) end keys 5` raises on
+both lanes, "the argument was 4" compiled for "was 5" interpreted.
+Pre-existing on main b37ddca.
 
 ---
 

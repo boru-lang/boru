@@ -699,6 +699,8 @@ user still gets an answer while the case is open:
     that escapes with break/continue outside any compiled loop at the root
     (NUR353): the index lives in a frame slot a run-time token body cannot
     resolve, and the interpreter's flow_error position depends on its tape.
+  - `def w2 word [1 2] end def mk fn [[][List][quote [print "q" w2/v]]] end def w word [do (mk) 3] w w`
+    halts the check pass ("undefined stack entry at position 2").
   - `def k 5 size {a:[undef k 1]} k` is refused by the check pass
     ("undefined word: k") where the interpreter raises undefined_word at run
     time.
