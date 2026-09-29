@@ -73,6 +73,48 @@ type vmLoop struct {
 	// base is the operand-stack depth where the loop's results begin, and
 	// frameBase its frame's own base (loopExitReStep).
 	base, frameBase int
+	// pubName is the index name a published loop installs on pubReg per
+	// iteration (OpForPublish, NUR354), and pubDepth the name's def-stack
+	// depth before the loop: each iteration and the loop's exit truncate
+	// back to it. Empty for a loop whose index only its frame slot holds.
+	pubName  string
+	pubReg   *core.Registry
+	pubDepth int
+}
+
+// forPublish executes OpForPublish: the innermost open loop's index becomes
+// registry-visible (see the opcode's doc). The loop's entry depth rides the
+// dyn-bind trail, so a raise or a frame exit mid-loop pops what the loop
+// installed as they pop any frame binding.
+func (vc *vmContext) forPublish(reg *core.Registry, p *compiler.Program, loops []vmLoop, arg int, debug []core.SrcPos, pc int) error {
+	name, err := p.Consts[arg].AsConcreteString()
+	if err != nil || len(loops) == 0 {
+		return vmErrAt(debug, pc, "FOR_PUBLISH without an open loop or a name const")
+	}
+	lp := &loops[len(loops)-1]
+	lp.pubName, lp.pubReg, lp.pubDepth = name, reg, reg.Defs.Depth(name)
+	vc.dynBinds = append(vc.dynBinds, dynBindEntry{reg: reg, name: name, depth: lp.pubDepth})
+	return nil
+}
+
+// republish binds a published loop's index for the iteration FOR_NEXT enters:
+// the previous iteration's levels go (its index, a body def of the index) and
+// the new index installs — stepMoveCont's popIterLevels, UninstallDef and
+// InstallDef. A no-op for an unpublished loop.
+func (lp *vmLoop) republish(cur int64) {
+	if lp.pubName == "" {
+		return
+	}
+	lp.unpublish()
+	core.InstallDef(lp.pubReg, lp.pubName, core.NewInteger(cur))
+}
+
+// unpublish pops a published loop's index levels back to the pre-loop
+// binding at the loop's exit (popIterLevels' done arm).
+func (lp *vmLoop) unpublish() {
+	if lp.pubName != "" {
+		lp.pubReg.Defs.Truncate(lp.pubName, lp.pubDepth)
+	}
 }
 
 // vmFrame remembers a caller's resumption point across a CALL_USER: the
@@ -178,6 +220,11 @@ type vmContext struct {
 	// flowEscape instead of the loop-less internal error, and the seam
 	// hands the signal to the enclosing run's registry.
 	flowEscapes bool
+	// flowAt / flowAtSet are where an island run stood when the signal
+	// escapedFlow just took ended it (core.Registry.FlowAt), for the report
+	// a signal no loop takes raises (flowOrigin, NUR355).
+	flowAt    core.SrcPos
+	flowAtSet bool
 	// rootRetTrim marks a re-entrant run entered through the fn-VALUE seam
 	// (enterCallbackUnit): its root RET applies the CallBoru return
 	// discipline (checkCallBoruContract) rather than __RC's.
@@ -1119,6 +1166,7 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 	for i := 0; i < n; i++ {
 		window[i] = stack[len(stack)-1-i]
 	}
+	stampFnArgPos(window, pr.FnArgPos)
 	// The poly inline cache (vm_poly_cache.go): a window with the tags the
 	// site's last pick was made for takes that pick without re-matching.
 	ic := vc.polyCacheFor(pr)
@@ -1207,6 +1255,12 @@ func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, 
 	results, err := sig.DispatchHandler()(args, r.Contexts.TopData(), nil, r)
 	if err != nil {
 		return nil, stampHandlerAt(err, curDebug, pc, r)
+	}
+	if flowPending(r, vc.r) {
+		// A body the handler ran escaped with a break/continue: the run
+		// resolves it next (resolveEscapedFlow), which abandons the results
+		// or reports where the first stands — no seat takes them (NUR355).
+		return append(stack[:len(stack)-n], results...), nil
 	}
 	// A get/getr surfacing a 0-arg trivial-delegation METHOD (`r.bool`) is NOT
 	// auto-applied here: the recorder owns that landing. Every annotated
@@ -3630,14 +3684,22 @@ func (vc *vmContext) escapedFlow(regs ...*core.Registry) compiler.Opcode {
 		}
 		switch reg.FlowCtrl {
 		case core.FlowBreak:
-			reg.FlowCtrl = core.FlowNone
+			vc.takeFlowAt(reg)
 			return compiler.OpFlowBreak
 		case core.FlowContinue:
-			reg.FlowCtrl = core.FlowNone
+			vc.takeFlowAt(reg)
 			return compiler.OpFlowContinue
 		}
 	}
 	return 0
+}
+
+// takeFlowAt clears reg's signal and takes where an island stood when it
+// ended on it (core.Registry.FlowAt) onto vc, for the resolution that follows.
+func (vc *vmContext) takeFlowAt(reg *core.Registry) {
+	reg.FlowCtrl = core.FlowNone
+	vc.flowAt, vc.flowAtSet = reg.FlowAt, reg.FlowAtSet
+	reg.FlowAt, reg.FlowAtSet = core.SrcPos{}, false
 }
 
 // tryNativeFnApply dispatches a Function VALUE VM-native when it resolves to a
@@ -4411,14 +4473,16 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 	// cross-frame flow unwind, mutating the run loop's frames/loops/locals/
 	// stack/pc in place. Shared by every island-apply opcode case. Reports
 	// whether a signal was resolved (pc then points into the loop).
-	resolveEscapedFlow := func() (bool, error) {
+	resolveEscapedFlow := func(results []core.Value) (bool, error) {
 		fop := vc.escapedFlow(vc.r, curReg)
 		if fop == 0 {
 			return false, nil
 		}
+		origin := flowOrigin{results: results, at: vc.flowAt, atSet: vc.flowAtSet}
+		vc.flowAt, vc.flowAtSet = core.SrcPos{}, false
 		var u int
 		var err error
-		if frames, loops, locals, stack, pc, u, err = vc.flowSignal(fop, frames, loops, locals, stack, pc, curUnit, curDebug); err != nil {
+		if frames, loops, locals, stack, pc, u, err = vc.flowSignal(fop, frames, loops, locals, stack, pc, curUnit, curDebug, origin); err != nil {
 			return false, err
 		}
 		enterUnit(u)
@@ -4500,6 +4564,14 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			compiler.OpSeatBelowMark, compiler.OpMakeListToMark:
 			var err error
 			if marks, stack, err = vc.vmMarkOp(curReg, in.Op, int(in.Arg), marks, stack, curDebug, pc); err != nil {
+				return nil, err
+			}
+			// The mark window's island re-steps the region's values, and a fn
+			// value among them may break/continue: translated as after every
+			// island, where it was left set and dropped — `do (mk)` over a
+			// computed `[f/v]` whose f breaks answered [] for the
+			// interpreter's `break outside loop` (found closing NUR355).
+			if _, err := resolveEscapedFlow(nil); err != nil {
 				return nil, err
 			}
 		case compiler.OpMakeList:
@@ -4750,6 +4822,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				done = lp.cur <= lp.end
 			}
 			if done {
+				lp.unpublish()
 				var err error
 				if stack, err = vc.loopExitReStep(curReg, *lp, stack, curCode, curDebug, pc); err != nil {
 					return nil, err
@@ -4759,6 +4832,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				continue
 			}
 			locals[lp.slot] = core.NewInteger(lp.cur)
+			lp.republish(lp.cur)
 			lp.cur += lp.step
 			// Record this iteration's operand-stack base so a cross-frame
 			// break/continue drops exactly the current iteration's partial pushes
@@ -4877,6 +4951,18 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				}
 				return nil, stampHandlerAt(err, curDebug, pc, curReg)
 			}
+			if flowPending(curReg, vc.r) {
+				// A body the handler ran escaped with a break/continue: the
+				// nearest open loop takes it, abandoning the results, or no
+				// loop does and the report points where the first of them
+				// stands — no seat, count or re-step check reads them first
+				// (NUR355).
+				stack = append(stack, results...)
+				if _, err := resolveEscapedFlow(results); err != nil {
+					return nil, err
+				}
+				break
+			}
 			// Belt-and-braces: a handler that returns tape tokens (to
 			// be re-stepped by the engine) must never have been
 			// compiled — the emitter declines fn-invoking and
@@ -4958,7 +5044,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// interpreter's one (NUR195, 2026-09-24). Translated here as after
 			// a fallback: the nearest open loop, or the loop-less internal
 			// error that defers to the interpreter's canonical raise.
-			if _, err := resolveEscapedFlow(); err != nil {
+			if _, err := resolveEscapedFlow(results); err != nil {
 				return nil, err
 			}
 		case compiler.OpBindTyped:
@@ -5028,7 +5114,8 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// `do <computed>` inside a compiled loop) — translate it the same way
 			// as the fn-value seam. resolveEscapedFlow is a no-op when no flow
 			// signal escaped (escapedFlow returns 0), so call it unconditionally.
-			if _, err := resolveEscapedFlow(); err != nil {
+			// The island hands back where it stood (core.Registry.FlowAt).
+			if _, err := resolveEscapedFlow(nil); err != nil {
 				return nil, err
 			}
 		case compiler.OpCallNativePoly:
@@ -5036,9 +5123,10 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if err != nil {
 				return nil, err
 			}
+			results := ns[min(max(len(stack)-p.PolyRefs[in.Arg].Arity, 0), len(ns)):]
 			stack = ns
 			// The poly re-match's handler runs bodies too (see OpCallNative).
-			if _, err := resolveEscapedFlow(); err != nil {
+			if _, err := resolveEscapedFlow(results); err != nil {
 				return nil, err
 			}
 		case compiler.OpCallDynamic, compiler.OpCallDynamicTrailing, compiler.OpCallDynamicMixed,
@@ -5096,7 +5184,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				pc = -1
 				break
 			}
-			if _, err := resolveEscapedFlow(); err != nil {
+			if _, err := resolveEscapedFlow(nil); err != nil {
 				return nil, err
 			}
 
@@ -5233,7 +5321,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					return nil, stampAt(err, curDebug, pc, curReg)
 				}
 				stack = append(stack, res...)
-				flowed, err := resolveEscapedFlow()
+				flowed, err := resolveEscapedFlow(res)
 				if err != nil {
 					return nil, err
 				}
@@ -5392,6 +5480,10 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			core.ApplyResidentBind(curReg, rb.Name, false, core.StripAscribed(stack[len(stack)-1]))
 			if rb.Pop {
 				stack = stack[:len(stack)-1]
+			}
+		case compiler.OpForPublish:
+			if err := vc.forPublish(curReg, p, loops, int(in.Arg), curDebug, pc); err != nil {
+				return nil, err
 			}
 		case compiler.OpUndefDynScope:
 			// The placed transition of a speculative undef: pop the name's
@@ -5578,7 +5670,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// interpreter's cross-frame FlowCtrl, compiled (see flowSignal).
 			var u int
 			var err error
-			if frames, loops, locals, stack, pc, u, err = vc.flowSignal(in.Op, frames, loops, locals, stack, pc, curUnit, curDebug); err != nil {
+			if frames, loops, locals, stack, pc, u, err = vc.flowSignal(in.Op, frames, loops, locals, stack, pc, curUnit, curDebug, flowOrigin{}); err != nil {
 				return nil, err
 			}
 			enterUnit(u)
@@ -5694,15 +5786,29 @@ func namedDispatchingFn(v core.Value) bool {
 // loop" taxonomy. Returns the updated frames/loops/locals/stack/pc and the unit
 // to re-enter. This is engine.go's handleLoopBreak / handleLoopContinue,
 // compiled. Split out of run to keep that switch under the complexity budget.
-func (vc *vmContext) flowSignal(op compiler.Opcode, frames []vmFrame, loops []vmLoop, locals, stack []core.Value, pc, curUnit int, debug []core.SrcPos) ([]vmFrame, []vmLoop, []core.Value, []core.Value, int, int, error) {
+func (vc *vmContext) flowSignal(op compiler.Opcode, frames []vmFrame, loops []vmLoop, locals, stack []core.Value, pc, curUnit int, debug []core.SrcPos, origin flowOrigin) ([]vmFrame, []vmLoop, []core.Value, []core.Value, int, int, error) {
+	if k := vc.moduleFlowBoundary(frames, len(loops)-1, curUnit); k >= 0 {
+		// The signal would leave a MODULE fn's call, which the interpreter
+		// runs on an engine of its own (CallBoru in the fn's registry): no
+		// loop outside the call takes it, and its `outside loop` report,
+		// positionless there, takes the calling word's position as it leaves
+		// the call (Engine.stampErrPos). The compiled loop outside took it
+		// (NUR355: `for 3 [L.useanon L.brk 1] 7` answered [7]).
+		at := origin.pos(vc.flowExitAt(curUnit, pc))
+		if at.Row == 0 {
+			at = vc.unitDebugPos(frames[k].retUnit, frames[k].retPC-1)
+		}
+		return nil, nil, nil, nil, 0, 0, vc.flowOutsideLoop(op, at)
+	}
 	if len(loops) == 0 {
+		exit := vc.flowExitAt(curUnit, pc)
 		if vc.flowEscapes {
 			// A hosted token body: the signal is the ENCLOSING run's to
 			// resolve, as the seam's sub-engine would have handed it back
-			// (vmContext.flowEscapes).
-			return nil, nil, nil, nil, 0, 0, &flowEscape{op: op}
+			// (vmContext.flowEscapes) — with its residual.
+			return nil, nil, nil, nil, 0, 0, &flowEscape{op: op, residual: hostedResidual(stack, frames, origin, exit)}
 		}
-		return nil, nil, nil, nil, 0, 0, vmErrAt(debug, pc, "flow signal with no enclosing loop")
+		return nil, nil, nil, nil, 0, 0, vc.flowOutsideLoop(op, origin.pos(exit))
 	}
 	target := len(loops) - 1
 	lp := loops[target]
@@ -5722,6 +5828,7 @@ func (vc *vmContext) flowSignal(op compiler.Opcode, frames []vmFrame, loops []vm
 	}
 	stack = stack[:lp.iterBase]
 	if op == compiler.OpFlowBreak {
+		lp.unpublish()
 		code, reg := vc.unitCode(unit)
 		var err error
 		if stack, err = vc.loopExitReStep(reg, lp, stack, code, debug, pc); err != nil {
@@ -5733,6 +5840,133 @@ func (vc *vmContext) flowSignal(op compiler.Opcode, frames []vmFrame, loops []vm
 		pc = lp.nextPC - 1
 	}
 	return frames, loops, locals, stack, pc, unit, nil
+}
+
+// flowPending reports whether a break/continue a body just ran left
+// unresolved is set on either registry (escapedFlow's test, without taking
+// it).
+func flowPending(regs ...*core.Registry) bool {
+	for _, reg := range regs {
+		if reg != nil && reg.FlowCtrl != core.FlowNone {
+			return true
+		}
+	}
+	return false
+}
+
+// flowOrigin is how a break/continue reached flowSignal, for the report a
+// signal no loop takes raises (NUR355): the zero value for the op itself
+// (OpFlowBreak / OpFlowContinue), else the values the op it escaped left (a
+// native's results — `do`'s are its body's residual) and where an island
+// run stood when the signal ended it (core.Registry.FlowAt).
+type flowOrigin struct {
+	results []core.Value
+	at      core.SrcPos
+	atSet   bool
+}
+
+// pos is where the interpreter's pointer rests after the step that raised or
+// let the signal out, which its `outside loop` report points at: where the
+// island stood, else on the first value the op left (spliced where the op
+// stood), else on the token after the op's run (exit.Next — the unit's
+// lowering recorded it; the zero position, "unknown", where a frame's tail
+// or a group's close follows).
+func (o flowOrigin) pos(exit compiler.FlowExit) core.SrcPos {
+	switch {
+	case o.atSet:
+		return o.at
+	case len(o.results) > 0:
+		return o.results[0].Pos()
+	}
+	return exit.Next
+}
+
+// moduleFlowBoundary is the innermost of frames a break/continue would cross
+// on its way to the loop at index target (-1: none open) whose call ENTERS a
+// module fn's home (CompiledFn.Reg: the fn runs in its own registry, and its
+// caller in another module's — core.FnHomeForeign's test), or -1 when it
+// crosses none. frames[k]'s callee is the unit frames[k+1] returns from, and
+// curUnit for the innermost; a module fn calling its module's own fn stays at
+// the one home, on the one engine, as the interpreter's body does, and so
+// does a unit a run-time stamp compiled on a fork of the program's registry.
+func (vc *vmContext) moduleFlowBoundary(frames []vmFrame, target, curUnit int) int {
+	callee := curUnit
+	for k := len(frames) - 1; k >= 0 && frames[k].loopBase > target; k-- {
+		if !vc.unitReg(callee).SameHome(vc.unitReg(frames[k].retUnit)) {
+			return k
+		}
+		callee = frames[k].retUnit
+	}
+	return -1
+}
+
+// unitReg is the registry unit u's dispatches run on (the main code's for
+// u < 0): its owning registry (CompiledFn.Reg), else the program's.
+func (vc *vmContext) unitReg(u int) *core.Registry {
+	if u >= 0 && u < len(vc.p.Fns) {
+		return dispatchRegistry(vc.p.Fns[u].Reg, vc.r)
+	}
+	return vc.r
+}
+
+// unitDebugPos is the debug position of pc in unit u's code (the main code
+// for u < 0).
+func (vc *vmContext) unitDebugPos(u, pc int) core.SrcPos {
+	debug := vc.p.Debug
+	if u >= 0 && u < len(vc.p.Fns) {
+		debug = vc.p.Fns[u].Debug
+	}
+	return debugPosAt(debug, pc)
+}
+
+// flowExitAt is the FlowExit the lowering recorded at pc of the running code
+// (the main code for unit < 0), the zero FlowExit where it recorded none.
+func (vc *vmContext) flowExitAt(unit, pc int) compiler.FlowExit {
+	if unit >= 0 && unit < len(vc.p.Fns) {
+		return vc.p.Fns[unit].FlowExits[pc]
+	}
+	return vc.p.FlowExits[pc]
+}
+
+// flowOutsideLoop is the interpreter's report for a break/continue no loop
+// takes (Engine.exitWithFlowCtrl at the top of the run), at at: it used to
+// be an internal_error here, "flow signal with no enclosing loop" (NUR355).
+func (vc *vmContext) flowOutsideLoop(op compiler.Opcode, at core.SrcPos) error {
+	ctrl := flowCtrlOf(op).String()
+	return core.MakeBoruErrorAt("flow_error", ctrl+" outside loop", ctrl, vc.r.Source, "", at)
+}
+
+// hostedResidual is the residual a hosted token body's run hands back when a
+// signal escapes it (flowEscape), as the interpreter's sub-engine hands back
+// its whole unstepped tape: the values the body's own frame holds, then the
+// rest of its tape — which the enclosing run only ever reads for where its
+// first entry stands (flowOrigin.pos), so it is one stand-in carrying that
+// position: an open fn frame's or a group's marker (positionless) when the
+// signal came from inside one, else what the root op stood before (where an
+// island stood, or the token after the op's run), else nothing.
+func hostedResidual(stack []core.Value, frames []vmFrame, o flowOrigin, exit compiler.FlowExit) []core.Value {
+	base := len(stack)
+	if len(frames) > 0 {
+		base = frames[0].stackBase
+	}
+	res := append([]core.Value(nil), stack[:base]...)
+	switch {
+	case len(frames) > 0 || !exit.Top:
+		return append(res, flowStandIn(core.SrcPos{}))
+	case o.atSet:
+		return append(res, flowStandIn(o.at))
+	case exit.Next.Row != 0:
+		return append(res, flowStandIn(exit.Next))
+	}
+	return res
+}
+
+// flowStandIn is a hosted residual's stand-in for its unstepped rest: plain
+// data at the position its first token stands at.
+func flowStandIn(at core.SrcPos) core.Value {
+	v := core.NewNone()
+	v.SetPos(at)
+	return v
 }
 
 // unitCode is unit u's code and the registry its dispatch runs on, the
@@ -6180,6 +6414,7 @@ func vmMakeMap(p *compiler.Program, stack []core.Value, arg int32, debug []core.
 		return nil, vmErrAt(debug, pc, "MAKE_MAP stack underflow")
 	}
 	vals := stack[len(stack)-n:]
+	stampFnArgPos(vals, spec.FnPos)
 	om := core.NewOrderedMap()
 	om.Implicit = spec.Implicit
 	for i, k := range spec.Keys {

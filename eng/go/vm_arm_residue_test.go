@@ -371,7 +371,41 @@ func TestCallNativePolyEscapedFlowWithoutLoop(t *testing.T) {
 		PolyRefs: []compiler.PolyRef{{Word: "zz-poly-break", Arity: 1}},
 	}
 	_, err := RunProgram(p, r)
-	wantInternal(t, err, "flow signal with no enclosing loop")
+	wantFlowError(t, err, "break outside loop")
+	if r.FlowCtrl != core.FlowNone {
+		t.Error("the escaped signal must be consumed, not left on the registry")
+	}
+}
+
+// A signal can also escape AFTER a native returned clean: the re-step of its
+// results where the `do` stood (SigRef.ReStep, NUR317) runs a fn value that
+// breaks. The call's closing resolution takes it (NUR355): with no loop open,
+// the interpreter's `break outside loop`.
+func TestCallNativeReStepEscapedFlowWithoutLoop(t *testing.T) {
+	r := seam7Reg(t)
+	brk := core.NewFunction(core.FnDefInfo{Signatures: []core.Signature{{Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, reg *core.Registry) ([]core.Value, error) {
+		reg.FlowCtrl = core.FlowBreak
+		return nil, nil
+	})}}})
+	r.RegisterNativeFunc(core.NativeFunc{
+		Name: "zz-give-brk",
+		Signatures: []core.Signature{{
+			BarrierPos: -1,
+			Impl: core.Go(func([]core.Value, map[string]core.Value, []core.Value, *core.Registry) ([]core.Value, error) {
+				return []core.Value{brk}, nil
+			}),
+		}},
+	})
+	if err := r.Err(); err != nil {
+		t.Fatalf("registration: %v", err)
+	}
+	p := &compiler.Program{
+		Code:  []compiler.Instr{{Op: compiler.OpCallNative, Arg: 0}},
+		Debug: make([]core.SrcPos, 1),
+		Sigs:  []compiler.SigRef{{Word: "zz-give-brk", Sig: &r.Lookup("zz-give-brk").Signatures[0], ReStep: true, ReStepOut: -1}},
+	}
+	_, err := RunProgram(p, r)
+	wantFlowError(t, err, "break outside loop")
 	if r.FlowCtrl != core.FlowNone {
 		t.Error("the escaped signal must be consumed, not left on the registry")
 	}

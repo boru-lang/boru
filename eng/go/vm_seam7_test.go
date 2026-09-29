@@ -138,12 +138,26 @@ func TestSeam7RunUnderflowArms(t *testing.T) {
 		{"drop-to-mark", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpDropToMark}}}, "DROP_TO_MARK with no open mark"},
 		{"pop-mark", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpPopMark}}}, "POP_MARK with no open mark"},
 		{"unknown", &compiler.Program{Code: []compiler.Instr{{Op: compiler.Opcode(250)}}}, "unknown opcode"},
-		{"flow-break-noloop", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpFlowBreak}}}, "flow signal with no enclosing loop"},
+		{"for-publish", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpForPublish}}, Consts: []core.Value{core.NewString("i")}}, "FOR_PUBLISH without an open loop"},
+		{"for-publish-name", &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpForPublish}}, Consts: []core.Value{core.NewInteger(1)}}, "FOR_PUBLISH without an open loop or a name const"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {
 			wantInternal(t, runMalformed(t, c.p), c.sub)
 		})
+	}
+	// A break no loop takes is no malformed program: it is the interpreter's
+	// own report (NUR355).
+	wantFlowError(t, runMalformed(t, &compiler.Program{Code: []compiler.Instr{{Op: compiler.OpFlowBreak}}}), "break outside loop")
+}
+
+// wantFlowError asserts err is the interpreter's `outside loop` flow_error
+// (NUR355), with the given detail.
+func wantFlowError(t *testing.T, err error, detail string) {
+	t.Helper()
+	var ae *core.BoruError
+	if !errors.As(err, &ae) || ae.Code != "flow_error" || ae.Detail != detail {
+		t.Fatalf("want flow_error %q, got %v", detail, err)
 	}
 }
 
@@ -446,10 +460,76 @@ func TestSeam7RunFallbackArms(t *testing.T) {
 
 // --- flowSignal no-loop (direct) -----------------------------------------
 
+// A signal no loop takes is the interpreter's own report (NUR355): the
+// flow_error `break outside loop` / `continue outside loop`, where the
+// interpreter's pointer rests — an island's stand, else the first value the
+// escaping op left, else the token after the op's run (FlowExit.Next), else
+// unknown. It used to be the internal_error "flow signal with no enclosing
+// loop".
 func TestSeam7FlowSignalNoLoop(t *testing.T) {
-	vc := seam7VC(seam7Reg(t))
-	_, _, _, _, _, _, err := vc.flowSignal(compiler.OpFlowBreak, nil, nil, nil, nil, 0, -1, seam7Dbg)
-	wantInternal(t, err, "flow signal with no enclosing loop")
+	at := func(col int) core.SrcPos { return core.SrcPos{Row: 1, Col: col, Src: "x"} }
+	one := core.NewInteger(1)
+	one.SetPos(at(4))
+	for _, c := range []struct {
+		op     compiler.Opcode
+		unit   int
+		origin flowOrigin
+		want   core.SrcPos
+		msg    string
+	}{
+		{compiler.OpFlowBreak, -1, flowOrigin{}, at(9), "break outside loop"},
+		{compiler.OpFlowContinue, 0, flowOrigin{}, at(7), "continue outside loop"},
+		{compiler.OpFlowBreak, -1, flowOrigin{results: []core.Value{one}}, at(4), "break outside loop"},
+		{compiler.OpFlowBreak, -1, flowOrigin{results: []core.Value{one}, at: at(2), atSet: true}, at(2), "break outside loop"},
+		{compiler.OpFlowBreak, -1, flowOrigin{atSet: true}, core.SrcPos{}, "break outside loop"},
+		{compiler.OpFlowBreak, 1, flowOrigin{}, core.SrcPos{}, "break outside loop"},
+	} {
+		vc := seam7VC(seam7Reg(t))
+		vc.p = &compiler.Program{FlowExits: map[int]compiler.FlowExit{0: {Next: at(9)}},
+			Fns: []compiler.CompiledFn{{FlowExits: map[int]compiler.FlowExit{0: {Next: at(7)}}}, {}}}
+		_, _, _, _, _, _, err := vc.flowSignal(c.op, nil, nil, nil, nil, 0, c.unit, seam7Dbg, c.origin)
+		var ae *core.BoruError
+		if !errors.As(err, &ae) || ae.Code != "flow_error" || ae.Detail != c.msg || ae.Row != c.want.Row || ae.Col != c.want.Col {
+			t.Errorf("%+v: want flow_error %q at %v, got %#v", c, c.msg, c.want, err)
+		}
+	}
+}
+
+// A hosted token body's escape hands back its residual (hostedResidual): the
+// body frame's own values, then a stand-in for the unstepped rest — an open
+// frame's or a nested group's positionless marker, the island's stand, the
+// token after a top-level op's run, or nothing when that run ends the body.
+func TestSeam7FlowSignalHostedResidual(t *testing.T) {
+	at := func(col int) core.SrcPos { return core.SrcPos{Row: 1, Col: col, Src: "x"} }
+	one, two := core.NewInteger(1), core.NewInteger(2)
+	for _, c := range []struct {
+		name   string
+		exit   compiler.FlowExit
+		frames []vmFrame
+		origin flowOrigin
+		want   []core.SrcPos // the residual's positions past the stack's two values
+		vals   int
+	}{
+		{"top, a token after", compiler.FlowExit{Next: at(5), Top: true}, nil, flowOrigin{}, []core.SrcPos{at(5)}, 2},
+		{"top, the body's end", compiler.FlowExit{Top: true}, nil, flowOrigin{}, nil, 2},
+		{"a nested group", compiler.FlowExit{Next: at(5)}, nil, flowOrigin{}, []core.SrcPos{{}}, 2},
+		{"an island's stand", compiler.FlowExit{Next: at(5), Top: true}, nil, flowOrigin{at: at(3), atSet: true}, []core.SrcPos{at(3)}, 2},
+		{"an open frame", compiler.FlowExit{Next: at(5), Top: true}, []vmFrame{{stackBase: 1}}, flowOrigin{}, []core.SrcPos{{}}, 1},
+	} {
+		vc := seam7VC(seam7Reg(t))
+		vc.p = &compiler.Program{FlowExits: map[int]compiler.FlowExit{0: c.exit}}
+		vc.flowEscapes = true
+		_, _, _, _, _, _, err := vc.flowSignal(compiler.OpFlowBreak, c.frames, nil, nil, []core.Value{one, two}, 0, -1, seam7Dbg, c.origin)
+		fe, ok := err.(*flowEscape)
+		if !ok || fe.op != compiler.OpFlowBreak || len(fe.residual) != c.vals+len(c.want) {
+			t.Fatalf("%s: want an escape with %d value(s), got %#v", c.name, c.vals+len(c.want), err)
+		}
+		for i, p := range c.want {
+			if got := fe.residual[c.vals+i]; !got.Parent.Equal(core.TNone) || got.Pos() != p {
+				t.Errorf("%s: stand-in %d = %v at %v, want None at %v", c.name, i, got, got.Pos(), p)
+			}
+		}
+	}
 }
 
 // --- closure fn-value apply branches -------------------------------------

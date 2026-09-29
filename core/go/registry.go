@@ -190,6 +190,15 @@ type Registry struct {
 	// returns, without the signal having to ride the error channel.
 	// See flowctrl.go.
 	FlowCtrl FlowCtrl
+	// FlowAt is where a VM ISLAND run stood when a break/continue it could
+	// not resolve ended it (Engine.exitWithFlowCtrl): the position of the
+	// token at its pointer, which the interpreter's `outside loop` report
+	// points at when no loop takes the signal. FlowAtSet is false when the
+	// pointer had run off the island's tape — the report then points past
+	// the island's span, which only the compiled lowering knows
+	// (compiler.FlowExit). The VM takes both with the signal (NUR355).
+	FlowAt    SrcPos
+	FlowAtSet bool
 
 	// TCO is the tail-call-optimisation surface (design/legacy/TCO-STAGED.10.ignore).
 	// Lives on the registry (not the engine) so sub-engines sharing the

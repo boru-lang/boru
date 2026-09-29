@@ -9014,6 +9014,10 @@ func (e *Engine) exitWithFlowCtrl() ([]Value, error) {
 		// A VM island: no outer TAPE exists to adopt the residual — tear down
 		// the live spliced frames (their registry state: args stack, body-local
 		// defs, captures) and return nothing; the VM translates the signal.
+		// Where the island stood goes with it (Registry.FlowAt): the token the
+		// interpreter's own `outside loop` report points at, when no loop
+		// takes the signal (NUR355).
+		e.Registry.FlowAt, e.Registry.FlowAtSet = e.currentPos(), e.Pointer < e.Tape.Len()
 		e.unwindLiveFrames(0, e.Tape.Len())
 		e.Tape.TakeAll()
 		return nil, nil

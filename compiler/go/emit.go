@@ -182,16 +182,7 @@ func (es *EmitState) noteArgSites(seq int, args []core.Value) {
 // SigRef carries it (SigRef.FnArgPos) for the VM to stamp on a positionless
 // named value (NUR347). Nothing is kept when no argument qualifies.
 func (es *EmitState) noteFnArgPos(seq int, args []core.Value) {
-	var out []core.SrcPos
-	for i, a := range args {
-		if a.ID == "" || a.Pos().Row == 0 || !es.valReadNoted[a.ID] || !(core.IsAppliableFn(a) || core.IsFnTypedCarrier(a)) {
-			continue
-		}
-		if out == nil {
-			out = make([]core.SrcPos, len(args))
-		}
-		out[i] = a.Pos()
-	}
+	out := es.fnValReadPos(args)
 	if out == nil {
 		return
 	}
@@ -199,6 +190,26 @@ func (es *EmitState) noteFnArgPos(seq int, args []core.Value) {
 		es.fnArgPos = map[int][]core.SrcPos{}
 	}
 	es.fnArgPos[seq] = out
+}
+
+// fnValReadPos is, for each of vals, the position of a fn value the program
+// read by its `/v` spelling (valReadNoted) — the token the interpreter's read
+// stamped on it (stepWordVal) — and the zero position for any other value;
+// nil when no value qualifies. A call's arguments (noteFnArgPos) and a map
+// literal's values (RecordMakeMap) carry it to the VM, which stamps it on a
+// positionless named value the compiled slot push handed over.
+func (es *EmitState) fnValReadPos(vals []core.Value) []core.SrcPos {
+	var out []core.SrcPos
+	for i, a := range vals {
+		if a.ID == "" || a.Pos().Row == 0 || !es.valReadNoted[a.ID] || !(core.IsAppliableFn(a) || valueMayBeFn(a)) {
+			continue
+		}
+		if out == nil {
+			out = make([]core.SrcPos, len(vals))
+		}
+		out[i] = a.Pos()
+	}
+	return out
 }
 
 // eventFlags are the per-event compile flags, keyed by event seq in
@@ -432,14 +443,17 @@ type emitCall struct {
 	makeMap           bool                  // assemble len(ops) value operands into a map (OpMakeMap) with mapKeys
 	mapKeys           []string
 	mapImpl           bool // the source map's Implicit flag
-	interp            bool // assemble len(ops) hole operands into a template string (OpInterp) per interpSegs
-	interpSegs        []InterpSeg
-	xmlTmpl           *core.XmlTmpl // assemble len(ops) hole operands into an XML element (OpInterpXml, §9.2c)
-	spliceDyn         bool          // spread the ONE laid-out payload operand at run time (OpSpliceDyn, §9.2b)
-	diverges          bool          // the word ALWAYS raises (CompileDiverges, e.g. raise): control never returns past this call
-	live              bool          // a LIVE READ seated as an event (NoteLiveRead): no dispatch — OpLookupDynScope of liveName at the read token, one result; rides evCall so the result seats, promotes and drops as any computed value does
-	liveName          int           // the read name's const index, meaningful only when live
-	liveRef           bool          // a live `/v` read (NoteValReadLive): OpLookupDynScopeRef, the value spelling's lookup
+	// mapFnPos is where each map value that is a fn value read by its `/v`
+	// spelling was read (fnValReadPos), key order; nil when none was.
+	mapFnPos   []core.SrcPos
+	interp     bool // assemble len(ops) hole operands into a template string (OpInterp) per interpSegs
+	interpSegs []InterpSeg
+	xmlTmpl    *core.XmlTmpl // assemble len(ops) hole operands into an XML element (OpInterpXml, §9.2c)
+	spliceDyn  bool          // spread the ONE laid-out payload operand at run time (OpSpliceDyn, §9.2b)
+	diverges   bool          // the word ALWAYS raises (CompileDiverges, e.g. raise): control never returns past this call
+	live       bool          // a LIVE READ seated as an event (NoteLiveRead): no dispatch — OpLookupDynScope of liveName at the read token, one result; rides evCall so the result seats, promotes and drops as any computed value does
+	liveName   int           // the read name's const index, meaningful only when live
+	liveRef    bool          // a live `/v` read (NoteValReadLive): OpLookupDynScopeRef, the value spelling's lookup
 	// typedBind, when non-nil, marks this event as a typed value-def's runtime
 	// validate/reparent step (OpBindTyped over the single operand) instead of a
 	// word dispatch — recorded by RecordTypedBind from the def handler's
@@ -4988,6 +5002,46 @@ func (es *EmitState) storedHandlerDeps(body []core.Value) map[string]bool {
 			deps[w.Name] = true
 		}
 	})
+	return deps
+}
+
+// storedHandlerDepsDeep is storedHandlerDeps read THROUGH the user fns the
+// body calls, transitively: a runtime stamp (stampDetachedSig) compiles a
+// called fn's unit against the bindings live at stamp time, baking what its
+// body reads, so a later rebind of a name only the callee reads leaves the
+// stamp stale as surely as a rebind of the body's own word. With the shallow
+// snapshot `def i 9 end def f fn [[] [Integer] [i]] end` read through a
+// stamped `[f]` answered 9 after `def i 10` (and a published loop index —
+// NUR354 — 0 at every iteration). A callee homed in another module resolves
+// its names there, where this registry's snapshot says nothing, and is not
+// read.
+func (es *EmitState) storedHandlerDepsDeep(body []core.Value) map[string]bool {
+	deps := map[string]bool{}
+	maps.Copy(deps, es.storedHandlerDeps(body))
+	seen := map[string]bool{}
+	var walk func(body []core.Value)
+	walk = func(body []core.Value) {
+		core.WalkBodyWords(body, func(w core.WordInfo, _ core.Value) {
+			if seen[w.Name] {
+				return
+			}
+			seen[w.Name] = true
+			fd := es.reg.Lookup(w.Name)
+			if fd == nil || core.FnHomeForeign(es.reg, fd) {
+				return
+			}
+			for i := range fd.Signatures {
+				if _, boru := fd.Signatures[i].Impl.(*core.BoruImpl); boru {
+					inner := fd.Signatures[i].Body()
+					maps.Copy(deps, es.storedHandlerDeps(inner))
+					walk(inner)
+				}
+			}
+		})
+	}
+	if es != nil && es.reg != nil {
+		walk(body)
+	}
 	return deps
 }
 
@@ -14845,6 +14899,7 @@ func (es *EmitState) RecordMakeMap(r *core.Registry, keys []string, vals []core.
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: wordMakeMap, ops: ops, nout: 1, pos: pos,
 		makeMap: true, mapKeys: append([]string(nil), keys...), mapImpl: implicit,
+		mapFnPos: es.fnValReadPos(vals),
 	}})
 	es.setProduced(out, seq)
 	return true
@@ -17315,7 +17370,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		LiveLeadNames:   maps.Clone(es.liveLeadNames),
 		LiveReadNames:   maps.Clone(es.liveReadNames),
 		CondBoundNames:  maps.Clone(es.condBoundNames)}
-	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, callWindows: &p.CallWindows, dynApplyName: &p.DynApplyName, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
+	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, callWindows: &p.CallWindows, flowExits: &p.FlowExits, dynApplyName: &p.DynApplyName, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
 	// single-consume stack discipline holds. Count the residual references,
@@ -17586,7 +17641,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		}
 		cf.KeepsDefs = rec.keepsDefs
 		seatSpecGuards(&cf, rec)
-		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, callWindows: &cf.CallWindows, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs, rec: rec}
+		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, callWindows: &cf.CallWindows, flowExits: &cf.FlowExits, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs, rec: rec}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).

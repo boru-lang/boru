@@ -707,6 +707,19 @@ const (
 	// a miss is the read's undefined_word, as OpLookupDynScope's is for a
 	// live-read name.
 	OpLookupDynScopeRef
+	// OpForPublish makes the innermost open counted loop's index
+	// REGISTRY-VISIBLE (NUR354): emitted right after OpForSetup, under the
+	// program's dynamic-environment mirror, with Arg the index name's const.
+	// Each FOR_NEXT that enters an iteration then truncates the name back to
+	// its pre-loop depth (the iteration's own levels: the previous index, a
+	// body def of the index) and installs the new index through the
+	// interpreter's own installer — RunForLoop's InstallDef and stepMoveCont's
+	// popIterLevels — and the loop's exit (exhaustion, a break) truncates it
+	// back, so a run-time body resolving names on the registry reads the
+	// index the interpreter's `for` binds. The loop's entry is recorded on the
+	// dyn-bind trail, so a raise or a frame exit mid-loop pops it too. Zero
+	// stack effect.
+	OpForPublish
 )
 
 // opcodeNames is the single source of each opcode's disassembler mnemonic,
@@ -778,6 +791,7 @@ var opcodeNames = [...]string{
 	OpBindTypeRun:          "BIND_TYPE_RUN",
 	OpMakeListReStep:       "MAKE_LIST_RESTEP",
 	OpLookupDynScopeRef:    "LOOKUP_DYN_SCOPE_REF",
+	OpForPublish:           "FOR_PUBLISH",
 }
 
 func (o Opcode) String() string {
@@ -797,6 +811,11 @@ const PolyNOutRegion = -1
 type PolyRef struct {
 	Word  string
 	Arity int
+	// FnArgPos is SigRef.FnArgPos for the re-matched call (NUR347): the
+	// window's positionless named fn values take the position of their `/v`
+	// read before the match, as a baked call's arguments do — `each g/v [5]`
+	// over a `g` a runtime member read bound dispatches poly.
+	FnArgPos []core.SrcPos
 	// NOut is the result-count CLAIM the recorder's stack model committed
 	// downstream ops to. The runtime re-match may land on a DIFFERENT
 	// overload than the checker's model (that is poly's point), and when
@@ -1322,6 +1341,14 @@ type ListReStepSpec struct {
 type MakeMapSpec struct {
 	Keys     []string
 	Implicit bool
+	// FnPos, when non-nil, is the position of each value (key order) that is
+	// a fn value the program read by its `/v` spelling (NUR347): the
+	// interpreter's read stamps the value with its token, which the map stores
+	// and a callback word's contract error later anchors at, where the
+	// compiled read is a positionless slot push. OpMakeMap stamps it on a
+	// positionless named value, as a native call stamps its arguments
+	// (SigRef.FnArgPos).
+	FnPos []core.SrcPos
 }
 
 // InterpSeg is one segment of an OpInterp template: either a literal run of
@@ -1673,6 +1700,8 @@ type Program struct {
 	// CallWindows is the main code's twin of CompiledFn.CallWindows (see
 	// there).
 	CallWindows map[int][]CallWindowOperand
+	// FlowExits is the main code's twin of CompiledFn.FlowExits (see there).
+	FlowExits map[int]FlowExit
 	// StoreNames is the main code's twin of CompiledFn.StoreNames (see
 	// there), keyed by the main code's own pc.
 	StoreNames map[int]string
@@ -2022,6 +2051,25 @@ const (
 	WinStack
 )
 
+// FlowExit is where the interpreter's tape stands after an op that raised a
+// break/continue — the `break` word itself — or let one escape a body it ran
+// (a native running a code body, a fallback island), for the report a signal
+// no loop takes raises (NUR355): the interpreter's `outside loop` flow_error
+// points at the token its pointer rests on after that step.
+//
+// Next is the position of the token right after the op's run in its own
+// token sequence — the word and the operands written after it, in the fn
+// body, a paren group or a branch arm the interpreter splices inline — and
+// the zero position when the run ends its sequence (a frame's tail or a
+// group's close stands there, which carries none). Top is whether that
+// sequence is the unit's own body: a HOSTED run's residual (vm_token_body.go)
+// goes on with the token after a top-level op, and with a group's marker
+// after a nested one.
+type FlowExit struct {
+	Next core.SrcPos
+	Top  bool
+}
+
 // CallWindowOperand is one value of a call's no-match window
 // (CompiledFn.CallWindows), in the window's own order. Fwd marks a value
 // written after the word; PrefixOnly an entry past the window that carries
@@ -2245,6 +2293,10 @@ type CompiledFn struct {
 	// stack beneath the call fills it (NUR320). A call with no entry
 	// reports its arguments; an EMPTY entry is a window of no values.
 	CallWindows map[int][]CallWindowOperand
+	// FlowExits is where the interpreter stands after the op at a pc raised
+	// a break/continue, or let one escape a body it ran, while no loop of the
+	// unit was open (FlowExit, NUR355), keyed by that pc.
+	FlowExits map[int]FlowExit
 	// StoreNames names the DEF a promoted STORE_LOCAL binds a produced fn
 	// value under, keyed by the store's pc: the interpreter's installDef
 	// renames a fn value bound by `def` (`fnDef.Name = name`), so `def h
@@ -2507,7 +2559,7 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 	for i, in := range code {
 		fmt.Fprintf(sb, "%04d %-11s", i, in.Op.String())
 		switch in.Op {
-		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpLookupDynScopeRef, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope:
+		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpLookupDynScopeRef, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope, OpForPublish:
 			c := p.Consts[in.Arg]
 			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent.Leaf())
 		case OpCallNative:

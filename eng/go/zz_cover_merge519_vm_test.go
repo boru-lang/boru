@@ -247,7 +247,7 @@ func TestMerge519FlowBreakLoopResultDefers(t *testing.T) {
 	g := core.Value{Parent: core.TFunction, Data: core.FnDefInfo{Name: "g"}}
 	stack := []core.Value{core.NewInteger(1), g}
 	loops := []vmLoop{{unit: -1, iterBase: 2, base: 1, frameBase: 0, exitPC: 0}}
-	_, _, _, _, _, _, err := vc.flowSignal(compiler.OpFlowBreak, nil, loops, nil, stack, 0, -1, seam7Dbg)
+	_, _, _, _, _, _, err := vc.flowSignal(compiler.OpFlowBreak, nil, loops, nil, stack, 0, -1, seam7Dbg, flowOrigin{})
 	if err == nil || !core.IsVMDefer(err) || !strings.Contains(err.Error(), "NUR314") {
 		t.Fatalf("a re-stepping loop result the loop cannot hand over: want the loud defer, got %v", err)
 	}

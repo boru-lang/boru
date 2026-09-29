@@ -261,12 +261,6 @@ func sigRunsValue(sig *core.Signature) bool {
 // bodyMapReason is a body-map run's lowering test against the loops open
 // around it in this unit (lw.loops), "" when it lowers:
 //
-//   - a body that reads a counted loop's index — by name, or any name at all
-//     (computed, opaque) — reads the frame slot the loop keeps it in on the
-//     compiled lane, which no run-time token body resolves: the interpreter's
-//     `for` binds the index in the registry, so `for 2 [Rand.map-from
-//     {a:[i]}]` answered [{a:0} {a:1}] there and raised undefined_word i
-//     compiled (NUR353);
 //   - a body that escapes with break/continue outside any compiled loop of
 //     the program (the root, no loop open — lowerBreak's own rule): the
 //     interpreter raises its flow_error where its tape stands, which no
@@ -278,12 +272,12 @@ func (lw *lowerer) bodyMapReason(c *emitCall) string {
 	if facts == nil {
 		return ""
 	}
-	for _, lc := range lw.loops {
-		if lc.iterName != "" && (facts.computed || facts.opaque || facts.names[lc.iterName]) {
-			return "`" + c.word + "`: a body may read the loop index `" + lc.iterName +
-				"`, a frame slot the run-time token body cannot resolve (NUR353)"
-		}
-	}
+	// A body reading a counted loop's index — by name, or any name at all
+	// (computed, opaque) — armed the program's dynamic-environment mirror
+	// (noteBodyMapRun), under which every counted loop publishes its index
+	// on the registry (lowerer.publishesIndex): `for 2 [Rand.map-from
+	// {a:[i]}]` reads the index as the interpreter's does, in this unit or
+	// through a fn the loop calls (NUR353, NUR354).
 	if facts.flow && len(lw.loops) == 0 && !lw.isFnUnit {
 		return "`" + c.word + "`: a body's break/continue outside a compiled loop (Stage 2, NUR353)"
 	}

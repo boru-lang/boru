@@ -97,14 +97,22 @@ func TestNUR330CarrierSchemaBodyDefs(t *testing.T) {
 }
 
 // NUR353: a map-from body is a run-time token body resolving names on the
-// registry, where the interpreter's `for` binds its index and the compiled
-// loop keeps it in a frame slot; and a break/continue it raises outside any
-// loop is the interpreter's flow_error where its tape stands. Both decline
-// at the lowering now (lowerer.bodyMapReason), and every shape a compiled
-// loop takes still compiles and agrees.
+// registry, where the interpreter's `for` binds its index; and a
+// break/continue it raises outside any loop is the interpreter's flow_error
+// where its tape stands. The escape at the root declines at the lowering
+// (lowerer.bodyMapReason). The index read declined there too while the
+// compiled loop kept its index in a frame slot alone; under the
+// dynamic-environment mirror the body's facts arm, the loop publishes its
+// index on the registry (NUR354, OpForPublish), and those shapes compile and
+// agree.
 func TestNUR353BodyMapLoopIndexAndEscape(t *testing.T) {
 	const rnd = `import "boru:rand"  `
 	for _, c := range []struct{ src, want string }{
+		{rnd + `for 2 [Rand.map-from {a:[i]}]`, "[{a:0} {a:1}]"},
+		{rnd + `for 2 [Rand.map-from {a:[i add 10] b:[i]}]`, "[{a:10 b:0} {a:11 b:1}]"},
+		{rnd + `for 3 [Rand.map-from {a:[i break]}]`, "[]"},
+		{rnd + `for 3 [Rand.map-from {a:[i continue]}]`, "[]"},
+		{rnd + `def f fn [[m:Map][Any][for 2 [Rand.map-from m]]] end f {a:(quote [i])}`, "ERROR:got 2 — [{a:0} {a:1}]"},
 		{rnd + `for 3 [Rand.map-from {a:[1 break]}] 7`, "[7]"},
 		{rnd + `for 2 [Rand.map-from {a:[1 add 10]}]`, "[{a:11} {a:11}]"},
 		{rnd + `def n 0 for 3 [def n (n add 1) Rand.map-from {a:[n]}] n`, "[{a:1} {a:2} {a:3} 3]"},
@@ -116,11 +124,6 @@ func TestNUR353BodyMapLoopIndexAndEscape(t *testing.T) {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
 	for _, c := range []struct{ src, want, why string }{
-		{rnd + `for 2 [Rand.map-from {a:[i]}]`, "[{a:0} {a:1}]", "loop index `i`"},
-		{rnd + `for 2 [Rand.map-from {a:[i add 10] b:[i]}]`, "[{a:10 b:0} {a:11 b:1}]", "loop index `i`"},
-		{rnd + `for 3 [Rand.map-from {a:[i break]}]`, "[]", "loop index `i`"},
-		{rnd + `for 3 [Rand.map-from {a:[i continue]}]`, "[]", "loop index `i`"},
-		{rnd + `def f fn [[m:Map][Any][for 2 [Rand.map-from m]]] end f {a:(quote [i])}`, "ERROR", "loop index `i`"},
 		{rnd + `Rand.map-from {a:[1 break]}`, "ERROR", "outside a compiled loop"},
 		{rnd + `Rand.map-from {a:[1 continue]} 5`, "ERROR", "outside a compiled loop"},
 		{rnd + `[Rand.map-from {a:[1 break]}]`, "[[]]", "outside a compiled loop"},
@@ -134,7 +137,10 @@ func TestNUR353BodyMapLoopIndexAndEscape(t *testing.T) {
 // with the shape it let through or refused, and its negative.
 //
 //   - P1: a word reads its callee's body too, transitively — a user fn a
-//     body calls reads the loop index on the interpreter's registry;
+//     body calls reads the loop index on the interpreter's registry (and,
+//     the index published since NUR354, reads it compiled: the run-time
+//     stamp's snapshot reads through the callee too, so the stamp that baked
+//     one iteration's index goes stale at the next — storedHandlerDepsDeep);
 //   - P1: a body is whatever the handler takes as one (a flex list);
 //   - P2: a carrier entry no longer stops the scan, so a literal body's
 //     escape declines at the root whatever the key order;
@@ -154,20 +160,20 @@ func TestNUR353BodyMapReviewFixes(t *testing.T) {
 		{rnd + `for 2 [Rand.map-from {a:[(quote [i])]}]`, "[{a:[word(i)]} {a:[word(i)]}]"},
 		{rnd + `for 2 [Rand.map-from {a:[quote [i] size]}]`, "[{a:1} {a:1}]"},
 		{rnd + `for 2 [Rand.map-from {a:[i/q]}]`, "[{a:i} {a:i}]"},
+		{rnd + `def i 9 end def f fn [[] [Integer] [i]] end for 2 [Rand.map-from {a:[f]}]`, "[{a:0} {a:1}]"},
+		{rnd + `def i 9 end def g fn [[] [Integer] [i]] end def f fn [[] [Integer] [g]] end for 2 [Rand.map-from {a:[f]}]`, "[{a:0} {a:1}]"},
+		{rnd + `def s {a:(flex (quote [i]))} end for 2 [Rand.map-from s]`, "[{a:0} {a:1}]"},
+		{rnd + `for 2 [Rand.map-from {a:[do (quote [i])]}]`, "[{a:0} {a:1}]"},
+		{rnd + `for 2 [Rand.map-from {a:[quote [i] do]}]`, "[{a:0} {a:1}]"},
+		{rnd + `def g fn [[x:Any] [Any] [do x]] end for 2 [Rand.map-from {a:[g (quote [i])]}]`, "[{a:0} {a:1}]"},
+		{rnd + `def s {a:(quote [i])} end for 2 [Rand.map-from s]`, "[{a:0} {a:1}]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
 	for _, c := range []struct{ src, want, why string }{
-		{rnd + `def i 9 end def f fn [[] [Integer] [i]] end for 2 [Rand.map-from {a:[f]}]`, "[{a:0} {a:1}]", "loop index `i`"},
-		{rnd + `def i 9 end def g fn [[] [Integer] [i]] end def f fn [[] [Integer] [g]] end for 2 [Rand.map-from {a:[f]}]`, "[{a:0} {a:1}]", "loop index `i`"},
-		{rnd + `def s {a:(flex (quote [i]))} end for 2 [Rand.map-from s]`, "[{a:0} {a:1}]", "loop index `i`"},
 		{rnd + `def s {a:(flex (quote [1 break]))} end Rand.map-from s`, "ERROR", "outside a compiled loop"},
 		{rnd + `def mk fn [[][List][quote [1]]] end def s {a:(mk) c:(quote [1 break])} end Rand.map-from s`, "ERROR", "outside a compiled loop"},
 		{rnd + `def mk fn [[][List][quote [1]]] end def s {c:(quote [1 break]) a:(mk)} end Rand.map-from s`, "ERROR", "outside a compiled loop"},
-		{rnd + `for 2 [Rand.map-from {a:[do (quote [i])]}]`, "[{a:0} {a:1}]", "loop index `i`"},
-		{rnd + `for 2 [Rand.map-from {a:[quote [i] do]}]`, "[{a:0} {a:1}]", "loop index `i`"},
-		{rnd + `def g fn [[x:Any] [Any] [do x]] end for 2 [Rand.map-from {a:[g (quote [i])]}]`, "[{a:0} {a:1}]", "loop index `i`"},
-		{rnd + `def s {a:(quote [i])} end for 2 [Rand.map-from s]`, "[{a:0} {a:1}]", "loop index `i`"},
 	} {
 		requireBodyMapDeclines(t, c.src, c.want, c.why)
 	}
