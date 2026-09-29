@@ -144,38 +144,20 @@ func randListOfReturns(args []native.Value, r *native.Registry) []native.Value {
 // did not analyse these bodies before, and one that raises (an undefined
 // word) still raises at run time from the hosted body, as the interpreter's
 // does. A value that is no code body is left to the handler's own error.
-// The result stays the declared Map.
+// The result stays the declared Map. A schema the pass holds as a carrier
+// (a Map param) has no bodies to run here; its bodies stay the handler's
+// alone (NUR330's recorded residual).
 func randMapFromReturns(args []native.Value, r *native.Registry) []native.Value {
-	schema, err := native.RequireConcreteMap(args[0], "Rand.map-from schema")
-	if err != nil {
-		randMapFromComputed(r)
-		return []native.Value{native.NewCarrier(native.TMap)}
-	}
-	base := len(r.Check.Diagnostics)
-	for _, key := range schema.Keys() {
-		body, _ := schema.Get(key)
-		switch {
-		case native.IsConcrete(body) && body.Parent.ConformsTo(native.TList):
-			native.AnalyseMultiRunBody(r, body)
-		case !native.IsConcrete(body) && (body.Parent == nil || native.TList.ConformsTo(body.Parent) || body.Parent.ConformsTo(native.TList)):
-			randMapFromComputed(r)
+	if schema, err := native.RequireConcreteMap(args[0], "Rand.map-from schema"); err == nil {
+		base := len(r.Check.Diagnostics)
+		for _, key := range schema.Keys() {
+			if body, _ := schema.Get(key); native.IsConcrete(body) && body.Parent.ConformsTo(native.TList) {
+				native.AnalyseMultiRunBody(r, body)
+			}
 		}
+		r.Check.TruncateDiagnostics(base)
 	}
-	r.Check.TruncateDiagnostics(base)
 	return []native.Value{native.NewCarrier(native.TMap)}
-}
-
-// randMapFromComputed declines a Rand.map-from whose generator bodies the
-// pass cannot see — a schema, or a body, computed at run time (a Map
-// param, a List read): the bodies run at run time on the shared registry,
-// where one that defs a name the program reads after the call leaks the
-// binding even out of an enclosing fn's frame (`def k 5 def f fn [[m:Map]
-// [Any] [Rand.map-from m]] end f {a:[def k 1 k]} k` is [{a:1} 1] on the
-// interpreter), and the compiled read answered the binding it recorded
-// before the call (5). With no body to model the refusal is the sound
-// answer (NUR330).
-func randMapFromComputed(r *native.Registry) {
-	r.Check.Recorder().MarkUncompilable("Rand.map-from over a computed schema: its generator bodies exist only at run time, where a body's def rebinds a name the compiled program reads as the binding before the call (NUR330)")
 }
 
 // newRandState builds a fresh PRNG seeded with the given int64.

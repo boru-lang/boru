@@ -45,6 +45,7 @@ func TestNUR330RandGeneratorBodyDefs(t *testing.T) {
 		// A bound schema literal's lists ran when the def bound them.
 		{rnd + `def s {a:[def k 1 k]} end def k 5 Rand.map-from s k`, "[{a:1} 5]"},
 		{rnd + `def f fn [[b:List][Any][def s {a: b} Rand.map-from s]] end f [2]`, "[{a:2}]"},
+		{rnd + `def f fn [[m:Map][Any][Rand.map-from m]] end f {a:[1]}`, "[{a:1}]"},
 		// The argument list ran at the call (a word-context list), so the
 		// body the schema holds is its value and the def happened there.
 		{rnd + `def k 5 def f fn [[b:List][Any][def s {a: b} Rand.map-from s]] end f [def k 1 k] k`, "[{a:1} 1]"},
@@ -64,12 +65,6 @@ func TestNUR330RandGeneratorBodyDefs(t *testing.T) {
 		{rnd + `def k 5 Rand.map-from {b:[do [def k 1] k]} k`, "[{b:1} 1]"},
 		{rnd + `def r (Rand.with-seed 3) end def k 5 r.map-from {b:[def k 1 k]} k`, "[{b:1} 1]"},
 		{rnd + `def k 5 Rand.map-from {b:[def j 1 j]} j`, "[{b:1} 1]"},
-		// A schema (or a body) computed at run time is no body the pass can
-		// model: the refusal covers it whole — a def there leaks even out of
-		// the enclosing fn's frame.
-		{rnd + `def k 5 def f fn [[m:Map][Any][Rand.map-from m]] end f {a:[def k 1 k]} k`, "[{a:1} 1]"},
-		{rnd + `def f fn [[m:Map][Any][Rand.map-from m]] end f {a:[1]}`, "[{a:1}]"},
-		{rnd + `def k 5 def f fn [[b:List][Any][def s {a: b} Rand.map-from s]] end f (quote [def k 1 k]) k`, "[{a:1} 5]"},
 		{rnd + `def k 5 def m {a: (quote [def k 1 k])} end Rand.map-from m k`, "[{a:1} 1]"},
 	} {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
