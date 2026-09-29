@@ -694,11 +694,12 @@ user still gets an answer while the case is open:
     interpreter keeps that def past the fn's frame and the compiled frame
     unwinding does not. This includes `f {a:[1]} k` over such an `f`, which
     compiled before. Where the fn defines the name first it compiles.
-  - A map-from body that reads an open counted loop's index (by name, or any
-    computed or opaque body inside a counted loop) declines, as does a body
-    that escapes with break/continue outside any compiled loop at the root
-    (NUR353): the index lives in a frame slot a run-time token body cannot
-    resolve, and the interpreter's flow_error position depends on its tape.
+  - A map-from body that escapes with break/continue outside any compiled
+    loop at the root declines (NUR353): the interpreter's flow_error position
+    depends on its tape. CLOSED 2026-09-29: the loop-index half — a body
+    reading an open counted loop's index — compiles and agrees, since a loop
+    in a program that runs computed bodies publishes its index on the
+    registry (`OpForPublish`, NUR354).
   - A runtime rematch after a branch whose arm holds an effect or a binding
     (`each (if c [[print "z" 1]] [3]) [2]`, an arm `[def q 3 q]`) declines
     ("(NUR343)"): no island can re-run the arm, and seating the branch's
@@ -717,6 +718,37 @@ user still gets an answer while the case is open:
   - `def k 5 size {a:[undef k 1]} k` is refused by the check pass
     ("undefined word: k") where the interpreter raises undefined_word at run
     time.
+- **Open refusals recorded 2026-09-29 (round 3):**
+  - A gradual operand collected forward, where the interpreter's
+    type-directed collection may stop at it and draw from the stack instead,
+    with no statement island to take the statement over, declines ("a
+    gradual operand collected forward where the interpreter's collection may
+    stop and draw from the stack, with no statement island to take it over
+    (NUR357)"): `{b:2} keys (print "x" m).f` (and its user-call and fn-unit
+    forms), a spliced word's expansion `def w word [{b:2} keys m.f] end w`,
+    a root statement after a branch whose arms make defs
+    (`if c [def q 3] [def q 4] end {b:2} keys m.f`), and such a collection
+    inside a loop or code body (`for 2 [{b:2} keys m.f]`, refused at
+    e73568c too). These raised a wrong error before.
+  - An `if` arm leaving a list or map literal that reads or calls something
+    declines "(NUR356)" when the program runs anything between the branch
+    and the interpreter's evaluation point that could tell: a rebind of a
+    name it reads, an effect, a slot that takes it raw (`do`, a code body),
+    or a poly or maybe-failing consumer (`if c [[x]] [0] size`, `… typeof`).
+    Some of these compiled before; the silent ones were wrong answers.
+  - A call matched at run time — a poly word, a dynamic apply, a rematch, a
+    user call whose param contract may refuse — over a literal whose
+    evaluation may have an effect declines "(NUR356)":
+    `def h fn [[] [Any] [3]] end each (h) [print "p" 1]` compiled before and
+    printed early. (A computed arm holding such a literal compiles and
+    raises a designed defer at run time.)
+  - Refused at e73568c and still refused, recorded by the NUR355 pass:
+    `do [1 break] 5` ("code-body word do (Stage 2)"); a root `break` and
+    `if true [break] [0]` ("break outside a compiled loop"); `do b 3` in a
+    fn; and NUR354's cross-unit twin at the root,
+    `def g fn [[m:Map][Any][Rand.map-from m]] end for 2 [g {a:(quote [i])}]`
+    ("read of `Rand` after it") — the same shape inside a fn compiles and
+    agrees.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
