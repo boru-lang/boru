@@ -1714,6 +1714,25 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 			// Its statement island runs the re-step as the interpreter does.
 			return vc.landingRestart(reg, lword, frameBase, stack, curDebug, pc)
 		}
+		if arg&compiler.LandingBeneathHeld != 0 {
+			// The program's last op, over the frame region the interpreter
+			// holds beneath the value, with nothing after it to collect
+			// (NUR344): its step over them is the no-match verdict's to
+			// answer, and otherwise the island's — the step itself, whose
+			// residual is the program's.
+			beneath := stack[frameBase:top]
+			switch verdict, fd := fnValueStepVerdict(reg, v, beneath, nil); verdict {
+			case noMatchPark:
+				return stack, nil, nil
+			case noMatchRaise:
+				return nil, nil, stampAt(uncalledAt(reg, v, fd, beneath), curDebug, pc, reg)
+			}
+			results, err := runIslandResolved(reg, beneath, []core.Value{v})
+			if err != nil {
+				return nil, nil, stampAt(err, curDebug, pc, reg)
+			}
+			return append(stack[:frameBase], results...), nil, nil
+		}
 		return nil, nil, vmErrAt(curDebug, pc, "a landed fn value takes arguments: the interpreter re-steps it here over the values beneath it, and no compiled apply re-steps it (NUR286)")
 	}
 	if _, isClosure := v.Data.(core.ClosurePayload); isClosure {
@@ -4864,13 +4883,19 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// code-splicing words. Fail loudly, never push tokens as
 			// data. A `do` whose splice results the pass fired seats
 			// the run without them (vm_splice_outs.go, NUR348).
+			// A run its count island takes (SigRef.Count) is written back on
+			// the island's tape in the do's place, where the interpreter's
+			// step takes a splice or a fn value among it: so a tape-coupled
+			// run takes the island, as does a run the plain seat refuses and
+			// every run of a CountAlways call.
+			stepped := s.Count != nil && (s.CountAlways || tapeCoupled(results) || (s.DynBodyPlain && dynBodyPlainRefuses(results)))
 			if kept, ok := spliceOutsSeat(s.SpliceOuts, results); ok {
 				results = kept
-			} else if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil {
+			} else if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil && !stepped {
 				return nil, err
 			}
 			stampFnResultPos(results, curDebug, pc)
-			if (s.CountCheck && len(results) != s.CountClaim) || (s.DynBodyOne && s.Count != nil && dynBodyOneRefuses(results)) {
+			if stepped || (s.CountCheck && len(results) != s.CountClaim) || (s.DynBodyOne && s.Count != nil && dynBodyOneRefuses(results)) {
 				// A do whose run's count the program's seat does not hold
 				// (SigRef.CountCheck, NUR222): its statement runs again, the
 				// run written in the do's place — or, with no island, a

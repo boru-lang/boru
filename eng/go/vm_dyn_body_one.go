@@ -2,6 +2,7 @@ package eng
 
 import (
 	"fmt"
+	"slices"
 
 	core "github.com/boru-lang/boru/core/go"
 )
@@ -44,13 +45,17 @@ func checkRunOne(r *core.Registry, what string, results []core.Value, curDebug [
 // neighbours, which the seated run cannot do — a designed defer at the call's
 // own position, loud.
 func checkDynBodyPlain(r *core.Registry, word string, results []core.Value, curDebug []core.SrcPos, pc int) error {
-	for _, v := range results {
-		if dynBodyValueReSteps(v) {
-			return vmDefer(r, curDebug, pc, "vm:dyn-body-plain", word+
-				" over a computed body left a value the interpreter re-steps (a fn value, class, reach or modifier) where the run is seated as data; the compiled runtime cannot execute it")
-		}
+	if dynBodyPlainRefuses(results) {
+		return vmDefer(r, curDebug, pc, "vm:dyn-body-plain", word+
+			" over a computed body left a value the interpreter re-steps (a fn value, class, reach or modifier) where the run is seated as data; the compiled runtime cannot execute it")
 	}
 	return nil
+}
+
+// dynBodyPlainRefuses reports whether checkDynBodyPlain would refuse
+// results: a count island takes such a run instead (SigRef.Count, NUR348).
+func dynBodyPlainRefuses(results []core.Value) bool {
+	return slices.ContainsFunc(results, dynBodyValueReSteps)
 }
 
 // dynBodyOneRefuses reports whether checkDynBodyOne would refuse results,

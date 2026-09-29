@@ -11732,6 +11732,21 @@ const LandingBeneathGuard = 4
 // with no island an argument-taking fn is a designed defer.
 const LandingCollects = 8
 
+// LandingBeneathHeld is the OpReStepLanding argument bit of a guarded ROOT
+// landing (LandingBeneathGuard) whose re-step the VM can decide over the
+// compiled stack itself (NUR344): the value landed at the end of the program
+// — every step of it met the tape's end, so the re-step collects nothing
+// forward — and the landing is the program's last op, so the compiled stack
+// there is the program's answer: the stack the interpreter holds beneath the
+// value wherever it parks it, which is the one outcome the lowering compiled.
+// The interpreter's step over exactly those values is then the VM's to take:
+// the no-match verdict (eng vm_fnvalue_park.go) parks a value no signature
+// admits as data where it landed, or raises a named one's uncalled_function,
+// and any other step — a signature the values admit, a window the verdict
+// does not settle — runs on the island over the frame region, whose residual
+// is the program's.
+const LandingBeneathHeld = 16
+
 // landingCollects reports whether event seq's landing is a collecting one
 // (LandingCollects).
 func (es *EmitState) landingCollects(seq int) bool {
@@ -11754,6 +11769,18 @@ func (es *EmitState) guardRootLandings(lw *lowerer, dynOp Opcode, residual []cor
 			continue
 		}
 		(*lw.code)[pc].Arg |= LandingBeneathGuard
+	}
+}
+
+// holdRootEndLanding sets LandingBeneathHeld on the guarded root landing that
+// is the program's last op — its value landed at the tape's end at every
+// step (NUR344). Run once the root's code is complete.
+func (es *EmitState) holdRootEndLanding(lw *lowerer) {
+	for _, l := range lw.rootBeneathLandings {
+		pc, seq := l[0], l[1]
+		if in := &(*lw.code)[pc]; pc == len(*lw.code)-1 && in.Arg&LandingBeneathGuard != 0 && es.landingNext[seq] == core.LandingNextEnd && es.landingOwn[seq].next == core.LandingNextEnd {
+			in.Arg |= LandingBeneathHeld
+		}
 	}
 }
 
@@ -17688,6 +17715,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	if !twinsFullyPlaced(lw.p, twinExempt) {
 		return nil, "twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose it", false
 	}
+	es.holdRootEndLanding(lw)
 	stampRootRestarts(lw)
 	stampRootDeopts(lw.p, es.rootBody)
 	return lw.p, "", true
@@ -19385,18 +19413,21 @@ func (es *EmitState) lambdaNamesSelfBound(rec *fnUnitRec, names map[string]bool)
 // runs such a def again before it reads the name, so none reads it from the
 // compiled frame: it needs no registry-visible bind (a do's run has no
 // re-pushable home), while an earlier def of the same name keeps its own
-// (`def ok 1 end def ok (do b) ok`).
+// (`def ok 1 end def ok (do b) ok`). A def inside a branch arm or a loop
+// body written after that token is the island's too: the island runs the
+// whole form again (`… t drop for 1 [def u 2] 7` after a live read of t,
+// NUR334), so the def's registry-visible bind — which a def made in a
+// nested body cannot take — is never read.
 func (es *EmitState) markIslandMadeDefs(rec *fnUnitRec) {
 	last := -1
 	for _, d := range rec.deopts {
 		last = max(last, d.token)
 	}
-	for i := range rec.frag.events {
-		ev := &rec.frag.events[i]
+	walkEvents(rec.frag.events, func(ev *EmitEvent) {
 		if ev.kind == evDynBind && ev.dyn != nil && !rec.deoptNames[ev.dyn.name] && bodyTokenContaining(rec.body, ev.dyn.pos) > last {
 			ev.dyn.islandMade = true
 		}
-	}
+	})
 }
 
 // planDeoptsEnv keeps the environment a unit's closure children seeded on
@@ -19575,7 +19606,8 @@ func collectWordNames(tokens []core.Value, names map[string]bool) {
 // an inert literal (or a value resolving to a const or a local), or of a
 // single-output call's result that no fragment owns; a def bound inside a
 // branch or loop body, from a fragment result, a variadic or a
-// multi-output producer, or of a FN value, cannot.
+// multi-output producer, or of a FN value, cannot. A def every island makes
+// itself (emitDynBind.islandMade) needs no bind, wherever it stands.
 func (es *EmitState) deoptDefsBindable(events []EmitEvent, names map[string]bool) bool {
 	bySeq := map[int]*EmitEvent{}
 	for i := range events {
@@ -19588,7 +19620,7 @@ func (es *EmitState) deoptDefsBindable(events []EmitEvent, names map[string]bool
 		}
 		for i := range frag.events {
 			ev := &frag.events[i]
-			if ev.kind == evDynBind && ev.dyn != nil && names[ev.dyn.name] {
+			if ev.kind == evDynBind && ev.dyn != nil && names[ev.dyn.name] && !ev.dyn.islandMade {
 				return true
 			}
 			for _, f := range childFragments(ev) {

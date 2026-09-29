@@ -1242,6 +1242,13 @@ type SigRef struct {
 	CountCheck bool
 	CountClaim int
 	Count      *StmtIsland
+	// CountAlways marks a computed `do` body's call run before the
+	// program's terminal trap, which the pass proved over bindings the body
+	// may have changed (NUR348): the run takes Count whatever it left — a
+	// splice or a fn value among it included, which the island steps as the
+	// interpreter's tape does — so the statement and the program after it
+	// are the interpreter's.
+	CountAlways bool
 	// ReStep marks the CALL_NATIVE of a `do` whose results the interpreter's
 	// step loop re-steps where the check pass's model had already stepped
 	// them (eventFlags.reStepResults, NUR317): the body's own analysed run
@@ -2508,6 +2515,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			}
 			if s.ReStep {
 				guard = " [results re-stepped]"
+			}
+			if s.CountAlways {
+				guard += " [count island, always]"
 			}
 			fmt.Fprintf(sb, " s%-3d ; %s (%s)%s", in.Arg, s.Word, strings.Join(names, ", "), guard)
 		case OpJmp, OpJmpIfFalse, OpForNext:

@@ -205,13 +205,33 @@ func TestLiveDeoptSpliceReturnedStaysLoud(t *testing.T) {
 	requireLoudDefer(t, unitHead+`t/v]] end f (quote [def t word [1 2] 1])`, "tape-coupled deopt result", "[1 2]")
 }
 
-// TestLiveDeoptUnservedStaysLoud: a unit whose islands cannot be served —
-// a def made inside a loop body the island would run, which no
-// registry-visible bind can make — plans no live point (and drops it beside
-// the unit's other points, which fail the same way), so the read keeps the
-// lookup's own designed defer: loud, never the stale value.
-func TestLiveDeoptUnservedStaysLoud(t *testing.T) {
-	const why = "dynamic-scope read of an active token `t`"
-	requireLoudDefer(t, unitHead+`t drop for 1 [def u 2] 7]] end f (quote [def t word [5] 1])`, why, "[7]")
-	requireLoudDefer(t, `def f fn [[b:List m:Map][Any][def t 0 def j (m get "f") j typeof end drop do b drop t drop for 1 [def u 2] 7]] end f (quote [def t word [5] 1]) {f: 1}`, why, "[7]")
+// TestLiveDeoptIslandMadeLoopDef: a unit whose island's names include a def
+// made inside a loop or branch body — which no registry-visible bind can
+// make — planned no live point (and dropped it beside the unit's other
+// points), so the read kept the lookup's own designed defer ("dynamic-scope
+// read of an active token `t`"). A body written after every island's start
+// is the islands' own: each runs the whole form again before it reads the
+// name, so the def needs no bind (compiler markIslandMadeDefs, NUR334).
+func TestLiveDeoptIslandMadeLoopDef(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{unitHead + `t drop for 1 [def u 2] 7]] end f (quote [def t word [5] 1])`, "[7]"}, // the register's witness
+		{`def f fn [[b:List m:Map][Any][def t 0 def j (m get "f") j typeof end drop do b drop t drop for 1 [def u 2] 7]] end f (quote [def t word [5] 1]) {f: 1}`, "[7]"},
+		{unitHead + `t drop for 2 [def u 2] u]] end f (quote [def t word [5] 1])`, "[2]"},
+		{unitHead + `t drop for 2 [def u 2] u]] end f (quote [def t 3 1])`, "[2]"},
+		{unitHead + `t drop for 1 [def u 2] 7]] end f (quote [def t 4 1])`, "[7]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+}
+
+// TestLiveDeoptSplicedWordStaysLoud: a read the pass met in a spliced word's
+// tokens, which carry the definition's positions, plans no live point (the
+// island would start at the definition's list — silentWordBefore), so the
+// lookup keeps its designed defer where the binding is one the compiled
+// statement cannot take: loud, never the stale value. A binding it takes
+// answers as the interpreter does.
+func TestLiveDeoptSplicedWordStaysLoud(t *testing.T) {
+	requireLoudDefer(t, mkSplice+`def w word [do (mk) end x] w`, "dynamic-scope read of an active token `x`", "[1 2]")
+	requireLoudDefer(t, mkFn+`def w word [do (mk) end x] w`, "dynamic-scope read of a dispatching binding `x`", "[7]")
+	agreeOnBothLanes(t, mkList+`def w word [do (mk) end x] w`, "[[1 2]]")
 }

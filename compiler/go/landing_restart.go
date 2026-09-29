@@ -66,6 +66,12 @@ type landingRestart struct {
 	// may still hold where the interpreter's def took them
 	// (noteRestartDepth).
 	leftovers, defBound []producer
+	// run marks a count island of a `do` over a computed body, which its
+	// call takes on a run the interpreter's tape would step (a splice, or a
+	// fn value where the run is seated as data); always, one it takes
+	// whatever the run left (SigRef.CountAlways): such a run before the
+	// program's terminal trap (planCountRestarts).
+	run, always bool
 }
 
 // substPlan is one run of tokens a statement island writes a value in place
@@ -526,29 +532,64 @@ func (es *EmitState) guardPoint(u *emitUnit, rec *fnUnitRec, tree map[int]treeEv
 // body list are written as the run the call left (RestartResults): the
 // interpreter splices a do's results back in its place and steps them. The
 // body is never run twice. A do inside a loop plans none.
+//
+// A `do` over a COMPUTED body (dynBodyRun) plans its island whatever its
+// seat: its run may hold what the interpreter's tape steps where it lands —
+// a splice (`quote [w/v]` over `def w word [1 2]`, NUR348), a fn value where
+// the run is seated as data — which no compiled seat takes, and which the
+// island writes back in the do's place for the interpreter to step.
+//
+// Where the program ends in a terminal trap, the trap is the pass's proof
+// over the bindings the model held — and a computed body run before it may
+// have changed any of them (NUR348: `do (mk) x.0` over `def x 0` and a body
+// binding x to [1 2] is a static no-match to the pass, `[1]` interpreted).
+// So each root `do` over a computed body the pass recorded before the trap
+// plans its count island whatever its seat, over a stack the pass told at
+// its statement's start (the residual is dropped under a trap), and the call
+// takes it whatever the run left (always, SigRef.CountAlways): the island
+// runs the statement and the program after it — the trap's statement
+// included — on the interpreter, the run written in the do's place. The
+// values the stack holds beneath the statement are kept off the dead list,
+// as the trap's live read keeps them (trapHeldBeneath).
 func (es *EmitState) planCountRestarts(lw *lowerer, residual []core.Value) {
 	es.notePhantomConsumers()
-	if len(es.rootBody) == 0 || es.trapAt != 0 {
+	if len(es.rootBody) == 0 {
 		return
 	}
 	tree := rootTreeEvents(es.frames[0], false)
 	for seq, te := range tree {
-		if te.inLoop || !es.countSeat(seq) {
+		trapped, run := es.trapAt != 0, es.dynBodyRun(te.ev)
+		if te.inLoop || (trapped && (seq > es.trapAt || !run)) || (!run && !es.countSeat(seq)) {
 			continue
 		}
 		tok, substs, ok := es.countPoint(tree, seq, es.rootBody)
 		if !ok {
 			continue
 		}
+		if _, told := es.stackAtStart(tok); trapped && !told {
+			continue
+		}
 		start := statementStart(es.rootBody, tok)
-		srcs, held, _, ok := es.rootPreStart(lw, tree, residual, tok, start, statementFirstSeq(tree, seq, start))
+		srcs, held, slots, ok := es.rootPreStart(lw, tree, residual, tok, start, statementFirstSeq(tree, seq, start))
 		if !ok {
 			continue
 		}
 		if lw.countRestarts == nil {
 			lw.countRestarts = map[int]*landingRestart{}
 		}
-		lw.countRestarts[seq] = &landingRestart{token: tok, start: start, depth: -1, srcs: srcs, held: held, substs: substs}
+		r := &landingRestart{token: tok, start: start, depth: -1, srcs: srcs, held: held, substs: substs, run: run, always: trapped}
+		if trapped {
+			r.heldAt = slots
+			for _, slot := range slots {
+				delete(lw.dead, slot.seq)
+			}
+			// The runs the island writes as their values read them where
+			// the compiled code left them (heldAt), never dropped.
+			for _, sp := range substs {
+				delete(lw.dead, sp.seq)
+			}
+		}
+		lw.countRestarts[seq] = r
 	}
 }
 

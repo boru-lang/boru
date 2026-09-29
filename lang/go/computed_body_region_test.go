@@ -177,12 +177,16 @@ func TestComputedDoBodyIslandCompiles(t *testing.T) {
 // interpreter's result; a run holding a fn value is the loud defer, where the
 // seated run was data (`(1 add 8) do (mk)` over `[g/v]` answered `[9 fn g]`
 // for 10, silent). A run ALONE at the program's end is the island's, exact.
+// A run with entries after it takes the do's count island where one is
+// seated (NUR348): `do (mk) 5` re-steps g over the 5 as the interpreter
+// does. A run beneath a paren the island cannot write back as its value, and
+// a fn's run, keep the check's defer.
 func TestComputedDoBodyCheckedPlain(t *testing.T) {
 	const g1 = `def g fn [[n:Integer][Integer][n add 1]] end def mk fn [[][List][quote [g/v]]] end `
 	const g0 = `def g fn [[][Integer][7]] end `
+	agreeOnBothLanes(t, g1+`do (mk) 5`, "[6]")
 	for _, c := range []struct{ src, wantI string }{
 		{g1 + `(1 add 8) do (mk)`, "[10]"},
-		{g1 + `do (mk) 5`, "[6]"},
 		{g0 + `def f fn [[b:List][Any][do b]] end f (quote [g/v])`, "[7]"},
 		// A gradual body re-matches do's overloads (CALL_NATIVE_POLY) under
 		// the same check.

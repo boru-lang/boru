@@ -106,6 +106,43 @@ func TestNUR344GroupTheLeadDoesNotTake(t *testing.T) {
 	}
 }
 
+// TestNUR344LandingAtTheProgramEnd pins NUR344's loud remainder: a `do`'s
+// fn result landing over values beneath it that a later event took
+// (LandingBeneathGuard, NUR286) — `({a:1} lam/v) do [lam/v]` — was the
+// designed defer, since the VM could not tell whether a token after the
+// landing would be collected nor whether the stack beneath it was the
+// interpreter's. At the program's end neither is in doubt: the value landed
+// at the tape's end at every step, and when its landing is the program's
+// last op the compiled stack beneath it is the interpreter's (compiler
+// LandingBeneathHeld). The interpreter's step over it is then the VM's to
+// take: the no-match verdict parks the value as data or raises a named
+// one's uncalled_function, and any other step runs on the island, whose
+// residual is the program's.
+func TestNUR344LandingAtTheProgramEnd(t *testing.T) {
+	const lam = `def lam ([x:Integer] => [x add 100]) end `
+	for _, tc := range []struct{ src, want string }{
+		{lam + `({a:1} lam/v) do [lam/v]`, `[{a:1} fn lam(Integer) fn lam(Integer)]`}, // the register's witness
+		{lam + `("s" lam/v) do [lam/v]`, `[s fn lam(Integer) fn lam(Integer)]`},
+		{`def g fn [[x:Map][Any][x]] end ` + lam + `({a:1} lam/v) do [lam/v]`, `[{a:1} fn lam(Integer) fn lam(Integer)]`},
+		// the step applies the fn over the values beneath: the island's
+		{lam + `(5 lam/v) do [lam/v]`, `[205]`},
+		{lam + `({a:1} 3 lam/v) do [lam/v]`, `[{a:1} 203]`},
+		{`def lam ([x:Integer] => [x print "p" add 100]) end (5 lam/v) do [lam/v]`, `[205]`},
+		{`def lam ([x:Map] => [x keys]) end ({a:1} lam/v) do [lam/v]`, `[['a'] fn lam(Map)]`},
+		{`def lam ([x:Integer] => [x div 0]) end (5 lam/v) do [lam/v]`, `ERROR:division by zero`},
+		{`def lam ([x:Integer] => [4 div (x sub 4)]) end (5 lam/v) do [lam/v]`, `ERROR:division by zero`}, // the landing's own step raises
+		// a named fn no signature admits raises where it lands
+		{`def lam fn [[x:Integer][Integer][x add 100]] end ({a:1} lam/v) do [lam/v]`, `ERROR:call to 'lam' matched no signature`},
+		{`def lam fn [[x:Integer][Integer][x add 100]] end "s" 7 drop do [lam/v]`, `ERROR:call to 'lam' matched no signature`},
+		{`def an ([x:Integer] => [x]) end def lam fn [[x:Integer][Integer][x add 100]] end ({a:1} an/v) do [lam/v]`, `ERROR:call to 'lam' matched no signature`},
+	} {
+		agreeOnBothLanes(t, tc.src, tc.want)
+	}
+	// Negative: a landing some op follows is no program's end, and keeps
+	// the designed defer.
+	requireLoudDefer(t, lam+`({a:1} lam/v) do [lam/v] end 7`, "no compiled apply re-steps it (NUR286)", `[{a:1} fn lam(Integer) fn lam(Integer) 7]`)
+}
+
 // TestNUR346LeafFrameArgsElision pins NUR346's close. A fn body that needs
 // no frame state and never reads `args` (core bodyReferencesArgs, macros
 // resolved when the fn is built) is a LEAF: the interpreter's handler pushes
