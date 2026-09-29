@@ -632,6 +632,14 @@ user still gets an answer while the case is open:
     effect or a non-constant value (`({a:(print 1)} lam/v) print 2`)
     declines (NUR337's remainder): the interpreter evaluates the member
     after the next statement has run.
+- **Open refusal recorded 2026-09-29:**
+  - A trap under a dispatch whose operand is a run-time-counted region (a
+    loop, or a count-varying branch) written after the word in a paren —
+    `each (for 1 [mk]) [x/u]` — declines with "rematch operands include a
+    variadic loop result" (NUR340, a wrong answer on main before): the
+    interpreter spreads the region into the call's arguments and the
+    re-match window has no fixed count to read. The region beneath the word
+    (`if c [99] [1 2] each [x/u]`) still compiles and agrees.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
