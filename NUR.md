@@ -809,9 +809,7 @@ rejected as `word(x)`, and the notes print internal forms (`paren(…)`,
 `sugar(lambda)`). The typed-list analogue — `h [(1 add 1)]` against
 `[:Integer]` — has the same flaw, identically on both lanes.
 
-**Proposed verdict:** resolve by fix in the interpreter — evaluate an Eval
-map or list operand before pattern matching — then make the compiled notes
-agree. Changes the oracle; needs the maintainer's ruling.
+**Verdict (maintainer, 2026-09-29):** resolve by fix in the interpreter — evaluate an Eval map or list operand before pattern matching (`h {f: (1 add 1)}` answers 2, typed lists likewise), then make the compiled lane agree, notes included. The oracle changes by this ruling.
 
 ---
 
@@ -836,6 +834,8 @@ Pinned by lang `TestLiveDeoptSpliceReturned` (its loud rows) and
 `TestLiveDeoptSplicedWordStaysLoud`. Fixed 2026-09-29: a `def` inside a
 later `for` body (`markIslandMadeDefs`), and the splice returned to the
 program's end (eng `rootEndStep`, `rootEndResults`).
+
+**Verdict (maintainer, 2026-09-29):** resolve by fix — compile every remaining shape and agree (a per-call-site result island; an island that starts inside a splice's payload).
 
 ---
 
@@ -863,6 +863,8 @@ Fixed 2026-09-29: a paren right after a computed def, a lead that went
 through a landing, the `/v` lead `(m.f/v y) 9` (compiler `leadRun`), and a
 unit's island over a value an earlier statement left
 (`(1 add 2) end (q.f 7)`, `deoptPoint.onFrame`, `frameIntact`).
+
+**Verdict (maintainer, 2026-09-29):** resolve by fix — compile every remaining shape and agree (per-iteration loop islands; promoting a multi-result call's first result; an island over a statement that takes an earlier value).
 
 ---
 
@@ -894,9 +896,7 @@ A further edge, unprobed: inside a forked registry (await / timer
 branches) the VM treats a same-scope fork as the fn's home and passes the
 empty list where the interpreter passes the real args.
 
-**Proposed verdict:** resolve by fix (elide only where no code the frame
-runs can read `args`, e.g. never for a frame that runs a computed body or
-a word macro), or Allowed with the rule restated. A maintainer decision.
+**Verdict (maintainer, 2026-09-29):** resolve by fix — a frame's `args` is always the call's real argument list wherever code the frame runs can read it: elide only where nothing can (never for a frame that runs a computed body or a word macro), on both lanes.
 
 ---
 
@@ -925,6 +925,8 @@ statement's, `each (h) [print "p" 1]`). What remains:
   before the interpreter runs it. Kept so real programs still compile; owed
   an effect classification of natives.
 
+**Verdict (maintainer, 2026-09-29):** resolve by fix — the no-match note must render the literal as written (link a folded constant back to its source literal); classify native effects explicitly (an effect flag on natives such as IO reads) and decline only where an effectful native sits in such a literal.
+
 ---
 
 ## NUR357 — a gradual read collected forward: the remainder {#nur357}
@@ -944,6 +946,8 @@ defs, or a `def q (if …)`, ahead of the call —
 def g fn [[m:Map][Any][if true [def q 3] [def q 4] {b:2} keys m.a]] end
   compiled raises keys' no-match where the interpreter answers
 ```
+
+**Verdict (maintainer, 2026-09-29):** resolve by fix — plan the fit island across def-making branches in fn units, or decline "(NUR357)"; the wrong error never stands.
 
 ---
 
@@ -965,6 +969,8 @@ The list literal's sub-evaluation drops the signal where every other
 enclosing run raises it. Surfaced by the NUR355 fix, which made the
 compiled lane raise.
 
+**Verdict (maintainer, 2026-09-29):** the interpreter is wrong — a list literal is not a loop; a flow signal escaping its elements raises `flow_error: <ctrl> outside loop` as every other enclosing run does (and no engine marker leaks). Fix the interpreter; the compiled lane already raises.
+
 ---
 
 ## NUR359 — a loop over a computed body whose `/v` fn breaks is an internal_error {#nur359}
@@ -976,6 +982,8 @@ def f fn [[] [Any] [break]] end def mk fn [[][List][quote [f/v]]] end for 2 [do 
   interpreted   [7]
   compiled      internal_error (vm:dyn-body-plain)
 ```
+
+**Verdict (maintainer, 2026-09-29):** resolve by fix — compile it: the plain computed-body path resolves a break escaping through a `/v` fn value so the loop takes it (`[7]`).
 
 ---
 
@@ -995,6 +1003,8 @@ def k fn [[m:Map][List][keys m]] end def g fn [[m:Map][Any][k m.a]] end g {a:0}
 `TAIL_CALL_USER` reuses the caller's frame, so the RET's anchor (and the
 specialised unit's trap position) is not the interpreter's.
 
+**Verdict (maintainer, 2026-09-29):** resolve by fix — carets are part of parity: a tail-called unit's RET and traps anchor where the interpreter anchors them.
+
 ---
 
 ## NUR361 — a gradual read in a `var` body inside an `each` callback skips the fn guard {#nur361}
@@ -1010,6 +1020,8 @@ def g fn [[] [Integer] [5]] end def mk fn [[] [Any] [g/v]] end each [var [[q] de
 The read of `v` compiles without NUR123's fn guard, so a fn value is
 returned where the interpreter calls it. `[v]` and `if c [[v]] [[]]` in
 the same body do the same.
+
+**Verdict (maintainer, 2026-09-29):** resolve by fix, first priority (the only silent wrong answer open): guard the read, or decline soundly.
 
 ---
 
