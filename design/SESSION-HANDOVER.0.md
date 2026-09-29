@@ -780,7 +780,7 @@ nothing after it and nothing on the stack (`m get 'f'`) is 42 interpreted and
 ## NUR174: the landing's SEAT, corrected — read this first (2026-09-20)
 
 The section below describes NUR173's fix as merged in #478. Its mechanism
-stands; **its recording site does not**, and [NUR174](../NUR.md#nur174)
+stands; **its recording site does not**, and NUR174 (retired; `git log -S NUR174`)
 replaced it the same day.
 
 NUR173 recorded the landing at the REACH-GROUP COLLAPSE. That made the model a
@@ -900,7 +900,7 @@ here, unlike in `noMatchIfSigged`, because a wrong "no" costs a landing this
 model would have skipped anyway where a wrong "yes" costs an interpreter entry
 on every read of one.
 
-**Three holes remain, all named in [NUR173](../NUR.md#nur173):** the `get`-WORD
+**Three holes remain, all named in [NUR173](NUR-ARCHIVE.0.md#nur173):** the `get`-WORD
 twin (`m get 'f'` is not a reach group, so nothing records its landing), a
 collectable token written after the survivor, and a variadic producer's region
 top. The sweep's two `def container` CRASH cells (`CALL_DYNAMIC underflow`,
@@ -1141,7 +1141,7 @@ The first is the one that cost the most, four times in one session:
 
 The six shapes measured on 2026-09-21 (`if b [def z 9] [] end z` with
 `b=false` answering 9; the top-level `[0 1]`, `[1]`, `[0 Integer]`
-residuals; the leaked nil) were [NUR110](../NUR.md#nur110), recorded
+residuals; the leaked nil) were [NUR110](NUR-ARCHIVE.0.md#nur110), recorded
 2026-08-28 with a pinned unit test inviting its closure, and the two fixes
 that record had already built and rejected (a refusal at the join: 131
 rows; a refusal at the read: the `t2` false positive) are the reasons the

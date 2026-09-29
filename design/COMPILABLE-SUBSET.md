@@ -644,6 +644,22 @@ user still gets an answer while the case is open:
     interpreter spreads the region into the call's arguments and the
     re-match window has no fixed count to read. The region beneath the word
     (`if c [99] [1 2] each [x/u]`) still compiles and agrees.
+  - A region BENEATH the word that may be empty — a 0-or-1 branch merge, a
+    loop — declines the same way (`if c [] [1] each [x/u]`, the Codex review
+    of #521): the push-and-swap seat needs a region proven non-empty.
+  - A `Function` param passed on bare to a recursive call —
+    `def h fn [[g:Function n:Integer][Integer][if (n lte 0) [0] [(g n) add (h g (n sub 1))]]] end h inc/v 5`
+    — declines with "unmatched dispatch recovered at h" (formerly NUR234: the
+    generic unit answered `[20]` where the interpreter raises
+    `signature_error`, the bare name being a word dispatch of `g`). The
+    compile of the interpreter's raise is owed.
+  - A source naming `Function` whose compile pass makes an effect the retry
+    cannot repeat (a counted effect — a file write, a network send — or a
+    stdin read, in a module body or a check-mode word) and whose call-site
+    specialisation declines does not compile ("call-site specialisation
+    declined after an unrepeatable check-pass effect"; formerly NUR236). The
+    effect happens once, never twice; the cure is a specialisation that
+    declines less often or unwinds in place without a re-run.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
