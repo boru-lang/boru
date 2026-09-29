@@ -4052,7 +4052,42 @@ func (e *Engine) noteCollectionHazards(sig *Signature, sortedIndices []int) {
 	if sig != nil && sig.Callable != nil && sig.Callable.StripsUnconsumedInput {
 		return
 	}
+	e.noteCollectedLandings(sortedIndices)
 	e.noteCollectionHazardsBelow(-1, sortedIndices[0], e.forwardOnly(len(sortedIndices)))
+}
+
+// noteCollectedLandings is the hazard scan's twin for the dispatch's OWN
+// operands (NUR349). A value the run may find callable — a gradual read of
+// an opaque Map's member — is re-stepped by the interpreter where it lands,
+// and its forward phase collects the value written after it before any
+// later word runs: `1 m.f 7 add` is `1 (m.f 7) add`, 9. The pass steps it as
+// data there, noting no landing (CheckState.StoodAsideLandingIDs: the
+// residual arms model `1 m.f 7`). When the dispatch at the pointer takes
+// such a value from the stack TOGETHER with a value written after it (a
+// stack operand above it, below the word), the model's window is the
+// interpreter's only when the run's value is data. The value's landing is
+// noted as a COLLECTING one (core.LandingNextCollect): the lowering guards
+// it where nothing compiled re-steps it, and at run time a callable value
+// takes its statement's island, data runs on. A value no landing op can
+// guard declines the program (EmitRecorder.NoteTakenLanding).
+func (e *Engine) noteCollectedLandings(sortedIndices []int) {
+	es := e.Registry.analysisRecorder()
+	if !es.Active() {
+		return
+	}
+	// The operands the dispatch took off the stack, bottom first: the ones
+	// beneath the pointer less the forward run rearrangeForForward laid out
+	// on top of them (forwardSplit) — those were written after the word.
+	run := 0
+	for run < len(sortedIndices) && sortedIndices[run] < e.Pointer {
+		run++
+	}
+	run -= e.forwardSplit()
+	for _, j := range sortedIndices[:max(run-1, 0)] {
+		if v := e.Tape.At(j); !v.Quoted && e.Registry.Check.StoodAsideLandingIDs[v.ID] {
+			es.NoteTakenLanding(v)
+		}
+	}
 }
 
 // forwardOnly reports whether every one of the n operands of the dispatch at

@@ -696,7 +696,7 @@ func (es *EmitState) restartSubsts(tree map[int]treeEvent, body []core.Value, to
 	cands := append([]substPlan(nil), pre...)
 	for _, s := range pending {
 		ev := tree[s].ev
-		if restartRead(ev) {
+		if restartRead(ev) || rerunBranch(ev) {
 			continue
 		}
 		if path, ok := parenOf(ev, body, tok); ok && (!wordAt(body, path) || inertBefore(body, tok, path, cands...)) {
@@ -729,7 +729,7 @@ func (es *EmitState) restartSubsts(tree map[int]treeEvent, body []core.Value, to
 		switch {
 		case inside && (ev.kind == evDynBind || ev.kind == evStore || ev.kind == evBindTwin):
 			return nil, false
-		case !inside && !own && !restartRead(ev) && !(isDo && whole):
+		case !inside && !own && !restartRead(ev) && !rerunBranch(ev) && !(isDo && whole):
 			return nil, false
 		}
 	}
@@ -1758,6 +1758,29 @@ func (es *EmitState) rawReachLead(tree map[int]treeEvent, seq int, body []core.V
 	t := toks[path[len(path)-1]]
 	ri, err := core.AsReach(t)
 	return err == nil && ri.Eval && !t.Quoted
+}
+
+// rerunBranch reports whether ev is a branch a statement island may run
+// again whole: every event its condition and its arms hold, at any depth, is
+// a restartRead or such a branch itself. It binds nothing (an arm's def is
+// no read) and runs no user code, so the interpreter's second run of the
+// branch's tokens takes the same arm and leaves the same value — `each (if c
+// [[1]] [3]) [2]`, whose runtime rematch matches (NUR343).
+func rerunBranch(ev *EmitEvent) bool {
+	if ev.kind != evBranch {
+		return false
+	}
+	for _, frag := range childFragments(ev) {
+		if frag == nil {
+			continue
+		}
+		for i := range frag.events {
+			if e := &frag.events[i]; !restartRead(e) && !rerunBranch(e) {
+				return false
+			}
+		}
+	}
+	return true
 }
 
 // restartRead reports whether ev runs no user code, binds nothing and has

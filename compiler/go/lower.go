@@ -1283,17 +1283,22 @@ func (lw *lowerer) emitReStepAfter(ev *EmitEvent) string {
 //
 // A multi-result event is left alone: the landing tests ONE value, and which
 // of several the rewind lands on is not this model's to guess.
-func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) {
+//
+// A TAKEN landing (NUR349) the op cannot guard declines (takenLandingFail).
+func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) string {
 	if lw.es == nil {
-		return
+		return ""
 	}
 	pos, noted := lw.es.landingAfter[ev.seq]
 	if !noted {
-		return
+		return ""
 	}
 	delete(lw.es.landingAfter, ev.seq)
+	if reason := lw.takenLandingFail(ev.seq); reason != "" {
+		return reason
+	}
 	if c.nout != 1 {
-		return
+		return ""
 	}
 	w := lw.es.landingWordAt(ev.seq)
 	w.ValPos = lw.es.landingValPos[ev.seq]
@@ -1302,6 +1307,7 @@ func (lw *lowerer) emitLandingAfter(ev *EmitEvent, c *emitCall) {
 	}
 	lw.seatLandingWord(w, ev.seq)
 	lw.noteRootBeneathLanding(lw.emit(OpReStepLanding, lw.es.landingArg(ev.seq, lw.frameTail), pos), ev.seq)
+	return ""
 }
 
 // noteRootBeneathLanding records the landing op at pc when it lands an event's
@@ -4171,7 +4177,9 @@ func (lw *lowerer) seatsAsRegion(seq int) bool {
 func (lw *lowerer) seatCallResults(ev *EmitEvent, c *emitCall) string {
 	// The guarded landing runs HERE, over the result still on top, before any
 	// of the seating below moves it (NUR173).
-	lw.emitLandingAfter(ev, c)
+	if reason := lw.emitLandingAfter(ev, c); reason != "" {
+		return reason
+	}
 	// A promoted result: store it into a frame slot now and re-push it per
 	// reference / per residual position (the references were rewritten to local
 	// operands). A single-result value-def stores one slot; a multi-output stack
@@ -4559,6 +4567,9 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 				OnMatch:     ev.trap.rematchOnMatch,
 				OnMatchPos:  ev.trap.onMatchPos,
 			})
+			// The run may match (a List arm, NUR343): its statement island
+			// runs the statement from its first token, the region included.
+			lw.seatRematchRestart(ev.seq, idx)
 			lw.emit(OpDispatchRematch, idx, ev.trap.pos)
 			return ""
 		}

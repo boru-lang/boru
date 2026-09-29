@@ -1491,6 +1491,10 @@ type EmitState struct {
 	// tape (its own position, when it had one): the interpreter's re-step
 	// raises there (LandingWord.ValPos, NUR289's caret).
 	landingValPos map[int]core.SrcPos
+	// landingTaken marks the noted landings a later dispatch took as an
+	// operand beside a value written after them (NoteTakenLanding, NUR349):
+	// a landing the lowering cannot guard declines the program.
+	landingTaken map[int]bool
 	// rootStmtStacks holds, by the position of a ROOT statement boundary
 	// that closed nothing, the stack it left for the next statement
 	// (NoteStatementStack): a root statement island seats exactly these

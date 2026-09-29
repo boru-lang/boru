@@ -317,6 +317,13 @@ type EmitRecorder interface {
 	// its producer's own paren placed is placed only while that first
 	// delivery is its only one.
 	NoteDelivery(v Value)
+	// NoteTakenLanding marks v as owing a COLLECTING landing (NUR349): a
+	// value the run may find callable, which a dispatch took off the stack
+	// together with a value written after it — the value the interpreter's
+	// re-step of v collects before that dispatch runs. The landing guards the
+	// value where it lands; a value no landing op can guard declines the
+	// program.
+	NoteTakenLanding(v Value)
 	RecordFallback(span FallbackSpan, ins []Value, out Value, pos SrcPos) bool
 	RecordTrap(code, detail, word, hint string, pos SrcPos) bool
 	RecordTrapErr(ae *BoruError, pos SrcPos) bool
@@ -808,6 +815,7 @@ func (inactiveEmit) RecordDynMethod(Value, []Value, []Value, string, SrcPos) boo
 }
 func (inactiveEmit) NoteReStepLanding(Value, SrcPos)                          {}
 func (inactiveEmit) NoteDelivery(Value)                                       {}
+func (inactiveEmit) NoteTakenLanding(Value)                                   {}
 func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }

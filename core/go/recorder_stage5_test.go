@@ -95,6 +95,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	}
 	e.NoteReStepLanding(Value{}, SrcPos{})
 	e.NoteDelivery(Value{})
+	e.NoteTakenLanding(Value{})
 	if e.RecordFallback(FallbackSpan{}, nil, Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordFallback must decline")
 	}

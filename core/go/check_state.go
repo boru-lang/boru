@@ -572,6 +572,15 @@ type CheckState struct {
 	// the park records it in ParenPlacedFnIDs for the residual lowering
 	// (`("s" lam/v) ("x")` is `[s fn x]`). Reset by Begin.
 	TrailingDeferredFnIDs map[string]bool
+	// StoodAsideLandingIDs records the values the step loop re-stepped
+	// where they landed with a value after them its forward phase may
+	// collect, where no landing was noted (check's noteReStepLanding: the
+	// residual arms model `1 m.f 7`). A later dispatch that takes such a
+	// value off the stack beside a value written after it ran over the fn
+	// the interpreter re-stepped first — `1 m.f 7 add` is 9 — so the
+	// dispatch notes the value's landing then (Engine.noteCollectedLandings,
+	// NUR349). Keyed by value ID. Reset by Begin.
+	StoodAsideLandingIDs map[string]bool
 
 	// FnAnalysisCounts tracks distinct body analyses (memo misses)
 	// per fn DEFINITION SITE (fnQuotaKey: scope + name + body position,
@@ -1178,6 +1187,7 @@ func (c *CheckState) Clone() *CheckState {
 	cp.WordReadFnIDs = cloneMap(c.WordReadFnIDs)
 	cp.ForwardLeftoverFnIDs = cloneMap(c.ForwardLeftoverFnIDs)
 	cp.TrailingDeferredFnIDs = cloneMap(c.TrailingDeferredFnIDs)
+	cp.StoodAsideLandingIDs = cloneMap(c.StoodAsideLandingIDs)
 	cp.FnSummaries = cloneMap(c.FnSummaries)
 	cp.FnInflight = cloneMap(c.FnInflight)
 	cp.FnBodyChecked = cloneMap(c.FnBodyChecked)
@@ -1325,6 +1335,7 @@ func (c *CheckState) Begin() func() {
 	c.WordReadFnIDs = nil
 	c.ForwardLeftoverFnIDs = nil
 	c.TrailingDeferredFnIDs = nil
+	c.StoodAsideLandingIDs = nil
 	// Arm process-wide ID minting for the pass's lifetime: the emit
 	// recorder keys provenance on Value.IDs minted at creation, so every
 	// value created while ANY pass is live must carry one (see

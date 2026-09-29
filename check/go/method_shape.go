@@ -966,10 +966,18 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 		// the literal after it reaches the residual arms only after the
 		// def — `def j (5 do [(mk)] 7) end 1 j` is `[8 1 5]`, and the arms
 		// saw `fn 7 1 5`. A dispatch modifier is data intent, no collection.
-		if !core.IsDispatchMod(e.Tape.At(valIdx+1)) && inDefGroup(e, valIdx) {
+		if core.IsDispatchMod(e.Tape.At(valIdx + 1)) {
+			return
+		}
+		if inDefGroup(e, valIdx) {
 			es.NoteReStepLanding(v, v.Pos())
 			es.NoteLandingNext(v, core.LandingNextCollect, len(e.EffectiveResolved()) > 0, core.Value{})
+			return
 		}
+		// Elsewhere the residual arms model the collection (`1 m.f 7`), and
+		// a later dispatch that takes the value beside the one after it
+		// notes the landing then (NUR349).
+		noteStoodAside(r.Check, v.ID)
 		return
 	}
 	es.NoteReStepLanding(v, v.Pos())
@@ -995,6 +1003,16 @@ func noteReStepLanding(e *core.Engine, valIdx int) {
 		}
 	}
 	es.NoteLandingNext(v, next, len(e.EffectiveResolved()) > 0, word)
+}
+
+// noteStoodAside records id as a value the step loop re-stepped with a
+// collectable value after it and no landing noted
+// (CheckState.StoodAsideLandingIDs, NUR349).
+func noteStoodAside(c *core.CheckState, id string) {
+	if c.StoodAsideLandingIDs == nil {
+		c.StoodAsideLandingIDs = map[string]bool{}
+	}
+	c.StoodAsideLandingIDs[id] = true
 }
 
 // inDefGroup reports whether valIdx sits directly in the paren group written
