@@ -95,14 +95,15 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR235](#nur235) | A typed-map param pattern over an inline map literal with a computed member: both lanes refuse the call, the `signature_error` notes differ | call-site specialisation's investigation (2026-09-27) |
 | [NUR334](#nur334) | A read after a computed keep-defs body: a unit returning a `/v`-read splice, and a read inside a spliced word's body, stay loud | main's 50 uncovered statements (2026-09-28); narrowed twice 2026-09-29 |
 | [NUR336](#nur336) | A paren apply over a member that is data at run time: a `/v` lead, a landing lead in a loop body, and two leftover shapes stay loud | main's 50 uncovered statements (2026-09-28); narrowed twice 2026-09-29 |
-| [NUR343](#nur343) | A union-typed branch at `each` whose arm holds an effect or a binding defers at run time (loud) | the NUR340 pass (2026-09-29); narrowed 2026-09-29 |
 | [NUR347](#nur347) | A named closure read with `/v` into a runtime-built map anchors its contract error at the member read compiled (loud; caret only) | the interp-entry census pass (2026-09-29); narrowed twice 2026-09-29 |
 | [NUR348](#nur348) | A fn unit's `do b` over a computed splice, and a computed `do` whose statement opens with an infix call in a paren, still defer compiled (loud) | the live-read deopt pass (2026-09-29); narrowed twice 2026-09-29 |
 | [NUR350](#nur350) | Whether a computed body or a late word macro sees a fn's `args` depends on whether the fn's own body mentions `args` or needs frame state (the interpreter's leaf-frame elision, now mirrored compiled) | the NUR346 fix (2026-09-29) |
-| [NUR351](#nur351) | A forward collection stops at a live read's stale type after a computed body: a wrong error compiled where the interpreter answers | the NUR348 pass (2026-09-29) |
-| [NUR352](#nur352) | Four loud neighbours of the union-branch rematch and the member apply: a static trap, an eager arm body, a pre-evaluated argument note, a gradual def-bound fn read | the NUR343/349 pass (2026-09-29) |
+| [NUR351](#nur351) | A poly no-match renders a narrower, best-effort window than the interpreter's (notes only) | the NUR348 pass (2026-09-29); narrowed 2026-09-29 |
+| [NUR352](#nur352) | A root gradual def read holding a fn, beneath an earlier statement's residual (`5 end 1 x 7 add`), defers compiled (loud) | the NUR343/349 pass (2026-09-29); narrowed 2026-09-29 |
 | [NUR354](#nur354) | A computed body run in a loop does not see the loop's index compiled (`for 2 [do b]` over `quote [i]`) | the body-map pass (2026-09-29) |
 | [NUR355](#nur355) | A `break` from a computed body or a fn at the root, outside any loop, is an internal_error compiled for the interpreter's flow_error (loud) | the body-map pass (2026-09-29) |
+| [NUR356](#nur356) | A list literal a branch arm leaves pending is evaluated at the arm compiled, where the interpreter evaluates it when consumed (silent) | the NUR351/352 pass (2026-09-29) |
+| [NUR357](#nur357) | A gradual read the interpreter's type-directed collection rejects is collected forward compiled (`{b:2} keys y`) | the NUR351/352 pass (2026-09-29) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -862,27 +863,6 @@ lead that went through a landing (`(m.f y) 9`, the survivors island).
 
 ---
 
-## NUR343 — a union-typed branch at `each` with an effectful arm defers {#nur343}
-
-**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
-
-`each` over a branch whose result may be a List or an Integer is a
-runtime rematch; where the run matches, the statement's island re-runs it
-on the interpreter (compiler `rerunBranch`, `planRematchRestart`). A branch
-arm holding an effect or a binding cannot be re-run without repeating it,
-so it keeps the designed `vm:rematch-matched` defer:
-
-```
-def c true end each (if c [[print "z" 1]] [3]) [2]
-  interpreted   prints z, [[1]]
-  compiled      internal_error (vm:rematch-matched)
-```
-
-Likewise an arm `[def q 3 q]`. Pinned by lang
-`TestNUR343ArmEffectKeepsTheDefer`.
-
----
-
 ## NUR347 — a closure stored by `/v` in a runtime-built map: the caret {#nur347}
 
 **Status:** Pending (loud; the caret differs) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
@@ -955,44 +935,45 @@ a word macro), or Allowed with the rule restated. A maintainer decision.
 
 ---
 
-## NUR351 — a forward collection stops at a live read's stale type {#nur351}
+## NUR351 — a poly no-match's window is narrower than the interpreter's {#nur351}
 
-**Status:** Pending (a wrong error) · **Recorded:** 2026-09-29
+**Status:** Pending (notes only; code, message and caret agree) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
 
 ```
-def x 0 end def mk fn [[][List][quote [def x {a:1} 4]]] end do (mk) end keys x
-  interpreted   [4 ['a']]
-  compiled      signature_error: cannot call `keys` … the argument was 4
+def f fn [[][Any][4]] end def g fn [[][Any][0]] end f g keys
+  both lanes raise keys' signature_error; the compiled note names a
+  narrower window than the interpreter's
 ```
 
-The gradual Integer bound on `x` (the model's pre-body type) is disjoint
-from `keys`' Map slot, so the model's `keys` takes the body's run from the
-stack and the live-read point lands after it. Twin: `… quote [4] … x keys`
-raises on both lanes with different notes ("the arguments were 0 … and 4"
-interpreted, "the argument was 0" compiled). A further witness:
-`def mk fn [[][List][quote [4]]] end (1 add 2) do (mk) end keys 5` raises on
-both lanes, "the argument was 4" compiled for "was 5" interpreted.
-Pre-existing on main b37ddca.
+Likewise `… quote [4] … x keys` after a computed body, and
+`def f fn [[][Any][4]] end f end 0 keys`, whose compiled trap note says
+"dynamic(Any) (an Any)" where the interpreter says "4 (an Integer)". The
+compiled lane renders a best-effort window over what the check pass held.
+
+Fixed 2026-09-29: the live-read after a computed body that a word before it
+collects forward (`do (mk) end keys x`, a wrong error; `{b:1} keys x`, a
+silent wrong answer) — the live point moves to that word (compiler
+`collectorToken`, `pendingStart`, `rootStackHeld`), and the shapes it cannot
+serve decline (§5).
 
 ---
 
-## NUR352 — neighbours of the union-branch rematch and the member apply {#nur352}
+## NUR352 — a gradual def-bound fn read beneath an earlier residual {#nur352}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-29 · pre-existing on main b37ddca
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
 
-1. `def c true end 7 8 each (if c [[1]] [3]) [2]`: interpreted
-   `[7 8 [1]]`; compiled raises a static `signature_error` trap on `each`
-   over the window `[8, 7]`.
-2. `def c true end each (if c [[dup]] [3]) [2 3]`: interpreted `[[2 3]]`;
-   compiled raises `signature_error` on `dup` — the arm's list body is
-   evaluated eagerly.
-3. `def h fn [[] [Any] [3]] end each (h) [1 add 2]`: both lanes raise
-   `signature_error`, but the compiled note lists the arguments as
-   `3 and [3]` (the list pre-evaluated) for the interpreter's
-   `3 and [1 word(add) 2]`.
-4. `def x m.f end 1 x 7 add` over an opaque Map with a fn member:
-   interpreted `[9]`; compiled hits the NUR123 designed defer ("gradual read
-   `x` holds a fn…").
+```
+def mk fn [[] [Map] [{f: ([x:Integer] => [x add 1])}]] end def m (mk) end
+def x m.f end 5 end 1 x 7 add
+  interpreted   [5 9]
+  compiled      the NUR123 designed defer (the residual 5 is not on the compiled stack)
+```
+
+Fixed 2026-09-29: the same read without the earlier residual
+(`1 x 7 add`, a deopt island from the statement's first token), a poly
+no-match rendering a pre-evaluated list literal (`PolyRef.Raw`), and
+`7 8 each (if c [[1]] [3]) [2]` (already agreed; pinned). An arm's pending
+list whose evaluation raises now declines (§5).
 
 ---
 
@@ -1023,6 +1004,41 @@ do (quote [1 break]) 5
 def f fn [[] [Any] [break]] end f 9
   interpreted   flow_error: break outside loop
   compiled      internal_error: flow signal with no enclosing loop
+```
+
+---
+
+## NUR356 — an arm's pending list literal is evaluated at the arm compiled {#nur356}
+
+**Status:** Pending (a silent wrong answer) · **Recorded:** 2026-09-29 · pre-existing at fa1d220
+
+```
+def x 1 end def c true end if c [[x]] [0] end def x 2 end
+  interpreted   [[2]]
+  compiled      [[1]]
+def c true end if c [[print "q" 2]] [3] end print "a"
+  interpreted   prints a q
+  compiled      prints q a
+def h fn [[] [Any] [3]] end each (h) [print "p" 1]
+  compiled prints p and renders [1]; the interpreter prints nothing and
+  renders the raw literal
+```
+
+The interpreter leaves a list literal an arm ends with pending until
+something consumes it; the model evaluates it at the arm. The rematch and
+raise shapes built on the same eager evaluation decline (NUR343, NUR352 #2
+in §5).
+
+---
+
+## NUR357 — a gradual read is collected forward where the interpreter's type-directed collection rejects it {#nur357}
+
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · pre-existing at fa1d220
+
+```
+def f fn [[] [Any] [0]] end def y (f) end {b:2} keys y
+  interpreted   [['b'] 0]
+  compiled      signature_error
 ```
 
 ---
