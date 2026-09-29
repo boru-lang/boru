@@ -606,7 +606,9 @@ const (
 	// statement's token) to the interpreter with the frame's bindings
 	// registry-visible, then continues at the unit's RET with the island's
 	// residual as the frame region (CompiledFn.Deopts[Arg]). Plain data
-	// costs the test and nothing else.
+	// costs the test and nothing else. A LIVE-READ point (DeoptSpec.Live)
+	// tests the registry binding of a read seated live after a computed
+	// keep-defs body instead, before the read is made (LiveHot).
 	OpDeoptIfFn
 
 	// OpReStepLanding is the guarded LANDING of a reach-lowered group's single
@@ -2290,6 +2292,42 @@ type DeoptSpec struct {
 	// island installs it under its name for its run, as a root read's
 	// island does (NUR285).
 	Install bool
+	// Live marks a LIVE-READ point (compiler kept_live_deopt.go): the value
+	// tested is the registry binding of Name — the read seated live after a
+	// computed keep-defs body, not yet made — tested before its statement's
+	// first op, and the island runs the statement when the binding is one
+	// the compiled statement cannot take (LiveHot). Ref marks the `/v`
+	// read's point, and Model is the type the statement was compiled for
+	// (nil: none — a type value).
+	Live  bool
+	Ref   bool
+	Model *core.Type
+}
+
+// LiveHot reports whether a live-read point's binding — v, when bound — is
+// one its compiled statement cannot take, which the interpreter's step
+// answers: no binding (the step's own error, where the lookup would raise
+// before a pending word could), a binding a bare read DISPATCHES (a fn, a
+// class — the `/v` read delivers both as data, as stepWordVal does), an
+// active token either read hands on for a step to splice or re-step (a
+// splice, a reach, a word, a mark, a move), or a value no longer of the type
+// the statement was compiled for (Model) — a type node among them — whose
+// dispatch the compiled statement laid out for that type. A spurious test is
+// only an island: the interpreter's answer either way.
+func (d *DeoptSpec) LiveHot(v core.Value, bound bool) bool {
+	if !bound {
+		return true
+	}
+	switch v.Data.(type) {
+	case core.FnDefInfo, *core.ClassTypeInfo:
+		if !d.Ref {
+			return true
+		}
+	}
+	if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {
+		return true
+	}
+	return d.Model != nil && (core.IsTypeLiteral(v) || !core.SigTypeMatches(v, d.Model))
 }
 
 // specNote renders a specialised unit's guards for the disassembler:
@@ -2481,6 +2519,8 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 				fmt.Fprintf(sb, " d%-3d ; bail if the read holds a fn (guard)", in.Arg)
 			} else if int(in.Arg) < len(deopts) && deopts[in.Arg].Results > 0 {
 				fmt.Fprintf(sb, " d%-3d ; re-step %d result(s) on the interpreter if one is a fn", in.Arg, deopts[in.Arg].Results)
+			} else if int(in.Arg) < len(deopts) && deopts[in.Arg].Live {
+				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the live binding of %s is not the compiled statement's", in.Arg, deopts[in.Arg].Name)
 			} else {
 				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn", in.Arg)
 			}

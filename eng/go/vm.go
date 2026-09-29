@@ -3545,6 +3545,9 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, body []core.Value, root bool,
 	if spec.Results > 0 {
 		return vc.reStepIfFn(reg, body, spec, frameBase, stack, locals, curDebug, pc)
 	}
+	if spec.Live {
+		return vc.liveDeopt(reg, body, root, spec, frameBase, stack, locals, curDebug, pc)
+	}
 	var v core.Value
 	at := -1
 	if spec.Slot >= 0 {
@@ -3621,6 +3624,46 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, body []core.Value, root bool,
 	}
 	if err := vc.screenResults(results, "deopt result", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (the island's results are interpreter residuals, tape-coupled only on a compiler bug) (§compiler)
 		return nil, false, err
+	}
+	return append(stack[:frameBase], results...), true, nil
+}
+
+// liveDeopt executes a LIVE-READ deopt (compiler.DeoptSpec.Live, the
+// NUR333/NUR334 remainders): the statement ahead reads Name live after a
+// computed keep-defs body, and was compiled for the value the model guessed.
+// When the registry binding is one it cannot take (DeoptSpec.LiveHot — none,
+// a fn or class a bare read dispatches, an active token, a value of another
+// type) the interpreter runs the statement and the rest of the body from
+// the statement's token over the whole frame region — the read is not made
+// yet, so no entry of it is dropped — as deoptIfFn's island does; its
+// residual replaces the region and the run continues at RetPC. The binding is the
+// interpreter's own install, so nothing is installed for the island. A ROOT
+// island's residual is the program's, so a token among it is the program's
+// answer (`x/v` over a word leaves the word, as the interpreter does); a
+// unit's goes back to its caller, which would step it, and stays screened.
+func (vc *vmContext) liveDeopt(reg *core.Registry, body []core.Value, root bool, spec *compiler.DeoptSpec, frameBase int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
+	if !spec.LiveHot(reg.Defs.Top(spec.Name)) {
+		return stack, false, nil
+	}
+	if spec.Token < 0 || spec.Token >= len(body) || spec.RetPC < 0 {
+		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad table entry")
+	}
+	prefix, err := deoptPrefix(spec, frameBase, len(stack), stack, locals, curDebug, pc)
+	if err != nil {
+		return nil, false, err
+	}
+	snapshot := reg.Defs.Snapshot()
+	results, err := runIslandResolved(reg, prefix, append([]core.Value(nil), body[spec.Token:]...))
+	if !root {
+		core.TruncateFrameDefs(reg, snapshot)
+	}
+	if err != nil {
+		return nil, false, stampAt(err, curDebug, pc, reg)
+	}
+	if !root {
+		if err := vc.screenResults(results, "deopt result", curDebug, pc); err != nil {
+			return nil, false, err
+		}
 	}
 	return append(stack[:frameBase], results...), true, nil
 }

@@ -1,0 +1,217 @@
+package lang
+
+import "testing"
+
+// nur333_334_live_deopt_test.go pins the live-read deopt (compiler
+// kept_live_deopt.go), the loud remainders of NUR333/NUR334. A read seated
+// live after a computed keep-defs body reads the registry the body installed
+// into, and the statement around it was compiled for the value the model
+// guessed. Where the binding turned out to be one that statement cannot take
+// — a fn or a class a bare read dispatches, an active token (a `word`
+// splice), a value of another type — the compiled run raised internal_error
+// ("dynamic-scope read of a dispatching binding", "… of an active token",
+// "CALL_NATIVE_POLY no match"). The read's statement is now a deopt point
+// whose value is the binding itself: tested where the statement begins, it
+// hands the statement (and the rest of the unit, or of the program) to the
+// interpreter, which does with the binding what its step does.
+
+const (
+	mkList   = `def x 0 end def mk fn [[][List][quote [def x [1 2]]]] end `
+	mkSplice = `def x 0 end def mk fn [[][List][quote [def x word [1 2]]]] end `
+	mkFn     = `def g fn [[][Integer][7]] end def x 0 end def mk fn [[][List][quote [def x g/v]]] end `
+	unitHead = `def f fn [[b:List][Any][def t 0 do b drop `
+)
+
+// TestLiveDeoptRootNoMatch: a root read rebound to a value no overload of
+// its consumer takes. The consumer's poly re-match found no match and had no
+// layout to raise from (the root's tape beneath the operands holds the
+// body's gradual result), so the run deferred; the statement is now the
+// interpreter's, and so is the error, byte for byte.
+func TestLiveDeoptRootNoMatch(t *testing.T) {
+	for _, src := range []string{
+		mkList + `do (mk) end x add 1`, // the register's witness
+		mkList + `do (mk) end 1 add x`, // the infix word pending over the read
+		mkList + `do (mk) x add 1`,
+		mkList + `do (mk) end x/v add 1`,
+		mkList + `do (mk) end x add 1 end 5`,
+		mkList + `do (mk) end x x add`,
+		mkList + `[1 2] each (mk) end x add 1`,
+		mkFn + `do (mk) end x/v add 1`,
+		`def x 0 end def mk fn [[][List][quote [def x {a:1}]]] end do (mk) end x add 1`,
+		`def x 0 end def mk fn [[][List][quote [def x true]]] end do (mk) end x add 1`,
+		`def x 0 end def mk fn [[][List][quote [def x Integer]]] end do (mk) end x add 1`,
+		`def x 0 end def mk fn [[][List][quote [def x None]]] end do (mk) end x add 1`,
+		`def x 0 end def mk fn [[][List][quote [def x [5]]]] end do (mk) end x end x add 1`,
+		`def x 0 end def y 0 end def mk fn [[][List][quote [def x [5] def y "a"]]] end do (mk) end x y add`,
+		// The unit twins. The first raised the interpreter's error already;
+		// the infix one laid its operands out as the compiled window, and
+		// its report listed the rebound [1 2] beside the 1 where the
+		// interpreter's add, pending over the read, found the 1 alone —
+		// now the island starts at the 1 the add takes off the stack.
+		unitHead + `t add 1]] end f (quote [def t [1 2] 1])`,
+		unitHead + `1 add t]] end f (quote [def t [1 2] 1])`,
+		unitHead + `t/v add 1]] end f (quote [def t [1 2] 1])`,
+		unitHead + `t t add]] end f (quote [def t [1] 1])`,
+		`def g fn [[][Integer][7]] end ` + unitHead + `t/v add 1]] end f (quote [def t g/v 1])`,
+	} {
+		agreeOnBothLanes(t, src, "ERROR:cannot call `add`")
+	}
+	// A body that unbinds the name: the interpreter's add meets the unbound
+	// word as the end of its forward collection and raises its own
+	// signature_error, where the lookup raised undefined_word first.
+	agreeOnBothLanes(t, `def x 0 end def mk fn [[][List][quote [undef x]]] end do (mk) end 1 add x`, "ERROR:cannot call `add`")
+	agreeOnBothLanes(t, `def x 0 end def mk fn [[][List][quote [undef x]]] end do (mk) end x add 1`, "ERROR:undefined word: x")
+}
+
+// TestLiveDeoptValReadSplice: a `/v` read of a name the body bound to a
+// `word` splice. The value spelling delivers the splice as data (stepWordVal),
+// and a later step splices it wherever the interpreter steps it again — a
+// paren's result, a def of it read bare. The run deferred on the active token;
+// the statement is now the interpreter's.
+func TestLiveDeoptValReadSplice(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{mkSplice + `do (mk) end x/v`, "[word()({[1 2]})]"}, // the register's witness
+		{mkSplice + `do (mk) end [x/v]`, "[[word()({[1 2]})]]"},
+		{mkSplice + `do (mk) end x/v drop 5`, "[5]"},
+		{mkSplice + `do (mk) end x/v typeof`, "[word()]"},
+		{mkSplice + `do (mk) end size [x/v]`, "[1]"},
+		{mkSplice + `do (mk) end x/v 5`, "[word()({[1 2]}) 5]"},
+		{mkSplice + `do (mk) end (x/v)`, "[1 2]"},
+		{mkSplice + `do (mk) end def z x/v end z`, "[1 2]"},
+		{unitHead + `[t/v]]] end f (quote [def t word [1 2] 1])`, "[[word()({[1 2]})]]"},
+		{unitHead + `t/v typeof]] end f (quote [def t word [1 2] 1])`, "[word()]"},
+		{unitHead + `(t/v)]] end f (quote [def t word [1 2] 1])`, "ERROR:expected 1 return value(s), got 2"},
+		// A fn the value spelling reads stays data on both lanes.
+		{mkFn + `do (mk) end x/v`, "[fn x]"},
+		{mkFn + `do (mk) end [x/v]`, "[[fn x]]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+}
+
+// TestLiveDeoptSplice: a bare read of a name the body bound to a `word`
+// splice is the splice's tokens, stepped where the read stood.
+func TestLiveDeoptSplice(t *testing.T) {
+	const y = `def y 0 end def mk fn [[][List][quote [def y word [1 2]]]] end `
+	for _, c := range []struct{ src, want string }{
+		{y + `do (mk) end y`, "[1 2]"}, // the register's witness
+		{y + `do (mk) end [y]`, "[[1 2]]"},
+		{y + `do (mk) end y add 1`, "[1 3]"},
+		{y + `do (mk) y`, "[1 2]"},
+		{y + `do (mk) end y end 9`, "[1 2 9]"},
+		{mkSplice + `do (mk) end x x`, "[1 2 1 2]"},
+		{`def x 0 end def mk fn [[][List][quote [def x word [add 1]]]] end do (mk) end x 5`, "[6]"},
+		{`def x 0 end def mk fn [[][List][quote [def x word [3 4]]]] end [1 2] each (mk) end x`, "[[1 2] 3 4]"},
+		{unitHead + `t]] end f (quote [def t word [1 2] 1])`, "ERROR:expected 1 return value(s), got 2"},
+		{unitHead + `[t]]] end f (quote [def t word [1 2] 1])`, "[[1 2]]"},
+		{unitHead + `t add 1]] end f (quote [def t word [5] 1])`, "[6]"},
+		{unitHead + `size [t]]] end f (quote [def t word [1 2] 1])`, "[2]"},
+		{unitHead + `(t)]] end f (quote [def t word [1 2] 1])`, "ERROR:expected 1 return value(s), got 2"},
+		{unitHead + `if true [t] [0]]] end f (quote [def t word [1 2] 1])`, "ERROR:expected 1 return value(s), got 2"},
+		{unitHead + `[1 2] each [drop t]]] end f (quote [def t word [5] 1])`, "[[5 5]]"},
+		// The island starts where the interpreter holds nothing pending: at
+		// a literal an infix word takes off the stack, at a `case` whose arm
+		// reads the name, at the list the read sits in.
+		{unitHead + `10 t add]] end f (quote [def t word [5] 1])`, "[15]"},
+		{unitHead + `[10 t]]] end f (quote [def t word [5 6] 1])`, "[[10 5 6]]"},
+		{unitHead + `[1 2 t]]] end f (quote [def t word [add] 1])`, "[[3]]"},
+		{unitHead + `def u [t] u]] end f (quote [def t word [5 6] 1])`, "[[5 6]]"},
+		{unitHead + `case 1 [[1] [t] [2] [0]]]] end f (quote [def t word [1 2] 1])`, "ERROR:expected 1 return value(s), got 3"},
+		{unitHead + `3 case [[gt 1] [t] [0]]]] end f (quote [def t word [1 2] 1])`, "ERROR:expected 1 return value(s), got 3 — [3 1 2]"},
+		{unitHead + `for 1 [t drop]]] end f (quote [def t word [1 2] 1])`, "[1]"},
+		{unitHead + `if (1 eq 1) [t] [0]]] end f (quote [def t word [1 2] 1])`, "ERROR:expected 1 return value(s), got 2"},
+		{unitHead + `if (1 eq 1) [t] [0]]] end f (quote [def t 4 1])`, "[4]"},
+		// Beside a gradual read's own point (NUR123): both islands serve.
+		{`def f fn [[b:List m:Map][Any][def t 0 def j (m get "f") j typeof end drop do b drop t]] end f (quote [def t word [5] 1]) {f: 1}`, "[5]"},
+		{`def g fn [[][Integer][3]] end def f fn [[b:List m:Map][Any][def t 0 def j (m get "f") j typeof end drop do b drop t]] end f (quote [def t word [5] 1]) {f: g/v}`, "[5]"},
+		{mkSplice + `do (mk) end [10 x 30]`, "[[10 1 2 30]]"},
+		{mkSplice + `do (mk) end [10 [x] 30]`, "[[10 [1 2] 30]]"},
+		{mkSplice + `do (mk) end {a: x b: 2}`, "[{a:[1 2] b:2}]"},
+		{mkSplice + `do (mk) end (x) add 1`, "[1 3]"},
+		{mkSplice + `do (mk) end x dup`, "[1 2 2]"},
+		{mkSplice + `do (mk) end def z [x] end z`, "[[1 2]]"},
+		{mkSplice + `do (mk) end [x] each [typeof]`, "[[Integer Integer]]"},
+		// A read after a body in the same list: the body runs before the
+		// test could, so no point is placed, and the list is data anyway.
+		{mkSplice + `[do (mk) x]`, "[[1 2]]"},
+		// A read the pass met in a spliced word's tokens, which carry the
+		// definition's positions: no point starts at the definition's list
+		// (the sweep's for-each splice ran the tail twice, [3 3]).
+		{`def zzvsp word [def acc (flex []) end def mk fn [[][Function][([e:Integer] => [acc push e])]] end for-each (mk) [1 2 3] end size acc] zzvsp`, "[3]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+}
+
+// TestLiveDeoptFn: a bare read of a name the body bound to a fn is the
+// interpreter's call of it — over the arguments written after it, too.
+func TestLiveDeoptFn(t *testing.T) {
+	const h = `def h fn [[a:Integer][Integer][a add 1]] end `
+	for _, c := range []struct{ src, want string }{
+		{mkFn + `do (mk) end x`, "[7]"}, // the register's witness
+		{mkFn + `do (mk) end [x]`, "[[7]]"},
+		{mkFn + `do (mk) end x add 1`, "[8]"},
+		{mkFn + `do (mk) end size [x]`, "[1]"},
+		{mkFn + `do (mk) end (x add 1)`, "[8]"},
+		{h + `def x 0 end def mk fn [[][List][quote [def x h/v]]] end do (mk) end x 5`, "[6]"},
+		{`def x 0 end def mk fn [[][List][quote [def x fn [[][Integer][8]]]]] end do (mk) end x`, "[8]"},
+		{`def C class {a:1} end def x 0 end def mk fn [[][List][quote [def x C]]] end do (mk) end x typeof`, "[Class]"},
+		{`def g fn [[][Integer][7]] end ` + unitHead + `t]] end f (quote [def t g/v 1])`, "[7]"},
+		{`def g fn [[][Integer][7]] end ` + unitHead + `t add 1]] end f (quote [def t g/v 1])`, "[8]"},
+		{`def g fn [[][Integer][7]] end ` + unitHead + `[t]]] end f (quote [def t g/v 1])`, "[[7]]"},
+		{`def g fn [[][Integer][7]] end ` + unitHead + `size [t]]] end f (quote [def t g/v 1])`, "[1]"},
+		{h + unitHead + `t 5]] end f (quote [def t h/v 1])`, "[6]"},
+		{mkFn + `do (mk) end [10 x 30]`, "[[10 7 30]]"},
+		{mkFn + `do (mk) end x dup`, "[7 7]"},
+		{`def h fn [[a:Integer b:Integer][Integer][a sub b]] end def x 0 end def mk fn [[][List][quote [def x h/v]]] end do (mk) end x 10 3`, "[7]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+}
+
+// TestLiveDeoptPlainBindings is the negative half: a body that rebinds the
+// name to a value the compiled statement takes — the same type, a def of it,
+// a literal around it — answers as before on both lanes, and the forms the
+// point is placed over (a def, a map, a branch condition) keep their answers
+// when it fires.
+func TestLiveDeoptPlainBindings(t *testing.T) {
+	for _, c := range []struct{ src, want string }{
+		{`def x 0 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x add 1`, "[6]"},
+		{`def x 0 end def mk fn [[][List][quote [def x 5]]] end do (mk) end 1 add x`, "[6]"},
+		{`def x 0 end def mk fn [[][List][quote [def x "s"]]] end do (mk) end 1 add x`, "[1s]"},
+		{`def x 0 end def mk fn [[][List][quote [def x 2.5]]] end do (mk) end x/v add 1`, "[3.5]"},
+		{`def x 0 end def y 0 end def mk fn [[][List][quote [def x 1 def y "a"]]] end do (mk) end x add y`, "[1a]"},
+		{mkList + `do (mk) end x`, "[[1 2]]"},
+		{mkList + `do (mk) end size x`, "[2]"},
+		{mkList + `do (mk) end def z x end z`, "[[1 2]]"},
+		{mkList + `do (mk) end {a: x}`, "[{a:[1 2]}]"},
+		{mkList + `do (mk) end x typeof`, "[List]"},
+		{mkList + `do (mk) end if (x eq 1) [1] [2]`, "[2]"},
+		{`def x 0 end def mk fn [[][List][quote [def x None]]] end do (mk) end x`, "[None]"},
+		{`def x 0 end def mk fn [[][List][quote [def x Integer]]] end do (mk) end 5 is x`, "[true]"},
+		{unitHead + `t add 1]] end f (quote [def t 5 1])`, "[6]"},
+		{`def f fn [[b:List][Integer][def t 0 do b drop t add 1]] end f (quote [def t 2.5 1])`, "ERROR:expected Integer, got Float"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+}
+
+// TestLiveDeoptSpliceReturnedStaysLoud: the one shape the island cannot
+// finish. A unit's `/v` read of a splice is its RESULT, which the
+// interpreter's caller steps again (`f` answers the splice's tokens); the
+// island's residual goes back to a compiled caller that would keep it as
+// data, so the run keeps a designed defer — loud, never the data.
+func TestLiveDeoptSpliceReturnedStaysLoud(t *testing.T) {
+	requireLoudDefer(t, unitHead+`t/v]] end f (quote [def t word [1 2] 1])`, "tape-coupled deopt result", "[1 2]")
+}
+
+// TestLiveDeoptUnservedStaysLoud: a unit whose islands cannot be served —
+// a def made inside a loop body the island would run, which no
+// registry-visible bind can make — plans no live point (and drops it beside
+// the unit's other points, which fail the same way), so the read keeps the
+// lookup's own designed defer: loud, never the stale value.
+func TestLiveDeoptUnservedStaysLoud(t *testing.T) {
+	const why = "dynamic-scope read of an active token `t`"
+	requireLoudDefer(t, unitHead+`t drop for 1 [def u 2] 7]] end f (quote [def t word [5] 1])`, why, "[7]")
+	requireLoudDefer(t, `def f fn [[b:List m:Map][Any][def t 0 def j (m get "f") j typeof end drop do b drop t drop for 1 [def u 2] 7]] end f (quote [def t word [5] 1]) {f: 1}`, why, "[7]")
+}

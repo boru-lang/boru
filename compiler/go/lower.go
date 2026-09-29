@@ -1199,7 +1199,11 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 			}
 		}
 		spec := DeoptSpec{Name: d.name, Pos: d.pos, Slot: -1, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1, Bail: d.bail, Install: d.install}
-		if d.slot >= 0 {
+		if d.live != nil {
+			// A live-read point (kept_live_deopt.go): its value is the
+			// registry binding, read by the test itself.
+			spec.Live, spec.Ref, spec.Model = true, d.live.ref, d.live.model
+		} else if d.slot >= 0 {
 			spec.Slot = d.slot
 		} else if slot, ok := lw.promoted[d.seq]; ok {
 			spec.Slot = slot

@@ -62,6 +62,7 @@ var eventKindSites = map[string]string{
 	"keptDefsInvoker":         "kept_defs.go — may the event RUN a unit that runs a computed keep-defs body? (default: runs nothing — a new kind that can apply a fn value must be named here, or the kept-defs latch misses the run, NUR210)",
 	"forEachConsumingOperand": "dyn_body_one.go — which operands does the event consume at a fixed count? (default: forEachOperand's, whose own default names none — so a new kind consuming a computed `do` run leaves the region's decline standing, sound)",
 	"runOperand":              "prefix_island.go — is the event's result a run of its own runtime count? (default: not a run — a new kind passing a run through reads as one value, NUR294's wrong layout, until it is named)",
+	"eventToken":              "kept_live_deopt.go — the body token the event's own tokens begin at, where a live-read island must start to run it (default: the statement's first token — sound for any kind, the whole statement the island's; a kind standing at its first token, as a call at its word, is named to start the island there)",
 }
 
 // operandKindSites key on OPERAND kind (opConst / opLocal / opEvent / …), a

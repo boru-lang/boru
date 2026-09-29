@@ -1803,6 +1803,11 @@ type EmitState struct {
 	// its static modality — a gradual one included (computedLeakGradual).
 	// The frame replay counts no possible call in it (noteDynFrameReplay).
 	liveDataIDs map[string]bool
+	// keptLiveReads is every read seated live after a computed keep-defs
+	// body (noteKeptLiveRead), by its event's seq: its statement is a
+	// live-read deopt point where an island can take it over
+	// (kept_live_deopt.go). Nil until first use.
+	keptLiveReads map[int]keptLiveRead
 	// liveLeadNames is every module-scope fn a stored-ref unit dispatches by
 	// name with declared signatures (markLiveLead): its routed dispatches
 	// resolve the lead live, and every rebind compiles the new binding's
@@ -2335,6 +2340,10 @@ type deoptPoint struct {
 	// install marks a read of a root def captured by a code body at the
 	// program root (DeoptSpec.Install, NUR285).
 	install bool
+	// live, on a live-read point (kept_live_deopt.go), is the read it
+	// serves: its value is the registry binding (DeoptSpec.Live), tested
+	// before the statement's first op.
+	live *keptLiveRead
 }
 
 // plainLambda reports a lambda VALUE unit (tryReturnedClosure's `fnval`
@@ -7161,7 +7170,10 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		es.keptReadSeatedLive(v)
 		es.computedLeakGradual(v, name, rootLive)
 	}
-	es.seatLiveRead(v, name, pos, false)
+	seq := es.seatLiveRead(v, name, pos, false)
+	if keepLive || rootLive {
+		es.noteKeptLiveRead(seq, *v, name, pos, false)
+	}
 }
 
 // keptLeakLive reports the two kept-defs arms of NoteLiveRead: keepLive, a
@@ -7177,8 +7189,9 @@ func (es *EmitState) keptLeakLive(v core.Value, name string) (keepLive, rootLive
 
 // seatLiveRead is NoteLiveRead's seating: the read gets an identity of its
 // own and a one-result live event lowering to OpLookupDynScope at pos —
-// OpLookupDynScopeRef for a `/v` read (ref, NoteValReadLive).
-func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, ref bool) {
+// OpLookupDynScopeRef for a `/v` read (ref, NoteValReadLive). It returns the
+// event's seq.
+func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, ref bool) int {
 	v.ID = core.GenerateID(core.IDPrefixForType(v.Parent))
 	if pos.Row > 0 {
 		if es.defReadPos == nil {
@@ -7204,6 +7217,7 @@ func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, r
 		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)), liveRef: ref,
 	}})
 	es.setProduced(*v, seq)
+	return seq
 }
 
 // mutableRefCarrierRead reports whether a check-mode read is of a mutable
@@ -17150,6 +17164,9 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// seated for the walk below, a residual read's test for after the
 	// residual is laid out (seatRootResidualReads).
 	rootResidualReads := es.planRootWordReads(lw, residual)
+	// The root's reads seated live after a computed keep-defs body
+	// (kept_live_deopt.go).
+	es.planRootLiveReads(lw, residual)
 	// The root landings and branch guards a statement island takes over
 	// (NUR242, NUR219, NUR292).
 	es.planLandingRestarts(lw, residual)
@@ -18644,6 +18661,12 @@ func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first}
 		return
 	}
+	if d.live != nil {
+		// Its value is the registry binding: tested before the statement's
+		// first root op, where no value home is needed.
+		flw.deopts = append(flw.deopts, d)
+		return
+	}
 	if d.landing {
 		// Seated where the landing is emitted (seatLandingWord).
 		if flw.landingDeopts == nil {
@@ -18841,10 +18864,12 @@ func stampLandingRet(words map[int]LandingWord, retPC int) bool {
 // Body token, a unit with no body and a closure unit keep the slot push.
 func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	es.planKeepDefs(rec)
+	live := 0
 	if len(rec.body) > 0 {
 		es.planReStepDeopts(u, rec)
 		es.planLandingDeopts(rec)
 		es.planUnitRestarts(u, rec)
+		live = es.planKeptLiveDeopts(u, rec)
 	}
 	if len(rec.body) == 0 || (len(rec.wordReadNames) == 0 && len(rec.deopts) == 0) {
 		es.planDeoptsEnv(u, rec)
@@ -18896,6 +18921,42 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	// branch or loop body — would decline the whole unit at its bind
 	// (lowerDynBind), so the points decline instead and the reads keep
 	// their slot push.
+	names, ok := es.deoptIslandNames(rec, lambda)
+	if !ok && live > 0 {
+		// The live-read points (kept_live_deopt.go) are the unit's newest:
+		// where their islands cannot be served, the unit keeps the points
+		// it planned without them, and each such read its lookup's defer —
+		// with none left, as a unit that planned none (below the loop).
+		if rec.deopts = dropLivePoints(rec.deopts); len(rec.deopts) == 0 {
+			es.planDeoptsEnv(u, rec)
+			return
+		}
+		names, ok = es.deoptIslandNames(rec, lambda)
+	}
+	if !ok {
+		rec.deopts = nil
+		es.dropDeoptChildren(rec)
+		return
+	}
+	if rec.rootCaptures {
+		for i := range rec.deopts {
+			rec.deopts[i].install = rec.deopts[i].slot >= 0
+		}
+	}
+	rec.lambdaDeopt = lambda
+	rec.deoptEnv = true
+	rec.deoptNames = names
+	u.deoptEnv = true
+	u.deoptNames = names
+	sort.Slice(rec.deopts, func(i, j int) bool { return posAfter(rec.deopts[j].start, rec.deopts[i].start) })
+}
+
+// deoptIslandNames is the names a unit's deopt islands read, from the
+// earliest point's statement on (with those its closure children seeded),
+// and whether the unit can serve them: every def among them bindable
+// registry-visibly, and — for a lambda value or a code body — resolvable
+// where its islands run (lambdaNamesSelfBound, seedParentDeopt).
+func (es *EmitState) deoptIslandNames(rec *fnUnitRec, lambda bool) (map[string]bool, bool) {
 	minTok := len(rec.body)
 	for _, d := range rec.deopts {
 		if d.token < minTok {
@@ -18922,22 +18983,7 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	case rec.closure:
 		ok = es.seedParentDeopt(rec, names)
 	}
-	if !ok {
-		rec.deopts = nil
-		es.dropDeoptChildren(rec)
-		return
-	}
-	if rec.rootCaptures {
-		for i := range rec.deopts {
-			rec.deopts[i].install = rec.deopts[i].slot >= 0
-		}
-	}
-	rec.lambdaDeopt = lambda
-	rec.deoptEnv = true
-	rec.deoptNames = names
-	u.deoptEnv = true
-	u.deoptNames = names
-	sort.Slice(rec.deopts, func(i, j int) bool { return posAfter(rec.deopts[j].start, rec.deopts[i].start) })
+	return names, ok
 }
 
 // bailPoint demotes a deopt point no island can serve to a GUARD
