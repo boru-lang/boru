@@ -198,7 +198,7 @@ func TestSeatRootConsumedReadPositionlessConsumer(t *testing.T) {
 	rec := &fnUnitRec{frag: &EmitFragment{events: es.frames[0]}}
 	read := core.SrcPos{Row: 1, Col: 30}
 	lw := &lowerer{}
-	es.seatRootConsumedRead(lw, rec, rootWordRead{name: "j", reads: []core.SrcPos{read}}, 0, 0, 0, true, false, nil)
+	es.seatRootConsumedRead(lw, rec, rootWordRead{name: "j", reads: []core.SrcPos{read}}, 0, 0, 0, true, false, nil, nil)
 	if len(lw.deopts) != 1 || !lw.deopts[0].bail || lw.deopts[0].start != read {
 		t.Fatalf("a guard before a position-less consumer starts at the read: %+v", lw.deopts)
 	}

@@ -3,6 +3,7 @@ package core
 import (
 	"fmt"
 	"os"
+	"slices"
 	"strings"
 )
 
@@ -3816,6 +3817,9 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// committed call can raise the interpreter's report when the live
 		// value matches no overload (NUR263).
 		restoreLayout := e.publishOptimisticLayout(match, indices)
+		// A gradual operand collected forward rides its unproven fits to the
+		// same record (forward_fit.go, NUR357).
+		restoreFits := e.publishForwardFits(match)
 		// A behave-installed capability may run in this frame over a value
 		// of its type (NUR257).
 		e.Registry.Check.NoteBehaveDispatch(match.Args)
@@ -3826,6 +3830,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		}
 		results := e.Registry.analysisCarrierResults(name, match.Sig, match.Args, pos, match.Reg, tailConsumed)
 		e.Registry.Check.BareCallPos = prevBare
+		restoreFits()
 		restoreLayout()
 		e.Registry.Check.NoteFnMemberRead(name, match.Args, results)
 		// Stamp a positionless FUNCTION result with this call's position,
@@ -10808,6 +10813,46 @@ func (e *Engine) withGradualWrittenOperands(window []int, fn *FnDefInfo) []int {
 	return out
 }
 
+// withRenderedPrefix widens a stack-only failed window to the stack prefix
+// its report renders, when that prefix holds a value the pass does not have
+// exactly. The interpreter's report over a dispatch nothing was written
+// after names the stack beneath the word — up to four values, not the
+// word's arity (attemptedWindowOver) — so `f end 0 keys` over f's Any
+// result of 4 reports "the arguments were 0 (an Integer) and 4 (an
+// Integer)", and a static trap baked over the pass's tape rendered the 4 as
+// the carrier it held there, "dynamic(Any) (an Any)" (NUR351). With the
+// prefix in the window the failure is no longer static: the carrier sends
+// it to the runtime rematch, which renders the run's values. A prefix of
+// concrete values, or a window that took operands written after the word,
+// is left as it was.
+func (e *Engine) withRenderedPrefix(window []int, fn *FnDefInfo) []int {
+	for _, p := range window {
+		if p > e.Pointer {
+			return window
+		}
+	}
+	written, nFwd := e.rematchWrittenSplit(fn)
+	if nFwd > 0 || len(written) <= len(window) {
+		return window
+	}
+	inexact := false
+	for _, v := range written[len(window):] {
+		if v.Carrier || v.Dynamic {
+			inexact = true
+		}
+	}
+	if !inexact {
+		return window
+	}
+	wide := e.ResolvedIndicesBefore(len(written))
+	// The stack run is ascending on the tape: the window is the wide run's
+	// top.
+	if len(wide) != len(written) || !slices.Equal(wide[len(wide)-len(window):], window) {
+		return window
+	}
+	return wide
+}
+
 // forwardReach is how many operands written after word w a forward phase of
 // fn's may take: the widest leading run of forward-eligible positions over
 // its real signatures (its barrier; every position under `/f` or an
@@ -10850,7 +10895,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 			maxN = n
 		}
 	}
-	window := e.withGradualWrittenOperands(CheckBraid.CheckModeFallbackPositions(e, maxN), fn)
+	window := e.withRenderedPrefix(e.withGradualWrittenOperands(CheckBraid.CheckModeFallbackPositions(e, maxN), fn), fn)
 	// The forward walk can collect positions INSIDE a not-yet-evaluated paren
 	// group (checkModeFallbackPositions depth-tracks rather than stopping at
 	// an open paren). The interpreter pre-evaluates the paren before its

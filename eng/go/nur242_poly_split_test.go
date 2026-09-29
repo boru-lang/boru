@@ -34,17 +34,17 @@ func TestPolySplitRaiseIsTheInterpretersPlan(t *testing.T) {
 	body.Quoted = true
 	s, zero := core.NewString("s"), core.NewInteger(0)
 	pr := &compiler.PolyRef{Word: "zzfold", Arity: 3, NOut: 1, Split: &compiler.PolySplit{NFwd: 2}}
-	err := polySplitRaise(r, pr, fn, []core.Value{body, s, zero}, nil, 0)
+	err := polySplitRaise(r, pr, fn, []core.Value{body, s, zero}, nil, nil, nil, 0)
 	if err == nil || !strings.Contains(err.Error(), "signature_error") || !strings.Contains(err.Error(), "'s'") {
 		t.Fatalf("0 zzfold [add] 's' is the interpreter's no-match over the written pair, got %v", err)
 	}
 	// A plan that fits: `0 zzfold [add] [1 2]` takes the 3-operand form.
-	if err := polySplitRaise(r, pr, fn, []core.Value{body, core.NewList([]core.Value{core.NewInteger(1)}), zero}, nil, 0); err != nil {
+	if err := polySplitRaise(r, pr, fn, []core.Value{body, core.NewList([]core.Value{core.NewInteger(1)}), zero}, nil, nil, nil, 0); err != nil {
 		t.Errorf("a window the plan fills keeps the caller's path, got %v", err)
 	}
 	// A written template string needs an evaluation: no plan.
 	tpl := core.NewInterpString([]core.InterpPart{{Lit: "a"}, {Expr: []core.Value{core.NewInteger(1)}}})
-	if err := polySplitRaise(r, pr, fn, []core.Value{body, tpl, zero}, nil, 0); err != nil {
+	if err := polySplitRaise(r, pr, fn, []core.Value{body, tpl, zero}, nil, nil, nil, 0); err != nil {
 		t.Errorf("an unplannable window keeps the caller's path, got %v", err)
 	}
 	for _, c := range []struct {
@@ -57,13 +57,13 @@ func TestPolySplitRaiseIsTheInterpretersPlan(t *testing.T) {
 		{"a negative count", &compiler.PolyRef{Word: "zzfold", Arity: 3, Split: &compiler.PolySplit{NFwd: -1}}, fn},
 		{"a count past the window", &compiler.PolyRef{Word: "zzfold", Arity: 3, Split: &compiler.PolySplit{NFwd: 4}}, fn},
 	} {
-		if err := polySplitRaise(r, c.pr, c.fn, []core.Value{body, s, zero}, nil, 0); err != nil {
+		if err := polySplitRaise(r, c.pr, c.fn, []core.Value{body, s, zero}, nil, nil, nil, 0); err != nil {
 			t.Errorf("%s: no raise, got %v", c.name, err)
 		}
 	}
 	// The raise is anchored where the op's debug entry says, as the
 	// interpreter's is at the word.
-	err = polySplitRaise(r, pr, fn, []core.Value{body, s, zero}, []core.SrcPos{{Row: 3, Col: 7}}, 0)
+	err = polySplitRaise(r, pr, fn, []core.Value{body, s, zero}, nil, nil, []core.SrcPos{{Row: 3, Col: 7}}, 0)
 	if be, ok := err.(*core.BoruError); !ok || be.Row != 3 || be.Col != 7 {
 		t.Errorf("the raise sits at the op's position, got %v", err)
 	}

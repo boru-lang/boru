@@ -879,6 +879,19 @@ type lowerer struct {
 	// countRestarts are the count islands of the root's `do` calls
 	// (planCountRestarts, SigRef.Count), keyed by the do event's seq.
 	countRestarts map[int]*landingRestart
+	// fitRestarts are the statement islands of the polys and user calls
+	// over a gradual operand collected forward (planFitRestarts,
+	// PolyRef.Fit, CallFits), keyed by the call event's seq; fitIslands the
+	// islands seated, whose RetPC the finish stamps.
+	fitRestarts map[int]*landingRestart
+	fitIslands  []*StmtIsland
+	// fitServed marks the call events whose gradual operand's read point
+	// tests the collection's fits itself (DeoptSpec.Fits), by seq.
+	fitServed map[int]bool
+	// callFits is the emission target's forward-fit table for its user
+	// calls (Program.CallFits / CompiledFn.CallFits), keyed by the target's
+	// own pc — see seatCallFit.
+	callFits *map[int]*PolyFit
 	// collectedApplies are the fn-value applies a planned collect takes as
 	// regions (planRegionCollectOver, NUR247/NUR249): lowered count-agnostic,
 	// never in a one-result form.
@@ -1171,7 +1184,8 @@ func (lw *lowerer) pushOperand(op EmitOperand, pos core.SrcPos) {
 				*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Name: d.name, Pos: d.pos, Slot: op.idx, Depth: -1, Token: -1, RetPC: -1, Bail: true})
 				lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
 			} else if prefix, ok := lw.deoptPrefix(); ok {
-				*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Name: d.name, Pos: d.pos, Slot: op.idx, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1, Install: d.install})
+				*lw.deoptTable = append(*lw.deoptTable, DeoptSpec{Name: d.name, Pos: d.pos, Slot: op.idx, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1, Install: d.install, Fits: d.fits})
+				lw.noteFitServed(d)
 				lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
 			}
 		}
@@ -1246,6 +1260,20 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 			}
 		}
 		spec := DeoptSpec{Name: d.name, Pos: d.pos, Slot: -1, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1, Bail: d.bail, Install: d.install}
+		if !d.bail {
+			spec.Fits = d.fits
+		}
+		if d.seated {
+			// A root read's statement island seats the residual's entries
+			// before the statement (DeoptSpec.Seat): the compiled stack at
+			// the test must hold exactly the ones it keeps there, or the
+			// point is only a guard.
+			if len(lw.vm) == d.seatHeld {
+				spec.Seat, spec.Held = append([]RestartSrc{}, d.seat...), d.seatHeld
+			} else {
+				spec = DeoptSpec{Name: d.name, Pos: d.pos, Slot: -1, Depth: -1, Token: -1, RetPC: -1, Bail: true}
+			}
+		}
 		if d.live != nil {
 			// A live-read point (kept_live_deopt.go): its value is the
 			// registry binding, read by the test itself.
@@ -1267,6 +1295,9 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 		}
 		*lw.deoptTable = append(*lw.deoptTable, spec)
 		lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
+		if len(spec.Fits) > 0 {
+			lw.noteFitServed(d)
+		}
 		if d.live != nil {
 			if lw.liveServed == nil {
 				lw.liveServed = map[int]bool{}
@@ -4056,13 +4087,18 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 			// do for the CALL_NATIVE twin, so the op commits no claim.
 			nout = PolyNOutRegion
 		}
-		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk, Raw: lw.polyRawOperands(n)}
+		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: lw.seatSplitLive(c.polySplit, c.polySplitLive), DynBodyOne: dynOne, DynBodyPlain: plainChk, Raw: lw.polyRawOperands(n)}
 		if c.polySeed != nil && (c.polySeed.tags == nil || len(c.polySeed.tags) == n) {
 			pref.Seed, pref.SeedTags = c.polySeed.sig, c.polySeed.tags
 		}
 		if lw.es != nil {
 			pref.FnArgPos = lw.es.fnArgPos[ev.seq]
 		}
+		fit, why := lw.fitIsland(ev.seq)
+		if why != "" {
+			return why
+		}
+		pref.Fit = fit
 		lw.p.PolyRefs = append(lw.p.PolyRefs, pref)
 		lw.emit(OpCallNativePoly, pi, c.pos)
 	} else if lw.es != nil && lw.es.phantomConsumed[ev.seq] && !dynOne && !plainChk && !c.hostSplice && c.nativeSplit == nil {
@@ -4807,6 +4843,9 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 		return lw.lowerUserCallResult(ev, uc)
 	}
 	lw.seatCallWindow(uc.window, n)
+	if why := lw.seatCallFit(ev.seq, uc.tail); why != "" {
+		return why
+	}
 	if uc.tail {
 		lw.emit(OpTailCallUser, uc.unit, uc.callPos())
 		lw.vm = lw.vm[:len(lw.vm)-n]
@@ -5483,6 +5522,41 @@ func (lw *lowerer) seatRematchRestart(seq, idx int) {
 	lw.restartRematches = append(lw.restartRematches, idx)
 }
 
+// seatSplitLive is sp with each live Beneath entry (PolySplit.Live, NUR351)
+// placed where the compiled code keeps its event result at the poly's op:
+// its call's promoted slot, or its entry on the simulated stack, counted
+// from the top (the poly's operands on it), with no runtime-counted region
+// above it. sp itself when it has none; nil when one is kept nowhere — the
+// arm then has no layout, and defers as it did.
+func (lw *lowerer) seatSplitLive(sp *PolySplit, live []splitLive) *PolySplit {
+	if sp == nil || len(live) == 0 {
+		return sp
+	}
+	out := *sp
+	out.Live = make([]SplitLive, 0, len(live))
+	for _, l := range live {
+		if slot, ok := lw.promoted[l.prod.seq]; ok {
+			out.Live = append(out.Live, SplitLive{At: l.at, Local: true, Idx: slot + l.prod.idx})
+			continue
+		}
+		depth := -1
+		for i := len(lw.vm) - 1; i >= 0; i-- {
+			if lw.vm[i] == vmSlot(l.prod) {
+				depth = len(lw.vm) - 1 - i
+				break
+			}
+			if s := lw.vm[i]; s.seq >= 0 && lw.variadic[s.seq] {
+				break
+			}
+		}
+		if depth < 0 {
+			return nil
+		}
+		out.Live = append(out.Live, SplitLive{At: l.at, Idx: depth})
+	}
+	return &out
+}
+
 // restartSubstSrcs is where the compiled code holds, at the stop being
 // emitted, the value of each paren r's island substitutes (substPlan), its
 // path made relative to the island: the guarded operand's — guarded, an
@@ -5597,7 +5671,7 @@ func (lw *lowerer) stashSubst(ev *EmitEvent) {
 // substSeq reports whether a planned statement island (a landing's or a
 // branch guard's) writes event seq's value in its paren's place.
 func (lw *lowerer) substSeq(seq int) bool {
-	for _, plans := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts} {
+	for _, plans := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts, lw.fitRestarts} {
 		for _, r := range plans {
 			for _, sp := range r.substs {
 				// The stop's own run is written from the stop, never read

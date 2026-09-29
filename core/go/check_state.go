@@ -86,6 +86,10 @@ type CheckState struct {
 	// layout never outlives it. A record reads it through LayoutFor, which
 	// answers only for the dispatch's own operand slice.
 	CurLayout *DispatchLayout
+	// CurFits is the unproven forward fits of the native dispatch whose
+	// results a compiling pass is modelling (forward_fit.go, NUR357), set
+	// around the modelling like CurLayout and read through FitsFor.
+	CurFits *forwardFitsPub
 	// Mode toggles static type-checking execution. When true, the
 	// engine runs the same dispatch/matching machinery but carries
 	// type-only Carrier values instead of concrete payloads, and

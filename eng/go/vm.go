@@ -191,6 +191,10 @@ type vmContext struct {
 	// root's end runs them on the interpreter over the stack beneath
 	// (rootEndResults) instead of the screen's defer.
 	rootEndReturn, rootEndStep bool
+	// polyUnmatched is set by a poly re-match that found no overload
+	// (callPolyIn's no-match arms), before any handler ran: a poly with a
+	// forward-fit island takes it then (PolyRef.Fit, NUR357).
+	polyUnmatched bool
 	// landingSkip is a landing's CLAIM jump (NUR190): set by landingQuoteClaim when
 	// the re-step claimed the word after the landed value, and read — then
 	// cleared — by the run loop right after the op, which resumes at that pc
@@ -1197,7 +1201,8 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 		// the interpreter's signature_error, raised here — the arity retry
 		// below reads a narrower window as the stack top, which is not how
 		// the interpreter collects one.
-		if err := polySplitRaise(r, pr, fn, pr.RenderWindow(window), curDebug, pc); err != nil {
+		if err := polySplitRaise(r, pr, fn, pr.RenderWindow(window), stack, vc.restartLocals, curDebug, pc); err != nil {
+			vc.polyUnmatched = true
 			return nil, err
 		}
 		// The recorded count is the check pass's PICK over a gradual
@@ -1219,6 +1224,7 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 		}
 	}
 	if mr == nil || mr.Sig == nil || mr.Sig.DispatchHandler() == nil {
+		vc.polyUnmatched = true
 		// No runtime match. The interpreter's signature_error is built from its
 		// live tape / forward-collection state (engine.go sigError) — the
 		// written tuple, a reorder hint, two tape-only layers — which the VM
@@ -4035,7 +4041,11 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, body []core.Value, root bool,
 		}
 		v = stack[at]
 	}
-	if !core.IsAppliableFn(v) {
+	// A value the interpreter's forward collection stops at, where the
+	// compiled dispatch took it forward (DeoptSpec.Fits, NUR357), is a
+	// plan the interpreter makes over the stack beneath instead: the island
+	// runs the statement, as it does for a fn.
+	if !core.IsAppliableFn(v) && !spec.FitsHot(v) {
 		return stack, false, nil
 	}
 	// The read leads the residual's dynamic apply, which answers as the
@@ -4058,6 +4068,15 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, body []core.Value, root bool,
 	prefix, err := deoptPrefix(spec, frameBase, len(stack), stack, locals, curDebug, pc)
 	if err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return nil, false, err
+	}
+	if spec.Seat != nil {
+		// A root read's statement island seats the program residual's
+		// entries before the statement where the compiled root keeps each
+		// (DeoptSpec.Seat, NUR352).
+		if prefix, err = seatDeoptPrefix(reg, spec, frameBase, stack, locals, curDebug, pc); err != nil {
+			return nil, false, err
+		}
+		at = -1
 	}
 	if at >= 0 {
 		i := at - frameBase + len(spec.Prefix)
@@ -4246,6 +4265,40 @@ func (vc *vmContext) bindRootRead(reg *core.Registry, root bool, name string, v 
 			reg.Defs.Push(name, *written)
 		}
 	}
+}
+
+// seatDeoptPrefix is a root read's statement-island prefix (DeoptSpec.Seat,
+// NUR352): each entry of the program residual before the statement from
+// where the compiled root keeps it — a constant, a promoted slot, the frame
+// region's entry Idx (of the Held there, which must be the whole region) —
+// as statementRestart seats a landing's.
+func seatDeoptPrefix(reg *core.Registry, spec *compiler.DeoptSpec, frameBase int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	if len(stack)-frameBase != spec.Held {
+		return nil, vmErrAt(curDebug, pc, "DEOPT_IF_FN seat over a frame region of another depth")
+	}
+	prefix := make([]core.Value, 0, len(spec.Seat))
+	for _, src := range spec.Seat {
+		switch {
+		case src.Kind == compiler.RestartConst:
+			prefix = append(prefix, src.Val)
+		case src.Kind == compiler.RestartLocal && src.Idx >= 0 && src.Idx < len(locals):
+			prefix = append(prefix, locals[src.Idx])
+		case src.Kind == compiler.RestartStack && src.Idx >= 0 && src.Idx < spec.Held:
+			prefix = append(prefix, stack[frameBase+src.Idx])
+		case src.Kind == compiler.RestartType:
+			t := reg.Types.LookupByID(src.Val.ID)
+			if t == nil {
+				t = core.Builtin.LookupByID(src.Val.ID)
+			}
+			if t == nil {
+				return nil, vmErrAt(curDebug, pc, "unresolvable deopt-island type "+src.Val.String())
+			}
+			prefix = append(prefix, core.NewTypeLiteral(core.ForwardedType(t)))
+		default:
+			return nil, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad seat source")
+		}
+	}
+	return prefix, nil
 }
 
 // deoptEntry is the OpDeoptIfFn table entry Arg names in the code that
@@ -5165,7 +5218,36 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, err
 			}
 		case compiler.OpCallNativePoly:
-			ns, err := vc.callPolyIn(curReg, &p.PolyRefs[in.Arg], stack, curDebug, pc)
+			pr := &p.PolyRefs[in.Arg]
+			// The split arm reads a live value beneath from the frame's
+			// locals (PolySplit.Live, NUR351), as a statement island does.
+			vc.restartLocals, vc.polyUnmatched = locals, false
+			missed := pr.Fit != nil && pr.Fit.Missed(stack)
+			var ns []core.Value
+			var err error
+			if !missed {
+				ns, err = vc.callPolyIn(curReg, pr, stack, curDebug, pc)
+			}
+			vc.restartLocals = nil
+			// A no-match over an operand assembled from a pending list
+			// literal (PolyRef.Raw) keeps its own report, which renders the
+			// literal as written: the island writes the runs inside it as
+			// their values (NUR352).
+			if missed || (err != nil && pr.Fit != nil && vc.polyUnmatched && len(pr.Raw) == 0) {
+				// A gradual operand the pass collected forward that the
+				// interpreter's collection stops at, or a window no
+				// overload takes (PolyRef.Fit, NUR357): the interpreter's
+				// plan reads the stack beneath, so the statement runs again
+				// on the interpreter from its first token — its answer, or
+				// its own report.
+				rs, ent, rerr := vc.fitRestart(curReg, pr.Fit, frames, stack, locals, curDebug, pc)
+				if rerr != nil {
+					return nil, rerr
+				}
+				stack = rs
+				pc = ent.jumpPC - 1
+				break
+			}
 			if err != nil {
 				return nil, err
 			}
@@ -5312,11 +5394,17 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					return nil, err
 				}
 			}
+			// A gradual argument the pass collected forward that the
+			// interpreter's collection stops at (CompiledFn.CallFits,
+			// NUR357): its plan reads the stack beneath, so the statement
+			// runs again on the interpreter from its first token (below).
+			fit := callFitAt(p, curUnit, pc)
+			missed := fit != nil && fit.Missed(stack)
 			// A fn argument in a slot the unit reads bare under a gradual
 			// carrier is the interpreter's word dispatch there, which the
 			// unit's slot push cannot run: the call runs on the interpreter
 			// (NUR218). Data arguments run the unit.
-			if in.Op == compiler.OpCallUser && len(fn.FnReadParams) > 0 {
+			if !missed && in.Op == compiler.OpCallUser && len(fn.FnReadParams) > 0 {
 				ns, ran, err := vc.fnReadCallUser(curReg, fn, stack, curDebug, pc)
 				if err != nil {
 					return nil, err
@@ -5338,6 +5426,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					nl[i].Quoted = true
 				}
 			}
+			preCall := stack
 			stack = stack[:len(stack)-fn.NParams]
 			// Param-type guard — the compiled mirror of the interpreter's
 			// runtime sig match. A gradual (Dynamic) arg optimistically matched a
@@ -5346,7 +5435,23 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// the body. nl[i] is param i (the body's slot i); Params[i] is its
 			// declared type. Raises the same signature_error the interpreter raises,
 			// over the window the interpreter's failed dispatch reports (NUR320).
-			if err := checkParamContract(r, fn, nl); err != nil {
+			var cerr error
+			if !missed {
+				cerr = checkParamContract(r, fn, nl)
+			}
+			if missed || (fit != nil && cerr != nil) {
+				// The forward-fit island (CallFits): a missed fit, or a
+				// window the contract refuses — the interpreter's no-match
+				// over its own collection, whose report the island raises.
+				ns, ent, rerr := vc.fitRestart(curReg, fit, frames, preCall, locals, curDebug, pc)
+				if rerr != nil {
+					return nil, rerr
+				}
+				stack = ns
+				pc = ent.jumpPC - 1
+				break
+			}
+			if err := cerr; err != nil {
 				if win, ok := callWindowAt(r, fn.Name, p, curUnit, pc, nl, stack, locals); ok {
 					err = core.RuntimeNoMatch(r, fn.Name, win)
 				}

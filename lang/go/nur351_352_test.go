@@ -74,13 +74,21 @@ func TestNUR351UnservedReadDeclines(t *testing.T) {
 		{nur351Mk + `def x {a:1}]]] end do (mk) keys x`, "(NUR351)", "[['a']]"},
 		{`def f fn [[b:List][Any][def x 0 do b end keys x]] end [f (quote [def x {a:1}])]`, "(NUR351)", "[[['a']]]"},
 		{`def f fn [[b:List][Any][def x 0 do b keys x]] end f (quote [def x {a:1}])`, "(NUR351)", "[['a']]"},
-		{nur351Mk + `def x {a:1}]]] end do (mk) end 4 keys x`, "unmatched dispatch recovered at keys", "[4 ['a']]"},
-		{nur351Mk + `def x 5]]] end do (mk) end 4 keys x`, "unmatched dispatch recovered at keys", "ERROR:cannot call `keys`"},
-		{`def mk fn [[][List][quote [def y {a:1}]]] end do (mk) end 4 keys y`, "unmatched dispatch recovered at keys", "[4 ['a']]"},
 		{nur351Mk + `def x {a:1} 9]]] end do (mk) end (4 keys x)`, "unmatched dispatch recovered at keys", "[9 4 ['a']]"},
 		{nur351Mk + `def x {a:1} 9]]] end do (mk) end [4 keys x]`, "unmatched dispatch recovered at keys", "[9 [4 ['a']]]"},
 	} {
 		declinesWithInterpAnswer(t, tc.src, tc.why, tc.want)
+	}
+	// The failed `keys` over the body's gradual run beneath the 4 renders
+	// that run's value (withRenderedPrefix, NUR351's note window): the
+	// runtime rematch takes it, where the static trap declined.
+	for _, tc := range []struct{ src, want string }{
+		{nur351Mk + `def x {a:1}]]] end do (mk) end 4 keys x`, "[4 ['a']]"},
+		{nur351Mk + `def x 5]]] end do (mk) end 4 keys x`, "ERROR:cannot call `keys`"},
+		{`def mk fn [[][List][quote [def y {a:1}]]] end do (mk) end 4 keys y`, "[4 ['a']]"},
+		{nur351Mk + `def x 7 9]]] end do (mk) end 4 keys x`, "ERROR:the arguments were 4 (an Integer) and 9 (an Integer)"},
+	} {
+		agreeOnBothLanes(t, tc.src, tc.want)
 	}
 }
 

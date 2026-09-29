@@ -1682,7 +1682,7 @@ func (lw *lowerer) frameIntact(r *landingRestart) bool {
 // still holds on its stack bottom at the statement's start (deoptPrefix,
 // read from their slots), then the frame region.
 func (lw *lowerer) noteRestartDepths(p core.SrcPos) {
-	for _, m := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts} {
+	for _, m := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts, lw.fitRestarts} {
 		for _, r := range m {
 			lw.noteRestartDepth(r, p)
 		}

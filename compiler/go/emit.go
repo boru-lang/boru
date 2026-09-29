@@ -171,6 +171,65 @@ func (es *EmitState) noteArgSites(seq int, args []core.Value) {
 	}
 	es.argSites[seq] = sites
 	es.noteFnArgPos(seq, args)
+	es.noteForwardFits(seq, args)
+}
+
+// readFits is the unproven forward fits of the read whose value has ID id
+// at its consumer ev (noteForwardFits), when ev consumes it as an operand
+// (direct) — the dispatch that collected it; nil otherwise.
+func (es *EmitState) readFits(ev *EmitEvent, id string, direct bool) []core.ForwardFit {
+	if !direct || ev == nil {
+		return nil
+	}
+	return es.fwdFits[ev.seq][id]
+}
+
+// keptLiveID reports whether id is the value of a read seated live after a
+// computed keep-defs body (EmitState.keptLiveReads).
+func (es *EmitState) keptLiveID(id string) bool {
+	for _, r := range es.keptLiveReads {
+		if r.id == id {
+			return true
+		}
+	}
+	return false
+}
+
+// noteForwardFits keeps, for call event seq, the unproven forward fits the
+// dispatch published for its operands (core CheckState.FitsFor, NUR357), by
+// each such operand's value ID: the candidate slots a gradual operand the
+// pass collected forward must fit for the interpreter's collection to take
+// it there. A point testing that read's value tests them too
+// (DeoptSpec.Fits). Nothing is kept when no operand has any.
+func (es *EmitState) noteForwardFits(seq int, args []core.Value) {
+	if es.reg == nil || es.reg.Check == nil {
+		return
+	}
+	// The fits are keyed by signature position, each an operand of args
+	// (core forwardFits reads no other). A read seated live after a
+	// computed body is its live point's (kept_live_deopt.go): tested before
+	// the word that may collect it, its island takes the statement when the
+	// binding is not of the type the statement was compiled for.
+	fits := es.reg.Check.FitsFor(args)
+	for k, f := range fits {
+		if es.keptLiveID(args[k].ID) {
+			continue
+		}
+		if es.fwdFits == nil {
+			es.fwdFits = map[int]map[string][]core.ForwardFit{}
+		}
+		if es.fwdFits[seq] == nil {
+			es.fwdFits[seq] = map[string][]core.ForwardFit{}
+		}
+		es.fwdFits[seq][args[k].ID] = f
+		if es.fwdFitsAt == nil {
+			es.fwdFitsAt = map[int]map[int][]core.ForwardFit{}
+		}
+		if es.fwdFitsAt[seq] == nil {
+			es.fwdFitsAt[seq] = map[int][]core.ForwardFit{}
+		}
+		es.fwdFitsAt[seq][k] = f
+	}
 }
 
 // noteFnArgPos keeps, for call event seq, the position of each argument that
@@ -430,6 +489,7 @@ type emitCall struct {
 	polyReg           *core.Registry        // the sub-registry to re-match a module poly word in (nil = main registry)
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)
 	polySplit         *PolySplit            // the dispatch's exact operand layout, for the poly's runtime no-match arm (PolyRef.Split, NUR242)
+	polySplitLive     []splitLive           // the split's Beneath entries the run's stack holds (PolySplit.Live, NUR351), placed at lowering
 	nativeSplit       *NativeSplit          // an optimistic closure bake's exact operand layout, for the committed call's no-match arm (SigRef.Split, NUR263)
 	polySeed          *polySeed             // the checker's guarded pick (PolyRef.Seed; nil = none)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
@@ -1419,6 +1479,13 @@ type EmitState struct {
 	// seq (noteArgSites): the tokens a statement island may write the call's
 	// run over (callRun, NUR296).
 	argSites map[int][]argSite
+	// fwdFits is, by call event seq and operand value ID, the unproven
+	// forward fits of a gradual operand the dispatch collected forward
+	// (noteForwardFits, NUR357).
+	fwdFits map[int]map[string][]core.ForwardFit
+	// fwdFitsAt is fwdFits by signature position: the poly's own statement
+	// island tests its operands there (planFitRestarts, PolyRef.Fit).
+	fwdFitsAt map[int]map[int][]core.ForwardFit
 	// fnArgPos is where each fn-VALUE argument of a call event was read by
 	// its `/v` spelling, by event seq and signature position (noteFnArgPos,
 	// NUR347): the position the interpreter's value carries into the call.
@@ -2451,6 +2518,26 @@ type deoptPoint struct {
 	// stop (heldIntact) — the island's prefix is then the interpreter's frame.
 	frameHeld bool
 	onFrame   []producer
+	// fit, on a restart point, marks a poly's forward-fit island
+	// (PolyRef.Fit, NUR357): the stop is the poly's own call.
+	fit bool
+	// fits, on a read's island point, are the unproven forward fits of the
+	// dispatch that collected the read forward (DeoptSpec.Fits, NUR357): a
+	// value missing one is a collection the interpreter makes differently,
+	// and takes the island as a fn does.
+	fits []core.ForwardFit
+	// fitConsumer, beside fits, is the seq of the call event the fits are
+	// the collection of: a point that tests them serves that call
+	// (lowerer.fitServed).
+	fitConsumer int
+	// seat, on a root read's statement island, is the program residual's
+	// entries before the statement the island seats as its prefix
+	// (DeoptSpec.Seat, rootPreStart), seatHeld how many the compiled stack
+	// holds beneath the statement, and seated marks the plan (an empty
+	// seat is a statement with nothing beneath).
+	seat     []RestartSrc
+	seatHeld int
+	seated   bool
 	// held, on a live-read point at the program root, is the root events
 	// whose results the compiled stack holds beneath the statement at the
 	// test, the interpreter's stack there (rootStackHeld): an operand of the
@@ -9691,6 +9778,30 @@ func (es *EmitState) RecordTrap(code, detail, word, hint string, pos core.SrcPos
 	return true
 }
 
+// splitLive is one Beneath entry of a poly's split layout the run's stack
+// holds (core DispatchLayout.Live): its index and the event result it is.
+type splitLive struct {
+	at   int
+	prod producer
+}
+
+// splitLiveProducers resolves each live Beneath entry of l to the event
+// result it is, in the unit being recorded; ok is false for one with no
+// such producer.
+func (es *EmitState) splitLiveProducers(l *core.DispatchLayout) ([]splitLive, bool) {
+	var out []splitLive
+	for _, at := range l.Live {
+		// Live indexes Beneath (core layoutSurround).
+		id := l.Beneath[at].ID
+		pr, ok := es.producedBy[id]
+		if !ok || (len(es.units) > 1 && !es.producedInCurrentUnit(id)) {
+			return nil, false
+		}
+		out = append(out, splitLive{at: at, prod: pr})
+	}
+	return out, true
+}
+
 // layoutFor is the bound registry's published dispatch layout for args
 // (core CheckState.LayoutFor); nil before a registry is bound.
 func (es *EmitState) layoutFor(args []core.Value) *core.DispatchLayout {
@@ -11293,7 +11404,15 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	// and the interpreter reports a lens's no-match at the caller's position
 	// (`5 $.name apply` points at 1:1, the unit's layout at the `.name`).
 	if l := es.layoutFor(args); l != nil && noMatch == nil && !es.inStampCompile && es.reg != nil && wordWrittenAt(es.reg.Source, word, pos) {
-		call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
+		// A value beneath the operands that is no constant — an earlier
+		// call's result (`f g keys` over two Any results, NUR351) — is read
+		// where the compiled code keeps it when the arm runs (PolySplit.Live,
+		// placed at lowering); one produced outside the unit has no such
+		// home, and the record keeps its defer.
+		if live, ok := es.splitLiveProducers(l); ok {
+			call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
+			call.polySplitLive = live
+		}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	es.noteArgSites(seq, args)
@@ -15097,7 +15216,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 	// call then raises the interpreter's report over the laid-out tape,
 	// the body slot as the token list it holds there (NUR263). A lambda
 	// body or an extra hook slot keeps the handler's own refusal.
-	if l := es.layoutFor(args); l != nil && len(extraOps) == 0 && core.IsConcrete(args[bodyPos]) && args[bodyPos].Parent.ConformsTo(core.TList) {
+	if l := es.layoutFor(args); l != nil && len(l.Live) == 0 && len(extraOps) == 0 && core.IsConcrete(args[bodyPos]) && args[bodyPos].Parent.ConformsTo(core.TList) {
 		call.nativeSplit = &NativeSplit{NFwd: l.NFwd, BodyAt: bodyPos, Body: args[bodyPos], Beneath: l.Beneath, After: l.After}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
@@ -17383,7 +17502,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		LiveLeadNames:   maps.Clone(es.liveLeadNames),
 		LiveReadNames:   maps.Clone(es.liveReadNames),
 		CondBoundNames:  maps.Clone(es.condBoundNames)}
-	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, callWindows: &p.CallWindows, flowExits: &p.FlowExits, dynApplyName: &p.DynApplyName, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
+	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, callWindows: &p.CallWindows, callFits: &p.CallFits, flowExits: &p.FlowExits, dynApplyName: &p.DynApplyName, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
 	// single-consume stack discipline holds. Count the residual references,
@@ -17489,6 +17608,9 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	es.planLandingRestarts(lw, residual)
 	es.planGuardRestarts(lw, residual)
 	es.planCountRestarts(lw, residual)
+	// The polys whose gradual operand the pass collected forward, which the
+	// run may find the interpreter's collection stops at (NUR357).
+	es.planFitRestarts(lw, residual)
 	if reason := es.lowerRootEvents(lw, residual); reason != "" {
 		return nil, reason, false
 	}
@@ -17654,7 +17776,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		}
 		cf.KeepsDefs = rec.keepsDefs
 		seatSpecGuards(&cf, rec)
-		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, callWindows: &cf.CallWindows, flowExits: &cf.FlowExits, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs, rec: rec}
+		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, callWindows: &cf.CallWindows, callFits: &cf.CallFits, flowExits: &cf.FlowExits, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs, rec: rec}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).
@@ -17867,7 +17989,7 @@ func (es *EmitState) planRootWordReads(lw *lowerer, residual []core.Value) map[s
 		pr := es.producedBy[id]
 		seq := pr.seq
 		if ci, direct := rootReadConsumer(es.frames[0], r.name, seq, pr.idx, lw.promoted); ci >= 0 {
-			es.seatRootConsumedRead(lw, rec, r, seq, pr.idx, ci, direct, inResidual[id], residual)
+			es.seatRootConsumedRead(lw, rec, r, seq, pr.idx, ci, direct, inResidual[id], residual, es.readFits(&es.frames[0][ci], id, direct))
 		}
 		if inResidual[id] {
 			if atResidual == nil {
@@ -17890,9 +18012,10 @@ func (es *EmitState) planRootWordReads(lw *lowerer, residual []core.Value) map[s
 // token to the program's end: `j typeof` answers Integer, `[j]` `[[42]]`.
 // Otherwise, or when the value is read more than once, it is a GUARD
 // before the consuming event, loud where it answered wrong silently.
-func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWordRead, seq, idx, ci int, direct, alsoResidual bool, residual []core.Value) {
+func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWordRead, seq, idx, ci int, direct, alsoResidual bool, residual []core.Value, fits []core.ForwardFit) {
 	if d, ok := es.deoptStatementStart(rec, seq, r.name, r.reads[0], ci, direct); ok && len(r.reads) == 1 && !alsoResidual &&
-		!es.deoptDeferred(es.units[0], rec, &d, ci) && !rootResidualBefore(residual, d.start) {
+		!es.deoptDeferred(es.units[0], rec, &d, ci) && !es.rootResidualBefore(residual, d.start) {
+		d.fits, d.fitConsumer = fits, es.frames[0][ci].seq
 		// Deferral is asked of a push-tested point too, as deoptPointFor
 		// asks it: the root lays its residual out at the program's end, so
 		// `7 j typeof` pushes j over nothing where the interpreter holds 7.
@@ -17919,6 +18042,7 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 		}
 	}
 	if d, ok := es.rootReadStatementPoint(lw, rec, r, seq, ci, alsoResidual, residual); ok {
+		d.fits, d.fitConsumer = fits, es.frames[0][ci].seq
 		lw.deopts = append(lw.deopts, d)
 		return
 	}
@@ -17998,10 +18122,33 @@ func readIsDeepestOperand(ev *EmitEvent, seq, idx int) bool {
 // rootResidualBefore reports whether a program residual entry was written
 // before p: the compiled lane lays it out at the program's end, so a root
 // island starting at p would run without a value the interpreter's stack
-// holds there.
-func rootResidualBefore(residual []core.Value, p core.SrcPos) bool {
+// holds there. An entry that carries no position of its own — a compound
+// literal, which the fold re-mints without one (`{b:2} keys y`, NUR357) —
+// counts as written before p when a program token before p spells it.
+func (es *EmitState) rootResidualBefore(residual []core.Value, p core.SrcPos) bool {
 	for _, rv := range residual {
-		if q := rv.Pos(); q.Row > 0 && posAfter(p, q) {
+		if q := rv.Pos(); q.Row > 0 {
+			if posAfter(p, q) {
+				return true
+			}
+			continue
+		}
+		if es.spelledBefore(rv, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// spelledBefore reports whether a root program token written before p — a
+// value, not a word — has v's canonical form.
+func (es *EmitState) spelledBefore(v core.Value, p core.SrcPos) bool {
+	if !core.IsConcrete(v) || core.IsWord(v) {
+		return false
+	}
+	canon := core.CanonValue(v)
+	for _, t := range es.rootBody {
+		if q := t.Pos(); q.Row > 0 && posAfter(p, q) && !core.IsWord(t) && core.CanonValue(t) == canon {
 			return true
 		}
 	}
@@ -18966,6 +19113,13 @@ func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 			flw.countRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, run: d.countRun}
 			return
 		}
+		if d.fit {
+			if flw.fitRestarts == nil {
+				flw.fitRestarts = map[int]*landingRestart{}
+			}
+			flw.fitRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, leftovers: d.leftovers, defBound: d.defBound}
+			return
+		}
 		if d.guard > 0 {
 			if flw.guardRestarts == nil {
 				flw.guardRestarts = map[int]*landingRestart{}
@@ -19060,6 +19214,10 @@ func stampUnitRestarts(flw *lowerer, cf *CompiledFn, retPC int) {
 		flw.p.FallbackCounts[fi].RetPC = retPC
 		cf.RetReplay = true
 	}
+	for _, is := range flw.fitIslands {
+		is.RetPC = retPC
+		cf.RetReplay = true
+	}
 }
 
 // stampRootRestarts seats the program's end on every top-level island: a
@@ -19081,6 +19239,9 @@ func stampRootRestarts(lw *lowerer) {
 	}
 	for _, di := range lw.restartRematches {
 		lw.p.Dispatches[di].Restart.RetPC = end
+	}
+	for _, is := range lw.fitIslands {
+		is.RetPC = end
 	}
 }
 
@@ -19191,6 +19352,10 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 		es.planLandingDeopts(rec)
 		es.planUnitRestarts(u, rec)
 		live = es.planKeptLiveDeopts(u, rec)
+		// The unit's polys over a gradual operand collected forward
+		// (fit_restart.go, NUR357) count with the live points: the newest,
+		// dropped first where the islands cannot be served.
+		live += es.planUnitFitRestarts(u, rec)
 	}
 	if len(rec.body) == 0 || (len(rec.wordReadNames) == 0 && len(rec.deopts) == 0) {
 		es.planDeoptsEnv(u, rec)
@@ -19248,7 +19413,7 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 		// where their islands cannot be served, the unit keeps the points
 		// it planned without them, and each such read its lookup's defer —
 		// with none left, as a unit that planned none (below the loop).
-		if rec.deopts = dropLivePoints(rec.deopts); len(rec.deopts) == 0 {
+		if rec.deopts = dropLivePoints(dropFitPoints(rec.deopts)); len(rec.deopts) == 0 {
 			es.planDeoptsEnv(u, rec)
 			return
 		}

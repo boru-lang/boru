@@ -13,10 +13,13 @@ import core "github.com/boru-lang/boru/core/go"
 // before the statement's first op, the point hands the whole statement to
 // the interpreter from its first token when the read holds a fn: nothing of
 // the statement has run (writtenBeforeTest), every event from the test to
-// the consumer is placed (unplacedBeforeRead), no operand the island takes
-// over is deferred past the start (deoptDeferred, rootResidualBefore), and
-// the compiled stack there is the interpreter's (rootHeldBeneath). The read
-// is made once, and its value lives in the frame slot the test reads.
+// the consumer is placed (unplacedBeforeRead), and no operand the island
+// takes over is deferred past the start (deoptDeferred). The island's
+// prefix is the program residual's entries before the statement, seated
+// where the compiled root keeps each (rootPreStart, DeoptSpec.Seat): an
+// earlier statement's literal the root lays out only at the program's end
+// (`5 end 1 x 7 add`, NUR352) is a constant the island seats. The read is
+// made once, and its value lives in the frame slot the test reads.
 func (es *EmitState) rootReadStatementPoint(lw *lowerer, rec *fnUnitRec, r rootWordRead, seq, ci int, alsoResidual bool, residual []core.Value) (deoptPoint, bool) {
 	if len(r.reads) != 1 || alsoResidual {
 		return deoptPoint{}, false
@@ -32,9 +35,18 @@ func (es *EmitState) rootReadStatementPoint(lw *lowerer, rec *fnUnitRec, r rootW
 	events := es.frames[0]
 	k := testIndex(events, d.start)
 	if ci < 0 || ci >= len(events) || k > ci || writtenBeforeTest(events, k, d.start) || unplacedBeforeRead(events, k, events[ci].seq) ||
-		es.deoptDeferred(es.units[0], rec, &d, ci) || rootResidualBefore(residual, d.start) ||
-		!es.rootHeldBeneath(lw, rootTreeEvents(events, false), residual, d.start, events[ci].seq) {
+		es.deoptDeferred(es.units[0], rec, &d, ci) {
 		return deoptPoint{}, false
 	}
+	// The program residual's entries before the statement are the island's
+	// prefix, seated where the compiled root keeps each — an earlier
+	// statement's literal it lays out only at the program's end included
+	// (`5 end 1 x 7 add`, NUR352) — as a statement island's are.
+	tree := rootTreeEvents(events, false)
+	srcs, held, _, ok := es.rootPreStart(lw, tree, residual, tok, d.start, statementFirstSeq(tree, events[ci].seq, d.start))
+	if !ok {
+		return deoptPoint{}, false
+	}
+	d.seat, d.seatHeld, d.seated = srcs, held, true
 	return d, true
 }
