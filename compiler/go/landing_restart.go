@@ -412,6 +412,9 @@ func (es *EmitState) lowerRootEvents(lw *lowerer, residual []core.Value) string 
 	if reason := es.planRematchRestart(lw, residual); reason != "" {
 		return reason
 	}
+	if reason := es.pendingArmRefusal(es.frames[0]); reason != "" {
+		return reason
+	}
 	lw.numLocals = es.units[0].numLocals
 	return lw.lowerEvents(es.frames[0], 0)
 }

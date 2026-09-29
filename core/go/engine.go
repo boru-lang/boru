@@ -166,8 +166,12 @@ type Engine struct {
 	// ArmBody marks the model's run of a branch arm or a loop body
 	// (runCarrierBodyDefsAdds, a rolled-back conditional body): its end-of-run
 	// sweep of residual containers runs under CheckState.ArmResidualSweep.
-	ArmBody   bool
-	ReuseTape bool // when set, Run reloads the existing tape in place instead of allocating (the VM's reusable island engine)
+	ArmBody bool
+	// armResidue records, for an ArmBody run, the observable pending
+	// literals its end-of-run sweep evaluated — the ones a SPLICED arm leaves
+	// pending past itself on the interpreter (RunCarrierArmBody, NUR356).
+	armResidue PendingResidue
+	ReuseTape  bool // when set, Run reloads the existing tape in place instead of allocating (the VM's reusable island engine)
 	// DeferResidual leaves the finished stack's pending containers
 	// UNEVALUATED instead of running the end-of-run sweep (autoEvalStack).
 	// Set by CallBoru for a body whose residual defers past the frame
@@ -5020,6 +5024,7 @@ func (e *Engine) sweepResidual() error {
 	if e.ArmBody {
 		e.Registry.Check.ArmResidualSweep++
 		defer func() { e.Registry.Check.ArmResidualSweep-- }()
+		e.armResidue = pendingResidueOf(e.Registry, e.Tape)
 	}
 	return e.autoEvalStack()
 }
@@ -5049,13 +5054,10 @@ func (e *Engine) autoEvalResidual(val Value) (Value, error) {
 			return rv, nil
 		}
 	}
-	if !val.Eval || val.Quoted {
-		return val, nil
-	}
-	if val.Parent.Equal(TList) && val.Data != nil && !IsTypedList(val) && !IsTableType(val) {
+	if isPendingList(val) {
 		return e.autoEvalList(val, false)
 	}
-	if val.Parent.Equal(TMap) && val.Data != nil && !IsTypedMap(val) && !IsRecordType(val) && !IsOptionsType(val) {
+	if isPendingMap(val) {
 		return e.AutoEvalMap(val, false, false)
 	}
 	return val, nil

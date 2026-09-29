@@ -356,7 +356,7 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		// declines (NUR054) instead of compiling one scope too shallow.
 		es.PushInlineCtxBoundary()
 		mark := len(r.Check.Diagnostics)
-		out := if3ReturnsFn([]Value{cond, then, NewList(rest)}, r)
+		out := if3Returns([]Value{cond, then, NewList(rest)}, r, false)
 		dropSynthesizedDeadArmWarnings(r, mark)
 		es.PopInlineCtxBoundary()
 		return out
@@ -777,7 +777,7 @@ func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny [
 				// bracket the desugar so an ambient-context write inside a
 				// fragment declines instead of escaping its layer (NUR054).
 				es.PushInlineCtxBoundary()
-				out := if3ReturnsFn([]Value{cond, then, rest}, r)
+				out := if3Returns([]Value{cond, then, rest}, r, false)
 				es.PopInlineCtxBoundary()
 				return out
 			}

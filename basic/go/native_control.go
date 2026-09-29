@@ -922,6 +922,34 @@ func if2Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 }
 
 func if3ReturnsFn(args []Value, r *Registry) []Value {
+	return if3Returns(args, r, armsSpliced(r))
+}
+
+// armsSpliced reports whether the `if` whose ReturnsFn is running is one
+// the interpreter runs: its arm is spliced onto the enclosing tape, where a
+// pending literal it leaves stays pending (NUR356). Read at the ReturnsFn's
+// entry, before the arms' own dispatches overwrite CurCallPos. The `case`
+// desugar's nested chain (buildCaseChain) dispatches a SYNTHESIZED `if`
+// token, which carries no position, as dropSynthesizedDeadArmWarnings
+// relies on too: the interpreter never runs that `if` — it runs each block
+// in a sub-engine of its own (runCaseBody), whose end evaluates what the
+// block leaves.
+func armsSpliced(r *Registry) bool {
+	return r.Check.CurCallPos.Row != 0
+}
+
+// armResidue is the pending residue a branch record carries: its arms'
+// when they are spliced (armsSpliced), none when their ends evaluate it.
+func armResidue(spliced bool, p PendingResidue) PendingResidue {
+	if !spliced {
+		return PendingResidue{}
+	}
+	return p
+}
+
+// if3Returns is if3ReturnsFn with the arms' splice said (armsSpliced): the
+// `case` desugar calls it with spliced false.
+func if3Returns(args []Value, r *Registry, spliced bool) []Value {
 	// A ReturnsFn reads its operands positionally, so a window shorter than
 	// its signature (a failed dispatch's recovery, NUR332) is answered with
 	// the dynamic Any, never indexed.
@@ -951,7 +979,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 			branch, arm = "then", args[2]
 		}
 		EmitUnreachableBranch(r, lit, branch)
-		return ifTakenArmReturns(r, args[0], arm, lit, pos)
+		return ifTakenArmReturns(r, args[0], arm, lit, pos, spliced)
 	}
 	// List-form condition: when emitting, analyse the condition body
 	// as its own fragment so the lowering can run it inline before
@@ -973,12 +1001,13 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 	// the arm a DECIDED condition takes goes unbracketed — its defs are the
 	// post-branch bindings exactly (armsKnownToRun).
 	thenRuns, elseRuns := armsKnownToRun(args[0])
+	var thenPending, elsePending PendingResidue
 	if thenIsBody {
 		restoreThen := ApplyGuardNarrowing(r, args[0])
 		armBranchBody(r)
 		func() {
 			defer r.EnterSpecArm(thenRuns)()
-			thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
+			thenStk, thenDefs, thenPending = RunCarrierArmBody(r, args[1])
 		}()
 		thenStk = es.Recorder().ArmTailApply(thenStk)
 		thenFrag = recorderState(es).TakeFragment()
@@ -1020,7 +1049,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		armBranchBody(r)
 		func() {
 			defer r.EnterSpecArm(elseRuns)()
-			elseStk, elseDefs = RunCarrierBodyWithDefs(r, args[2])
+			elseStk, elseDefs, elsePending = RunCarrierArmBody(r, args[2])
 		}()
 		elseStk = es.Recorder().ArmTailApply(elseStk)
 		elseFrag = recorderState(es).TakeFragment()
@@ -1055,6 +1084,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 			Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 			Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
 			ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: pos, Joins: joins,
+			Pending: armResidue(spliced, thenPending.Merge(elsePending)), SweptArms: !spliced,
 		}))
 		// The phantom None is only meaningful while bytecode recording is
 		// live (the lowering tracks the zeroOut slot and the top-level
@@ -1081,6 +1111,7 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: true,
 		Then: thenFrag, Els: elseFrag, ThenStk: thenStk, ElsStk: elseStk,
 		ThenValue: thenValue, ElsValue: elseValue, Out: out, Pos: pos, Joins: joins,
+		Pending: armResidue(spliced, thenPending.Merge(elsePending)), SweptArms: !spliced,
 	}))
 	return []Value{out}
 }
@@ -1093,22 +1124,23 @@ func if3ReturnsFn(args []Value, r *Registry) []Value {
 // always lit=true). The arm is a code body; the narrowing the condition
 // licenses is installed around it. An arm that nets no value records a
 // 0-value statement (NUR243); one that leaves a fn value declines.
-func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool, pos SrcPos) []Value {
+func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool, pos SrcPos, spliced bool) []Value {
 	es := r.Check
 	var stk []Value
 	var defs map[string]Value
 	var joins []BranchJoin
+	var pending PendingResidue
 	if lit {
 		restoreThen := ApplyGuardNarrowing(r, cond)
 		armBranchBody(r)
-		stk, defs = RunCarrierBodyWithDefs(r, arm)
+		stk, defs, pending = RunCarrierArmBody(r, arm)
 		stk = es.Recorder().ArmTailApply(stk)
 		restoreThen()
 		joins = InstallTakenArmDefs(r, defs, nil)
 	} else {
 		restoreElse := ApplyComplementNarrowing(r, cond)
 		armBranchBody(r)
-		stk, defs = RunCarrierBodyWithDefs(r, arm)
+		stk, defs, pending = RunCarrierArmBody(r, arm)
 		stk = es.Recorder().ArmTailApply(stk)
 		restoreElse()
 		joins = InstallTakenArmDefs(r, nil, defs)
@@ -1145,6 +1177,7 @@ func ifTakenArmReturns(r *Registry, cond, arm Value, lit bool, pos SrcPos) []Val
 	recorderState(es).RecordBranch(BranchRecord{
 		ConstCond: &taken, HasElse: true,
 		Then: frag, ThenStk: stk, Out: out, Pos: pos, Joins: joins,
+		Pending: armResidue(spliced, pending), SweptArms: !spliced,
 	})
 	return []Value{out}
 }
@@ -1485,6 +1518,7 @@ func installArmJoins(r *Registry, cond Value, thenDefs, elseDefs map[string]Valu
 
 func If2ReturnsFn(args []Value, r *Registry) []Value {
 	pos := branchRecordPos(r, args[0])
+	spliced := armsSpliced(r)
 	es := r.Check
 	// Both passes warn on a statically-false bare condition's dead then-arm
 	// (a true one has no dead arm without an else), as in if3ReturnsFn.
@@ -1511,9 +1545,10 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 	thenRuns, _ := armsKnownToRun(args[0])
 	var thenStk []Value
 	var thenDefs map[string]Value
+	var thenPending PendingResidue
 	func() {
 		defer r.EnterSpecArm(thenRuns)()
-		thenStk, thenDefs = RunCarrierBodyWithDefs(r, args[1])
+		thenStk, thenDefs, thenPending = RunCarrierArmBody(r, args[1])
 	}()
 	thenFrag := recorderState(es).TakeFragment()
 	restore()
@@ -1531,6 +1566,7 @@ func If2ReturnsFn(args []Value, r *Registry) []Value {
 	recorderState(es).RecordBranch(codeGuardRecord(r, BranchRecord{
 		Cond: args[0], CondFrag: condFrag, CondStk: condStk, HasElse: false,
 		Then: thenFrag, ThenStk: thenStk, Out: out, Pos: pos, Joins: joins,
+		Pending: armResidue(spliced, thenPending), SweptArms: !spliced,
 	}))
 	// A 0-value statement guard's phantom None only belongs on the carrier
 	// stack while recording is live (mirrors if3ReturnsFn): a plain or
@@ -1615,7 +1651,47 @@ func ArmSpliceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 	if !isCodeBody(v) && v.Parent != nil && v.Parent.ConformsTo(TList) {
 		return []Value{v}, nil
 	}
+	if armHoldsSteppingLiteral(v) {
+		// The interpreter splices the arm, so a literal it leaves stays
+		// pending past the `if`; the run below would evaluate it at the
+		// arm's end (NUR356). A designed defer: the compiler defect's
+		// report, never an answer the interpreter does not give.
+		err := r.BoruError("internal_error",
+			"if: the computed arm holds a list or map literal the interpreter would leave pending past the `if`; "+
+				"the compiled arm would evaluate it where the arm ends (NUR356)", "if")
+		if ae, ok := err.(*BoruError); ok {
+			ae.VMDefer = true
+		}
+		return nil, err
+	}
 	return InvokeBody(r, v, nil)
+}
+
+// armHoldsSteppingLiteral reports whether a computed arm's tokens hold, at
+// any depth of its parens and list literals, a pending literal whose
+// evaluation steps a token (PendingLiteralSteps) — one the arm may leave
+// pending on the interpreter's tape.
+func armHoldsSteppingLiteral(arm Value) bool {
+	elems, err := AsList(arm)
+	if err != nil {
+		return false
+	}
+	for _, t := range elems.Slice() {
+		if PendingLiteralSteps(t) {
+			return true
+		}
+		if IsParenExpr(t) {
+			toks, _ := AsParenExpr(t)
+			if armHoldsSteppingLiteral(NewList(toks)) {
+				return true
+			}
+			continue
+		}
+		if isCodeBody(t) && armHoldsSteppingLiteral(t) {
+			return true
+		}
+	}
+	return false
 }
 
 // CaseSubjectHandler is the runtime of __casesubject: case's scrutinee rule
@@ -1863,7 +1939,7 @@ func ifClauseRecord(r *Registry, list Value) []Value {
 	}
 	switch len(elems) {
 	case 1:
-		return ifTakenArmReturns(r, NewList([]Value{NewBoolean(true)}), arms[0], true, pos)
+		return ifTakenArmReturns(r, NewList([]Value{NewBoolean(true)}), arms[0], true, pos, true)
 	case 2:
 		return If2ReturnsFn([]Value{elems[0], arms[0]}, r)
 	case 3:

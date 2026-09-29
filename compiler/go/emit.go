@@ -598,6 +598,14 @@ type emitBranch struct {
 	// branch carries into its slot, on every path through it.
 	carried      []carriedInit
 	carriedNames map[string]bool
+	// pending is the observable list and map literals the arms' model runs
+	// evaluated at their ends, which the interpreter keeps pending past the
+	// `if` (BranchRecord.Pending, NUR356); sweptArms marks a branch whose
+	// arms end where the interpreter evaluates what they leave
+	// (BranchRecord.SweptArms — the `case` desugar). pendingArmRefusal
+	// reads both.
+	pending   core.PendingResidue
+	sweptArms bool
 }
 
 // armKind classifies one `if` arm, collapsing the emitBranch boolean flags
@@ -767,6 +775,12 @@ type emitUserCall struct {
 	// (call_window.go), lowered to the call's CallWindows entry; nil keeps
 	// the argument tuple.
 	window []callWinOp
+	// mayMiss marks a call whose param contract the compiled CALL_USER may
+	// refuse at run time (call_window.go): an argument the pass holds wider
+	// than its param's declared type — a gradual value, a union — or a param
+	// with a pattern. Its signature is then matched at run time
+	// (runtimeMatched, NUR356).
+	mayMiss bool
 }
 
 // emitUserPolySpec is the recorded arm table of one poly user call — the
@@ -835,17 +849,22 @@ type EmitTrap struct {
 // the small payloads stay inline. Every consumer is kind-guarded, so a nil
 // br/loop on a non-matching event is never dereferenced.
 type EmitEvent struct {
-	seq   int
-	kind  int
-	call  emitCall
-	br    *emitBranch
-	loop  *emitLoop
-	uc    emitUserCall
-	fb    emitFallback
-	trap  EmitTrap
-	store *emitStore
-	dyn   *emitDynBind
-	twin  *emitBindTwin
+	seq  int
+	kind int
+	// litDepth is how many inline regions of its unit — a list or map
+	// literal's element runs, above all (inlineLitDepth) — the event was
+	// recorded in: the events a call's literal operands ran are the ones
+	// just before it, deeper than it (eagerLiteralEffect, NUR356).
+	litDepth int
+	call     emitCall
+	br       *emitBranch
+	loop     *emitLoop
+	uc       emitUserCall
+	fb       emitFallback
+	trap     EmitTrap
+	store    *emitStore
+	dyn      *emitDynBind
+	twin     *emitBindTwin
 }
 
 // emitBindTwin marks one bind-ledger transition's STREAM POSITION (§6.5's
@@ -3627,9 +3646,25 @@ func (es *EmitState) appendEvent(ev EmitEvent) int {
 	}
 	es.seq++
 	ev.seq = es.seq
+	ev.litDepth = es.inlineLitDepth()
 	es.keptDefsEvent(&ev)
 	es.frames[n] = append(es.frames[n], ev)
 	return ev.seq
+}
+
+// inlineLitDepth is how many inline context-boundary regions the current
+// unit's recording sits in (PushInlineCtxBoundary): a list or map literal's
+// element runs, an interpolation's holes, the `case` desugar's chain —
+// each opened in this unit, none since a nested unit opened (EmitEvent.
+// litDepth, NUR356).
+func (es *EmitState) inlineLitDepth() int {
+	d := 0
+	for _, b := range es.inlineCtxBounds {
+		if b == len(es.openUnitRecs) {
+			d++
+		}
+	}
+	return d
 }
 
 // setProduced registers an event's output ID against its sequence,
@@ -5540,6 +5575,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	ev := EmitEvent{kind: evBranch, br: &emitBranch{
 		constCond: b.ConstCond, hasElse: b.HasElse, pos: b.Pos,
 		guard: b.Guard, condGuard: b.CondGuard, thenGuard: b.ThenGuard, elsGuard: b.ElseGuard, condCheck: b.CondCheck, condCheckPos: b.CondCheckPos,
+		pending: b.Pending, sweptArms: b.SweptArms,
 	}}
 	resolveArm := func(frag *EmitFragment, stk []core.Value, name string) (EmitOperand, bool, bool) {
 		if frag == nil {
@@ -8574,7 +8610,7 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 		ops = append(ops, op)
 	}
 	window := es.callWindowOps(word, wordPos, args)
-	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, wordPos: wordPos, region: region, generic: generic, window: window}})
+	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, wordPos: wordPos, region: region, generic: generic, window: window, mayMiss: contractMayMiss(rec, args)}})
 	es.noteArgSites(seq, args)
 	es.SiteCounts[SiteMono]++
 	// A call to an ALREADY-variadic fn yields a runtime-variable count itself, so
@@ -17799,7 +17835,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		// counts descriptors, and a table that carries entries for discarded
 		// code is a table whose count means something else.
 		regionFloor := len(p.Regions)
-		if reason := flw.lowerEvents(rec.frag.events, rec.frag.startSeq); reason != "" {
+		if reason := es.lowerUnitEvents(flw, rec); reason != "" {
 			if rec.stampOnly {
 				es.unreachableUnitStub(p, rec, regionFloor)
 				continue
