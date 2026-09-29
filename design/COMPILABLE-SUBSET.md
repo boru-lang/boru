@@ -660,6 +660,10 @@ user still gets an answer while the case is open:
     declined after an unrepeatable check-pass effect"; formerly NUR236). The
     effect happens once, never twice; the cure is a specialisation that
     declines less often or unwinds in place without a re-run.
+  - `for 2 [("s" lam/v) (2 add 3)]` declines with "branch leaves extra
+    values" since the NUR344 fix (2026-09-29), as its literal twin
+    `for 2 [("s" lam/v) 5]` always did: a for body leaving several values
+    has no compiled seat. It had compiled through an end-of-run island.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

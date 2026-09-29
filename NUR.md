@@ -98,11 +98,11 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR334](#nur334) | A read after a computed keep-defs body: the shapes the live-read deopt does not serve stay loud | main's 50 uncovered statements (2026-09-28); remainder after the live-read deopt (2026-09-29) |
 | [NUR336](#nur336) | A paren apply over a member that is data at run time: the shapes the statement island does not serve stay loud | main's 50 uncovered statements (2026-09-28); remainder after the NUR336 pass (2026-09-29) |
 | [NUR343](#nur343) | `each` over a single-count branch whose value may be a List or an Integer defers at run time (loud) | the NUR340 pass (2026-09-29) |
-| [NUR344](#nur344) | A parked fn value is not applied to a paren or splice result that arrives after it (silent) | the NUR342/NUR337 pass (2026-09-29) |
-| [NUR346](#nur346) | A leaf fn body that never mentions `args`, reached as a computed body, reads the real args compiled (silent) | the interp-entry census pass (2026-09-29) |
+| [NUR344](#nur344) | A parked fn value before `do [lam/v]` raises a compiled internal_error (loud) | the NUR342/NUR337 pass (2026-09-29); narrowed 2026-09-29 |
 | [NUR347](#nur347) | Closure and lambda contract errors render a different name or caret compiled (loud; message only) | the interp-entry census pass (2026-09-29) |
 | [NUR348](#nur348) | Two computed-body shapes the compiled runtime defers (loud) | the live-read deopt pass (2026-09-29) |
 | [NUR349](#nur349) | A non-paren member apply followed by an infix word raises compiled (loud) | the NUR336 remainders pass (2026-09-29) |
+| [NUR350](#nur350) | Whether a computed body or a late word macro sees a fn's `args` depends on whether the fn's own body mentions `args` or needs frame state (the interpreter's leaf-frame elision, now mirrored compiled) | the NUR346 fix (2026-09-29) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -930,40 +930,22 @@ involved.
 
 ---
 
-## NUR344 — a parked fn value is not applied to a paren or splice result {#nur344}
+## NUR344 — a parked fn value before `do [lam/v]` defers compiled {#nur344}
 
-**Status:** Pending (a silent wrong answer) · **Recorded:** 2026-09-29
-
-A fn value parked by a paren apply whose window did not fit is applied by
-the interpreter to a paren or splice result that arrives after it; the
-compiled lane leaves it unapplied.
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
 
 ```
-def lam ([x:Integer] => [x add 100]) end ("s" lam/v) (2 add 3)
-  interpreted   [s 105]
-  compiled      [s fn lam(Integer) 5]
+def lam ([x:Integer] => [x add 100]) end ({a:1} lam/v) do [lam/v]
+  interpreted   [{a:1} fn lam(Integer) fn lam(Integer)]
+  compiled      internal_error (the NUR286 defer in reStepLanding)
 ```
 
-Likewise `({a:1} lam/v) (5)` and `def w word [5] end ("s" lam/v) w`; the
-literal twin `("s" lam/v) 5` agrees. A loud neighbour:
-`({a:1} lam/v) do [lam/v]` raises a compiled internal_error (the NUR286
-defer) where the interpreter answers `[{a:1} fn lam(Integer) fn lam(Integer)]`.
-
----
-
-## NUR346 — a leaf body's `args` reads the real args compiled {#nur346}
-
-**Status:** Pending (a silent wrong answer) · **Recorded:** 2026-09-29
-
-```
-def mk fn [[] [List] [quote [args]]] end
-def w fn [[x:Integer] [Any] [each (mk) [x 5]]] end w 7
-  interpreted   [[] []]
-  compiled      [[7] [7]]
-```
-
-The interpreter's leaf path pushes an empty args list for a body that never
-mentions `args`; the VM always pushes the real args in DynEnv programs.
+The VM cannot tell whether a forward token after the landing would be
+collected, so ruling it out needs a flag from the compiler. The silent
+half — a parked fn value not applied to a paren, reach, template or splice
+result after it (`("s" lam/v) (2 add 3)` was `[s fn lam(Integer) 5]` for
+`[s 105]`) — was fixed 2026-09-29 (core `trailingFnCollectsPastClose`,
+`CheckState.TrailingDeferredFnIDs`).
 
 ---
 
@@ -1012,5 +994,35 @@ def mk fn [[] [Map] [{f: ([x:Integer] => [x add 1])}]] end def m (mk) end 1 m.f 
 ```
 
 Also `3 1 m.f 7 add add` (`[12]` interpreted).
+
+---
+
+## NUR350 — a fn's `args` is visible to code its frame runs only when its body mentions it {#nur350}
+
+**Status:** Pending (a language non-uniformity; both lanes agree) · **Recorded:** 2026-09-29
+
+**Rule:** `args` inside a fn frame is that call's argument list, whatever
+code the frame runs.
+
+**Divergence:** the interpreter's leaf handler (`buildFnBodyHandler`)
+pushes a shared empty args list for a body that needs no frame state and
+never reads `args` (macros resolved when the fn is built). Code the
+construction-time walk cannot see — a computed body, or a word macro bound
+after the fn — then reads `[]`:
+
+```
+def mk fn [[] [List] [quote [args]]] end
+def w fn [[x:Integer] [Any] [each (mk) [x 5]]] end w 7        → [[] []]
+def w fn [[x:Integer][Any][m]] end def m word [args] end w 3  → []
+```
+
+Mention `args` or use `do` in `w`'s body and the same computed body reads
+`[7]`. The optimisation is observable. The compiled lane mirrors it
+(`FnFrameMeta.ArgsElided`, `CompiledFn.ArgsElided`), so the lanes agree —
+NUR346 is closed — but the language rule is not uniform.
+
+**Proposed verdict:** resolve by fix (elide only where no code the frame
+runs can read `args`, e.g. never for a frame that runs a computed body or
+a word macro), or Allowed with the rule restated. A maintainer decision.
 
 ---
