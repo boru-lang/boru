@@ -73,9 +73,12 @@ func (es *EmitState) NoteSpliceFired(v core.Value, _ core.SrcPos) {
 		}
 	}
 	if es.firedSplices == nil {
-		es.firedSplices = map[string]bool{}
+		es.firedSplices = map[int]map[string]bool{}
 	}
-	es.firedSplices[v.ID] = true
+	if es.firedSplices[pr.seq] == nil {
+		es.firedSplices[pr.seq] = map[string]bool{}
+	}
+	es.firedSplices[pr.seq][v.ID] = true
 }
 
 // spliceOutsAt is the SigRef.SpliceOuts of the call seq: the results the
@@ -87,7 +90,7 @@ func (lw *lowerer) spliceOutsAt(seq int) []core.Value {
 	}
 	outs := lw.es.spliceOuts[seq]
 	for _, v := range outs {
-		if core.IsSplice(v) && !lw.es.firedSplices[v.ID] {
+		if core.IsSplice(v) && !lw.es.firedSplices[seq][v.ID] {
 			return nil
 		}
 	}

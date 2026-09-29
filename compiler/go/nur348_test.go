@@ -113,7 +113,7 @@ func TestNoteSpliceFired(t *testing.T) {
 	if ev.call.nout != 2 || es.producedBy[three.ID] != (producer{seq: seq, idx: 1}) || es.producedBy[one.ID] != (producer{seq: seq}) {
 		t.Errorf("the marker leaves the call's results: nout=%d three=%+v one=%+v", ev.call.nout, es.producedBy[three.ID], es.producedBy[one.ID])
 	}
-	if _, still := es.producedBy[fired.ID]; still || !es.firedSplices[fired.ID] {
+	if _, still := es.producedBy[fired.ID]; still || !es.firedSplices[seq][fired.ID] {
 		t.Error("the fired marker is forgotten and noted fired")
 	}
 	lw := &lowerer{es: es}
@@ -170,5 +170,43 @@ func TestNoteSpliceFired(t *testing.T) {
 	es.noteSpliceOuts(1, []core.Value{one, computed})
 	if es.spliceOuts != nil {
 		t.Errorf("no concrete marker among the results: %v", es.spliceOuts)
+	}
+}
+
+// A loop-analysis round the pass discards (Rollback) takes its splice notes
+// with it: its seqs and value IDs come back in the stabilised round, where a
+// marker the discarded round fired but the final round took as data must
+// not stamp the call's SpliceOuts (the review of #522) — the screen's defer
+// is owed there.
+func TestSpliceNotesRollBack(t *testing.T) {
+	marker, three := core.NewSplice(core.NewList([]core.Value{core.NewInteger(1)})), core.NewInteger(3)
+	marker.ID, three.ID = "marker", "three"
+	es := NewEmitState()
+	record := func() int {
+		seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: "do", nout: 2}})
+		outs := []core.Value{marker, three}
+		for i, o := range outs {
+			es.setProducedAt(o, seq, i)
+		}
+		es.noteSpliceOuts(seq, outs)
+		return seq
+	}
+	cp := es.Checkpoint()
+	discarded := record()
+	es.NoteSpliceFired(marker, core.SrcPos{})
+	if (&lowerer{es: es}).spliceOutsAt(discarded) == nil {
+		t.Fatal("the discarded round's fired marker is noted")
+	}
+	es.Rollback(cp)
+	es.frames[0] = nil // the caller's own frame truncation (check's carrier.go)
+	if len(es.spliceOuts) != 0 || len(es.firedSplices) != 0 {
+		t.Errorf("the rollback keeps the discarded round's splice notes: %v %v", es.spliceOuts, es.firedSplices)
+	}
+	final := record()
+	if final != discarded {
+		t.Fatalf("the final round reuses the seq: %d / %d", final, discarded)
+	}
+	if outs := (&lowerer{es: es}).spliceOutsAt(final); outs != nil {
+		t.Errorf("a marker only the discarded round fired stamps the final call: %v", outs)
 	}
 }

@@ -1501,11 +1501,12 @@ type EmitState struct {
 	// beneath the statement (rootPreStart, NUR335).
 	rootStmtStacks map[core.SrcPos][]core.Value
 	// spliceOuts holds, by call seq, the results of a `do` one of which is
-	// a splice marker over a concrete payload, and firedSplices the markers
-	// among them the pass fired — each consumed by a recorded `drop`
-	// (splice_outs.go, NUR348).
+	// a splice marker over a concrete payload, and firedSplices, by the same
+	// seq, the markers among them (by value ID) the pass fired. Both are
+	// per-event notes Rollback trims with the rest (splice_outs.go, NUR348;
+	// the review of #522).
 	spliceOuts   map[int][]core.Value
-	firedSplices map[string]bool
+	firedSplices map[int]map[string]bool
 	// leadReads holds the paren applies whose statement island steps the
 	// paren's lead as the interpreter does (noteLeadRead): a raw member read
 	// or no event's value, which the island may run before the lead ran.
@@ -7648,6 +7649,8 @@ func (es *EmitState) Rollback(h core.EmitCheckpoint) {
 	dropKeysAbove(es.landingBeneath, cp.seq)
 	dropKeysAbove(es.landingOwn, cp.seq)
 	dropKeysAbove(es.landingWord, cp.seq)
+	dropKeysAbove(es.spliceOuts, cp.seq)
+	dropKeysAbove(es.firedSplices, cp.seq)
 	for id, seq := range es.argsProjSeq {
 		if seq > cp.seq {
 			delete(es.argsProjSeq, id)
