@@ -92,17 +92,27 @@ func TestNUR356ArmPendingLiteralCompiles(t *testing.T) {
 	}
 }
 
+// bothLanesOutput is one program's run on both lanes, with what each printed.
+type bothLanesOutput struct {
+	gotC, gotI []any
+	compiled   bool
+	errC, errI error
+	outC, outI string
+}
+
 // runBothWithOutput runs src on both lanes, capturing what each prints.
-func runBothWithOutput(t *testing.T, src string) (gotC []any, compiled bool, errC error, outC string, gotI []any, errI error, outI string) {
+func runBothWithOutput(t *testing.T, src string) bothLanesOutput {
 	t.Helper()
+	var r bothLanesOutput
 	var oc, oi bytes.Buffer
 	b := mustNew(t)
 	b.SetOutput(&oc)
-	gotC, compiled, errC = b.RunCompiled(src)
+	r.gotC, r.compiled, r.errC = b.RunCompiled(src)
 	d := mustNew(t)
 	d.SetOutput(&oi)
-	gotI, errI = d.RunInterp(src)
-	return gotC, compiled, errC, oc.String(), gotI, errI, oi.String()
+	r.gotI, r.errI = d.RunInterp(src)
+	r.outC, r.outI = oc.String(), oi.String()
+	return r
 }
 
 // TestNUR356EffectOrderAgrees: the arm's effect runs where the interpreter's
@@ -113,9 +123,9 @@ func TestNUR356EffectOrderAgrees(t *testing.T) {
 		{`def c true end if c [[print "q" 2]] [3] end`, "q\n"},
 		{`def c true end def f fn [[] [Any] [if c [[print "q" 2]] [3]]] end f end print "a"`, "q\na\n"},
 	} {
-		gotC, compiled, errC, outC, gotI, errI, outI := runBothWithOutput(t, tc.src)
-		if !compiled || fmt.Sprint(gotC, errC) != fmt.Sprint(gotI, errI) || outC != outI || outI != tc.out {
-			t.Errorf("%s: compiled=%v %v %v %q, interpreted %v %v %q, want output %q", tc.src, compiled, gotC, errC, outC, gotI, errI, outI, tc.out)
+		r := runBothWithOutput(t, tc.src)
+		if !r.compiled || fmt.Sprint(r.gotC, r.errC) != fmt.Sprint(r.gotI, r.errI) || r.outC != r.outI || r.outI != tc.out {
+			t.Errorf("%s: compiled=%v %v %v %q, interpreted %v %v %q, want output %q", tc.src, r.compiled, r.gotC, r.errC, r.outC, r.gotI, r.errI, r.outI, tc.out)
 		}
 	}
 }

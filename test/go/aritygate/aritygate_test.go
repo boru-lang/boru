@@ -125,6 +125,12 @@ var pinnedAritySites = map[string]int{
 	// many written operands a forward phase may take.
 	"core/go/engine.go":      33,
 	"core/go/region_diag.go": 1,
+	// NUR357's forward fits (2026-09-29), matching the argument rule: a
+	// matched signature's collected args (len(match.Args)) are laid over the
+	// resolved stack beneath the word, and a candidate stopped at slot k
+	// draws its remaining TotalArgs()-k args from that stack — the same
+	// forward-then-stack binding every call makes, not a decision by arity.
+	"core/go/forward_fit.go": 3,
 	// NUR242 (2026-09-26): the exact layout is published only for a PLAIN
 	// dispatching word (`w.ArgCount != -1` rules out an `/N` modifier), since
 	// a modifier overrides the forward limit the plan reads — the token's
