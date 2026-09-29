@@ -11,19 +11,24 @@ import (
 // interpreter, so the region-top rematch seat (push the const, swap) is no
 // window of it. The trap falls to layoutOperands, which declines the variadic
 // operand; the region BENEATH the word keeps the seat (the empty sim then
-// declines on the seat's own discipline, TestLowerTrapVariadicRegionNotOnTop).
+// declines on the seat's own discipline, TestLowerTrapVariadicRegionNotOnTop)
+// — but only a region proven non-empty: one that may leave nothing (`if c []
+// [1] each [x/u]`) has no top to swap under, and declines too (the Codex
+// review of #521: a SWAP underflow compiled for each's signature_error).
 func TestLowerTrapWrittenRegionDeclines(t *testing.T) {
 	for _, c := range []struct {
-		nFwd int
-		want string
+		nFwd     int
+		nonEmpty bool
+		want     string
 	}{
-		{2, "rematch operands include a variadic loop result"},
-		{1, "stack discipline: variadic rematch region is not on top"},
+		{2, true, "rematch operands include a variadic loop result"},
+		{1, true, "stack discipline: variadic rematch region is not on top"},
+		{1, false, "rematch operands include a variadic loop result"},
 	} {
 		es := NewEmitState()
 		cf := &CompiledFn{}
 		lw := &lowerer{es: es, p: &Program{}, code: &cf.Code, debug: &cf.Debug,
-			sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{7: true}, promoted: map[int]int{}}
+			sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{7: true}, nonEmpty: map[int]bool{7: c.nonEmpty}, promoted: map[int]int{}}
 		ev := EmitEvent{kind: evTrap, trap: EmitTrap{
 			rematchWord:    "each",
 			rematchOps:     []EmitOperand{EventOperand(7, 0), ConstOperand(0)},
@@ -31,7 +36,29 @@ func TestLowerTrapWrittenRegionDeclines(t *testing.T) {
 			rematchNFwd:    c.nFwd,
 		}}
 		if reason := lw.lowerTrap(&ev); reason != c.want {
-			t.Errorf("nFwd=%d: reason = %q, want %q", c.nFwd, reason, c.want)
+			t.Errorf("nFwd=%d nonEmpty=%v: reason = %q, want %q", c.nFwd, c.nonEmpty, reason, c.want)
+		}
+	}
+}
+
+// armNonEmpty: an arm reaches its merge with a value when it nets one that is
+// a const, a fixed-count event, or a region itself proven non-empty; never
+// when it nets nothing, nor when its value is a region that may be empty.
+func TestArmNonEmpty(t *testing.T) {
+	lw := &lowerer{variadic: map[int]bool{3: true, 4: true}, nonEmpty: map[int]bool{4: true}}
+	for _, c := range []struct {
+		hasOut bool
+		out    EmitOperand
+		want   bool
+	}{
+		{false, ConstOperand(0), false},
+		{true, ConstOperand(0), true},
+		{true, EventOperand(2, 0), true},
+		{true, EventOperand(3, 0), false},
+		{true, EventOperand(4, 0), true},
+	} {
+		if got := lw.armNonEmpty(c.hasOut, c.out); got != c.want {
+			t.Errorf("armNonEmpty(%v, %+v) = %v, want %v", c.hasOut, c.out, got, c.want)
 		}
 	}
 }

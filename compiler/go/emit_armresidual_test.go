@@ -106,7 +106,7 @@ func TestLowerTrapVariadicRegionNotOnTop(t *testing.T) {
 	es := NewEmitState()
 	cf := &CompiledFn{}
 	lw := &lowerer{es: es, p: &Program{}, code: &cf.Code, debug: &cf.Debug,
-		sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{7: true}, promoted: map[int]int{}}
+		sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{7: true}, nonEmpty: map[int]bool{7: true}, promoted: map[int]int{}}
 	ev := EmitEvent{kind: evTrap, trap: EmitTrap{
 		rematchWord:    "w",
 		rematchOps:     []EmitOperand{EventOperand(7, 0), ConstOperand(0)},

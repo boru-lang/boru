@@ -80,3 +80,33 @@ func TestNUR340NeighboursStillAgree(t *testing.T) {
 		requireCompiledParity(t, src)
 	}
 }
+
+// A region BENEATH the word that may leave NOTHING — a 0-or-1 merge, or an
+// arm whose value is one — has no top for the rematch seat to swap under: it
+// compiled a SWAP underflow for each's signature_error (the Codex review of
+// #521). Such a rematch declines now (the lowerer's nonEmpty mark gates the seat); a
+// program that compiles anyway agrees with the interpreter, never an
+// internal_error.
+func TestNUR340EmptyRegionBeneathNeverUnderflows(t *testing.T) {
+	for _, src := range []string{
+		`def x 5 end def c true end if c [] [1] each [x/u]`,
+		`def x 5 end def c false end if c [] [1] each [x/u]`,
+		`def x 5 end def c true end 7 if c [] [1] each [x/u]`,
+		`def x 5 end def c false end if c [[9]] [] each [x/u]`,
+		`def x 5 end def c true end if c [[9]] [] each [x/u]`,
+		`def x 5 end def c true end if c [99] [if c [] [1]] each [x/u]`,
+		`def x 5 end def c false end if c [99] [if c [] [1]] each [x/u]`,
+	} {
+		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
+		if errI == nil {
+			t.Errorf("%q: the interpreter raises, got %v", src, gotI)
+			continue
+		}
+		if !compiled {
+			continue
+		}
+		if errC == nil || errC.Error() != errI.Error() || fmt.Sprint(gotC) != fmt.Sprint(gotI) {
+			t.Errorf("%q: compiled %v %v, interpreted %v %v", src, gotC, errC, gotI, errI)
+		}
+	}
+}

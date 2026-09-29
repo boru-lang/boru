@@ -874,7 +874,14 @@ type lowerer struct {
 	// loop body (consumed at entry, so a nested fragment never inherits
 	// it), and variadicOutAdmitted is that fragment's report back that its
 	// out was a variadic event it admitted on that account.
-	bodyVariadic        map[int]bool
+	bodyVariadic map[int]bool
+	// nonEmpty marks a VARIADIC branch merge proven to leave at least one
+	// value on every path that reaches it: both arms net a value, and
+	// neither arm's value is itself a region that may be empty. Only such a
+	// region takes lowerTrap's push-and-swap rematch seat, which reads the
+	// region's top (a region that may be empty — `if c [] [1] each [x/u]` —
+	// has no top to swap under). Nil until first use.
+	nonEmpty            map[int]bool
 	loopBodyFrag        bool
 	variadicOutAdmitted bool
 	// twinFor pairs a root def with its bind twin: the most recent PUSH-kind
@@ -4508,8 +4515,17 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 		// operand ("the arguments were 1, 1 and …"), and a runtime-counted
 		// region has no seat count a window can name. That rematch falls to
 		// layoutOperands, which declines the variadic operand (NUR340).
+		//
+		// And only a region proven NON-EMPTY (nonEmpty — a branch merge whose
+		// arms both leave a value): the swap seats the const under the
+		// region's top, and a region that may be empty — a 0-or-1 merge
+		// (`if c [] [1] each [x/u]`), a loop (a zero-trip or an early
+		// `break`) — may have no top at all; the swap would underflow or
+		// reach below the region where the interpreter's window reads the
+		// const and what lies beneath. Such a rematch falls to
+		// layoutOperands too, which declines it.
 		if ops := ev.trap.rematchOps; len(ops) == 2 && ev.trap.rematchNFwd < len(ops) &&
-			ops[0].kind == opEvent && lw.variadic[ops[0].idx] &&
+			ops[0].kind == opEvent && lw.variadic[ops[0].idx] && lw.nonEmpty[ops[0].idx] &&
 			ops[1].kind != opEvent {
 			if len(lw.vm) == 0 || !slotIs(lw.vm[len(lw.vm)-1], ops[0]) {
 				return "stack discipline: variadic rematch region is not on top"
@@ -5521,9 +5537,23 @@ func (lw *lowerer) lowerArms(ev *EmitEvent, jf int) string {
 			(br.hasElsOut && lw.variadic[br.elsOut.idx]) {
 			lw.variadic[ev.seq] = true
 		}
+		if lw.variadic[ev.seq] && lw.armNonEmpty(br.hasThenOut, br.thenOut) && lw.armNonEmpty(br.hasElsOut, br.elsOut) {
+			if lw.nonEmpty == nil {
+				lw.nonEmpty = map[int]bool{}
+			}
+			lw.nonEmpty[ev.seq] = true
+		}
 		lw.note()
 	}
 	return ""
+}
+
+// armNonEmpty reports whether a branch arm reaches its merge with at least
+// one value: it nets a value, and that value is not a region that may be
+// empty (a variadic event not itself proven nonEmpty). A multi-value arm's
+// out is its TOP value, so a non-empty out proves the arm non-empty.
+func (lw *lowerer) armNonEmpty(hasOut bool, out EmitOperand) bool {
+	return hasOut && (out.kind != opEvent || !lw.variadic[out.idx] || lw.nonEmpty[out.idx])
 }
 
 // lowerBothComputed lowers `if (c) (a) (b)` where BOTH arms are eagerly-computed
