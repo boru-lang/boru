@@ -664,6 +664,13 @@ user still gets an answer while the case is open:
     values" since the NUR344 fix (2026-09-29), as its literal twin
     `for 2 [("s" lam/v) 5]` always did: a for body leaving several values
     has no compiled seat. It had compiled through an end-of-run island.
+  - A dispatch that takes a member read the run may find callable beside a
+    value written after it (`8 m.f 7 eq`, NUR349 — fixed at the root and in
+    a plain unit) declines where no landing can guard it: inside a branch
+    arm (`if c [8 m.f 7 eq] [0]`), a loop body (`for 1 [8 m.f 7 eq]`), or a
+    unit with an apply chain or trailing apply. Some of these were silent
+    wrong answers on main (`if c [8 m.f 7 eq] [0]` was `[8 false]` for
+    `[true]`).
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

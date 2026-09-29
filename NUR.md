@@ -97,13 +97,13 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR330](#nur330) | A `def` inside a Rand.map-from / Rand.list-of generator body outlives the call on the interpreter only (silent) | the interp-entry census, module-rand.tsv (2026-09-27) |
 | [NUR334](#nur334) | A read after a computed keep-defs body: the shapes the live-read deopt does not serve stay loud | main's 50 uncovered statements (2026-09-28); remainder after the live-read deopt (2026-09-29) |
 | [NUR336](#nur336) | A paren apply over a member that is data at run time: the shapes the statement island does not serve stay loud | main's 50 uncovered statements (2026-09-28); remainder after the NUR336 pass (2026-09-29) |
-| [NUR343](#nur343) | `each` over a single-count branch whose value may be a List or an Integer defers at run time (loud) | the NUR340 pass (2026-09-29) |
+| [NUR343](#nur343) | A union-typed branch at `each` whose arm holds an effect or a binding defers at run time (loud) | the NUR340 pass (2026-09-29); narrowed 2026-09-29 |
 | [NUR344](#nur344) | A parked fn value before `do [lam/v]` raises a compiled internal_error (loud) | the NUR342/NUR337 pass (2026-09-29); narrowed 2026-09-29 |
 | [NUR347](#nur347) | Closure and lambda contract errors render a different name or caret compiled (loud; message only) | the interp-entry census pass (2026-09-29) |
 | [NUR348](#nur348) | Three computed-body shapes the compiled runtime still defers (loud) | the live-read deopt pass (2026-09-29); narrowed 2026-09-29 |
-| [NUR349](#nur349) | A non-paren member apply followed by an infix word raises compiled (loud) | the NUR336 remainders pass (2026-09-29) |
 | [NUR350](#nur350) | Whether a computed body or a late word macro sees a fn's `args` depends on whether the fn's own body mentions `args` or needs frame state (the interpreter's leaf-frame elision, now mirrored compiled) | the NUR346 fix (2026-09-29) |
 | [NUR351](#nur351) | A forward collection stops at a live read's stale type after a computed body: a wrong error compiled where the interpreter answers | the NUR348 pass (2026-09-29) |
+| [NUR352](#nur352) | Four loud neighbours of the union-branch rematch and the member apply: a static trap, an eager arm body, a pre-evaluated argument note, a gradual def-bound fn read | the NUR343/349 pass (2026-09-29) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -909,22 +909,24 @@ Pinned in lang `nur335_336_statement_island_test.go`.
 
 ---
 
-## NUR343 — a List-or-Integer branch at `each` defers at run time {#nur343}
+## NUR343 — a union-typed branch at `each` with an effectful arm defers {#nur343}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-29
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
+
+`each` over a branch whose result may be a List or an Integer is a
+runtime rematch; where the run matches, the statement's island re-runs it
+on the interpreter (compiler `rerunBranch`, `planRematchRestart`). A branch
+arm holding an effect or a binding cannot be re-run without repeating it,
+so it keeps the designed `vm:rematch-matched` defer:
 
 ```
-def c true end each (if c [[1]] [3]) [2]
-  interpreted   [[1]]
-  compiled      internal_error: DISPATCH_REMATCH at each matched at run time
-                where the static model failed (the vm:rematch-matched defer)
+def c true end each (if c [[print "z" 1]] [3]) [2]
+  interpreted   prints z, [[1]]
+  compiled      internal_error (vm:rematch-matched)
 ```
 
-Also `(if c [[1]] [3]) each [2]` and trapping bodies. The check pass decides
-`each` cannot match a branch result that may be a List or an Integer and
-records a re-match with nothing to run on a match; the run matches. Both
-arms leave one value, so NUR340's variable-count region path is not
-involved.
+Likewise an arm `[def q 3 q]`. Pinned by lang
+`TestNUR343ArmEffectKeepsTheDefer`.
 
 ---
 
@@ -986,20 +988,6 @@ terminal trap, compiler `trapHeldBeneath`) and `do [w/v]` over
 
 ---
 
-## NUR349 — a non-paren member apply before an infix word raises compiled {#nur349}
-
-**Status:** Pending (loud) · **Recorded:** 2026-09-29
-
-```
-def mk fn [[] [Map] [{f: ([x:Integer] => [x add 1])}]] end def m (mk) end 1 m.f 7 add
-  interpreted   [9]
-  compiled      signature_error: cannot call `add` (4 arguments)
-```
-
-Also `3 1 m.f 7 add add` (`[12]` interpreted).
-
----
-
 ## NUR350 — a fn's `args` is visible to code its frame runs only when its body mentions it {#nur350}
 
 **Status:** Pending (a language non-uniformity; both lanes agree) · **Recorded:** 2026-09-29
@@ -1045,5 +1033,25 @@ from `keys`' Map slot, so the model's `keys` takes the body's run from the
 stack and the live-read point lands after it. Twin: `… quote [4] … x keys`
 raises on both lanes with different notes ("the arguments were 0 … and 4"
 interpreted, "the argument was 0" compiled). Pre-existing on main b37ddca.
+
+---
+
+## NUR352 — neighbours of the union-branch rematch and the member apply {#nur352}
+
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · pre-existing on main b37ddca
+
+1. `def c true end 7 8 each (if c [[1]] [3]) [2]`: interpreted
+   `[7 8 [1]]`; compiled raises a static `signature_error` trap on `each`
+   over the window `[8, 7]`.
+2. `def c true end each (if c [[dup]] [3]) [2 3]`: interpreted `[[2 3]]`;
+   compiled raises `signature_error` on `dup` — the arm's list body is
+   evaluated eagerly.
+3. `def h fn [[] [Any] [3]] end each (h) [1 add 2]`: both lanes raise
+   `signature_error`, but the compiled note lists the arguments as
+   `3 and [3]` (the list pre-evaluated) for the interpreter's
+   `3 and [1 word(add) 2]`.
+4. `def x m.f end 1 x 7 add` over an opaque Map with a fn member:
+   interpreted `[9]`; compiled hits the NUR123 designed defer ("gradual read
+   `x` holds a fn…").
 
 ---
