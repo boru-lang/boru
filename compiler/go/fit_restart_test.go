@@ -305,3 +305,15 @@ func TestDisasmFitIslands(t *testing.T) {
 		t.Errorf("both islands named: %s", out)
 	}
 }
+
+// A user call takes a fit island only over a candidate the stack could
+// serve; a poly over any gradual forward operand (its no-match report).
+func TestFitWanted(t *testing.T) {
+	es := NewEmitState()
+	uc := &EmitEvent{kind: evCallUser, uc: emitUserCall{unit: 1}}
+	poly := &EmitEvent{kind: evCall, call: emitCall{poly: true}}
+	es.fwdFitsAt = map[int]map[int][]core.ForwardFit{1: {0: nil}, 2: {0: {{Idx: 0}}}}
+	if es.fitWanted(uc, 1) || !es.fitWanted(uc, 2) || !es.fitWanted(poly, 1) || es.fitWanted(poly, 3) || es.fitWanted(&EmitEvent{kind: evBranch}, 2) {
+		t.Error("a user call over a viable fit, a poly over any; nothing without fits or a stop")
+	}
+}

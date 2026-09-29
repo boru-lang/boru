@@ -38,7 +38,7 @@ func (es *EmitState) planFitRestarts(lw *lowerer, residual []core.Value) {
 	rec := &fnUnitRec{frag: &EmitFragment{events: es.frames[0]}, body: es.rootBody, localReads: es.rootLocalReads}
 	for _, seq := range sortedSeqs(tree) {
 		at := tree[seq]
-		if len(es.fwdFitsAt[seq]) == 0 || at.inLoop || !fitStop(at.ev) || (trapped && seq > es.trapAt) {
+		if at.inLoop || !es.fitWanted(at.ev, seq) || (trapped && seq > es.trapAt) {
 			continue
 		}
 		tok := statementToken(es.rootBody, stopPos(at.ev))
@@ -90,7 +90,7 @@ func (es *EmitState) planUnitFitRestarts(u *emitUnit, rec *fnUnitRec) int {
 	n := 0
 	for _, seq := range sortedSeqs(tree) {
 		te := tree[seq]
-		if len(es.fwdFitsAt[seq]) == 0 || te.inLoop || !fitStop(te.ev) {
+		if te.inLoop || !es.fitWanted(te.ev, seq) {
 			continue
 		}
 		tok := statementToken(rec.body, stopPos(te.ev))
@@ -182,6 +182,33 @@ func fitStop(ev *EmitEvent) bool {
 		return ev.call.poly
 	case evCallUser:
 		return ev.uc.poly == nil && !ev.uc.generic && ev.uc.unit >= 0
+	}
+	return false
+}
+
+// fitWanted reports whether the call event ev (seq) needs a forward-fit
+// island: a stop (fitStop) that collected a gradual operand forward
+// (EmitState.fwdFitsAt). A poly takes one whatever the fits — its no-match
+// arm renders only its own window, where the interpreter's report names the
+// stack its collection read (`keys y` over nothing: "none were supplied"),
+// so the island raises that report. A user call takes one only over a
+// candidate the stack beneath could serve (a non-empty fit): its refused
+// contract already reports the interpreter's window (CallWindows, NUR320),
+// and with nothing to collect instead the compiled call is the
+// interpreter's dispatch — `f (set …)` over a refining param raises its
+// signature_error fully compiled.
+func (es *EmitState) fitWanted(ev *EmitEvent, seq int) bool {
+	fits := es.fwdFitsAt[seq]
+	if len(fits) == 0 || !fitStop(ev) {
+		return false
+	}
+	if ev.kind == evCall {
+		return true
+	}
+	for _, f := range fits {
+		if len(f) > 0 {
+			return true
+		}
 	}
 	return false
 }
