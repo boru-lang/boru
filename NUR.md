@@ -100,9 +100,10 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR343](#nur343) | `each` over a single-count branch whose value may be a List or an Integer defers at run time (loud) | the NUR340 pass (2026-09-29) |
 | [NUR344](#nur344) | A parked fn value before `do [lam/v]` raises a compiled internal_error (loud) | the NUR342/NUR337 pass (2026-09-29); narrowed 2026-09-29 |
 | [NUR347](#nur347) | Closure and lambda contract errors render a different name or caret compiled (loud; message only) | the interp-entry census pass (2026-09-29) |
-| [NUR348](#nur348) | Two computed-body shapes the compiled runtime defers (loud) | the live-read deopt pass (2026-09-29) |
+| [NUR348](#nur348) | Three computed-body shapes the compiled runtime still defers (loud) | the live-read deopt pass (2026-09-29); narrowed 2026-09-29 |
 | [NUR349](#nur349) | A non-paren member apply followed by an infix word raises compiled (loud) | the NUR336 remainders pass (2026-09-29) |
 | [NUR350](#nur350) | Whether a computed body or a late word macro sees a fn's `args` depends on whether the fn's own body mentions `args` or needs frame state (the interpreter's leaf-frame elision, now mirrored compiled) | the NUR346 fix (2026-09-29) |
+| [NUR351](#nur351) | A forward collection stops at a live read's stale type after a computed body: a wrong error compiled where the interpreter answers | the NUR348 pass (2026-09-29) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -903,9 +904,6 @@ answers:
   stack is recorded there);
 - a lead that went through a landing (`W (m.f y) 9` over a lambda of two
   Integers) — the VM cannot tell whether the landing fired;
-- an island that dispatches a VM-bound lambda by name again,
-  `k (g 7) (g 8) drop` over `def g m.f/v` (`BIND_GLOBAL` keeps the raw value
-  where the interpreter's `def` compiles its signatures).
 
 Pinned in lang `nur335_336_statement_island_test.go`.
 
@@ -967,19 +965,24 @@ the closure paths above still differ.
 
 ---
 
-## NUR348 — two computed-body shapes the compiled runtime defers {#nur348}
+## NUR348 — computed-body shapes the compiled runtime defers {#nur348}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-29
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
 
-```
-def x 0 end def mk fn [[][List][quote [def x [1 2]]]] end do (mk) end x.0
-  interpreted   [1]
-  compiled      internal_error: do over a computed body left 0 value(s)
-                where a single-value seat consumes it
-def w word [1 2] end do [w/v]
-  interpreted   [1 2]
-  compiled      internal_error: tape-coupled handler result at do
-```
+Still loud (internal_error compiled, the interpreter answers):
+
+- the no-`end` twin `do (mk) x.0` over `def x 0` and a body
+  `quote [def x [1 2]]` — the statement's first token is the `do`, so a
+  live-read test there would run before the body;
+- a value beneath the run: `5 end do (mk) end x.0` over a run leaving a fn;
+- a computed body leaving a splice: `do (mk)` over `quote [w/v]`
+  ("tape-coupled handler result at do").
+
+Fixed 2026-09-29: `do (mk) end x.0` (the live point planned under a
+terminal trap, compiler `trapHeldBeneath`) and `do [w/v]` over
+`def w word [1 2]` (a fired splice leaves the `do`'s results,
+`EmitRecorder.NoteSpliceFired`, `SigRef.SpliceOuts`). Pinned in lang
+`nur348_computed_body_test.go`.
 
 ---
 
@@ -1024,5 +1027,23 @@ NUR346 is closed — but the language rule is not uniform.
 **Proposed verdict:** resolve by fix (elide only where no code the frame
 runs can read `args`, e.g. never for a frame that runs a computed body or
 a word macro), or Allowed with the rule restated. A maintainer decision.
+
+---
+
+## NUR351 — a forward collection stops at a live read's stale type {#nur351}
+
+**Status:** Pending (a wrong error) · **Recorded:** 2026-09-29
+
+```
+def x 0 end def mk fn [[][List][quote [def x {a:1} 4]]] end do (mk) end keys x
+  interpreted   [4 ['a']]
+  compiled      signature_error: cannot call `keys` … the argument was 4
+```
+
+The gradual Integer bound on `x` (the model's pre-body type) is disjoint
+from `keys`' Map slot, so the model's `keys` takes the body's run from the
+stack and the live-read point lands after it. Twin: `… quote [4] … x keys`
+raises on both lanes with different notes ("the arguments were 0 … and 4"
+interpreted, "the argument was 0" compiled). Pre-existing on main b37ddca.
 
 ---
