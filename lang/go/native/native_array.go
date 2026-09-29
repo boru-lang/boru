@@ -1710,6 +1710,18 @@ func analyseHigherOrderBody(r *Registry, body Value, elems ...*Type) []Value {
 	return analyseHigherOrderBodyVals(r, body, vals...)
 }
 
+// AnalyseMultiRunBody is analyseHigherOrderBodyVals for a word outside this
+// package whose handler runs a code body on the SHARED registry with no def
+// cleanup, any number of times — a module's generator driver
+// (boru:rand's list-of and map-from, NUR330). Its check-mode ReturnsFn runs
+// the body here so the pass sees what the run leaves bound, exactly as each's
+// does: the body's defs stay in the model (a later read is the body's
+// binding, not the one before the call), under the multi-run guard and the
+// conditional-reach depth (the body may run zero times).
+func AnalyseMultiRunBody(r *Registry, body Value, inputs ...Value) []Value {
+	return analyseHigherOrderBodyVals(r, body, inputs...)
+}
+
 // analyseHigherOrderBodyVals is the carrier-Value variant of
 // analyseHigherOrderBody: the prefix inputs are arbitrary carriers
 // (disjuncts, typed lists), not just bare types. Used by the fold
