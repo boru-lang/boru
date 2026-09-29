@@ -111,6 +111,59 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 			t.Errorf("a forward-collected index consumes nothing below the word: %v", es.marked)
 		}
 	})
+	t.Run("a forward collection laid out beneath the word passes a parked fn", func(t *testing.T) {
+		// NUR337's remainder: `(m lam/v) print 2` — rearrangeForForward laid
+		// print's forward 2 out beneath it, so the collection reads as a
+		// stack one. Every operand was written after the word (forwardSplit),
+		// so the concrete fn value parked below collected nothing; a fn-typed
+		// CARRIER (a fn word's read, dispatched where it stands at run time)
+		// stays marked.
+		parked := NewFunction(FnDefInfo{Anonymous: true, Signatures: []FnSig{{Params: []FnParam{{Type: TInteger}}, Returns: []*Type{TAny}, BarrierPos: 1}}})
+		parked.ID = "PARKED"
+		word := WithPosAt(NewWord("print"), SrcPos{Row: 1, Col: 9})
+		lay := func(e *Engine, n int) {
+			e.Tape = NewTape([]Value{parked, fn, five, word}, StackHeadroom)
+			e.Pointer = 3
+			e.fwdSplitAt, e.fwdSplitN, e.fwdSplitPos = 3, n, word.Pos()
+		}
+		es := newHazardEmit()
+		e := hazardEngine(t, es)
+		lay(e, 1)
+		if !e.forwardOnly(1) || e.forwardOnly(2) {
+			t.Fatal("one operand written after the word: forward-only for a one-operand window only")
+		}
+		e.noteCollectionHazards(nil, []int{2})
+		if es.marked[parked.ID] || !es.marked[fn.ID] {
+			t.Errorf("forward-only: the parked fn passes, the carrier stays marked: %v", es.marked)
+		}
+		// NEGATIVE: a stack operand beneath the forward one marks both.
+		es = newHazardEmit()
+		e = hazardEngine(t, es)
+		lay(e, 1)
+		e.noteCollectionHazards(nil, []int{1, 2})
+		if !es.marked[parked.ID] {
+			t.Errorf("a stack collection past the parked fn marks it: %v", es.marked)
+		}
+		// NEGATIVE: a stale record (another word's position) is no split.
+		es = newHazardEmit()
+		e = hazardEngine(t, es)
+		lay(e, 1)
+		e.fwdSplitPos = SrcPos{Row: 1, Col: 2}
+		e.noteCollectionHazards(nil, []int{2})
+		if !es.marked[parked.ID] {
+			t.Errorf("a record for another word proves nothing: %v", es.marked)
+		}
+		// NEGATIVE: a positionless word's record is never trusted.
+		es = newHazardEmit()
+		e = hazardEngine(t, es)
+		lay(e, 1)
+		e.Tape.Set(3, NewWord("print"))
+		e.fwdSplitPos = SrcPos{}
+		e.noteCollectionHazards(nil, []int{2})
+		if !es.marked[parked.ID] {
+			t.Errorf("a positionless record proves nothing: %v", es.marked)
+		}
+	})
 	t.Run("an inactive recorder marks nothing", func(t *testing.T) {
 		es := newHazardEmit()
 		es.active = false
@@ -144,7 +197,7 @@ func TestNoteCollectionHazardsScope(t *testing.T) {
 		other := NewCarrier(TFunction)
 		e.Tape = NewTape([]Value{other, fn, five, NewWord("depth")}, StackHeadroom)
 		e.Pointer = 3
-		e.noteCollectionHazardsBelow(1, 3)
+		e.noteCollectionHazardsBelow(1, 3, false)
 		if es.marked[other.ID] || !es.marked[fn.ID] {
 			t.Errorf("only values at or above the floor are in scope: %v", es.marked)
 		}

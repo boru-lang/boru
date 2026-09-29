@@ -726,6 +726,12 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 		if res, err, ran := vc.invokeTokenBody(reg, body, inputs); ran {
 			return res, err
 		}
+		// A named fn value that takes no argument runs over nothing, its
+		// results on top of the inputs, as its step does
+		// (vm_fnvalue_zeroarg.go).
+		if res, err, ran := vc.zeroArgTokenSeam(reg, body, inputs); ran {
+			return res, err
+		}
 		// A fn value no signature admits over the inputs parks on top of
 		// them — RunResolved's residual — or raises, as its step would
 		// (vm_fnvalue_park.go): the inputs are the stack beneath it.
@@ -1430,6 +1436,14 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 	if st, handled, err := vc.callDynamicNoMatch(reg, fnVal, args, stack, base, trailing, curDebug, pc); handled {
 		return st, nil, err
 	}
+	// A named fn value that takes no argument runs over nothing, the window's
+	// args kept where its step keeps them (vm_fnvalue_zeroarg.go).
+	if st, err, ran := vc.zeroArgCallDynamic(reg, fnVal, args, stack, base, trailing); ran {
+		if err != nil {
+			return nil, nil, stampAt(err, curDebug, pc, reg)
+		}
+		return st, nil, nil
+	}
 	// Non-trivial fn (user body): apply via the island sub-engine, which
 	// auto-applies the Function to the forward args exactly as a nested Run.
 	// The TRAILING form islands the window AS WRITTEN — the arg beneath, the
@@ -1950,7 +1964,15 @@ func (vc *vmContext) substIsland(island []core.Value, substs []compiler.RestartS
 		default:
 			return nil, vmErrAt(curDebug, pc, "bad statement-island substitution")
 		}
-		if sb.Src.Kind != compiler.RestartResults && len(vs) == 1 && (sb.Span == 1 || sb.Placed) && core.FnValueDispatchesAtPointer(vs[0]) {
+		if sb.Reach && len(vs) == 1 {
+			// A paren apply's lead its member read left as it is: written as
+			// the reach-lowered group the read's token steps as (NUR336).
+			vs = []core.Value{core.NewReach(core.ReachInfo{Receiver: vs, Eval: true})}
+		} else if sb.Named && len(vs) == 1 && namedRuns(vs[0]) {
+			// A def-bound word's fn the paren's dispatch of the name runs
+			// (NUR336).
+			vs = []core.Value{appliedLead(vs[0])}
+		} else if sb.Src.Kind != compiler.RestartResults && len(vs) == 1 && (sb.Span == 1 || sb.Placed) && core.FnValueDispatchesAtPointer(vs[0]) {
 			return nil, vmDefer(vc.r, curDebug, pc, "vm:restart-parked-fn", "a statement island would write a fn value where the interpreter parks it, and the island's step would apply it (NUR297); the compiled runtime cannot execute it")
 		}
 		var ok bool
@@ -1983,6 +2005,15 @@ func (vc *vmContext) statementRestart(reg *core.Registry, srcs []compiler.Restar
 				prefix = append(prefix, vc.restartLocals[src.Idx])
 			case src.Kind == compiler.RestartStack && src.Idx < depth:
 				prefix = append(prefix, stack[frameBase+src.Idx])
+			case src.Kind == compiler.RestartType:
+				t := reg.Types.LookupByID(src.Val.ID)
+				if t == nil {
+					t = core.Builtin.LookupByID(src.Val.ID)
+				}
+				if t == nil {
+					return nil, nil, vmErrAt(curDebug, pc, "unresolvable statement-island type "+src.Val.String())
+				}
+				prefix = append(prefix, core.NewTypeLiteral(core.ForwardedType(t)))
 			default:
 				return nil, nil, vmErrAt(curDebug, pc, "bad statement-island prefix source")
 			}
@@ -2698,6 +2729,37 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		// 43), as a `/v` read of it is applied (`(m.f/v 7)`). NUR336.
 		fnVal.Quoted = false
 	}
+	if spec.Paren && !fnVal.Quoted && vc.parenMissesWindow(fnVal, args) {
+		// No signature of the lead takes exactly the paren's values, so the
+		// interpreter's paren does not apply it over them alone: it places a
+		// lambda that takes none, runs a named fn of none before them, and
+		// re-steps any other where it can reach beneath the paren and past it
+		// (`3 (m.f 7)` over a lambda of two Integers is 4, `"s" (m.f 7)` over
+		// one String is `s 7`). The lead has not run: its statement's island
+		// runs it as the interpreter does (NUR336). A placing apply (Place)
+		// runs it over its values only where that run is the paren's
+		// (placesAlone) and defers unrun elsewhere; any other apply keeps its
+		// run and its count check. A def-bound word's lead is its name's
+		// dispatch: one of no argument runs, any other raises (named*).
+		named := spec.LeadName != ""
+		switch {
+		case named && !namedRuns(fnVal):
+			return nil, nil, vc.namedMissRaise(spec, fnVal, args, curDebug, pc)
+		case spec.Restart && spec.LeadUnrun:
+			return restart()
+		case spec.Place && !vc.placesAlone(fnVal, args, base == frameBase && pc+1 >= len(vc.p.Code)):
+			return nil, nil, vmDefer(vc.r, curDebug, pc, "vm:paren-lead-misses-window", "shaped method apply "+spec.Word+
+				": no signature of the lead takes the paren's values, and the interpreter's paren may reach beneath it or past it; the compiled runtime cannot execute it")
+		case named && spec.Place:
+			// Its name's dispatch runs it before the values (namedRuns),
+			// which a placing apply places as they stand.
+			results, err := vc.islandRun(reg, append([]core.Value{appliedLead(fnVal)}, args...))
+			if err != nil {
+				return nil, nil, stampAt(err, curDebug, pc, reg)
+			}
+			return guard(results)
+		}
+	}
 	if _, ok := fnVal.Data.(core.ClosurePayload); ok && !fnVal.Quoted {
 		results, err := vc.invokeClosurePositional(vc.r, fnVal, args)
 		if err != nil {
@@ -2838,6 +2900,112 @@ func (vc *vmContext) fnReadCallUser(reg *core.Registry, fn *compiler.CompiledFn,
 	return append(stack[:len(stack)-n], results...), true, nil
 }
 
+// parenMissesWindow reports whether no signature of fn value v takes a paren
+// apply's window args, as far as the value tells: no signature takes that
+// many values — a closure whose unit is known counts its parameters less its
+// captures — or, for a fn value, none of those that do admits the values
+// (MatchFnSig). false where it cannot tell.
+func (vc *vmContext) parenMissesWindow(v core.Value, args []core.Value) bool {
+	if cl, ok := v.Data.(core.ClosurePayload); ok {
+		fn, known := vc.closureUnit(cl)
+		return known && fn.NParams-fn.NCaptures != len(args)
+	}
+	fd, ok := v.Data.(core.FnDefInfo)
+	if !ok {
+		return false
+	}
+	own := fd.OwnSigs()
+	for i := range own {
+		if own[i].TotalArgs() == len(args) {
+			return core.MatchFnSig(v, args) == nil
+		}
+	}
+	return len(own) > 0
+}
+
+// namedMissRaise is the interpreter's raise where a paren's lead is a
+// def-bound word (DynMethodSpec.LeadName) whose every signature takes the
+// paren's count of values and none admits them (parenMissesWindow): the
+// paren seals the stack off, so the name's dispatch matches nothing and
+// raises before any body runs — `(g 7)` over `def g m.f/v`, a lambda of one
+// String, is the word's signature_error. The dispatch runs on a fork holding
+// the name as the interpreter's def installs it (InstallDef), which the
+// compiled bind does not, so the raise is the interpreter's own, notes and
+// caret included. Any other miss, or a fork run that does not raise, is the
+// designed defer.
+func (vc *vmContext) namedMissRaise(spec *compiler.DynMethodSpec, fnVal core.Value, args []core.Value, curDebug []core.SrcPos, pc int) error {
+	fd, _ := fnVal.Data.(core.FnDefInfo)
+	own := fd.OwnSigs()
+	raises := len(own) > 0
+	for i := range own {
+		raises = raises && own[i].TotalArgs() == len(args)
+	}
+	if raises {
+		fork := vc.r.ForkConcurrent()
+		fork.OnRegisterHook = nil
+		core.InstallDef(fork, spec.LeadName, fnVal)
+		lead := core.WithPosAt(core.NewWord(spec.LeadName), spec.LeadPos)
+		if _, err := runIslandResolved(fork, nil, []core.Value{core.NewParenExpr(append([]core.Value{lead}, args...))}); err != nil {
+			return err
+		}
+	}
+	return vmDefer(vc.r, curDebug, pc, "vm:paren-lead-misses-window", "shaped method apply "+spec.Word+
+		": no signature of the def-bound word `"+spec.LeadName+"` takes the paren's values, which the interpreter's paren dispatches by name; the compiled runtime cannot execute it")
+}
+
+// namedRuns reports whether a def-bound word's fn value v takes no value
+// under any signature (FnValueOnlyZeroArgSigs): the interpreter's paren
+// dispatches the word by its name and a name always calls, so it runs v
+// before the paren's values — a lambda bound to it included, which as a
+// value would stay data (`(g 7)` over `def g m.f/v`, a lambda of none, is
+// `9 7`). appliedLead writes it so.
+func namedRuns(v core.Value) bool {
+	fd, ok := v.Data.(core.FnDefInfo)
+	return ok && core.FnValueOnlyZeroArgSigs(fd)
+}
+
+// appliedLead is fn value v marked to run where it is stepped — the name's
+// call (namedRuns) — as `apply` marks a fn of no argument
+// (FnDefInfo.Applied); any other value as it is.
+func appliedLead(v core.Value) core.Value {
+	if fd, ok := v.Data.(core.FnDefInfo); ok && core.FnValueOnlyZeroArgSigs(fd) {
+		fd.Applied = true
+		v.Data = fd
+	}
+	return v
+}
+
+// placesAlone reports whether a placing paren apply's run of fn value v over
+// its window args alone — the island over [v, args…] — is the interpreter's
+// paren (DynMethodSpec.Place, NUR336), which re-steps the lead where it can
+// reach beneath the paren and past it: alone is true when nothing stands
+// beneath the window and nothing follows the apply. Otherwise v must take no
+// value under any signature — a paren runs it (a named one) or places it (a
+// lambda) before its values — or have one signature, of fewer values than
+// the window, all taken forward and admitting the window's first ones.
+func (vc *vmContext) placesAlone(v core.Value, args []core.Value, alone bool) bool {
+	if alone {
+		return true
+	}
+	if cl, ok := v.Data.(core.ClosurePayload); ok {
+		fn, known := vc.closureUnit(cl)
+		return known && fn.NParams-fn.NCaptures == 0
+	}
+	fd, ok := v.Data.(core.FnDefInfo)
+	if !ok {
+		return false
+	}
+	if core.FnValueOnlyZeroArgSigs(fd) {
+		return true
+	}
+	own := fd.OwnSigs()
+	if len(own) != 1 {
+		return false
+	}
+	k := own[0].TotalArgs()
+	return k < len(args) && (own[0].BarrierPos < 0 || own[0].BarrierPos >= k) && core.MatchFnSig(v, args[:k]) != nil
+}
+
 // dynMethodIslandLead is what the island steps first for a shaped method: a
 // def-bound binding's read dispatches its NAME on the run — installDef made
 // the value the name's fn — so the island steps the word, at the read's
@@ -2933,6 +3101,14 @@ func (vc *vmContext) callDynamicMixed(reg *core.Registry, w int, stack []core.Va
 				return append(stack[:base], results...), nil
 			}
 		}
+	}
+	// A boru fn value the interpreter's own plan binds across the window —
+	// the split rule, `3 m.f 2` — applies natively (vm_mixed_plan.go).
+	if results, err, ran := vc.mixedPlanApply(reg, window); ran {
+		if err != nil {
+			return nil, stampAt(err, curDebug, pc, reg)
+		}
+		return append(stack[:base], results...), nil
 	}
 	// A PLACED value the step loop would dispatch starts the island past it
 	// (placedWindowSplit): the interpreter holds it resolved beneath the word.
@@ -3523,6 +3699,9 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, body []core.Value, root bool,
 	if spec.Results > 0 {
 		return vc.reStepIfFn(reg, body, spec, frameBase, stack, locals, curDebug, pc)
 	}
+	if spec.Live {
+		return vc.liveDeopt(reg, body, root, spec, frameBase, stack, locals, curDebug, pc)
+	}
 	var v core.Value
 	at := -1
 	if spec.Slot >= 0 {
@@ -3599,6 +3778,46 @@ func (vc *vmContext) deoptIfFn(reg *core.Registry, body []core.Value, root bool,
 	}
 	if err := vc.screenResults(results, "deopt result", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (the island's results are interpreter residuals, tape-coupled only on a compiler bug) (§compiler)
 		return nil, false, err
+	}
+	return append(stack[:frameBase], results...), true, nil
+}
+
+// liveDeopt executes a LIVE-READ deopt (compiler.DeoptSpec.Live, the
+// NUR333/NUR334 remainders): the statement ahead reads Name live after a
+// computed keep-defs body, and was compiled for the value the model guessed.
+// When the registry binding is one it cannot take (DeoptSpec.LiveHot — none,
+// a fn or class a bare read dispatches, an active token, a value of another
+// type) the interpreter runs the statement and the rest of the body from
+// the statement's token over the whole frame region — the read is not made
+// yet, so no entry of it is dropped — as deoptIfFn's island does; its
+// residual replaces the region and the run continues at RetPC. The binding is the
+// interpreter's own install, so nothing is installed for the island. A ROOT
+// island's residual is the program's, so a token among it is the program's
+// answer (`x/v` over a word leaves the word, as the interpreter does); a
+// unit's goes back to its caller, which would step it, and stays screened.
+func (vc *vmContext) liveDeopt(reg *core.Registry, body []core.Value, root bool, spec *compiler.DeoptSpec, frameBase int, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, bool, error) {
+	if !spec.LiveHot(reg.Defs.Top(spec.Name)) {
+		return stack, false, nil
+	}
+	if spec.Token < 0 || spec.Token >= len(body) || spec.RetPC < 0 {
+		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad table entry")
+	}
+	prefix, err := deoptPrefix(spec, frameBase, len(stack), stack, locals, curDebug, pc)
+	if err != nil {
+		return nil, false, err
+	}
+	snapshot := reg.Defs.Snapshot()
+	results, err := runIslandResolved(reg, prefix, append([]core.Value(nil), body[spec.Token:]...))
+	if !root {
+		core.TruncateFrameDefs(reg, snapshot)
+	}
+	if err != nil {
+		return nil, false, stampAt(err, curDebug, pc, reg)
+	}
+	if !root {
+		if err := vc.screenResults(results, "deopt result", curDebug, pc); err != nil {
+			return nil, false, err
+		}
 	}
 	return append(stack[:frameBase], results...), true, nil
 }
@@ -4128,8 +4347,18 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			ae.Suggestions = tr.Suggestions
 			return nil, stampAt(ae, curDebug, pc, curReg)
 		case compiler.OpDispatchRematch:
-			// Terminal either way: the rematch raises or defers (vm_rematch.go).
-			return nil, vc.dispatchRematch(&p.Dispatches[in.Arg], stack, curDebug, pc)
+			// Terminal but for its statement island: the rematch raises,
+			// defers, or runs the rest of the program on the interpreter
+			// (vm_rematch.go). A rematch trap is the program root's
+			// (compiler's RecordDispatchRematch), whose frame starts at 0.
+			vc.restartLocals = locals
+			ns, ent, err := vc.dispatchRematch(curReg, &p.Dispatches[in.Arg], 0, stack, curDebug, pc)
+			vc.restartLocals = nil
+			if err != nil {
+				return nil, err
+			}
+			stack = ns
+			pc = ent.jumpPC - 1
 		case compiler.OpCollect:
 			// The region oracle (region_oracle.go): walks the descriptor live
 			// and reports; stack-neutral, and the call after it runs as it

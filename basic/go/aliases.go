@@ -49,6 +49,8 @@ type (
 	StrPayload           = core.StrPayload
 	BoolPayload          = core.BoolPayload
 	AtomPayload          = core.AtomPayload
+	BigIntPayload        = core.BigIntPayload
+	DecimalPayload       = core.DecimalPayload
 	PathonPayload        = core.PathonPayload
 	MicronPayload        = core.MicronPayload
 	MicronTypeInfo       = core.MicronTypeInfo

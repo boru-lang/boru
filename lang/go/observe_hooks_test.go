@@ -40,14 +40,17 @@ func TestArmInterpEntryHookForwarder(t *testing.T) {
 	}
 }
 
-// The refined-return rematch MATCH (TestDispatchRematchMatchDefers' shape) is
-// a real compiled program whose OpDispatchRematch defers at run time: the
-// forwarded bail hook must see exactly the vm:rematch-matched site, and the
-// run must still resolve to the interpreter's correct result via the
-// effect-free silent fallback. (The zz-inst shape-claim violation that used
-// to sit here was reclassified 2026-07-15: a host handler violating its own
-// registered signature is the host-contract internal_error class, not a
-// designed model-miss bail, so it no longer feeds the census.)
+// A placing paren apply whose lead no signature of which takes the paren's
+// values, over a stack beneath it (TestNUR336PlacedLeadNeverReachesPastItsWindow's
+// shape), is a real compiled program that defers at run time, unrun: the
+// forwarded bail hook must see exactly the vm:paren-lead-misses-window site,
+// and the run must still resolve to the interpreter's correct result via the
+// effect-free silent fallback. (The refined-return rematch MATCH that sat
+// here until 2026-09-29 now takes its statement's island and completes
+// compiled, NUR336; the zz-inst shape-claim violation before it was
+// reclassified 2026-07-15: a host handler violating its own registered
+// signature is the host-contract internal_error class, not a designed
+// model-miss bail, so it no longer feeds the census.)
 // The module-load C4 seam: a module import's preamble/body run reports its
 // interpreter entries ATTRIBUTED as "module-load" (the p6/check-prop
 // graduation's residual class), and an import-driving compiled program has
@@ -109,21 +112,21 @@ func TestArmRuntimeBailHookForwarder(t *testing.T) {
 	var bails []BailEvent
 	defer a.ArmRuntimeBailHook(func(e BailEvent) { bails = append(bails, e) })()
 
-	const src = `def Pos (refine Integer) def mk fn [[n:Integer][Integer][def y:Pos n y]] def g fn [[p:Pos][Integer][99]] g (mk 5)`
+	const src = `def mk fn [[] [Map] [{f: ([x:String] => [x])}]] end def m (mk) end def y fn [[] [Integer] [42]] end ("s" dup drop) end (m.f y)`
 	got, compiled, err := a.RunCompiled(src)
 	if noteCompileDefect(t, src, got, err) {
 		return
 	}
 	if err != nil || compiled {
-		t.Fatalf("rematch-match run: compiled=%v err=%v", compiled, err)
+		t.Fatalf("placing-apply run: compiled=%v err=%v", compiled, err)
 	}
-	if fmt.Sprint(got) != "[99]" {
-		t.Fatalf("rematch-match fallback result = %v, want [99]", got)
+	if fmt.Sprint(got) != "[s 42]" {
+		t.Fatalf("placing-apply fallback result = %v, want [s 42]", got)
 	}
-	if len(bails) != 1 || bails[0].Site != "vm:rematch-matched" {
-		t.Fatalf("bail events = %+v, want exactly one vm:rematch-matched", bails)
+	if len(bails) != 1 || bails[0].Site != "vm:paren-lead-misses-window" {
+		t.Fatalf("bail events = %+v, want exactly one vm:paren-lead-misses-window", bails)
 	}
-	if !strings.Contains(bails[0].Reason, "matched at run time") {
-		t.Fatalf("bail reason = %q, want the rematch-matched message", bails[0].Reason)
+	if !strings.Contains(bails[0].Reason, "no signature of the lead takes the paren's values") {
+		t.Fatalf("bail reason = %q, want the paren-lead message", bails[0].Reason)
 	}
 }

@@ -624,14 +624,42 @@ user still gets an answer while the case is open:
     rebuild seat a gradual root read (its NUR207 guard owns the fn case) and
     a call result held once; the pick/roll twins still decline.
 - **Open refusals recorded 2026-09-28:**
-  - A `case` clause block that is a bare FUNCTION word declines unless the
-    case sits bare (NUR342, a wrong answer on main before): the interpreter
-    re-steps the block at the case over its surroundings; the decline is
-    owed a lowering of that re-step.
-  - A parked paren-bounded fn-value apply over a container member with an
-    effect or a non-constant value (`({a:(print 1)} lam/v) print 2`)
-    declines (NUR337's remainder): the interpreter evaluates the member
-    after the next statement has run.
+  - A `case` clause block that is a bare FUNCTION word (NUR342, a wrong
+    answer on main before) compiles where the check pass decides the taken
+    clause (a known scalar scrutinee, pure scalar guards), or where the
+    case sits bare on the root stream or in its own fn frame (2026-09-29).
+    It still declines for a code-body scrutinee, a guard with an effect, a
+    raise, a word match or a non-comparison word, or a run-only scrutinee
+    with values around a non-bare case: that remainder is owed a lowering
+    of a run-time-chosen re-step.
+  - CLOSED 2026-09-29: a parked paren-bounded fn-value apply over a
+    container member with an effect (`({a:(print 1)} lam/v) print 2`,
+    NUR337's remainder) compiles — the decline was a false NUR121
+    collection-hazard mark on a forward-only collection.
+- **Open refusal recorded 2026-09-29:**
+  - A trap under a dispatch whose operand is a run-time-counted region (a
+    loop, or a count-varying branch) written after the word in a paren —
+    `each (for 1 [mk]) [x/u]` — declines with "rematch operands include a
+    variadic loop result" (NUR340, a wrong answer on main before): the
+    interpreter spreads the region into the call's arguments and the
+    re-match window has no fixed count to read. The region beneath the word
+    (`if c [99] [1 2] each [x/u]`) still compiles and agrees.
+  - A region BENEATH the word that may be empty — a 0-or-1 branch merge, a
+    loop — declines the same way (`if c [] [1] each [x/u]`, the Codex review
+    of #521): the push-and-swap seat needs a region proven non-empty.
+  - A `Function` param passed on bare to a recursive call —
+    `def h fn [[g:Function n:Integer][Integer][if (n lte 0) [0] [(g n) add (h g (n sub 1))]]] end h inc/v 5`
+    — declines with "unmatched dispatch recovered at h" (formerly NUR234: the
+    generic unit answered `[20]` where the interpreter raises
+    `signature_error`, the bare name being a word dispatch of `g`). The
+    compile of the interpreter's raise is owed.
+  - A source naming `Function` whose compile pass makes an effect the retry
+    cannot repeat (a counted effect — a file write, a network send — or a
+    stdin read, in a module body or a check-mode word) and whose call-site
+    specialisation declines does not compile ("call-site specialisation
+    declined after an unrepeatable check-pass effect"; formerly NUR236). The
+    effect happens once, never twice; the cure is a specialisation that
+    declines less often or unwinds in place without a re-run.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

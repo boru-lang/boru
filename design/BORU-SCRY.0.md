@@ -194,7 +194,7 @@ Proposal, least-breaking first:
    `module-graph`, `schema`, data `trace`, `info`) lands only in scry;
    the debug copies are frozen at today's seven.
 3. **The dual surface is a non-uniformity, recorded as
-   [NUR063](../NUR.md#nur063)** in the same commit as this note. The
+   NUR063 (retired; `git log -S NUR063`)** in the same commit as this note. The
    maintainer's verdict (2026-08-15): scry canonical, the debug copies
    frozen behind the same handlers and deprecated on a stated timeline.
    **Implemented 2026-09-26:** one constructor (`selfKnowledge`) builds

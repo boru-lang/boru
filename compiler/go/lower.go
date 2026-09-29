@@ -833,6 +833,9 @@ type lowerer struct {
 	// restartFallbacks is the fallback indices seated with a count island
 	// (Program.FallbackCounts), whose RetPC the finish stamps.
 	restartFallbacks []int
+	// restartRematches are the Dispatches entries seated with the root
+	// rematch trap's statement island (planRematchRestart).
+	restartRematches []int
 	curBranch        int
 	// substStash are the frame slots stashSubst kept a substituted paren's
 	// value in, by its call's event seq (NUR296): a later event of the
@@ -874,7 +877,14 @@ type lowerer struct {
 	// loop body (consumed at entry, so a nested fragment never inherits
 	// it), and variadicOutAdmitted is that fragment's report back that its
 	// out was a variadic event it admitted on that account.
-	bodyVariadic        map[int]bool
+	bodyVariadic map[int]bool
+	// nonEmpty marks a VARIADIC branch merge proven to leave at least one
+	// value on every path that reaches it: both arms net a value, and
+	// neither arm's value is itself a region that may be empty. Only such a
+	// region takes lowerTrap's push-and-swap rematch seat, which reads the
+	// region's top (a region that may be empty — `if c [] [1] each [x/u]` —
+	// has no top to swap under). Nil until first use.
+	nonEmpty            map[int]bool
 	loopBodyFrag        bool
 	variadicOutAdmitted bool
 	// twinFor pairs a root def with its bind twin: the most recent PUSH-kind
@@ -1192,7 +1202,11 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 			}
 		}
 		spec := DeoptSpec{Name: d.name, Pos: d.pos, Slot: -1, Depth: -1, Prefix: prefix, Token: d.token, RetPC: -1, Bail: d.bail, Install: d.install}
-		if d.slot >= 0 {
+		if d.live != nil {
+			// A live-read point (kept_live_deopt.go): its value is the
+			// registry binding, read by the test itself.
+			spec.Live, spec.Ref, spec.Model = true, d.live.ref, d.live.model
+		} else if d.slot >= 0 {
 			spec.Slot = d.slot
 		} else if slot, ok := lw.promoted[d.seq]; ok {
 			spec.Slot = slot
@@ -3908,6 +3922,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 			// The lead's plan (parenLead) writes the value the apply holds.
 			if substs, ok := lw.restartSubstSrcs(r, c.ops[0], -1); ok {
 				spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc, spec.Substs, spec.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
+				spec.LeadUnrun = lw.leadUnrunAt(ev.seq, substs)
 				lw.restartMethods = append(lw.restartMethods, di)
 			}
 		}
@@ -4500,8 +4515,25 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 		// consumes nothing). The index-form render tuple keeps the raise
 		// byte-identical (the const, and the region top the attempted
 		// window lists beneath it — arm-independent either way).
-		if ops := ev.trap.rematchOps; len(ops) == 2 &&
-			ops[0].kind == opEvent && lw.variadic[ops[0].idx] &&
+		//
+		// Only a region BENEATH the word (ops[0] is the stack run's, so
+		// fewer than all operands were written): a region WRITTEN after it
+		// — a paren group, `each (for 2 [1]) [x/u]` — is spread into the
+		// call's arguments by the interpreter, every value of it one more
+		// operand ("the arguments were 1, 1 and …"), and a runtime-counted
+		// region has no seat count a window can name. That rematch falls to
+		// layoutOperands, which declines the variadic operand (NUR340).
+		//
+		// And only a region proven NON-EMPTY (nonEmpty — a branch merge whose
+		// arms both leave a value): the swap seats the const under the
+		// region's top, and a region that may be empty — a 0-or-1 merge
+		// (`if c [] [1] each [x/u]`), a loop (a zero-trip or an early
+		// `break`) — may have no top at all; the swap would underflow or
+		// reach below the region where the interpreter's window reads the
+		// const and what lies beneath. Such a rematch falls to
+		// layoutOperands too, which declines it.
+		if ops := ev.trap.rematchOps; len(ops) == 2 && ev.trap.rematchNFwd < len(ops) &&
+			ops[0].kind == opEvent && lw.variadic[ops[0].idx] && lw.nonEmpty[ops[0].idx] &&
 			ops[1].kind != opEvent {
 			if len(lw.vm) == 0 || !slotIs(lw.vm[len(lw.vm)-1], ops[0]) {
 				return "stack discipline: variadic rematch region is not on top"
@@ -4551,6 +4583,7 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 			OnMatch:     ev.trap.rematchOnMatch,
 			OnMatchPos:  ev.trap.onMatchPos,
 		})
+		lw.seatRematchRestart(ev.seq, idx)
 		lw.emit(OpDispatchRematch, idx, ev.trap.pos)
 		return ""
 	}
@@ -5242,6 +5275,43 @@ func (lw *lowerer) emitGuardCallAt(word string, guard *core.Signature, pos core.
 	lw.emit(OpCallNative, len(lw.p.Sigs)-1, pos)
 }
 
+// leadUnrunAt is DynMethodSpec.LeadUnrun for the paren apply seq whose
+// island writes substs: its lead a raw member read or no event's value
+// (EmitState.leadReads), stepped as the paren steps it (leadUnrun).
+func (lw *lowerer) leadUnrunAt(seq int, substs []RestartSubst) bool {
+	return lw.es != nil && lw.es.leadReads[seq] && leadUnrun(substs)
+}
+
+// leadUnrun reports whether a paren apply's statement island, whose lead is a
+// raw member read or no event's value (EmitState.leadReads), steps that lead
+// as the interpreter's paren does, never a run of it (DynMethodSpec.LeadUnrun):
+// the island writes it as the reach its read lowers to (RestartSubst.Reach),
+// or writes nothing in its place — reading it again with the statement, or
+// dispatching a word itself (`(g 7)` over a def-bound lambda).
+func leadUnrun(substs []RestartSubst) bool {
+	for _, sb := range substs {
+		if sb.Src.Kind == RestartGuard {
+			return sb.Reach || sb.Named
+		}
+	}
+	return true
+}
+
+// seatRematchRestart seats the statement island planned for the rematch trap
+// seq (planRematchRestart) on its DispatchSpec idx, where the walk seated it
+// and every value it writes is held where the island reads it.
+func (lw *lowerer) seatRematchRestart(seq, idx int) {
+	r := lw.restartAt(seq)
+	substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, -1)
+	if !ok {
+		return
+	}
+	lw.p.Dispatches[idx].Restart = &StmtIsland{
+		Island: lw.landingBody[r.token:], Depth: r.depth, RetPC: -1, Root: lw.landingRoot, PrefixSrc: r.srcs, Substs: substs,
+	}
+	lw.restartRematches = append(lw.restartRematches, idx)
+}
+
 // restartSubstSrcs is where the compiled code holds, at the stop being
 // emitted, the value of each paren r's island substitutes (substPlan), its
 // path made relative to the island: the guarded operand's — guarded, an
@@ -5264,7 +5334,7 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 			src = RestartSrc{Kind: RestartResults}
 		case sp.none:
 			src = RestartSrc{Kind: RestartNone}
-		case guarded.kind == opEvent && guarded.idx == sp.seq:
+		case sp.named, guarded.kind == opEvent && guarded.idx == sp.seq:
 		case sp.seq == landed && landed >= 0:
 			src = RestartSrc{Kind: RestartStack, Idx: lw.landedIdx(landed)}
 		default:
@@ -5276,7 +5346,7 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 		if !ok {
 			return nil, false
 		}
-		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Span: sp.span, Src: src, Placed: sp.run})
+		out = append(out, RestartSubst{Path: append([]int{sp.path[0] - r.token}, sp.path[1:]...), Span: sp.span, Src: src, Placed: sp.run, Reach: sp.reach, Named: sp.named})
 	}
 	return out, true
 }
@@ -5513,9 +5583,23 @@ func (lw *lowerer) lowerArms(ev *EmitEvent, jf int) string {
 			(br.hasElsOut && lw.variadic[br.elsOut.idx]) {
 			lw.variadic[ev.seq] = true
 		}
+		if lw.variadic[ev.seq] && lw.armNonEmpty(br.hasThenOut, br.thenOut) && lw.armNonEmpty(br.hasElsOut, br.elsOut) {
+			if lw.nonEmpty == nil {
+				lw.nonEmpty = map[int]bool{}
+			}
+			lw.nonEmpty[ev.seq] = true
+		}
 		lw.note()
 	}
 	return ""
+}
+
+// armNonEmpty reports whether a branch arm reaches its merge with at least
+// one value: it nets a value, and that value is not a region that may be
+// empty (a variadic event not itself proven nonEmpty). A multi-value arm's
+// out is its TOP value, so a non-empty out proves the arm non-empty.
+func (lw *lowerer) armNonEmpty(hasOut bool, out EmitOperand) bool {
+	return hasOut && (out.kind != opEvent || !lw.variadic[out.idx] || lw.nonEmpty[out.idx])
 }
 
 // lowerBothComputed lowers `if (c) (a) (b)` where BOTH arms are eagerly-computed

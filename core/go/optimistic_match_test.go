@@ -255,3 +255,39 @@ func TestExecMatchPublishesTheOptimisticRecords(t *testing.T) {
 		t.Error("both are unpublished when the dispatch returns")
 	}
 }
+
+// regionRecorder answers RegionResult for a chosen set of ids; everything
+// else is the inactive no-op.
+type regionRecorder struct {
+	inactiveEmit
+	region map[string]bool
+}
+
+func (m *regionRecorder) RegionResult(id string) bool { return m.region[id] }
+
+// TestOptimisticOuterOverARegionSeat pins NUR340: an operand that is a
+// runtime-counted region's modelled seat — a loop's `[:Integer]` for the
+// one Integer `for 1 [1]` leaves — makes the match optimistic even where
+// every operand's static type conforms, so a trap met under it is the
+// word's rematch. An operand the recorder does not vouch for, or one with no
+// id, leaves a conforming match unpublished.
+func TestOptimisticOuterOverARegionSeat(t *testing.T) {
+	e, match, indices := optimisticEngine(t)
+	seat := withID(NewCarrier(TMap))
+	concrete := &MatchResult{Sig: match.Sig, Args: []Value{match.Args[0], seat, match.Args[2]}, Name: "fold"}
+	rec := &regionRecorder{region: map[string]bool{seat.ID: true}}
+	e.Registry.Check.Emit = rec
+	t.Cleanup(func() { e.Registry.Check.Emit = nil })
+	if o := e.optimisticOuter(concrete, indices); o == nil || o.Word != "fold" || o.Vals[2].ID != seat.ID {
+		t.Fatalf("a region seat at a conforming slot is an optimistic match; got %+v", o)
+	}
+	rec.region = map[string]bool{}
+	if o := e.optimisticOuter(concrete, indices); o != nil {
+		t.Errorf("a conforming match over no region seat publishes nothing, got %+v", o)
+	}
+	anon := &MatchResult{Sig: match.Sig, Args: []Value{match.Args[0], NewCarrier(TMap), match.Args[2]}, Name: "fold"}
+	rec.region = map[string]bool{"": true}
+	if o := e.optimisticOuter(anon, indices); o != nil {
+		t.Errorf("an operand with no id is no region seat, got %+v", o)
+	}
+}

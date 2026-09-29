@@ -45,6 +45,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.InClosureUnit() {
 		t.Fatal("inactive InClosureUnit must be false")
 	}
+	if e.ArgsReadLive() {
+		t.Fatal("inactive ArgsReadLive must be false")
+	}
 	if e.StoredGradualActive() {
 		t.Fatal("inactive StoredGradualActive must be false")
 	}
@@ -150,6 +153,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	}
 	if e.MayBeFn("id") {
 		t.Fatal("inactive MayBeFn must be false")
+	}
+	if e.RegionResult("id") {
+		t.Fatal("inactive RegionResult must be false")
 	}
 	e.NoteStatementEnd(SrcPos{Row: 1, Col: 1})
 	e.NoteStatementStack(SrcPos{Row: 1, Col: 1}, nil)

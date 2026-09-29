@@ -69,6 +69,46 @@ func TestBareCallContextFrames(t *testing.T) {
 		}
 		r.Check.NestedBodyDepth, r.Check.FnBodyDepth = 0, 0
 	}
+
+	// NEGATIVE: the top engine recording inside a unit (no longer at the top
+	// event frame) is not bare either.
+	e := NewTop(r)
+	e.Tape = tape(shape...)
+	e.Pointer = 1
+	prevEmit := r.Check.Emit
+	r.Check.Emit = &frameRecorder{top: false}
+	if e.bareCallContext([]int{0}, 1) {
+		t.Error("a top engine recording below the top event frame must not be bare")
+	}
+
+	// POSITIVE (NUR342): a fn frame's own engine (FrameRoot) is bare over
+	// the same shape, off the top engine, inside the analyses, below the top
+	// event frame — the run seals the frame at its bottom — and NEGATIVE
+	// with a value beneath or after the call there as anywhere.
+	r.Check.NestedBodyDepth, r.Check.FnBodyDepth = 1, 1
+	for _, c := range []struct {
+		name    string
+		vs      []Value
+		ptr     int
+		ops     []int
+		callEnd int
+		want    bool
+	}{
+		{"frame bottom, frame end", shape, 1, []int{0}, 1, true},
+		{"an unnamed param beneath", []Value{NewInteger(9), NewInteger(1), w}, 2, []int{1}, 2, false},
+		{"a value after the call", []Value{NewInteger(1), w, NewInteger(5)}, 1, []int{0}, 1, false},
+	} {
+		fe := NewTop(r)
+		fe.IsTop = false
+		fe.FrameRoot = true
+		fe.Tape = tape(c.vs...)
+		fe.Pointer = c.ptr
+		if got := fe.bareCallContext(c.ops, c.callEnd); got != c.want {
+			t.Errorf("frame root, %s: bareCallContext = %v, want %v", c.name, got, c.want)
+		}
+	}
+	r.Check.NestedBodyDepth, r.Check.FnBodyDepth = 0, 0
+	r.Check.Emit = prevEmit
 }
 
 // frameRecorder answers TopFrameOnly as told (a recorder inside a closure

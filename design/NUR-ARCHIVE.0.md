@@ -4,10 +4,14 @@
 repository's 1 MiB file limit (`scripts/check-no-binaries.sh`). These are
 the full bodies of records that are FIXED or RESOLVED: the divergence as it
 was measured, the trace, and the fix. Each keeps its number and its
-`{#nurNNN}` anchor; NUR.md keeps the record's heading, anchor and status
-line, with a link here, so every existing link to `NUR.md#nurNNN` still
-lands on the record. The register's rules (numbers never reused, a record's
+`{#nurNNN}` anchor. The register's rules (numbers never reused, a record's
 status) are NUR.md's; this file holds text only.
+
+**2026-09-29:** NUR.md no longer keeps a stub for these records. Following
+its own rule — a Resolved record is deleted and its number retired — every
+resolved record was removed from NUR.md, so a link to a record archived
+here points here directly. Records resolved after 2026-09-27 were not
+archived; `git log -S NURnnn` recovers their text.
 
 ## NUR026 — Escape sets diverge between quoted strings and templates {#nur026}
 
@@ -2294,7 +2298,7 @@ it would have dispatched. Three pieces, and a fourth the fix uncovered:
 
 **Status:** FIXED 2026-09-20 for the reach-group family (`OpReStepLanding`).
 What it does not yet reach is named at the end.
-**Supersedes the diagnosis of** [NUR169](../NUR.md#nur169), whose MECHANISM was right
+**Supersedes the diagnosis of** NUR169 (retired; `git log -S NUR169`), whose MECHANISM was right
 and whose SEAT was one function away.
 
 **Rule:** a compiled program answers as the interpreter does.
@@ -2371,7 +2375,7 @@ belongs to the runtime value.
 1. The collapse records the fact it alone knows — `CheckState.
    ReachReSteppedFnIDs`, the third sibling of `ParenPlacedFnIDs` /
    `ParenReSteppedFnIDs` (`core/go/engine.go`, `recordReachGroupReStep`).
-   **SUPERSEDED the next day by [NUR174](../NUR.md#nur174)**, which found the fact is a
+   **SUPERSEDED the next day by NUR174 (retired; `git log -S NUR174`)**, which found the fact is a
    property of the STEP rather than of the producer, closed the `get`-word twin
    with it, and deleted this apparatus. The rest of this page stands.
 2. `check`'s `noteReStepLanding` — the LAST model in `stepLiteral`'s chain,
@@ -2444,7 +2448,7 @@ on every read of one.
 
 **What remains.**
 
-- ~~**The `get`-WORD twin.**~~ CLOSED 2026-09-20 by [NUR174](../NUR.md#nur174) — and
+- ~~**The `get`-WORD twin.**~~ CLOSED 2026-09-20 by NUR174 (retired; `git log -S NUR174`) — and
   not in the way this line predicted. It guessed "a different recording site";
   the answer was that there should be no recording site at all, because the
   model already stands where the interpreter decides.

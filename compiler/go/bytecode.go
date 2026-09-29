@@ -606,7 +606,9 @@ const (
 	// statement's token) to the interpreter with the frame's bindings
 	// registry-visible, then continues at the unit's RET with the island's
 	// residual as the frame region (CompiledFn.Deopts[Arg]). Plain data
-	// costs the test and nothing else.
+	// costs the test and nothing else. A LIVE-READ point (DeoptSpec.Live)
+	// tests the registry binding of a read seated live after a computed
+	// keep-defs body instead, before the read is made (LiveHot).
 	OpDeoptIfFn
 
 	// OpReStepLanding is the guarded LANDING of a reach-lowered group's single
@@ -1446,11 +1448,17 @@ type TrapSpec struct {
 // written operands and the stack fills the rest. `3 for (mk)` matched `for 3
 // [i]` flat where the interpreter raises, so the rematch plans that window
 // as the interpreter does instead.
+//
+// Restart is the trap's statement island (compiler's planRematchRestart):
+// where the run matches the word the pass's model failed on, the
+// interpreter runs the statement, and the program after it, from its first
+// token instead of the defer (NUR336). Nil where none was planned.
 type DispatchSpec struct {
 	Word    string
 	NArgs   int
 	NFwd    int
 	Written []int
+	Restart *StmtIsland
 	// Prefix is the window indices, top first, of the stack prefix beneath
 	// the word the interpreter's report reads, and PrefixKnown marks it
 	// recorded (every value a window operand). The check pass renders a
@@ -1551,6 +1559,23 @@ type DynMethodSpec struct {
 	// placed where the apply stands, the program's residual taking the extra
 	// values as the interpreter's does (NUR336).
 	Place bool
+	// LeadName is the word a paren's lead token is (compiler's
+	// parenLeadToken): a def-bound read, which the interpreter's paren
+	// dispatches by that NAME — a lambda bound to it runs where it takes
+	// none of the values, and raises where it takes the wrong ones — so the
+	// apply runs such a lead where the paren's values miss it only if the
+	// name's call runs it (a fn of no argument), and its island writes it so
+	// (RestartSubst.Named, NUR336); where its signatures miss the values it
+	// raises the name's no-match at LeadPos, the word's token.
+	LeadName string
+	LeadPos  core.SrcPos
+	// LeadUnrun marks a Restart island that steps the paren's lead itself
+	// (compiler's leadUnrun, NUR336): its member read's value written as the
+	// reach the read lowers to, or a word the island dispatches. A lead that
+	// no signature of which takes the paren's values is then the island's
+	// before it runs — the interpreter's paren places it, runs it over fewer
+	// or reaches beneath the paren — so the VM never runs it first.
+	LeadUnrun bool
 	// Parks is the residual's claim that the apply's result is placed where
 	// it lands: a def-bound name's dispatch over a callee the compiler cannot
 	// see (`j j` over a factory's lambda, NUR282), whose result the
@@ -1889,11 +1914,24 @@ type RestartFirst struct {
 // interpreter placed as a paren's is — a bare call and the arguments written
 // after it (NUR296's call run): a call's returned fn value is parked, never
 // stepped, so the VM defers on one as it does on a paren's.
+//
+// Reach marks a paren apply's lead that is its member read's own value, in
+// place of the evaluated reach token that read it (compiler's rawReachLead,
+// NUR336): the VM writes the value as the reach-lowered group the token
+// steps as — the value alone in the group — so a fn value there is stepped
+// as the interpreter steps the read's, never the NUR297 defer.
+//
+// Named marks a paren apply's lead that is a def-bound word
+// (DynMethodSpec.LeadName): the interpreter's paren calls it by name, so a fn
+// value there of no argument is written to run where it is stepped
+// (FnDefInfo.Applied), never parked as a lambda value would be.
 type RestartSubst struct {
 	Path   []int
 	Span   int
 	Src    RestartSrc
 	Placed bool
+	Reach  bool
+	Named  bool
 }
 
 // RestartSrc is one value a root statement island seats beneath the
@@ -1930,6 +1968,10 @@ const (
 	// (`print "a"`) is written as no token, so the island never runs it
 	// again (a RestartSubst only, NUR296).
 	RestartNone
+	// RestartType is the type node Val names, resolved by its ID when the
+	// island runs — the canonical node, as OpPushType pushes it (a
+	// RestartSrc of a prefix only, NUR336).
+	RestartType
 )
 
 // CallWindowKind names where one CallWindowOperand's value lives when the
@@ -2290,6 +2332,42 @@ type DeoptSpec struct {
 	// island installs it under its name for its run, as a root read's
 	// island does (NUR285).
 	Install bool
+	// Live marks a LIVE-READ point (compiler kept_live_deopt.go): the value
+	// tested is the registry binding of Name — the read seated live after a
+	// computed keep-defs body, not yet made — tested before its statement's
+	// first op, and the island runs the statement when the binding is one
+	// the compiled statement cannot take (LiveHot). Ref marks the `/v`
+	// read's point, and Model is the type the statement was compiled for
+	// (nil: none — a type value).
+	Live  bool
+	Ref   bool
+	Model *core.Type
+}
+
+// LiveHot reports whether a live-read point's binding — v, when bound — is
+// one its compiled statement cannot take, which the interpreter's step
+// answers: no binding (the step's own error, where the lookup would raise
+// before a pending word could), a binding a bare read DISPATCHES (a fn, a
+// class — the `/v` read delivers both as data, as stepWordVal does), an
+// active token either read hands on for a step to splice or re-step (a
+// splice, a reach, a word, a mark, a move), or a value no longer of the type
+// the statement was compiled for (Model) — a type node among them — whose
+// dispatch the compiled statement laid out for that type. A spurious test is
+// only an island: the interpreter's answer either way.
+func (d *DeoptSpec) LiveHot(v core.Value, bound bool) bool {
+	if !bound {
+		return true
+	}
+	switch v.Data.(type) {
+	case core.FnDefInfo, *core.ClassTypeInfo:
+		if !d.Ref {
+			return true
+		}
+	}
+	if core.IsSplice(v) || core.IsReach(v) || core.IsWord(v) || core.IsMark(v) || core.IsMove(v) {
+		return true
+	}
+	return d.Model != nil && (core.IsTypeLiteral(v) || !core.SigTypeMatches(v, d.Model))
 }
 
 // specNote renders a specialised unit's guards for the disassembler:
@@ -2481,6 +2559,8 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 				fmt.Fprintf(sb, " d%-3d ; bail if the read holds a fn (guard)", in.Arg)
 			} else if int(in.Arg) < len(deopts) && deopts[in.Arg].Results > 0 {
 				fmt.Fprintf(sb, " d%-3d ; re-step %d result(s) on the interpreter if one is a fn", in.Arg, deopts[in.Arg].Results)
+			} else if int(in.Arg) < len(deopts) && deopts[in.Arg].Live {
+				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the live binding of %s is not the compiled statement's", in.Arg, deopts[in.Arg].Name)
 			} else {
 				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn", in.Arg)
 			}

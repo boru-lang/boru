@@ -316,7 +316,15 @@ var pinnedAritySites = map[string]int{
 	// whether every one runs a boru body, whose result the interpreter
 	// parks — a value with no signature has no body to park. The same
 	// presence test as NUR238's; the count of params never enters.
-	"eng/go/vm.go": 24,
+	// 24 -> 26 (NUR336's remainders, 2026-09-29): parenMissesWindow and
+	// namedMissRaise ask whether a signature takes as many values as the
+	// paren's window holds (a closure unit: its params less its captures)
+	// before MatchFnSig admits them — the argument rule's own first test —
+	// and placesAlone reads the forward split the rule makes (a signature of
+	// k values, all forward-eligible, takes the window's first k). Each
+	// MATCHES a signature against the window; none decides what a function
+	// of a given arity may do.
+	"eng/go/vm.go": 26,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the
@@ -458,9 +466,14 @@ var pinnedAritySites = map[string]int{
 	// IS the current binding (a closed body's redefinition is not), never
 	// what a function of a given arity may do; every arity takes the path —
 	// the seventy-second increment (review of #468).
-	"compiler/go/fn_local.go":       1,
-	"compiler/go/user_poly.go":      1,
-	"compiler/go/callable_words.go": 1,
+	"compiler/go/fn_local.go":  1,
+	"compiler/go/user_poly.go": 1,
+	// The second is a bounds check: a closure's argument window shorter
+	// than the signature it was matched under is no call at all (a failed
+	// dispatch's recovery assumed it, and spec.Inputs reads the operands
+	// positionally) — the argument rule's own read, never a decision BY
+	// arity; every arity takes the path (NUR340).
+	"compiler/go/callable_words.go": 2,
 	// A bounds check on a signature INDEX, not a decision about a function's
 	// shape (StampDetachedSig guarding fd.Signatures[sigIdx]).
 	"compiler/go/stamp_runtime.go": 1,
@@ -566,7 +579,11 @@ var pinnedAritySites = map[string]int{
 	// re-step at the case can COLLECT from the values around it, which is
 	// how the argument rule reaches past the word. A block that can declines
 	// the sealed-arm desugar; every arity that collects is treated alike.
-	"basic/go/conditional.go": 1,
+	// The second (2026-09-29, NUR342 compiled) is no arity at all: a guard
+	// word the check pass may decide statically must declare NO code-body
+	// position (`len(NoEvalArgs) > 0` sizes the map of code-body slots) —
+	// it asks whether the word runs a body, and every arity is treated alike.
+	"basic/go/conditional.go": 2,
 	// The list re-step asks whether a fn value's first declared slot QUOTES
 	// (a `/q` slot captures the next word — NUR219, NUR295): the params
 	// presence test guards the index it reads. How the argument rule

@@ -54,9 +54,13 @@ func TestDispatchRematchRaisesByteIdentical(t *testing.T) {
 
 // TestDispatchRematchMatchDefers — the soundness arm: when the static
 // no-match was WRONG (a fn declared [Integer] returns a Pos-reparented value
-// whose runtime tag matches the Pos param), the rematch MATCHES at run time
-// and defers to the interpreter (the tail was truncated at the terminal op),
-// producing the interpreter's result — contained, not fixed.
+// whose runtime tag matches the Pos param), the rematch MATCHES at run time.
+// The tail was truncated at the terminal op, so the rematch's statement
+// island (compiler planRematchRestart, NUR336) runs the statement — `g` over
+// the `(mk 5)` the compiled code computed, written in its paren's place —
+// and the program after it on the interpreter, and the compiled run
+// completes with the interpreter's result. Where no island was planned the
+// match still defers (TestNUR336RematchWithoutIslandDefers).
 func TestDispatchRematchMatchDefers(t *testing.T) {
 	const src = `def Pos (refine Integer) def mk fn [[n:Integer][Integer][def y:Pos n y]] def g fn [[p:Pos][Integer][99]] g (mk 5)`
 	a, err := New()
@@ -78,8 +82,8 @@ func TestDispatchRematchMatchDefers(t *testing.T) {
 	if err != nil {
 		t.Fatalf("RunCompiled: %v", err)
 	}
-	if ran {
-		t.Error("a runtime MATCH must defer to the interpreter, not keep the truncated compiled run")
+	if !ran {
+		t.Error("a runtime MATCH takes its statement's island and completes compiled")
 	}
 	c, err := New()
 	if err != nil {

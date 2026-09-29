@@ -152,19 +152,19 @@ func TestRootPreStartReads(t *testing.T) {
 	es := NewEmitState()
 	lw := &lowerer{es: es, promoted: map[int]int{}}
 	es.rootLocalReads = map[string][]core.SrcPos{"k": {{Row: 1, Col: 9}, {Row: 2, Col: 2}}}
-	srcs, held, _, ok := es.rootPreStart(lw, tree, []core.Value{k, k, n335Val("after", 2, 5)}, start, 8)
+	srcs, held, _, ok := es.rootPreStart(lw, tree, []core.Value{k, k, n335Val("after", 2, 5)}, -1, start, 8)
 	if !ok || held != 0 || len(srcs) != 1 || srcs[0].Kind != RestartConst {
 		t.Errorf("the earlier read is seated, the statement's own is not: %+v held=%d ok=%v", srcs, held, ok)
 	}
-	if _, _, _, ok := es.rootPreStart(lw, tree, []core.Value{k}, start, 8); ok {
+	if _, _, _, ok := es.rootPreStart(lw, tree, []core.Value{k}, -1, start, 8); ok {
 		t.Error("reads on both sides, one consumed, cannot be counted")
 	}
-	if _, _, _, ok := es.rootPreStart(lw, nil, []core.Value{n335Map(0, 0)}, start, 8); ok {
+	if _, _, _, ok := es.rootPreStart(lw, nil, []core.Value{n335Map(0, 0)}, -1, start, 8); ok {
 		t.Error("a folded compound spelled nowhere cannot be placed")
 	}
 	carrier := n335Val("c", 1, 1)
 	carrier.Carrier = true
-	if _, _, _, ok := es.rootPreStart(lw, nil, []core.Value{carrier}, start, 8); ok {
+	if _, _, _, ok := es.rootPreStart(lw, nil, []core.Value{carrier}, -1, start, 8); ok {
 		t.Error("a carrier beneath the statement has no value to seat")
 	}
 }

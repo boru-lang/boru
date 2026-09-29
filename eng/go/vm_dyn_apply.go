@@ -136,6 +136,21 @@ func applyRetContract(unit *compiler.CompiledFn, name string, sig *core.Signatur
 	return &ov
 }
 
+// applyFrameName is the name the interpreter's frame for an APPLIED fn value
+// carries, which its return-contract errors report: a nameless VERBOSE `fn`
+// (not a `=>` lambda) runs through the step's stack-match path, whose frame
+// is `<fn>` (core.FnValueFrameName); every other value runs under its own
+// name, empty for a nameless lambda. Measured: `((mk) 'z')` over a factory
+// returning `fn [[s:String][Integer][s]]` raised `<fn>: return value 1: …`
+// interpreted and `: return value 1: …` compiled, with the lambda twin `:`
+// on both lanes.
+func applyFrameName(fd core.FnDefInfo) string {
+	if !fd.Anonymous && !fd.NamedDef() {
+		return core.FnValueFrameName
+	}
+	return fd.Name
+}
+
 // dynApplyEnter reports how to enter a dynamically-applied fn VALUE on the VM,
 // or nil when the VM cannot take it and the caller's island path stands.
 //
@@ -208,7 +223,7 @@ func (vc *vmContext) dynApplyEnterSig(fd core.FnDefInfo, sig *core.Signature, ar
 			locals[i].Quoted = true
 		}
 	}
-	return &dynEnter{unit: ref.Unit, locals: locals, retFn: applyRetContract(fn, fd.Name, sig), allForward: allForwardSig(sig), at: at}
+	return &dynEnter{unit: ref.Unit, locals: locals, retFn: applyRetContract(fn, applyFrameName(fd), sig), allForward: allForwardSig(sig), at: at}
 }
 
 // dynApplyForeign applies a fn VALUE whose matched overload carries a
@@ -249,6 +264,15 @@ func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout i
 		return nil, false, nil
 	}
 	ref := compiler.CompiledRef(sig)
+	if ref == nil {
+		// A value minted at run time carries no unit until it is applied:
+		// the lazy stamp gives it one now, as the token seam's arm does
+		// (invokeFnValue) — a factory's lambda read back through its def
+		// and applied at a shaped method (`def f (mk 1) end do [f 'z']`,
+		// the interp-entry census's fn-value.tsv:L334) islanded for want
+		// of one. A body the stamp declines keeps the island.
+		ref = compiler.LazyStampFnSig(vc.r, fd, sig, fnVal.Pos())
+	}
 	if ref == nil || ref.Prog == nil || ref.Prog == vc.p {
 		return nil, false, nil
 	}
@@ -270,7 +294,7 @@ func (vc *vmContext) dynApplyForeign(fnVal core.Value, args []core.Value, nout i
 	// `m.f 5` where the interpreter raises the count error (NUR252).
 	res, _, err = vc.runForeignUnit(ref, args, true)
 	if err == nil {
-		res, err = checkReturnContract(vc.r, applyRetContract(&ref.Prog.Fns[ref.Unit], fd.Name, sig), res, 0, true, core.SrcPos{})
+		res, err = checkReturnContract(vc.r, applyRetContract(&ref.Prog.Fns[ref.Unit], applyFrameName(fd), sig), res, 0, true, core.SrcPos{})
 	}
 	return res, true, err
 }

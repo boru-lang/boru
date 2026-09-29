@@ -257,8 +257,10 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 	// `do` returns the body's ENTIRE residual) admits any statically-exact count:
 	// the closure compiles count-agnostic, the VM's frameless RET returns the full
 	// residual, and the dispatch seats all N results. Other multi-output words
-	// stay beyond this path.
-	if !es.Active() || (len(outs) > 1 && spec.BodyOut != core.BodyOutResidual) || spec.BodyPos >= len(args) {
+	// stay beyond this path. A window shorter than the signature — a failed
+	// dispatch's recovery assuming it (`each (1 drop) [2]`, whose paren left
+	// nothing) — is no call: spec.Inputs reads the data operand positionally.
+	if !es.Active() || (len(outs) > 1 && spec.BodyOut != core.BodyOutResidual) || spec.BodyPos >= len(args) || len(args) < sig.TotalArgs() {
 		return false
 	}
 	body := args[spec.BodyPos]

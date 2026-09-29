@@ -83,12 +83,15 @@ var runtimeTokenBodyRows = []struct {
 	// in-frame since NUR256's close (NUR209 until the merge of main's #511; the closure records the assembly), so
 	// the dyn-scope rescue's family no longer keeps the interpreter here.
 	{"a map literal with paren groups compiles in-frame (was open, L77)", `do [{a:(1 add 2) b:(2 mul 3)}]`, "[{a:3 b:6}]", true},
-	// Open, each keeping the interpreter as before: an empty body and `args`
-	// read inside a token body. A body with a flow sentinel is declined
-	// by the stamp too (as the lazy stamp declines a fn body's) and keeps
-	// the interpreter (TestComputedBodyFlowSentinelDefers).
+	// `args` read inside a token body compiles to the live read of the args
+	// stack since 2026-09-29 (compiler EmitState.ArgsReadLive): the seam
+	// pushes no args frame, as RunResolved pushes none (census_items3_test.go).
+	{"args inside a token body reads the live args stack (was open, control L83)", `def f fn [[y:Integer] [Any] [do [args]]]  f 7`, "[[7]]", true},
+	// Open, keeping the interpreter as before: an empty body. A body with a
+	// flow sentinel is declined by the stamp too (as the lazy stamp declines
+	// a fn body's) and keeps the interpreter
+	// (TestComputedBodyFlowSentinelDefers).
 	{"an empty body keeps the interpreter (open)", `def mk fn [[][List][quote []]] end do (mk)`, "[]", false},
-	{"args inside a token body keeps the interpreter (open, control L83)", `def f fn [[y:Integer] [Any] [do [args]]]  f 7`, "[[7]]", false},
 }
 
 func TestRuntimeTokenBodyParity(t *testing.T) {

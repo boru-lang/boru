@@ -349,4 +349,4 @@ violation — the compiler's ARITY-1 BOUNDARY, which let a one-input
 callback compile and refused a two-input one — turned up during unrelated
 work, having survived unrecorded because it read as a coverage limit
 rather than a semantic exception. Live divergences are tracked as
-[NUR100](NUR.md#nur100).
+[NUR100](design/NUR-ARCHIVE.0.md#nur100).

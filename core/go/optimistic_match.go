@@ -55,15 +55,32 @@ func (e *Engine) forwardSplit() int {
 	return 0
 }
 
+// regionMatch reports whether some operand of match is the modelled seat of
+// a runtime-counted region (EmitRecorder.RegionResult): its type is the
+// pass's approximation of the region — a loop's `[:T]` — so the match over
+// it is no proof the run's values match (NUR340).
+func (e *Engine) regionMatch(match *MatchResult) bool {
+	rec := e.Registry.analysisRecorder()
+	for _, a := range match.Args {
+		if a.ID != "" && rec.RegionResult(a.ID) {
+			return true
+		}
+	}
+	return false
+}
+
 // optimisticOuter is the OuterMatch execMatch publishes (NUR264) when a
-// compile pass matched this dispatch OPTIMISTICALLY and no outer one is
-// already published (the outermost is the first the run re-matches).
-// indices are the match's tape positions, in signature order. Nil
-// otherwise, and whenever a position is unknown.
+// compile pass matched this dispatch OPTIMISTICALLY — over an operand whose
+// type does not conform to its slot's, or over a region's modelled seat
+// (regionMatch, NUR340) — and no outer one is already published (the
+// outermost is the first the run re-matches). indices are the match's tape
+// positions, in signature order. Nil otherwise, and whenever a position is
+// unknown.
 func (e *Engine) optimisticOuter(match *MatchResult, indices []int) *OuterMatch {
 	r := e.Registry
 	if !r.analysisActive() || !r.Check.Compiling || r.Check.OptimisticOuter != nil || match.Sig == nil ||
-		match.Name == "" || len(indices) != len(match.Args) || len(match.Args) == 0 || !optimisticMatch(match) {
+		match.Name == "" || len(indices) != len(match.Args) || len(match.Args) == 0 ||
+		(!optimisticMatch(match) && !e.regionMatch(match)) {
 		return nil
 	}
 	n, nFwd := len(match.Args), e.forwardSplit()

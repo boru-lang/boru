@@ -111,6 +111,9 @@ func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 			// at exactly this count, and only a body whose inputs are all
 			// unnamed — the seam's params).
 			es.keepDefsUnitDepth = len(es.units)
+			// And the live-args arm (liveArgsUnitDepth): the count once that
+			// unit is open, so only the body's own frame reads `args` live.
+			es.liveArgsUnitDepth = len(es.units) + 1
 		}
 	}
 	// An identity-less capture value (minted at pure runtime, where the

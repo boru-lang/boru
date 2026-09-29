@@ -429,6 +429,11 @@ type emitCall struct {
 	// (claim failure → internal_error → interpreter re-run). Riding emitCall
 	// keeps the generic evCall machinery working unchanged for the result.
 	dynMethod *DynMethodSpec
+	// leadAt, on a paren apply whose lead's value carries another token's
+	// position (a def-bound read's value carries its def's — `(g 7)` over
+	// `def g m.f/v`), is the paren's lead token (parenLeadToken): where the
+	// apply stands for its statement island (stopPos).
+	leadAt core.Value
 	// calleeUnit (valid when calleeKnown) is the compiled closure UNIT a
 	// dyn-method apply's runtime method value was PRODUCED as (a factory
 	// call's returned closure, an earlier apply's), resolved at the
@@ -1290,6 +1295,18 @@ type EmitState struct {
 	// applied dynamically the OUTER program stamps it where it interns it.
 	inStampCompile bool
 
+	// liveArgsUnitDepth is the unit count while a TOKEN body's stamp
+	// (StampTokenBody) records the body's own unit — 0 when unarmed. At
+	// exactly that depth a bare `args` compiles to the live read of the
+	// registry's args stack (the `args` native itself) instead of declining:
+	// the interpreter runs a token body through RunResolved, a plain sub-run
+	// that pushes no args frame, so its `args` reads whatever the ENCLOSING
+	// call pushed — the same stack top the hosted unit reads when the seam
+	// runs it (invokeTokenBody pushes no root args either). A deeper unit (a
+	// fn or closure the body's analysis opens) keeps the decline: its frame
+	// is the program's, not the seam's (see ArgsReadLive).
+	liveArgsUnitDepth int
+
 	// stampDeclined memoises the sig impls whose stamp already declined, keyed
 	// by the impl pointer the stamp would write to. The succeeding case
 	// memoises itself through the impl's compiled slot; without this the failing case
@@ -1479,6 +1496,10 @@ type EmitState struct {
 	// (NoteStatementStack): a root statement island seats exactly these
 	// beneath the statement (rootPreStart, NUR335).
 	rootStmtStacks map[core.SrcPos][]core.Value
+	// leadReads holds the paren applies whose statement island steps the
+	// paren's lead as the interpreter does (noteLeadRead): a raw member read
+	// or no event's value, which the island may run before the lead ran.
+	leadReads map[int]bool
 	// stmtEnds holds the source positions of every statement boundary (`;`
 	// / `end`) the pass stepped (NoteStatementEnd). The residual's fn-value
 	// apply arms ask crossesBoundary before laying a value's apply over the
@@ -1791,6 +1812,11 @@ type EmitState struct {
 	// its static modality — a gradual one included (computedLeakGradual).
 	// The frame replay counts no possible call in it (noteDynFrameReplay).
 	liveDataIDs map[string]bool
+	// keptLiveReads is every read seated live after a computed keep-defs
+	// body (noteKeptLiveRead), by its event's seq: its statement is a
+	// live-read deopt point where an island can take it over
+	// (kept_live_deopt.go). Nil until first use.
+	keptLiveReads map[int]keptLiveRead
 	// liveLeadNames is every module-scope fn a stored-ref unit dispatches by
 	// name with declared signatures (markLiveLead): its routed dispatches
 	// resolve the lead live, and every rebind compiles the new binding's
@@ -2323,6 +2349,10 @@ type deoptPoint struct {
 	// install marks a read of a root def captured by a code body at the
 	// program root (DeoptSpec.Install, NUR285).
 	install bool
+	// live, on a live-read point (kept_live_deopt.go), is the read it
+	// serves: its value is the registry binding (DeoptSpec.Live), tested
+	// before the statement's first op.
+	live *keptLiveRead
 }
 
 // plainLambda reports a lambda VALUE unit (tryReturnedClosure's `fnval`
@@ -2525,6 +2555,7 @@ func (es *EmitState) forkForProbe() *EmitState {
 	// must carry the flag the real one will, or its verdict is about a
 	// unit whose defs lower differently.
 	p.keepDefsUnitDepth = es.keepDefsUnitDepth
+	p.liveArgsUnitDepth = es.liveArgsUnitDepth
 	p.keepLeakNames = maps.Clone(es.keepLeakNames)
 	p.runtimeStub = maps.Clone(es.runtimeStub)
 	p.runtimeTwins = maps.Clone(es.runtimeTwins)
@@ -2606,6 +2637,12 @@ func (es *EmitState) InClosureUnit() bool {
 		return false
 	}
 	return es.fnRecs[rec].closure
+}
+
+// ArgsReadLive reports that the recorder is inside a TOKEN body stamp's own
+// unit (liveArgsUnitDepth), where `args` reads the live args stack.
+func (es *EmitState) ArgsReadLive() bool {
+	return es != nil && es.liveArgsUnitDepth > 0 && len(es.units) == es.liveArgsUnitDepth
 }
 
 func (es *EmitState) Active() bool {
@@ -4299,6 +4336,12 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	// modality or the probe's verdict is about a different unit.
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
+	// The live-args arm of a token body's stamp too, at the same RELATIVE
+	// depth (the probe opens the body's unit over its own unit stack), or
+	// the probe declines the `args` read the real pass compiles.
+	if es.liveArgsUnitDepth > 0 {
+		probe.liveArgsUnitDepth = len(probe.units) + es.liveArgsUnitDepth - len(es.units)
+	}
 	r.Check.Emit = probe
 	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	r.Check.Emit = es
@@ -7136,7 +7179,10 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		es.keptReadSeatedLive(v)
 		es.computedLeakGradual(v, name, rootLive)
 	}
-	es.seatLiveRead(v, name, pos, false)
+	seq := es.seatLiveRead(v, name, pos, false)
+	if keepLive || rootLive {
+		es.noteKeptLiveRead(seq, *v, name, pos, false)
+	}
 }
 
 // keptLeakLive reports the two kept-defs arms of NoteLiveRead: keepLive, a
@@ -7152,8 +7198,9 @@ func (es *EmitState) keptLeakLive(v core.Value, name string) (keepLive, rootLive
 
 // seatLiveRead is NoteLiveRead's seating: the read gets an identity of its
 // own and a one-result live event lowering to OpLookupDynScope at pos —
-// OpLookupDynScopeRef for a `/v` read (ref, NoteValReadLive).
-func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, ref bool) {
+// OpLookupDynScopeRef for a `/v` read (ref, NoteValReadLive). It returns the
+// event's seq.
+func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, ref bool) int {
 	v.ID = core.GenerateID(core.IDPrefixForType(v.Parent))
 	if pos.Row > 0 {
 		if es.defReadPos == nil {
@@ -7179,6 +7226,7 @@ func (es *EmitState) seatLiveRead(v *core.Value, name string, pos core.SrcPos, r
 		word: name, nout: 1, pos: pos, live: true, liveName: es.intern(core.NewString(name)), liveRef: ref,
 	}})
 	es.setProduced(*v, seq)
+	return seq
 }
 
 // mutableRefCarrierRead reports whether a check-mode read is of a mutable
@@ -10351,12 +10399,15 @@ func (es *EmitState) recordCallCompileFailure(word string, sig *core.Signature, 
 		// landing (the break-2 closure) and re-declines what it cannot claim.
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("fn value read from a container auto-dispatches (Stage 3)")
-	case word == "args" || word == "__pa":
+	case (word == "args" && !es.ArgsReadLive()) || word == "__pa":
 		// `args` reads the interpreter's per-call args stack, which the
 		// VM's CALL_USER frame does not maintain (it binds params to
 		// frame locals instead). A compiled fn body that reads `args`
 		// would fail with "args: not inside a function" — decline so the
-		// program does not compile.
+		// program does not compile. The one exception is a TOKEN body's
+		// own unit in its run-time stamp (ArgsReadLive): there the native
+		// reads the live args stack, which is exactly what the
+		// interpreter's RunResolved over the same tokens reads.
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("context-dependent word " + word)
 	case len(sig.NoEvalArgs) > 0 && ((sig.Callable != nil && execBodyRefsNames(sig, args)) || !es.noEvalBodyBakes(sig, args)):
@@ -11142,6 +11193,14 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 		word: word, ops: ops, nout: len(outs), pos: pos,
 		dynMethod: &DynMethodSpec{Word: word, NArgs: len(args), NOut: len(outs), DefRead: defRead, Paren: word == parenApplyWord},
 	}
+	if lead, moved := es.parenLeadToken(word, pos, args); moved {
+		call.leadAt = lead
+		if w, err := core.AsWord(lead); err == nil && es.defReads[fn.ID] == w.Name && es.readPos[fn.ID] == lead.Pos() {
+			// The lead is the word's read of a def-bound value, which the
+			// paren dispatches by its NAME (NUR336) — not a call's result.
+			call.dynMethod.LeadName, call.dynMethod.LeadPos = w.Name, lead.Pos()
+		}
+	}
 	// The method value's own producer, when it is a compiled closure (the
 	// factory pattern): the call is a user call by another route and its
 	// result parks (calleeUnit's doc).
@@ -11155,6 +11214,52 @@ func (es *EmitState) RecordDynMethod(fn core.Value, args, outs []core.Value, wor
 		es.setProducedAt(outs[i], seq, i)
 	}
 	return true
+}
+
+// parenLeadToken is the lead token of the paren a paren apply (word) records
+// over args, when the lead's value carries another token's position than its
+// own (moved): a def-bound read's value carries its def's (`def g m.f/v end
+// … (g 7)`), so the apply's own position names the def's statement. The
+// paren is the one of the body being recorded — the open unit's, else the
+// program's — that holds a token standing at the position of one of args, as
+// its own token after its first.
+func (es *EmitState) parenLeadToken(word string, pos core.SrcPos, args []core.Value) (core.Value, bool) {
+	if word != parenApplyWord {
+		return core.Value{}, false
+	}
+	body := es.rootBody
+	if n := len(es.openUnitRecs); n > 0 {
+		body = es.fnRecs[es.openUnitRecs[n-1]].body
+	}
+	for _, a := range args {
+		q := a.Pos()
+		if q.Row == 0 {
+			continue
+		}
+		toks := body
+		for _, at := range tokenPath(body, q) {
+			inner, nested := nestedToks(toks[at])
+			if !nested {
+				break
+			}
+			if core.IsParenExpr(toks[at]) && len(inner) > 1 && bodyTokenAt(inner, q) > 0 {
+				lead := inner[0]
+				return lead, lead.Pos().Row > 0 && lead.Pos() != pos
+			}
+			toks = inner
+		}
+	}
+	return core.Value{}, false
+}
+
+// stopPos is where a statement island's stop ev stands in its body: its own
+// position, or a paren apply's lead token's where the lead's value carries
+// another's (emitCall.leadAt).
+func stopPos(ev *EmitEvent) core.SrcPos {
+	if ev.kind == evCall && ev.call.leadAt.Pos().Row > 0 {
+		return ev.call.leadAt.Pos()
+	}
+	return eventPos(*ev)
 }
 
 // NoteReStepLanding marks the event that produced v as owing a GUARDED
@@ -11339,6 +11444,12 @@ func (es *EmitState) NoteStatementStack(pos core.SrcPos, stack []core.Value) {
 	}
 	if es.rootStmtStacks == nil {
 		es.rootStmtStacks = map[core.SrcPos][]core.Value{}
+	}
+	// A position's first note is its token's own: a later one there is a
+	// value the token left, re-stepped where it stood (the engine's
+	// noteDefStack over a def's leftovers).
+	if _, told := es.rootStmtStacks[pos]; told {
+		return
 	}
 	es.rootStmtStacks[pos] = append([]core.Value(nil), stack...)
 }
@@ -12744,6 +12855,24 @@ func (es *EmitState) MayBeFn(id string) bool {
 	}
 	pr, ok := es.producedBy[id]
 	return ok && es.eventInfo[pr.seq].mayBeFn
+}
+
+// RegionResult is the recorder seam over a region event's variadic marks
+// (the EmitRecorder doc): the value is the one modelled seat of a
+// runtime-counted region — a value-producing loop, a count-varying branch, a
+// variadic native region — so a dispatch the pass matched over it is matched
+// optimistically, and a trap met under it is that dispatch's rematch
+// (core Engine.optimisticOuter, NUR340).
+func (es *EmitState) RegionResult(id string) bool {
+	if es == nil || id == "" {
+		return false
+	}
+	pr, ok := es.producedBy[id]
+	if !ok {
+		return false
+	}
+	f := es.eventInfo[pr.seq]
+	return f.variadicResult || f.variadicRegion
 }
 
 // storedUnitFnRead reports a bare read, in a stored fn's unit, that the
@@ -17104,11 +17233,15 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// seated for the walk below, a residual read's test for after the
 	// residual is laid out (seatRootResidualReads).
 	rootResidualReads := es.planRootWordReads(lw, residual)
+	// The root's reads seated live after a computed keep-defs body
+	// (kept_live_deopt.go).
+	es.planRootLiveReads(lw, residual)
 	// The root landings and branch guards a statement island takes over
 	// (NUR242, NUR219, NUR292).
 	es.planLandingRestarts(lw, residual)
 	es.planGuardRestarts(lw, residual)
 	es.planCountRestarts(lw, residual)
+	es.planRematchRestart(lw, residual)
 	// Seed the lowerer's frame-local counter from the unit's planned locals;
 	// spillSeat bumps it for spill temps. Written back below so Program.NumLocals
 	// covers them.
@@ -18598,6 +18731,12 @@ func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first}
 		return
 	}
+	if d.live != nil {
+		// Its value is the registry binding: tested before the statement's
+		// first root op, where no value home is needed.
+		flw.deopts = append(flw.deopts, d)
+		return
+	}
 	if d.landing {
 		// Seated where the landing is emitted (seatLandingWord).
 		if flw.landingDeopts == nil {
@@ -18691,6 +18830,9 @@ func stampRootRestarts(lw *lowerer) {
 	}
 	for _, fi := range lw.restartFallbacks {
 		lw.p.FallbackCounts[fi].RetPC = end
+	}
+	for _, di := range lw.restartRematches {
+		lw.p.Dispatches[di].Restart.RetPC = end
 	}
 }
 
@@ -18795,10 +18937,12 @@ func stampLandingRet(words map[int]LandingWord, retPC int) bool {
 // Body token, a unit with no body and a closure unit keep the slot push.
 func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	es.planKeepDefs(rec)
+	live := 0
 	if len(rec.body) > 0 {
 		es.planReStepDeopts(u, rec)
 		es.planLandingDeopts(rec)
 		es.planUnitRestarts(u, rec)
+		live = es.planKeptLiveDeopts(u, rec)
 	}
 	if len(rec.body) == 0 || (len(rec.wordReadNames) == 0 && len(rec.deopts) == 0) {
 		es.planDeoptsEnv(u, rec)
@@ -18850,6 +18994,42 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	// branch or loop body — would decline the whole unit at its bind
 	// (lowerDynBind), so the points decline instead and the reads keep
 	// their slot push.
+	names, ok := es.deoptIslandNames(rec, lambda)
+	if !ok && live > 0 {
+		// The live-read points (kept_live_deopt.go) are the unit's newest:
+		// where their islands cannot be served, the unit keeps the points
+		// it planned without them, and each such read its lookup's defer —
+		// with none left, as a unit that planned none (below the loop).
+		if rec.deopts = dropLivePoints(rec.deopts); len(rec.deopts) == 0 {
+			es.planDeoptsEnv(u, rec)
+			return
+		}
+		names, ok = es.deoptIslandNames(rec, lambda)
+	}
+	if !ok {
+		rec.deopts = nil
+		es.dropDeoptChildren(rec)
+		return
+	}
+	if rec.rootCaptures {
+		for i := range rec.deopts {
+			rec.deopts[i].install = rec.deopts[i].slot >= 0
+		}
+	}
+	rec.lambdaDeopt = lambda
+	rec.deoptEnv = true
+	rec.deoptNames = names
+	u.deoptEnv = true
+	u.deoptNames = names
+	sort.Slice(rec.deopts, func(i, j int) bool { return posAfter(rec.deopts[j].start, rec.deopts[i].start) })
+}
+
+// deoptIslandNames is the names a unit's deopt islands read, from the
+// earliest point's statement on (with those its closure children seeded),
+// and whether the unit can serve them: every def among them bindable
+// registry-visibly, and — for a lambda value or a code body — resolvable
+// where its islands run (lambdaNamesSelfBound, seedParentDeopt).
+func (es *EmitState) deoptIslandNames(rec *fnUnitRec, lambda bool) (map[string]bool, bool) {
 	minTok := len(rec.body)
 	for _, d := range rec.deopts {
 		if d.token < minTok {
@@ -18876,22 +19056,7 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 	case rec.closure:
 		ok = es.seedParentDeopt(rec, names)
 	}
-	if !ok {
-		rec.deopts = nil
-		es.dropDeoptChildren(rec)
-		return
-	}
-	if rec.rootCaptures {
-		for i := range rec.deopts {
-			rec.deopts[i].install = rec.deopts[i].slot >= 0
-		}
-	}
-	rec.lambdaDeopt = lambda
-	rec.deoptEnv = true
-	rec.deoptNames = names
-	u.deoptEnv = true
-	u.deoptNames = names
-	sort.Slice(rec.deopts, func(i, j int) bool { return posAfter(rec.deopts[j].start, rec.deopts[i].start) })
+	return names, ok
 }
 
 // bailPoint demotes a deopt point no island can serve to a GUARD

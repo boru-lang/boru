@@ -199,6 +199,13 @@ type Engine struct {
 	// check AnalyseFnBody), inert by the arguments-are-inert rule even though
 	// the pointer starts at 0. Consumed (zeroed) by Run into inertPrefix.
 	InertPrefix int
+	// FrameRoot marks an ANALYSIS engine that runs a fn frame's own body (a
+	// fn-body analysis's engine, check AnalyseFnBody): its tape opens at the
+	// frame's bottom — the unnamed params, then the body — exactly as the
+	// run lays the frame out, and the run seals the frame there as it seals
+	// the top program. A dispatch on it can sit in a BARE context
+	// (bareCallContext) as one on the top stream does.
+	FrameRoot bool
 	// inertPrefix is the tape index just past the resolved-argument prefix
 	// of the CURRENT run (StartAt as consumed by Run, or InertPrefix): the
 	// values below it are call-site-resolved arguments the pointer never
@@ -206,6 +213,13 @@ type Engine struct {
 	// neighbour. The collection-hazard scan (noteCollectionHazards, NUR121)
 	// stops at it.
 	inertPrefix int
+	// defsSeen is the check run's completed-def count (CheckState.DefsDone)
+	// this engine last saw: when it moves, the stack the engine steps its
+	// next token over is told to the recorder (noteDefStack). Seated at Run.
+	defsSeen int
+	// defNotePending holds noteDefStack's notes on over the values a def's
+	// operand left, up to the token after them.
+	defNotePending bool
 	// stmtEnds are the positions of the statement ends this engine stepped
 	// on an ANALYSIS pass (stepEnd): the collection-hazard scan skips a
 	// candidate a statement end separates from the collected value, whose
@@ -1727,6 +1741,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 			break
 		}
 
+		e.noteDefStack(step == 0)
 		val := e.Tape.At(e.Pointer)
 
 		// Line-coverage seam (coverage.go): record the executing token's source
@@ -3749,7 +3764,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 			// A full-stack word reads the WHOLE scope: every fn-typed value
 			// in it is a collection hazard (noteCollectionHazards' rule
 			// applied to the scope's own base).
-			e.noteCollectionHazardsBelow(base, e.Pointer)
+			e.noteCollectionHazardsBelow(base, e.Pointer, false)
 			results := match.Sig.checkFullStackFn()(match.Args, preserved, e.Registry)
 			// Compile pass: a full-stack word over a provably-exact stack
 			// folds statically — the dispatch elides and the fold's outputs
@@ -4037,13 +4052,30 @@ func (e *Engine) noteCollectionHazards(sig *Signature, sortedIndices []int) {
 	if sig != nil && sig.Callable != nil && sig.Callable.StripsUnconsumedInput {
 		return
 	}
-	e.noteCollectionHazardsBelow(-1, sortedIndices[0])
+	e.noteCollectionHazardsBelow(-1, sortedIndices[0], e.forwardOnly(len(sortedIndices)))
+}
+
+// forwardOnly reports whether every one of the n operands of the dispatch at
+// the pointer was written AFTER its word — a forward collection
+// rearrangeForForward laid out beneath it (forwardSplit), recorded for this
+// word's own source position.
+func (e *Engine) forwardOnly(n int) bool {
+	return e.fwdSplitPos.Row > 0 && e.forwardSplit() >= n
 }
 
 // noteCollectionHazardsBelow marks the unapplied fn-typed values at tape
 // indices in [floor, top) that belong to top's paren scope (floor -1 walks
 // down to the scope's own open paren). See noteCollectionHazards.
-func (e *Engine) noteCollectionHazardsBelow(floor, top int) {
+//
+// fwdOnly says the dispatch took only values written after its word. A
+// PARKED fn value beneath it — a concrete fn the model holds as data, as the
+// run holds it (a paren apply the window did not fit, a /v read) — then
+// collected nothing it could have: the run steps the word, a barrier, past
+// it, and the word takes its operands itself (`({a:(print 1)} lam/v) print
+// 2` prints 2 on both lanes). A fn-typed CARRIER is not parked: it may be a
+// fn word's read, which the run DISPATCHES where it stands (`f add 1 2`
+// inside a fn over f:Function calls f over nothing), so it stays marked.
+func (e *Engine) noteCollectionHazardsBelow(floor, top int, fwdOnly bool) {
 	es := e.Registry.analysisRecorder()
 	if !es.Active() {
 		return
@@ -4078,6 +4110,9 @@ func (e *Engine) noteCollectionHazardsBelow(floor, top int) {
 			// value: the candidate's re-step collects nothing past its own
 			// statement's end (NUR187), so it could never have taken the
 			// value (NUR276: `do (mk) end s size`).
+			continue
+		}
+		if fwdOnly && !v.Carrier && !v.Dynamic {
 			continue
 		}
 		if IsFnValueResidual(v) || IsFnTypedCarrier(v) || (v.Dynamic && SigTypeMatches(v, TFunction)) {
@@ -4139,8 +4174,10 @@ func srcPosBefore(a, b SrcPos) bool {
 
 // bareCallContext reports whether the dispatch at the pointer — its operands
 // at sortedIndices (ascending), its last consumed tape index callEnd — sits
-// in a BARE context (CheckState.BareCallPos): the top-level program's own
-// stream (the top engine, outside every nested body and fn body analysis),
+// in a BARE context (CheckState.BareCallPos): a stream whose tape is the
+// run's own — the top-level program's (the top engine, outside every nested
+// body and fn body analysis, recording at the top event frame) or a fn
+// frame's (a FrameRoot engine: the run seals the frame at its bottom) —
 // nothing on the tape beneath its first operand but an open paren (which
 // seals the stack at run time) or the tape's start, and nothing after
 // callEnd but a close paren, a statement end or the tape's end. A word the
@@ -4148,7 +4185,7 @@ func srcPosBefore(a, b SrcPos) bool {
 // nothing from around it, on both engines.
 func (e *Engine) bareCallContext(sortedIndices []int, callEnd int) bool {
 	c := e.Registry.Check
-	if !e.IsTop || c.NestedBodyDepth != 0 || c.FnBodyDepth != 0 {
+	if !e.FrameRoot && (!e.IsTop || c.NestedBodyDepth != 0 || c.FnBodyDepth != 0 || !c.Recorder().TopFrameOnly()) {
 		return false
 	}
 	first := e.Pointer
@@ -8410,6 +8447,28 @@ func (e *Engine) stepEnd() error {
 
 	e.curryOrStack(funcIdx, fwd.CollectedArgs, fwd.StackArgs)
 	return nil
+}
+
+// noteDefStack tells the recorder the stack the engine is about to step the
+// token at the pointer over (EmitRecorder NoteStatementStack, by that token's
+// position) after a def completed: a statement island may take over the
+// statement from the program's next token, the def's run and whatever it
+// left beneath seated as they stand (`def k (3 dup) k (m.f 7)`, NUR336).
+// What the def's operand left over is re-stepped first, so the notes go on
+// over the plain values at the pointer up to the first token that does work;
+// the recorder keeps a position's first note, the token's own.
+// noteStatementStack's conditions hold: values alone beneath the pointer.
+// A run's first step seats the count it starts from.
+func (e *Engine) noteDefStack(first bool) {
+	if n := e.Registry.Check.defsDone(); n != e.defsSeen {
+		e.defsSeen = n
+		e.defNotePending = !first
+	}
+	if !e.defNotePending {
+		return
+	}
+	e.noteStatementStack(e.Pointer)
+	e.defNotePending = IsSteplessValue(e.Tape.At(e.Pointer))
 }
 
 // noteStatementStack tells the recorder the stack an `end` at endIdx that

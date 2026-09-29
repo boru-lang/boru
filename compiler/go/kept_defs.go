@@ -370,7 +370,8 @@ func (es *EmitState) NoteValReadLive(v *core.Value, name string, pos core.SrcPos
 	es.liveReadNames[name] = true
 	es.keptReadSeatedLive(v)
 	es.computedLeakGradual(v, name, rootLive)
-	es.seatLiveRead(v, name, pos, true)
+	seq := es.seatLiveRead(v, name, pos, true)
+	es.noteKeptLiveRead(seq, *v, name, pos, true)
 }
 
 // computedLeakGradual makes a read seated live after a COMPUTED keep-defs

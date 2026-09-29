@@ -414,6 +414,14 @@ type EmitRecorder interface {
 	// returned: `if true one/v [2]` is 1 interpreted (NUR159). Inactive:
 	// no branch, so never.
 	MayBeFn(id string) bool
+	// RegionResult reports whether the value id is the one modelled seat of
+	// a RUNTIME-COUNTED region — a value-producing loop (`for 1 [1]`, whose
+	// seat the pass types `[:Integer]` where the run leaves the loop's
+	// values themselves), a branch whose arms leave different counts, a
+	// variadic native region. Its static type approximates the region; it
+	// is not the run's value, so a dispatch matched over it is matched
+	// optimistically (Engine.optimisticOuter, NUR340). Inactive: never.
+	RegionResult(id string) bool
 	// NoteLandingNext says what the check pass found on the tape right after
 	// a value it noted as a re-step landing (NoteReStepLanding): a FUNCTION
 	// WORD (the interpreter's re-step plans over it — a named fn with no
@@ -486,6 +494,11 @@ type EmitRecorder interface {
 	// used to require a concrete recorder assert outside the emit
 	// cluster. Inactive: false / zero / no-op.
 	InClosureUnit() bool
+	// ArgsReadLive reports the recording of a TOKEN body's own unit in its
+	// run-time stamp, where a bare `args` compiles to the live read of the
+	// args stack rather than projecting the unit's frame (the seam's run
+	// pushes no args frame, as the interpreter's RunResolved does not).
+	ArgsReadLive() bool
 	StoredGradualActive() bool
 	FoldFullStack(word string, args, preserved []Value) ([]Value, bool)
 	RecordSpliceDyn(payload Value, pos SrcPos) bool
@@ -713,6 +726,7 @@ func (c *CheckState) Recorder() EmitRecorder {
 }
 
 func (inactiveEmit) InClosureUnit() bool                                    { return false }
+func (inactiveEmit) ArgsReadLive() bool                                     { return false }
 func (inactiveEmit) StoredGradualActive() bool                              { return false }
 func (inactiveEmit) FoldFullStack(string, []Value, []Value) ([]Value, bool) { return nil, false }
 func (inactiveEmit) RecordSpliceDyn(Value, SrcPos) bool                     { return false }
@@ -807,6 +821,7 @@ func (inactiveEmit) RecordInterp([]InterpPart, []Value, Value, SrcPos) bool { re
 func (inactiveEmit) RegisterTrailingApply(string, int)                      {}
 func (inactiveEmit) ApplyPending(string) bool                               { return false }
 func (inactiveEmit) MayBeFn(string) bool                                    { return false }
+func (inactiveEmit) RegionResult(string) bool                               { return false }
 func (inactiveEmit) NoteStatementEnd(SrcPos)                                {}
 func (inactiveEmit) NoteStatementStack(SrcPos, []Value)                     {}
 func (inactiveEmit) NoteLandingNext(Value, LandingNext, bool, Value)        {}
