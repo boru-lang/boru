@@ -3762,27 +3762,32 @@ func (lw *lowerer) slotStoredInScope(slot, seq int) bool {
 	return false
 }
 
+// lowerLiveRead lowers a live read seated as an event (NoteLiveRead): the
+// lookup at the read's own token, its one result seated as any call's — or,
+// for a read that is a ROUTED dispatch's forward word slot, an inert
+// placeholder the op pops unread (it resolves the slot from its own window;
+// EmitState.livePlaceholders). A read owed a live point that none serves
+// declines (liveReadUnserved, NUR351).
+func (lw *lowerer) lowerLiveRead(ev *EmitEvent, c *emitCall) string {
+	if reason := lw.liveReadUnserved(ev.seq); reason != "" {
+		return reason
+	}
+	switch {
+	case lw.es != nil && lw.es.livePlaceholders[ev.seq]:
+		lw.emit(OpPushConst, c.liveName, c.pos)
+	case c.liveRef:
+		// A `/v` read (NoteValReadLive): the value spelling's lookup.
+		lw.emit(OpLookupDynScopeRef, c.liveName, c.pos)
+	default:
+		lw.emit(OpLookupDynScope, c.liveName, c.pos)
+	}
+	return lw.seatCallResults(ev, c)
+}
+
 func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	c := &ev.call
 	if c.live {
-		if reason := lw.liveReadUnserved(ev.seq); reason != "" {
-			return reason
-		}
-		// A live read seated as an event (NoteLiveRead): the lookup at the
-		// read's own token, its one result seated as any call's — or, for a
-		// read that is a ROUTED dispatch's forward word slot, an inert
-		// placeholder the op pops unread (it resolves the slot from its own
-		// window; EmitState.livePlaceholders).
-		switch {
-		case lw.es != nil && lw.es.livePlaceholders[ev.seq]:
-			lw.emit(OpPushConst, c.liveName, c.pos)
-		case c.liveRef:
-			// A `/v` read (NoteValReadLive): the value spelling's lookup.
-			lw.emit(OpLookupDynScopeRef, c.liveName, c.pos)
-		default:
-			lw.emit(OpLookupDynScope, c.liveName, c.pos)
-		}
-		return lw.seatCallResults(ev, c)
+		return lw.lowerLiveRead(ev, c)
 	}
 	if reason := lw.bodyMapReason(c); reason != "" {
 		return reason
