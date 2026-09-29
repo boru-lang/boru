@@ -458,9 +458,14 @@ var pinnedAritySites = map[string]int{
 	// IS the current binding (a closed body's redefinition is not), never
 	// what a function of a given arity may do; every arity takes the path —
 	// the seventy-second increment (review of #468).
-	"compiler/go/fn_local.go":       1,
-	"compiler/go/user_poly.go":      1,
-	"compiler/go/callable_words.go": 1,
+	"compiler/go/fn_local.go":  1,
+	"compiler/go/user_poly.go": 1,
+	// The second is a bounds check: a closure's argument window shorter
+	// than the signature it was matched under is no call at all (a failed
+	// dispatch's recovery assumed it, and spec.Inputs reads the operands
+	// positionally) — the argument rule's own read, never a decision BY
+	// arity; every arity takes the path (NUR340).
+	"compiler/go/callable_words.go": 2,
 	// A bounds check on a signature INDEX, not a decision about a function's
 	// shape (StampDetachedSig guarding fd.Signatures[sigIdx]).
 	"compiler/go/stamp_runtime.go": 1,
