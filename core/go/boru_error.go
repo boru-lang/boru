@@ -78,6 +78,17 @@ type BoruError struct {
 	// eng VM's internal_error mints; false on every user-raised error.
 	VMDefer bool
 
+	// AnchorFinal marks an error whose primary position its raising FRAME
+	// fixed: a fn value's return contract answered at the value's own
+	// position — none when the value has none (a `=>` lambda constructed
+	// with no token of its own). The interpreter's frame raises it from the
+	// step loop's ReturnCheck, where no word is dispatching, so the value's
+	// application leaves it as it is; only a word's handler boundary
+	// (stampErrPos) stamps a positionless error on its way out. The VM's
+	// apply ops honour it (eng stampAt) and its native-call sites clear it
+	// before they stamp. Set only by the VM's closure contract check.
+	AnchorFinal bool
+
 	// fullSource is the complete source text for generating context extracts.
 	FullSource string
 }

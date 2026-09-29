@@ -105,7 +105,23 @@ func renamesAsData(v core.Value) bool {
 	return closure
 }
 
+// dropFnPos is v without a position when v is a fn value that carries one:
+// what a binding holds, whose reads are the name's (nameClosureValue).
+func dropFnPos(v core.Value) core.Value {
+	if v.Pos().Row != 0 && v.Parent.Equal(core.TFunction) {
+		v.SetPos(core.SrcPos{})
+	}
+	return v
+}
+
 func nameClosureValue(v core.Value, name string) core.Value {
+	// A binding keeps no position of the value it binds: the interpreter's
+	// read of a def-bound fn value carries the READING token (`g/v` reads at
+	// `g/v` whether g's literal had a token of its own or a word handed it
+	// back), and a call by the name answers at the name. Without the drop a
+	// word's result stamp (stampFnResultPos) survived the def and anchored
+	// `(h 5)` over `def h (FnUtil.compose …)` at the compose (NUR347).
+	v = dropFnPos(v)
 	// A fn VALUE with its own definition — a factory's non-capturing lambda
 	// baked as a const, a `/v` reference — is renamed as installDef renames
 	// it (`fnDef.Name = name`, unconditionally): a def-bound value that
@@ -132,6 +148,12 @@ func nameClosureValue(v core.Value, name string) core.Value {
 	// increment). The copy in this slot is renamed; the stored value keeps
 	// its own name, as the interpreter's binding copies do.
 	cl.RetName = name
+	// A value its binding names answers its contract where the NAME is
+	// written — the word that calls it (`h 5` reports at `h`, the
+	// interpreter's ReturnCheck stamped with the dispatching word) — never
+	// where the literal was constructed: the construction anchor goes, and
+	// the applying op stamps its own position (NUR347).
+	cl.RetPos = core.SrcPos{}
 	if prog, ok := cl.Prog.(*compiler.Program); ok && cl.Unit >= 0 && cl.Unit < len(prog.Fns) {
 		// The bridge's own signature, named — the render the interpreter's
 		// renamed FnDefInfo gives (`fn h(Integer)`); no handler is attached,

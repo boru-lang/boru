@@ -4260,7 +4260,13 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	// values, and the interpreter raises `expected 1 return value(s), got 2`
 	// where an uncontracted closure answered [7 8] (the twenty-ninth
 	// increment; latent before it, every such call site declined).
-	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps, closureRet: namedFnValueSpec(fnValueRetSpec(&fd, lam, pos), &fd)}, true
+	// The contract's anchor is the VALUE's own position — what the
+	// interpreter's frame for it reports (execFnDefSig's callPos, the
+	// stepped value's token): a verbose `fn` carries its `fn` token (1:37 in
+	// `[(fn [[a:Integer][String] …])]`), a `=>` lambda none. pos is the
+	// residual's (the enclosing paren, 1:36), which the compiled report
+	// used to name (NUR347).
+	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps, closureRet: namedFnValueSpec(fnValueRetSpec(&fd, lam, v.Pos()), &fd)}, true
 }
 
 // namedFnValueSpec marks a push of a NAMED fn value (a `fn` literal — only
