@@ -129,3 +129,46 @@ func TestNUR353BodyMapLoopIndexAndEscape(t *testing.T) {
 		requireBodyMapDeclines(t, c.src, c.want, c.why)
 	}
 }
+
+// The review of #523 (Codex): four holes in the body-map scan, each pinned
+// with the shape it let through or refused, and its negative.
+//
+//   - P1: a word reads its callee's body too, transitively — a user fn a
+//     body calls reads the loop index on the interpreter's registry;
+//   - P1: a body is whatever the handler takes as one (a flex list);
+//   - P2: a carrier entry no longer stops the scan, so a literal body's
+//     escape declines at the root whatever the key order;
+//   - P2: quoted data (a quoted list, `quote`'s operand) reads no name
+//     unless a word that runs a value takes it.
+func TestNUR353BodyMapReviewFixes(t *testing.T) {
+	const rnd = `import "boru:rand"  `
+	for _, c := range []struct{ src, want string }{
+		{rnd + `def f fn [[] [Integer] [7]] end for 2 [Rand.map-from {a:[f]}]`, "[{a:7} {a:7}]"},
+		{rnd + `def f fn [[] [Integer] [f]] end def g fn [[] [Integer] [7]] end for 2 [Rand.map-from {a:[g]}]`, "[{a:7} {a:7}]"},
+		{rnd + `def f fn [[n:Integer] [Integer] [n]] end for 2 [Rand.map-from {a:[f 3]}]`, "[{a:3} {a:3}]"},
+		{rnd + `def s {a:(flex (quote [7]))} end for 2 [Rand.map-from s]`, "[{a:7} {a:7}]"},
+		{rnd + `def s {a:(flex (quote [1 break]))} end for 3 [Rand.map-from s] 7`, "[7]"},
+		{rnd + `def mk fn [[][List][quote [1]]] end def s {a:(mk) c:(quote [1])} end Rand.map-from s`, "[{a:1 c:1}]"},
+		{rnd + `for 2 [Rand.map-from {a:[quote [i]]}]`, "[{a:[word(i)]} {a:[word(i)]}]"},
+		{rnd + `for 2 [Rand.map-from {a:[quote i]}]`, "[{a:i} {a:i}]"},
+		{rnd + `for 2 [Rand.map-from {a:[(quote [i])]}]`, "[{a:[word(i)]} {a:[word(i)]}]"},
+		{rnd + `for 2 [Rand.map-from {a:[quote [i] size]}]`, "[{a:1} {a:1}]"},
+		{rnd + `for 2 [Rand.map-from {a:[i/q]}]`, "[{a:i} {a:i}]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	for _, c := range []struct{ src, want, why string }{
+		{rnd + `def i 9 end def f fn [[] [Integer] [i]] end for 2 [Rand.map-from {a:[f]}]`, "[{a:0} {a:1}]", "loop index `i`"},
+		{rnd + `def i 9 end def g fn [[] [Integer] [i]] end def f fn [[] [Integer] [g]] end for 2 [Rand.map-from {a:[f]}]`, "[{a:0} {a:1}]", "loop index `i`"},
+		{rnd + `def s {a:(flex (quote [i]))} end for 2 [Rand.map-from s]`, "[{a:0} {a:1}]", "loop index `i`"},
+		{rnd + `def s {a:(flex (quote [1 break]))} end Rand.map-from s`, "ERROR", "outside a compiled loop"},
+		{rnd + `def mk fn [[][List][quote [1]]] end def s {a:(mk) c:(quote [1 break])} end Rand.map-from s`, "ERROR", "outside a compiled loop"},
+		{rnd + `def mk fn [[][List][quote [1]]] end def s {c:(quote [1 break]) a:(mk)} end Rand.map-from s`, "ERROR", "outside a compiled loop"},
+		{rnd + `for 2 [Rand.map-from {a:[do (quote [i])]}]`, "[{a:0} {a:1}]", "loop index `i`"},
+		{rnd + `for 2 [Rand.map-from {a:[quote [i] do]}]`, "[{a:0} {a:1}]", "loop index `i`"},
+		{rnd + `def g fn [[x:Any] [Any] [do x]] end for 2 [Rand.map-from {a:[g (quote [i])]}]`, "[{a:0} {a:1}]", "loop index `i`"},
+		{rnd + `def s {a:(quote [i])} end for 2 [Rand.map-from s]`, "[{a:0} {a:1}]", "loop index `i`"},
+	} {
+		requireBodyMapDeclines(t, c.src, c.want, c.why)
+	}
+}
