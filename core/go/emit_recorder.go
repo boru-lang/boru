@@ -507,9 +507,11 @@ type EmitRecorder interface {
 	// pushes no args frame, as the interpreter's RunResolved does not).
 	ArgsReadLive() bool
 	// ArgsElidedFrame reports the recording of an args-elided fn unit's own
-	// frame (SetUnitArgsElided): the interpreter's handler pushed the EMPTY
-	// args list there, so an `args` read the construction-time walk could
-	// not see (a word macro bound after the fn) projects `[]` (NUR346).
+	// frame (SetUnitArgsElided): the list there is the CALLER's — empty
+	// from the fn's own registry, the real args (CallBoru) from any other —
+	// so an `args` read the construction-time walk could not see (a word
+	// macro bound after the fn) projects nothing: it reads the live args
+	// stack, or declines (NUR346, review of #522).
 	ArgsElidedFrame() bool
 	StoredGradualActive() bool
 	FoldFullStack(word string, args, preserved []Value) ([]Value, bool)

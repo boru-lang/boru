@@ -680,18 +680,17 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 		// compile failure, the closure probe declines, and the program takes the
 		// compile failure. A plain (non-
 		// recording) check keeps the projection so diagnostics are unchanged.
-		if es := r.Check.Recorder(); es.Active() && (es.InClosureUnit() || es.ArgsReadLive()) {
+		// An args-elided unit's frame (NUR346) holds whichever list its
+		// call pushed — the EMPTY list the leaf handler pushes from the fn's
+		// own registry, the real args CallBoru pushes from any other (a
+		// module export called from the importer; review of #522) — so an
+		// `args` the handler's construction-time walk could not see (a word
+		// macro bound after the fn) reads the live args stack at run time,
+		// the one read that answers both (the recorder's live-read arm).
+		if es := r.Check.Recorder(); es.Active() && (es.InClosureUnit() || es.ArgsReadLive() || es.ArgsElidedFrame()) {
 			return nil, false
 		}
-		top, ok, err := r.Args.Top()
-		if es := r.Check.Recorder(); es.Active() && es.ArgsElidedFrame() {
-			// An args-elided unit's frame holds the EMPTY list the
-			// interpreter's leaf handler pushed: an `args` the handler's
-			// construction-time walk could not see (a word macro bound after
-			// the fn) reads `[]` there (NUR346).
-			top, ok, err = core.NewList(nil), true, nil
-		}
-		if err == nil && ok && core.IsConcrete(top) {
+		if top, ok, err := r.Args.Top(); err == nil && ok && core.IsConcrete(top) {
 			// A bare `args` read in a fn unit (`fn [[a b][List][args]]`)
 			// used to leave the projection with no compiled home ("body
 			// result of unknown provenance"); the recorder assembles it per

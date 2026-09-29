@@ -2660,14 +2660,33 @@ func (es *EmitState) InClosureUnit() bool {
 }
 
 // ArgsElidedFrame reports that the recorder is inside an args-elided fn
-// unit's own frame (SetUnitArgsElided) — its innermost open unit — where
-// the interpreter's handler pushed the EMPTY args list (NUR346).
+// unit's own frame (SetUnitArgsElided) — its innermost open unit — whose
+// args list the interpreter's handler elides for a call from the fn's own
+// registry, while CallBoru from any other pushes the real args (NUR346).
 func (es *EmitState) ArgsElidedFrame() bool {
 	if es == nil || len(es.openUnitRecs) == 0 {
 		return false
 	}
 	rec := es.openUnitRecs[len(es.openUnitRecs)-1]
 	return rec >= 0 && rec < len(es.fnRecs) && es.fnRecs[rec].argsElided
+}
+
+// argsLiveInElidedFrame is RecordCall's live-read arm for an `args` read in
+// an args-elided unit's own frame (NUR346): which list the frame holds —
+// the EMPTY list the leaf handler pushes from the fn's own registry, the
+// real args CallBoru pushes from any other (a module export called from
+// the importer; review of #522) — is the caller's, so the native reads the
+// live args stack, and the program keeps the per-frame args bracket
+// (DynEnv) that maintains it. Reports whether the read is live. A unit
+// whose home is a FOREIGN sub-registry (a module fn) declines instead: the
+// VM keeps the bracket on the program's registry while the native reads the
+// unit's dispatch registry, so a live read there would find no frame.
+func (es *EmitState) argsLiveInElidedFrame() bool {
+	if !es.ArgsElidedFrame() || es.isForeignRegistry(es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]].reg) {
+		return false
+	}
+	es.dynEnv = true
+	return true
 }
 
 // ArgsReadLive reports that the recorder is inside a TOKEN body stamp's own
@@ -10452,7 +10471,7 @@ func (es *EmitState) recordCallCompileFailure(word string, sig *core.Signature, 
 		// landing (the break-2 closure) and re-declines what it cannot claim.
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("fn value read from a container auto-dispatches (Stage 3)")
-	case (word == "args" && !es.ArgsReadLive()) || word == "__pa":
+	case (word == "args" && !es.ArgsReadLive() && !es.argsLiveInElidedFrame()) || word == "__pa":
 		// `args` reads the interpreter's per-call args stack, which the
 		// VM's CALL_USER frame does not maintain (it binds params to
 		// frame locals instead). A compiled fn body that reads `args`

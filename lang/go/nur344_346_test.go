@@ -194,6 +194,74 @@ func TestNUR346RealArgsFramesStayReal(t *testing.T) {
 	}
 }
 
+// TestNUR346ForeignCallKeepsRealArgs pins the review of #522's finding: the
+// leaf handler elides the args list only for a call from its OWN registry. A
+// module fn called from the importer takes the handler's CallBoruStrict arm,
+// which pushes the real args; the same fn called inside the module pushes
+// `[]`. One unit serves both calls, so nothing static can answer an `args`
+// read the handler's construction-time walk could not see (a word macro
+// bound after the fn): in a program-home unit it compiles to the LIVE read
+// of the args stack the VM's per-frame bracket maintains (empty from home,
+// real from anywhere else), and in a module-home unit — whose bracket the VM
+// keeps on the program's registry, not the one the native reads — it
+// declines, loudly, instead of baking either list (it had baked `[]`, and
+// `M.w 7` answered `[[]]` for the interpreter's `[[7]]`). A computed body's
+// `args` is read at run time from the bracket and needs neither.
+func TestNUR346ForeignCallKeepsRealArgs(t *testing.T) {
+	const mod = `import module [def w fn [[x:Integer][Any][m]] end def m word [args] end def v fn [[x:Integer][Any][w x]] end export "M" {w:w/v v:v/v}] end `
+	const modBody = `import module [def mk fn [[] [List] [quote [args]]] end def w fn [[x:Integer] [Any] [each (mk) [x 5]]] end def v fn [[x:Integer][Any][w x]] end export "M" {w:w/v v:v/v}] end `
+	for _, tc := range []struct{ src, want string }{
+		// a module fn whose body runs a computed `quote [args]` body: the
+		// real args from the importer, the empty list from inside
+		{modBody + `M.w 7`, `[[[7] [7]]]`},
+		{modBody + `M.v 8`, `[[[] []]]`},
+		{modBody + `[(M.w 7) (M.v 8)]`, `[[[[7] [7]] [[] []]]]`},
+		{modBody + `each M.w/v [1 2]`, `[[[[1] [1]] [[2] [2]]]]`},
+		{modBody + `7 M.w/v apply`, `[[[7] [7]]]`},
+		{modBody + `(M.w/v 7)`, `[[[7] [7]]]`},
+		// the module late-macro fn reached only through paths that run it
+		// on the interpreter's own terms
+		{mod + `def m {f:M.w/v} end m.f 7`, `[[7]]`},
+		{mod + `def f M.w/v end f 7`, `[[7]]`},
+		{mod + `def g fn [[f:Function][Any][f 7]] end g M.w/v`, `[[7]]`},
+		// a body that reads args itself pushes the real list at home too
+		{`import module [def w fn [[x:Integer][Any][args drop m]] end def m word [args] end export "M" {w:w/v}] end M.w 7`, `[[7]]`},
+		// program-home late-macro reads: the live read, empty from home
+		{`def w fn [[x:Integer][Any][m] [s:String][Any][m]] end def m word [args] end def g fn [[a:Any][Any][w a]] end [(g 1) (g "s")]`, `[[[] []]]`},
+		{`def w fn [[x:Integer][Any][m]] end def m word [args] end def v fn [[y:Integer][Any][w y]] end v 7`, `[[]]`},
+		{`def w fn [[x:Integer][Any][m]] end def m word [args] end 7 w/v apply`, `[[]]`},
+		{`def w fn [[x:Integer][Any][m]] end def m word [args] end each w/v [1 2]`, `[[[] []]]`},
+		{`def w fn [[acc:Any kv:Any][Any][m]] end def m word [args] end fold w/v {a:1} 0`, `[[0 {k:'a' v:1 i:0 n:1}]]`},
+		{`def w fn [[kv:Any][Any][m]] end def m word [args] end each w/v {a:1}`, `[{a:[{k:'a' v:1 i:0 n:1}]}]`},
+	} {
+		requireCompiledParity(t, tc.src)
+		got, err := mustNew(t).RunInterp(tc.src)
+		if err != nil || fmt.Sprint(got) != tc.want {
+			t.Errorf("%q: interpreted %v [%v], want %s", tc.src, got, err, tc.want)
+		}
+	}
+	// A module-home unit's late `args` read declines the program, loudly —
+	// never a baked list — whichever registry calls it.
+	for _, tc := range []struct{ src, want string }{
+		{mod + `M.w 7`, `[[7]]`},
+		{mod + `7 M.w/v apply`, `[[7]]`},
+		{mod + `(M.w/v 7)`, `[[7]]`},
+		{mod + `each M.w/v [1 2]`, `[[[1] [2]]]`},
+		{mod + `M.v 8`, `[[]]`},
+		{mod + `[(M.w 7) (M.v 8) (M.w 9)]`, `[[[7] [] [9]]]`},
+		{`import module [def w fn [[x:Integer][Any][m] [s:String][Any][m]] end def m word [args] end export "M" {w:w/v}] end def g fn [[a:Any][Any][M.w a]] end [(g 1) (g "s")]`, `[[[1] ['s']]]`},
+	} {
+		prog, reason, _, cerr := mustNew(t).CompileCheck(tc.src)
+		if prog != nil || cerr != nil || !strings.Contains(reason, "context-dependent word args") {
+			t.Errorf("%q: a module-home late args read must decline loudly: prog=%v reason=%q err=%v", tc.src, prog != nil, reason, cerr)
+		}
+		got, err := mustNew(t).RunInterp(tc.src)
+		if err != nil || fmt.Sprint(got) != tc.want {
+			t.Errorf("%q: interpreted %v [%v], want %s", tc.src, got, err, tc.want)
+		}
+	}
+}
+
 // TestNUR346ArgsElisionOtherUnitCompiles pins the two remaining unit-compile
 // paths that carry the sig's args-list decision (NUR346): a run-time
 // dispatched overload arm (CALL_USER_POLY — compileUserPolyArm, call-site
