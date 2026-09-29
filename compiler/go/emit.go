@@ -385,6 +385,7 @@ type emitCall struct {
 	pos               core.SrcPos
 	poly              bool                  // dispatch via OpCallNativePoly (runtime MatchSignature)
 	hostSplice        bool                  // the handler's result is a SPLICE the VM hosts on its interpreter island (SigRef.HostSplice — a computed `for` body, hostsSplice)
+	bodyMap           *bodyMapFacts         // a body-map word's run (Rand.map-from): what its bodies name and whether they escape, for its lowering's loop test (body_map.go)
 	generic           bool                  // ROUTED through the region descriptor (OpDispatchGeneric, region_route.go): a fn-unit dispatch with a live word slot over a drivable span
 	polyReg           *core.Registry        // the sub-registry to re-match a module poly word in (nil = main registry)
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)

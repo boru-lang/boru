@@ -494,6 +494,12 @@ func randNativesForState(state *randState) []native.NativeFunc {
 				NoEvalMapArgs: map[int]bool{0: true},
 				BarrierPos:    -1,
 				ReturnsFn:     randMapFromReturns,
+				// CompileDynBody: the schema's values are code bodies the
+				// handler runs at run time on the shared registry, so the
+				// recorder mirrors the run's name environment and, for a
+				// body the pass never saw, its kept defs (compiler
+				// noteBodyMapRun — NUR330, NUR353).
+				CompileEffect: native.CompileDynBody,
 				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 					schema, err := native.RequireConcreteMap(args[0], "Rand.map-from schema")
 					if err != nil {

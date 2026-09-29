@@ -3771,6 +3771,9 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		}
 		return lw.seatCallResults(ev, c)
 	}
+	if reason := lw.bodyMapReason(c); reason != "" {
+		return reason
+	}
 	if lw.collectRegionTop(ev) {
 		return ""
 	}
