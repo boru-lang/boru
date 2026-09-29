@@ -65,6 +65,10 @@ func TestNUR357GradualReadCollectedForward(t *testing.T) {
 		{nur357Y + `5 keys y`, "ERROR:cannot call `keys`"},
 		{`def g fn [[m:Map][List][keys m.a]] end g {a:0}`, "ERROR:cannot call `keys`"},
 		{nur357Y + `def k fn [[m:Map][List][keys m]] end k y`, "ERROR:cannot call `k`"},
+		// NEGATIVE: a user call whose gradual operand misses its fit takes
+		// the island, and the interpreter's run of the statement raises (the
+		// body k's collection reaches): the compiled run reports that error.
+		{nur357M + `def k fn [[m:Map][List][raise bad_input "boom"]] end {b:2} k m.f`, "ERROR:boom"},
 	} {
 		agreeOnBothLanes(t, tc.src, tc.want)
 	}
