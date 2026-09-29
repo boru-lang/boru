@@ -1521,9 +1521,11 @@ func TestS5BTrapCarrierWindowMatchRecordsTheSplit(t *testing.T) {
 
 func TestS5BTrapCarrierWrittenTooWide(t *testing.T) {
 	// A written tuple wider than the window cannot be rebuilt
-	// (line 8722).
+	// (line 8722). The tuple is the stack prefix here — a carrier WRITTEN
+	// after the word would join the window (withGradualWrittenOperands,
+	// NUR329) — and the gatherer's window holds only its top.
 	carrier := NewCarrier(TInteger)
-	e, _ := trapEngine(t, []Value{NewWord("hd"), carrier, NewInteger(5)}, 0, []int{1})
+	e, _ := trapEngine(t, []Value{NewInteger(5), carrier, NewWord("hd")}, 2, []int{1})
 	if e.TryRecordUnmatchedDispatchTrap(WordInfo{Name: "trapw"}, trapFn(), SrcPos{}) {
 		t.Error("a too-wide written tuple must decline")
 	}
@@ -1549,9 +1551,12 @@ func TestS5BTrapCarrierWrittenOffsetMiss(t *testing.T) {
 	if carrierA.ID == carrierB.ID {
 		t.Fatal("pass-armed carriers must carry distinct IDs")
 	}
+	// The tuple is the stack prefix (carrierB on top, then carrierA): a
+	// carrier WRITTEN after the word would join the window
+	// (withGradualWrittenOperands, NUR329).
 	e := NewTop(r)
-	e.Tape = NewTape([]Value{carrierA, NewWord("hd"), carrierB}, StackHeadroom)
-	e.Pointer = 1
+	e.Tape = NewTape([]Value{carrierA, carrierB, NewWord("hd")}, StackHeadroom)
+	e.Pointer = 2
 	if e.TryRecordUnmatchedDispatchTrap(WordInfo{Name: "trapw"}, trapFn(), SrcPos{}) {
 		t.Error("an offset miss must decline")
 	}

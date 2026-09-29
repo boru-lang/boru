@@ -10732,6 +10732,51 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 // pass does not see and stays a compile failure. Returns true when a trap
 // now owns the program's tail or the arm's; false leaves the caller's
 // MarkUncompilable compile failure to stand.
+// withGradualWrittenOperands widens a failed dispatch's examined window by
+// the operands WRITTEN after the word (rematchWrittenSplit's forward run)
+// when one of them is a carrier or a dynamic — a value the pass holds only
+// as its type, whose run-time value the interpreter's match examines FIRST
+// and whose report names it: `7 f m.a` over `x:Type` evaluates the reach,
+// fails it and reports "the argument was 1". The stack-first gatherer took
+// the 7 alone, so the static trap rendered "the argument was 7" (NUR329).
+// With the written run in the window the failure is no longer static — the
+// carrier sends it to the runtime rematch, which plans the match as the
+// interpreter does over the run's values and renders the interpreter's
+// tuple. A written run of concrete values leaves the window as it was: the
+// trap's report is built over those same values.
+func (e *Engine) withGradualWrittenOperands(window []int, fn *FnDefInfo) []int {
+	// Only a window the STACK filled alone: one that already reaches past
+	// the word took the written run in its own order, and its rendering is
+	// the gatherer's to own.
+	for _, p := range window {
+		if p > e.Pointer {
+			return window
+		}
+	}
+	_, nFwd := e.rematchWrittenSplit(fn)
+	gradual := false
+	for i := e.Pointer + 1; i <= e.Pointer+nFwd && i < e.Tape.Len(); i++ {
+		v := e.Tape.At(i)
+		if IsReach(v) || IsParenExpr(v) || IsInterpString(v) {
+			// A deferred expression the run has not expanded here (`7 f m.a
+			// m.b`: the report names `m.b (a Reach)`) is no value the
+			// rematch can seat: the window stays the gatherer's.
+			return window
+		}
+		if v.Carrier || v.Dynamic {
+			gradual = true
+		}
+	}
+	if !gradual {
+		return window
+	}
+	out := append([]int(nil), window...)
+	for i := e.Pointer + 1; i <= e.Pointer+nFwd && i < e.Tape.Len(); i++ {
+		out = append(out, i)
+	}
+	return out
+}
+
 func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos SrcPos) bool {
 	e.LastUnmatchedRematched = false
 	es := e.Registry.analysisRecorder()
@@ -10754,7 +10799,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 			maxN = n
 		}
 	}
-	window := CheckBraid.CheckModeFallbackPositions(e, maxN)
+	window := e.withGradualWrittenOperands(CheckBraid.CheckModeFallbackPositions(e, maxN), fn)
 	// The forward walk can collect positions INSIDE a not-yet-evaluated paren
 	// group (checkModeFallbackPositions depth-tracks rather than stopping at
 	// an open paren). The interpreter pre-evaluates the paren before its

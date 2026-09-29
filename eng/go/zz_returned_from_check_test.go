@@ -36,10 +36,14 @@ func TestW8DispatchRematchPermutedStackTakesDefiniteTrap(t *testing.T) {
 	done := w8ArmCompile(t, r)
 	defer done()
 	e := core.NewTop(r)
+	// The operands written after the word are concrete: a CARRIER there is
+	// a value the interpreter's match examines first and its report names,
+	// which sends the failure to the rematch (NUR329,
+	// withGradualWrittenOperands) — no longer this definite-trap arm.
 	e.Tape = core.NewTape([]core.Value{
 		core.NewInteger(1), core.NewString("s"), // prefix: permutes (Integer, String)
 		core.NewWord("w8rh"),
-		core.NewCarrier(core.TInteger), core.NewInteger(2),
+		core.NewInteger(3), core.NewInteger(2),
 	}, core.StackHeadroom)
 	e.Pointer = 2
 	fn := r.Lookup("w8rh")
