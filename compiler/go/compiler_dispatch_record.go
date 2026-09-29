@@ -190,6 +190,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 		return
 	}
 	if !tryFoldReStepWord(r, word, args, out) &&
+		!tryFoldReStepCase(r, word, sig, out) &&
 		!check.TryRecordMethodApply(r, word, args, out, pos) &&
 		!tryFoldStaticIndex(r, word, args, out) &&
 		!tryFoldParkedMemberFn(r, word, args, out) &&
@@ -250,6 +251,25 @@ func tryFoldReStepWord(r *core.Registry, word string, args, outs []core.Value) b
 	key, recv := args[0], args[1]
 	return core.IsConcrete(recv) && recv.Parent.ConformsTo(core.TList) &&
 		core.IsConcrete(key) && key.Parent.ConformsTo(core.TInteger)
+}
+
+// tryFoldReStepCase folds a `case` whose check-mode result is a LIVE WORD
+// token: the clause the run takes is decided at check time and its block is
+// a word the tape re-steps as a call (basic's caseReStep hands the block
+// back verbatim — NUR342). The interpreter's CaseHandler hands that word
+// back and the step loop re-steps it at the case, over the values beneath
+// it and the tokens after it; the check pass re-steps it at the same place,
+// and the call it makes records on its own. The case itself therefore
+// emits NOTHING, exactly as tryFoldReStepWord's read emits nothing: its
+// operands — a known scalar and the clause list — are never materialised
+// unless consumed, and a produced scrutinee is left unconsumed for the sim
+// to drop. Only the native case word qualifies (a user fn named `case`
+// dispatches through its frame).
+func tryFoldReStepCase(r *core.Registry, word string, sig *core.Signature, outs []core.Value) bool {
+	if word != "case" || !r.Check.Recorder().Active() || sig == nil || sig.FnFrame() != nil || len(outs) != 1 {
+		return false
+	}
+	return core.IsWord(outs[0]) && !core.IsBareTypeNode(outs[0])
 }
 
 // tryFoldStaticIndex folds a `get` / `getr` over a CONCRETE list with a STATIC,

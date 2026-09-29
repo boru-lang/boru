@@ -336,8 +336,10 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	// lowering.
 	es := r.Check.Recorder()
 	seatable := es.CanSeatAcrossFragment(v)
-	if seatable && caseReStepDeclined(r, es, elems) {
-		return dynAny
+	if seatable {
+		if out, done := caseReStep(r, es, v, elems); done {
+			return out
+		}
 	}
 	if seatable && mayRunAsCode(v) {
 		v, seatable = recordCaseSubject(r, v, swapped, r.Check.CurCallPos)
@@ -368,6 +370,165 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 	return CaseBranchJoin(r, v, elems)
 }
 
+// caseReStep is the recording pass's answer to a clause list holding a block
+// the tape re-steps as a call (caseReStepsBlock). done=false hands the case
+// on to the desugared chain; done=true answers it with out.
+//
+// Where the pass can decide the clause the run takes (caseStaticBlock), the
+// case is exactly its taken block: a block that re-steps is handed back as
+// the word itself, and the check pass re-steps it at the case over the
+// values beneath it and the tokens after it — the interpreter's own step,
+// each call recording on its own, while the case records nothing (the
+// compiler's tryFoldReStepCase). A taken block that does not re-step is the
+// chain's sealed arm exactly, and no re-stepping arm runs. A case the pass
+// cannot decide keeps the chain only where it sits bare (caseCallBare —
+// nothing around it for a re-stepped block to reach), and declines
+// elsewhere (NUR342).
+func caseReStep(r *Registry, es EmitRecorder, v Value, elems []Value) ([]Value, bool) {
+	if !es.Active() || !caseReStepsBlock(r, elems) {
+		return nil, false
+	}
+	if block, taken, decided := caseStaticBlock(r, v, elems); decided {
+		if taken && caseBlockReSteps(r, block) {
+			return []Value{block}, true
+		}
+		return nil, false
+	}
+	if caseCallBare(r) {
+		return nil, false
+	}
+	recordCaseReStepDecline(r)
+	return []Value{NewDynamicCarrier(TAny)}, true
+}
+
+// caseStaticBlock decides, at check time, the clause a case over the known
+// scalar v takes: the block of the first clause whose guard holds, else the
+// trailing default (taken=false: none — the case yields nothing). It decides
+// only what it can prove without running anything the run would observe: v
+// is a known scalar (caseKnownScalar) and every guard it walks is decided by
+// caseStaticGuard; the first guard it cannot decide leaves the case
+// undecided.
+func caseStaticBlock(r *Registry, v Value, elems []Value) (block Value, taken, decided bool) {
+	if !caseKnownScalar(v) {
+		return Value{}, false, false
+	}
+	i := 0
+	for ; i+1 < len(elems); i += 2 {
+		holds, ok := caseStaticGuard(r, v, elems[i])
+		if !ok {
+			return Value{}, false, false
+		}
+		if holds {
+			return elems[i+1], true, true
+		}
+	}
+	if i < len(elems) {
+		return elems[i], true, true
+	}
+	return Value{}, false, true
+}
+
+// caseScalarPayload reports whether v's payload is a plain scalar's — the
+// value itself, immutable, with no registry behind it.
+func caseScalarPayload(v Value) bool {
+	switch v.Data.(type) {
+	case IntPayload, FloatPayload, StrPayload, BoolPayload, AtomPayload, BigIntPayload, DecimalPayload:
+		return true
+	}
+	return false
+}
+
+// caseKnownScalar reports whether a check-mode value is a scalar whose value
+// the pass knows: a scalar payload that is not gradual — a literal, or one
+// riding as a concrete-payload carrier (the operand shape a
+// CompileScalarFold dispatch folds over).
+func caseKnownScalar(v Value) bool {
+	return !v.Dynamic && caseScalarPayload(v)
+}
+
+// caseScalarConst reports whether a clause token is a scalar literal: a
+// concrete scalar payload, as the source wrote it.
+func caseScalarConst(v Value) bool {
+	return !v.Carrier && !v.Dynamic && caseScalarPayload(v)
+}
+
+// caseStaticGuard decides one clause guard over the known scalar v, as
+// CaseClauses decides it at run time: a scalar literal match unifies with v,
+// and a predicate body whose every token is a scalar literal or a PURE
+// comparison word (caseFoldablePredicate) runs for real over v, its last
+// result coerced to a Boolean. Nothing else is decided (ok=false) — a word
+// or paren match resolves through bindings and may run code, and any other
+// predicate may have an effect the run observes at the case, which running
+// it here would perform at check time instead.
+func caseStaticGuard(r *Registry, v, m Value) (holds, ok bool) {
+	v.Carrier = false // a known scalar's payload IS its value
+	if !isCodeBody(m) {
+		if !caseScalarConst(m) {
+			return false, false
+		}
+		_, matched := UnifyR(m, v, r)
+		return matched, true
+	}
+	ml, _ := AsList(m)
+	toks := ml.Slice()
+	if !caseFoldablePredicate(r, toks) {
+		return false, false
+	}
+	prevMode := r.Check.Mode
+	r.Check.Mode = false
+	defs := r.Defs.Snapshot()
+	restoreAtt := r.SetInterpAttribution("check:case-guard")
+	out, err := RunResolved(r, []Value{v}, toks)
+	restoreAtt()
+	r.Defs.Restore(defs)
+	r.Check.Mode = prevMode
+	if err != nil {
+		// The run raises at the case: the pass does not model it.
+		return false, false
+	}
+	return len(out) > 0 && CoerceBoolean(out[len(out)-1]), true
+}
+
+// caseFoldablePredicate reports whether a predicate body is a pure function
+// of the value it runs over: every token a scalar literal, a name bound to
+// one, or a word naming a registered word every signature of which is a
+// CompileScalarFold comparison (the family the pass already runs for real
+// over known scalars). Such a body has no effect and reads nothing but its
+// operands and those constants, so running it at check time is running it
+// at the case.
+func caseFoldablePredicate(r *Registry, toks []Value) bool {
+	for _, t := range toks {
+		if !IsWord(t) {
+			if !caseScalarConst(t) {
+				return false
+			}
+			continue
+		}
+		w, _ := AsWord(t)
+		if w.ForceVal {
+			return false
+		}
+		if top, bound := r.Defs.Top(w.Name); bound {
+			if caseScalarConst(top) {
+				continue // a name bound to a known scalar steps to it
+			}
+			if _, isFn := top.Data.(FnDefInfo); !isFn {
+				return false
+			}
+		}
+		fn := r.Lookup(w.Name)
+		if fn == nil || len(fn.Signatures) == 0 {
+			return false
+		}
+		for i := range fn.Signatures {
+			if !fn.Signatures[i].CompileEffect.Has(CompileScalarFold) || len(fn.Signatures[i].NoEvalArgs) > 0 {
+				return false
+			}
+		}
+	}
+	return true
+}
+
 // caseReStepDeclined declines the compile desugar of a clause list holding a
 // block that is a bare FUNCTION word (caseReStepsBlock), and reports that it
 // did. Such a block is not an arm: the handler hands the word back and the
@@ -379,15 +540,22 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 // clause-list `if`'s re-stepped arm does (ifClauseDecline, NUR332). A
 // suspended pass decides nothing: its enclosing dispatch owns the compile.
 func caseReStepDeclined(r *Registry, es EmitRecorder, elems []Value) bool {
-	if !es.Active() || !caseReStepsBlock(r, elems) || caseCallBare(r, es) {
+	if !es.Active() || !caseReStepsBlock(r, elems) || caseCallBare(r) {
 		return false
 	}
+	recordCaseReStepDecline(r)
+	return true
+}
+
+// recordCaseReStepDecline marks the program uncompilable at the case: a
+// clause block re-steps over the values around it, and the chain's sealed
+// arm is no model of that.
+func recordCaseReStepDecline(r *Registry) {
 	taken := true
 	recorderState(r.Check).RecordBranch(BranchRecord{
 		ConstCond: &taken, HasElse: true, Pos: r.Check.CurCallPos,
 		Uncaptured: "case: a clause block that is a bare function word, re-stepped over the values around the case",
 	})
-	return true
 }
 
 // caseReStepsBlock reports whether a (normalized) clause list holds a block
@@ -446,10 +614,11 @@ func callReachesContext(fn *FnDefInfo) bool {
 }
 
 // caseCallBare reports whether the `case` whose ReturnsFn is running sits
-// in a BARE context (CheckState.BareCallPos) on the program's root stream.
-func caseCallBare(r *Registry, es EmitRecorder) bool {
+// in a BARE context (CheckState.BareCallPos): on the program's root stream
+// or a fn frame's, with nothing around it for a re-stepped block to reach.
+func caseCallBare(r *Registry) bool {
 	pos := r.Check.CurCallPos
-	return es.TopFrameOnly() && pos.Row > 0 && r.Check.BareCallPos == pos
+	return pos.Row > 0 && r.Check.BareCallPos == pos
 }
 
 // dropSynthesizedDeadArmWarnings removes, from the diagnostics added since

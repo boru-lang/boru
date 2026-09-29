@@ -3021,6 +3021,9 @@ func runFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	defer func() { r.Check.ArgsFrameUnnamed = prevUnnamed }()
 
 	sub := core.New(r)
+	// The body's engine is the frame's own: its tape opens at the frame's
+	// bottom, where the run seals it (Engine.FrameRoot).
+	sub.FrameRoot = true
 	// The unnamed inputs are the frame's resolved-argument prefix: inert
 	// data the collection-hazard scan must never mark (Engine.InertPrefix —
 	// an unnamed Function param at the frame bottom collects nothing).

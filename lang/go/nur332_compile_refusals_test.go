@@ -98,33 +98,38 @@ func TestNUR332StrandedIfCompilesToItsError(t *testing.T) {
 // TestNUR332ReSteppedBlockDeclines pins the soundness half of the close: a
 // clause block that is a bare FUNCTION word re-steps AT THE CASE over the
 // values beneath it and the tokens after it, so the desugar's sealed arm is
-// no model of it unless the case sits bare. Such a case declines — the
+// no model of it unless the case sits bare. Where the pass decides the
+// clause the run takes, the case compiles as that re-step (NUR342 —
+// TestNUR342ReSteppedBlockCompiles, where the `g` rows that answered [1 5]
+// compiled for the interpreter's [101] on main 2ad4620 now agree). A case
+// it cannot decide and that does not sit bare still declines — the
 // clause-list `if`'s re-stepped arms likewise — rather than compile the
-// sealed arm's no-match as a trap (or, before, its sealed answer: the
-// `g` rows answered [1 5] compiled for the interpreter's [101] on main
-// 2ad4620, a silent wrong answer).
+// sealed arm.
 func TestNUR332ReSteppedBlockDeclines(t *testing.T) {
 	const reStep = "case: a clause block that is a bare function word"
 	for _, c := range []struct{ src, why, want string }{
-		{`1 2 case 7 [[lt 10] add]`, reStep, "[3]"},
-		{`case 7 [[lt 10] add] 1 2`, reStep, "[3]"},
-		{`1 case 7 [[lt 10] dup]`, reStep, "[1 1]"},
-		{`case 7 [[lt 10] if "z"] 1 2 3`, reStep, "[2]"},
+		// A code-body scrutinee runs at the case: its desugar decides nothing.
 		{`1 2 case [7] [[lt 10] add "z"]`, reStep, "[3]"},
-		{`def g fn [[][Integer][5] [x:Integer][Integer][x add 100]] end 1 case 7 [[lt 10] g "z"]`, reStep, "[101]"},
-		{`def g fn [[x:Integer][Integer][x add 100] [][Integer][5]] end 1 case 7 [[lt 10] g "z"]`, reStep, "[101]"},
-		{`1 2 case 7 [[lt 10] depth "z"]`, reStep, "[1 2 2]"},
-		// A binding the pass holds only abstractly may be a function at run
-		// time: it declines too.
-		{`def mk fn [[][Any][5]] end def k (mk) end 1 case 7 [[lt 10] k "z"]`, reStep, "[1 5]"},
-		// A splice binding spills its tokens where the block is re-stepped,
-		// and they reach the values around the case (the Codex review of
-		// #520): `add` runs over the 1 2 beneath it.
-		{`def g word [add] 1 2 case 7 [[lt 10] g 0]`, reStep, "[3]"},
-		{`def g word [add] end 1 2 case 7 [[lt 10] g 0] end`, reStep, "[3]"},
-		// Nested in a body, the case is not bare either.
-		{`1 if (1 eq 1) [case 7 [[lt 10] dup]] [0]`, reStep, "ERROR:cannot call `dup`"},
-		{`def f fn [[x:Integer][Any][case x [[lt 10] dup "z"]]] end f 1`, reStep, "ERROR:cannot call `dup`"},
+		// A scrutinee only the run knows, with values after the case.
+		{`def f fn [[n:Integer][Any][case n [[lt 10] add "z"] n n]] end f 5`, reStep, "[10]"},
+		{`def f fn [[][Integer][7]] end 1 2 case (f) [[lt 10] add "z"]`, reStep, "[3]"},
+		// A guard the pass does not run: an effect, a word outside the pure
+		// comparison family, a raise, a word match.
+		{`1 2 case 7 [[print "x" lt 10] add "z"]`, reStep, "[3]"},
+		{`1 2 case 7 [[drop 5 lt 10] add "z"]`, reStep, "[3]"},
+		{`1 2 case 7 [[lt "a"] add "z"]`, reStep, "ERROR:cannot order Integer and ProperString"},
+		{`1 2 case 7 [Integer add "d"]`, reStep, "[3]"},
+		{`1 2 case 7 [[eq [1]] add "z"]`, reStep, "[1 2 z]"},
+		{`1 2 case 7 [[eq add/v] add "z"]`, reStep, "[1 2 z]"},
+		{`def c [1] end 1 2 case 7 [[eq c] add "z"]`, reStep, "[1 2 z]"},
+		// A guard naming no word the pass knows.
+		{`1 2 case 7 [[lt nosuchword] add "z"]`, reStep, "ERROR:undefined word: nosuchword"},
+		// The pass decides that NO clause is taken, and its own coverage
+		// finding (case_not_exhaustive) stops the compile first.
+		{`1 2 case 20 [[lt 10] add]`, "check diagnostics", "[1 2]"},
+		// Inside an arm of a fn body over a param, the case is not bare: the
+		// arm's model runs on no frame of its own.
+		{`def f fn [[x:Integer][Any][if (x gt 0) [case x [[lt 10] dup "z"]] [0]]] end f 1`, reStep, "ERROR:cannot call `dup`"},
 		// A list CONDITION runs inline over the values beneath the `if`: no
 		// sealed arm.
 		{`1 if [true [dup] [0]]`, "unmatched dispatch recovered at dup", "[1]"},

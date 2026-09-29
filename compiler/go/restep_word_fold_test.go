@@ -73,3 +73,48 @@ func TestTryFoldReStepWordDeclines(t *testing.T) {
 		}
 	}
 }
+
+// TestTryFoldReStepCaseFoldsTheTakenWord pins tryFoldReStepCase (NUR342): a
+// native `case` whose check-mode result is the taken clause's LIVE block word
+// emits nothing — the check pass re-steps the word at the case and records
+// the call it makes — while every other case outcome keeps its recording.
+func TestTryFoldReStepCaseFoldsTheTakenWord(t *testing.T) {
+	r := newTestRegistry(t)
+	caseSig := &core.Signature{Args: []*core.Type{core.TAny, core.TAny}}
+	word := []core.Value{core.NewWord("add")}
+	if tryFoldReStepCase(r, "case", caseSig, word) {
+		t.Fatal("an inactive recorder must decline")
+	}
+	done := r.Check.BeginCompilePass()
+	defer done()
+	es, _ := r.Check.Recorder().(*EmitState)
+	before := len(es.frames[0])
+	if !tryFoldReStepCase(r, "case", caseSig, word) {
+		t.Fatal("a case handing back a live word must fold")
+	}
+	args := []core.Value{core.NewInteger(7), core.NewList([]core.Value{core.NewWord("add")})}
+	recordDispatchOutcome(r, "case", caseSig, args, word, core.SrcPos{}, nil)
+	if len(es.frames[0]) != before || !es.Compilable {
+		t.Fatalf("the case must emit nothing and keep the program compilable (events %d -> %d, compilable %v)",
+			before, len(es.frames[0]), es.Compilable)
+	}
+	userSig := &core.Signature{Args: []*core.Type{core.TAny}, Impl: &core.BoruImpl{FnFrame: &core.FnFrameMeta{}}}
+	for _, c := range []struct {
+		name string
+		word string
+		sig  *core.Signature
+		outs []core.Value
+	}{
+		{"not case", "get", caseSig, word},
+		{"no signature", "case", nil, word},
+		{"a user fn named case", "case", userSig, word},
+		{"no result", "case", caseSig, nil},
+		{"two results", "case", caseSig, []core.Value{word[0], word[0]}},
+		{"a data result", "case", caseSig, []core.Value{core.NewInteger(1)}},
+		{"a bare type node is data", "case", caseSig, []core.Value{core.NewTypeLiteral(core.TInteger)}},
+	} {
+		if tryFoldReStepCase(r, c.word, c.sig, c.outs) {
+			t.Errorf("%s: must decline", c.name)
+		}
+	}
+}
