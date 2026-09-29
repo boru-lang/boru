@@ -151,6 +151,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.MayBeFn("id") {
 		t.Fatal("inactive MayBeFn must be false")
 	}
+	if e.RegionResult("id") {
+		t.Fatal("inactive RegionResult must be false")
+	}
 	e.NoteStatementEnd(SrcPos{Row: 1, Col: 1})
 	e.NoteStatementStack(SrcPos{Row: 1, Col: 1}, nil)
 	e.NoteLandingNext(Value{}, LandingNextEnd, false, Value{})

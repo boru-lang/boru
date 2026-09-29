@@ -4500,7 +4500,15 @@ func (lw *lowerer) lowerTrap(ev *EmitEvent) string {
 		// consumes nothing). The index-form render tuple keeps the raise
 		// byte-identical (the const, and the region top the attempted
 		// window lists beneath it — arm-independent either way).
-		if ops := ev.trap.rematchOps; len(ops) == 2 &&
+		//
+		// Only a region BENEATH the word (ops[0] is the stack run's, so
+		// fewer than all operands were written): a region WRITTEN after it
+		// — a paren group, `each (for 2 [1]) [x/u]` — is spread into the
+		// call's arguments by the interpreter, every value of it one more
+		// operand ("the arguments were 1, 1 and …"), and a runtime-counted
+		// region has no seat count a window can name. That rematch falls to
+		// layoutOperands, which declines the variadic operand (NUR340).
+		if ops := ev.trap.rematchOps; len(ops) == 2 && ev.trap.rematchNFwd < len(ops) &&
 			ops[0].kind == opEvent && lw.variadic[ops[0].idx] &&
 			ops[1].kind != opEvent {
 			if len(lw.vm) == 0 || !slotIs(lw.vm[len(lw.vm)-1], ops[0]) {

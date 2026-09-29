@@ -12746,6 +12746,24 @@ func (es *EmitState) MayBeFn(id string) bool {
 	return ok && es.eventInfo[pr.seq].mayBeFn
 }
 
+// RegionResult is the recorder seam over a region event's variadic marks
+// (the EmitRecorder doc): the value is the one modelled seat of a
+// runtime-counted region — a value-producing loop, a count-varying branch, a
+// variadic native region — so a dispatch the pass matched over it is matched
+// optimistically, and a trap met under it is that dispatch's rematch
+// (core Engine.optimisticOuter, NUR340).
+func (es *EmitState) RegionResult(id string) bool {
+	if es == nil || id == "" {
+		return false
+	}
+	pr, ok := es.producedBy[id]
+	if !ok {
+		return false
+	}
+	f := es.eventInfo[pr.seq]
+	return f.variadicResult || f.variadicRegion
+}
+
 // storedUnitFnRead reports a bare read, in a stored fn's unit, that the
 // interpreter DISPATCHES where the unit pushed the value and that no seam can
 // hand back to it (NUR279) — NUR123's accounting, with none of the routes a

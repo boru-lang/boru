@@ -414,6 +414,14 @@ type EmitRecorder interface {
 	// returned: `if true one/v [2]` is 1 interpreted (NUR159). Inactive:
 	// no branch, so never.
 	MayBeFn(id string) bool
+	// RegionResult reports whether the value id is the one modelled seat of
+	// a RUNTIME-COUNTED region — a value-producing loop (`for 1 [1]`, whose
+	// seat the pass types `[:Integer]` where the run leaves the loop's
+	// values themselves), a branch whose arms leave different counts, a
+	// variadic native region. Its static type approximates the region; it
+	// is not the run's value, so a dispatch matched over it is matched
+	// optimistically (Engine.optimisticOuter, NUR340). Inactive: never.
+	RegionResult(id string) bool
 	// NoteLandingNext says what the check pass found on the tape right after
 	// a value it noted as a re-step landing (NoteReStepLanding): a FUNCTION
 	// WORD (the interpreter's re-step plans over it — a named fn with no
@@ -807,6 +815,7 @@ func (inactiveEmit) RecordInterp([]InterpPart, []Value, Value, SrcPos) bool { re
 func (inactiveEmit) RegisterTrailingApply(string, int)                      {}
 func (inactiveEmit) ApplyPending(string) bool                               { return false }
 func (inactiveEmit) MayBeFn(string) bool                                    { return false }
+func (inactiveEmit) RegionResult(string) bool                               { return false }
 func (inactiveEmit) NoteStatementEnd(SrcPos)                                {}
 func (inactiveEmit) NoteStatementStack(SrcPos, []Value)                     {}
 func (inactiveEmit) NoteLandingNext(Value, LandingNext, bool, Value)        {}

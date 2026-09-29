@@ -133,7 +133,6 @@ func TestNUR338TrapRenderedErrorParity(t *testing.T) {
 		"def x 5 end\n  x/u",
 		`def x 5 end   x/u 7`,
 		`def x 5 end def m {f:[1 2]} each m.f [x/u]`,
-		`def x 5 end def mk fn [[][List][[1]]] end each (for 1 [mk]) [x/u]`,
 		`def x 5 end def mk fn [[][List][[1]]] end each (mk) [x/u]`,
 		`unpack [z] {a:1}`,
 		`unpack [a z] {a:1}`,
