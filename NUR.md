@@ -94,7 +94,6 @@ list only by becoming **Resolved** (the record is then deleted) or
 |---|-------|--------------------------|
 | [NUR235](#nur235) | A typed-map param pattern over an inline map literal with a computed member: both lanes refuse the call, the `signature_error` notes differ | call-site specialisation's investigation (2026-09-27) |
 | [NUR329](#nur329) | A no-match over two refused reaches names the stack operand compiled (notes only) | the NUR328 sweep (2026-09-28); narrowed 2026-09-29 |
-| [NUR330](#nur330) | `Rand.map-from` over a schema held only as a carrier (a Map param) whose body defs a name: the def outlives the call on the interpreter only (silent) | the interp-entry census (2026-09-27); narrowed 2026-09-29 |
 | [NUR334](#nur334) | A read after a computed keep-defs body: the shapes the live-read deopt does not serve stay loud | main's 50 uncovered statements (2026-09-28); remainder after the live-read deopt (2026-09-29) |
 | [NUR336](#nur336) | A paren apply over a member that is data at run time: the shapes the statement island does not serve stay loud | main's 50 uncovered statements (2026-09-28); remainder after the NUR336 pass (2026-09-29) |
 | [NUR343](#nur343) | A union-typed branch at `each` whose arm holds an effect or a binding defers at run time (loud) | the NUR340 pass (2026-09-29); narrowed 2026-09-29 |
@@ -104,7 +103,8 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR350](#nur350) | Whether a computed body or a late word macro sees a fn's `args` depends on whether the fn's own body mentions `args` or needs frame state (the interpreter's leaf-frame elision, now mirrored compiled) | the NUR346 fix (2026-09-29) |
 | [NUR351](#nur351) | A forward collection stops at a live read's stale type after a computed body: a wrong error compiled where the interpreter answers | the NUR348 pass (2026-09-29) |
 | [NUR352](#nur352) | Four loud neighbours of the union-branch rematch and the member apply: a static trap, an eager arm body, a pre-evaluated argument note, a gradual def-bound fn read | the NUR343/349 pass (2026-09-29) |
-| [NUR353](#nur353) | `Rand.map-from` hosted bodies: a loop variable is unbound and a `break` is the wrong error compiled (loud) | the NUR330 pass (2026-09-29) |
+| [NUR354](#nur354) | A computed body run in a loop does not see the loop's index compiled (`for 2 [do b]` over `quote [i]`) | the body-map pass (2026-09-29) |
+| [NUR355](#nur355) | A `break` from a computed body or a fn at the root, outside any loop, is an internal_error compiled for the interpreter's flow_error (loud) | the body-map pass (2026-09-29) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -836,28 +836,6 @@ names a Reach is left out of that rule.
 
 ---
 
-## NUR330 — a def inside a `Rand.map-from` schema the pass holds as a carrier {#nur330}
-
-**Status:** Pending (a silent wrong answer) · **Recorded:** 2026-09-27 · **Narrowed:** 2026-09-29
-
-```
-import "boru:rand"
-def k 5 def f fn [[m:Map][Any][Rand.map-from m]] end f {a:[def k 1 k]} k
-  interpreted   [{a:1} 1]
-  compiled      [{a:1} 5]
-```
-
-The generator's bodies run on the shared registry with no def cleanup, so
-a `def` inside one rebinds the name for the rest of the program. Fixed
-2026-09-29 for a literal schema: `Rand.list-of` models its body as `each`
-does (`BodyMultiRunKeepsDefs`, `native.AnalyseMultiRunBody`) and compiles;
-`Rand.map-from` over a literal schema whose body binds a name declines
-(design/COMPILABLE-SUBSET.md §5). A schema the pass holds only as a carrier
-is not modelled, and refusing it needs a compile-failure site the site
-census does not admit. Pinned: lang `TestNUR330RandGeneratorBodyDefs`.
-
----
-
 ## NUR334 — a read after a computed keep-defs body: the loud remainder {#nur334}
 
 **Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-29
@@ -1055,15 +1033,31 @@ interpreted, "the argument was 0" compiled). Pre-existing on main b37ddca.
 
 ---
 
-## NUR353 — `Rand.map-from` hosted bodies: loop variable and `break` {#nur353}
+## NUR354 — a computed body in a loop does not see the loop's index {#nur354}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-29 · pre-existing at 74c1b8d
+**Status:** Pending (a wrong answer inside an error) · **Recorded:** 2026-09-29 · pre-existing at fa1d220
 
 ```
-import "boru:rand"  for 2 [Rand.map-from {a:[i]}]
-  interpreted   [{a:0} {a:1}]
-  compiled      undefined_word: i   (the loop variable is not visible to the hosted token body)
-import "boru:rand"  Rand.map-from {a:[1 break]}
+def f fn [[b:List][Any][for 2 [do b]]] end f (quote [i])
+  interpreted   [0 1] (inside the arity error)
+  compiled      error(undefined word: i) values
+```
+
+The compiled `for` keeps its index in a frame slot, which a run-time token
+body resolving names on the registry cannot see. The cross-unit twin —
+`def g fn [[m:Map][Any][Rand.map-from m]] end for 2 [g {a:(quote [i])}]` —
+has the same cause and escapes the map-from decline, whose loop-index test
+sees only the calling unit.
+
+---
+
+## NUR355 — a root `break` from a computed body or a fn is an internal_error {#nur355}
+
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · pre-existing at fa1d220
+
+```
+do (quote [1 break]) 5
+def f fn [[] [Any] [break]] end f 9
   interpreted   flow_error: break outside loop
   compiled      internal_error: flow signal with no enclosing loop
 ```

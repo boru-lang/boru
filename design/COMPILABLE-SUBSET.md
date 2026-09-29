@@ -687,6 +687,21 @@ user still gets an answer while the case is open:
     args stack on the program's registry where the module's `args` reads its
     own. The importer-side call compiled correctly before; the inside-module
     call was a silent wrong answer. Owed: per-registry args frames in the VM.
+- **Open refusals recorded 2026-09-29 (the body-map pass):**
+  - `Rand.map-from` over a schema held as a carrier (a Map or List param)
+    whose body binds a name the calling fn does not define declines
+    ("residual value of unknown provenance" / the arm-read decline): the
+    interpreter keeps that def past the fn's frame and the compiled frame
+    unwinding does not. This includes `f {a:[1]} k` over such an `f`, which
+    compiled before. Where the fn defines the name first it compiles.
+  - A map-from body that reads an open counted loop's index (by name, or any
+    computed or opaque body inside a counted loop) declines, as does a body
+    that escapes with break/continue outside any compiled loop at the root
+    (NUR353): the index lives in a frame slot a run-time token body cannot
+    resolve, and the interpreter's flow_error position depends on its tape.
+  - `def k 5 size {a:[undef k 1]} k` is refused by the check pass
+    ("undefined word: k") where the interpreter raises undefined_word at run
+    time.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
