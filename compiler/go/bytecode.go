@@ -1196,6 +1196,13 @@ type SigRef struct {
 	// position (the run's binding is the model's); anything else is the
 	// screen's loud defer, as before.
 	SpliceOuts []core.Value
+	// FnArgPos, when non-nil, is the position of each argument (signature
+	// order; a zero entry for none) the program read as a fn VALUE by its
+	// `/v` spelling (EmitState.noteFnArgPos, NUR347): the interpreter's read
+	// stamps the value with that token, where the compiled slot push carries
+	// none, so the VM stamps a positionless NAMED fn value with it before the
+	// call — the position a callback's return-contract error answers at.
+	FnArgPos []core.SrcPos
 	// DynBodyOne marks the CALL_NATIVE of a COMPUTED `do` body whose run a
 	// single-value seat consumes (eventFlags.dynBodyOne, dyn_body_one.go):
 	// the VM seats the handler's results only when they are exactly ONE

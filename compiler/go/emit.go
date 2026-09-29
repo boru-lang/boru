@@ -170,6 +170,35 @@ func (es *EmitState) noteArgSites(seq int, args []core.Value) {
 		es.argSites = map[int][]argSite{}
 	}
 	es.argSites[seq] = sites
+	es.noteFnArgPos(seq, args)
+}
+
+// noteFnArgPos keeps, for call event seq, the position of each argument that
+// is a fn value the program read by its `/v` spelling (valReadNoted): the
+// interpreter's read stamps the value with its own token (stepWordVal), and a
+// callback word (`each h/v [5]`) raises the value's return contract there.
+// The compiled read is a slot push, which carries no position, and a
+// def-bound value's binding dropped its own (nameClosureValue), so the call's
+// SigRef carries it (SigRef.FnArgPos) for the VM to stamp on a positionless
+// named value (NUR347). Nothing is kept when no argument qualifies.
+func (es *EmitState) noteFnArgPos(seq int, args []core.Value) {
+	var out []core.SrcPos
+	for i, a := range args {
+		if a.ID == "" || a.Pos().Row == 0 || !es.valReadNoted[a.ID] || !(core.IsAppliableFn(a) || core.IsFnTypedCarrier(a)) {
+			continue
+		}
+		if out == nil {
+			out = make([]core.SrcPos, len(args))
+		}
+		out[i] = a.Pos()
+	}
+	if out == nil {
+		return
+	}
+	if es.fnArgPos == nil {
+		es.fnArgPos = map[int][]core.SrcPos{}
+	}
+	es.fnArgPos[seq] = out
 }
 
 // eventFlags are the per-event compile flags, keyed by event seq in
@@ -1376,6 +1405,10 @@ type EmitState struct {
 	// seq (noteArgSites): the tokens a statement island may write the call's
 	// run over (callRun, NUR296).
 	argSites map[int][]argSite
+	// fnArgPos is where each fn-VALUE argument of a call event was read by
+	// its `/v` spelling, by event seq and signature position (noteFnArgPos,
+	// NUR347): the position the interpreter's value carries into the call.
+	fnArgPos map[int][]core.SrcPos
 	// closureBodySites is where a closure call's body argument was written
 	// (RecordClosureCall): a read's own position, else the value's token.
 	// doBodyAfter alone reads it — a closure call is no call run.
@@ -2374,6 +2407,17 @@ type deoptPoint struct {
 	// point needs at its test — the interpreter's at the statement's start;
 	// nil on any other point.
 	trapHeld []vmSlot
+	// leftovers, on a unit's statement island that takes over past the
+	// defs its statement opens with (defsBefore), are the results each such
+	// def's call left beneath the value it bound — `def k (3 dup)` binds the
+	// first and leaves the second on the interpreter's frame. The compiled
+	// code holds them in the call's promoted slots and pushes them later, so
+	// they are no deferred operand of the island's: it seats them from those
+	// slots, over an empty frame region (noteRestartDepth, NUR336).
+	leftovers []producer
+	// defBound, beside leftovers, are the values those defs bound — the
+	// first result of each one's call.
+	defBound []producer
 }
 
 // plainLambda reports a lambda VALUE unit (tryReturnedClosure's `fnval`
@@ -9790,6 +9834,15 @@ func (es *EmitState) RecordDispatchRematchValues(word string, vals []core.Value,
 			}
 		}
 		op, ok := es.resolveOperand(v)
+		if !ok && unexpandedToken(v) {
+			// A reach or template the run has not expanded here, written
+			// past the forward reach of every signature of the word (`7 f
+			// m.a m.b` over `x:Type`: the report names `m.b (a Reach)`; core
+			// declines one within it), is its own source token at run time,
+			// rendered as the interpreter's report renders it. The terminal
+			// rematch reads it and nothing else does (NUR329).
+			op, ok = ConstOperand(es.intern(v)), true
+		}
 		if !ok {
 			return false
 		}
@@ -18801,7 +18854,7 @@ func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 		if flw.landingRestarts == nil {
 			flw.landingRestarts = map[int]*landingRestart{}
 		}
-		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first}
+		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first, leftovers: d.leftovers, defBound: d.defBound}
 		return
 	}
 	if d.live != nil {
@@ -19888,14 +19941,23 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 			if d.restep && ci >= 0 && op.idx == events[ci].seq {
 				return false
 			}
+			// A def's leftover the island seats from its slot (leftovers).
+			if slices.Contains(d.leftovers, producer{seq: op.idx, idx: op.resIdx}) {
+				return false
+			}
 			for j := range events {
 				if events[j].seq != op.idx {
 					continue
 				}
-				if defBound(op.idx) {
+				if op.resIdx == 0 && defBound(op.idx) {
 					// A def consumed it on both lanes (promoted to its slot
 					// here, bound in the interpreter's frame); the island
-					// reads it by name through the dyn-scope bind.
+					// reads it by name through the dyn-scope bind. A def
+					// binds an event's FIRST result only (RecordDefBind's
+					// srcSeq): another result of the same call — the value
+					// `def k (3 dup)` leaves beneath k — is the frame's, and
+					// its push after the statement's start is deferred
+					// (NUR336's fn-body twin).
 					return false
 				}
 				p := eventPos(events[j])

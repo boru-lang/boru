@@ -107,3 +107,39 @@ func TestNUR347ClosureContractAnchor(t *testing.T) {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
 }
+
+// TestNUR347ValReadCallbackAnchor pins NUR347's last caret: a def-bound (or
+// param-bound) fn value handed to a callback word by its `/v` read answers
+// its contract at that read, as the interpreter's read stamps the value with
+// its token. The compiled read is a slot push and the binding dropped the
+// value's position, so the report said "source position unknown"; the call
+// now carries the read's position (SigRef.FnArgPos) and the VM stamps the
+// positionless named value with it (stampFnArgPos).
+func TestNUR347ValReadCallbackAnchor(t *testing.T) {
+	const mkFn = `def mk fn [[k:Integer] [Function] [(fn [[a:Integer][String] [a add k]])]] end `
+	const mkLam = `def mk fn [[k:Integer] [Function] [([a:Integer] => [a k])]] end `
+	const compose = `import "boru:fn-util"  def two x:Integer => [x x] end def h (FnUtil.compose two/v two/v) end `
+	for _, c := range []struct{ src, name, at string }{
+		// The register's row and its two twins.
+		{mkFn + `def h (mk 1) end each h/v [5]`, "h", "1:101"},
+		{mkLam + `def h (mk 1) end each h/v [5]`, "h", "1:87"},
+		{compose + `each h/v [5]`, "FnUtil.compose", "1:99"},
+		// Variants: the stack-side split, fold, a paren, a fn body's def, a
+		// param read by `/v`.
+		{mkFn + `def h (mk 1) end [5] each h/v`, "h", "1:105"},
+		{mkFn + `def h (mk 1) end fold h/v [5] 0`, "h", "1:101"},
+		{mkFn + `def h (mk 1) end each (h/v) [5]`, "h", "1:102"},
+		{mkFn + `def f fn [[] [Any] [def h (mk 1) each h/v [5]]] end f`, "h", "1:117"},
+		{mkFn + `def f fn [[g:Function] [Any] [each g/v [5]]] end f (mk 1)`, "g", "1:114"},
+		// Negative: a value with its own anchor keeps it — a literal def
+		// bound under the name, and a user call that names its param.
+		{`def h fn [[a:Integer][String] [a add 1]] end each h/v [5]`, "h", "1:51"},
+		{`def h (fn [[a:Integer][String] [a add 1]]) end each h/v [5]`, "h", "1:53"},
+		{mkFn + `def h (mk 1) end def app fn [[g:Function x:Integer][Any][(g x)]] end app h/v 5`, "g", "1:137"},
+	} {
+		anchoredOnBothLanes(t, c.src, c.name, c.at)
+	}
+	// A conforming value runs clean, stamped or not.
+	agreeOnBothLanes(t, `def mk fn [[k:Integer] [Function] [(fn [[a:Integer][Integer] [a add k]])]] end def h (mk 1) end each h/v [5]`, "[[6]]")
+	agreeOnBothLanes(t, mkLam+`def h (mk 1) end each h/v []`, "[[]]")
+}

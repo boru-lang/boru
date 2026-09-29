@@ -1485,6 +1485,24 @@ func TestS5BTrapCarrierRematchRecords(t *testing.T) {
 	}
 }
 
+// TestNUR329RematchUnexpandedPastTheForwardReach: a raw reach in the
+// window, written within the forward reach of a signature of the word, is
+// one the runtime match may expand — the rematch declines; one past it is
+// only named in the report and the rematch records (NUR329).
+func TestNUR329RematchUnexpandedPastTheForwardReach(t *testing.T) {
+	reach := NewReachFromKeys(NewWord("m"), []Value{NewAtom("b")})
+	carrier := NewCarrier(TInteger)
+	e, es := trapEngine(t, []Value{NewWord("hd"), carrier, reach}, 0, []int{1, 2})
+	if e.TryRecordUnmatchedDispatchTrap(WordInfo{Name: "trapw"}, trapFn(), SrcPos{Row: 1}) || es.rematches != 0 {
+		t.Fatal("a reach the forward phase may expand must decline the rematch")
+	}
+	one := &FnDefInfo{Name: "trapw", Signatures: []Signature{{Args: []*Type{TString}, BarrierPos: 1}}}
+	e, es = trapEngine(t, []Value{NewWord("hd"), carrier, reach}, 0, []int{1, 2})
+	if !e.TryRecordUnmatchedDispatchTrap(WordInfo{Name: "trapw"}, one, SrcPos{Row: 1}) || es.rematches != 1 {
+		t.Fatal("a reach past every forward reach rides the rematch")
+	}
+}
+
 func TestS5BTrapRematchRefusedNotesNothing(t *testing.T) {
 	// The recorder refusing the rematch leaves the caller's failure, and
 	// no prefix note.

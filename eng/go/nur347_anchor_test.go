@@ -110,3 +110,40 @@ func TestNUR347AnchorFinal(t *testing.T) {
 		t.Fatalf("nil error became %v", err)
 	}
 }
+
+// TestNUR347FnArgPosStamps pins stampFnArgPos: a native call's positionless
+// NAMED fn argument takes the position its `/v` read was written at — a
+// closure its binding renamed (no anchor of its own) or a named fn — and
+// everything else keeps what it has: a nameless closure, one with its own
+// anchor, an unnamed fn, a value that already has a position, a non-fn, a
+// zero entry, and an entry past the args.
+func TestNUR347FnArgPosStamps(t *testing.T) {
+	at := core.SrcPos{Row: 1, Col: 101, Src: "h/v"}
+	fnv := func(d core.Payload) core.Value { return core.Value{Parent: core.TFunction, Data: d} }
+	positioned := fnv(core.ClosurePayload{RetName: "h"})
+	positioned.SetPos(core.SrcPos{Row: 2, Col: 1})
+	for _, c := range []struct {
+		v    core.Value
+		want int
+	}{
+		{fnv(core.ClosurePayload{RetName: "h"}), 1},
+		{fnv(core.FnDefInfo{Name: "FnUtil.compose"}), 1},
+		{fnv(core.ClosurePayload{}), 0},
+		{fnv(core.ClosurePayload{RetName: "h", RetPos: core.SrcPos{Row: 1, Col: 37}}), 0},
+		{fnv(core.FnDefInfo{}), 0},
+		{positioned, 2},
+		{core.NewInteger(1), 0},
+	} {
+		args := []core.Value{c.v}
+		stampFnArgPos(args, []core.SrcPos{at, at})
+		if got := args[0].Pos().Row; got != c.want {
+			t.Errorf("%+v: row %d, want %d", c.v.Data, got, c.want)
+		}
+	}
+	args := []core.Value{fnv(core.ClosurePayload{RetName: "h"})}
+	stampFnArgPos(args, []core.SrcPos{{}})
+	stampFnArgPos(args, nil)
+	if args[0].Pos().Row != 0 {
+		t.Fatalf("a zero entry stamped %v", args[0].Pos())
+	}
+}

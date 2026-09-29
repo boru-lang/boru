@@ -4071,10 +4071,14 @@ type rootUnionSig struct {
 func (lw *lowerer) siteSigRef(seq int, c *emitCall, dynOne, plainChk bool) (SigRef, bool) {
 	reStep := lw.reStepsResults(seq)
 	spliceOuts := lw.spliceOutsAt(seq)
-	if !c.hostSplice && !dynOne && !plainChk && c.nativeSplit == nil && spliceOuts == nil && !reStep && !lw.regionReStepCandidate(seq) && !lw.rootUnionCandidate(seq) {
+	var fnArgPos []core.SrcPos
+	if lw.es != nil {
+		fnArgPos = lw.es.fnArgPos[seq]
+	}
+	if !c.hostSplice && !dynOne && !plainChk && c.nativeSplit == nil && spliceOuts == nil && fnArgPos == nil && !reStep && !lw.regionReStepCandidate(seq) && !lw.rootUnionCandidate(seq) {
 		return SigRef{}, false
 	}
-	ref := SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit, SpliceOuts: spliceOuts}
+	ref := SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit, SpliceOuts: spliceOuts, FnArgPos: fnArgPos}
 	if reStep {
 		ref.ReStep, ref.ReStepOut = true, lw.reStepOut(seq, c.nout)
 	}

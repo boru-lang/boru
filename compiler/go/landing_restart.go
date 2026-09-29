@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"slices"
 	"sort"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -60,6 +61,11 @@ type landingRestart struct {
 	// first is the loops' first-iteration check the island takes at run
 	// time (firstIterGuard); empty outside loops.
 	first []RestartFirst
+	// leftovers are a unit island's def leftovers (deoptPoint.leftovers),
+	// and defBound the values those defs bound, which the compiled frame
+	// may still hold where the interpreter's def took them
+	// (noteRestartDepth).
+	leftovers, defBound []producer
 }
 
 // substPlan is one run of tokens a statement island writes a value in place
@@ -215,6 +221,48 @@ func defsBefore(tree map[int]treeEvent, body []core.Value, tok int, p core.SrcPo
 	return tok
 }
 
+// defLeftovers are the results the defs from body token tok up to (not
+// including) token to — the ones defsBefore stepped past — left beneath
+// the values they bound, in the order the interpreter's frame holds them: a
+// def binds its call's first result (RecordDefBind's srcSeq; bound lists
+// those) and every later one stays (`def k (3 dup)` leaves the second 3,
+// NUR336). A def's call of a result count this cannot read leaves none it
+// can name, and an island over it keeps finding such a value deferred.
+func defLeftovers(tree map[int]treeEvent, body []core.Value, tok, to int) (leftovers, bound []producer) {
+	defs := map[core.SrcPos]*emitDynBind{}
+	for _, te := range tree {
+		if d := te.ev.dyn; te.ev.kind == evDynBind && d != nil {
+			defs[d.pos] = d
+		}
+	}
+	for ; tok+3 <= to; tok += 3 {
+		d := defs[body[tok+1].Pos()]
+		if d == nil || d.srcSeq < 0 {
+			continue
+		}
+		bound = append(bound, producer{seq: d.srcSeq})
+		for i := 1; i < resultCount(tree[d.srcSeq].ev); i++ {
+			leftovers = append(leftovers, producer{seq: d.srcSeq, idx: i})
+		}
+	}
+	return leftovers, bound
+}
+
+// resultCount is how many results call event ev leaves: a native's or a
+// user fn's recorded count, and one for any other event (or none).
+func resultCount(ev *EmitEvent) int {
+	if ev == nil {
+		return 1
+	}
+	switch ev.kind {
+	case evCall:
+		return ev.call.nout
+	case evCallUser:
+		return ev.uc.nout
+	}
+	return 1
+}
+
 // tookWhole reports whether def d took its value whole from body token at: a
 // scalar literal the def bound as it is, or a paren or a reach the value's
 // producing event stands inside.
@@ -235,11 +283,36 @@ func tookWhole(tree map[int]treeEvent, d *emitDynBind, body []core.Value, at int
 func (es *EmitState) toldAfter(tok int, p core.SrcPos) int {
 	at := tok
 	for i, stop := tok+1, bodyTokenContaining(es.rootBody, p); i <= stop; i++ {
-		if _, told := es.rootStmtStacks[es.rootBody[i].Pos()]; told {
+		if _, told := es.toldAt(i); told {
 			at = i
 		}
 	}
 	return at
+}
+
+// toldAt is the stack the pass told at root body token tok
+// (NoteStatementStack), by the token's position — or, for a paren the engine
+// expanded to its markers before stepping it (`def k (3 dup) (m.f 7)`: the
+// def's operand group expands the paren after it too), by its first inner
+// token's, where the engine keys a positionless open paren's note
+// (statementStackPos, NUR336). No note is ever keyed by a token inside a
+// paren otherwise: a statement stack is told over values alone, and an open
+// paren beneath is none.
+func (es *EmitState) toldAt(tok int) ([]core.Value, bool) {
+	t := es.rootBody[tok]
+	if p := t.Pos(); p.Row > 0 {
+		if stack, told := es.rootStmtStacks[p]; told {
+			return stack, true
+		}
+	}
+	if !core.IsParenExpr(t) {
+		return nil, false
+	}
+	if inner, _ := core.AsParenExpr(t); len(inner) > 0 && inner[0].Pos().Row > 0 {
+		stack, told := es.rootStmtStacks[inner[0].Pos()]
+		return stack, told
+	}
+	return nil, false
 }
 
 // statementStart is the position a statement island beginning at body token
@@ -1109,10 +1182,8 @@ func (es *EmitState) stackAtStart(tok int) ([]core.Value, bool) {
 	if tok < 0 || tok >= len(es.rootBody) {
 		return nil, false
 	}
-	if p := es.rootBody[tok].Pos(); p.Row > 0 {
-		if stack, told := es.rootStmtStacks[p]; told {
-			return stack, true
-		}
+	if stack, told := es.toldAt(tok); told {
+		return stack, true
 	}
 	s := tok
 	for s > 0 && !core.IsEnd(es.rootBody[s-1]) {
@@ -1338,9 +1409,11 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 		if tok < 0 {
 			continue
 		}
+		from := tok
 		tok = defsBefore(tree, rec.body, tok, stopPos(at.ev))
 		d := deoptPoint{seq: seq, slot: -1, start: statementStart(rec.body, tok), token: tok, restart: true}
-		if d.start.Row == 0 || es.deoptDeferred(u, rec, &d, -1) || outsProducedBefore(rec.outOps, statementFirstSeq(tree, seq, d.start)) {
+		d.leftovers, d.defBound = defLeftovers(tree, rec.body, from, tok)
+		if d.start.Row == 0 || es.deoptDeferred(u, rec, &d, -1) || outsProducedBefore(rec.outOps, statementFirstSeq(tree, seq, d.start), d.leftovers) {
 			continue
 		}
 		substs, first, reruns := es.restartReruns(tree, at, seq, rec.body, tok)
@@ -1353,7 +1426,7 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 	}
 	// The unit's branch guards (NUR292), as the root's (planGuardRestarts).
 	for _, g := range branchGuards(tree) {
-		if d, ok := es.guardPoint(u, rec, tree, g); ok && !outsProducedBefore(rec.outOps, statementFirstSeq(tree, g.seq, d.start)) {
+		if d, ok := es.guardPoint(u, rec, tree, g); ok && !outsProducedBefore(rec.outOps, statementFirstSeq(tree, g.seq, d.start), nil) {
 			rec.deopts = append(rec.deopts, d)
 		}
 	}
@@ -1369,7 +1442,7 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 			continue
 		}
 		d := deoptPoint{seq: seq, slot: -1, start: rec.body[tok].Pos(), token: tok, restart: true, count: true, substs: substs}
-		if d.start.Row > 0 && !es.deoptDeferred(u, rec, &d, -1) && !outsProducedBefore(rec.outOps, statementFirstSeq(tree, seq, d.start)) {
+		if d.start.Row > 0 && !es.deoptDeferred(u, rec, &d, -1) && !outsProducedBefore(rec.outOps, statementFirstSeq(tree, seq, d.start), nil) {
 			rec.deopts = append(rec.deopts, d)
 		}
 	}
@@ -1387,10 +1460,11 @@ func sortedSeqs(tree map[int]treeEvent) []int {
 
 // outsProducedBefore reports whether a unit's residual holds a result an
 // event recorded before firstSeq produced: the unit may keep it in a frame
-// slot until its RET, where the island would not find it.
-func outsProducedBefore(outs []EmitOperand, firstSeq int) bool {
+// slot until its RET, where the island would not find it — unless it is a
+// def's leftover the island seats from that slot (deoptPoint.leftovers).
+func outsProducedBefore(outs []EmitOperand, firstSeq int, seated []producer) bool {
 	for _, op := range outs {
-		if op.kind == opEvent && op.idx < firstSeq {
+		if op.kind == opEvent && op.idx < firstSeq && !slices.Contains(seated, producer{seq: op.idx, idx: op.resIdx}) {
 			return true
 		}
 	}
@@ -1464,12 +1538,49 @@ func (lw *lowerer) noteRestartDepth(r *landingRestart, p core.SrcPos) {
 		r.unseatable = true
 		return
 	}
+	frame, lefts, ok := lw.defLeftoverSrcs(r)
+	if !ok {
+		r.unseatable = true
+		return
+	}
 	for _, slot := range params {
 		r.srcs = append(r.srcs, RestartSrc{Kind: RestartLocal, Idx: slot})
 	}
-	for i := 0; len(params) > 0 && i < r.depth; i++ {
-		r.srcs = append(r.srcs, RestartSrc{Kind: RestartStack, Idx: i})
+	if len(params) > 0 || len(frame) != r.depth || len(lefts) > 0 {
+		r.srcs = append(r.srcs, frame...)
 	}
+	r.srcs = append(r.srcs, lefts...)
+}
+
+// defLeftoverSrcs seats a unit island's frame region past the defs its
+// statement opens with (landingRestart.leftovers): the compiled frame may
+// still hold a value such a def bound, which the interpreter's def took, so
+// frame lists every other entry; lefts are the leftovers the compiled code
+// promoted to slots instead, which sit above everything the frame held
+// before the statement — seated only over a frame region that holds nothing
+// else, whose order they cannot break. ok is false for a leftover held
+// nowhere.
+func (lw *lowerer) defLeftoverSrcs(r *landingRestart) (frame, lefts []RestartSrc, ok bool) {
+	onFrame := map[producer]bool{}
+	for i := 0; i < r.depth; i++ {
+		p := producer(lw.vm[i])
+		if p.seq >= 0 && slices.Contains(r.defBound, p) {
+			continue
+		}
+		onFrame[p] = true
+		frame = append(frame, RestartSrc{Kind: RestartStack, Idx: i})
+	}
+	for _, lo := range r.leftovers {
+		if onFrame[lo] {
+			continue
+		}
+		slot, promoted := lw.promoted[lo.seq]
+		if !promoted || len(frame) > 0 {
+			return nil, nil, false
+		}
+		lefts = append(lefts, RestartSrc{Kind: RestartLocal, Idx: slot + lo.idx})
+	}
+	return frame, lefts, true
 }
 
 // restartAnchor is where root event ev stands in its statement for the
