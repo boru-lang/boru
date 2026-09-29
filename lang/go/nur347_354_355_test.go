@@ -1,6 +1,9 @@
 package lang
 
 import (
+	"fmt"
+	"os"
+	"path/filepath"
 	"strings"
 	"testing"
 )
@@ -209,5 +212,85 @@ func TestNUR347ClosureInRuntimeMapAnchor(t *testing.T) {
 		{mk + `def m {f: h/v} end def g m.f end each g/v [5]`, "g", "1:134"},
 	} {
 		anchoredOnBothLanes(t, c.src, c.name, c.at)
+	}
+}
+
+// TestNUR354PublishedIndexLeavesNoTrail pins the review of #524's first
+// finding: a published loop's dyn-bind trail entry guards the index only
+// while the loop runs. It stayed on the trail past the loop's exit, and a
+// raise after the loop replayed it over the name's later binding, so the
+// next run on the same Boru (a REPL's continuation) found no `i` where the
+// interpreter keeps 7. The exit — exhausted or broken, a nested loop's too —
+// now retires the entry and the body's re-publishes of the index; a raise
+// INSIDE the loop still pops what the loop installed.
+func TestNUR354PublishedIndexLeavesNoTrail(t *testing.T) {
+	const mk = `def mk fn [[][List][quote [i]]] end `
+	for _, c := range []struct{ first, then, want string }{
+		{mk + `for 1 [do (mk)] end def i 7 end raise 'x'`, `i`, "[7]"},
+		{mk + `for 1 [(do (mk))] end def i 7 end raise 'x'`, `i`, "[7]"},
+		{mk + `for 2 [def i 9 do (mk)] end def i 7 end raise 'x'`, `i`, "[7]"},
+		{mk + `def i 5 end for 2 [def i 9 do (mk)] end def i 7 end def i 8 end raise 'x'`, `i`, "[8]"},
+		{mk + `for 2 [for 2 [do (mk)] end] end def i 7 end raise 'x'`, `i`, "[7]"},
+		{mk + `for 3 [do (mk) break] end def i 7 end raise 'x'`, `i`, "[7]"},
+		{mk + `def i 5 end for 2 [for 3 [do (mk) break] end] end def i 7 end raise 'x'`, `i`, "[7]"},
+		// A raise inside the loop: the loop's install goes with it.
+		{mk + `def i 5 end for 2 [do (mk) (raise 'x')] end`, `i`, "[5]"},
+		{mk + `def i 5 end for 2 [for 2 [do (mk) (raise 'x')] end] end`, `i`, "[5]"},
+		// Negative: no loop, no trail — the later binding stands.
+		{`def i 7 end raise 'x'`, `i`, "[7]"},
+	} {
+		c1, i1 := mustNew(t), mustNew(t)
+		firstC, compiled, errC := c1.RunCompiled(c.first)
+		firstI, errI := i1.RunInterp(c.first)
+		if !compiled || errI == nil || fmt.Sprint(firstC, errC) != fmt.Sprint(firstI, errI) {
+			t.Errorf("%s: compiled %v / %v (compiled=%v), interp %v / %v", c.first, firstC, errC, compiled, firstI, errI)
+			continue
+		}
+		gotC, compiled, errC := c1.RunCompiled(c.then)
+		gotI, errI := i1.RunInterp(c.then)
+		if !compiled || errC != nil || errI != nil || fmt.Sprint(gotC) != c.want || fmt.Sprint(gotI) != c.want {
+			t.Errorf("%s, then %s: compiled %v / %v (compiled=%v), interp %v / %v, want %s", c.first, c.then, gotC, errC, compiled, gotI, errI, c.want)
+		}
+	}
+}
+
+// TestNUR355FileModuleFlowSource pins the review of #524's second finding: a
+// break/continue that leaves a FILE-backed module's fn is the report of the
+// module's own engine, rendered against the module's source — at its own
+// token (`break 1`'s `1`), or at the calling word's position where it has
+// none, as the interpreter's report stands. The compiled report took the
+// importing program's source and rendered the module's position over the
+// import line.
+func TestNUR355FileModuleFlowSource(t *testing.T) {
+	const g = "export \"Lib\" {g: g/v}\n"
+	for _, c := range []struct{ lib, src, at string }{
+		{"def g fn [[] [Any] [break 1]]\n" + g, `import "./lib.boru" Lib.g 5`, "1:27"},
+		{"def g fn [[] [Any] [break]]\n" + g, `import "./lib.boru" Lib.g 5`, "1:21"},
+		{"def g fn [[b:List] [Any] [do b]]\n" + g, `import "./lib.boru" Lib.g (quote [1 break])`, "1:35"},
+		{"def mk fn [[] [List] [quote [7 break]]]\ndef g fn [[] [Any] [do (mk)]]\n" + g, `import "./lib.boru" Lib.g`, "1:30"},
+		{"def h fn [[] [Any] [continue 9]]\ndef g fn [[] [Any] [h 2]]\n" + g, `import "./lib.boru" Lib.g`, "1:30"},
+	} {
+		dir := t.TempDir()
+		if err := os.WriteFile(filepath.Join(dir, "lib.boru"), []byte(c.lib), 0o644); err != nil {
+			t.Fatal(err)
+		}
+		lane := func() *Boru {
+			a, err := New(Options{BaseDir: dir})
+			if err != nil {
+				t.Fatal(err)
+			}
+			return a
+		}
+		gotC, compiled, errC := lane().RunCompiled(c.src)
+		gotI, errI := lane().RunInterp(c.src)
+		if !compiled || errC == nil || errI == nil || errC.Error() != errI.Error() {
+			t.Errorf("%s over %q:\n  compiled %v / %v (compiled=%v)\n  interp   %v / %v", c.src, c.lib, gotC, errC, compiled, gotI, errI)
+			continue
+		}
+		msg := errI.Error()
+		first, _, _ := strings.Cut(c.lib, "\n")
+		if !strings.Contains(msg, "flow_error") || !strings.Contains(msg, "--> "+c.at+"\n") || !strings.Contains(msg, "1 | "+first) {
+			t.Errorf("%s: want the report at %s over the module's first line, got %v", c.src, c.at, msg)
+		}
 	}
 }

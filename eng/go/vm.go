@@ -80,21 +80,46 @@ type vmLoop struct {
 	pubName  string
 	pubReg   *core.Registry
 	pubDepth int
+	// pubTrail is the index of the loop's own entry on the dyn-bind trail
+	// (forPublish): the loop's exit retires it, and the body's re-publishes
+	// above it, with the levels they guard (endPublish).
+	pubTrail int
 }
 
 // forPublish executes OpForPublish: the innermost open loop's index becomes
 // registry-visible (see the opcode's doc). The loop's entry depth rides the
-// dyn-bind trail, so a raise or a frame exit mid-loop pops what the loop
-// installed as they pop any frame binding.
+// dyn-bind trail while the loop runs, so a raise or a frame exit mid-loop
+// pops what the loop installed as they pop any frame binding; the loop's own
+// exit retires it (endPublish).
 func (vc *vmContext) forPublish(reg *core.Registry, p *compiler.Program, loops []vmLoop, arg int, debug []core.SrcPos, pc int) error {
 	name, err := p.Consts[arg].AsConcreteString()
 	if err != nil || len(loops) == 0 {
 		return vmErrAt(debug, pc, "FOR_PUBLISH without an open loop or a name const")
 	}
 	lp := &loops[len(loops)-1]
-	lp.pubName, lp.pubReg, lp.pubDepth = name, reg, reg.Defs.Depth(name)
+	lp.pubName, lp.pubReg, lp.pubDepth, lp.pubTrail = name, reg, reg.Defs.Depth(name), len(vc.dynBinds)
 	vc.dynBinds = append(vc.dynBinds, dynBindEntry{reg: reg, name: name, depth: lp.pubDepth})
 	return nil
+}
+
+// endPublish closes a published loop at its exit — exhausted or broken: the
+// index levels go (unpublish), and so do the trail entries that guarded them,
+// the loop's own and the body's re-publishes of the index, which are the
+// iteration's and end with it. Left on the trail, a raise AFTER the loop
+// replayed them over the name's later binding: `for 1 [do (mk)] end def i 7
+// end raise 'x'` left the registry without `i` where the interpreter keeps
+// 7 (the review of #524). Every other entry above keeps its place. A no-op
+// for an unpublished loop.
+func (vc *vmContext) endPublish(lp *vmLoop) {
+	if lp.pubName == "" {
+		return
+	}
+	lp.unpublish()
+	k := min(lp.pubTrail, len(vc.dynBinds))
+	kept := slices.DeleteFunc(vc.dynBinds[k:], func(e dynBindEntry) bool {
+		return e.reg == lp.pubReg && e.name == lp.pubName
+	})
+	vc.dynBinds = vc.dynBinds[:k+len(kept)]
 }
 
 // republish binds a published loop's index for the iteration FOR_NEXT enters:
@@ -4903,7 +4928,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				done = lp.cur <= lp.end
 			}
 			if done {
-				lp.unpublish()
+				vc.endPublish(lp)
 				var err error
 				if stack, err = vc.loopExitReStep(curReg, *lp, stack, curCode, curDebug, pc); err != nil {
 					return nil, err
@@ -5949,18 +5974,22 @@ func namedDispatchingFn(v core.Value) bool {
 // to re-enter. This is engine.go's handleLoopBreak / handleLoopContinue,
 // compiled. Split out of run to keep that switch under the complexity budget.
 func (vc *vmContext) flowSignal(op compiler.Opcode, frames []vmFrame, loops []vmLoop, locals, stack []core.Value, pc, curUnit int, debug []core.SrcPos, origin flowOrigin) ([]vmFrame, []vmLoop, []core.Value, []core.Value, int, int, error) {
-	if k := vc.moduleFlowBoundary(frames, len(loops)-1, curUnit); k >= 0 {
+	if k, callee := vc.moduleFlowBoundary(frames, len(loops)-1, curUnit); k >= 0 {
 		// The signal would leave a MODULE fn's call, which the interpreter
 		// runs on an engine of its own (CallBoru in the fn's registry): no
 		// loop outside the call takes it, and its `outside loop` report,
 		// positionless there, takes the calling word's position as it leaves
 		// the call (Engine.stampErrPos). The compiled loop outside took it
-		// (NUR355: `for 3 [L.useanon L.brk 1] 7` answered [7]).
+		// (NUR355: `for 3 [L.useanon L.brk 1] 7` answered [7]). The report
+		// is that engine's: it renders against the module's own source, the
+		// calling word's position included (the review of #524: a
+		// file-backed module's `break 1` at 1:27 was rendered over the
+		// importing line).
 		at := origin.pos(vc.flowExitAt(curUnit, pc))
 		if at.Row == 0 {
 			at = vc.unitDebugPos(frames[k].retUnit, frames[k].retPC-1)
 		}
-		return nil, nil, nil, nil, 0, 0, vc.flowOutsideLoop(op, at)
+		return nil, nil, nil, nil, 0, 0, vc.flowOutsideLoop(op, at, vc.unitReg(callee))
 	}
 	if len(loops) == 0 {
 		exit := vc.flowExitAt(curUnit, pc)
@@ -5970,7 +5999,7 @@ func (vc *vmContext) flowSignal(op compiler.Opcode, frames []vmFrame, loops []vm
 			// (vmContext.flowEscapes) — with its residual.
 			return nil, nil, nil, nil, 0, 0, &flowEscape{op: op, residual: hostedResidual(stack, frames, origin, exit)}
 		}
-		return nil, nil, nil, nil, 0, 0, vc.flowOutsideLoop(op, origin.pos(exit))
+		return nil, nil, nil, nil, 0, 0, vc.flowOutsideLoop(op, origin.pos(exit), vc.unitReg(curUnit))
 	}
 	target := len(loops) - 1
 	lp := loops[target]
@@ -5990,7 +6019,7 @@ func (vc *vmContext) flowSignal(op compiler.Opcode, frames []vmFrame, loops []vm
 	}
 	stack = stack[:lp.iterBase]
 	if op == compiler.OpFlowBreak {
-		lp.unpublish()
+		vc.endPublish(&lp)
 		code, reg := vc.unitCode(unit)
 		var err error
 		if stack, err = vc.loopExitReStep(reg, lp, stack, code, debug, pc); err != nil {
@@ -6046,20 +6075,20 @@ func (o flowOrigin) pos(exit compiler.FlowExit) core.SrcPos {
 // moduleFlowBoundary is the innermost of frames a break/continue would cross
 // on its way to the loop at index target (-1: none open) whose call ENTERS a
 // module fn's home (CompiledFn.Reg: the fn runs in its own registry, and its
-// caller in another module's — core.FnHomeForeign's test), or -1 when it
-// crosses none. frames[k]'s callee is the unit frames[k+1] returns from, and
+// caller in another module's — core.FnHomeForeign's test), with the unit the
+// call entered, or -1 when it crosses none. frames[k]'s callee is the unit frames[k+1] returns from, and
 // curUnit for the innermost; a module fn calling its module's own fn stays at
 // the one home, on the one engine, as the interpreter's body does, and so
 // does a unit a run-time stamp compiled on a fork of the program's registry.
-func (vc *vmContext) moduleFlowBoundary(frames []vmFrame, target, curUnit int) int {
+func (vc *vmContext) moduleFlowBoundary(frames []vmFrame, target, curUnit int) (int, int) {
 	callee := curUnit
 	for k := len(frames) - 1; k >= 0 && frames[k].loopBase > target; k-- {
 		if !vc.unitReg(callee).SameHome(vc.unitReg(frames[k].retUnit)) {
-			return k
+			return k, callee
 		}
 		callee = frames[k].retUnit
 	}
-	return -1
+	return -1, curUnit
 }
 
 // unitReg is the registry unit u's dispatches run on (the main code's for
@@ -6091,11 +6120,13 @@ func (vc *vmContext) flowExitAt(unit, pc int) compiler.FlowExit {
 }
 
 // flowOutsideLoop is the interpreter's report for a break/continue no loop
-// takes (Engine.exitWithFlowCtrl at the top of the run), at at: it used to
-// be an internal_error here, "flow signal with no enclosing loop" (NUR355).
-func (vc *vmContext) flowOutsideLoop(op compiler.Opcode, at core.SrcPos) error {
+// takes (Engine.exitWithFlowCtrl at the top of the run), at at, over the
+// source of reg — the registry of the engine the interpreter raises it on,
+// the program's or a module fn's: it used to be an internal_error here, "flow
+// signal with no enclosing loop" (NUR355).
+func (vc *vmContext) flowOutsideLoop(op compiler.Opcode, at core.SrcPos, reg *core.Registry) error {
 	ctrl := flowCtrlOf(op).String()
-	return core.MakeBoruErrorAt("flow_error", ctrl+" outside loop", ctrl, vc.r.Source, "", at)
+	return core.MakeBoruErrorAt("flow_error", ctrl+" outside loop", ctrl, reg.Source, "", at)
 }
 
 // hostedResidual is the residual a hosted token body's run hands back when a
