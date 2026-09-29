@@ -624,14 +624,18 @@ user still gets an answer while the case is open:
     rebuild seat a gradual root read (its NUR207 guard owns the fn case) and
     a call result held once; the pick/roll twins still decline.
 - **Open refusals recorded 2026-09-28:**
-  - A `case` clause block that is a bare FUNCTION word declines unless the
-    case sits bare (NUR342, a wrong answer on main before): the interpreter
-    re-steps the block at the case over its surroundings; the decline is
-    owed a lowering of that re-step.
-  - A parked paren-bounded fn-value apply over a container member with an
-    effect or a non-constant value (`({a:(print 1)} lam/v) print 2`)
-    declines (NUR337's remainder): the interpreter evaluates the member
-    after the next statement has run.
+  - A `case` clause block that is a bare FUNCTION word (NUR342, a wrong
+    answer on main before) compiles where the check pass decides the taken
+    clause (a known scalar scrutinee, pure scalar guards), or where the
+    case sits bare on the root stream or in its own fn frame (2026-09-29).
+    It still declines for a code-body scrutinee, a guard with an effect, a
+    raise, a word match or a non-comparison word, or a run-only scrutinee
+    with values around a non-bare case: that remainder is owed a lowering
+    of a run-time-chosen re-step.
+  - CLOSED 2026-09-29: a parked paren-bounded fn-value apply over a
+    container member with an effect (`({a:(print 1)} lam/v) print 2`,
+    NUR337's remainder) compiles — the decline was a false NUR121
+    collection-hazard mark on a forward-only collection.
 - **Open refusal recorded 2026-09-29:**
   - A trap under a dispatch whose operand is a run-time-counted region (a
     loop, or a count-varying branch) written after the word in a paren —
