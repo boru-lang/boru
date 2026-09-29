@@ -671,6 +671,14 @@ user still gets an answer while the case is open:
     unit with an apply chain or trailing apply. Some of these were silent
     wrong answers on main (`if c [8 m.f 7 eq] [0]` was `[8 false]` for
     `[true]`).
+  - `Rand.map-from` over a literal schema whose body binds a name declines
+    ("twin regime: a bind transition has no stream placement", NUR330,
+    2026-09-29): the generator's bodies are run-time token bodies the
+    compiled program does not model, and the def outlives the call on the
+    interpreter. This includes bodies whose binding is never read later
+    (`def k 5 Rand.map-from {a:[def k 1 k]} drop 0`), which compiled and
+    agreed before — the price of refusing the silent case. Bodies that bind
+    nothing compile as before.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
