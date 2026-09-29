@@ -571,7 +571,11 @@ var pinnedAritySites = map[string]int{
 	// re-step at the case can COLLECT from the values around it, which is
 	// how the argument rule reaches past the word. A block that can declines
 	// the sealed-arm desugar; every arity that collects is treated alike.
-	"basic/go/conditional.go": 1,
+	// The second (2026-09-29, NUR342 compiled) is no arity at all: a guard
+	// word the check pass may decide statically must declare NO code-body
+	// position (`len(NoEvalArgs) > 0` sizes the map of code-body slots) —
+	// it asks whether the word runs a body, and every arity is treated alike.
+	"basic/go/conditional.go": 2,
 	// The list re-step asks whether a fn value's first declared slot QUOTES
 	// (a `/q` slot captures the next word — NUR219, NUR295): the params
 	// presence test guards the index it reads. How the argument rule
