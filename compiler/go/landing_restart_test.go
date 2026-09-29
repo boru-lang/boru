@@ -67,7 +67,7 @@ func TestMethodSeqAndContains(t *testing.T) {
 	if !containsInt([]int{1, 2}, 2) || containsInt([]int{1, 2}, 3) {
 		t.Error("containsInt")
 	}
-	if !outsProducedBefore([]EmitOperand{{kind: opEvent, idx: 2}}, 3) || outsProducedBefore([]EmitOperand{{kind: opEvent, idx: 3}, {kind: opConst}}, 3) {
+	if !outsProducedBefore([]EmitOperand{{kind: opEvent, idx: 2}}, 3, nil) || outsProducedBefore([]EmitOperand{{kind: opEvent, idx: 3}, {kind: opConst}}, 3, nil) {
 		t.Error("outsProducedBefore reads the residual's event results recorded before the statement")
 	}
 }

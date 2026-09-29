@@ -1,6 +1,9 @@
 package lang
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // nur348_computed_body_test.go pins NUR348's close: two computed-body shapes
 // the compiled runtime deferred where the interpreter answers.
@@ -45,9 +48,61 @@ func TestNUR348LiveReadUnderATrap(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	// Still loud (never a wrong answer): the read in the body's own
-	// statement, whose first token the test would run before the body.
-	requireLoudDefer(t, mkList+`do (mk) x.0`, "left 0 value(s)", "[1]")
+}
+
+// TestNUR348TrapCountIsland: a computed body run before the program's
+// terminal trap, in the trap's own statement or beneath it. The trap is the
+// pass's proof over the bindings the model held, which the body may have
+// changed: `do (mk) x.0` over `def x 0` and a body binding x to [1 2] is a
+// static no-match to the pass and [1] interpreted, and it deferred loudly
+// compiled — the read's live point would test before the `do` it follows
+// ("do over a computed body left 0 value(s)"); a value beneath the run, a
+// run leaving a fn, and a run of one value past the trap's rematch deferred
+// the same way. Each root `do` over a computed body before the trap now
+// plans its count island whatever its seat, and its call takes it whatever
+// the run left (compiler planCountRestarts, SigRef.CountAlways): the
+// statement and the program after it run on the interpreter, the run
+// written in the do's place.
+func TestNUR348TrapCountIsland(t *testing.T) {
+	const mkFnRun = `def g fn [[][Integer][7]] end def x 0 end def mk fn [[][List][quote [def x [1 2] g/v]]] end `
+	for _, c := range []struct{ src, want string }{
+		{mkList + `do (mk) x.0`, "[1]"}, // the register's witness (the no-end twin)
+		{`def x 0 end def mk fn [[][List][quote [def x [1 2] 4]]] end do (mk) x.0`, "[4 1]"},
+		{`def x 0 end def mk fn [[][List][quote [def x [1 2] 4 5]]] end do (mk) x.0`, "[4 5 1]"},
+		{mkList + `5 end do (mk) end x.0`, "[5 1]"}, // a value beneath the run
+		{mkList + `5 do (mk) x.0`, "[5 1]"},
+		{mkFnRun + `5 end do (mk) end x.0`, "[5 7 1]"}, // a run leaving a fn
+		{mkFnRun + `do (mk) end x.0`, "[7 1]"},
+		{mkFnRun + `do (mk) x.0`, "[7 1]"},
+		{mkList + `[do (mk) x.0]`, "[[1]]"},
+		{mkList + `do (mk) x.0 x.1`, "[1 2]"},
+		{mkList + `3 add 4 end do (mk) x.0`, "[7 1]"},
+		{mkList + `def y 9 end do (mk) end y x.0`, "[9 1]"},
+		{mkList + `print "a" do (mk) x.0`, "[1]"},
+		{mkList + `do (mk) end print "b" end x.0`, "[1]"},
+		{`def x 0 end def mk fn [[][List][quote [print "hi" def x [1 2]]]] end do (mk) x.0`, "[1]"},
+		{`def x 0 end def mk fn [[][List][quote [def x [1 2] undef mk]]] end do (mk) x.0`, "[1]"},
+		// The trap raises where the body left what the model held: the
+		// interpreter's raise, caret and all.
+		{`def x 0 end def mk fn [[][List][quote [4]]] end do (mk) x.0`, "ERROR:cannot call `dot`"},
+		{mkList + `do (mk) end keys 5`, "ERROR:cannot call `keys`"},
+		{mkList + `do (mk) x.0 end keys 5`, "ERROR:cannot call `keys`"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	if dis := compileDisasm(t, mkList+`do (mk) x.0`); !strings.Contains(dis, "[count island, always]") {
+		t.Errorf("the do before the trap takes its count island always; got:\n%s", dis)
+	}
+	// The negative half: a trap no computed body precedes keeps its own
+	// raise, and a do before no trap takes its island only when the run
+	// needs it.
+	agreeOnBothLanes(t, `def x 0 end x.0`, "ERROR:cannot call `dot`")
+	// A do whose statement's stack the pass did not tell (the program's
+	// first statement) plans no island, and the trap keeps its raise.
+	agreeOnBothLanes(t, `do (reverse [4 5]) end def x 0 end x.0`, "ERROR:cannot call `dot`")
+	if dis := compileDisasm(t, mkList+`do (mk) end x`); strings.Contains(dis, "count island, always") {
+		t.Errorf("a do before no trap takes no unconditional island; got:\n%s", dis)
+	}
 }
 
 // TestNUR348SpliceResult: a `do` over a literal body that reads a `word`
@@ -93,7 +148,35 @@ func TestNUR348SpliceResult(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	// A computed body's splice result is no marker the pass stepped: the
-	// screen's loud defer, as before, never the marker as data.
-	requireLoudDefer(t, w+`def mk fn [[][List][quote [w/v]]] end do (mk)`, "tape-coupled handler result at do", "[1 2]")
+}
+
+// TestNUR348ComputedSpliceResult: a computed body whose run leaves a splice.
+// The interpreter splices the do's results back in its place and steps them,
+// so the marker fires there; the pass never saw it, and the compiled `do`'s
+// screen deferred ("tape-coupled handler result at do"). A `do` over a
+// computed body now plans its count island whatever its seat (compiler
+// planCountRestarts), which a tape-coupled run takes: the statement runs
+// again on the interpreter, the run written in the do's place.
+func TestNUR348ComputedSpliceResult(t *testing.T) {
+	const w = `def w word [1 2] end `
+	const mk = w + `def mk fn [[][List][quote [w/v]]] end `
+	for _, c := range []struct{ src, want string }{
+		{mk + `do (mk)`, "[1 2]"}, // the register's witness
+		{mk + `do (mk) end`, "[1 2]"},
+		{mk + `5 do (mk)`, "[5 1 2]"},
+		{mk + `do (mk) add 3`, "[1 5]"},
+		{mk + `do (mk) end 3`, "[1 2 3]"},
+		{mk + `[do (mk)]`, "[[1 2]]"},
+		{mk + `do (mk) end keys 5`, "ERROR:cannot call `keys`"},
+		{w + `def mk fn [[][List][quote [w/v 9]]] end do (mk)`, "[1 2 9]"},
+		{`def w word [1 add] end def mk fn [[][List][quote [w/v]]] end 5 do (mk)`, "[6]"},
+		// The negative half: a run of plain values seats as it did.
+		{`def mk fn [[][List][quote [1 2]]] end do (mk) end 3`, "[1 2 3]"},
+		{`def w 5 end def mk fn [[][List][quote [w/v]]] end do (mk)`, "[5]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// A fn unit's do plans no count island (the root's walk plans them): its
+	// run's splice keeps the screen's defer, loud, never the marker as data.
+	requireLoudDefer(t, w+`def f fn [[b:List][Any][do b]] end f (quote [w/v])`, "tape-coupled handler result at do", "ERROR:expected 1 return value(s), got 2")
 }

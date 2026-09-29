@@ -353,6 +353,57 @@ func (dt *DefTable) SnapshotEntries() EntriesSnapshot {
 	return s
 }
 
+// ChangedSince reports whether the table's bindings differ from the
+// SnapshotEntries capture s: a name bound or unbound since, or a stack whose
+// depth or entries moved. Only names whose GENERATION moved are compared, and
+// a region that pushed and popped back (a fn call's frame) leaves the entries
+// beneath untouched, so it reads unchanged; a pop followed by a push at the
+// same depth reads changed unless it re-bound the very same value
+// (sameDefEntry). The check pass's const fold asks it: a fold stands in for a
+// pure computation, and one whose run changed a binding is not one (NUR330).
+func (dt *DefTable) ChangedSince(s EntriesSnapshot) bool {
+	if dt == nil || !s.valid {
+		return false
+	}
+	for name := range dt.stacks {
+		if _, ok := s.stacks[name]; !ok {
+			return true
+		}
+	}
+	for name, want := range s.stacks {
+		if dt.gen[name] == s.gens[name] {
+			continue
+		}
+		got := dt.stacks[name]
+		if len(got) != len(want) {
+			return true
+		}
+		for i := range got {
+			if !sameDefEntry(got[i], want[i]) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// sameDefEntry reports whether two entries are one binding: the same type
+// half and the same body — the same value identity, source token and type,
+// and the same container (SameContainer) or canonical content.
+func sameDefEntry(a, b DefEntry) bool {
+	if a.TypeDef != b.TypeDef || a.Minted != b.Minted {
+		return false
+	}
+	x, y := a.Body, b.Body
+	if x.ID != y.ID || x.Parent != y.Parent || x.pos != y.pos {
+		return false
+	}
+	if HasContainerIdentity(x) || HasContainerIdentity(y) {
+		return SameContainer(x, y)
+	}
+	return CanonValue(x) == CanonValue(y)
+}
+
 // RestoreEntriesSnapshot restores the table to a SnapshotEntries capture, in
 // place. Only names whose GENERATION moved since the snapshot are touched —
 // the per-name gen counter records every mutation, so an untouched name needs

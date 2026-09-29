@@ -746,8 +746,10 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 	// A nameless value answers its contract at its OWN position, which a
 	// word that handed it back gave it (stampFnResultPos: `m.f` over a
 	// stored factory lambda, 1:88 on both lanes) where the push's
-	// construction anchor had none (NUR347).
-	if p := body.Pos(); p.Row != 0 && cl.RetName == "" {
+	// construction anchor had none (NUR347). So does a named one its binding
+	// left without an anchor, at the `/v` read that handed it to the call
+	// (stampFnArgPos): `each h/v [5]` over `def h (mk 1)` answers at `h/v`.
+	if p := body.Pos(); p.Row != 0 && (cl.RetName == "" || cl.RetPos.Row == 0) {
 		cl.RetPos = p
 	}
 	// A fn-VALUE closure — a capturing `fn` / `=>` literal minted at run
@@ -1139,7 +1141,7 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 		// the interpreter's signature_error, raised here — the arity retry
 		// below reads a narrower window as the stack top, which is not how
 		// the interpreter collects one.
-		if err := polySplitRaise(r, pr, fn, window, curDebug, pc); err != nil {
+		if err := polySplitRaise(r, pr, fn, pr.RenderWindow(window), curDebug, pc); err != nil {
 			return nil, err
 		}
 		// The recorded count is the check pass's PICK over a gradual
@@ -1173,13 +1175,13 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 		// the canonical error — sound because the interpreter takes the SAME
 		// MatchSignature first-match and so reaches the same no-match.
 		if mr == nil || mr.Sig == nil {
-			if err := vc.polyNoMatchRaise(r, pr, fn, window, curDebug, pc); err != nil {
+			if err := vc.polyNoMatchRaise(r, pr, fn, pr.RenderWindow(window), curDebug, pc); err != nil {
 				return nil, err
 			}
 		}
 		return nil, vmDeferAlt(r, curDebug, pc, "vm:poly-no-match",
 			"CALL_NATIVE_POLY no match for "+pr.Word+"; the compiled runtime cannot execute it for the canonical signature_error",
-			bestEffortNoMatch(r, fn, pr.Word, window, curDebug, pc))
+			bestEffortNoMatch(r, fn, pr.Word, pr.RenderWindow(window), curDebug, pc))
 	}
 	return vc.polyDispatch(dispReg, pr, mr.Sig, mr.Args, n, stack, curDebug, pc)
 }
@@ -1271,6 +1273,37 @@ func stampFnPos(v core.Value, debug []core.SrcPos, pc int) core.Value {
 	}
 	v.SetPos(debug[pc])
 	return v
+}
+
+// stampFnArgPos gives each positionless NAMED fn value among a native call's
+// args the position its `/v` read was written at (SigRef.FnArgPos, sig
+// order). The interpreter's read stamps the value with its token
+// (stepWordVal), and a callback word raises the value's return contract
+// there: `each h/v [5]` over `def h (mk 1)` reports at `h/v` interpreted and
+// reported "source position unknown" compiled, the read being a slot push
+// and the binding having dropped the value's own position (NUR347). A
+// nameless value keeps its own anchor rule (the construction token, or a
+// word's stamp — stampFnResultPos), and a value with a position keeps it.
+func stampFnArgPos(args []core.Value, at []core.SrcPos) {
+	for i := range at {
+		if i >= len(args) || at[i].Row == 0 || args[i].Pos().Row != 0 || !namedFnValue(args[i]) {
+			continue
+		}
+		args[i].SetPos(at[i])
+	}
+}
+
+// namedFnValue reports whether v is a fn value a binding names: a closure
+// its def or param renamed (RetName, which also cleared its construction
+// anchor — nameClosureValue), or a named fn definition.
+func namedFnValue(v core.Value) bool {
+	switch d := v.Data.(type) {
+	case core.ClosurePayload:
+		return d.RetName != "" && d.RetPos.Row == 0
+	case core.FnDefInfo:
+		return d.Name != ""
+	}
+	return false
 }
 
 // matchUserPoly resolves one OpCallUserPoly dispatch: it re-derives the
@@ -1680,6 +1713,25 @@ func (vc *vmContext) reStepLanding(reg *core.Registry, arg, frameBase int, stack
 		if lword.Restart {
 			// Its statement island runs the re-step as the interpreter does.
 			return vc.landingRestart(reg, lword, frameBase, stack, curDebug, pc)
+		}
+		if arg&compiler.LandingBeneathHeld != 0 {
+			// The program's last op, over the frame region the interpreter
+			// holds beneath the value, with nothing after it to collect
+			// (NUR344): its step over them is the no-match verdict's to
+			// answer, and otherwise the island's — the step itself, whose
+			// residual is the program's.
+			beneath := stack[frameBase:top]
+			switch verdict, fd := fnValueStepVerdict(reg, v, beneath, nil); verdict {
+			case noMatchPark:
+				return stack, nil, nil
+			case noMatchRaise:
+				return nil, nil, stampAt(uncalledAt(reg, v, fd, beneath), curDebug, pc, reg)
+			}
+			results, err := runIslandResolved(reg, beneath, []core.Value{v})
+			if err != nil {
+				return nil, nil, stampAt(err, curDebug, pc, reg)
+			}
+			return append(stack[:frameBase], results...), nil, nil
 		}
 		return nil, nil, vmErrAt(curDebug, pc, "a landed fn value takes arguments: the interpreter re-steps it here over the values beneath it, and no compiled apply re-steps it (NUR286)")
 	}
@@ -2788,13 +2840,20 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 	for i := 0; i < n; i++ {
 		args[i] = stack[top-1-i]
 	}
-	restart := func() ([]core.Value, *dynEnter, error) {
+	restart := func(survivors bool) ([]core.Value, *dynEnter, error) {
 		if !vc.firstIteration(spec.FirstIter) {
 			return nil, nil, laterIterationDefer(reg, curDebug, pc)
 		}
 		// The lead's own run (compiler's parenLead) is written as the value
-		// the apply found.
-		island, err := vc.substIsland(spec.Island, spec.Substs, []core.Value{fnVal}, frameBase, stack, curDebug, pc)
+		// the apply found; with survivors, the paren as the values its close
+		// re-steps (survivorIsland).
+		var island []core.Value
+		var err error
+		if survivors {
+			island, err = vc.survivorIsland(spec, append([]core.Value{fnVal}, args...), frameBase, stack, curDebug, pc)
+		} else {
+			island, err = vc.substIsland(spec.Island, spec.Substs, []core.Value{fnVal}, frameBase, stack, curDebug, pc)
+		}
 		if err != nil {
 			return nil, nil, err
 		}
@@ -2866,7 +2925,16 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		case named && !namedRuns(fnVal):
 			return nil, nil, vc.namedMissRaise(spec, fnVal, args, curDebug, pc)
 		case spec.Restart && spec.LeadUnrun:
-			return restart()
+			return restart(false)
+		case spec.Restart && !named && n > 0 && survivorParen(spec.Substs) != nil:
+			// The paren has run everything it holds, the lead the landing
+			// before it left included (`(m.f y) 9` over a lambda of two
+			// Integers, parked where the word y stopped its walk): the
+			// interpreter's close lands on the lead of its survivors and steps
+			// each — the lead over the 42 and the 9 after the paren, 33 — which
+			// the island writes in the paren's place (survivorIsland). Nothing
+			// the paren ran runs again: its values are written as they are.
+			return restart(true)
 		case spec.Place && !vc.placesAlone(fnVal, args, base == frameBase && pc+1 >= len(vc.p.Code)):
 			return nil, nil, vmDefer(vc.r, curDebug, pc, "vm:paren-lead-misses-window", "shaped method apply "+spec.Word+
 				": no signature of the lead takes the paren's values, and the interpreter's paren may reach beneath it or past it; the compiled runtime cannot execute it")
@@ -2901,7 +2969,7 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 			return append(placed, args...), nil, nil
 		}
 		if spec.Restart {
-			return restart()
+			return restart(false)
 		}
 		return nil, nil, vmDefer(vc.r, curDebug, pc, "vm:shaped-method-not-appliable", "shaped method apply "+spec.Word+
 			": value is not an appliable function at run time; the compiled runtime cannot execute it")
@@ -2987,6 +3055,67 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		return nil, nil, stampAt(err, curDebug, pc, reg)
 	}
 	return guard(results)
+}
+
+// survivorParen is the path of the paren a shaped apply's lead stands first
+// in, read off its statement island's substitutions: the lead's own, the
+// value the apply finds (RestartGuard), at the paren's first token. Nil where
+// the island writes the lead no such way.
+func survivorParen(substs []compiler.RestartSubst) []int {
+	for _, sb := range substs {
+		if n := len(sb.Path); sb.Src.Kind == compiler.RestartGuard && n > 1 && sb.Path[n-1] == 0 {
+			return sb.Path[:n-1]
+		}
+	}
+	return nil
+}
+
+// survivorIsland is a shaped apply's statement island with its paren written
+// as the values the paren leaves — the lead the apply found (one the landing
+// before it parked, or its run), then the values after it in the order
+// written (survivors): the interpreter's paren close lands its rewind on the
+// lead of more than one survivor and steps each (fnReturnPark), so the
+// island steps them where the paren stood. The island's other substitutions
+// stand, those inside the paren aside: its values are the survivors.
+// Substitutions are sorted by path, and each is written last to first, as
+// substIsland writes them, so no earlier path moves.
+func (vc *vmContext) survivorIsland(spec *compiler.DynMethodSpec, survivors []core.Value, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	paren := survivorParen(spec.Substs)
+	var before, after []compiler.RestartSubst
+	for _, sb := range spec.Substs {
+		switch {
+		case pathHasPrefix(sb.Path, paren):
+		case pathBefore(sb.Path, paren):
+			before = append(before, sb)
+		default:
+			after = append(after, sb)
+		}
+	}
+	island, err := vc.substIsland(spec.Island, after, nil, frameBase, stack, curDebug, pc)
+	if err != nil {
+		return nil, err
+	}
+	island, ok := substToken(island, paren, 1, survivors...)
+	if !ok {
+		return nil, vmErrAt(curDebug, pc, "bad statement-island substitution")
+	}
+	return vc.substIsland(island, before, nil, frameBase, stack, curDebug, pc)
+}
+
+// pathHasPrefix reports whether token path p lies under prefix.
+func pathHasPrefix(p, prefix []int) bool {
+	return len(p) >= len(prefix) && slices.Equal(p[:len(prefix)], prefix)
+}
+
+// pathBefore reports whether token path a comes before b in the tokens'
+// order, neither lying under the other.
+func pathBefore(a, b []int) bool {
+	for i := 0; i < len(a) && i < len(b); i++ {
+		if a[i] != b[i] {
+			return a[i] < b[i]
+		}
+	}
+	return false
 }
 
 // fnReadCallUser runs a CALL_USER whose arguments put a fn in a slot the
@@ -4683,6 +4812,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				// order-independent — see design/OPEN-WORDS.1.md §9.
 				args[i] = core.StripAscribed(stack[len(stack)-1-i])
 			}
+			stampFnArgPos(args, s.FnArgPos)
 			// A guard's statement island writes the guarded value as the
 			// program holds it (SigRef.Restart, NUR292).
 			var guarded core.Value
@@ -4753,13 +4883,19 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// code-splicing words. Fail loudly, never push tokens as
 			// data. A `do` whose splice results the pass fired seats
 			// the run without them (vm_splice_outs.go, NUR348).
+			// A run its count island takes (SigRef.Count) is written back on
+			// the island's tape in the do's place, where the interpreter's
+			// step takes a splice or a fn value among it: so a tape-coupled
+			// run takes the island, as does a run the plain seat refuses and
+			// every run of a CountAlways call.
+			stepped := s.Count != nil && (s.CountAlways || tapeCoupled(results) || (s.DynBodyPlain && dynBodyPlainRefuses(results)))
 			if kept, ok := spliceOutsSeat(s.SpliceOuts, results); ok {
 				results = kept
-			} else if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil {
+			} else if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil && !stepped {
 				return nil, err
 			}
 			stampFnResultPos(results, curDebug, pc)
-			if (s.CountCheck && len(results) != s.CountClaim) || (s.DynBodyOne && s.Count != nil && dynBodyOneRefuses(results)) {
+			if stepped || (s.CountCheck && len(results) != s.CountClaim) || (s.DynBodyOne && s.Count != nil && dynBodyOneRefuses(results)) {
 				// A do whose run's count the program's seat does not hold
 				// (SigRef.CountCheck, NUR222): its statement runs again, the
 				// run written in the do's place — or, with no island, a

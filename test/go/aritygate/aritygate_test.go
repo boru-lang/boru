@@ -119,8 +119,11 @@ var pinnedAritySites = map[string]int{
 	// (`TotalArgs() == 0`), which takes no window and so cannot be the
 	// narrower one that fits the stack beneath the word. Both ask which
 	// window the matcher's own rule collects, never what a fn does by its
-	// count.
-	"core/go/engine.go":      32,
+	// count. 32 -> 33 (NUR329, 2026-09-29): forwardReach clamps a
+	// signature's barrier to its argument count (`b > s.TotalArgs()`) —
+	// the forward/stack split the argument rule makes, read to know how
+	// many written operands a forward phase may take.
+	"core/go/engine.go":      33,
 	"core/go/region_diag.go": 1,
 	// NUR242 (2026-09-26): the exact layout is published only for a PLAIN
 	// dispatching word (`w.ArgCount != -1` rules out an `/N` modifier), since

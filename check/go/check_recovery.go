@@ -414,10 +414,21 @@ func exprRefsCarrier(e *core.Engine, items []core.Value) bool {
 // concreteEvalOnce runs items in a throwaway sub-engine with check mode OFF (so
 // the result is a real value, not a carrier, and nothing is recorded into the
 // parent's emit state) and returns the single concrete residual. The def stack
-// is snapshotted and restored so a stray binding cannot leak into the compile.
+// is snapshotted and restored exactly (the content-preserving pair: a pop or a
+// same-depth rebind inside the run is undone too) so a stray binding cannot
+// leak into the compile.
+//
+// A run that CHANGED a binding declines: the fold is a stand-in for a pure
+// computation, and the interpreter's evaluation of the same tokens keeps
+// that change — a map literal's value `[def k 1 k]` evaluated as a word's
+// argument binds k for the rest of the program — where the folded constant
+// the compiled program pushes changes nothing, so every later read of the
+// name answered the binding from before (NUR330: `def k 5 size {a:[def k 1
+// k]} k` compiled to [1 5] for the interpreter's [1 1]). Declined, the
+// expression records as it runs, its binding change with it.
 func concreteEvalOnce(e *core.Engine, items []core.Value) (core.Value, bool) {
 	r := e.Registry
-	snap := r.Defs.Snapshot()
+	snap := r.Defs.SnapshotEntries()
 	prev := r.Check.Mode
 	r.Check.Mode = false
 	// C4 attribution: this concrete sub-run IS the check pass (the const
@@ -427,8 +438,9 @@ func concreteEvalOnce(e *core.Engine, items []core.Value) (core.Value, bool) {
 	res, err := core.RunPooledSub(r, append([]core.Value(nil), items...), false)
 	restoreAtt()
 	r.Check.Mode = prev
-	r.Defs.Restore(snap)
-	if err != nil || len(res) != 1 || !core.IsConcrete(res[0]) {
+	changed := r.Defs.ChangedSince(snap)
+	r.Defs.RestoreEntriesSnapshot(snap)
+	if changed || err != nil || len(res) != 1 || !core.IsConcrete(res[0]) {
 		return core.Value{}, false
 	}
 	return res[0], true

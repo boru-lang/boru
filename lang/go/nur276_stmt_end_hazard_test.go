@@ -18,9 +18,10 @@ func TestNUR276RunIsNoHazardAcrossAStatementEnd(t *testing.T) {
 	} {
 		requireEngineParity(t, src, true)
 	}
-	// A binding body reads live (NUR282), and a run leaving a fn value is
-	// the plain-run check's loud defer (NUR213), end or no end.
+	// A binding body reads live (NUR282), and a run leaving a fn value takes
+	// the do's count island (NUR348; it was the plain-run check's loud
+	// defer, NUR213), end or no end.
 	requireEngineParity(t, sv+`def mk fn [[][List][quote [def s 'b']]] end do (mk) end s size`, true)
-	requireCheckedPlainDefer(t, sv+`def mk fn [[][List][quote [([x:String] => [x size])]]] end do (mk) end s size`, "[fn (String) 1]")
-	requireCheckedPlainDefer(t, sv+`def mk fn [[][List][quote [([x:String] => [x size])]]] end do (mk) s size`, "[1]")
+	agreeOnBothLanes(t, sv+`def mk fn [[][List][quote [([x:String] => [x size])]]] end do (mk) end s size`, "[fn (String) 1]")
+	agreeOnBothLanes(t, sv+`def mk fn [[][List][quote [([x:String] => [x size])]]] end do (mk) s size`, "[1]")
 }

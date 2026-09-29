@@ -687,6 +687,36 @@ user still gets an answer while the case is open:
     args stack on the program's registry where the module's `args` reads its
     own. The importer-side call compiled correctly before; the inside-module
     call was a silent wrong answer. Owed: per-registry args frames in the VM.
+- **Open refusals recorded 2026-09-29 (the body-map pass):**
+  - `Rand.map-from` over a schema held as a carrier (a Map or List param)
+    whose body binds a name the calling fn does not define declines
+    ("residual value of unknown provenance" / the arm-read decline): the
+    interpreter keeps that def past the fn's frame and the compiled frame
+    unwinding does not. This includes `f {a:[1]} k` over such an `f`, which
+    compiled before. Where the fn defines the name first it compiles.
+  - A map-from body that reads an open counted loop's index (by name, or any
+    computed or opaque body inside a counted loop) declines, as does a body
+    that escapes with break/continue outside any compiled loop at the root
+    (NUR353): the index lives in a frame slot a run-time token body cannot
+    resolve, and the interpreter's flow_error position depends on its tape.
+  - A runtime rematch after a branch whose arm holds an effect or a binding
+    (`each (if c [[print "z" 1]] [3]) [2]`, an arm `[def q 3 q]`) declines
+    ("(NUR343)"): no island can re-run the arm, and seating the branch's
+    value is unsound because the model evaluates an arm's pending list
+    eagerly (NUR356). Includes `def c false end each (if c [[print "z" 1]] [3]) [2]`,
+    which compiled and agreed before.
+  - A raise the model meets evaluating a list literal an arm leaves pending
+    (`each (if c [[dup]] [3]) [2 3]`, NUR352 #2; `(if c [[dup]] [3]) typeof`)
+    declines on the pass's own unmatched dispatch.
+  - A read seated live after a computed body that a word before it collects
+    forward, where no live point can serve it, declines ("(NUR351)"): the
+    no-`end` `do (mk) keys x`, fn-unit forms, and a root trap followed in its
+    statement by a data or unbound word (`do (mk) end 4 keys x`).
+  - `def w2 word [1 2] end def mk fn [[][List][quote [print "q" w2/v]]] end def w word [do (mk) 3] w w`
+    halts the check pass ("undefined stack entry at position 2").
+  - `def k 5 size {a:[undef k 1]} k` is refused by the check pass
+    ("undefined word: k") where the interpreter raises undefined_word at run
+    time.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

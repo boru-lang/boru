@@ -149,6 +149,47 @@ func TestZZCoverConcreteEvalOnce(t *testing.T) {
 	}
 }
 
+// A run that changes a binding is no pure computation: the fold declines
+// (NUR330 — the interpreter keeps the binding a map member's `[def k 1 k]`
+// makes, the folded constant would not), and the table is restored EXACTLY,
+// a popped entry included, so the expression's recorded run starts where the
+// interpreter's does.
+func TestZZCoverConcreteEvalOnceDeclinesABindingRun(t *testing.T) {
+	r := covRegistry(t, func(r *core.Registry) {
+		r.RegisterNativeFunc(core.NativeFunc{Name: "zzbind", Signatures: []core.Signature{{
+			Returns: []*core.Type{core.TInteger},
+			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
+				r.Defs.Push("zzfresh", core.NewInteger(1))
+				return []core.Value{core.NewInteger(7)}, nil
+			}),
+		}}})
+		r.RegisterNativeFunc(core.NativeFunc{Name: "zzunbind", Signatures: []core.Signature{{
+			Returns: []*core.Type{core.TInteger},
+			Impl: core.Go(func(_ []core.Value, _ map[string]core.Value, _ []core.Value, r *core.Registry) ([]core.Value, error) {
+				r.Defs.Pop("zzkeep")
+				return []core.Value{core.NewInteger(8)}, nil
+			}),
+		}}})
+	})
+	done := r.Check.Begin()
+	defer done()
+	e := core.NewTop(r)
+	r.Defs.Push("zzkeep", core.NewInteger(42))
+
+	if _, ok := concreteEvalOnce(e, []core.Value{core.NewWord("zzbind")}); ok {
+		t.Error("a run that binds a name must decline")
+	}
+	if r.Defs.Has("zzfresh") {
+		t.Error("the run's binding must be rolled back")
+	}
+	if _, ok := concreteEvalOnce(e, []core.Value{core.NewWord("zzunbind")}); ok {
+		t.Error("a run that unbinds a name must decline")
+	}
+	if v, bound := r.Defs.Top("zzkeep"); !bound || v.String() != "42" {
+		t.Errorf("the popped binding must be restored, got %v (bound=%v)", v, bound)
+	}
+}
+
 // --- shareCheckState / shareCheckStateFrom ----------------------------------
 
 func TestZZCoverShareCheckState(t *testing.T) {

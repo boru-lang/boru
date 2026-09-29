@@ -19,20 +19,23 @@ import (
 // zero-argument fn value in the run fires across the `end` (`do (mk) end x`
 // over `[g/v]` is the interpreter's [7 5], which the statement-boundary seat
 // answered [fn g 5], silent). A run whose tokens are not proven to leave only
-// parking values now compiles under the plain-run check (NUR213) and defers
-// loudly when it leaves a fn value, as the lambda here does.
+// parking values compiled under the plain-run check (NUR213), which deferred
+// loudly when it left a fn value, as the lambda here does. The do's count
+// island now takes such a run (NUR348, compiler planCountRestarts): the
+// statement runs again on the interpreter with the run written in the do's
+// place, where its step re-steps the fn exactly as the interpreter's does.
 func TestNUR266RunLeadStopsAtTheStatementEnd(t *testing.T) {
 	const lam = `def mk fn [[][List][quote [([n:Integer] => [n add 1])]]] end def x 5 end `
-	for _, c := range []struct{ prog, wantI string }{
+	for _, c := range []struct{ prog, want string }{
 		{`do (mk) end x`, "[fn (Integer) 5]"},     // the run's fn stays data
 		{`do (mk) end x x`, "[fn (Integer) 5 5]"}, // every read past the end
 		{`do (mk) ; x`, "[fn (Integer) 5]"},       // `;` ends the statement as `end` does
 		{`do (mk) x`, "[6]"},                      // no boundary: the fn takes x forward
 		{`do (mk) end 7`, "[fn (Integer) 7]"},     // a literal after the end
 	} {
-		requireCheckedPlainDefer(t, lam+c.prog, c.wantI)
+		agreeOnBothLanes(t, lam+c.prog, c.want)
 	}
-	requireCheckedPlainDefer(t, `def g fn [[][Integer][7]] end def mk fn [[][List][quote [g/v]]] end def x 5 end do (mk) end x`, "[7 5]")
+	agreeOnBothLanes(t, `def g fn [[][Integer][7]] end def mk fn [[][List][quote [g/v]]] end def x 5 end do (mk) end x`, "[7 5]")
 	// A run of zero-argument anonymous lambdas parks wherever it lands, and
 	// seats as data (NUR282).
 	requireEngineParity(t, `def mk fn [[][List][quote [([] => [42])]]] end def x 5 end do (mk) end x`, true)

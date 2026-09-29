@@ -991,6 +991,10 @@ type lowerer struct {
 	// each where its statement begins; deoptTable is the unit's table).
 	deopts     []deoptPoint
 	deoptTable *[]DeoptSpec
+	// liveServed marks the kept live reads whose point was lowered (by the
+	// read's event seq): a read that needs one and has none declines
+	// (liveReadUnserved, NUR351).
+	liveServed map[int]bool
 	// deoptAtSlot holds the points tested where the read's value is pushed
 	// as an operand (deoptPoint.atPush), keyed by its frame slot.
 	deoptAtSlot map[int]deoptPoint
@@ -1229,6 +1233,12 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 		}
 		*lw.deoptTable = append(*lw.deoptTable, spec)
 		lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
+		if d.live != nil {
+			if lw.liveServed == nil {
+				lw.liveServed = map[int]bool{}
+			}
+			lw.liveServed[d.seq] = true
+		}
 	}
 	lw.deopts = kept
 }
@@ -3752,24 +3762,35 @@ func (lw *lowerer) slotStoredInScope(slot, seq int) bool {
 	return false
 }
 
+// lowerLiveRead lowers a live read seated as an event (NoteLiveRead): the
+// lookup at the read's own token, its one result seated as any call's — or,
+// for a read that is a ROUTED dispatch's forward word slot, an inert
+// placeholder the op pops unread (it resolves the slot from its own window;
+// EmitState.livePlaceholders). A read owed a live point that none serves
+// declines (liveReadUnserved, NUR351).
+func (lw *lowerer) lowerLiveRead(ev *EmitEvent, c *emitCall) string {
+	if reason := lw.liveReadUnserved(ev.seq); reason != "" {
+		return reason
+	}
+	switch {
+	case lw.es != nil && lw.es.livePlaceholders[ev.seq]:
+		lw.emit(OpPushConst, c.liveName, c.pos)
+	case c.liveRef:
+		// A `/v` read (NoteValReadLive): the value spelling's lookup.
+		lw.emit(OpLookupDynScopeRef, c.liveName, c.pos)
+	default:
+		lw.emit(OpLookupDynScope, c.liveName, c.pos)
+	}
+	return lw.seatCallResults(ev, c)
+}
+
 func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	c := &ev.call
 	if c.live {
-		// A live read seated as an event (NoteLiveRead): the lookup at the
-		// read's own token, its one result seated as any call's — or, for a
-		// read that is a ROUTED dispatch's forward word slot, an inert
-		// placeholder the op pops unread (it resolves the slot from its own
-		// window; EmitState.livePlaceholders).
-		switch {
-		case lw.es != nil && lw.es.livePlaceholders[ev.seq]:
-			lw.emit(OpPushConst, c.liveName, c.pos)
-		case c.liveRef:
-			// A `/v` read (NoteValReadLive): the value spelling's lookup.
-			lw.emit(OpLookupDynScopeRef, c.liveName, c.pos)
-		default:
-			lw.emit(OpLookupDynScope, c.liveName, c.pos)
-		}
-		return lw.seatCallResults(ev, c)
+		return lw.lowerLiveRead(ev, c)
+	}
+	if reason := lw.bodyMapReason(c); reason != "" {
+		return reason
 	}
 	if lw.collectRegionTop(ev) {
 		return ""
@@ -4001,7 +4022,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 			// do for the CALL_NATIVE twin, so the op commits no claim.
 			nout = PolyNOutRegion
 		}
-		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk}
+		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk, Raw: lw.polyRawOperands(n)}
 		if c.polySeed != nil && (c.polySeed.tags == nil || len(c.polySeed.tags) == n) {
 			pref.Seed, pref.SeedTags = c.polySeed.sig, c.polySeed.tags
 		}
@@ -4068,10 +4089,14 @@ type rootUnionSig struct {
 func (lw *lowerer) siteSigRef(seq int, c *emitCall, dynOne, plainChk bool) (SigRef, bool) {
 	reStep := lw.reStepsResults(seq)
 	spliceOuts := lw.spliceOutsAt(seq)
-	if !c.hostSplice && !dynOne && !plainChk && c.nativeSplit == nil && spliceOuts == nil && !reStep && !lw.regionReStepCandidate(seq) && !lw.rootUnionCandidate(seq) {
+	var fnArgPos []core.SrcPos
+	if lw.es != nil {
+		fnArgPos = lw.es.fnArgPos[seq]
+	}
+	if !c.hostSplice && !dynOne && !plainChk && c.nativeSplit == nil && spliceOuts == nil && fnArgPos == nil && !reStep && !lw.regionReStepCandidate(seq) && !lw.rootUnionCandidate(seq) && !lw.countRun(seq) {
 		return SigRef{}, false
 	}
-	ref := SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit, SpliceOuts: spliceOuts}
+	ref := SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit, SpliceOuts: spliceOuts, FnArgPos: fnArgPos}
 	if reStep {
 		ref.ReStep, ref.ReStepOut = true, lw.reStepOut(seq, c.nout)
 	}
@@ -5373,11 +5398,19 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 // count island (SigRef.Count) where its call checks the run's count: a
 // caught body's phantom consumed (CountCheck, NUR222), or a computed body's
 // run a single seat takes (DynBodyOne, NUR282) — a run the check refuses
-// then re-runs its statement over the run instead of deferring.
+// then re-runs its statement over the run instead of deferring — and where
+// a computed body's run may hold what the interpreter's tape steps
+// (planCountRestarts: a splice, a fn value seated as data, any run before a
+// terminal trap).
 func (lw *lowerer) emitCountedSig(ref SigRef, seq int, pos core.SrcPos) {
-	if ref.CountCheck || (ref.DynBodyOne && !ref.HostSplice && !ref.DynBodyPlain && ref.Split == nil) {
+	r := lw.countRestarts[seq]
+	run := r != nil && r.run && !ref.HostSplice && ref.Split == nil
+	if run || ref.CountCheck || (ref.DynBodyOne && !ref.HostSplice && !ref.DynBodyPlain && ref.Split == nil) {
 		ref.Count = lw.countIsland(seq)
 	}
+	// A computed body run before the program's terminal trap takes its
+	// island whatever it left (planCountRestarts' trap arm).
+	ref.CountAlways = run && r.always && ref.Count != nil
 	lw.p.Sigs = append(lw.p.Sigs, ref)
 	if ref.Count != nil {
 		lw.restartSigs = append(lw.restartSigs, len(lw.p.Sigs)-1)
@@ -5390,7 +5423,7 @@ func (lw *lowerer) emitCountedSig(ref SigRef, seq int, pos core.SrcPos) {
 // the runs it writes — the do's own run last. nil when none is.
 func (lw *lowerer) countIsland(seq int) *StmtIsland {
 	r := lw.countRestarts[seq]
-	if !r.seated() {
+	if !r.seated() || (r.always && !lw.heldIntact(r)) {
 		return nil
 	}
 	substs, ok := lw.restartSubstSrcs(r, EmitOperand{}, -1)
@@ -5398,6 +5431,13 @@ func (lw *lowerer) countIsland(seq int) *StmtIsland {
 		return nil
 	}
 	return &StmtIsland{Island: lw.landingBody[r.token:], Depth: r.depth, RetPC: -1, Root: lw.landingRoot, PrefixSrc: r.srcs, Substs: substs}
+}
+
+// countRun reports whether the do event seq has a computed body's count
+// island planned (landingRestart.run): its call carries a SigRef of its own.
+func (lw *lowerer) countRun(seq int) bool {
+	r := lw.countRestarts[seq]
+	return r != nil && r.run
 }
 
 // stashSubst keeps, in a frame slot of its own, the value event ev left on

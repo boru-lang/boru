@@ -130,6 +130,7 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 	copy(tokens, elems.Slice())
 	sub := New(r)
 	sub.ElemEvalRecordable = recordable
+	sub.ArmBody = !keep && !condFrag
 	// Every body through here is a NESTED region (branch / loop /
 	// quotation) — reached-conditionally by construction. Mark the depth
 	// so unconditional-only diagnostics (unconditional_raise) stay silent.

@@ -831,6 +831,14 @@ type PolyRef struct {
 	// which NoMatch's arity screen declines) raises the interpreter's
 	// signature_error, or keeps the defer when the plan finds a match.
 	Split *PolySplit
+	// Raw, by window index (sig order, 0 = the stack top), is the list
+	// literal an operand was assembled from where the compiled code
+	// evaluated it before the match (OpMakeList): the interpreter evaluates
+	// a pending literal only once a signature takes it, so its no-match
+	// report renders the literal as written — `[1 word(add) 2]`, not `[3]`
+	// (NUR352). The no-match arms render the window with these in place
+	// (RenderWindow); the match itself reads the evaluated values.
+	Raw map[int]core.Value
 	// DynBodyOne is SigRef.DynBodyOne for a poly re-match of a computed `do`
 	// body (a gradual operand): exactly one non-re-stepping result, or the
 	// loud defer.
@@ -1196,6 +1204,13 @@ type SigRef struct {
 	// position (the run's binding is the model's); anything else is the
 	// screen's loud defer, as before.
 	SpliceOuts []core.Value
+	// FnArgPos, when non-nil, is the position of each argument (signature
+	// order; a zero entry for none) the program read as a fn VALUE by its
+	// `/v` spelling (EmitState.noteFnArgPos, NUR347): the interpreter's read
+	// stamps the value with that token, where the compiled slot push carries
+	// none, so the VM stamps a positionless NAMED fn value with it before the
+	// call — the position a callback's return-contract error answers at.
+	FnArgPos []core.SrcPos
 	// DynBodyOne marks the CALL_NATIVE of a COMPUTED `do` body whose run a
 	// single-value seat consumes (eventFlags.dynBodyOne, dyn_body_one.go):
 	// the VM seats the handler's results only when they are exactly ONE
@@ -1235,6 +1250,13 @@ type SigRef struct {
 	CountCheck bool
 	CountClaim int
 	Count      *StmtIsland
+	// CountAlways marks a computed `do` body's call run before the
+	// program's terminal trap, which the pass proved over bindings the body
+	// may have changed (NUR348): the run takes Count whatever it left — a
+	// splice or a fn value among it included, which the island steps as the
+	// interpreter's tape does — so the statement and the program after it
+	// are the interpreter's.
+	CountAlways bool
 	// ReStep marks the CALL_NATIVE of a `do` whose results the interpreter's
 	// step loop re-steps where the check pass's model had already stepped
 	// them (eventFlags.reStepResults, NUR317): the body's own analysed run
@@ -2363,6 +2385,22 @@ type DeoptSpec struct {
 	Model *core.Type
 }
 
+// RenderWindow is window with each operand the compiled code assembled from
+// a pending list literal (Raw) put back as the literal, for the no-match
+// report; window itself when none is.
+func (pr *PolyRef) RenderWindow(window []core.Value) []core.Value {
+	if len(pr.Raw) == 0 {
+		return window
+	}
+	out := append([]core.Value(nil), window...)
+	for i, v := range pr.Raw {
+		if i >= 0 && i < len(out) {
+			out[i] = v
+		}
+	}
+	return out
+}
+
 // LiveHot reports whether a live-read point's binding — v, when bound — is
 // one its compiled statement cannot take, which the interpreter's step
 // answers: no binding (the step's own error, where the lookup would raise
@@ -2501,6 +2539,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			}
 			if s.ReStep {
 				guard = " [results re-stepped]"
+			}
+			if s.CountAlways {
+				guard += " [count island, always]"
 			}
 			fmt.Fprintf(sb, " s%-3d ; %s (%s)%s", in.Arg, s.Word, strings.Join(names, ", "), guard)
 		case OpJmp, OpJmpIfFalse, OpForNext:

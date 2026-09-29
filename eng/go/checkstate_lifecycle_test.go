@@ -41,6 +41,7 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"SpecFnNames":              true,
 		"SpecArmDepth":             true,
 		"UnsealedArmDepth":         true,
+		"ArmResidualSweep":         true,
 		"LoopBodyDepth":            true,
 		"CodeEffectDepth":          true,
 		"Compiling":                true,

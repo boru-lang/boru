@@ -52,6 +52,7 @@ var eventKindSites = map[string]string{
 	"planValueDefLocals":      "lower.go — the promotion plan itself",
 	"lowerEvents":             "lower.go — the emission (default: DECLINES, \"unknown event kind\" — the shape worth copying)",
 	"singleOutputCall":        "lower.go — is this a promotable single-result call? (default: false)",
+	"resultCount":             "landing_restart.go — how many results a def's call leaves beneath its bound value? (default: one)",
 	"fragSingleResidual":      "lower.go — does the fragment net exactly one value?",
 	"fragmentOuts":            "lower.go — the fragment's out operands",
 	"fragmentResultSeqs":      "lower.go — the seqs a fragment's results come from",

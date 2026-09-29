@@ -172,7 +172,7 @@ func (es *EmitState) callWindowOp(v core.Value, stable bool, args []core.Value) 
 			}
 		}
 	}
-	if windowScalar(v) {
+	if windowScalar(v) || unexpandedToken(v) {
 		return callWinOp{kind: WinValue, value: v}, true
 	}
 	if v.ID == "" {
@@ -197,4 +197,13 @@ func windowScalar(v core.Value) bool {
 		return false
 	}
 	return v.Parent.ConformsTo(core.TScalar) || core.IsAtom(v)
+}
+
+// unexpandedToken reports whether v is a reach or template token a failed
+// dispatch's window holds unexpanded — a written operand past the one the
+// forward phase evaluated (`f m.a m.b` over `x:Type`). The interpreter's
+// report names the token itself (`m.b (a Reach)`), which is the run's own
+// source, so a window or a rematch carries it as itself (NUR329).
+func unexpandedToken(v core.Value) bool {
+	return (core.IsReach(v) || core.IsInterpString(v)) && !v.Carrier && !v.Dynamic
 }

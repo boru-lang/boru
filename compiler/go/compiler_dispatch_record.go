@@ -210,6 +210,7 @@ func recordDispatchOutcome(r *core.Registry, word string, sig *core.Signature, a
 			r.Check.Recorder().DynInputsProven(sig, args)
 		r.Check.Recorder().RecordCall(word, sig, args, out, pos, forceDynOut, quoteInertOK)
 	}
+	noteBodyMapRun(r, word, sig, args, pos)
 }
 
 // isFrameArgsList reports whether v is the check engine's CURRENT frame's

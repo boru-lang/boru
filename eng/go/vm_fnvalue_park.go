@@ -68,16 +68,25 @@ const (
 // fnValueNoMatchVerdict answers, for the fn value fnVal stepped at the pointer
 // over resolved (the stack beneath it, bottom to top) and forward (the tokens
 // written after it), whether the interpreter's step dispatches nothing — and
-// if so, whether it parks the value or raises.
+// if so, whether it parks the value or raises — on an island that runs the
+// window: every value beneath must pass the end of its run unchanged.
 func fnValueNoMatchVerdict(reg *core.Registry, fnVal core.Value, resolved, forward []core.Value) (fnValueNoMatch, core.FnDefInfo) {
+	for _, v := range resolved {
+		if !residualInert(v) {
+			return noMatchUnproven, core.FnDefInfo{}
+		}
+	}
+	return fnValueStepVerdict(reg, fnVal, resolved, forward)
+}
+
+// fnValueStepVerdict is fnValueNoMatchVerdict's step itself, over a window
+// that stays where it is — a landing's frame region, which no island run
+// sweeps (NUR344): the interpreter's step meets the values beneath as the
+// compiled stack holds them, a pending literal included.
+func fnValueStepVerdict(reg *core.Registry, fnVal core.Value, resolved, forward []core.Value) (fnValueNoMatch, core.FnDefInfo) {
 	fd, ok := fnVal.Data.(core.FnDefInfo)
 	if !ok || !fnValueParkable(reg, fnVal, fd) {
 		return noMatchUnproven, fd
-	}
-	for _, v := range resolved {
-		if !residualInert(v) {
-			return noMatchUnproven, fd
-		}
 	}
 	for _, v := range forward {
 		if !core.IsSteplessValue(v) {

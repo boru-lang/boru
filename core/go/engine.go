@@ -162,7 +162,11 @@ type Engine struct {
 	// hazard (a frame that already popped) cannot occur here: the enclosing
 	// container eval runs in-frame at its own recordable site.
 	ElemEvalRecordable bool
-	ReuseTape          bool // when set, Run reloads the existing tape in place instead of allocating (the VM's reusable island engine)
+	// ArmBody marks the model's run of a branch arm or a loop body
+	// (runCarrierBodyDefsAdds, a rolled-back conditional body): its end-of-run
+	// sweep of residual containers runs under CheckState.ArmResidualSweep.
+	ArmBody   bool
+	ReuseTape bool // when set, Run reloads the existing tape in place instead of allocating (the VM's reusable island engine)
 	// DeferResidual leaves the finished stack's pending containers
 	// UNEVALUATED instead of running the end-of-run sweep (autoEvalStack).
 	// Set by CallBoru for a body whose residual defers past the frame
@@ -1928,7 +1932,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// A DeferResidual run (CallBoru's deferring lambda body) hands them
 	// back pending; the caller sweeps them after its frame teardown.
 	if !e.DeferResidual {
-		if err := e.autoEvalStack(); err != nil {
+		if err := e.sweepResidual(); err != nil {
 			return nil, e.faultReturn(err)
 		}
 	}
@@ -5002,6 +5006,17 @@ func (e *Engine) resolveInertTypeShape(v Value) (Value, bool) {
 		return rv, true
 	}
 	return v, false
+}
+
+// sweepResidual is the end-of-run sweep (autoEvalStack), bracketed by
+// CheckState.ArmResidualSweep for a branch arm's or loop body's model run
+// (ArmBody).
+func (e *Engine) sweepResidual() error {
+	if e.ArmBody {
+		e.Registry.Check.ArmResidualSweep++
+		defer func() { e.Registry.Check.ArmResidualSweep-- }()
+	}
+	return e.autoEvalStack()
 }
 
 func (e *Engine) autoEvalStack() error {
@@ -8514,6 +8529,19 @@ func (e *Engine) noteDefStack(first bool) {
 	e.defNotePending = IsSteplessValue(e.Tape.At(e.Pointer))
 }
 
+// statementStackPos is the position a statement-stack note for the token at
+// idx is keyed by: the token's own, or — for a paren the engine expanded to
+// its markers before stepping it (the operand group a def collected expands
+// the paren after it too: `def k (3 dup) (m.f 7)`, NUR336) — the first
+// token inside it, which the recorder matches to the paren's source token.
+func (e *Engine) statementStackPos(idx int) SrcPos {
+	tok := e.Tape.At(idx)
+	if p := tok.Pos(); p.Row != 0 || !IsOpenParen(tok) || idx+1 >= e.Tape.Len() {
+		return p
+	}
+	return e.Tape.At(idx + 1).Pos()
+}
+
 // noteStatementStack tells the recorder the stack an `end` at endIdx that
 // closed nothing leaves for the next statement (EmitRecorder
 // NoteStatementStack) — when the tape beneath it holds values alone: an open
@@ -8531,7 +8559,7 @@ func (e *Engine) noteStatementStack(endIdx int) {
 		}
 		stack = append(stack, v)
 	}
-	e.Registry.Check.Recorder().NoteStatementStack(e.Tape.At(endIdx).Pos(), stack)
+	e.Registry.Check.Recorder().NoteStatementStack(e.statementStackPos(endIdx), stack)
 }
 
 // stepMark records the mark's ID in the marks hash table and advances.
@@ -10744,6 +10772,12 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 // interpreter does over the run's values and renders the interpreter's
 // tuple. A written run of concrete values leaves the window as it was: the
 // trap's report is built over those same values.
+//
+// A reach or template the run has not expanded rides in the run as its own
+// token (`7 f m.a m.b`: the interpreter's forward phase evaluates `m.a`
+// alone and its report names `1 and m.b (a Reach)`), which the rematch
+// carries as a constant and renders as the interpreter does (NUR329); it
+// used to keep the stack-only window, whose static trap named the 7.
 func (e *Engine) withGradualWrittenOperands(window []int, fn *FnDefInfo) []int {
 	// Only a window the STACK filled alone: one that already reaches past
 	// the word took the written run in its own order, and its rendering is
@@ -10756,14 +10790,7 @@ func (e *Engine) withGradualWrittenOperands(window []int, fn *FnDefInfo) []int {
 	_, nFwd := e.rematchWrittenSplit(fn)
 	gradual := false
 	for i := e.Pointer + 1; i <= e.Pointer+nFwd && i < e.Tape.Len(); i++ {
-		v := e.Tape.At(i)
-		if IsReach(v) || IsParenExpr(v) || IsInterpString(v) {
-			// A deferred expression the run has not expanded here (`7 f m.a
-			// m.b`: the report names `m.b (a Reach)`) is no value the
-			// rematch can seat: the window stays the gatherer's.
-			return window
-		}
-		if v.Carrier || v.Dynamic {
+		if v := e.Tape.At(i); v.Carrier || v.Dynamic {
 			gradual = true
 		}
 	}
@@ -10775,6 +10802,26 @@ func (e *Engine) withGradualWrittenOperands(window []int, fn *FnDefInfo) []int {
 		out = append(out, i)
 	}
 	return out
+}
+
+// forwardReach is how many operands written after word w a forward phase of
+// fn's may take: the widest leading run of forward-eligible positions over
+// its real signatures (its barrier; every position under `/f` or an
+// unresolved all-forward barrier), none under `/s`.
+func forwardReach(fn *FnDefInfo, w WordInfo) int {
+	n := 0
+	for i := range fn.Signatures {
+		s := &fn.Signatures[i]
+		if s.Fallback || w.ForceStack {
+			continue
+		}
+		b := s.BarrierPos
+		if b < 0 || b > s.TotalArgs() || w.ForceForward {
+			b = s.TotalArgs()
+		}
+		n = max(n, b)
+	}
+	return n
 }
 
 func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos SrcPos) bool {
@@ -10941,6 +10988,20 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// typed-binding hint — must not apply; runtimeNoMatch rebuilds
 		// the value-based reorderHintFor itself. Declines leave the
 		// caller's compile failure.
+		//
+		// A raw reach or template the interpreter's forward phase may
+		// still EXPAND — one written within the forward reach of a
+		// signature of the word — is a value the runtime match examines
+		// only once evaluated, which the rematch cannot do: decline. One
+		// past it is never examined, only named in the report (`7 f m.a
+		// m.b` over `x:Type`, NUR329), and rides the rematch as its own
+		// token.
+		fwd := forwardReach(fn, w)
+		for _, p := range window {
+			if tok := e.Tape.At(p); p > e.Pointer && p <= e.Pointer+fwd && (IsReach(tok) || IsInterpString(tok)) {
+				return false
+			}
+		}
 		written := e.rematchWritten(fn)
 		idx, ok := rematchRenderTuple(written, vals)
 		if !ok {
