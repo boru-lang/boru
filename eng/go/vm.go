@@ -1141,7 +1141,7 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 		// the interpreter's signature_error, raised here — the arity retry
 		// below reads a narrower window as the stack top, which is not how
 		// the interpreter collects one.
-		if err := polySplitRaise(r, pr, fn, window, curDebug, pc); err != nil {
+		if err := polySplitRaise(r, pr, fn, pr.RenderWindow(window), curDebug, pc); err != nil {
 			return nil, err
 		}
 		// The recorded count is the check pass's PICK over a gradual
@@ -1175,13 +1175,13 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 		// the canonical error — sound because the interpreter takes the SAME
 		// MatchSignature first-match and so reaches the same no-match.
 		if mr == nil || mr.Sig == nil {
-			if err := vc.polyNoMatchRaise(r, pr, fn, window, curDebug, pc); err != nil {
+			if err := vc.polyNoMatchRaise(r, pr, fn, pr.RenderWindow(window), curDebug, pc); err != nil {
 				return nil, err
 			}
 		}
 		return nil, vmDeferAlt(r, curDebug, pc, "vm:poly-no-match",
 			"CALL_NATIVE_POLY no match for "+pr.Word+"; the compiled runtime cannot execute it for the canonical signature_error",
-			bestEffortNoMatch(r, fn, pr.Word, window, curDebug, pc))
+			bestEffortNoMatch(r, fn, pr.Word, pr.RenderWindow(window), curDebug, pc))
 	}
 	return vc.polyDispatch(dispReg, pr, mr.Sig, mr.Args, n, stack, curDebug, pc)
 }

@@ -66,22 +66,42 @@ func TestNUR343BranchRematchRunsItsIsland(t *testing.T) {
 	}
 }
 
-// TestNUR343ArmEffectKeepsTheDefer: NEGATIVE — an arm holding an effect (a
-// print) or a binding (a def) is no read the island may run again: the
-// rematch plans no island and keeps its designed defer, loud, where the
-// run matches.
-func TestNUR343ArmEffectKeepsTheDefer(t *testing.T) {
-	for _, src := range []string{
-		`def c true end each (if c [[print "z" 1]] [3]) [2]`,
-		`def c true end each (if c [[1]] [def q 3 q]) [2]`,
+// TestNUR343ArmEffectDeclines: NEGATIVE — an arm holding an effect (a print)
+// or a binding (a def) is no read the island may run again, so a rematch
+// after such a branch has no island to take where the run matches: the
+// program declines at compile time with the NUR343 reason (it used to
+// compile and raise the designed vm:rematch-matched defer), and the
+// interpreter's answer stands — the no-match run too, which the decline
+// cannot tell apart from the matching one.
+func TestNUR343ArmEffectDeclines(t *testing.T) {
+	for _, tc := range []struct{ src, want string }{
+		{`def c true end each (if c [[print "z" 1]] [3]) [2]`, "[[1]]"},
+		{`def c true end each (if c [[1]] [def q 3 q]) [2]`, "[[1]]"},
+		{`def c true end each (if c [def q [1] q] [3]) [2]`, "[[1]]"},
+		{`def c true end (if c [[print "z" 1]] [3]) each [2]`, "[[2]]"},
+		{`def c true end each (if c [[print "z" 1]] [3]) [2] end 5`, "[[1] 5]"},
+		{`def c false end each (if c [[print "z" 1]] [3]) [2]`, "ERROR:cannot call `each`"},
 	} {
-		prog, reason, _, err := mustNew(t).CompileCheck(src)
-		if prog == nil || err != nil {
-			t.Fatalf("%s: must compile: %q %v", src, reason, err)
+		declinesWithInterpAnswer(t, tc.src, "(NUR343)", tc.want)
+	}
+}
+
+// declinesWithInterpAnswer asserts src declines to compile with a reason
+// holding why, and that the interpreter answers want (an "ERROR:" prefix:
+// an error holding the rest).
+func declinesWithInterpAnswer(t *testing.T, src, why, want string) {
+	t.Helper()
+	prog, reason, _, _ := mustNew(t).CompileCheck(src)
+	if prog != nil || !strings.Contains(reason, why) {
+		t.Errorf("%s: must decline with %q, got compiled=%v %q", src, why, prog != nil, reason)
+	}
+	got, err := mustNew(t).RunInterp(src)
+	if sub, isErr := strings.CutPrefix(want, "ERROR:"); isErr {
+		if err == nil || !strings.Contains(err.Error(), sub) {
+			t.Errorf("%s: interpreted %v %v, want an error containing %q", src, got, err, sub)
 		}
-		if len(prog.Dispatches) != 1 || prog.Dispatches[0].Restart != nil {
-			t.Errorf("%s: an arm the island cannot run again plans none: %+v", src, prog.Dispatches)
-		}
+	} else if err != nil || fmt.Sprint(got) != want {
+		t.Errorf("%s: interpreted %v %v, want %s", src, got, err, want)
 	}
 }
 

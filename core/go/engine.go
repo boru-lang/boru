@@ -162,7 +162,11 @@ type Engine struct {
 	// hazard (a frame that already popped) cannot occur here: the enclosing
 	// container eval runs in-frame at its own recordable site.
 	ElemEvalRecordable bool
-	ReuseTape          bool // when set, Run reloads the existing tape in place instead of allocating (the VM's reusable island engine)
+	// ArmBody marks the model's run of a branch arm or a loop body
+	// (runCarrierBodyDefsAdds, a rolled-back conditional body): its end-of-run
+	// sweep of residual containers runs under CheckState.ArmResidualSweep.
+	ArmBody   bool
+	ReuseTape bool // when set, Run reloads the existing tape in place instead of allocating (the VM's reusable island engine)
 	// DeferResidual leaves the finished stack's pending containers
 	// UNEVALUATED instead of running the end-of-run sweep (autoEvalStack).
 	// Set by CallBoru for a body whose residual defers past the frame
@@ -1928,7 +1932,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// A DeferResidual run (CallBoru's deferring lambda body) hands them
 	// back pending; the caller sweeps them after its frame teardown.
 	if !e.DeferResidual {
-		if err := e.autoEvalStack(); err != nil {
+		if err := e.sweepResidual(); err != nil {
 			return nil, e.faultReturn(err)
 		}
 	}
@@ -5002,6 +5006,17 @@ func (e *Engine) resolveInertTypeShape(v Value) (Value, bool) {
 		return rv, true
 	}
 	return v, false
+}
+
+// sweepResidual is the end-of-run sweep (autoEvalStack), bracketed by
+// CheckState.ArmResidualSweep for a branch arm's or loop body's model run
+// (ArmBody).
+func (e *Engine) sweepResidual() error {
+	if e.ArmBody {
+		e.Registry.Check.ArmResidualSweep++
+		defer func() { e.Registry.Check.ArmResidualSweep-- }()
+	}
+	return e.autoEvalStack()
 }
 
 func (e *Engine) autoEvalStack() error {

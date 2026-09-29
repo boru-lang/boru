@@ -368,6 +368,15 @@ type CheckState struct {
 	// arm nested in them, are captured UNSEALED: no arm trap is recorded
 	// there (EmitRecorder.ArmSealedBranchCapture, NUR332).
 	UnsealedArmDepth int
+	// ArmResidualSweep, when > 0, marks the model's end-of-run evaluation of
+	// a branch arm's or a loop body's residual containers (Engine.ArmBody):
+	// a list or map literal the body leaves on the stack, which the
+	// interpreter leaves PENDING — evaluated where it is consumed, or at the
+	// end of the enclosing run, or never (a code-body slot takes it raw:
+	// `each (if c [[dup]] [3]) [2 3]` runs `[dup]` as each's body). A raise
+	// the model meets there is no raise of the arm, so no arm trap is
+	// recorded under it (NUR352).
+	ArmResidualSweep int
 
 	// LoopBodyDepth, when > 0, marks analysis running inside a PROVEN
 	// counted-for LOOP body (AnalyseLoopBody brackets each round's body run,
@@ -1319,6 +1328,7 @@ func (c *CheckState) Begin() func() {
 	c.SpecFnNames = nil
 	c.SpecArmDepth = 0
 	c.UnsealedArmDepth = 0
+	c.ArmResidualSweep = 0
 	c.ArgsFrameUnnamed = false
 	// Compiling marks a REAL compile pass; the compile entry points set it
 	// true AFTER this Begin (via BeginCompilePass). Reset it here so it is

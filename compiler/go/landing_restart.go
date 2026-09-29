@@ -349,25 +349,30 @@ func statementStart(body []core.Value, tok int) core.SrcPos {
 // every event of the statement before the trap re-runs or is written as the
 // value its call left (restartSubsts), so nothing runs twice. A trap inside a
 // loop, one armed with a trap of its own (NUR264), or a statement whose stack
-// was not told plans none: the rematch keeps its defer.
-func (es *EmitState) planRematchRestart(lw *lowerer, residual []core.Value) {
+// was not told plans none: the rematch keeps its defer. A statement whose
+// island cannot run again a BRANCH the compiled code ran before the rematch
+// — an arm holding an effect or a binding (`each (if c [[print "z" 1]] [3])
+// [2]`, an arm `[def q 3 q]`) — declines the program instead (NUR343): where
+// the run matches, the compiled code has no answer, and the interpreter's
+// run of the statement would repeat the arm's effect.
+func (es *EmitState) planRematchRestart(lw *lowerer, residual []core.Value) string {
 	if len(es.rootBody) == 0 || es.trapAt == 0 {
-		return
+		return ""
 	}
 	tree := rootTreeEvents(es.frames[0], false)
 	te, in := tree[es.trapAt]
 	if !in || te.inLoop || te.ev.kind != evTrap || te.ev.trap.rematchWord == "" || te.ev.trap.rematchOnMatch != nil {
-		return
+		return ""
 	}
 	p := te.ev.trap.pos
 	tok := statementToken(es.rootBody, p)
 	if tok < 0 {
-		return
+		return ""
 	}
 	tok = es.toldAfter(literalDefsBefore(tree, es.rootBody, tok, p), p)
 	start := statementStart(es.rootBody, tok)
 	if _, told := es.stackAtStart(tok); !told {
-		return
+		return ""
 	}
 	first := statementFirstSeq(tree, es.trapAt, start)
 	var pending []int
@@ -379,16 +384,47 @@ func (es *EmitState) planRematchRestart(lw *lowerer, residual []core.Value) {
 	sort.Ints(pending)
 	substs, ok := es.restartSubsts(tree, es.rootBody, tok, pending)
 	if !ok {
-		return
+		return unrerunBranchBefore(tree, pending)
 	}
 	srcs, held, slots, ok := es.rootPreStart(lw, tree, residual, tok, start, first)
 	if !ok {
-		return
+		return ""
 	}
 	if lw.landingRestarts == nil {
 		lw.landingRestarts = map[int]*landingRestart{}
 	}
 	lw.landingRestarts[es.trapAt] = &landingRestart{token: tok, start: start, depth: -1, srcs: srcs, held: held, heldAt: slots, substs: substs}
+	return ""
+}
+
+// lowerRootEvents plans the root rematch's statement island
+// (planRematchRestart, whose decline it returns) and lowers the root's
+// events, seeding the lowerer's frame-local counter from the unit's planned
+// locals first — spillSeat bumps it for spill temps, and Finalize writes it
+// back so Program.NumLocals covers them. It returns the lowering's decline
+// reason, "" when it lowered.
+func (es *EmitState) lowerRootEvents(lw *lowerer, residual []core.Value) string {
+	if reason := es.planRematchRestart(lw, residual); reason != "" {
+		return reason
+	}
+	lw.numLocals = es.units[0].numLocals
+	return lw.lowerEvents(es.frames[0], 0)
+}
+
+// rematchBranchUnrerun is the decline of a runtime rematch whose statement
+// ran a branch its island cannot run again (NUR343).
+const rematchBranchUnrerun = "a runtime rematch follows a branch whose arm holds an effect or a binding: where the run matches, the statement's island would run the arm again (NUR343)"
+
+// unrerunBranchBefore is the rematch's decline when one of the pending
+// events is a branch (not nested in another) that rerunBranch refuses, and
+// "" otherwise: the rematch then keeps its defer, as before.
+func unrerunBranchBefore(tree map[int]treeEvent, pending []int) string {
+	for _, s := range pending {
+		if ev := tree[s].ev; ev.kind == evBranch && !rerunBranch(ev) {
+			return rematchBranchUnrerun
+		}
+	}
+	return ""
 }
 
 // literalDefsBefore is where a statement island may take over the statement

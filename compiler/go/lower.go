@@ -991,6 +991,10 @@ type lowerer struct {
 	// each where its statement begins; deoptTable is the unit's table).
 	deopts     []deoptPoint
 	deoptTable *[]DeoptSpec
+	// liveServed marks the kept live reads whose point was lowered (by the
+	// read's event seq): a read that needs one and has none declines
+	// (liveReadUnserved, NUR351).
+	liveServed map[int]bool
 	// deoptAtSlot holds the points tested where the read's value is pushed
 	// as an operand (deoptPoint.atPush), keyed by its frame slot.
 	deoptAtSlot map[int]deoptPoint
@@ -1229,6 +1233,12 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 		}
 		*lw.deoptTable = append(*lw.deoptTable, spec)
 		lw.emit(OpDeoptIfFn, len(*lw.deoptTable)-1, d.start)
+		if d.live != nil {
+			if lw.liveServed == nil {
+				lw.liveServed = map[int]bool{}
+			}
+			lw.liveServed[d.seq] = true
+		}
 	}
 	lw.deopts = kept
 }
@@ -3755,6 +3765,9 @@ func (lw *lowerer) slotStoredInScope(slot, seq int) bool {
 func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	c := &ev.call
 	if c.live {
+		if reason := lw.liveReadUnserved(ev.seq); reason != "" {
+			return reason
+		}
 		// A live read seated as an event (NoteLiveRead): the lookup at the
 		// read's own token, its one result seated as any call's — or, for a
 		// read that is a ROUTED dispatch's forward word slot, an inert
@@ -4004,7 +4017,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 			// do for the CALL_NATIVE twin, so the op commits no claim.
 			nout = PolyNOutRegion
 		}
-		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk}
+		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: c.polySplit, DynBodyOne: dynOne, DynBodyPlain: plainChk, Raw: lw.polyRawOperands(n)}
 		if c.polySeed != nil && (c.polySeed.tags == nil || len(c.polySeed.tags) == n) {
 			pref.Seed, pref.SeedTags = c.polySeed.sig, c.polySeed.tags
 		}

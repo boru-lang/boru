@@ -831,6 +831,14 @@ type PolyRef struct {
 	// which NoMatch's arity screen declines) raises the interpreter's
 	// signature_error, or keeps the defer when the plan finds a match.
 	Split *PolySplit
+	// Raw, by window index (sig order, 0 = the stack top), is the list
+	// literal an operand was assembled from where the compiled code
+	// evaluated it before the match (OpMakeList): the interpreter evaluates
+	// a pending literal only once a signature takes it, so its no-match
+	// report renders the literal as written — `[1 word(add) 2]`, not `[3]`
+	// (NUR352). The no-match arms render the window with these in place
+	// (RenderWindow); the match itself reads the evaluated values.
+	Raw map[int]core.Value
 	// DynBodyOne is SigRef.DynBodyOne for a poly re-match of a computed `do`
 	// body (a gradual operand): exactly one non-re-stepping result, or the
 	// loud defer.
@@ -2375,6 +2383,22 @@ type DeoptSpec struct {
 	Live  bool
 	Ref   bool
 	Model *core.Type
+}
+
+// RenderWindow is window with each operand the compiled code assembled from
+// a pending list literal (Raw) put back as the literal, for the no-match
+// report; window itself when none is.
+func (pr *PolyRef) RenderWindow(window []core.Value) []core.Value {
+	if len(pr.Raw) == 0 {
+		return window
+	}
+	out := append([]core.Value(nil), window...)
+	for i, v := range pr.Raw {
+		if i >= 0 && i < len(out) {
+			out[i] = v
+		}
+	}
+	return out
 }
 
 // LiveHot reports whether a live-read point's binding — v, when bound — is

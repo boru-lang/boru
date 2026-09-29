@@ -1862,6 +1862,12 @@ type EmitState struct {
 	// live-read deopt point where an island can take it over
 	// (kept_live_deopt.go). Nil until first use.
 	keptLiveReads map[int]keptLiveRead
+	// liveNeedsPoint is every kept live read whose statement holds a word
+	// written before it that may collect it forward (collectorBeforeRead,
+	// NUR351): the pass decided that collection over the read's stale model,
+	// so the read's point must serve it, or the program declines
+	// (liveReadUnserved). Nil until first use.
+	liveNeedsPoint map[int]bool
 	// liveLeadNames is every module-scope fn a stored-ref unit dispatches by
 	// name with declared signatures (markLiveLead): its routed dispatches
 	// resolve the lead live, and every rebind compiles the new binding's
@@ -2418,6 +2424,12 @@ type deoptPoint struct {
 	// defBound, beside leftovers, are the values those defs bound — the
 	// first result of each one's call.
 	defBound []producer
+	// held, on a live-read point at the program root, is the root events
+	// whose results the compiled stack holds beneath the statement at the
+	// test, the interpreter's stack there (rootStackHeld): an operand of the
+	// statement one of them produced before the start is in hand, not
+	// deferred (deoptDeferred, NUR351).
+	held map[int]bool
 }
 
 // plainLambda reports a lambda VALUE unit (tryReturnedClosure's `fnval`
@@ -9739,6 +9751,9 @@ func (es *EmitState) RecordTrapErr(ae *core.BoruError, pos core.SrcPos) bool {
 	if outer := es.optimisticOuter(); outer != nil {
 		return es.recordGuardedTrap(outer, spec, pos)
 	}
+	if es.trapBeforeStaleRead(pos) {
+		return false
+	}
 	es.trapAt = es.appendEvent(EmitEvent{kind: evTrap, trap: EmitTrap{spec: spec, pos: pos}})
 	return true
 }
@@ -9773,10 +9788,22 @@ func (es *EmitState) RecordArmTrapErr(ae *core.BoruError, pos core.SrcPos) bool 
 // fragment ends in the trap and diverges (fragDiverges), exactly as an arm
 // ending in `raise`. A mark the arm's later analysis makes still declines
 // the program, as after a `raise`: that analysis also shapes the join's
-// model of the arm, which the compile then rides.
+// model of the arm, which the compile then rides. A raise the pass met
+// evaluating a list or map literal the arm LEAVES (CheckState.
+// ArmResidualSweep, NUR352) is no raise of the arm: the interpreter keeps
+// that literal pending — evaluated where it is consumed, or never, when a
+// code-body slot takes it raw (`each (if c [[dup]] [3]) [2 3]` runs `[dup]`
+// as each's body, `[[2 3]]`) — so no trap is recorded and the pass's failure
+// stands.
 func (es *EmitState) recordArmTrap(t EmitTrap) bool {
 	n := len(es.fragSealed)
 	if n == 0 || !es.fragSealed[n-1] || es.optimisticOuter() != nil {
+		return false
+	}
+	if es.reg != nil && es.reg.Check.ArmResidualSweep > 0 {
+		// The raise is the model's eager evaluation of a container the arm
+		// leaves pending, not the arm's own (CheckState.ArmResidualSweep):
+		// no trap is recorded, and the pass's failure stands.
 		return false
 	}
 	if es.fragTrapped[n-1] {
@@ -17394,12 +17421,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	es.planLandingRestarts(lw, residual)
 	es.planGuardRestarts(lw, residual)
 	es.planCountRestarts(lw, residual)
-	es.planRematchRestart(lw, residual)
-	// Seed the lowerer's frame-local counter from the unit's planned locals;
-	// spillSeat bumps it for spill temps. Written back below so Program.NumLocals
-	// covers them.
-	lw.numLocals = es.units[0].numLocals
-	if reason := lw.lowerEvents(es.frames[0], 0); reason != "" {
+	if reason := es.lowerRootEvents(lw, residual); reason != "" {
 		return nil, reason, false
 	}
 	// A root guard whose consumer no root event carried to the walk's end
@@ -17827,6 +17849,10 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 			lw.deopts = append(lw.deopts, d)
 			return
 		}
+	}
+	if d, ok := es.rootReadStatementPoint(lw, rec, r, seq, ci, alsoResidual, residual); ok {
+		lw.deopts = append(lw.deopts, d)
+		return
 	}
 	start := eventPos(es.frames[0][ci])
 	if start.Row == 0 {
@@ -19970,7 +19996,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 		case opEvent:
 			// A RE-STEP point's own event just left its results on top:
 			// they are exactly what the island re-steps.
-			if d.restep && ci >= 0 && op.idx == events[ci].seq {
+			if (d.restep && ci >= 0 && op.idx == events[ci].seq) || d.held[op.idx] {
 				return false
 			}
 			// A def's leftover the island seats from its slot (leftovers).

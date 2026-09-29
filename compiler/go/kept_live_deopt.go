@@ -93,7 +93,7 @@ func (es *EmitState) planKeptLiveDeopts(u *emitUnit, rec *fnUnitRec) int {
 	n := 0
 	for _, seq := range es.keptLiveSeqs(rec.frag.events) {
 		ci, direct := es.deoptConsumer(rec, es.keptLiveReads[seq].id, seq, -1)
-		if d, ok := es.livePointAt(u, rec, seq, ci, direct); ok {
+		if d, ok := es.livePointAt(u, rec, seq, ci, direct, nil); ok {
 			rec.deopts = append(rec.deopts, d)
 			n++
 		}
@@ -120,11 +120,17 @@ func (es *EmitState) planKeptLiveDeopts(u *emitUnit, rec *fnUnitRec) int {
 // a stale binding, which misses an island (the lookup's own loud defer) or
 // takes a spurious one — the interpreter's answer either way, never a wrong
 // one.
-func (es *EmitState) livePointAt(u *emitUnit, rec *fnUnitRec, seq, ci int, direct bool) (deoptPoint, bool) {
+func (es *EmitState) livePointAt(u *emitUnit, rec *fnUnitRec, seq, ci int, direct bool, lw *lowerer) (deoptPoint, bool) {
 	r := es.keptLiveReads[seq]
 	tok := statementToken(rec.body, r.pos)
 	if tok < 0 {
 		return deoptPoint{}, false
+	}
+	if es.collectorBeforeRead(rec, r.pos, tok, ci) {
+		if es.liveNeedsPoint == nil {
+			es.liveNeedsPoint = map[int]bool{}
+		}
+		es.liveNeedsPoint[seq] = true
 	}
 	d, ok := es.deoptStatementStart(rec, seq, r.name, r.pos, ci, direct)
 	if !ok {
@@ -132,15 +138,45 @@ func (es *EmitState) livePointAt(u *emitUnit, rec *fnUnitRec, seq, ci int, direc
 		d = deoptPoint{seq: seq, slot: -1, name: r.name, pos: r.pos, start: rec.body[t].Pos()}
 	}
 	events := rec.frag.events
-	if start := es.pendingStart(events, seq, rec.body, rec.body[tok].Pos(), d.start); start != d.start {
+	if start := es.pendingStart(events, seq, ci, rec.body, rec.body[tok].Pos(), d.start); start != d.start {
 		d.start, d.atPush = start, false
 	}
 	k := testIndex(events, d.start)
-	if d.token = bodyTokenAt(rec.body, d.start); d.token < 0 || (d.token > tok && silentWordBefore(rec.body, events[:k], d.token)) ||
-		!liveReadAfter(events, k, seq) || unplacedBeforeRead(events, k, seq) || writtenBeforeTest(events, k, d.start) || es.deoptDeferred(u, rec, &d, ci) {
+	d.token = bodyTokenAt(rec.body, d.start)
+	if lw != nil && d.token == tok {
+		d.held = es.rootStackHeld(lw, d.token)
+	}
+	if d.token < 0 || (d.token > tok && silentWordBefore(rec.body, events[:k], d.token)) ||
+		!liveReadAfter(events, k, seq) || unplacedBeforeRead(events, k, seq) || writtenBeforeTest(events, k, d.start) ||
+		es.keptRunBeforeRead(events, k, seq) || es.deoptDeferred(u, rec, &d, ci) {
 		return deoptPoint{}, false
 	}
 	return es.livePoint(d, seq), true
+}
+
+// rootStackHeld is the root events whose results the interpreter's stack
+// holds at root body token tok, a statement's first — the stack the pass
+// told there (stackAtStart) — each left on the compiled stack beneath the
+// statement (seatStack: none promoted to a slot, and nothing else there),
+// for a root live point (NUR351). Nil when the
+// stack was not told or holds any other value. The island's prefix is that
+// stack, so a statement operand one of them produced before the start is in
+// hand at the test (deoptDeferred), and rootHeldBeneath checks the stack is
+// the interpreter's.
+func (es *EmitState) rootStackHeld(lw *lowerer, tok int) map[int]bool {
+	stack, told := es.stackAtStart(tok)
+	if !told {
+		return nil
+	}
+	srcs, _, slots, ok := es.seatStack(lw, stack)
+	if !ok || len(slots) != len(srcs) {
+		return nil
+	}
+	held := map[int]bool{}
+	for _, slot := range slots {
+		held[slot.seq] = true
+	}
+	return held
 }
 
 // testIndex is the index of the frame's event a point starting at start is
@@ -175,12 +211,16 @@ func walkEvents(events []EmitEvent, fn func(*EmitEvent)) {
 // event of theirs written before start — a word collecting forward over the
 // read, an infix word whose stack operand is written before it, a branch
 // or a loop whose word is — from the token its own tokens begin at
-// (eventToken), and a literal one of them takes, written before start. The
+// (eventToken), a literal one of them takes, written before start, and an
+// event lowered before the test whose value one of them takes. The start
+// also moves to a word before the read that may collect it (collectorToken,
+// NUR351). The
 // compiled code pushes such a literal when its consumer runs, so it is on
 // neither lane's stack at the test, and the island's tokens push it again.
 // The test moves with the start, so the walk runs to a fixed point.
-func (es *EmitState) pendingStart(events []EmitEvent, seq int, body []core.Value, stmt, start core.SrcPos) core.SrcPos {
+func (es *EmitState) pendingStart(events []EmitEvent, seq, ci int, body []core.Value, stmt, start core.SrcPos) core.SrcPos {
 	first := bodyTokenContaining(body, stmt)
+	readTok := bodyTokenContaining(body, es.keptLiveReads[seq].pos)
 	back := func(p core.SrcPos, t int) bool {
 		if p.Row == 0 || posAfter(stmt, p) || !posAfter(start, body[max(t, first)].Pos()) {
 			return false
@@ -195,6 +235,9 @@ func (es *EmitState) pendingStart(events []EmitEvent, seq int, body []core.Value
 			if liveReadAfter(events[i:i+1], 0, seq) && back(eventPos(events[i]), eventToken(body, &events[i])) {
 				moved = true
 			}
+			if t := es.collectorToken(body, &events[i], readTok); i != ci && t >= 0 && back(body[t].Pos(), t) {
+				moved = true
+			}
 		}
 		walkEvents(events[k:], func(ev *EmitEvent) {
 			if p := eventPos(*ev); back(p, eventToken(body, ev)) {
@@ -202,14 +245,237 @@ func (es *EmitState) pendingStart(events []EmitEvent, seq int, body []core.Value
 			}
 			forEachOperand(ev, func(op EmitOperand) {
 				if op.kind == opConst && op.idx >= 0 && op.idx < len(es.consts) {
-					if p := es.consts[op.idx].Pos(); back(p, bodyTokenContaining(body, p)) {
+					p := es.consts[op.idx].Pos()
+					if p.Row == 0 && isCompoundValue(es.consts[op.idx]) {
+						// A literal the fold re-minted without its position
+						// (`{b:1} keys x`): the statement's earliest token
+						// spelling it before the start (NUR351).
+						if t := spelledBefore(body, es.consts[op.idx], first, bodyTokenAt(body, start)); t >= 0 {
+							p = body[t].Pos()
+						}
+					}
+					if back(p, bodyTokenContaining(body, p)) {
 						moved = true
 					}
 				}
 			})
 		})
+		if liveOperandBefore(events, body, k, back) {
+			moved = true
+		}
+		if priorOperandAfter(events, k, stmt) && back(stmt, first) {
+			// The told stack at the statement's first token holds it
+			// (rootStackHeld): `do (mk) end print "p" keys x`, keys
+			// taking the body's run.
+			moved = true
+		}
 	}
 	return start
+}
+
+// priorOperandAfter reports whether a call lowered after the test,
+// events[k:], takes as an operand the value of an event written before the
+// statement beginning at stmt: a value the stack holds beneath the
+// statement, which only the stack told at its first token accounts for.
+func priorOperandAfter(events []EmitEvent, k int, stmt core.SrcPos) bool {
+	found := false
+	for i := k; i < len(events); i++ {
+		forEachOperand(&events[i], func(op EmitOperand) {
+			for j := range events[:k] {
+				if p := eventPos(events[j]); op.kind == opEvent && events[j].seq == op.idx && p.Row > 0 && posAfter(stmt, p) {
+					found = true
+				}
+			}
+		})
+	}
+	return found
+}
+
+// liveOperandBefore moves the start (back) to each live read lowered before
+// the test, events[:k], whose value a call lowered after it takes as an
+// operand — `x add y` over two reads after a computed body, add tested for
+// y: the island reads x again from its token. It reports whether it moved.
+func liveOperandBefore(events []EmitEvent, body []core.Value, k int, back func(core.SrcPos, int) bool) bool {
+	moved := false
+	for i := k; i < len(events); i++ {
+		forEachOperand(&events[i], func(op EmitOperand) {
+			for j := range events[:k] {
+				if ev := &events[j]; op.kind == opEvent && ev.seq == op.idx && ev.kind == evCall && ev.call.live && back(ev.call.pos, bodyTokenContaining(body, ev.call.pos)) {
+					moved = true
+				}
+			}
+		})
+	}
+	return moved
+}
+
+// collectorToken is the body token of the word event ev dispatches when it
+// is written at a top-level token before the read's (readTok), close enough
+// that its forward collection may reach the read — its widest forward window
+// (MaxForwardArgs) spans every token up to the read — and -1 otherwise
+// (NUR351). The pass decided that collection over the read's model, the
+// binding's pre-body type, where the interpreter's forward phase tests the
+// value the computed body bound: `do (mk) end keys x` over `def x 0` and a
+// body `def x {a:1} 4` — the model's `keys` found an Integer disjoint from
+// its Map slot and took the body's 4 from the stack, where the interpreter
+// collects the Map forward. The test must run before that dispatch, so the
+// island decides the collection over the live binding whenever it is not of
+// the model's type (LiveHot); over one that is, the pass's decision is the
+// interpreter's. A word the registry does not name is taken to reach it.
+func (es *EmitState) collectorToken(body []core.Value, ev *EmitEvent, readTok int) int {
+	var p core.SrcPos
+	switch {
+	case ev.kind == evCall && !ev.call.live:
+		p = ev.call.pos
+	case ev.kind == evCallUser:
+		p = ev.uc.wordPos
+	default:
+		return -1
+	}
+	t := bodyTokenAt(body, p)
+	if t < 0 || t >= readTok || readTok >= len(body) || !core.IsWord(body[readTok]) {
+		// Only a bare word read is collected by its value's type: a reach
+		// or a paren holding the read is collected whatever it holds.
+		return -1
+	}
+	w, err := core.AsWord(body[t])
+	if err != nil || w.ForceVal {
+		return -1
+	}
+	if fn := es.lookupWord(w.Name); fn != nil && fn.MaxForwardArgs < readTok-t {
+		return -1
+	}
+	for b := t + 1; b < readTok; b++ {
+		// A function word between them is a barrier: forward collection
+		// never runs past it (`do b drop for 1 [t drop]`).
+		if bw, err := core.AsWord(body[b]); err == nil && !bw.ForceVal && es.lookupWord(bw.Name) != nil {
+			return -1
+		}
+	}
+	return t
+}
+
+// lookupWord is the bound registry's binding of the word name, or nil (no
+// registry bound, or no such word).
+func (es *EmitState) lookupWord(name string) *core.FnDefInfo {
+	if es.reg == nil {
+		return nil
+	}
+	return es.reg.Lookup(name)
+}
+
+// trapBeforeStaleRead reports whether a terminal trap at pos, a program
+// token after a computed keep-defs body ran at the root (rootDynLeak), has a
+// bare word written after it in its statement that names no fn: a read the
+// body may have rebound, which the pass never made (the trap ended it) and
+// whose collection it decided over the pre-body binding — `do (mk) end 4
+// keys x` over `def x 0` and a body `def x {a:1}` is the interpreter's `[4
+// ['a']]`, `keys` collecting the Map forward, where the pass found an
+// Integer and trapped over the 4 (NUR351). Such a trap is no proof, so it is
+// not recorded and the program declines.
+func (es *EmitState) trapBeforeStaleRead(pos core.SrcPos) bool {
+	if !es.rootDynLeak || es.reg == nil {
+		return false
+	}
+	// The trap's word at any depth of the program's parens and list
+	// literals (`(4 keys x)`), the tokens after it at its own level.
+	path := tokenPath(es.rootBody, pos)
+	toks := es.rootBody
+	for _, at := range path[:max(len(path)-1, 0)] {
+		toks, _ = nestedToks(toks[at])
+	}
+	if len(path) == 0 || toks[path[len(path)-1]].Pos() != pos {
+		return false
+	}
+	for k := path[len(path)-1] + 1; k < len(toks) && !core.IsEnd(toks[k]); k++ {
+		w, err := core.AsWord(toks[k])
+		if err != nil {
+			continue
+		}
+		if top, bound := es.reg.Defs.Top(w.Name); bound {
+			if _, isFn := top.Data.(core.FnDefInfo); !isFn {
+				return true
+			}
+			continue
+		}
+		if _, isType := core.ResolveBuiltinTypeName(w.Name); !isType && w.Name != "true" && w.Name != "false" && w.Name != "none" {
+			return true
+		}
+	}
+	return false
+}
+
+// spelledBefore is the first body token from first up to (not including)
+// end that spells the literal c — no word, the same canonical value — or
+// -1 when none does.
+func spelledBefore(body []core.Value, c core.Value, first, end int) int {
+	canon := core.CanonValue(c)
+	for t := max(first, 0); t < end && t < len(body); t++ {
+		if !core.IsWord(body[t]) && core.CanonValue(body[t]) == canon {
+			return t
+		}
+	}
+	return -1
+}
+
+// collectorBeforeRead reports whether the bare read at pos, a top-level
+// token of the statement beginning at body token stmt, has a word dispatch
+// of the frame written before it in that statement (collectorToken): a
+// collection the pass decided over the read's stale model, which the read's
+// point must serve (liveNeedsPoint). The read's own consumer (event ci) is
+// none: it took the read, and the point tested at the read's push, before
+// that dispatch, serves it already.
+func (es *EmitState) collectorBeforeRead(rec *fnUnitRec, pos core.SrcPos, stmt, ci int) bool {
+	readTok := bodyTokenAt(rec.body, pos)
+	if readTok < 0 {
+		return false
+	}
+	for i := range rec.frag.events {
+		if i != ci && es.collectorToken(rec.body, &rec.frag.events[i], readTok) >= stmt {
+			return true
+		}
+	}
+	return false
+}
+
+// keptRunBeforeRead reports whether a frame event lowered from k on, before
+// the one holding the read at seq, may run a computed keep-defs body — a
+// dyn-body dispatch, or a call of a unit that runs one: the test would read
+// the binding before the body made it (the no-`end` `do (mk) keys x`, whose
+// statement begins at the `do`, NUR351).
+func (es *EmitState) keptRunBeforeRead(events []EmitEvent, k, seq int) bool {
+	for i := k; i < len(events) && !liveReadAfter(events[i:i+1], 0, seq); i++ {
+		runs := false
+		walkEvents(events[i:i+1], func(ev *EmitEvent) {
+			runs = runs || es.runsKeptBody(ev)
+		})
+		if runs {
+			return true
+		}
+	}
+	return false
+}
+
+// runsKeptBody reports whether event ev may run a computed keep-defs body:
+// a dyn-body dispatch (eventFlags.dynBodyResult), or an event that may run a
+// unit that runs one (keptDefsInvoker).
+func (es *EmitState) runsKeptBody(ev *EmitEvent) bool {
+	return es.eventInfo[ev.seq].dynBodyResult || es.keptDefsInvoker(ev) != ""
+}
+
+// liveReadUnserved is the lowering's verdict on a kept live read: one whose
+// statement holds a word before it that may collect it (liveNeedsPoint)
+// and whose point was not lowered before it (liveServed) declines. The
+// pass decided that word's collection over the read's pre-body type, and
+// without the point's test the compiled statement runs that decision over
+// a binding the body may have given another type — `{b:1} keys x` over a
+// body `def x {a:1}` answered [['b'] {a:1}] for the interpreter's [{b:1}
+// ['a']] (NUR351).
+func (lw *lowerer) liveReadUnserved(seq int) string {
+	if lw.es == nil || !lw.es.liveNeedsPoint[seq] || lw.liveServed[seq] {
+		return ""
+	}
+	return "a read after a computed keep-defs body stands after a word its binding may be collected by, and no live-read point serves its statement (NUR351)"
 }
 
 // eventToken is the top-level body token event ev's own tokens begin at: the
@@ -340,7 +606,7 @@ func (es *EmitState) planRootLiveReads(lw *lowerer, residual []core.Value) {
 	tree := rootTreeEvents(es.frames[0], false)
 	for _, seq := range es.keptLiveSeqs(es.frames[0]) {
 		ci, direct := rootReadConsumer(es.frames[0], es.keptLiveReads[seq].name, seq, 0, lw.promoted)
-		d, ok := es.livePointAt(es.units[0], rec, seq, ci, direct)
+		d, ok := es.livePointAt(es.units[0], rec, seq, ci, direct, lw)
 		if !ok {
 			continue
 		}

@@ -111,7 +111,7 @@ func TestUnplacedBeforeRead(t *testing.T) {
 func TestLivePointAtNoStatement(t *testing.T) {
 	es, u, rec, _ := deoptUnit(t, []core.Value{deoptTok("t", 43)}, 43)
 	es.keptLiveReads = map[int]keptLiveRead{5: {id: "live-t", name: "t"}}
-	if _, ok := es.livePointAt(u, rec, 5, -1, false); ok {
+	if _, ok := es.livePointAt(u, rec, 5, -1, false, nil); ok {
 		t.Error("a read at no position places no point")
 	}
 }
