@@ -66,6 +66,15 @@ func (vc *vmContext) invokeFnValue(reg *core.Registry, body core.Value, inputs [
 	if sig == nil {
 		return nil, nil, false
 	}
+	return vc.runFnValueSig(reg, body, fd, sig, args)
+}
+
+// runFnValueSig is invokeFnValue past the match: run the value's matched
+// overload sig over args (signature order) on its compiled unit — the
+// foreign arm, the freshness dance, the hosted nested run and the value's
+// own return contract — or report ran=false where the stepping path must
+// answer (no unit, a stale one past its budget, a shape drift).
+func (vc *vmContext) runFnValueSig(reg *core.Registry, body core.Value, fd core.FnDefInfo, sig *core.Signature, args []core.Value) ([]core.Value, error, bool) {
 	home, caps := core.FnHome(reg, &fd)
 	ref := compiler.CompiledRef(sig)
 	if ref == nil {
@@ -192,12 +201,11 @@ func checkFnValueReturn(r *core.Registry, fd core.FnDefInfo, sig *core.Signature
 	if len(sig.Returns) == 0 {
 		return res, nil, true
 	}
-	// A nameless fn value's frame is `<fn>` on the interpreter (NUR239).
-	name := fd.Name
-	if name == "" {
-		name = core.FnValueFrameName
-	}
-	fn := &compiler.CompiledFn{Name: name, Returns: sig.Returns, ReturnPatterns: sig.ReturnPatterns, Decl: sig.Decl, NUnnamed: nUnnamed}
+	// A nameless VERBOSE fn value's frame is `<fn>` on the interpreter
+	// (NUR239); a nameless `=>` lambda's is unnamed (applyFrameName —
+	// `each m.f [1]` over `{f: ([x:Integer] => [x x])}` said `<fn>:` here
+	// for the interpreter's `:`).
+	fn := &compiler.CompiledFn{Name: applyFrameName(fd), Returns: sig.Returns, ReturnPatterns: sig.ReturnPatterns, Decl: sig.Decl, NUnnamed: nUnnamed}
 	if extra := len(res) - len(sig.Returns); extra > nUnnamed {
 		return res, vmReturnCountErr(r, fn, len(sig.Returns), len(res)-nUnnamed, res[nUnnamed:], at), true
 	}

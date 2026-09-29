@@ -210,3 +210,44 @@ func TestDynApplyTopIslandStillRuns(t *testing.T) {
 		t.Fatalf("island apply zztriple(5) = %v, want 15", got[0])
 	}
 }
+
+// applyFrameName names an applied value's frame as the interpreter's step
+// does: `<fn>` for a nameless verbose `fn` (the stack-match path's frame),
+// the value's own name otherwise — empty for a nameless `=>` lambda.
+func TestApplyFrameName(t *testing.T) {
+	for _, c := range []struct {
+		fd   core.FnDefInfo
+		want string
+	}{
+		{core.FnDefInfo{}, core.FnValueFrameName},
+		{core.FnDefInfo{Anonymous: true}, ""},
+		{core.FnDefInfo{Name: "g"}, "g"},
+		{core.FnDefInfo{Name: "f", Anonymous: true}, "f"},
+	} {
+		if got := applyFrameName(c.fd); got != c.want {
+			t.Errorf("%+v: %q, want %q", c.fd, got, c.want)
+		}
+	}
+}
+
+// The token seam's contract error names the value by the same rule: a
+// nameless lambda's count error is unnamed (the interpreter's `: expected …`),
+// a nameless verbose fn's is `<fn>`'s — the seam used to say `<fn>` for both.
+func TestFnValueReturnNamesLikeTheStep(t *testing.T) {
+	r := stampReg(t)
+	sig := &core.Signature{Returns: []*core.Type{core.TInteger}}
+	two := []core.Value{core.NewInteger(1), core.NewInteger(2)}
+	for _, c := range []struct {
+		fd     core.FnDefInfo
+		prefix string
+	}{
+		{core.FnDefInfo{Anonymous: true}, ": expected 1"},
+		{core.FnDefInfo{}, "<fn>: expected 1"},
+	} {
+		_, err, ran := checkFnValueReturn(r, c.fd, sig, two, 0, core.SrcPos{})
+		be, ok := err.(*core.BoruError)
+		if !ran || !ok || !strings.HasPrefix(be.Detail, c.prefix) {
+			t.Errorf("anonymous=%v: ran=%v err=%v, want a detail starting %q", c.fd.Anonymous, ran, err, c.prefix)
+		}
+	}
+}

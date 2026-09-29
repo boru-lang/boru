@@ -45,6 +45,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.InClosureUnit() {
 		t.Fatal("inactive InClosureUnit must be false")
 	}
+	if e.ArgsReadLive() {
+		t.Fatal("inactive ArgsReadLive must be false")
+	}
 	if e.StoredGradualActive() {
 		t.Fatal("inactive StoredGradualActive must be false")
 	}

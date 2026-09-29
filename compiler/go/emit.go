@@ -1290,6 +1290,18 @@ type EmitState struct {
 	// applied dynamically the OUTER program stamps it where it interns it.
 	inStampCompile bool
 
+	// liveArgsUnitDepth is the unit count while a TOKEN body's stamp
+	// (StampTokenBody) records the body's own unit — 0 when unarmed. At
+	// exactly that depth a bare `args` compiles to the live read of the
+	// registry's args stack (the `args` native itself) instead of declining:
+	// the interpreter runs a token body through RunResolved, a plain sub-run
+	// that pushes no args frame, so its `args` reads whatever the ENCLOSING
+	// call pushed — the same stack top the hosted unit reads when the seam
+	// runs it (invokeTokenBody pushes no root args either). A deeper unit (a
+	// fn or closure the body's analysis opens) keeps the decline: its frame
+	// is the program's, not the seam's (see ArgsReadLive).
+	liveArgsUnitDepth int
+
 	// stampDeclined memoises the sig impls whose stamp already declined, keyed
 	// by the impl pointer the stamp would write to. The succeeding case
 	// memoises itself through the impl's compiled slot; without this the failing case
@@ -2525,6 +2537,7 @@ func (es *EmitState) forkForProbe() *EmitState {
 	// must carry the flag the real one will, or its verdict is about a
 	// unit whose defs lower differently.
 	p.keepDefsUnitDepth = es.keepDefsUnitDepth
+	p.liveArgsUnitDepth = es.liveArgsUnitDepth
 	p.keepLeakNames = maps.Clone(es.keepLeakNames)
 	p.runtimeStub = maps.Clone(es.runtimeStub)
 	p.runtimeTwins = maps.Clone(es.runtimeTwins)
@@ -2606,6 +2619,12 @@ func (es *EmitState) InClosureUnit() bool {
 		return false
 	}
 	return es.fnRecs[rec].closure
+}
+
+// ArgsReadLive reports that the recorder is inside a TOKEN body stamp's own
+// unit (liveArgsUnitDepth), where `args` reads the live args stack.
+func (es *EmitState) ArgsReadLive() bool {
+	return es != nil && es.liveArgsUnitDepth > 0 && len(es.units) == es.liveArgsUnitDepth
 }
 
 func (es *EmitState) Active() bool {
@@ -4299,6 +4318,12 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	// modality or the probe's verdict is about a different unit.
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
+	// The live-args arm of a token body's stamp too, at the same RELATIVE
+	// depth (the probe opens the body's unit over its own unit stack), or
+	// the probe declines the `args` read the real pass compiles.
+	if es.liveArgsUnitDepth > 0 {
+		probe.liveArgsUnitDepth = len(probe.units) + es.liveArgsUnitDepth - len(es.units)
+	}
 	r.Check.Emit = probe
 	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	r.Check.Emit = es
@@ -10351,12 +10376,15 @@ func (es *EmitState) recordCallCompileFailure(word string, sig *core.Signature, 
 		// landing (the break-2 closure) and re-declines what it cannot claim.
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("fn value read from a container auto-dispatches (Stage 3)")
-	case word == "args" || word == "__pa":
+	case (word == "args" && !es.ArgsReadLive()) || word == "__pa":
 		// `args` reads the interpreter's per-call args stack, which the
 		// VM's CALL_USER frame does not maintain (it binds params to
 		// frame locals instead). A compiled fn body that reads `args`
 		// would fail with "args: not inside a function" — decline so the
-		// program does not compile.
+		// program does not compile. The one exception is a TOKEN body's
+		// own unit in its run-time stamp (ArgsReadLive): there the native
+		// reads the live args stack, which is exactly what the
+		// interpreter's RunResolved over the same tokens reads.
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("context-dependent word " + word)
 	case len(sig.NoEvalArgs) > 0 && ((sig.Callable != nil && execBodyRefsNames(sig, args)) || !es.noEvalBodyBakes(sig, args)):

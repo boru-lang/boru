@@ -150,9 +150,13 @@ func (vc *vmContext) invokeTokenBody(reg *core.Registry, body core.Value, inputs
 	prev := vc.rootRetTrim
 	vc.rootRetTrim = false
 	defer func() { vc.rootRetTrim = prev }()
-	// The body's own frame: a DynEnv unit reads `args` as the interpreter's
-	// sub-run would (pushRootArgs).
-	defer pushRootArgs(reg, ref.Prog, inputs)()
+	// No args frame is pushed for the body: the interpreter's RunResolved
+	// opens none, so a bare `args` in the body (compiled to the live read,
+	// compiler.EmitState.ArgsReadLive) — or in a dynamic body it runs — reads
+	// the ENCLOSING call's list, exactly as the sub-run's does. (Pushing the
+	// seam's inputs here, as a fn value's root frame does, answered `[7]`
+	// then `[5]` for `each b [x 5]` over `b` = `[do [args]]` inside
+	// `w 7`, against the interpreter's `[7]` twice.)
 	res, err := vc.hostForeign(ref.Prog, reg, ref.Unit, inputs, nil, true)
 	if fe, escaped := err.(*flowEscape); escaped {
 		reg.FlowCtrl = flowCtrlOf(fe.op)

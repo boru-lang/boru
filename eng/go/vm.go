@@ -726,6 +726,12 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 		if res, err, ran := vc.invokeTokenBody(reg, body, inputs); ran {
 			return res, err
 		}
+		// A named fn value that takes no argument runs over nothing, its
+		// results on top of the inputs, as its step does
+		// (vm_fnvalue_zeroarg.go).
+		if res, err, ran := vc.zeroArgTokenSeam(reg, body, inputs); ran {
+			return res, err
+		}
 		// A fn value no signature admits over the inputs parks on top of
 		// them — RunResolved's residual — or raises, as its step would
 		// (vm_fnvalue_park.go): the inputs are the stack beneath it.
@@ -1429,6 +1435,14 @@ func (vc *vmContext) callDynamic(reg *core.Registry, n int, trailing bool, stack
 	// are the stack beneath it (and are stepped, so each must be stepless).
 	if st, handled, err := vc.callDynamicNoMatch(reg, fnVal, args, stack, base, trailing, curDebug, pc); handled {
 		return st, nil, err
+	}
+	// A named fn value that takes no argument runs over nothing, the window's
+	// args kept where its step keeps them (vm_fnvalue_zeroarg.go).
+	if st, err, ran := vc.zeroArgCallDynamic(reg, fnVal, args, stack, base, trailing); ran {
+		if err != nil {
+			return nil, nil, stampAt(err, curDebug, pc, reg)
+		}
+		return st, nil, nil
 	}
 	// Non-trivial fn (user body): apply via the island sub-engine, which
 	// auto-applies the Function to the forward args exactly as a nested Run.
@@ -2933,6 +2947,14 @@ func (vc *vmContext) callDynamicMixed(reg *core.Registry, w int, stack []core.Va
 				return append(stack[:base], results...), nil
 			}
 		}
+	}
+	// A boru fn value the interpreter's own plan binds across the window —
+	// the split rule, `3 m.f 2` — applies natively (vm_mixed_plan.go).
+	if results, err, ran := vc.mixedPlanApply(reg, window); ran {
+		if err != nil {
+			return nil, stampAt(err, curDebug, pc, reg)
+		}
+		return append(stack[:base], results...), nil
 	}
 	// A PLACED value the step loop would dispatch starts the island past it
 	// (placedWindowSplit): the interpreter holds it resolved beneath the word.

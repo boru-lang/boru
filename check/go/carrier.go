@@ -680,7 +680,7 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 		// compile failure, the closure probe declines, and the program takes the
 		// compile failure. A plain (non-
 		// recording) check keeps the projection so diagnostics are unchanged.
-		if es := r.Check.Recorder(); es.Active() && es.InClosureUnit() {
+		if es := r.Check.Recorder(); es.Active() && (es.InClosureUnit() || es.ArgsReadLive()) {
 			return nil, false
 		}
 		if top, ok, err := r.Args.Top(); err == nil && ok && core.IsConcrete(top) {

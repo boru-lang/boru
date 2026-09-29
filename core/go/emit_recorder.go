@@ -494,6 +494,11 @@ type EmitRecorder interface {
 	// used to require a concrete recorder assert outside the emit
 	// cluster. Inactive: false / zero / no-op.
 	InClosureUnit() bool
+	// ArgsReadLive reports the recording of a TOKEN body's own unit in its
+	// run-time stamp, where a bare `args` compiles to the live read of the
+	// args stack rather than projecting the unit's frame (the seam's run
+	// pushes no args frame, as the interpreter's RunResolved does not).
+	ArgsReadLive() bool
 	StoredGradualActive() bool
 	FoldFullStack(word string, args, preserved []Value) ([]Value, bool)
 	RecordSpliceDyn(payload Value, pos SrcPos) bool
@@ -721,6 +726,7 @@ func (c *CheckState) Recorder() EmitRecorder {
 }
 
 func (inactiveEmit) InClosureUnit() bool                                    { return false }
+func (inactiveEmit) ArgsReadLive() bool                                     { return false }
 func (inactiveEmit) StoredGradualActive() bool                              { return false }
 func (inactiveEmit) FoldFullStack(string, []Value, []Value) ([]Value, bool) { return nil, false }
 func (inactiveEmit) RecordSpliceDyn(Value, SrcPos) bool                     { return false }
