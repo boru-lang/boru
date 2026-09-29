@@ -316,7 +316,15 @@ var pinnedAritySites = map[string]int{
 	// whether every one runs a boru body, whose result the interpreter
 	// parks — a value with no signature has no body to park. The same
 	// presence test as NUR238's; the count of params never enters.
-	"eng/go/vm.go": 24,
+	// 24 -> 26 (NUR336's remainders, 2026-09-29): parenMissesWindow and
+	// namedMissRaise ask whether a signature takes as many values as the
+	// paren's window holds (a closure unit: its params less its captures)
+	// before MatchFnSig admits them — the argument rule's own first test —
+	// and placesAlone reads the forward split the rule makes (a signature of
+	// k values, all forward-eligible, takes the window's first k). Each
+	// MATCHES a signature against the window; none decides what a function
+	// of a given arity may do.
+	"eng/go/vm.go": 26,
 	// The Apply kernel's runtime entry: `fn.NParams != len(args)` checks that
 	// the compiled unit AGREES with the signature MatchFnSig already selected
 	// (compile/run drift detection — entering on a mismatch would bind the
