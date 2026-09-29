@@ -1491,11 +1491,22 @@ type EmitState struct {
 	// tape (its own position, when it had one): the interpreter's re-step
 	// raises there (LandingWord.ValPos, NUR289's caret).
 	landingValPos map[int]core.SrcPos
+	// landingTaken marks the noted landings a later dispatch took as an
+	// operand beside a value written after them (NoteTakenLanding, NUR349):
+	// a landing the lowering cannot guard declines the program.
+	landingTaken map[int]bool
 	// rootStmtStacks holds, by the position of a ROOT statement boundary
 	// that closed nothing, the stack it left for the next statement
 	// (NoteStatementStack): a root statement island seats exactly these
 	// beneath the statement (rootPreStart, NUR335).
 	rootStmtStacks map[core.SrcPos][]core.Value
+	// spliceOuts holds, by call seq, the results of a `do` one of which is
+	// a splice marker over a concrete payload, and firedSplices, by the same
+	// seq, the markers among them (by value ID) the pass fired. Both are
+	// per-event notes Rollback trims with the rest (splice_outs.go, NUR348;
+	// the review of #522).
+	spliceOuts   map[int][]core.Value
+	firedSplices map[int]map[string]bool
 	// leadReads holds the paren applies whose statement island steps the
 	// paren's lead as the interpreter does (noteLeadRead): a raw member read
 	// or no event's value, which the island may run before the lead ran.
@@ -2053,8 +2064,12 @@ type fnUnitRec struct {
 	// on CompiledFn.Decl so a compiled RET return error labels the
 	// declaration as a secondary span exactly as the interpreter does.
 	// Zero for closures / anonymous units (no meaningful declaration).
-	decl   core.DeclSite
-	locals []string // slot→name table (params then captures)
+	decl core.DeclSite
+	// argsElided stamps CompiledFn.ArgsElided: the unit is the body of a
+	// sig whose handler pushes the shared empty args list
+	// (core.FnFrameMeta.ArgsElided, SetUnitArgsElided).
+	argsElided bool
+	locals     []string // slot→name table (params then captures)
 	// slotNames names the unit's OTHER frame locals — loop variables,
 	// carried and arm-bound defs — captured at unit close (unitSlotNames)
 	// for CompiledFn.LocalNames (NUR146).
@@ -2353,6 +2368,11 @@ type deoptPoint struct {
 	// serves: its value is the registry binding (DeoptSpec.Live), tested
 	// before the statement's first op.
 	live *keptLiveRead
+	// trapHeld, on a live-read point of a program the pass ended at a
+	// terminal trap (trapHeldBeneath, NUR348), is the compiled stack the
+	// point needs at its test — the interpreter's at the statement's start;
+	// nil on any other point.
+	trapHeld []vmSlot
 }
 
 // plainLambda reports a lambda VALUE unit (tryReturnedClosure's `fnval`
@@ -2637,6 +2657,36 @@ func (es *EmitState) InClosureUnit() bool {
 		return false
 	}
 	return es.fnRecs[rec].closure
+}
+
+// ArgsElidedFrame reports that the recorder is inside an args-elided fn
+// unit's own frame (SetUnitArgsElided) — its innermost open unit — whose
+// args list the interpreter's handler elides for a call from the fn's own
+// registry, while CallBoru from any other pushes the real args (NUR346).
+func (es *EmitState) ArgsElidedFrame() bool {
+	if es == nil || len(es.openUnitRecs) == 0 {
+		return false
+	}
+	rec := es.openUnitRecs[len(es.openUnitRecs)-1]
+	return rec >= 0 && rec < len(es.fnRecs) && es.fnRecs[rec].argsElided
+}
+
+// argsLiveInElidedFrame is RecordCall's live-read arm for an `args` read in
+// an args-elided unit's own frame (NUR346): which list the frame holds —
+// the EMPTY list the leaf handler pushes from the fn's own registry, the
+// real args CallBoru pushes from any other (a module export called from
+// the importer; review of #522) — is the caller's, so the native reads the
+// live args stack, and the program keeps the per-frame args bracket
+// (DynEnv) that maintains it. Reports whether the read is live. A unit
+// whose home is a FOREIGN sub-registry (a module fn) declines instead: the
+// VM keeps the bracket on the program's registry while the native reads the
+// unit's dispatch registry, so a live read there would find no frame.
+func (es *EmitState) argsLiveInElidedFrame() bool {
+	if !es.ArgsElidedFrame() || es.isForeignRegistry(es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]].reg) {
+		return false
+	}
+	es.dynEnv = true
+	return true
 }
 
 // ArgsReadLive reports that the recorder is inside a TOKEN body stamp's own
@@ -4194,7 +4244,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	r.Check.Emit = probe
 	// bodyOut 1: a fn VALUE body keeps the single declared return (it is not a
 	// 0-output side-effect body like a test case).
-	_, probeOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
+	_, probeOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, ps.ArgsElided, pos)
 	r.Check.Emit = es
 	if !probeOK {
 		return EmitOperand{}, false
@@ -4213,7 +4263,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 		es.dynEnv = true
 	}
 	// REAL: compile into this program (deterministic success after a clean probe).
-	unit, realOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
+	unit, realOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, ps.ArgsElided, pos)
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return EmitOperand{}, false
 	}
@@ -4230,7 +4280,13 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	// values, and the interpreter raises `expected 1 return value(s), got 2`
 	// where an uncontracted closure answered [7 8] (the twenty-ninth
 	// increment; latent before it, every such call site declined).
-	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps, closureRet: namedFnValueSpec(fnValueRetSpec(&fd, lam, pos), &fd)}, true
+	// The contract's anchor is the VALUE's own position — what the
+	// interpreter's frame for it reports (execFnDefSig's callPos, the
+	// stepped value's token): a verbose `fn` carries its `fn` token (1:37 in
+	// `[(fn [[a:Integer][String] …])]`), a `=>` lambda none. pos is the
+	// residual's (the enclosing paren, 1:36), which the compiled report
+	// used to name (NUR347).
+	return EmitOperand{kind: opClosure, closureUnit: unit, closureCaps: capOps, closureRet: namedFnValueSpec(fnValueRetSpec(&fd, lam, v.Pos()), &fd)}, true
 }
 
 // namedFnValueSpec marks a push of a NAMED fn value (a `fn` literal — only
@@ -4343,7 +4399,7 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 		probe.liveArgsUnitDepth = len(probe.units) + es.liveArgsUnitDepth - len(es.units)
 	}
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
+	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, core.SigArgsElided(lam), pos)
 	r.Check.Emit = es
 	if !probeOK {
 		// Surface the probe's failure for the -compile-report attribution
@@ -4358,7 +4414,7 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	if probe.dynEnv {
 		es.dynEnv = true
 	}
-	unit, realOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
+	unit, realOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, core.SigArgsElided(lam), pos)
 	if !realOK || unit < 0 {
 		// Reachable: a body the probe pass accepted can still decline in the
 		// real pass (the variation sweep produces such shapes — a splice-
@@ -4428,7 +4484,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, bodyList.Pos())
+	_, probeOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, false, bodyList.Pos())
 	r.Check.Emit = es
 	if !probeOK {
 		return core.Value{}, false
@@ -4437,7 +4493,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	if probe.dynEnv {
 		es.dynEnv = true
 	}
-	unit, realOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, bodyList.Pos())
+	unit, realOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, false, bodyList.Pos())
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return core.Value{}, false
 	}
@@ -4524,14 +4580,14 @@ func (es *EmitState) compileStoredParamBody(bodyList core.Value, params []core.F
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, bodyList.Pos())
+	_, probeOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, false, bodyList.Pos())
 	r.Check.Emit = es
 	if !probeOK {
 		return core.Value{}, false
 	}
 	// Probe-terminal environment mode → real pass (see tryReturnedClosure).
 	es.dynEnv = es.dynEnv || probe.dynEnv
-	unit, realOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, bodyList.Pos())
+	unit, realOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, false, bodyList.Pos())
 	if !realOK || unit < 0 {
 		// Unlike compileStoredBody's spawn shape, the real pass CAN decline
 		// after a clean probe here: it records into the LIVE mid-recording
@@ -7612,6 +7668,8 @@ func (es *EmitState) Rollback(h core.EmitCheckpoint) {
 	dropKeysAbove(es.landingBeneath, cp.seq)
 	dropKeysAbove(es.landingOwn, cp.seq)
 	dropKeysAbove(es.landingWord, cp.seq)
+	dropKeysAbove(es.spliceOuts, cp.seq)
+	dropKeysAbove(es.firedSplices, cp.seq)
 	for id, seq := range es.argsProjSeq {
 		if seq > cp.seq {
 			delete(es.argsProjSeq, id)
@@ -8175,6 +8233,20 @@ func (es *EmitState) SetUnitDecl(unit int, decl core.DeclSite) {
 		return
 	}
 	es.fnRecs[unit].decl = decl
+}
+
+// SetUnitArgsElided marks a compiled fn unit as the body of a sig whose
+// interpreter handler pushes the shared EMPTY args list
+// (core.FnFrameMeta.ArgsElided — a leaf body that never reads `args`),
+// stamped on CompiledFn.ArgsElided so the VM's DynEnv args bracket pushes
+// the same list: dynamic code the frame runs reads `args` as `[]` on both
+// engines (NUR346). The caller keys the unit apart from a real-args twin
+// (check's ArgsElidedKeySuffix).
+func (es *EmitState) SetUnitArgsElided(unit int) {
+	if unit < 0 || unit >= len(es.fnRecs) {
+		return
+	}
+	es.fnRecs[unit].argsElided = true
 }
 
 func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Value, pos, wordPos core.SrcPos) {
@@ -10399,7 +10471,7 @@ func (es *EmitState) recordCallCompileFailure(word string, sig *core.Signature, 
 		// landing (the break-2 closure) and re-declines what it cannot claim.
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("fn value read from a container auto-dispatches (Stage 3)")
-	case (word == "args" && !es.ArgsReadLive()) || word == "__pa":
+	case (word == "args" && !es.ArgsReadLive() && !es.argsLiveInElidedFrame()) || word == "__pa":
 		// `args` reads the interpreter's per-call args stack, which the
 		// VM's CALL_USER frame does not maintain (it binds params to
 		// frame locals instead). A compiled fn body that reads `args`
@@ -17389,7 +17461,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		names := make([]string, rec.numLoc)
 		copy(names, rec.locals)
 		fillSlotNames(names, rec.slotNames)
-		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render, Lambda: rec.lambdaUnit, FnReadParams: rec.fnReadParams}
+		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render, Lambda: rec.lambdaUnit, FnReadParams: rec.fnReadParams, ArgsElided: rec.argsElided}
 		if es.isForeignRegistry(rec.reg) {
 			// Stamp the unit's dispatch registry ONLY for a FOREIGN sub-registry
 			// (a `module [...]` preamble fn — decision.cond, repl-eval-line):

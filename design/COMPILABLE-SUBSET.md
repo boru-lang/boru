@@ -660,6 +660,33 @@ user still gets an answer while the case is open:
     declined after an unrepeatable check-pass effect"; formerly NUR236). The
     effect happens once, never twice; the cure is a specialisation that
     declines less often or unwinds in place without a re-run.
+  - `for 2 [("s" lam/v) (2 add 3)]` declines with "branch leaves extra
+    values" since the NUR344 fix (2026-09-29), as its literal twin
+    `for 2 [("s" lam/v) 5]` always did: a for body leaving several values
+    has no compiled seat. It had compiled through an end-of-run island.
+  - A dispatch that takes a member read the run may find callable beside a
+    value written after it (`8 m.f 7 eq`, NUR349 — fixed at the root and in
+    a plain unit) declines where no landing can guard it: inside a branch
+    arm (`if c [8 m.f 7 eq] [0]`), a loop body (`for 1 [8 m.f 7 eq]`), or a
+    unit with an apply chain or trailing apply. Some of these were silent
+    wrong answers on main (`if c [8 m.f 7 eq] [0]` was `[8 false]` for
+    `[true]`).
+  - `Rand.map-from` over a literal schema whose body binds a name declines
+    ("twin regime: a bind transition has no stream placement", NUR330,
+    2026-09-29): the generator's bodies are run-time token bodies the
+    compiled program does not model, and the def outlives the call on the
+    interpreter. This includes bodies whose binding is never read later
+    (`def k 5 Rand.map-from {a:[def k 1 k]} drop 0`), which compiled and
+    agreed before — the price of refusing the silent case. Bodies that bind
+    nothing compile as before.
+  - A module fn whose frame skips the args list (NUR346's leaf elision) and
+    reads `args` through a word macro bound after it declines with
+    "context-dependent word args" (2026-09-29, the Codex review of #522):
+    one compiled unit serves both the importer's call (real args, via
+    CallBoru) and the module's own (the empty list), and the VM keeps the
+    args stack on the program's registry where the module's `args` reads its
+    own. The importer-side call compiled correctly before; the inside-module
+    call was a silent wrong answer. Owed: per-registry args frames in the VM.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

@@ -90,7 +90,7 @@ func (vc *vmContext) runForeignUnit(ref *compiler.CompiledFnRef, args []core.Val
 	defer func() { vc.rootRetTrim, vc.rootRetNamed = prev, prevNamed }()
 	// The value's own frame (see pushRootArgs): its call args ride in from
 	// the seam, for the DynEnv unit that reads them.
-	defer pushRootArgs(vc.r, ref.Prog, args)()
+	defer pushRootArgs(vc.r, ref.Prog, args, false)()
 	res, err = vc.hostForeign(ref.Prog, vc.r, ref.Unit, args, ref.Captures, false)
 	return res, true, err
 }

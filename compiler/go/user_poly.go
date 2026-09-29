@@ -333,10 +333,19 @@ func compileUserPolyArm(r *core.Registry, es core.EmitRecorder, word string, s *
 		}
 	}()
 	key := check.FnAnalysisKey(r.AnalysisScopeID(), word, genArgs, owner.Captured, body)
+	// The arm's handler decides the frame's args list (NUR346).
+	unitKey := key
+	argsElided := core.SigArgsElided(s)
+	if argsElided {
+		unitKey += check.ArgsElidedKeySuffix
+	}
 	fnPos := body[0].Pos()
-	unit, finishFn, ok := es.StartFnCompile(key, word, r, genArgs, declared, paramNames, owner.Captured, owner.Gen != nil, fnPos)
+	unit, finishFn, ok := es.StartFnCompile(unitKey, word, r, genArgs, declared, paramNames, owner.Captured, owner.Gen != nil, fnPos)
 	if !ok || unit < 0 {
 		return -1, false
+	}
+	if argsElided {
+		es.SetUnitArgsElided(unit)
 	}
 	// Declared PARAM types/patterns: the VM enforces them at entry (the same
 	// guard OpCallUser runs), so the runtime re-match's pick is double-checked

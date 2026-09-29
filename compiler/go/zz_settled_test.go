@@ -78,6 +78,7 @@ func TestInactiveEmitMethods(t *testing.T) {
 	}
 	e.NoteReStepLanding(core.Value{}, core.SrcPos{})
 	e.NoteDelivery(core.Value{})
+	e.NoteTakenLanding(core.Value{})
 	e.NoteStatementEnd(core.SrcPos{})
 	e.NoteLandingNext(core.Value{}, core.LandingNextEnd, false, core.Value{})
 	if e.MayBeFn("id") {

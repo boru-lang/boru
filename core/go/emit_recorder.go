@@ -317,6 +317,13 @@ type EmitRecorder interface {
 	// its producer's own paren placed is placed only while that first
 	// delivery is its only one.
 	NoteDelivery(v Value)
+	// NoteTakenLanding marks v as owing a COLLECTING landing (NUR349): a
+	// value the run may find callable, which a dispatch took off the stack
+	// together with a value written after it — the value the interpreter's
+	// re-step of v collects before that dispatch runs. The landing guards the
+	// value where it lands; a value no landing op can guard declines the
+	// program.
+	NoteTakenLanding(v Value)
 	RecordFallback(span FallbackSpan, ins []Value, out Value, pos SrcPos) bool
 	RecordTrap(code, detail, word, hint string, pos SrcPos) bool
 	RecordTrapErr(ae *BoruError, pos SrcPos) bool
@@ -499,9 +506,22 @@ type EmitRecorder interface {
 	// args stack rather than projecting the unit's frame (the seam's run
 	// pushes no args frame, as the interpreter's RunResolved does not).
 	ArgsReadLive() bool
+	// ArgsElidedFrame reports the recording of an args-elided fn unit's own
+	// frame (SetUnitArgsElided): the list there is the CALLER's — empty
+	// from the fn's own registry, the real args (CallBoru) from any other —
+	// so an `args` read the construction-time walk could not see (a word
+	// macro bound after the fn) projects nothing: it reads the live args
+	// stack, or declines (NUR346, review of #522).
+	ArgsElidedFrame() bool
 	StoredGradualActive() bool
 	FoldFullStack(word string, args, preserved []Value) ([]Value, bool)
 	RecordSpliceDyn(payload Value, pos SrcPos) bool
+	// NoteSpliceFired tells the recorder the splice marker v fired at the
+	// pointer (stepLiteral): the tape replaced it with its payload, so the
+	// marker itself is gone from the stack the pass models — a value the
+	// recorder holds as a call's result (a `do` whose literal body read a
+	// `word` value by value, NUR348) is consumed there. Inactive: no-op.
+	NoteSpliceFired(v Value, pos SrcPos)
 	NoteShapedRead(id string)
 	MemberFnReadValue(id string) (Value, bool)
 	DynInputsProven(sig *Signature, args []Value) bool
@@ -684,6 +704,12 @@ type EmitRecorder interface {
 	// and, when one fails, applies fallback — the fn itself — instead.
 	SetUnitSpecialisation(unit int, params []int, fns []Value, fallback Value)
 	SetUnitDecl(unit int, decl DeclSite)
+	// SetUnitArgsElided marks unit as the body of a sig whose handler pushes
+	// the shared EMPTY args list (FnFrameMeta.ArgsElided): the VM's args
+	// bracket pushes the same list for a call from the unit's home registry,
+	// so dynamic code the frame runs reads `args` as the interpreter's does
+	// (NUR346).
+	SetUnitArgsElided(unit int)
 	UnitVariadic(unit int) bool
 	UnitNetsZero(unit int) bool
 	// ArmTailApply collapses a branch ARM's residual whose top is a PENDING
@@ -727,9 +753,11 @@ func (c *CheckState) Recorder() EmitRecorder {
 
 func (inactiveEmit) InClosureUnit() bool                                    { return false }
 func (inactiveEmit) ArgsReadLive() bool                                     { return false }
+func (inactiveEmit) ArgsElidedFrame() bool                                  { return false }
 func (inactiveEmit) StoredGradualActive() bool                              { return false }
 func (inactiveEmit) FoldFullStack(string, []Value, []Value) ([]Value, bool) { return nil, false }
 func (inactiveEmit) RecordSpliceDyn(Value, SrcPos) bool                     { return false }
+func (inactiveEmit) NoteSpliceFired(Value, SrcPos)                          {}
 func (inactiveEmit) NoteShapedRead(string)                                  {}
 func (inactiveEmit) MemberFnReadValue(string) (Value, bool)                 { return Value{}, false }
 func (inactiveEmit) Active() bool                                           { return false }
@@ -789,6 +817,7 @@ func (inactiveEmit) RecordDynMethod(Value, []Value, []Value, string, SrcPos) boo
 }
 func (inactiveEmit) NoteReStepLanding(Value, SrcPos)                          {}
 func (inactiveEmit) NoteDelivery(Value)                                       {}
+func (inactiveEmit) NoteTakenLanding(Value)                                   {}
 func (inactiveEmit) RecordFallback(FallbackSpan, []Value, Value, SrcPos) bool { return false }
 func (inactiveEmit) RecordTrap(string, string, string, string, SrcPos) bool   { return false }
 func (inactiveEmit) RecordTrapErr(*BoruError, SrcPos) bool                    { return false }
@@ -884,6 +913,7 @@ func (inactiveEmit) SetUnitReturnPatterns(int, []*Value)              {}
 func (inactiveEmit) SetUnitBody(int, []Value)                         {}
 func (inactiveEmit) SetUnitSpecialisation(int, []int, []Value, Value) {}
 func (inactiveEmit) SetUnitDecl(int, DeclSite)                        {}
+func (inactiveEmit) SetUnitArgsElided(int)                            {}
 func (inactiveEmit) UnitVariadic(int) bool                            { return false }
 func (inactiveEmit) UnitNetsZero(int) bool                            { return false }
 func (inactiveEmit) UnitTailApply(int) (int, bool)                    { return 0, false }

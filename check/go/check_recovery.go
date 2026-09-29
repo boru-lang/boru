@@ -484,7 +484,9 @@ func trimUnnamedArgs(result []core.Value, nret, unnamed int) []core.Value {
 // design/legacy/boru-bytecode-stage3-inlining-plan.0.ignore "THE shared crux:
 // body-bearing fn-VALUE dispatch (__pa)".
 func SpliceFnValueCheckResult(e *core.Engine, valIdx, nArgs int, fnDef core.FnDefInfo, sig *core.FnSig, args []core.Value) error {
-	returns := BuildFnBodyReturnsFn(e.Registry, fnDef.Name, *sig, fnDef)
+	// The stack-match path runs execFnDefSig, which pushes the real args
+	// whatever the sig's handler would push (NUR346).
+	returns := buildFnBodyReturnsFn(e.Registry, fnDef.Name, *sig, fnDef, false)
 	result := returns(args, e.Registry)
 	if len(result) == 0 && len(sig.Returns) > 0 { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 		// A declared-return fn that produced no carrier (the body unit

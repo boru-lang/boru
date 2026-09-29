@@ -59,9 +59,17 @@ func CompileFnSigUnit(caller *core.Registry, fnDef core.FnDefInfo, sigIdx int) i
 		fnPos = body[0].Pos()
 	}
 	key := FnAnalysisKey(r.AnalysisScopeID(), fnDef.Name, inputs, fnDef.Captured, body)
-	unit, finish, ok := es.StartFnCompile(key, fnDef.Name, r, inputs, compileReturns, paramNames, fnDef.Captured, fnDef.Gen != nil, fnPos)
+	unitKey := key
+	argsElided := core.SigArgsElided(s)
+	if argsElided {
+		unitKey += ArgsElidedKeySuffix
+	}
+	unit, finish, ok := es.StartFnCompile(unitKey, fnDef.Name, r, inputs, compileReturns, paramNames, fnDef.Captured, fnDef.Gen != nil, fnPos)
 	if !ok {
 		return -1
+	}
+	if argsElided {
+		es.SetUnitArgsElided(unit)
 	}
 	es.SetUnitParamTypes(unit, paramTypes, paramPatterns)
 	es.SetUnitBody(unit, body)

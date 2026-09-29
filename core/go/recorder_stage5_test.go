@@ -48,6 +48,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.ArgsReadLive() {
 		t.Fatal("inactive ArgsReadLive must be false")
 	}
+	if e.ArgsElidedFrame() {
+		t.Fatal("inactive ArgsElidedFrame must be false")
+	}
 	if e.StoredGradualActive() {
 		t.Fatal("inactive StoredGradualActive must be false")
 	}
@@ -92,6 +95,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	}
 	e.NoteReStepLanding(Value{}, SrcPos{})
 	e.NoteDelivery(Value{})
+	e.NoteTakenLanding(Value{})
 	if e.RecordFallback(FallbackSpan{}, nil, Value{}, SrcPos{}) {
 		t.Fatal("inactive RecordFallback must decline")
 	}
@@ -159,6 +163,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	}
 	e.NoteStatementEnd(SrcPos{Row: 1, Col: 1})
 	e.NoteStatementStack(SrcPos{Row: 1, Col: 1}, nil)
+	e.NoteSpliceFired(Value{}, SrcPos{Row: 1, Col: 1})
 	e.NoteLandingNext(Value{}, LandingNextEnd, false, Value{})
 	if _, ok := e.PendingClosureApply(nil); ok {
 		t.Fatal("inactive PendingClosureApply must miss")
@@ -255,6 +260,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.SetUnitBody(0, nil)
 	e.SetUnitSpecialisation(0, nil, nil, Value{})
 	e.SetUnitDecl(0, DeclSite{})
+	e.SetUnitArgsElided(0)
 	if e.UnitVariadic(0) {
 		t.Fatal("inactive UnitVariadic must be false")
 	}

@@ -4052,7 +4052,42 @@ func (e *Engine) noteCollectionHazards(sig *Signature, sortedIndices []int) {
 	if sig != nil && sig.Callable != nil && sig.Callable.StripsUnconsumedInput {
 		return
 	}
+	e.noteCollectedLandings(sortedIndices)
 	e.noteCollectionHazardsBelow(-1, sortedIndices[0], e.forwardOnly(len(sortedIndices)))
+}
+
+// noteCollectedLandings is the hazard scan's twin for the dispatch's OWN
+// operands (NUR349). A value the run may find callable — a gradual read of
+// an opaque Map's member — is re-stepped by the interpreter where it lands,
+// and its forward phase collects the value written after it before any
+// later word runs: `1 m.f 7 add` is `1 (m.f 7) add`, 9. The pass steps it as
+// data there, noting no landing (CheckState.StoodAsideLandingIDs: the
+// residual arms model `1 m.f 7`). When the dispatch at the pointer takes
+// such a value from the stack TOGETHER with a value written after it (a
+// stack operand above it, below the word), the model's window is the
+// interpreter's only when the run's value is data. The value's landing is
+// noted as a COLLECTING one (core.LandingNextCollect): the lowering guards
+// it where nothing compiled re-steps it, and at run time a callable value
+// takes its statement's island, data runs on. A value no landing op can
+// guard declines the program (EmitRecorder.NoteTakenLanding).
+func (e *Engine) noteCollectedLandings(sortedIndices []int) {
+	es := e.Registry.analysisRecorder()
+	if !es.Active() {
+		return
+	}
+	// The operands the dispatch took off the stack, bottom first: the ones
+	// beneath the pointer less the forward run rearrangeForForward laid out
+	// on top of them (forwardSplit) — those were written after the word.
+	run := 0
+	for run < len(sortedIndices) && sortedIndices[run] < e.Pointer {
+		run++
+	}
+	run -= e.forwardSplit()
+	for _, j := range sortedIndices[:max(run-1, 0)] {
+		if v := e.Tape.At(j); !v.Quoted && e.Registry.Check.StoodAsideLandingIDs[v.ID] {
+			es.NoteTakenLanding(v)
+		}
+	}
 }
 
 // forwardOnly reports whether every one of the n operands of the dispatch at
@@ -4666,6 +4701,11 @@ func (e *Engine) stepLiteral() error {
 				if !rec.RecordSpliceDyn(info.Data, e.Tape.At(valIdx).Pos()) {
 					rec.MarkUncompilable("splice over a computed payload (runtime spread unknown at compile time)")
 				}
+			}
+			// The marker leaves the stack the pass models: a recorded
+			// result it was is consumed here (NoteSpliceFired, NUR348).
+			if rec := e.Registry.analysisRecorder(); rec.Active() {
+				rec.NoteSpliceFired(e.Tape.At(valIdx), e.Tape.At(valIdx).Pos())
 			}
 			expanded := SpliceExpand(info.Data)
 			// The expansion RE-STEPS every element against the live stack: a
@@ -6883,6 +6923,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 		}
 	}
 
+	e.placeTrailingDeferred(valIdx)
 	e.Pointer++
 	return nil
 }
@@ -7102,7 +7143,9 @@ func compileFnDef(r *Registry, fnDef FnDefInfo) *FnDefInfo {
 				FnFrame:  meta,
 				dispatch: buildFnBodyHandler(r, fnDef.Name, sig, fnDef, meta),
 			}
-			compiled.ReturnsFn = r.analysisReturnsFn(fnDef.Name, sig, fnDef)
+			// The installed sig: its frame identity carries the handler's
+			// args-list decision (FnFrameMeta.ArgsElided).
+			compiled.ReturnsFn = r.analysisReturnsFn(fnDef.Name, compiled, fnDef)
 		}
 		NormalizeSig(&compiled)
 		out[i] = compiled
@@ -9579,24 +9622,32 @@ func (e *Engine) parenFeedsPendingForward(openIdx int) bool {
 // close paren once the rewind re-steps it — the interpreter's own rule
 // (execFnDefLiteral at the pointer: forward tokens first, the stack after),
 // which the trailing-apply record must not model as an apply over the
-// values inside the paren (NUR184). Nothing after the close, a word, a
-// close paren, an `end`, a marker or a `/v` modifier is not collectable
-// (the value falls to the stack: `(2 (mk 1)) mul 10` is 30). A literal is
-// collectable when the value is a fn-typed CARRIER (its runtime parameters
-// are unknown) or a concrete fn one of whose own signatures takes it at a
-// forward-eligible first position; an open paren is collectable (its result
-// arrives at the value's pending forward). A concrete fn none of whose
-// signatures takes the literal falls to the stack (`(2 (mk 1)) "s"` is
-// `[3 s]`).
+// values inside the paren (NUR184). Nothing after the close, a function
+// word (the strict forward barrier), a close paren, an `end`, a marker or a
+// `/v` modifier is not collectable (the value falls to the stack: `(2 (mk
+// 1)) mul 10` is 30). A literal is collectable when the value is a
+// fn-typed CARRIER (its runtime parameters are unknown) or a concrete fn one
+// of whose own signatures takes it at a forward-eligible first position. A
+// token whose value exists only once it runs — a group (an open paren, a
+// paren expression, a dot reach, an interpolated string: the forward walk's
+// FwdGroup, evaluated in place for the slot) or a non-function word (a value
+// binding or a splice, whose value ARRIVES at the value's pending forward) —
+// is collectable: the re-step decides with the value in hand, as the
+// interpreter's does (`("s" lam/v) (2 add 3)` is `[s 105]`, NUR344). A
+// concrete fn none of whose signatures takes the literal falls to the stack
+// (`(2 (mk 1)) "s"` is `[3 s]`).
 func (e *Engine) trailingFnCollectsPastClose(last Value, closeIdx int) bool {
 	if closeIdx+1 >= e.Tape.Len() {
 		return false
 	}
 	tok := e.Tape.At(closeIdx + 1)
-	if IsOpenParen(tok) {
+	if IsOpenParen(tok) || IsParenExpr(tok) || IsReach(tok) || IsInterpString(tok) {
 		return true
 	}
-	if IsWord(tok) || IsCloseParen(tok) || IsEnd(tok) || IsForward(tok) || IsMark(tok) || IsMove(tok) || !IsRecordableLiteral(tok) {
+	if IsWord(tok) {
+		return !e.fnWordBarrierAt(tok)
+	}
+	if IsCloseParen(tok) || IsEnd(tok) || IsForward(tok) || IsMark(tok) || IsMove(tok) || !IsRecordableLiteral(tok) {
 		return false
 	}
 	if _, mod := AsDispatchMod(tok); mod {
@@ -9974,6 +10025,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 				e.markForwardLeftover(last)
 			case e.trailingFnCollectsPastClose(last, closeIdx):
 				e.markReStepped(last)
+				e.noteTrailingDeferred(last)
 			default:
 				closeIdx = e.recordParenTrailingFnApply(es, last, openIdx, closeIdx, lastIdx, count)
 			}
@@ -10148,6 +10200,39 @@ func (e *Engine) markForwardLeftover(v Value) {
 		e.Registry.Check.ForwardLeftoverFnIDs = map[string]bool{}
 	}
 	e.Registry.Check.ForwardLeftoverFnIDs[v.ID] = true
+}
+
+// noteTrailingDeferred records a fn value a paren's collapse left to the
+// rewind's re-step over the token after the close
+// (CheckState.TrailingDeferredFnIDs, NUR344).
+func (e *Engine) noteTrailingDeferred(v Value) {
+	if v.ID == "" {
+		return
+	}
+	if e.Registry.Check.TrailingDeferredFnIDs == nil {
+		e.Registry.Check.TrailingDeferredFnIDs = map[string]bool{}
+	}
+	e.Registry.Check.TrailingDeferredFnIDs[v.ID] = true
+}
+
+// placeTrailingDeferred records a trailing-deferred fn value (see
+// noteTrailingDeferred) that its re-step matched against nothing as PLACED
+// (CheckState.ParenPlacedFnIDs): it parks where it lands, data beside the
+// value it did not take, exactly as a paren-placed value does, and nothing
+// re-steps it unless an enclosing rewind lands on it (ParenReSteppedFnIDs).
+func (e *Engine) placeTrailingDeferred(valIdx int) {
+	if e.Registry == nil || !e.Registry.analysisActive() || valIdx >= e.Tape.Len() {
+		return
+	}
+	id := e.Tape.At(valIdx).ID
+	cs := e.Registry.Check
+	if id == "" || !cs.TrailingDeferredFnIDs[id] {
+		return
+	}
+	if cs.ParenPlacedFnIDs == nil {
+		cs.ParenPlacedFnIDs = map[string]bool{}
+	}
+	cs.ParenPlacedFnIDs[id] = true
 }
 
 // findCloseParenAfter finds the index of the matching close-paren marker
@@ -10647,6 +10732,51 @@ func ConcreteArgsMatch(sig *Signature, args []Value, nStack int) bool {
 // pass does not see and stays a compile failure. Returns true when a trap
 // now owns the program's tail or the arm's; false leaves the caller's
 // MarkUncompilable compile failure to stand.
+// withGradualWrittenOperands widens a failed dispatch's examined window by
+// the operands WRITTEN after the word (rematchWrittenSplit's forward run)
+// when one of them is a carrier or a dynamic — a value the pass holds only
+// as its type, whose run-time value the interpreter's match examines FIRST
+// and whose report names it: `7 f m.a` over `x:Type` evaluates the reach,
+// fails it and reports "the argument was 1". The stack-first gatherer took
+// the 7 alone, so the static trap rendered "the argument was 7" (NUR329).
+// With the written run in the window the failure is no longer static — the
+// carrier sends it to the runtime rematch, which plans the match as the
+// interpreter does over the run's values and renders the interpreter's
+// tuple. A written run of concrete values leaves the window as it was: the
+// trap's report is built over those same values.
+func (e *Engine) withGradualWrittenOperands(window []int, fn *FnDefInfo) []int {
+	// Only a window the STACK filled alone: one that already reaches past
+	// the word took the written run in its own order, and its rendering is
+	// the gatherer's to own.
+	for _, p := range window {
+		if p > e.Pointer {
+			return window
+		}
+	}
+	_, nFwd := e.rematchWrittenSplit(fn)
+	gradual := false
+	for i := e.Pointer + 1; i <= e.Pointer+nFwd && i < e.Tape.Len(); i++ {
+		v := e.Tape.At(i)
+		if IsReach(v) || IsParenExpr(v) || IsInterpString(v) {
+			// A deferred expression the run has not expanded here (`7 f m.a
+			// m.b`: the report names `m.b (a Reach)`) is no value the
+			// rematch can seat: the window stays the gatherer's.
+			return window
+		}
+		if v.Carrier || v.Dynamic {
+			gradual = true
+		}
+	}
+	if !gradual {
+		return window
+	}
+	out := append([]int(nil), window...)
+	for i := e.Pointer + 1; i <= e.Pointer+nFwd && i < e.Tape.Len(); i++ {
+		out = append(out, i)
+	}
+	return out
+}
+
 func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos SrcPos) bool {
 	e.LastUnmatchedRematched = false
 	es := e.Registry.analysisRecorder()
@@ -10669,7 +10799,7 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 			maxN = n
 		}
 	}
-	window := CheckBraid.CheckModeFallbackPositions(e, maxN)
+	window := e.withGradualWrittenOperands(CheckBraid.CheckModeFallbackPositions(e, maxN), fn)
 	// The forward walk can collect positions INSIDE a not-yet-evaluated paren
 	// group (checkModeFallbackPositions depth-tracks rather than stopping at
 	// an open paren). The interpreter pre-evaluates the paren before its

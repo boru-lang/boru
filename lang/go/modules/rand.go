@@ -116,6 +116,50 @@ func randWithSeedReturns(_ []native.Value, _ *native.Registry) []native.Value {
 	return []native.Value{native.NewMap(instance)}
 }
 
+// randListOfReturns is `Rand.list-of`'s check-mode model: the generator body
+// runs in the pass's registry as each's body does (native.AnalyseMultiRunBody
+// — no inputs, the body's defs kept), so a name the body binds is the body's
+// binding after the call on both lanes (NUR330). The result stays the
+// declared List.
+func randListOfReturns(args []native.Value, r *native.Registry) []native.Value {
+	native.AnalyseMultiRunBody(r, args[0])
+	return []native.Value{native.NewCarrier(native.TList)}
+}
+
+// randMapFromReturns is `Rand.map-from`'s check-mode model: each value's
+// generator body runs in the pass's registry, in key order, as the handler
+// runs it (InvokeBody on the shared registry, no def cleanup) — so a name a
+// body binds is that body's binding for the next body and after the call
+// (NUR330: `def k 5 Rand.map-from {b:[def k 1 k]} k` is [{b:1} 1] on the
+// interpreter, where the compiled program read the k it had recorded before
+// the call, 5).
+//
+// The compiled program runs these bodies as run-time token bodies it never
+// joins into its model, so a binding one makes has no placement in the
+// compiled stream: the run notes it as a bind transition under the
+// multi-run guard, and the twin regime declines the program ("a bind
+// transition has no stream placement") — a sound, loud refusal in place of
+// the stale read. A body that binds nothing leaves the model as it was and
+// the call compiles as before. The run's DIAGNOSTICS are dropped: the pass
+// did not analyse these bodies before, and one that raises (an undefined
+// word) still raises at run time from the hosted body, as the interpreter's
+// does. A value that is no code body is left to the handler's own error.
+// The result stays the declared Map. A schema the pass holds as a carrier
+// (a Map param) has no bodies to run here; its bodies stay the handler's
+// alone (NUR330's recorded residual).
+func randMapFromReturns(args []native.Value, r *native.Registry) []native.Value {
+	if schema, err := native.RequireConcreteMap(args[0], "Rand.map-from schema"); err == nil {
+		base := len(r.Check.Diagnostics)
+		for _, key := range schema.Keys() {
+			if body, _ := schema.Get(key); native.IsConcrete(body) && body.Parent.ConformsTo(native.TList) {
+				native.AnalyseMultiRunBody(r, body)
+			}
+		}
+		r.Check.TruncateDiagnostics(base)
+	}
+	return []native.Value{native.NewCarrier(native.TMap)}
+}
+
 // newRandState builds a fresh PRNG seeded with the given int64.
 func newRandState(seed int64) *randState {
 	return &randState{rng: mathrand.New(mathrand.NewSource(seed))}
@@ -353,7 +397,15 @@ func randNativesForState(state *randState) []native.NativeFunc {
 			// `do`, so the recorder compiles `[body]` to a closure unit and the
 			// handler runs it via the VM seam instead of a sub-engine (the body's
 			// RNG draws advance the same module generator either way).
-			Callable: &native.CallableSpec{BodyPos: 0, BodyOut: 1, BodyResultTop: true, Inputs: func(_ []native.Value) []native.Value {
+			//
+			// BodyMultiRunKeepsDefs: the handler runs the body n times on the
+			// shared registry with no def cleanup (InvokeBody compiled,
+			// RunPooled interpreted) — each's leak — so a body `def` rebinds
+			// the name for the next run and for the rest of the program
+			// (NUR330: `def k 5 Rand.list-of [def k 1 k] 1 k` is [[1] 1]).
+			// The ReturnsFn runs the body in the pass's model the way each's
+			// does, so the pass sees the leak too.
+			Callable: &native.CallableSpec{BodyPos: 0, BodyOut: 1, BodyResultTop: true, BodyMultiRunKeepsDefs: true, Inputs: func(_ []native.Value) []native.Value {
 				return []native.Value{}
 			}},
 			Signatures: []native.Signature{{
@@ -361,6 +413,7 @@ func randNativesForState(state *randState) []native.NativeFunc {
 				Returns:    []*native.Type{native.TList},
 				NoEvalArgs: map[int]bool{0: true},
 				BarrierPos: -1,
+				ReturnsFn:  randListOfReturns,
 				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 					n, err := args[1].AsConcreteInteger()
 					if err != nil {
@@ -440,6 +493,7 @@ func randNativesForState(state *randState) []native.NativeFunc {
 				Returns:       []*native.Type{native.TMap},
 				NoEvalMapArgs: map[int]bool{0: true},
 				BarrierPos:    -1,
+				ReturnsFn:     randMapFromReturns,
 				Impl: native.Go(func(args []native.Value, _ map[string]native.Value, _ []native.Value, r *native.Registry) ([]native.Value, error) {
 					schema, err := native.RequireConcreteMap(args[0], "Rand.map-from schema")
 					if err != nil {

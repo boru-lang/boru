@@ -77,6 +77,11 @@ func (vc *vmContext) rematchOutcome(ds *compiler.DispatchSpec, stack []core.Valu
 	written = rematchStoppedTuple(ds, fn, window, written)
 	ae := core.RuntimeNoMatch(r, ds.Word, written)
 	ae.Row, ae.Col = ds.Pos.Row, ds.Pos.Col
+	if ds.Pos.Src != "" {
+		// The caret spans the dispatching token, as stampAt's does: a
+		// reach's `dot` stands at its receiver (`x.0` underlines `x`).
+		ae.Src = ds.Pos.Src
+	}
 	return false, stampAt(ae, curDebug, pc, r)
 }
 

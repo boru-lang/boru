@@ -333,7 +333,7 @@ func dropLivePoints(points []deoptPoint) []deoptPoint {
 // runs the program from that token on (a root point's residual is the
 // program's).
 func (es *EmitState) planRootLiveReads(lw *lowerer, residual []core.Value) {
-	if len(es.keptLiveReads) == 0 || es.trapAt != 0 || len(es.rootBody) == 0 {
+	if len(es.keptLiveReads) == 0 || len(es.rootBody) == 0 {
 		return
 	}
 	rec := &fnUnitRec{frag: &EmitFragment{events: es.frames[0]}, body: es.rootBody, localReads: es.rootLocalReads}
@@ -341,12 +341,59 @@ func (es *EmitState) planRootLiveReads(lw *lowerer, residual []core.Value) {
 	for _, seq := range es.keptLiveSeqs(es.frames[0]) {
 		ci, direct := rootReadConsumer(es.frames[0], es.keptLiveReads[seq].name, seq, 0, lw.promoted)
 		d, ok := es.livePointAt(es.units[0], rec, seq, ci, direct)
-		if !ok || !es.rootHeldBeneath(lw, tree, residual, d.start, seq) {
+		if !ok {
+			continue
+		}
+		if es.trapAt != 0 {
+			held, ok := es.trapHeldBeneath(lw, tree, d.start)
+			if !ok {
+				continue
+			}
+			d.trapHeld = held
+		} else if !es.rootHeldBeneath(lw, tree, residual, d.start, seq) {
 			continue
 		}
 		lw.deopts = append(lw.deopts, d)
 		lw.deoptTable = &lw.p.Deopts
 	}
+}
+
+// trapHeldBeneath is rootHeldBeneath for a program the pass ended at a
+// terminal trap (NUR348). Such a program has no residual, so the lowering
+// drops every result nothing consumes — and a read seated live after a
+// computed body is exactly where the pass's trap may be no proof: the model
+// held the pre-body type, which no overload of the word takes (`do (mk) end
+// x.0` over `def x 0`), while the run reads the binding the body made
+// (`def x [1 2]`), which the interpreter's dispatch takes. The read's point
+// hands the statement to the interpreter over the compiled stack, so the
+// stack there must be the interpreter's: the point is served only in the
+// trap's own statement, tested at its first token, whose stack the pass
+// told (stackAtStart), every value of which an event left on the compiled
+// stack (seatStack: no slot, constant or type). Those events' results are
+// then kept where the interpreter keeps them rather than dropped as dead —
+// a computed body's run whatever its count, since the island takes the
+// whole frame region — dangling beneath the trap when it fires, as the
+// interpreter's stack holds them when it raises. held is that stack, which
+// the lowering checks the compiled stack is at the test (emitDeoptsBefore:
+// otherwise the point is not emitted, and the trap keeps its own defer).
+func (es *EmitState) trapHeldBeneath(lw *lowerer, tree map[int]treeEvent, start core.SrcPos) ([]vmSlot, bool) {
+	tok := bodyTokenAt(es.rootBody, start)
+	te, in := tree[es.trapAt]
+	if tok < 0 || !in || tok != statementToken(es.rootBody, start) || tok != statementToken(es.rootBody, eventPos(*te.ev)) {
+		return nil, false
+	}
+	stack, told := es.stackAtStart(tok)
+	if !told {
+		return nil, false
+	}
+	srcs, _, slots, ok := es.seatStack(lw, stack)
+	if !ok || slices.ContainsFunc(srcs, func(src RestartSrc) bool { return src.Kind != RestartStack }) {
+		return nil, false
+	}
+	for _, slot := range slots {
+		delete(lw.dead, slot.seq)
+	}
+	return slots, true
 }
 
 // rootHeldBeneath reports whether every program residual entry the root

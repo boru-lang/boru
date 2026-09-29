@@ -93,16 +93,18 @@ list only by becoming **Resolved** (the record is then deleted) or
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
 | [NUR235](#nur235) | A typed-map param pattern over an inline map literal with a computed member: both lanes refuse the call, the `signature_error` notes differ | call-site specialisation's investigation (2026-09-27) |
-| [NUR329](#nur329) | A no-match over a refused reach-led forward operand names the reach's value interpreted, the stack operand compiled (notes only) | the NUR328 sweep (2026-09-28) |
-| [NUR330](#nur330) | A `def` inside a Rand.map-from / Rand.list-of generator body outlives the call on the interpreter only (silent) | the interp-entry census, module-rand.tsv (2026-09-27) |
+| [NUR329](#nur329) | A no-match over two refused reaches names the stack operand compiled (notes only) | the NUR328 sweep (2026-09-28); narrowed 2026-09-29 |
+| [NUR330](#nur330) | `Rand.map-from` over a schema held only as a carrier (a Map param) whose body defs a name: the def outlives the call on the interpreter only (silent) | the interp-entry census (2026-09-27); narrowed 2026-09-29 |
 | [NUR334](#nur334) | A read after a computed keep-defs body: the shapes the live-read deopt does not serve stay loud | main's 50 uncovered statements (2026-09-28); remainder after the live-read deopt (2026-09-29) |
 | [NUR336](#nur336) | A paren apply over a member that is data at run time: the shapes the statement island does not serve stay loud | main's 50 uncovered statements (2026-09-28); remainder after the NUR336 pass (2026-09-29) |
-| [NUR343](#nur343) | `each` over a single-count branch whose value may be a List or an Integer defers at run time (loud) | the NUR340 pass (2026-09-29) |
-| [NUR344](#nur344) | A parked fn value is not applied to a paren or splice result that arrives after it (silent) | the NUR342/NUR337 pass (2026-09-29) |
-| [NUR346](#nur346) | A leaf fn body that never mentions `args`, reached as a computed body, reads the real args compiled (silent) | the interp-entry census pass (2026-09-29) |
-| [NUR347](#nur347) | Closure and lambda contract errors render a different name or caret compiled (loud; message only) | the interp-entry census pass (2026-09-29) |
-| [NUR348](#nur348) | Two computed-body shapes the compiled runtime defers (loud) | the live-read deopt pass (2026-09-29) |
-| [NUR349](#nur349) | A non-paren member apply followed by an infix word raises compiled (loud) | the NUR336 remainders pass (2026-09-29) |
+| [NUR343](#nur343) | A union-typed branch at `each` whose arm holds an effect or a binding defers at run time (loud) | the NUR340 pass (2026-09-29); narrowed 2026-09-29 |
+| [NUR344](#nur344) | A parked fn value before `do [lam/v]` raises a compiled internal_error (loud) | the NUR342/NUR337 pass (2026-09-29); narrowed 2026-09-29 |
+| [NUR347](#nur347) | A named closure stepped through `h/v` under a native call anchors its contract error at the `h/v` token interpreted, at no position compiled (loud; caret only) | the interp-entry census pass (2026-09-29); narrowed 2026-09-29 |
+| [NUR348](#nur348) | Three computed-body shapes the compiled runtime still defers (loud) | the live-read deopt pass (2026-09-29); narrowed 2026-09-29 |
+| [NUR350](#nur350) | Whether a computed body or a late word macro sees a fn's `args` depends on whether the fn's own body mentions `args` or needs frame state (the interpreter's leaf-frame elision, now mirrored compiled) | the NUR346 fix (2026-09-29) |
+| [NUR351](#nur351) | A forward collection stops at a live read's stale type after a computed body: a wrong error compiled where the interpreter answers | the NUR348 pass (2026-09-29) |
+| [NUR352](#nur352) | Four loud neighbours of the union-branch rematch and the member apply: a static trap, an eager arm body, a pre-evaluated argument note, a gradual def-bound fn read | the NUR343/349 pass (2026-09-29) |
+| [NUR353](#nur353) | `Rand.map-from` hosted bodies: a loop variable is unbound and a `break` is the wrong error compiled (loud) | the NUR330 pass (2026-09-29) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -788,80 +790,71 @@ names this split). `lang/go/context_boundary_differential_test.go` (the
 
 ---
 
-## NUR235 — a typed-map param pattern rejects an inline map literal with a computed member, and the lanes word the error differently {#nur235}
+## NUR235 — a typed-map pattern is matched against the unevaluated literal {#nur235}
 
-**Status:** Pending. Recorded 2026-09-27 in the investigation that led to
-call-site specialisation; present on `main` at c8bce66.
+**Status:** Pending (both lanes refuse; the notes differ) · **Recorded:** 2026-09-27 · **Investigated:** 2026-09-29
 
 ```
 def h fn [[m:{f:Integer}][Any][m.f]] end  h {f: (1 add 1)}
-  interpreted   signature_error: cannot call `h` … the argument was {f:paren([…])} (a Map)
-                … candidate `h (Map)` — argument 1: … does not satisfy its declared pattern {f:Integer}
-  compiled      signature_error: cannot call `h` … the argument was {f:2} (a Map)
+  interpreted   signature_error … the argument was {f:paren([…])} (a Map)
+                … does not satisfy its declared pattern {f:Integer}
+  compiled      signature_error … the argument was {f:2} (a Map)
                 … expected: h (Map) or (no args)
 ```
 
-Both lanes refuse the call — the error CODE agrees — but the notes differ:
-the interpreter matches the pattern against the literal before its paren
-members are evaluated, and the compiled lane reports the evaluated map and
-no candidate. The same holds for `{:Integer}` and for a lambda member
-(`h {f: ([x:Integer] => [x add 1])}` against `{f:Function}`); a map bound
-first (`def mm {f: …}  h mm`) matches on both lanes. Whether the
-interpreter's refusal is itself the language defect (a typed-map pattern
-unusable with an inline literal of computed members) is a question for the
-maintainer, not recorded here as settled.
+**Finding (2026-09-29):** the interpreter's refusal is itself the defect.
+The pattern check (core `positionalMatch` / `SigPattern`) runs on the raw
+literal before `execFnDefSig` auto-evaluates the map (`AutoEvalMap`), so it
+matches a value the callee never receives: `h {f: 2}` and
+`def mm {f: (1 add 1)} end h mm` both answer 2, an untyped `m:Map` param
+given `{f: (1 add 1)}` receives `{f:2}`, a bound word member `{f: x}` is
+rejected as `word(x)`, and the notes print internal forms (`paren(…)`,
+`sugar(lambda)`). The typed-list analogue — `h [(1 add 1)]` against
+`[:Integer]` — has the same flaw, identically on both lanes.
+
+**Proposed verdict:** resolve by fix in the interpreter — evaluate an Eval
+map or list operand before pattern matching — then make the compiled notes
+agree. Changes the oracle; needs the maintainer's ruling.
 
 ---
 
-## NUR329 — a no-match over a refused reach names the stack operand compiled {#nur329}
+## NUR329 — a no-match over two refused reaches names the stack operand {#nur329}
 
-**Status:** PENDING, notes only (the code, message and caret agree) ·
-**Recorded:** 2026-09-28 · **Surfaced by:** the NUR328 sweep (eight rows).
+**Status:** Pending (notes only; code, message and caret agree) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-29
 
 ```
-def m {a: 1} end def f fn [[x:Type][Any][[x]]] end 7 f m.a
-  interpreted   … = note: the argument was 1 (an Integer)
-  compiled      … = note: the argument was 7 (an Integer)
+def m {a: 1 b: 2} end def f fn [[x:Type][Any][[x]]] end 7 f m.a m.b
+  interpreted   … the arguments were 1 and m.b (a Reach), plus an arity note
+  compiled      … the argument was 7
 ```
 
-The interpreter's report walks the written operands at its failure point,
-where the reach's paren has already run, so it names the reach's value
-(1). The check pass's walk (`rematchWrittenSplit`) stops at the reach's
-paren, so the recorded tuple is the stack prefix (7). A fix records the
-reach's result as a written operand, which the VM's NUR311 stop rule then
-cuts where the run's value is no concrete value. The same shape gives
-`x:None`, `x:[:Maybe]` and `x:N` over a refused reach or a refused `none`.
+The single-reach shape (`7 f m.a` over `x:Type`, `x:None`, `x:[:Maybe]`)
+was fixed 2026-09-29: a stack-only window takes the written run when it
+holds a carrier (core `withGradualWrittenOperands`), so the failure goes to
+the runtime rematch, which renders the interpreter's tuple. A report that
+names a Reach is left out of that rule.
 
 ---
 
-## NUR330 — a def inside a rand generator body outlives the call on the interpreter only {#nur330}
+## NUR330 — a def inside a `Rand.map-from` schema the pass holds as a carrier {#nur330}
 
-**Status:** Pending. Recorded 2026-09-27 (the interp-entry census's
-module-rand.tsv row); pre-existing.
-
-`Rand.map-from` and `Rand.list-of` run each generator body on the shared
-registry with no def cleanup — the token-body contract every code-body word
-shares (a `do` body's `def` survives the `do` alike, NUR202) — so a `def`
-inside a body rebinds the name for the rest of the program. The compiled
-program does not see it: the recorder treats the rand words' body operands
-as opaque, so a later read of the name is the binding it recorded before
-the call.
+**Status:** Pending (a silent wrong answer) · **Recorded:** 2026-09-27 · **Narrowed:** 2026-09-29
 
 ```
-import "boru:rand"  def k 5 Rand.map-from {b:[def k 1 k]} k
-  interpreter   [{b:1} 1]
-  compiled      [{b:1} 5]
-import "boru:rand"  def k 5 Rand.list-of [def k 1 k] 1 k
-  interpreter   [[1] 1]
-  compiled      [[1] 5]
+import "boru:rand"
+def k 5 def f fn [[m:Map][Any][Rand.map-from m]] end f {a:[def k 1 k]} k
+  interpreted   [{a:1} 1]
+  compiled      [{a:1} 5]
 ```
 
-`do [def k 1] k` is `[1]` on both lanes: its body is joined into the model
-(the do$body unit's BIND_DYN_SCOPE and the dyn read after it). The cure is
-the same for the rand words — join a body that defines a name into the
-model, or decline to compile one — and moving map-from's bodies onto the
-InvokeBody seam (2026-09-27) neither causes nor cures it: the old pooled
-run diverged identically.
+The generator's bodies run on the shared registry with no def cleanup, so
+a `def` inside one rebinds the name for the rest of the program. Fixed
+2026-09-29 for a literal schema: `Rand.list-of` models its body as `each`
+does (`BodyMultiRunKeepsDefs`, `native.AnalyseMultiRunBody`) and compiles;
+`Rand.map-from` over a literal schema whose body binds a name declines
+(design/COMPILABLE-SUBSET.md §5). A schema the pass holds only as a carrier
+is not modelled, and refusing it needs a compile-failure site the site
+census does not admit. Pinned: lang `TestNUR330RandGeneratorBodyDefs`.
 
 ---
 
@@ -903,114 +896,176 @@ answers:
   stack is recorded there);
 - a lead that went through a landing (`W (m.f y) 9` over a lambda of two
   Integers) — the VM cannot tell whether the landing fired;
-- an island that dispatches a VM-bound lambda by name again,
-  `k (g 7) (g 8) drop` over `def g m.f/v` (`BIND_GLOBAL` keeps the raw value
-  where the interpreter's `def` compiles its signatures).
 
 Pinned in lang `nur335_336_statement_island_test.go`.
 
 ---
 
-## NUR343 — a List-or-Integer branch at `each` defers at run time {#nur343}
+## NUR343 — a union-typed branch at `each` with an effectful arm defers {#nur343}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-29
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
+
+`each` over a branch whose result may be a List or an Integer is a
+runtime rematch; where the run matches, the statement's island re-runs it
+on the interpreter (compiler `rerunBranch`, `planRematchRestart`). A branch
+arm holding an effect or a binding cannot be re-run without repeating it,
+so it keeps the designed `vm:rematch-matched` defer:
 
 ```
-def c true end each (if c [[1]] [3]) [2]
-  interpreted   [[1]]
-  compiled      internal_error: DISPATCH_REMATCH at each matched at run time
-                where the static model failed (the vm:rematch-matched defer)
+def c true end each (if c [[print "z" 1]] [3]) [2]
+  interpreted   prints z, [[1]]
+  compiled      internal_error (vm:rematch-matched)
 ```
 
-Also `(if c [[1]] [3]) each [2]` and trapping bodies. The check pass decides
-`each` cannot match a branch result that may be a List or an Integer and
-records a re-match with nothing to run on a match; the run matches. Both
-arms leave one value, so NUR340's variable-count region path is not
-involved.
+Likewise an arm `[def q 3 q]`. Pinned by lang
+`TestNUR343ArmEffectKeepsTheDefer`.
 
 ---
 
-## NUR344 — a parked fn value is not applied to a paren or splice result {#nur344}
+## NUR344 — a parked fn value before `do [lam/v]` defers compiled {#nur344}
 
-**Status:** Pending (a silent wrong answer) · **Recorded:** 2026-09-29
-
-A fn value parked by a paren apply whose window did not fit is applied by
-the interpreter to a paren or splice result that arrives after it; the
-compiled lane leaves it unapplied.
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
 
 ```
-def lam ([x:Integer] => [x add 100]) end ("s" lam/v) (2 add 3)
-  interpreted   [s 105]
-  compiled      [s fn lam(Integer) 5]
+def lam ([x:Integer] => [x add 100]) end ({a:1} lam/v) do [lam/v]
+  interpreted   [{a:1} fn lam(Integer) fn lam(Integer)]
+  compiled      internal_error (the NUR286 defer in reStepLanding)
 ```
 
-Likewise `({a:1} lam/v) (5)` and `def w word [5] end ("s" lam/v) w`; the
-literal twin `("s" lam/v) 5` agrees. A loud neighbour:
-`({a:1} lam/v) do [lam/v]` raises a compiled internal_error (the NUR286
-defer) where the interpreter answers `[{a:1} fn lam(Integer) fn lam(Integer)]`.
+The VM cannot tell whether a forward token after the landing would be
+collected, so ruling it out needs a flag from the compiler. The silent
+half — a parked fn value not applied to a paren, reach, template or splice
+result after it (`("s" lam/v) (2 add 3)` was `[s fn lam(Integer) 5]` for
+`[s 105]`) — was fixed 2026-09-29 (core `trailingFnCollectsPastClose`,
+`CheckState.TrailingDeferredFnIDs`).
 
 ---
 
-## NUR346 — a leaf body's `args` reads the real args compiled {#nur346}
+## NUR347 — a closure's contract error under `h/v`: the caret {#nur347}
 
-**Status:** Pending (a silent wrong answer) · **Recorded:** 2026-09-29
+**Status:** Pending (loud; the caret differs) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
+
+```
+def mk fn [[k:Integer] [Function] [(fn [[a:Integer][String] [a add k]])]] end
+def h (mk 1) end each h/v [5]
+  interpreted   the contract error at 1:101 (the h/v token)
+  compiled      "source position unknown"
+```
+
+The bytecode records no op for the `h/v` read, so nothing carries its
+position; the lambda twin and the `FnUtil.compose` form behave the same.
+Fixed 2026-09-29: the frame name (`<fn>` for a nameless verbose value, eng
+`closureFrameName`) and every other anchor — a returned closure's `fn`
+token, a native call's positionless fn result (`stampFnResultPos`), a
+positionless lambda's "source position unknown" (`BoruError.AnchorFinal`),
+a binding's name. Pinned: lang `TestNUR347ClosureContractAnchor`.
+
+---
+
+## NUR348 — computed-body shapes the compiled runtime defers {#nur348}
+
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
+
+Still loud (internal_error compiled, the interpreter answers):
+
+- the no-`end` twin `do (mk) x.0` over `def x 0` and a body
+  `quote [def x [1 2]]` — the statement's first token is the `do`, so a
+  live-read test there would run before the body;
+- a value beneath the run: `5 end do (mk) end x.0` over a run leaving a fn;
+- a computed body leaving a splice: `do (mk)` over `quote [w/v]`
+  ("tape-coupled handler result at do").
+
+Fixed 2026-09-29: `do (mk) end x.0` (the live point planned under a
+terminal trap, compiler `trapHeldBeneath`) and `do [w/v]` over
+`def w word [1 2]` (a fired splice leaves the `do`'s results,
+`EmitRecorder.NoteSpliceFired`, `SigRef.SpliceOuts`). Pinned in lang
+`nur348_computed_body_test.go`.
+
+---
+
+## NUR350 — a fn's `args` is visible to code its frame runs only when its body mentions it {#nur350}
+
+**Status:** Pending (a language non-uniformity; both lanes agree) · **Recorded:** 2026-09-29
+
+**Rule:** `args` inside a fn frame is that call's argument list, whatever
+code the frame runs.
+
+**Divergence:** the interpreter's leaf handler (`buildFnBodyHandler`)
+pushes a shared empty args list for a body that needs no frame state and
+never reads `args` (macros resolved when the fn is built). Code the
+construction-time walk cannot see — a computed body, or a word macro bound
+after the fn — then reads `[]`:
 
 ```
 def mk fn [[] [List] [quote [args]]] end
-def w fn [[x:Integer] [Any] [each (mk) [x 5]]] end w 7
-  interpreted   [[] []]
-  compiled      [[7] [7]]
+def w fn [[x:Integer] [Any] [each (mk) [x 5]]] end w 7        → [[] []]
+def w fn [[x:Integer][Any][m]] end def m word [args] end w 3  → []
 ```
 
-The interpreter's leaf path pushes an empty args list for a body that never
-mentions `args`; the VM always pushes the real args in DynEnv programs.
+Mention `args` or use `do` in `w`'s body and the same computed body reads
+`[7]`. The optimisation is observable. The compiled lane mirrors it
+(`FnFrameMeta.ArgsElided`, `CompiledFn.ArgsElided`), so the lanes agree —
+NUR346 is closed — but the language rule is not uniform.
+
+A further edge, unprobed: inside a forked registry (await / timer
+branches) the VM treats a same-scope fork as the fn's home and passes the
+empty list where the interpreter passes the real args.
+
+**Proposed verdict:** resolve by fix (elide only where no code the frame
+runs can read `args`, e.g. never for a frame that runs a computed body or
+a word macro), or Allowed with the rule restated. A maintainer decision.
 
 ---
 
-## NUR347 — closure and lambda contract errors: name and position {#nur347}
+## NUR351 — a forward collection stops at a live read's stale type {#nur351}
 
-**Status:** Pending (loud; the message's name or caret differs) · **Recorded:** 2026-09-29
+**Status:** Pending (a wrong error) · **Recorded:** 2026-09-29
 
-- `def m {f: ([x:Integer] => [x x])} each m.f [1]` and `… fold m.f [1] 0`:
-  "source position unknown" compiled, 1:40 interpreted.
-- `each (fn [[x:Integer][Integer][x x]]) [1]`: the contract error names ``
-  compiled, `<fn>` interpreted.
-- `def mk fn [[k:Integer] [Function] [(fn [[a:Integer][String] [a add k]])]] end ((mk 1) 5)`:
-  `` at 1:36 compiled, `<fn>` at 1:37 interpreted; its lambda twin
-  `([a:Integer] => [a k])` reports 1:36 compiled, "source position unknown"
-  interpreted.
+```
+def x 0 end def mk fn [[][List][quote [def x {a:1} 4]]] end do (mk) end keys x
+  interpreted   [4 ['a']]
+  compiled      signature_error: cannot call `keys` … the argument was 4
+```
 
-eng `applyFrameName` (2026-09-29) settled the frame and token-seam paths;
-the closure paths above still differ.
+The gradual Integer bound on `x` (the model's pre-body type) is disjoint
+from `keys`' Map slot, so the model's `keys` takes the body's run from the
+stack and the live-read point lands after it. Twin: `… quote [4] … x keys`
+raises on both lanes with different notes ("the arguments were 0 … and 4"
+interpreted, "the argument was 0" compiled). Pre-existing on main b37ddca.
 
 ---
 
-## NUR348 — two computed-body shapes the compiled runtime defers {#nur348}
+## NUR352 — neighbours of the union-branch rematch and the member apply {#nur352}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-29
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · pre-existing on main b37ddca
 
-```
-def x 0 end def mk fn [[][List][quote [def x [1 2]]]] end do (mk) end x.0
-  interpreted   [1]
-  compiled      internal_error: do over a computed body left 0 value(s)
-                where a single-value seat consumes it
-def w word [1 2] end do [w/v]
-  interpreted   [1 2]
-  compiled      internal_error: tape-coupled handler result at do
-```
+1. `def c true end 7 8 each (if c [[1]] [3]) [2]`: interpreted
+   `[7 8 [1]]`; compiled raises a static `signature_error` trap on `each`
+   over the window `[8, 7]`.
+2. `def c true end each (if c [[dup]] [3]) [2 3]`: interpreted `[[2 3]]`;
+   compiled raises `signature_error` on `dup` — the arm's list body is
+   evaluated eagerly.
+3. `def h fn [[] [Any] [3]] end each (h) [1 add 2]`: both lanes raise
+   `signature_error`, but the compiled note lists the arguments as
+   `3 and [3]` (the list pre-evaluated) for the interpreter's
+   `3 and [1 word(add) 2]`.
+4. `def x m.f end 1 x 7 add` over an opaque Map with a fn member:
+   interpreted `[9]`; compiled hits the NUR123 designed defer ("gradual read
+   `x` holds a fn…").
 
 ---
 
-## NUR349 — a non-paren member apply before an infix word raises compiled {#nur349}
+## NUR353 — `Rand.map-from` hosted bodies: loop variable and `break` {#nur353}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-29
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · pre-existing at 74c1b8d
 
 ```
-def mk fn [[] [Map] [{f: ([x:Integer] => [x add 1])}]] end def m (mk) end 1 m.f 7 add
-  interpreted   [9]
-  compiled      signature_error: cannot call `add` (4 arguments)
+import "boru:rand"  for 2 [Rand.map-from {a:[i]}]
+  interpreted   [{a:0} {a:1}]
+  compiled      undefined_word: i   (the loop variable is not visible to the hosted token body)
+import "boru:rand"  Rand.map-from {a:[1 break]}
+  interpreted   flow_error: break outside loop
+  compiled      internal_error: flow signal with no enclosing loop
 ```
-
-Also `3 1 m.f 7 add add` (`[12]` interpreted).
 
 ---

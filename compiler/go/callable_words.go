@@ -35,7 +35,12 @@ import (
 // `([p] => …)`) binds the body's `p` to that input carrier in AnalyseFnBody;
 // an empty name (the token-quotation form, `[body]`) leaves the input on the
 // stack for the body to consume positionally. nil means all-unnamed.
-func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK bool, bodyToks, inputs []core.Value, paramNames []string, paramPatterns []*core.Value, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos) (int, bool) {
+//
+// argsElided marks a fn VALUE's body whose sig handler pushes the shared
+// empty args list (core.SigArgsElided): the unit keys apart from a real-args
+// twin and carries CompiledFn.ArgsElided, so the VM's token seam pushes the
+// list the interpreter's dispatch of the value pushes (NUR346).
+func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK bool, bodyToks, inputs []core.Value, paramNames []string, paramPatterns []*core.Value, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame, argsElided bool, pos core.SrcPos) (int, bool) {
 	// Closure compilation is emit-cluster machinery: it writes recording
 	// internals (fnRecs), so it needs the CONCRETE EmitState. A pass without
 	// one (the inactive recorder) declines exactly as the nil field did —
@@ -62,9 +67,16 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 	}
 	name := word + "$body"
 	key := check.FnAnalysisKey(r.AnalysisScopeID(), name, inputs, captures, bodyToks)
-	unit, finish, ok := es.StartFnCompile(key, name, r, inputs, declared, paramNames, captures, false, pos)
+	unitKey := key
+	if argsElided {
+		unitKey += check.ArgsElidedKeySuffix
+	}
+	unit, finish, ok := es.StartFnCompile(unitKey, name, r, inputs, declared, paramNames, captures, false, pos)
 	if !ok {
 		return -1, false
+	}
+	if argsElided {
+		es.SetUnitArgsElided(unit)
 	}
 	// Record the closure's input convention on the unit (consistent across a
 	// memo hit: the key includes name+input types, which determine the shape).
@@ -545,6 +557,7 @@ func lamParamContract(lam *core.Signature) *ClosureParamSpec {
 		}
 		spec.Patterns[i] = p.Pattern
 	}
+	spec.ArgsElided = core.SigArgsElided(lam)
 	return spec
 }
 
@@ -553,6 +566,15 @@ func lamParamContract(lam *core.Signature) *ClosureParamSpec {
 type ClosureParamSpec struct {
 	Types    []*core.Type
 	Patterns []*core.Value
+	// ArgsElided is the value's sig handler's args-list decision
+	// (core.SigArgsElided), compiled onto the body's unit (NUR346).
+	ArgsElided bool
+}
+
+// paramSpecArgsElided is a nil-safe read of a contract's ArgsElided: a token
+// body (no contract) runs in the caller's frame and pushes no list.
+func paramSpecArgsElided(ps *ClosureParamSpec) bool {
+	return ps != nil && ps.ArgsElided
 }
 
 // paramSpecPatterns is a nil-safe read of a contract's patterns.
@@ -867,17 +889,17 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// the environment its analysis run started from (unit_memo.go), entered
 	// afresh per compile and exited back to the leaked table after. An
 	// environment that cannot be built declines the closure.
-	compile := func(toks []core.Value, names []string, caps []core.CapturedBinding) (int, bool) {
+	compile := func(toks []core.Value, names []string, caps []core.CapturedBinding, argsElided bool) (int, bool) {
 		prev, ok := env.enter(r)
 		if !ok {
 			return -1, false
 		}
 		defer env.exit(r, prev)
-		return compileClosureBody(r, word, spec.BodyOut, countAgnostic, toks, inputs, names, paramSpecPatterns(paramSpec), caps, shape, bodyInFrame, pos)
+		return compileClosureBody(r, word, spec.BodyOut, countAgnostic, toks, inputs, names, paramSpecPatterns(paramSpec), caps, shape, bodyInFrame, argsElided, pos)
 	}
 	probe := real.forkForProbe()
 	r.Check.Emit = probe
-	probeUnit, probeOk := compile(bodyToks, paramNames, captures)
+	probeUnit, probeOk := compile(bodyToks, paramNames, captures, paramSpecArgsElided(paramSpec))
 	// A body the probe finds may leave a fn value no modelled output shows
 	// is one whose results the interpreter re-steps, whichever strategy
 	// takes it (NUR317): the dyn-body backstop reads the note when the
@@ -889,7 +911,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 		if !probeOk { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			break
 		}
-		_, exOk := compile(ex.toks, ex.names, ex.caps)
+		_, exOk := compile(ex.toks, ex.names, ex.caps, false)
 		probeOk = probeOk && exOk
 	}
 	r.Check.Emit = real
@@ -956,7 +978,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	// REAL: compile the body into the program (deterministic success after a
 	// clean probe), then record the dispatch with the body as a closure.
 	recsBefore := len(real.fnRecs)
-	unit, realOk := compile(bodyToks, paramNames, captures)
+	unit, realOk := compile(bodyToks, paramNames, captures, paramSpecArgsElided(paramSpec))
 	// REACHABLE since Stage 4b (unit_memo.go), not a defensive arm: the
 	// probe carries no producedBy, so an enclosing binding read whose value
 	// an EVENT produced (`k` after a leaking `do` rebound it) bakes as a
@@ -1017,7 +1039,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 	}
 	var extraOps map[int]EmitOperand
 	for _, ex := range extras {
-		exUnit, exOk := compile(ex.toks, ex.names, ex.caps)
+		exUnit, exOk := compile(ex.toks, ex.names, ex.caps, false)
 		if !exOk || exUnit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			return false
 		}
@@ -1063,7 +1085,7 @@ func probeResidualRuns(r *core.Registry, real *EmitState, word string, spec core
 func probedResidualRuns(r *core.Registry, real *EmitState, word string, spec core.CallableSpec, bodyToks, inputs []core.Value, paramNames []string, paramSpec *ClosureParamSpec, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos) bool {
 	probe := real.forkForProbe()
 	r.Check.Emit = probe
-	unit, probeOk := compileClosureBody(r, word, spec.BodyOut, spec.EmptyBodyErrors || spec.StripsUnconsumedInput, bodyToks, inputs, paramNames, paramSpecPatterns(paramSpec), captures, shape, bodyInFrame, pos)
+	unit, probeOk := compileClosureBody(r, word, spec.BodyOut, spec.EmptyBodyErrors || spec.StripsUnconsumedInput, bodyToks, inputs, paramNames, paramSpecPatterns(paramSpec), captures, shape, bodyInFrame, paramSpecArgsElided(paramSpec), pos)
 	r.Check.Emit = real
 	probe.undoProbeStamps()
 	return probeOk && closureResidualRuns(probe, unit)

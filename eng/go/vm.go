@@ -384,7 +384,7 @@ func (vc *vmContext) enterCallbackUnit(reg *core.Registry, unit int, locals []co
 	// The value's own frame: its call args are the leading locals (inputs
 	// fill the leading param slots, captures the trailing ones).
 	fn := &vc.p.Fns[unit]
-	defer pushRootArgs(reg, vc.p, locals[:fn.NParams-fn.NCaptures])()
+	defer pushRootArgs(reg, vc.p, locals[:fn.NParams-fn.NCaptures], false)()
 	return vc.enterBodyUnit(reg, unit, locals)
 }
 
@@ -743,6 +743,13 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 		}
 		return core.RunResolved(reg, inputs, core.BodyTokens(body))
 	}
+	// A nameless value answers its contract at its OWN position, which a
+	// word that handed it back gave it (stampFnResultPos: `m.f` over a
+	// stored factory lambda, 1:88 on both lanes) where the push's
+	// construction anchor had none (NUR347).
+	if p := body.Pos(); p.Row != 0 && cl.RetName == "" {
+		cl.RetPos = p
+	}
 	// A fn-VALUE closure — a capturing `fn` / `=>` literal minted at run
 	// time — reaching the TOKEN seam with its inputs in stack order is
 	// matched against its own signature first, top down, exactly as the
@@ -899,9 +906,13 @@ func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, ar
 	// Without it the body's `args` read the ENCLOSING frame's list — none
 	// at the top level — so `def g fn [[n:Integer] [Any] [do [args]]]
 	// each g/v [1 2]` raised `args: not inside a function` per element for
-	// the interpreter's `[[1] [2]]` (NUR166).
+	// the interpreter's `[[1] [2]]` (NUR166). The list is the one that
+	// dispatch pushes: the token seam steps the value through its sig's
+	// handler, which may elide it (elidesArgs); a closure handed in through
+	// the fn-VALUE seam (RetTrim, InvokeCallbackBody) stands for CallBoru,
+	// which pushes the real args (NUR346).
 	if fn := &vc.p.Fns[cl.Unit]; len(fn.Params) > 0 && fn.NArgs > 0 && fn.NArgs <= len(args) {
-		defer pushRootArgs(reg, vc.p, args[:fn.NArgs])()
+		defer pushRootArgs(reg, vc.p, args[:fn.NArgs], !cl.RetTrim && elidesArgs(fn, reg, dispatchRegistry(fn.Reg, reg)))()
 	}
 	res, err := vc.enterBodyUnit(reg, cl.Unit, bindUnitLocals(reg, &vc.p.Fns[cl.Unit], args, cl.Captures))
 	vc.rootRetTrim, vc.rootRetNamed = prev, prevNamed
@@ -948,35 +959,84 @@ func checkClosureReturn(r *core.Registry, cl core.ClosurePayload, res []core.Val
 	// The same contract check the frame path runs at RET, over the produced
 	// residual: an overlay CompiledFn is how applyRetContract already hands a
 	// value's contract to unit-shaped machinery.
-	fn := &compiler.CompiledFn{Name: cl.RetName, Returns: cl.RetTypes, ReturnPatterns: cl.RetPatterns, Decl: cl.RetDecl, NUnnamed: nUnnamed}
+	fn := &compiler.CompiledFn{Name: closureFrameName(cl), Returns: cl.RetTypes, ReturnPatterns: cl.RetPatterns, Decl: cl.RetDecl, NUnnamed: nUnnamed}
 	// The fn-VALUE seam (InvokeCallbackBody): the interpreter's handler
 	// would run this value through CallBoru, whose return discipline is
 	// enforceCallBoruReturns — types over the aligned residual, no count.
+	// That run is unlabelled (InvokeCallback's CallBoru passes no name) and
+	// its error carries no position, so the handler's own dispatch stamps
+	// it at the calling word: `walk {mode:"breadth"} {a:1} cb/v` over a
+	// contract-breaking cb reports `: return value 1: …` at `walk`, where
+	// this seam said `cb:` at the reference (NUR347).
 	if cl.RetTrim {
-		return res, checkCallBoruContract(r, fn, res, cl.RetPos)
+		fn.Name = ""
+		return res, checkCallBoruContract(r, fn, res, core.SrcPos{})
 	}
 	if extra := len(res) - len(cl.RetTypes); extra > nUnnamed {
 		// Allowance spent from the bottom — report the top values, the same
 		// slice the interpreter reports (design/DIAGNOSTIC-VALUES.0.md).
-		return res, vmReturnCountErr(r, fn, len(cl.RetTypes), len(res)-nUnnamed, res[nUnnamed:], cl.RetPos)
+		return res, anchorClosureErr(cl, vmReturnCountErr(r, fn, len(cl.RetTypes), len(res)-nUnnamed, res[nUnnamed:], cl.RetPos))
 	}
-	return checkReturnContract(r, fn, res, 0, false, cl.RetPos)
+	out, err := checkReturnContract(r, fn, res, 0, false, cl.RetPos)
+	return out, anchorClosureErr(cl, err)
+}
+
+// anchorClosureErr marks a NAMELESS value's contract error AnchorFinal: the
+// interpreter's frame for the stepped value raises it at the value's own
+// position (cl.RetPos, the construction token or where a word handed the
+// value back) and, when the value has none, at none — no apply op stamps
+// it, as the interpreter's value step stamps nothing. `((mk 1) 5)` over a
+// factory returning `([a:Integer] => [a k])` reports "source position
+// unknown" on both lanes (NUR347); it used to take the paren's op. A NAMED
+// value (a binding's — nameClosureValue cleared its construction anchor)
+// is left for the applying op, the word the name is written as.
+func anchorClosureErr(cl core.ClosurePayload, err error) error {
+	if ae, ok := err.(*core.BoruError); ok && cl.RetName == "" && cl.RetPos.Row == 0 {
+		ae.AnchorFinal = true
+	}
+	return err
+}
+
+// closureFrameName is the name the interpreter's frame for a closure's fn
+// value carries in its return-contract diagnostics: the value's own name
+// (a def's or a named reference's, RetName), else `<fn>` for a nameless
+// VERBOSE `fn` value — the interpreter splices such a value's body under
+// core.FnValueFrameName (applyFrameName's rule) — else nothing, a nameless
+// `=>` lambda's frame being unnamed. A verbose value is known by its push:
+// a returned closure's (Named) or a callback's (its Source value).
+// Measured (NUR347): `each (fn [[x:Integer][Integer][x x]]) [1]` and a
+// factory's returned `fn` reported `: …` compiled for the interpreter's
+// `<fn>: …`.
+func closureFrameName(cl core.ClosurePayload) string {
+	if cl.RetName != "" {
+		return cl.RetName
+	}
+	if cl.Named {
+		return core.FnValueFrameName
+	}
+	if cl.Source != nil {
+		if fd, ok := cl.Source.Data.(core.FnDefInfo); ok {
+			return applyFrameName(fd)
+		}
+	}
+	return ""
 }
 
 // pushFrameArgs is the DynEnv args bracket's frame-entry half: push the
-// callee's real args (locals[0:nArgs], sig order) as the frame's args list —
-// the interpreter's per-call push, so a dynamic code body's runtime sub-run
-// reads `args` identically. No-op outside DynEnv programs.
-func (vc *vmContext) pushFrameArgs(nl []core.Value, nArgs int) {
+// callee's args list (frameArgsList over locals[0:NArgs], sig order) — the
+// interpreter's per-call push, so a dynamic code body's runtime sub-run
+// reads `args` identically. caller is the calling unit's dispatch registry.
+// No-op outside DynEnv programs.
+func (vc *vmContext) pushFrameArgs(fn *compiler.CompiledFn, caller *core.Registry, nl []core.Value) {
 	if vc.p == nil || !vc.p.DynEnv {
 		return
 	}
-	_ = vc.r.Args.Push(core.NewList(append([]core.Value(nil), nl[:nArgs]...)))
+	_ = vc.r.Args.Push(frameArgsList(fn, caller, dispatchRegistry(fn.Reg, vc.r), nl[:fn.NArgs]))
 }
 
 // swapTailArgs is the bracket's TAIL-call form: the frame is replaced, so the
 // top args entry swaps for the new callee's, keeping the bracket depth stable.
-func (vc *vmContext) swapTailArgs(frames []vmFrame, nl []core.Value, nArgs int) {
+func (vc *vmContext) swapTailArgs(frames []vmFrame, fn *compiler.CompiledFn, caller *core.Registry, nl []core.Value) {
 	if vc.p == nil || !vc.p.DynEnv {
 		return
 	}
@@ -986,7 +1046,27 @@ func (vc *vmContext) swapTailArgs(frames []vmFrame, nl []core.Value, nArgs int) 
 	} else {
 		vc.r.Args.Truncate(vc.argsFloor)
 	}
-	_ = vc.r.Args.Push(core.NewList(append([]core.Value(nil), nl[:nArgs]...)))
+	_ = vc.r.Args.Push(frameArgsList(fn, caller, dispatchRegistry(fn.Reg, vc.r), nl[:fn.NArgs]))
+}
+
+// frameArgsList is the args list a frame of fn's unit holds: a copy of its
+// real args — or, where elidesArgs holds, the EMPTY list the sig's handler
+// pushes (NUR346).
+func frameArgsList(fn *compiler.CompiledFn, caller, home *core.Registry, args []core.Value) core.Value {
+	if elidesArgs(fn, caller, home) {
+		return core.NewList(nil)
+	}
+	return core.NewList(append([]core.Value(nil), args...))
+}
+
+// elidesArgs reports whether a DISPATCH of fn's unit — a call, an apply, the
+// token seam stepping the value — pushes the empty args list: the unit's sig
+// handler elides it (CompiledFn.ArgsElided: a leaf body that never reads
+// `args`) and the caller runs in the unit's home registry. A call from
+// another registry is the interpreter's CallBoru, which pushes the real
+// args, as does the callback seam (InvokeCallback), which never asks.
+func elidesArgs(fn *compiler.CompiledFn, caller, home *core.Registry) bool {
+	return fn.ArgsElided && caller == home
 }
 
 // retFrameArgs is the bracket's frame-exit half: truncate to the popped
@@ -1124,7 +1204,7 @@ func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, 
 	}
 	results, err := sig.DispatchHandler()(args, r.Contexts.TopData(), nil, r)
 	if err != nil {
-		return nil, stampAt(err, curDebug, pc, r)
+		return nil, stampHandlerAt(err, curDebug, pc, r)
 	}
 	// A get/getr surfacing a 0-arg trivial-delegation METHOD (`r.bool`) is NOT
 	// auto-applied here: the recorder owns that landing. Every annotated
@@ -1163,7 +1243,34 @@ func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, 
 	if err := vc.screenResults(results, "poly result at "+pr.Word, curDebug, pc); err != nil {
 		return nil, err
 	}
+	stampFnResultPos(results, curDebug, pc)
 	return append(stack[:len(stack)-n], results...), nil
+}
+
+// stampFnResultPos is the compiled mirror of the interpreter's
+// stampResultPos (core engine.go, execMatch): a fn VALUE a native word hands
+// back without a position of its own takes the dispatching word's — the op's
+// debug position, the token the interpreter's pointer stood on. The position
+// is what a later application of the value anchors its return-contract error
+// at: `def m {f: ([x:Integer] => [x x])} each m.f [1]` reports 1:40 (the
+// reach `m.f`, whose dot handler returned the positionless lambda)
+// interpreted, and reported "source position unknown" compiled, the member
+// read leaving the value unstamped (NUR347). A value that already carries a
+// position keeps it, as the interpreter's does.
+func stampFnResultPos(results []core.Value, debug []core.SrcPos, pc int) {
+	for i := range results {
+		results[i] = stampFnPos(results[i], debug, pc)
+	}
+}
+
+// stampFnPos is stampFnResultPos over one value: v with the op's position
+// when v is a positionless fn value and the op has one, else v unchanged.
+func stampFnPos(v core.Value, debug []core.SrcPos, pc int) core.Value {
+	if pc < 0 || pc >= len(debug) || debug[pc].Row == 0 || v.Pos().Row != 0 || !v.Parent.Equal(core.TFunction) {
+		return v
+	}
+	v.SetPos(debug[pc])
+	return v
 }
 
 // matchUserPoly resolves one OpCallUserPoly dispatch: it re-derives the
@@ -2503,6 +2610,12 @@ func (vc *vmContext) callDynApply(reg *core.Registry, n int, stack []core.Value,
 		return append(stack[:base], results...), nil, nil
 	}
 	if cl, ok := fnVal.Data.(core.ClosurePayload); ok {
+		// The `apply` word hands the value back marked, and the interpreter
+		// stamps a positionless fn result with the dispatching word's
+		// position (stampResultPos) before the re-step applies it: a
+		// factory's lambda applied by `apply` answers its contract at the
+		// `apply` (NUR347's anchor rule).
+		fnVal = stampFnPos(fnVal, curDebug, pc)
 		// A compiled closure of the window's own arity runs VM-native; any
 		// other arity takes the interpreter's apply re-step below, whose
 		// bridge (ClosureAsFnDef) under- or over-applies exactly as the
@@ -2685,7 +2798,14 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		if err != nil {
 			return nil, nil, err
 		}
-		return vc.statementRestart(reg, spec.PrefixSrc, island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
+		// A root def-bound lead's name is the program's plain write of the
+		// value, where the interpreter's `def` installed it: the island may
+		// dispatch the name again after the stop (`k (g 7) (g 8)`), so it
+		// runs over the install, as a root deopt island does (bindRootRead).
+		unbind := vc.bindRootRead(reg, spec.Root && spec.LeadName != "", spec.LeadName, fnVal)
+		ns, ent, err := vc.statementRestart(reg, spec.PrefixSrc, island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
+		unbind()
+		return ns, ent, err
 	}
 	guard := func(results []core.Value) ([]core.Value, *dynEnter, error) {
 		// A placing apply (DynMethodSpec.Place) claims no count: nothing
@@ -4414,7 +4534,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 			vc.frameDepth++ // balanced by the matching RET, like OpCallUser
 			nameFrameFns(curReg, fn, nl)
-			vc.pushFrameArgs(nl, fn.NArgs)
+			vc.pushFrameArgs(fn, curReg, nl)
 			locals = nl
 			enterUnit(unit)
 			pc = -1
@@ -4440,6 +4560,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				cl.RetDecl, cl.RetName, cl.RetPos = spec.Decl, spec.Name, spec.Pos
 				cl.Source, cl.Named = spec.Source, spec.Named
 				v.Data = cl
+				if spec.Pos.Row != 0 {
+					// The value carries its construction token as the
+					// interpreter's does (the `fn` word's result stamp), so
+					// a word that hands it back later keeps it rather than
+					// stamping its own (stampFnResultPos).
+					v.SetPos(spec.Pos)
+				}
 				if spec.DefName != "" {
 					// A `/v` read of a def-bound capturing literal: the
 					// value carries the def's name (the thirty-third
@@ -4618,16 +4745,20 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					}
 					vc.restartLocals = nil
 				}
-				return nil, stampAt(err, curDebug, pc, curReg)
+				return nil, stampHandlerAt(err, curDebug, pc, curReg)
 			}
 			// Belt-and-braces: a handler that returns tape tokens (to
 			// be re-stepped by the engine) must never have been
 			// compiled — the emitter declines fn-invoking and
 			// code-splicing words. Fail loudly, never push tokens as
-			// data.
-			if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil {
+			// data. A `do` whose splice results the pass fired seats
+			// the run without them (vm_splice_outs.go, NUR348).
+			if kept, ok := spliceOutsSeat(s.SpliceOuts, results); ok {
+				results = kept
+			} else if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil {
 				return nil, err
 			}
+			stampFnResultPos(results, curDebug, pc)
 			if (s.CountCheck && len(results) != s.CountClaim) || (s.DynBodyOne && s.Count != nil && dynBodyOneRefuses(results)) {
 				// A do whose run's count the program's seat does not hold
 				// (SigRef.CountCheck, NUR222): its statement runs again, the
@@ -4823,7 +4954,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth(), retFn: headNamedContract(ent.retFn, head), retAt: applyAnchor(ent, head)})
 				vc.frameDepth++ // balanced by the matching RET, like OpCallUser
 				nameFrameFns(curReg, fn, ent.locals)
-				vc.pushFrameArgs(ent.locals, fn.NArgs)
+				vc.pushFrameArgs(fn, curReg, ent.locals)
 				locals = ent.locals
 				enterUnit(ent.unit)
 				pc = -1
@@ -4889,7 +5020,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 			vc.frameDepth++ // balanced by the matching RET, like OpCallUser
 			nameFrameFns(curReg, fn, nl)
-			vc.pushFrameArgs(nl, fn.NArgs)
+			vc.pushFrameArgs(fn, curReg, nl)
 			locals = nl
 			enterUnit(unit)
 			pc = -1
@@ -4983,7 +5114,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 				vc.frameDepth++ // balanced by the matching RET below
 				nameFrameFns(curReg, fn, nl)
-				vc.pushFrameArgs(nl, fn.NArgs)
+				vc.pushFrameArgs(fn, curReg, nl)
 			} else {
 				// Tail call: REPLACE the frame — the language's
 				// tail-call guarantee in compiled form. The caller's
@@ -5002,7 +5133,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				}
 				loops = loops[:loopBase]
 				nameFrameFns(curReg, fn, nl)
-				vc.swapTailArgs(frames, nl, fn.NArgs)
+				vc.swapTailArgs(frames, fn, curReg, nl)
 			}
 			locals = nl
 			enterUnit(int(in.Arg))
@@ -5024,6 +5155,15 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				pc = spec.RetPC - 1
 			}
 		case compiler.OpBindDynScope, compiler.OpBindDynScopePeek:
+			if in.Op == compiler.OpBindDynScope && pc > 0 && curCode[pc-1].Op == compiler.OpPushLocal {
+				// The bind's own re-push of its source local (lowerDynBind):
+				// that local is the def's home, whose reads are the name's —
+				// it keeps no position a word's result stamp gave the value
+				// (dropFnPos, NUR347).
+				if k := int(curCode[pc-1].Arg); k >= 0 && k < len(locals) {
+					locals[k] = dropFnPos(locals[k])
+				}
+			}
 			ns, err := vc.bindDynScopeMode(curReg, p, int(in.Arg), stack, curDebug, pc, in.Op == compiler.OpBindDynScope)
 			if err != nil { //covergate:allow bindDynScopeMode's only error paths are its own allow-listed defensive guards (underflow / bad name const), unreachable without a bytecode-level fault (§compiler)
 				return nil, err
@@ -5036,10 +5176,17 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				return nil, err
 			}
 			stack = ns
-			if gb.WriteSlot && gb.Slot < len(locals) && renamesAsData(locals[gb.Slot]) {
-				// The def's rename reaches the value's frame home too
-				// (GlobalBindSpec.WriteSlot, NUR285).
-				locals[gb.Slot] = nameClosureValue(locals[gb.Slot], gb.Name)
+			if gb.WriteSlot && gb.Slot < len(locals) {
+				if renamesAsData(locals[gb.Slot]) {
+					// The def's rename reaches the value's frame home too
+					// (GlobalBindSpec.WriteSlot, NUR285).
+					locals[gb.Slot] = nameClosureValue(locals[gb.Slot], gb.Name)
+				} else {
+					// A value the def does not rename still loses the
+					// position a word's result stamp gave it: its reads are
+					// the name's (dropFnPos, NUR347).
+					locals[gb.Slot] = dropFnPos(locals[gb.Slot])
+				}
 			}
 		case compiler.OpBindTwin:
 			// The installs were rolled back before this run
@@ -5497,12 +5644,34 @@ func localNameCandidates(p *compiler.Program, curUnit int) []string {
 	return out
 }
 
+// stampAt attaches the op's source position to a positionless BoruError —
+// except one whose raising frame fixed its position (AnchorFinal: a
+// nameless closure's contract, answered at the value's own position or at
+// none), which an apply op leaves as the interpreter's value step does.
+// stampHandlerAt is the native-call boundary's form, which stamps that one
+// too.
 func stampAt(err error, debug []core.SrcPos, pc int, r *core.Registry) error {
+	return stampErrAt(err, debug, pc, r, false)
+}
+
+// stampHandlerAt is stampAt at a native WORD's handler boundary: the
+// interpreter's execMatch stamps whatever positionless error its handler
+// returns (stampErrPos), a frame-anchored one included — `do`, `call` and
+// every word that runs a body hand a closure's contract error out through
+// that stamp.
+func stampHandlerAt(err error, debug []core.SrcPos, pc int, r *core.Registry) error {
+	return stampErrAt(err, debug, pc, r, true)
+}
+
+func stampErrAt(err error, debug []core.SrcPos, pc int, r *core.Registry, handler bool) error {
 	ae, ok := err.(*core.BoruError)
 	if !ok {
 		return err
 	}
-	if ae.Row == 0 && pc >= 0 && pc < len(debug) {
+	if handler {
+		ae.AnchorFinal = false
+	}
+	if ae.Row == 0 && !ae.AnchorFinal && pc >= 0 && pc < len(debug) {
 		ae.Row = debug[pc].Row
 		ae.Col = debug[pc].Col
 		// The token's own text too: the caret's width is the token's, and

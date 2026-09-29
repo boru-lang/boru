@@ -28,6 +28,7 @@ func TestTrailingFnCollectsPastClose(t *testing.T) {
 	strFn := ptfFn(t, TString)
 	nullary := ptfFn(t)
 	noSigs := NewFunction(FnDefInfo{Name: "h"})
+	quotedWord := NewValueRaw(TWord, WordInfo{Name: "cmul", ArgCount: -1, ForceVal: true})
 	cases := []struct {
 		name string
 		last Value
@@ -36,7 +37,12 @@ func TestTrailingFnCollectsPastClose(t *testing.T) {
 		why  string
 	}{
 		{"nothing after the close", carrier, nil, false, "the value falls to the stack — the values inside the paren"},
-		{"a word after the close", carrier, []Value{NewWord("mul")}, false, "`(2 (mk 1)) mul 10` is 30: a word is not collectable"},
+		{"a function word after the close", carrier, []Value{NewWord("cmul")}, false, "`(2 (mk 1)) mul 10` is 30: a function word is the strict barrier"},
+		{"a value word after the close", intFn, []Value{NewWord("v")}, true, "`(\"s\" lam/v) v` over `def v 5` is `[s 105]`: the binding's value arrives (NUR344)"},
+		{"a /v word after the close", intFn, []Value{quotedWord}, true, "a reference is no barrier: its value arrives and the re-step decides"},
+		{"a paren expression after the close", intFn, []Value{NewParenExpr([]Value{NewInteger(2)})}, true, "`(\"s\" lam/v) (2 add 3)` is `[s 105]`: the group is evaluated for the slot (NUR344)"},
+		{"a reach after the close", intFn, []Value{NewReach(ReachInfo{})}, true, "`(\"s\" lam/v) m.a` reads the member for the slot (NUR344)"},
+		{"an interpolated string after the close", strFn, []Value{NewInterpString(nil)}, true, "the template is evaluated for the slot (NUR344)"},
 		{"a close paren after the close", carrier, []Value{NewCloseParen()}, false, "an enclosing group's boundary"},
 		{"an end after the close", carrier, []Value{NewEnd()}, false, "a statement boundary"},
 		{"a modifier after the close", carrier, []Value{NewDispatchMod(DispatchModInfo{})}, false, "`/v` leaves the value inert"},
@@ -52,7 +58,7 @@ func TestTrailingFnCollectsPastClose(t *testing.T) {
 		t.Run(tc.name, func(t *testing.T) {
 			tape := []Value{NewOpenParen(), NewInteger(2), tc.last, NewCloseParen()}
 			tape = append(tape, tc.tail...)
-			e := &Engine{Tape: NewTape(tape, 8)}
+			e := &Engine{Registry: covRegistry(t, nil), Tape: NewTape(tape, 8)}
 			if got := e.trailingFnCollectsPastClose(tc.last, 3); got != tc.want {
 				t.Errorf("collects = %v, want %v — %s", got, tc.want, tc.why)
 			}
@@ -261,4 +267,50 @@ func TestCloseParenTrailingFnCollectsPastClose(t *testing.T) {
 	if ck.ForwardLeftoverFnIDs[last.ID] {
 		t.Errorf("no collection is pending, so no forward-leftover mark: %v", ck.ForwardLeftoverFnIDs)
 	}
+	if !ck.TrailingDeferredFnIDs[last.ID] {
+		t.Errorf("the value is noted as deferred to the re-step (NUR344): %v", ck.TrailingDeferredFnIDs)
+	}
+}
+
+// TestTrailingDeferredPlacement pins the NUR344 pair: the collapse notes a
+// trailing fn value it left to the rewind's re-step (noteTrailingDeferred),
+// and the re-step's no-match park records exactly such a value as
+// paren-placed (placeTrailingDeferred) — nothing else: a value the collapse
+// never deferred, an ID-less one, a plain (non-analysis) run, an index past
+// the tape, a run with no registry.
+func TestTrailingDeferredPlacement(t *testing.T) {
+	deferred := NewInteger(1)
+	deferred.ID = "fn-deferred"
+	other := NewInteger(2)
+	other.ID = "fn-other"
+	idless := NewInteger(3)
+	idless.ID = ""
+	r := &Registry{Check: &CheckState{Mode: true}}
+	e := &Engine{Registry: r, Tape: NewTape([]Value{deferred, other, idless}, 8)}
+	e.noteTrailingDeferred(idless)
+	if len(r.Check.TrailingDeferredFnIDs) != 0 {
+		t.Fatalf("an ID-less value is not noted: %v", r.Check.TrailingDeferredFnIDs)
+	}
+	e.noteTrailingDeferred(deferred)
+	e.noteTrailingDeferred(deferred) // the set is reused
+	if !r.Check.TrailingDeferredFnIDs["fn-deferred"] {
+		t.Fatalf("the deferred value is noted: %v", r.Check.TrailingDeferredFnIDs)
+	}
+	for _, idx := range []int{1, 2, 3} {
+		e.placeTrailingDeferred(idx)
+	}
+	if len(r.Check.ParenPlacedFnIDs) != 0 {
+		t.Fatalf("an undeferred value, an ID-less one and an index past the tape place nothing: %v", r.Check.ParenPlacedFnIDs)
+	}
+	e.placeTrailingDeferred(0)
+	e.placeTrailingDeferred(0) // the set is reused
+	if !r.Check.ParenPlacedFnIDs["fn-deferred"] {
+		t.Fatalf("the deferred value parked by its re-step is placed: %v", r.Check.ParenPlacedFnIDs)
+	}
+	plain := &Engine{Registry: &Registry{Check: &CheckState{TrailingDeferredFnIDs: map[string]bool{"fn-deferred": true}}}, Tape: NewTape([]Value{deferred}, 8)}
+	plain.placeTrailingDeferred(0)
+	if plain.Registry.Check.ParenPlacedFnIDs != nil {
+		t.Error("a plain run records no placement")
+	}
+	(&Engine{Tape: NewTape([]Value{deferred}, 8)}).placeTrailingDeferred(0) // no registry: a no-op
 }

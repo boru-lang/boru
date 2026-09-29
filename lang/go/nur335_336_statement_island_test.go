@@ -286,15 +286,24 @@ func TestNUR336DefBoundWordLead(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	// Still loud: an island that dispatches the word again after the stop
-	// meets the name bound by the compiled bind, which the interpreter's
-	// word path cannot run (its def compiles the lambda's signatures; the
-	// bind keeps the value) — never a wrong answer.
-	src := zero + `def g m.f/v end def k 3 end k (g 7) (g 8) drop`
-	gotC, compiled, errC := mustNew(t).RunCompiled(src)
-	gotI, errI := mustNew(t).RunInterp(src)
-	if errI != nil || fmt.Sprint(gotI) != "[3 9 7 9]" || (compiled && errC == nil) {
-		t.Errorf("%q: compiled %v / %v, interpreter %v / %v: want the interpreter's answer and a loud compiled run", src, gotC, errC, gotI, errI)
+	// An island that dispatches the word again after the stop met the name
+	// bound by the compiled bind, which the interpreter's word path cannot
+	// run (its def compiles the lambda's signatures; the bind keeps the
+	// value): "no runnable implementation for `g`", loud. The island now
+	// runs over the name installed as the interpreter's def installs it
+	// (bindRootRead, as a root deopt island does) — NUR336's remainder.
+	for _, c := range []struct{ src, want string }{
+		{zero + `def g m.f/v end def k 3 end k (g 7) (g 8) drop`, "[3 9 7 9]"},
+		{zero + `def g m.f/v end (g 7) (g 8)`, "[9 7 9 8]"},
+		{zero + `def g m.f/v end def k 3 end k (g 7) g`, "[3 9 7 9]"},
+		{zero + `def g m.f/v end def k 3 end k (g 7) [g]`, "[3 9 7 [9]]"},
+		{zero + `def g m.f/v end def k 3 end k (g 7) (g 8) drop typeof`, "[3 9 7 Integer]"},
+		// The negative half: the island's own reads of the name as a value,
+		// and its own rebinding of it, are the interpreter's.
+		{zero + `def g m.f/v end def k 3 end k (g 7) g/v`, "[3 9 7 fn g]"},
+		{zero + `def g m.f/v end def k 3 end k (g 7) def g 4 g`, "[3 9 7 4]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
 	}
 }
 
