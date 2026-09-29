@@ -420,7 +420,7 @@ func TestPolyRematchEscapedFlowNeedsALoop(t *testing.T) {
 		t.Fatalf("no flow escaped: got %v / %v, want [4]", res, err)
 	}
 	_, err = RunProgram(prog(0), reg(true))
-	wantInternal(t, err, "flow signal with no enclosing loop")
+	wantFlowError(t, err, "break outside loop")
 }
 
 // TestDynApplyForeignStaleRefRestamps pins dynApplyForeign's freshness dance

@@ -112,10 +112,11 @@ func TestArmRuntimeBailHookForwarder(t *testing.T) {
 	var bails []BailEvent
 	defer a.ArmRuntimeBailHook(func(e BailEvent) { bails = append(bails, e) })()
 
-	// A `/v` lead: the pass plans no statement island for it, so the placing
-	// apply keeps its designed defer (the bare `(m.f y)` now takes its
-	// island, survivorIsland, NUR336).
-	const src = `def mk fn [[] [Map] [{f: ([x:String] => [x])}]] end def m (mk) end def y fn [[] [Integer] [42]] end ("s" dup drop) end (m.f/v y)`
+	// A statement whose island cannot run again a branch whose arm binds
+	// (`if true [def q 1] []`, restartSubsts refuses it): the placing apply
+	// keeps its designed defer (the bare `(m.f y)` takes its island,
+	// survivorIsland, and the `/v` lead `(m.f/v y)` its lead run, NUR336).
+	const src = `def mk fn [[] [Map] [{f: ([x:String] => [x])}]] end def m (mk) end def y fn [[] [Integer] [42]] end ("s" dup drop) end if true [def q 1] [] (m.f y)`
 	got, compiled, err := a.RunCompiled(src)
 	if noteCompileDefect(t, src, got, err) {
 		return

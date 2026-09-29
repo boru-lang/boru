@@ -257,11 +257,14 @@ func TestBodyMapReason(t *testing.T) {
 		want  string
 	}{
 		{"no facts", nil, []loopCtx{{iterName: "i"}}, false, ""},
-		{"the loop index, named", named, []loopCtx{{iterName: "i"}}, false, "loop index `i`"},
+		// A body reading a counted loop's index lowers: the facts armed the
+		// dynamic-environment mirror, under which the loop publishes its
+		// index (publishesIndex, NUR354).
+		{"the loop index, named", named, []loopCtx{{iterName: "i"}}, false, ""},
 		{"another loop's index", named, []loopCtx{{iterName: "j"}}, false, ""},
 		{"a condition loop has no index", named, []loopCtx{{}}, false, ""},
-		{"a computed body in a counted loop", &bodyMapFacts{computed: true}, []loopCtx{{iterName: "j"}}, false, "loop index `j`"},
-		{"an opaque body in a counted loop", &bodyMapFacts{opaque: true}, []loopCtx{{iterName: "j"}}, false, "loop index `j`"},
+		{"a computed body in a counted loop", &bodyMapFacts{computed: true}, []loopCtx{{iterName: "j"}}, false, ""},
+		{"an opaque body in a counted loop", &bodyMapFacts{opaque: true}, []loopCtx{{iterName: "j"}}, false, ""},
 		{"an escape at the root", &bodyMapFacts{flow: true}, nil, false, "break/continue outside a compiled loop"},
 		{"an escape in a loop", &bodyMapFacts{flow: true}, []loopCtx{{iterName: "j"}}, false, ""},
 		{"an escape in a fn unit", &bodyMapFacts{flow: true}, nil, true, ""},

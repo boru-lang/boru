@@ -73,6 +73,9 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"CurLayout": "scoped: published around one recovered dispatch's record and " +
 			"restored when it returns (PublishLayout), so it is nil outside a record and " +
 			"no pass can begin with one set; a reader asks for its own operand slice (LayoutFor)",
+		"CurFits": "scoped: published by execMatch around one dispatch's carrier " +
+			"results and restored when they return (publishForwardFits), so it is nil " +
+			"outside a record; a reader asks for its own operand slice (FitsFor)",
 		"BareCallPos": "scoped: published by execMatch around one dispatch's carrier " +
 			"results and restored when they return, so it is zero outside a dispatch " +
 			"and no pass can begin with one set",

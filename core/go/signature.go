@@ -162,6 +162,16 @@ type MatchResult struct {
 	Reg       *Registry // sub-registry owning Sig for a module delegation dispatch (nil = main)
 }
 
+// DispatchRegistry is the registry that owns the matched signature: the
+// module sub-registry of a delegation dispatch, else main (the registry the
+// dispatch ran in).
+func (m *MatchResult) DispatchRegistry(main *Registry) *Registry {
+	if m.Reg != nil { //sentinel:home the one reading of a nil match Reg: the dispatch matched in main
+		return m.Reg
+	}
+	return main
+}
+
 // MatchSignature finds the first matching signature for a function given the
 // resolved stack and optional word modifiers.
 //

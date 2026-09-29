@@ -138,11 +138,11 @@ func (e *Engine) optimisticLayout(match *MatchResult, indices []int) *DispatchLa
 			return nil
 		}
 	}
-	beneath, after, ok := e.layoutSurround(e.Pointer-n-1, e.Pointer+1)
+	beneath, after, live, ok := e.layoutSurround(e.Pointer-n-1, e.Pointer+1, true)
 	if !ok {
 		return nil
 	}
-	return &DispatchLayout{args: match.Args, NFwd: nFwd, Beneath: beneath, After: after}
+	return &DispatchLayout{args: match.Args, NFwd: nFwd, Beneath: beneath, After: after, Live: live}
 }
 
 // publishOptimisticLayout publishes optimisticLayout for the dispatch's

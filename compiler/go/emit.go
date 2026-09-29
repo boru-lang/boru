@@ -171,6 +171,65 @@ func (es *EmitState) noteArgSites(seq int, args []core.Value) {
 	}
 	es.argSites[seq] = sites
 	es.noteFnArgPos(seq, args)
+	es.noteForwardFits(seq, args)
+}
+
+// readFits is the unproven forward fits of the read whose value has ID id
+// at its consumer ev (noteForwardFits), when ev consumes it as an operand
+// (direct) — the dispatch that collected it; nil otherwise.
+func (es *EmitState) readFits(ev *EmitEvent, id string, direct bool) []core.ForwardFit {
+	if !direct || ev == nil {
+		return nil
+	}
+	return es.fwdFits[ev.seq][id]
+}
+
+// keptLiveID reports whether id is the value of a read seated live after a
+// computed keep-defs body (EmitState.keptLiveReads).
+func (es *EmitState) keptLiveID(id string) bool {
+	for _, r := range es.keptLiveReads {
+		if r.id == id {
+			return true
+		}
+	}
+	return false
+}
+
+// noteForwardFits keeps, for call event seq, the unproven forward fits the
+// dispatch published for its operands (core CheckState.FitsFor, NUR357), by
+// each such operand's value ID: the candidate slots a gradual operand the
+// pass collected forward must fit for the interpreter's collection to take
+// it there. A point testing that read's value tests them too
+// (DeoptSpec.Fits). Nothing is kept when no operand has any.
+func (es *EmitState) noteForwardFits(seq int, args []core.Value) {
+	if es.reg == nil || es.reg.Check == nil {
+		return
+	}
+	// The fits are keyed by signature position, each an operand of args
+	// (core forwardFits reads no other). A read seated live after a
+	// computed body is its live point's (kept_live_deopt.go): tested before
+	// the word that may collect it, its island takes the statement when the
+	// binding is not of the type the statement was compiled for.
+	fits := es.reg.Check.FitsFor(args)
+	for k, f := range fits {
+		if es.keptLiveID(args[k].ID) {
+			continue
+		}
+		if es.fwdFits == nil {
+			es.fwdFits = map[int]map[string][]core.ForwardFit{}
+		}
+		if es.fwdFits[seq] == nil {
+			es.fwdFits[seq] = map[string][]core.ForwardFit{}
+		}
+		es.fwdFits[seq][args[k].ID] = f
+		if es.fwdFitsAt == nil {
+			es.fwdFitsAt = map[int]map[int][]core.ForwardFit{}
+		}
+		if es.fwdFitsAt[seq] == nil {
+			es.fwdFitsAt[seq] = map[int][]core.ForwardFit{}
+		}
+		es.fwdFitsAt[seq][k] = f
+	}
 }
 
 // noteFnArgPos keeps, for call event seq, the position of each argument that
@@ -182,16 +241,7 @@ func (es *EmitState) noteArgSites(seq int, args []core.Value) {
 // SigRef carries it (SigRef.FnArgPos) for the VM to stamp on a positionless
 // named value (NUR347). Nothing is kept when no argument qualifies.
 func (es *EmitState) noteFnArgPos(seq int, args []core.Value) {
-	var out []core.SrcPos
-	for i, a := range args {
-		if a.ID == "" || a.Pos().Row == 0 || !es.valReadNoted[a.ID] || !(core.IsAppliableFn(a) || core.IsFnTypedCarrier(a)) {
-			continue
-		}
-		if out == nil {
-			out = make([]core.SrcPos, len(args))
-		}
-		out[i] = a.Pos()
-	}
+	out := es.fnValReadPos(args)
 	if out == nil {
 		return
 	}
@@ -199,6 +249,26 @@ func (es *EmitState) noteFnArgPos(seq int, args []core.Value) {
 		es.fnArgPos = map[int][]core.SrcPos{}
 	}
 	es.fnArgPos[seq] = out
+}
+
+// fnValReadPos is, for each of vals, the position of a fn value the program
+// read by its `/v` spelling (valReadNoted) — the token the interpreter's read
+// stamped on it (stepWordVal) — and the zero position for any other value;
+// nil when no value qualifies. A call's arguments (noteFnArgPos) and a map
+// literal's values (RecordMakeMap) carry it to the VM, which stamps it on a
+// positionless named value the compiled slot push handed over.
+func (es *EmitState) fnValReadPos(vals []core.Value) []core.SrcPos {
+	var out []core.SrcPos
+	for i, a := range vals {
+		if a.ID == "" || a.Pos().Row == 0 || !es.valReadNoted[a.ID] || !(core.IsAppliableFn(a) || valueMayBeFn(a)) {
+			continue
+		}
+		if out == nil {
+			out = make([]core.SrcPos, len(vals))
+		}
+		out[i] = a.Pos()
+	}
+	return out
 }
 
 // eventFlags are the per-event compile flags, keyed by event seq in
@@ -419,6 +489,7 @@ type emitCall struct {
 	polyReg           *core.Registry        // the sub-registry to re-match a module poly word in (nil = main registry)
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)
 	polySplit         *PolySplit            // the dispatch's exact operand layout, for the poly's runtime no-match arm (PolyRef.Split, NUR242)
+	polySplitLive     []splitLive           // the split's Beneath entries the run's stack holds (PolySplit.Live, NUR351), placed at lowering
 	nativeSplit       *NativeSplit          // an optimistic closure bake's exact operand layout, for the committed call's no-match arm (SigRef.Split, NUR263)
 	polySeed          *polySeed             // the checker's guarded pick (PolyRef.Seed; nil = none)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
@@ -432,14 +503,17 @@ type emitCall struct {
 	makeMap           bool                  // assemble len(ops) value operands into a map (OpMakeMap) with mapKeys
 	mapKeys           []string
 	mapImpl           bool // the source map's Implicit flag
-	interp            bool // assemble len(ops) hole operands into a template string (OpInterp) per interpSegs
-	interpSegs        []InterpSeg
-	xmlTmpl           *core.XmlTmpl // assemble len(ops) hole operands into an XML element (OpInterpXml, §9.2c)
-	spliceDyn         bool          // spread the ONE laid-out payload operand at run time (OpSpliceDyn, §9.2b)
-	diverges          bool          // the word ALWAYS raises (CompileDiverges, e.g. raise): control never returns past this call
-	live              bool          // a LIVE READ seated as an event (NoteLiveRead): no dispatch — OpLookupDynScope of liveName at the read token, one result; rides evCall so the result seats, promotes and drops as any computed value does
-	liveName          int           // the read name's const index, meaningful only when live
-	liveRef           bool          // a live `/v` read (NoteValReadLive): OpLookupDynScopeRef, the value spelling's lookup
+	// mapFnPos is where each map value that is a fn value read by its `/v`
+	// spelling was read (fnValReadPos), key order; nil when none was.
+	mapFnPos   []core.SrcPos
+	interp     bool // assemble len(ops) hole operands into a template string (OpInterp) per interpSegs
+	interpSegs []InterpSeg
+	xmlTmpl    *core.XmlTmpl // assemble len(ops) hole operands into an XML element (OpInterpXml, §9.2c)
+	spliceDyn  bool          // spread the ONE laid-out payload operand at run time (OpSpliceDyn, §9.2b)
+	diverges   bool          // the word ALWAYS raises (CompileDiverges, e.g. raise): control never returns past this call
+	live       bool          // a LIVE READ seated as an event (NoteLiveRead): no dispatch — OpLookupDynScope of liveName at the read token, one result; rides evCall so the result seats, promotes and drops as any computed value does
+	liveName   int           // the read name's const index, meaningful only when live
+	liveRef    bool          // a live `/v` read (NoteValReadLive): OpLookupDynScopeRef, the value spelling's lookup
 	// typedBind, when non-nil, marks this event as a typed value-def's runtime
 	// validate/reparent step (OpBindTyped over the single operand) instead of a
 	// word dispatch — recorded by RecordTypedBind from the def handler's
@@ -524,6 +598,14 @@ type emitBranch struct {
 	// branch carries into its slot, on every path through it.
 	carried      []carriedInit
 	carriedNames map[string]bool
+	// pending is the observable list and map literals the arms' model runs
+	// evaluated at their ends, which the interpreter keeps pending past the
+	// `if` (BranchRecord.Pending, NUR356); sweptArms marks a branch whose
+	// arms end where the interpreter evaluates what they leave
+	// (BranchRecord.SweptArms — the `case` desugar). pendingArmRefusal
+	// reads both.
+	pending   core.PendingResidue
+	sweptArms bool
 }
 
 // armKind classifies one `if` arm, collapsing the emitBranch boolean flags
@@ -693,6 +775,12 @@ type emitUserCall struct {
 	// (call_window.go), lowered to the call's CallWindows entry; nil keeps
 	// the argument tuple.
 	window []callWinOp
+	// mayMiss marks a call whose param contract the compiled CALL_USER may
+	// refuse at run time (call_window.go): an argument the pass holds wider
+	// than its param's declared type — a gradual value, a union — or a param
+	// with a pattern. Its signature is then matched at run time
+	// (runtimeMatched, NUR356).
+	mayMiss bool
 }
 
 // emitUserPolySpec is the recorded arm table of one poly user call — the
@@ -761,17 +849,22 @@ type EmitTrap struct {
 // the small payloads stay inline. Every consumer is kind-guarded, so a nil
 // br/loop on a non-matching event is never dereferenced.
 type EmitEvent struct {
-	seq   int
-	kind  int
-	call  emitCall
-	br    *emitBranch
-	loop  *emitLoop
-	uc    emitUserCall
-	fb    emitFallback
-	trap  EmitTrap
-	store *emitStore
-	dyn   *emitDynBind
-	twin  *emitBindTwin
+	seq  int
+	kind int
+	// litDepth is how many inline regions of its unit — a list or map
+	// literal's element runs, above all (inlineLitDepth) — the event was
+	// recorded in: the events a call's literal operands ran are the ones
+	// just before it, deeper than it (eagerLiteralEffect, NUR356).
+	litDepth int
+	call     emitCall
+	br       *emitBranch
+	loop     *emitLoop
+	uc       emitUserCall
+	fb       emitFallback
+	trap     EmitTrap
+	store    *emitStore
+	dyn      *emitDynBind
+	twin     *emitBindTwin
 }
 
 // emitBindTwin marks one bind-ledger transition's STREAM POSITION (§6.5's
@@ -1405,6 +1498,13 @@ type EmitState struct {
 	// seq (noteArgSites): the tokens a statement island may write the call's
 	// run over (callRun, NUR296).
 	argSites map[int][]argSite
+	// fwdFits is, by call event seq and operand value ID, the unproven
+	// forward fits of a gradual operand the dispatch collected forward
+	// (noteForwardFits, NUR357).
+	fwdFits map[int]map[string][]core.ForwardFit
+	// fwdFitsAt is fwdFits by signature position: the poly's own statement
+	// island tests its operands there (planFitRestarts, PolyRef.Fit).
+	fwdFitsAt map[int]map[int][]core.ForwardFit
 	// fnArgPos is where each fn-VALUE argument of a call event was read by
 	// its `/v` spelling, by event seq and signature position (noteFnArgPos,
 	// NUR347): the position the interpreter's value carries into the call.
@@ -2398,6 +2498,10 @@ type deoptPoint struct {
 	// count, on a restart point, marks a do's count island (SigRef.Count,
 	// NUR222): the stop is the do's own call.
 	count bool
+	// countRun, on a count point, marks a do over a computed body
+	// (dynBodyRun): its call takes the island on a run the interpreter's
+	// tape would step (landingRestart.run, NUR348).
+	countRun bool
 	// first, on a restart point inside loops, is the first-iteration check
 	// its island takes at run time (firstIterGuard).
 	first []RestartFirst
@@ -2424,6 +2528,35 @@ type deoptPoint struct {
 	// defBound, beside leftovers, are the values those defs bound — the
 	// first result of each one's call.
 	defBound []producer
+	// frameHeld, on a unit's landing or shaped-apply island
+	// (planUnitRestarts), admits an operand an EARLIER statement's event
+	// produced (`(1 add 2) end (q.f 7) drop drop`, NUR336) where the
+	// accounting would call it deferred: onFrame lists each, and the walk
+	// seats the island only where the compiled frame holds every one beneath
+	// the statement at its start and still holds that region intact at the
+	// stop (heldIntact) — the island's prefix is then the interpreter's frame.
+	frameHeld bool
+	onFrame   []producer
+	// fit, on a restart point, marks a poly's forward-fit island
+	// (PolyRef.Fit, NUR357): the stop is the poly's own call.
+	fit bool
+	// fits, on a read's island point, are the unproven forward fits of the
+	// dispatch that collected the read forward (DeoptSpec.Fits, NUR357): a
+	// value missing one is a collection the interpreter makes differently,
+	// and takes the island as a fn does.
+	fits []core.ForwardFit
+	// fitConsumer, beside fits, is the seq of the call event the fits are
+	// the collection of: a point that tests them serves that call
+	// (lowerer.fitServed).
+	fitConsumer int
+	// seat, on a root read's statement island, is the program residual's
+	// entries before the statement the island seats as its prefix
+	// (DeoptSpec.Seat, rootPreStart), seatHeld how many the compiled stack
+	// holds beneath the statement, and seated marks the plan (an empty
+	// seat is a statement with nothing beneath).
+	seat     []RestartSrc
+	seatHeld int
+	seated   bool
 	// held, on a live-read point at the program root, is the root events
 	// whose results the compiled stack holds beneath the statement at the
 	// test, the interpreter's stack there (rootStackHeld): an operand of the
@@ -3513,9 +3646,25 @@ func (es *EmitState) appendEvent(ev EmitEvent) int {
 	}
 	es.seq++
 	ev.seq = es.seq
+	ev.litDepth = es.inlineLitDepth()
 	es.keptDefsEvent(&ev)
 	es.frames[n] = append(es.frames[n], ev)
 	return ev.seq
+}
+
+// inlineLitDepth is how many inline context-boundary regions the current
+// unit's recording sits in (PushInlineCtxBoundary): a list or map literal's
+// element runs, an interpolation's holes, the `case` desugar's chain —
+// each opened in this unit, none since a nested unit opened (EmitEvent.
+// litDepth, NUR356).
+func (es *EmitState) inlineLitDepth() int {
+	d := 0
+	for _, b := range es.inlineCtxBounds {
+		if b == len(es.openUnitRecs) {
+			d++
+		}
+	}
+	return d
 }
 
 // setProduced registers an event's output ID against its sequence,
@@ -4991,6 +5140,46 @@ func (es *EmitState) storedHandlerDeps(body []core.Value) map[string]bool {
 	return deps
 }
 
+// storedHandlerDepsDeep is storedHandlerDeps read THROUGH the user fns the
+// body calls, transitively: a runtime stamp (stampDetachedSig) compiles a
+// called fn's unit against the bindings live at stamp time, baking what its
+// body reads, so a later rebind of a name only the callee reads leaves the
+// stamp stale as surely as a rebind of the body's own word. With the shallow
+// snapshot `def i 9 end def f fn [[] [Integer] [i]] end` read through a
+// stamped `[f]` answered 9 after `def i 10` (and a published loop index —
+// NUR354 — 0 at every iteration). A callee homed in another module resolves
+// its names there, where this registry's snapshot says nothing, and is not
+// read.
+func (es *EmitState) storedHandlerDepsDeep(body []core.Value) map[string]bool {
+	deps := map[string]bool{}
+	maps.Copy(deps, es.storedHandlerDeps(body))
+	seen := map[string]bool{}
+	var walk func(body []core.Value)
+	walk = func(body []core.Value) {
+		core.WalkBodyWords(body, func(w core.WordInfo, _ core.Value) {
+			if seen[w.Name] {
+				return
+			}
+			seen[w.Name] = true
+			fd := es.reg.Lookup(w.Name)
+			if fd == nil || core.FnHomeForeign(es.reg, fd) {
+				return
+			}
+			for i := range fd.Signatures {
+				if _, boru := fd.Signatures[i].Impl.(*core.BoruImpl); boru {
+					inner := fd.Signatures[i].Body()
+					maps.Copy(deps, es.storedHandlerDeps(inner))
+					walk(inner)
+				}
+			}
+		})
+	}
+	if es != nil && es.reg != nil {
+		walk(body)
+	}
+	return deps
+}
+
 // NotifyNameRebound poisons any already-created stored-handler / spawn ref whose
 // body reads `name`: a def or undef of that name AFTER the ref was created
 // changes what the interpreter resolves at CALL time, but the compiled unit is
@@ -5386,6 +5575,7 @@ func (es *EmitState) RecordBranch(b core.BranchRecord) {
 	ev := EmitEvent{kind: evBranch, br: &emitBranch{
 		constCond: b.ConstCond, hasElse: b.HasElse, pos: b.Pos,
 		guard: b.Guard, condGuard: b.CondGuard, thenGuard: b.ThenGuard, elsGuard: b.ElseGuard, condCheck: b.CondCheck, condCheckPos: b.CondCheckPos,
+		pending: b.Pending, sweptArms: b.SweptArms,
 	}}
 	resolveArm := func(frag *EmitFragment, stk []core.Value, name string) (EmitOperand, bool, bool) {
 		if frag == nil {
@@ -8420,7 +8610,7 @@ func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Val
 		ops = append(ops, op)
 	}
 	window := es.callWindowOps(word, wordPos, args)
-	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, wordPos: wordPos, region: region, generic: generic, window: window}})
+	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{unit: unit, ops: ops, nout: len(outs), pos: pos, wordPos: wordPos, region: region, generic: generic, window: window, mayMiss: contractMayMiss(rec, args)}})
 	es.noteArgSites(seq, args)
 	es.SiteCounts[SiteMono]++
 	// A call to an ALREADY-variadic fn yields a runtime-variable count itself, so
@@ -9622,6 +9812,30 @@ func (es *EmitState) RecordTrap(code, detail, word, hint string, pos core.SrcPos
 	}
 	es.trapAt = es.appendEvent(EmitEvent{kind: evTrap, trap: EmitTrap{spec: spec, pos: pos}})
 	return true
+}
+
+// splitLive is one Beneath entry of a poly's split layout the run's stack
+// holds (core DispatchLayout.Live): its index and the event result it is.
+type splitLive struct {
+	at   int
+	prod producer
+}
+
+// splitLiveProducers resolves each live Beneath entry of l to the event
+// result it is, in the unit being recorded; ok is false for one with no
+// such producer.
+func (es *EmitState) splitLiveProducers(l *core.DispatchLayout) ([]splitLive, bool) {
+	var out []splitLive
+	for _, at := range l.Live {
+		// Live indexes Beneath (core layoutSurround).
+		id := l.Beneath[at].ID
+		pr, ok := es.producedBy[id]
+		if !ok || (len(es.units) > 1 && !es.producedInCurrentUnit(id)) {
+			return nil, false
+		}
+		out = append(out, splitLive{at: at, prod: pr})
+	}
+	return out, true
 }
 
 // layoutFor is the bound registry's published dispatch layout for args
@@ -11226,7 +11440,15 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	// and the interpreter reports a lens's no-match at the caller's position
 	// (`5 $.name apply` points at 1:1, the unit's layout at the `.name`).
 	if l := es.layoutFor(args); l != nil && noMatch == nil && !es.inStampCompile && es.reg != nil && wordWrittenAt(es.reg.Source, word, pos) {
-		call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
+		// A value beneath the operands that is no constant — an earlier
+		// call's result (`f g keys` over two Any results, NUR351) — is read
+		// where the compiled code keeps it when the arm runs (PolySplit.Live,
+		// placed at lowering); one produced outside the unit has no such
+		// home, and the record keeps its defer.
+		if live, ok := es.splitLiveProducers(l); ok {
+			call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
+			call.polySplitLive = live
+		}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	es.noteArgSites(seq, args)
@@ -14845,6 +15067,7 @@ func (es *EmitState) RecordMakeMap(r *core.Registry, keys []string, vals []core.
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: emitCall{
 		word: wordMakeMap, ops: ops, nout: 1, pos: pos,
 		makeMap: true, mapKeys: append([]string(nil), keys...), mapImpl: implicit,
+		mapFnPos: es.fnValReadPos(vals),
 	}})
 	es.setProduced(out, seq)
 	return true
@@ -15029,7 +15252,7 @@ func (es *EmitState) RecordClosureCall(word string, sig *core.Signature, args []
 	// call then raises the interpreter's report over the laid-out tape,
 	// the body slot as the token list it holds there (NUR263). A lambda
 	// body or an extra hook slot keeps the handler's own refusal.
-	if l := es.layoutFor(args); l != nil && len(extraOps) == 0 && core.IsConcrete(args[bodyPos]) && args[bodyPos].Parent.ConformsTo(core.TList) {
+	if l := es.layoutFor(args); l != nil && len(l.Live) == 0 && len(extraOps) == 0 && core.IsConcrete(args[bodyPos]) && args[bodyPos].Parent.ConformsTo(core.TList) {
 		call.nativeSplit = &NativeSplit{NFwd: l.NFwd, BodyAt: bodyPos, Body: args[bodyPos], Beneath: l.Beneath, After: l.After}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
@@ -17315,7 +17538,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		LiveLeadNames:   maps.Clone(es.liveLeadNames),
 		LiveReadNames:   maps.Clone(es.liveReadNames),
 		CondBoundNames:  maps.Clone(es.condBoundNames)}
-	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, callWindows: &p.CallWindows, dynApplyName: &p.DynApplyName, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
+	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, callWindows: &p.CallWindows, callFits: &p.CallFits, flowExits: &p.FlowExits, dynApplyName: &p.DynApplyName, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
 	// single-consume stack discipline holds. Count the residual references,
@@ -17421,6 +17644,9 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	es.planLandingRestarts(lw, residual)
 	es.planGuardRestarts(lw, residual)
 	es.planCountRestarts(lw, residual)
+	// The polys whose gradual operand the pass collected forward, which the
+	// run may find the interpreter's collection stops at (NUR357).
+	es.planFitRestarts(lw, residual)
 	if reason := es.lowerRootEvents(lw, residual); reason != "" {
 		return nil, reason, false
 	}
@@ -17586,7 +17812,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		}
 		cf.KeepsDefs = rec.keepsDefs
 		seatSpecGuards(&cf, rec)
-		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, callWindows: &cf.CallWindows, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs, rec: rec}
+		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, callWindows: &cf.CallWindows, callFits: &cf.CallFits, flowExits: &cf.FlowExits, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs, rec: rec}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).
@@ -17609,7 +17835,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		// counts descriptors, and a table that carries entries for discarded
 		// code is a table whose count means something else.
 		regionFloor := len(p.Regions)
-		if reason := flw.lowerEvents(rec.frag.events, rec.frag.startSeq); reason != "" {
+		if reason := es.lowerUnitEvents(flw, rec); reason != "" {
 			if rec.stampOnly {
 				es.unreachableUnitStub(p, rec, regionFloor)
 				continue
@@ -17799,7 +18025,7 @@ func (es *EmitState) planRootWordReads(lw *lowerer, residual []core.Value) map[s
 		pr := es.producedBy[id]
 		seq := pr.seq
 		if ci, direct := rootReadConsumer(es.frames[0], r.name, seq, pr.idx, lw.promoted); ci >= 0 {
-			es.seatRootConsumedRead(lw, rec, r, seq, pr.idx, ci, direct, inResidual[id], residual)
+			es.seatRootConsumedRead(lw, rec, r, seq, pr.idx, ci, direct, inResidual[id], residual, es.readFits(&es.frames[0][ci], id, direct))
 		}
 		if inResidual[id] {
 			if atResidual == nil {
@@ -17822,9 +18048,10 @@ func (es *EmitState) planRootWordReads(lw *lowerer, residual []core.Value) map[s
 // token to the program's end: `j typeof` answers Integer, `[j]` `[[42]]`.
 // Otherwise, or when the value is read more than once, it is a GUARD
 // before the consuming event, loud where it answered wrong silently.
-func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWordRead, seq, idx, ci int, direct, alsoResidual bool, residual []core.Value) {
+func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWordRead, seq, idx, ci int, direct, alsoResidual bool, residual []core.Value, fits []core.ForwardFit) {
 	if d, ok := es.deoptStatementStart(rec, seq, r.name, r.reads[0], ci, direct); ok && len(r.reads) == 1 && !alsoResidual &&
-		!es.deoptDeferred(es.units[0], rec, &d, ci) && !rootResidualBefore(residual, d.start) {
+		!es.deoptDeferred(es.units[0], rec, &d, ci) && !es.rootResidualBefore(residual, d.start) {
+		d.fits, d.fitConsumer = fits, es.frames[0][ci].seq
 		// Deferral is asked of a push-tested point too, as deoptPointFor
 		// asks it: the root lays its residual out at the program's end, so
 		// `7 j typeof` pushes j over nothing where the interpreter holds 7.
@@ -17851,6 +18078,7 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 		}
 	}
 	if d, ok := es.rootReadStatementPoint(lw, rec, r, seq, ci, alsoResidual, residual); ok {
+		d.fits, d.fitConsumer = fits, es.frames[0][ci].seq
 		lw.deopts = append(lw.deopts, d)
 		return
 	}
@@ -17930,10 +18158,33 @@ func readIsDeepestOperand(ev *EmitEvent, seq, idx int) bool {
 // rootResidualBefore reports whether a program residual entry was written
 // before p: the compiled lane lays it out at the program's end, so a root
 // island starting at p would run without a value the interpreter's stack
-// holds there.
-func rootResidualBefore(residual []core.Value, p core.SrcPos) bool {
+// holds there. An entry that carries no position of its own — a compound
+// literal, which the fold re-mints without one (`{b:2} keys y`, NUR357) —
+// counts as written before p when a program token before p spells it.
+func (es *EmitState) rootResidualBefore(residual []core.Value, p core.SrcPos) bool {
 	for _, rv := range residual {
-		if q := rv.Pos(); q.Row > 0 && posAfter(p, q) {
+		if q := rv.Pos(); q.Row > 0 {
+			if posAfter(p, q) {
+				return true
+			}
+			continue
+		}
+		if es.spelledBefore(rv, p) {
+			return true
+		}
+	}
+	return false
+}
+
+// spelledBefore reports whether a root program token written before p — a
+// value, not a word — has v's canonical form.
+func (es *EmitState) spelledBefore(v core.Value, p core.SrcPos) bool {
+	if !core.IsConcrete(v) || core.IsWord(v) {
+		return false
+	}
+	canon := core.CanonValue(v)
+	for _, t := range es.rootBody {
+		if q := t.Pos(); q.Row > 0 && posAfter(p, q) && !core.IsWord(t) && core.CanonValue(t) == canon {
 			return true
 		}
 	}
@@ -18895,7 +19146,14 @@ func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 			if flw.countRestarts == nil {
 				flw.countRestarts = map[int]*landingRestart{}
 			}
-			flw.countRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs}
+			flw.countRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, run: d.countRun}
+			return
+		}
+		if d.fit {
+			if flw.fitRestarts == nil {
+				flw.fitRestarts = map[int]*landingRestart{}
+			}
+			flw.fitRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, leftovers: d.leftovers, defBound: d.defBound}
 			return
 		}
 		if d.guard > 0 {
@@ -18908,7 +19166,7 @@ func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 		if flw.landingRestarts == nil {
 			flw.landingRestarts = map[int]*landingRestart{}
 		}
-		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first, leftovers: d.leftovers, defBound: d.defBound}
+		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first, leftovers: d.leftovers, defBound: d.defBound, onFrame: d.onFrame}
 		return
 	}
 	if d.live != nil {
@@ -18992,6 +19250,10 @@ func stampUnitRestarts(flw *lowerer, cf *CompiledFn, retPC int) {
 		flw.p.FallbackCounts[fi].RetPC = retPC
 		cf.RetReplay = true
 	}
+	for _, is := range flw.fitIslands {
+		is.RetPC = retPC
+		cf.RetReplay = true
+	}
 }
 
 // stampRootRestarts seats the program's end on every top-level island: a
@@ -19013,6 +19275,9 @@ func stampRootRestarts(lw *lowerer) {
 	}
 	for _, di := range lw.restartRematches {
 		lw.p.Dispatches[di].Restart.RetPC = end
+	}
+	for _, is := range lw.fitIslands {
+		is.RetPC = end
 	}
 }
 
@@ -19123,6 +19388,10 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 		es.planLandingDeopts(rec)
 		es.planUnitRestarts(u, rec)
 		live = es.planKeptLiveDeopts(u, rec)
+		// The unit's polys over a gradual operand collected forward
+		// (fit_restart.go, NUR357) count with the live points: the newest,
+		// dropped first where the islands cannot be served.
+		live += es.planUnitFitRestarts(u, rec)
 	}
 	if len(rec.body) == 0 || (len(rec.wordReadNames) == 0 && len(rec.deopts) == 0) {
 		es.planDeoptsEnv(u, rec)
@@ -19180,7 +19449,7 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 		// where their islands cannot be served, the unit keeps the points
 		// it planned without them, and each such read its lookup's defer —
 		// with none left, as a unit that planned none (below the loop).
-		if rec.deopts = dropLivePoints(rec.deopts); len(rec.deopts) == 0 {
+		if rec.deopts = dropLivePoints(dropFitPoints(rec.deopts)); len(rec.deopts) == 0 {
 			es.planDeoptsEnv(u, rec)
 			return
 		}
@@ -20019,7 +20288,18 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 					return false
 				}
 				p := eventPos(events[j])
-				return p.Row > 0 && posAfter(d.start, p)
+				if p.Row == 0 || !posAfter(d.start, p) {
+					return false
+				}
+				if d.frameHeld {
+					// An earlier statement's value the walk must find
+					// held on the frame (deoptPoint.onFrame).
+					if pr := (producer{seq: op.idx, idx: op.resIdx}); !slices.Contains(d.onFrame, pr) {
+						d.onFrame = append(d.onFrame, pr)
+					}
+					return false
+				}
+				return true
 			}
 		}
 		return false

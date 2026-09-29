@@ -54,6 +54,19 @@ type BranchRecord struct {
 	// each in a frame slot (the compiler's branch-carried def). Nil when no
 	// arm bound a name, or on a plain check.
 	Joins []BranchJoin
+	// Pending is the observable pending literals the arms' model runs
+	// evaluated at their ends (RunCarrierArmBody), merged over the arms: the
+	// interpreter keeps them pending past the `if`, so the recorder must
+	// prove nothing between the branch and where the interpreter evaluates
+	// them could tell (NUR356).
+	Pending PendingResidue
+	// SweptArms marks a branch whose arms END where the interpreter
+	// evaluates what they leave — the `case` desugar's chain, whose blocks
+	// the interpreter runs in a sub-engine of their own (runCaseBody) — so a
+	// pending literal a nested `if` leaves at an arm's end is evaluated
+	// there. False (the sound default) for an `if`, whose arms are spliced
+	// onto the enclosing tape and evaluate nothing they leave.
+	SweptArms bool
 }
 
 // BranchJoin is one name an `if` left bound past its merge, as

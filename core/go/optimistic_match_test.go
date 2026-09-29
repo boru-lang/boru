@@ -1,6 +1,9 @@
 package core
 
-import "testing"
+import (
+	"slices"
+	"testing"
+)
 
 // optimisticSig is fold's three-operand shape: a List body, a Map
 // collection, an Any seed.
@@ -182,8 +185,15 @@ func TestOptimisticLayoutIsReplayableOrNothing(t *testing.T) {
 		{"not the tape's value", func(_ *Engine, m *MatchResult) (*MatchResult, []int) {
 			return &MatchResult{Sig: m.Sig, Args: []Value{m.Args[0], withID(NewDynamicCarrier(TAny)), m.Args[2]}, Name: "fold"}, []int{2, 1, 0}
 		}},
-		{"a carrier beneath", func(e *Engine, m *MatchResult) (*MatchResult, []int) {
-			e.Tape.Insert(0, withID(NewDynamicCarrier(TAny)))
+		{"a carrier beneath with no identity", func(e *Engine, m *MatchResult) (*MatchResult, []int) {
+			v := NewDynamicCarrier(TAny)
+			v.ID = ""
+			e.Tape.Insert(0, v)
+			e.Pointer, e.fwdSplitAt = 4, 4
+			return m, []int{3, 2, 1}
+		}},
+		{"a word beneath", func(e *Engine, m *MatchResult) (*MatchResult, []int) {
+			e.Tape.Insert(0, withID(NewWord("x")))
 			e.Pointer, e.fwdSplitAt = 4, 4
 			return m, []int{3, 2, 1}
 		}},
@@ -219,6 +229,15 @@ func TestOptimisticLayoutIsReplayableOrNothing(t *testing.T) {
 	e.Pointer, e.fwdSplitAt = 4, 4
 	if l := e.optimisticLayout(m, []int{3, 2, 1}); l == nil || l.NFwd != 2 || len(l.Beneath)+len(l.After) != 0 {
 		t.Errorf("(0 fold [add] (mk)) end: exact; got %+v", l)
+	}
+	// A carrier beneath rides as a LIVE entry: the run's stack holds its
+	// value there, which the record places (NUR351).
+	e, m, _ = optimisticEngine(t)
+	e.Tape.Insert(0, withID(NewInteger(7)))
+	e.Tape.Insert(1, withID(NewDynamicCarrier(TAny)))
+	e.Pointer, e.fwdSplitAt = 5, 5
+	if l := e.optimisticLayout(m, []int{4, 3, 2}); l == nil || len(l.Beneath) != 2 || !slices.Equal(l.Live, []int{1}) {
+		t.Errorf("7 (mk) 0 fold [add] (mk): the carrier beneath is live; got %+v", l)
 	}
 	// A constant beneath and a literal after ride with it (NUR283).
 	e, m, _ = optimisticEngine(t)

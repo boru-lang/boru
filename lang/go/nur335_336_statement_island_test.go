@@ -388,12 +388,10 @@ func TestNUR336ComputedDefOpenerParen(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	// Negative: a value an EARLIER statement left, which the compiled code
-	// keeps off the frame, is no def's leftover — its place on the
-	// interpreter's stack is not the call's order alone (a shuffle may
-	// have moved it) — so no island: loud, as on main.
-	requireLoudDefer(t, `def mk fn [[] [Map] [{f: 5}]] end def g fn [[q:Map][Any][(1 add 2) end (q.f 7) drop drop]] end g (mk)`, "not an appliable function", "[3]")
-	requireLoudDefer(t, `def mk fn [[] [Map] [{f: 5}]] end def g fn [[q:Map][Any][(1 add 2) end (q.f 7)]] end g (mk)`, "not an appliable function", "ERROR:expected 1 return value(s), got 3")
+	// A value an EARLIER statement left is no def's leftover, but where the
+	// compiled frame holds it beneath the statement, intact at the stop, the
+	// island seats it with the frame (deoptPoint.onFrame, NUR336 — pinned in
+	// TestNUR336UnitIslandOverAnEarlierStatement).
 	// Negative: a leftover the island cannot name — a user fn's second
 	// result, whose def the island's names cannot bind — keeps the loud
 	// defer, never a wrong answer.
@@ -518,8 +516,8 @@ func TestNUR336LandingLeadSurvivors(t *testing.T) {
 		}
 	}
 	// Negative: a lead no island can take keeps its loud stop — a loop's
-	// statement (its island would run the landing again), and a `/v` lead
-	// the pass planned no island for.
+	// statement (its island would run the landing again). A `/v` lead takes
+	// its island now (leadRun, TestNUR336SlashVLead).
 	requireLoudDefer(t, two+y+`for 2 [(m.f y) 9 drop]`, "violates the host-registered shape claim", "[]")
-	requireLoudDefer(t, two+y+`(m.f/v y) 9`, "violates the host-registered shape claim", "[33]")
+	agreeOnBothLanes(t, two+y+`(m.f/v y) 9`, "[33]")
 }

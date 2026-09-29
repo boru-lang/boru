@@ -52,8 +52,19 @@ func RunCarrierBodyKeepDefs(r *Registry, body Value) []Value {
 // pushes and pops for the same name, the net change is zero and
 // the name is not in the returned map.
 func RunCarrierBodyWithDefs(r *Registry, body Value) ([]Value, map[string]Value) {
-	stk, adds := runCarrierBodyDefsAdds(r, body, false, false)
+	stk, adds, _ := runCarrierBody(r, body, false, false)
 	return stk, adds
+}
+
+// RunCarrierArmBody is RunCarrierBodyWithDefs for a SPLICED branch arm — an
+// `if` arm, which the interpreter splices onto its enclosing tape as a paren
+// group — reporting also the observable pending literals the run's
+// end-of-run sweep evaluated (PendingResidue). The interpreter leaves such a
+// literal pending past the arm, to be evaluated where a word takes it or
+// where the enclosing run ends; the model evaluated it at the arm, so the
+// recorder must prove nothing between could tell (NUR356).
+func RunCarrierArmBody(r *Registry, body Value) ([]Value, map[string]Value, PendingResidue) {
+	return runCarrierBody(r, body, false, false)
 }
 
 // RunCarrierCondBody is RunCarrierBodyWithDefs for an `if` CONDITION or a
@@ -84,12 +95,19 @@ func RunCarrierCondBodyKeepDefs(r *Registry, body Value) []Value {
 }
 
 func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Value, map[string]Value) {
+	stk, adds, _ := runCarrierBody(r, body, keep, condFrag)
+	return stk, adds
+}
+
+// runCarrierBody is the one body runner; residue is the ArmBody run's
+// Engine.armResidue (none for a kept or condition run).
+func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, adds map[string]Value, residue PendingResidue) {
 	if body.Data == nil {
-		return nil, nil
+		return nil, nil, residue
 	}
 	elems, err := AsList(body)
 	if err != nil || elems.IsNil() {
-		return nil, nil
+		return nil, nil, residue
 	}
 
 	// Nested body analysis is not part of the enclosing straight
@@ -181,11 +199,11 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 	// Keep-defs mode (`do` — leak fidelity): the body's bindings stay,
 	// exactly as the runtime leaves them; nothing to report.
 	if keep {
-		return result, nil
+		return result, nil, residue
 	}
 	// Collect the top of each def stack whose depth grew, then
 	// restore depths back to snapshot.
-	adds := map[string]Value{}
+	adds = map[string]Value{}
 	for _, k := range r.Defs.Names() {
 		before := snapshot[k] // zero for names not present before
 		depth := r.Defs.Depth(k)
@@ -195,5 +213,5 @@ func runCarrierBodyDefsAdds(r *Registry, body Value, keep, condFrag bool) ([]Val
 			r.Defs.Truncate(k, before)
 		}
 	}
-	return result, adds
+	return result, adds, sub.armResidue
 }

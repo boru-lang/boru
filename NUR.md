@@ -93,17 +93,15 @@ list only by becoming **Resolved** (the record is then deleted) or
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
 | [NUR235](#nur235) | A typed-map param pattern over an inline map literal with a computed member: both lanes refuse the call, the `signature_error` notes differ | call-site specialisation's investigation (2026-09-27) |
-| [NUR334](#nur334) | A read after a computed keep-defs body: a unit returning a `/v`-read splice, and a read inside a spliced word's body, stay loud | main's 50 uncovered statements (2026-09-28); narrowed twice 2026-09-29 |
-| [NUR336](#nur336) | A paren apply over a member that is data at run time: a `/v` lead, a landing lead in a loop body, and two leftover shapes stay loud | main's 50 uncovered statements (2026-09-28); narrowed twice 2026-09-29 |
-| [NUR347](#nur347) | A named closure read with `/v` into a runtime-built map anchors its contract error at the member read compiled (loud; caret only) | the interp-entry census pass (2026-09-29); narrowed twice 2026-09-29 |
-| [NUR348](#nur348) | A fn unit's `do b` over a computed splice, and a computed `do` whose statement opens with an infix call in a paren, still defer compiled (loud) | the live-read deopt pass (2026-09-29); narrowed twice 2026-09-29 |
+| [NUR334](#nur334) | A read after a computed keep-defs body: a unit returning a `/v`-read splice anywhere but the program's end, and a read inside a spliced word's body, stay loud | main's 50 uncovered statements (2026-09-28); narrowed three times 2026-09-29 |
+| [NUR336](#nur336) | A paren apply over a member that is data at run time: a landing lead in a loop body, a multi-result def leftover, and a statement taking an earlier value stay loud | main's 50 uncovered statements (2026-09-28); narrowed three times 2026-09-29 |
 | [NUR350](#nur350) | Whether a computed body or a late word macro sees a fn's `args` depends on whether the fn's own body mentions `args` or needs frame state (the interpreter's leaf-frame elision, now mirrored compiled) | the NUR346 fix (2026-09-29) |
-| [NUR351](#nur351) | A poly no-match renders a narrower, best-effort window than the interpreter's (notes only) | the NUR348 pass (2026-09-29); narrowed 2026-09-29 |
-| [NUR352](#nur352) | A root gradual def read holding a fn, beneath an earlier statement's residual (`5 end 1 x 7 add`), defers compiled (loud) | the NUR343/349 pass (2026-09-29); narrowed 2026-09-29 |
-| [NUR354](#nur354) | A computed body run in a loop does not see the loop's index compiled (`for 2 [do b]` over `quote [i]`) | the body-map pass (2026-09-29) |
-| [NUR355](#nur355) | A `break` from a computed body or a fn at the root, outside any loop, is an internal_error compiled for the interpreter's flow_error (loud) | the body-map pass (2026-09-29) |
-| [NUR356](#nur356) | A list literal a branch arm leaves pending is evaluated at the arm compiled, where the interpreter evaluates it when consumed (silent) | the NUR351/352 pass (2026-09-29) |
-| [NUR357](#nur357) | A gradual read the interpreter's type-directed collection rejects is collected forward compiled (`{b:2} keys y`) | the NUR351/352 pass (2026-09-29) |
+| [NUR356](#nur356) | An arm's pending list literal: the no-match note renders a folded literal's value, a computed arm defers, and a value-returning effectful native's order is unproven | the NUR351/352 pass (2026-09-29); narrowed 2026-09-29 |
+| [NUR357](#nur357) | A gradual read collected forward: a fn-unit statement with an `if` making defs ahead of the call still raises where the interpreter answers (loud) | the NUR351/352 pass (2026-09-29); narrowed 2026-09-29 |
+| [NUR358](#nur358) | A list literal swallows a break/continue escaping its elements at the root (the interpreter answers, the compiled lane raises flow_error) | the NUR355 pass (2026-09-29) |
+| [NUR359](#nur359) | A loop over a computed body whose `/v` fn breaks is an internal_error compiled (loud) | the NUR355 pass (2026-09-29) |
+| [NUR360](#nur360) | A tail-called fn's error anchors at the outer call compiled (caret only) | the NUR348 and NUR357 passes (2026-09-29) |
+| [NUR361](#nur361) | A gradual read in a `var` body inside an `each` callback skips the fn guard (silent) | the NUR356 pass (2026-09-29) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -819,85 +817,52 @@ agree. Changes the oracle; needs the maintainer's ruling.
 
 ## NUR334 — a read after a computed keep-defs body: the loud remainder {#nur334}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-29
+**Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-29 (three times)
 
 A read seated live after a computed keep-defs body (`do (mk) end x`, where
 `mk` returns a quoted body that defs `x`) is a deopt point that tests the
 name's registry binding and hands the statement to the interpreter when the
 compiled statement cannot take it (compiler `kept_live_deopt.go`, eng
-`liveDeopt`). Three shapes place no point and keep the lookup's loud defer
-(internal_error compiled, the interpreter answers):
+`liveDeopt`). Two shapes keep the lookup's loud defer (internal_error
+compiled, the interpreter answers):
 
-- a unit returning a `/v`-read splice to its caller ("tape-coupled deopt
-  result") — the caller's splice of the returned value has no compiled seat;
-- a read inside a spliced word's body (`def w word [do (mk) end x] w`).
+- a unit returning a `/v`-read splice to a caller anywhere but the program's
+  end (`9 f …`, `f … 5`, `[f …]`, `def r (f …)`: "tape-coupled deopt
+  result") — owed a per-call-site result island;
+- a read inside a spliced word's body (`def w word [do (mk) end x] w`): the
+  island would have to start inside the splice's payload.
 
-Pinned by lang `TestLiveDeoptSpliceReturnedStaysLoud`,
-`TestLiveDeoptSplicedWordStaysLoud`. A `def` inside a later `for` body was
-fixed 2026-09-29 (`markIslandMadeDefs`: a def inside an arm or loop body
-written after every island's start is island-made).
+Pinned by lang `TestLiveDeoptSpliceReturned` (its loud rows) and
+`TestLiveDeoptSplicedWordStaysLoud`. Fixed 2026-09-29: a `def` inside a
+later `for` body (`markIslandMadeDefs`), and the splice returned to the
+program's end (eng `rootEndStep`, `rootEndResults`).
 
 ---
 
 ## NUR336 — a paren apply over a data member: the loud remainder {#nur336}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-29 (twice)
+**Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-29 (three times)
 
 A shaped paren apply `(m.f …)` whose member is data at run time takes its
 statement's island (eng `parenMissesWindow`, `survivorIsland`; compiler
 `landing_restart.go`, `defLeftovers`). Still a loud compiled defer where
 the interpreter answers:
 
-- a `/v` lead, `(m.f/v y) 9` — the pass plans no island for it (this is the
-  designed defer `TestArmRuntimeBailHookForwarder` drives);
-- a landing lead inside a loop body, `for 2 [(m.f y) 9 drop]`;
+- a two-argument lambda's landing lead inside a loop body,
+  `for 2 [(m.f y) 9 drop]` — a loop's statement island re-runs only the
+  first iteration (the defer's message, "violates the host-registered shape
+  claim", misnames it);
 - a leftover of a user fn's multi-result call whose name the island would
-  have to bind (`def k (two) (q.f 7) …`);
-- a unit value an earlier statement left off the frame
-  (`(1 add 2) end (q.f 7)` in a body).
+  have to bind (`def k (two) (q.f 7) …`): the call's first result is never
+  promoted to a slot;
+- a statement that takes an earlier statement's value before the stop
+  (`drop (q.f 7)`, `swap (q.f 7)`) or a literal pushed late
+  (`4 end (q.f 7)`).
 
-Fixed 2026-09-29: a paren right after a computed def (`def k (3 dup)
-(m.f 7)`, core `statementStackPos`, compiler `toldAt`) and its fn-body twin
-(a wrong error on main: a def binds its call's first result only), and a
-lead that went through a landing (`(m.f y) 9`, the survivors island).
-
----
-
-## NUR347 — a closure stored by `/v` in a runtime-built map: the caret {#nur347}
-
-**Status:** Pending (loud; the caret differs) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
-
-```
-def mk fn [[k:Integer] [Function] [(fn [[a:Integer][String] [a add k]])]] end
-def h (mk 1) end def m {f: h/v} end each m.f [5]
-  interpreted   the contract error at 1:106 (the h/v inside the map)
-  compiled      at 1:120 (the m.f read)
-```
-
-The map built at run time stores the positionless named closure, and the
-dot read's `stampFnResultPos` then stamps it at `m.f`; `MAKE_MAP` needs the
-treatment call arguments got (`SigRef.FnArgPos`, `stampFnArgPos`).
-Fixed 2026-09-29: the frame name, a returned closure's anchor, a native
-call's positionless fn result, a positionless lambda, a binding's name, and
-a `/v`-read callback argument (`each h/v [5]`, `fold`, `FnUtil.compose`).
-
----
-
-## NUR348 — computed-body shapes the compiled runtime defers {#nur348}
-
-**Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29 (twice)
-
-- A fn unit's `do b` over a computed splice:
-  `def w word [1 2] end def f fn [[b:List][Any][do b]] end f (quote [w/v])`
-  — units plan no count island for a computed run.
-- `def x 0 end def mk fn [[][List][quote [def x [1 2]]]] end (3 add 4) do (mk) x.0`
-  ("left 0 value(s)") — `restartSubsts` cannot substitute an infix call
-  inside a paren, so no count island is placed.
-
-Fixed 2026-09-29: `do (mk) end x.0`, `do [w/v]`, the no-`end` twin
-`do (mk) x.0`, a value beneath the run, and a computed body leaving a splice
-(compiler `planCountRestarts`, `SigRef.CountAlways`, eng
-`dynBodyPlainRefuses`). Pinned in lang `nur348_computed_body_test.go`.
+Fixed 2026-09-29: a paren right after a computed def, a lead that went
+through a landing, the `/v` lead `(m.f/v y) 9` (compiler `leadRun`), and a
+unit's island over a value an earlier statement left
+(`(1 add 2) end (q.f 7)`, `deoptPoint.onFrame`, `frameIntact`).
 
 ---
 
@@ -935,110 +900,116 @@ a word macro), or Allowed with the rule restated. A maintainer decision.
 
 ---
 
-## NUR351 — a poly no-match's window is narrower than the interpreter's {#nur351}
+## NUR356 — an arm's pending list literal: the remainder {#nur356}
 
-**Status:** Pending (notes only; code, message and caret agree) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
+**Status:** Pending (error text; one unproven effect order) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
 
-```
-def f fn [[][Any][4]] end def g fn [[][Any][0]] end f g keys
-  both lanes raise keys' signature_error; the compiled note names a
-  narrower window than the interpreter's
-```
+The interpreter splices an `if` arm as a paren group, so a list or map
+literal the arm ends with stays pending until a word takes it or the
+enclosing run ends. The compiled lane now keeps that order or declines
+"(NUR356)" (compiler `arm_pending.go`, `eager_literal.go`; core
+`PendingResidue`; §5). The silent wrong answers are gone
+(`if c [[x]] [0] end def x 2 end`, an arm's print before a later
+statement's, `each (h) [print "p" 1]`). What remains:
 
-Likewise `… quote [4] … x keys` after a computed body, and
-`def f fn [[][Any][4]] end f end 0 keys`, whose compiled trap note says
-"dynamic(Any) (an Any)" where the interpreter says "4 (an Integer)". The
-compiled lane renders a best-effort window over what the check pass held.
-
-Fixed 2026-09-29: the live-read after a computed body that a word before it
-collects forward (`do (mk) end keys x`, a wrong error; `{b:1} keys x`, a
-silent wrong answer) — the live point moves to that word (compiler
-`collectorToken`, `pendingStart`, `rootStackHeld`), and the shapes it cannot
-serve decline (§5).
+- A call matched at run time over a literal the pass folded to a constant
+  renders the value, not the literal as written, in its no-match note
+  (`each (h) [x]`, `each (h) {a:x}`, `f [x] (h)`, `f [1 add 2] (h)`); and
+  `def l [print "p" 1] end … each (h) l` names two arguments where the
+  interpreter names one.
+- A computed arm holding such a literal (`if c (mk) [0]`) is a designed
+  loud defer.
+- Unproven: the effect test treats a native word that returns a value as
+  effect-free, so a value-returning effectful native (a module IO read)
+  inside a literal handed to a call that fails its run-time match would run
+  before the interpreter runs it. Kept so real programs still compile; owed
+  an effect classification of natives.
 
 ---
 
-## NUR352 — a gradual def-bound fn read beneath an earlier residual {#nur352}
+## NUR357 — a gradual read collected forward: the remainder {#nur357}
 
 **Status:** Pending (loud) · **Recorded:** 2026-09-29 · **Narrowed:** 2026-09-29
 
-```
-def mk fn [[] [Map] [{f: ([x:Integer] => [x add 1])}]] end def m (mk) end
-def x m.f end 5 end 1 x 7 add
-  interpreted   [5 9]
-  compiled      the NUR123 designed defer (the residual 5 is not on the compiled stack)
-```
-
-Fixed 2026-09-29: the same read without the earlier residual
-(`1 x 7 add`, a deopt island from the statement's first token), a poly
-no-match rendering a pre-evaluated list literal (`PolyRef.Raw`), and
-`7 8 each (if c [[1]] [3]) [2]` (already agreed; pinned). An arm's pending
-list whose evaluation raises now declines (§5).
-
----
-
-## NUR354 — a computed body in a loop does not see the loop's index {#nur354}
-
-**Status:** Pending (a wrong answer inside an error) · **Recorded:** 2026-09-29 · pre-existing at fa1d220
+The interpreter's forward collection is type-directed; the pass admitted a
+gradual carrier wherever it could. Fixed 2026-09-29: each gradual forward
+operand's fits are published (core `forward_fit.go`), a root read's deopt
+point tests them, every poly and committed user call over one takes a
+statement island on a miss (compiler `fit_restart.go`), and the shapes no
+island can serve decline "(NUR357)" (§5). Still diverging, as at e73568c
+and not re-probed after the fix: a fn-unit statement with an `if` making
+defs, or a `def q (if …)`, ahead of the call —
 
 ```
-def f fn [[b:List][Any][for 2 [do b]]] end f (quote [i])
-  interpreted   [0 1] (inside the arity error)
-  compiled      error(undefined word: i) values
-```
-
-The compiled `for` keeps its index in a frame slot, which a run-time token
-body resolving names on the registry cannot see. The cross-unit twin —
-`def g fn [[m:Map][Any][Rand.map-from m]] end for 2 [g {a:(quote [i])}]` —
-has the same cause and escapes the map-from decline, whose loop-index test
-sees only the calling unit.
-
----
-
-## NUR355 — a root `break` from a computed body or a fn is an internal_error {#nur355}
-
-**Status:** Pending (loud) · **Recorded:** 2026-09-29 · pre-existing at fa1d220
-
-```
-do (quote [1 break]) 5
-def f fn [[] [Any] [break]] end f 9
-  interpreted   flow_error: break outside loop
-  compiled      internal_error: flow signal with no enclosing loop
+def g fn [[m:Map][Any][if true [def q 3] [def q 4] {b:2} keys m.a]] end
+  compiled raises keys' no-match where the interpreter answers
 ```
 
 ---
 
-## NUR356 — an arm's pending list literal is evaluated at the arm compiled {#nur356}
+## NUR358 — a list literal swallows a flow signal escaping its elements {#nur358}
 
-**Status:** Pending (a silent wrong answer) · **Recorded:** 2026-09-29 · pre-existing at fa1d220
+**Status:** Pending (an interpreter defect, by the look of it) · **Recorded:** 2026-09-29
 
 ```
-def x 1 end def c true end if c [[x]] [0] end def x 2 end
-  interpreted   [[2]]
-  compiled      [[1]]
-def c true end if c [[print "q" 2]] [3] end print "a"
-  interpreted   prints a q
-  compiled      prints q a
-def h fn [[] [Any] [3]] end each (h) [print "p" 1]
-  compiled prints p and renders [1]; the interpreter prints nothing and
-  renders the raw literal
+[do (quote [break])]
+  interpreted   [[]] — no error
+  compiled      flow_error: break outside loop
+def f fn [[] [Any] [break]] end [f]
+  interpreted   [[( __dc word(__pa) returncheck(f) )]] — engine markers leak
+def f fn [[b:List][Any][[do b]]] end f (quote [1 break])
+  caret only: compiled 1:48, interpreted none
 ```
 
-The interpreter leaves a list literal an arm ends with pending until
-something consumes it; the model evaluates it at the arm. The rematch and
-raise shapes built on the same eager evaluation decline (NUR343, NUR352 #2
-in §5).
+The list literal's sub-evaluation drops the signal where every other
+enclosing run raises it. Surfaced by the NUR355 fix, which made the
+compiled lane raise.
 
 ---
 
-## NUR357 — a gradual read is collected forward where the interpreter's type-directed collection rejects it {#nur357}
+## NUR359 — a loop over a computed body whose `/v` fn breaks is an internal_error {#nur359}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-29 · pre-existing at fa1d220
+**Status:** Pending (loud) · **Recorded:** 2026-09-29 · pre-existing at e73568c
 
 ```
-def f fn [[] [Any] [0]] end def y (f) end {b:2} keys y
-  interpreted   [['b'] 0]
-  compiled      signature_error
+def f fn [[] [Any] [break]] end def mk fn [[][List][quote [f/v]]] end for 2 [do (mk)] 7
+  interpreted   [7]
+  compiled      internal_error (vm:dyn-body-plain)
 ```
 
 ---
+
+## NUR360 — a tail-called fn's error anchors at the outer call compiled {#nur360}
+
+**Status:** Pending (caret only) · **Recorded:** 2026-09-29 · pre-existing at e73568c
+
+```
+def f fn [[][Any][1 2]] end def h fn [[][Any][f]] end (h)
+  interpreted   return-count error at 1:47 (the f inside h)
+  compiled      at 1:56 (the (h) call)
+def k fn [[m:Map][List][keys m]] end def g fn [[m:Map][Any][k m.a]] end g {a:0}
+  interpreted   keys' signature_error at 1:61 (the call)
+  compiled      at 1:25 (the keys inside k)
+```
+
+`TAIL_CALL_USER` reuses the caller's frame, so the RET's anchor (and the
+specialised unit's trap position) is not the interpreter's.
+
+---
+
+## NUR361 — a gradual read in a `var` body inside an `each` callback skips the fn guard {#nur361}
+
+**Status:** Pending (a silent wrong answer) · **Recorded:** 2026-09-29 · pre-existing at e73568c
+
+```
+def g fn [[] [Integer] [5]] end def mk fn [[] [Any] [g/v]] end each [var [[q] def v (mk) v]] [1]
+  interpreted   [[5]]
+  compiled      [[fn v]]
+```
+
+The read of `v` compiles without NUR123's fn guard, so a fn value is
+returned where the interpreter calls it. `[v]` and `if c [[v]] [[]]` in
+the same body do the same.
+
+---
+

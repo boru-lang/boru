@@ -707,6 +707,19 @@ const (
 	// a miss is the read's undefined_word, as OpLookupDynScope's is for a
 	// live-read name.
 	OpLookupDynScopeRef
+	// OpForPublish makes the innermost open counted loop's index
+	// REGISTRY-VISIBLE (NUR354): emitted right after OpForSetup, under the
+	// program's dynamic-environment mirror, with Arg the index name's const.
+	// Each FOR_NEXT that enters an iteration then truncates the name back to
+	// its pre-loop depth (the iteration's own levels: the previous index, a
+	// body def of the index) and installs the new index through the
+	// interpreter's own installer — RunForLoop's InstallDef and stepMoveCont's
+	// popIterLevels — and the loop's exit (exhaustion, a break) truncates it
+	// back, so a run-time body resolving names on the registry reads the
+	// index the interpreter's `for` binds. The loop's entry is recorded on the
+	// dyn-bind trail, so a raise or a frame exit mid-loop pops it too. Zero
+	// stack effect.
+	OpForPublish
 )
 
 // opcodeNames is the single source of each opcode's disassembler mnemonic,
@@ -778,6 +791,7 @@ var opcodeNames = [...]string{
 	OpBindTypeRun:          "BIND_TYPE_RUN",
 	OpMakeListReStep:       "MAKE_LIST_RESTEP",
 	OpLookupDynScopeRef:    "LOOKUP_DYN_SCOPE_REF",
+	OpForPublish:           "FOR_PUBLISH",
 }
 
 func (o Opcode) String() string {
@@ -797,6 +811,11 @@ const PolyNOutRegion = -1
 type PolyRef struct {
 	Word  string
 	Arity int
+	// FnArgPos is SigRef.FnArgPos for the re-matched call (NUR347): the
+	// window's positionless named fn values take the position of their `/v`
+	// read before the match, as a baked call's arguments do — `each g/v [5]`
+	// over a `g` a runtime member read bound dispatches poly.
+	FnArgPos []core.SrcPos
 	// NOut is the result-count CLAIM the recorder's stack model committed
 	// downstream ops to. The runtime re-match may land on a DIFFERENT
 	// overload than the checker's model (that is poly's point), and when
@@ -839,6 +858,14 @@ type PolyRef struct {
 	// (NUR352). The no-match arms render the window with these in place
 	// (RenderWindow); the match itself reads the evaluated values.
 	Raw map[int]core.Value
+	// Fit, when non-nil, is the poly's FORWARD-FIT island (NUR357): an
+	// operand the pass collected forward was gradual, and the interpreter's
+	// forward collection takes the run's value there only where it fits
+	// the candidates' slots (core.ForwardFit). A value that misses one
+	// makes the interpreter's plan draw from the stack beneath instead, a
+	// window the program never assembled, so the statement runs again on
+	// the interpreter from its first token (Fit.Restart) before the match.
+	Fit *PolyFit
 	// DynBodyOne is SigRef.DynBodyOne for a poly re-match of a computed `do`
 	// body (a gradual operand): exactly one non-re-stepping result, or the
 	// loud defer.
@@ -868,6 +895,42 @@ type PolySplit struct {
 	NFwd    int
 	Beneath []core.Value
 	After   []core.Value
+	// Live are the Beneath entries that are no constant — an earlier
+	// call's result the run's stack holds there (NUR351) — each read where
+	// the compiled code keeps it when the arm runs.
+	Live []SplitLive
+}
+
+// SplitLive is one PolySplit.Live entry: Beneath index At, read from the
+// frame's local Idx (Local) or the operand stack Idx entries below its top
+// at the poly's op, its operands included.
+type SplitLive struct {
+	At    int
+	Local bool
+	Idx   int
+}
+
+// PolyFit is PolyRef.Fit: for each signature position At[i] (0 = the stack
+// top) the forward fits Fits[i] of the gradual operand there, and the
+// statement island a miss takes.
+type PolyFit struct {
+	At      []int
+	Fits    [][]core.ForwardFit
+	Restart *StmtIsland
+}
+
+// Missed reports whether an operand of the poly's window (stack, its
+// operands on top) misses one of its forward fits.
+func (f *PolyFit) Missed(stack []core.Value) bool {
+	for i, k := range f.At {
+		if k < 0 || k >= len(stack) {
+			return true
+		}
+		if !core.ForwardFitsAll(f.Fits[i], stack[len(stack)-1-k]) {
+			return true
+		}
+	}
+	return false
 }
 
 // UserPolyRef names one runtime-dispatched multi-overload USER-FN call: the
@@ -1257,6 +1320,13 @@ type SigRef struct {
 	// interpreter's tape does — so the statement and the program after it
 	// are the interpreter's.
 	CountAlways bool
+	// CountFrame marks a UNIT's count island of a computed `do` body's run
+	// (planUnitRestarts, NUR348): the island runs the unit's body to its end
+	// on its own, where the interpreter's frame runs on into the caller's
+	// tape — a named fn value it steps last with nothing after it raises
+	// uncalled_function there, and is data on the island. The VM defers
+	// loudly on an island residual holding a value the tape re-steps.
+	CountFrame bool
 	// ReStep marks the CALL_NATIVE of a `do` whose results the interpreter's
 	// step loop re-steps where the check pass's model had already stepped
 	// them (eventFlags.reStepResults, NUR317): the body's own analysed run
@@ -1322,6 +1392,14 @@ type ListReStepSpec struct {
 type MakeMapSpec struct {
 	Keys     []string
 	Implicit bool
+	// FnPos, when non-nil, is the position of each value (key order) that is
+	// a fn value the program read by its `/v` spelling (NUR347): the
+	// interpreter's read stamps the value with its token, which the map stores
+	// and a callback word's contract error later anchors at, where the
+	// compiled read is a positionless slot push. OpMakeMap stamps it on a
+	// positionless named value, as a native call stamps its arguments
+	// (SigRef.FnArgPos).
+	FnPos []core.SrcPos
 }
 
 // InterpSeg is one segment of an OpInterp template: either a literal run of
@@ -1673,6 +1751,10 @@ type Program struct {
 	// CallWindows is the main code's twin of CompiledFn.CallWindows (see
 	// there).
 	CallWindows map[int][]CallWindowOperand
+	// FlowExits is the main code's twin of CompiledFn.FlowExits (see there).
+	FlowExits map[int]FlowExit
+	// CallFits is the main code's twin of CompiledFn.CallFits (see there).
+	CallFits map[int]*PolyFit
 	// StoreNames is the main code's twin of CompiledFn.StoreNames (see
 	// there), keyed by the main code's own pc.
 	StoreNames map[int]string
@@ -2022,6 +2104,25 @@ const (
 	WinStack
 )
 
+// FlowExit is where the interpreter's tape stands after an op that raised a
+// break/continue — the `break` word itself — or let one escape a body it ran
+// (a native running a code body, a fallback island), for the report a signal
+// no loop takes raises (NUR355): the interpreter's `outside loop` flow_error
+// points at the token its pointer rests on after that step.
+//
+// Next is the position of the token right after the op's run in its own
+// token sequence — the word and the operands written after it, in the fn
+// body, a paren group or a branch arm the interpreter splices inline — and
+// the zero position when the run ends its sequence (a frame's tail or a
+// group's close stands there, which carries none). Top is whether that
+// sequence is the unit's own body: a HOSTED run's residual (vm_token_body.go)
+// goes on with the token after a top-level op, and with a group's marker
+// after a nested one.
+type FlowExit struct {
+	Next core.SrcPos
+	Top  bool
+}
+
 // CallWindowOperand is one value of a call's no-match window
 // (CompiledFn.CallWindows), in the window's own order. Fwd marks a value
 // written after the word; PrefixOnly an entry past the window that carries
@@ -2245,6 +2346,16 @@ type CompiledFn struct {
 	// stack beneath the call fills it (NUR320). A call with no entry
 	// reports its arguments; an EMPTY entry is a window of no values.
 	CallWindows map[int][]CallWindowOperand
+	// FlowExits is where the interpreter stands after the op at a pc raised
+	// a break/continue, or let one escape a body it ran, while no loop of the
+	// unit was open (FlowExit, NUR355), keyed by that pc.
+	FlowExits map[int]FlowExit
+	// CallFits is a CALL_USER's forward-fit island, keyed by the call's pc
+	// (PolyRef.Fit's twin, NUR357): an argument the pass collected forward
+	// was gradual, and a run value the interpreter's collection stops at —
+	// or a window the param contract refuses — runs the statement again on
+	// the interpreter from its first token.
+	CallFits map[int]*PolyFit
 	// StoreNames names the DEF a promoted STORE_LOCAL binds a produced fn
 	// value under, keyed by the store's pc: the interpreter's installDef
 	// renames a fn value bound by `def` (`fnDef.Name = name`), so `def h
@@ -2383,6 +2494,30 @@ type DeoptSpec struct {
 	Live  bool
 	Ref   bool
 	Model *core.Type
+	// Fits, on an island point, are the unproven forward fits of the
+	// dispatch that collected the read forward (core.ForwardFit, NUR357):
+	// the candidate slots the interpreter's forward collection must take
+	// the value at for its plan to be the one the unit was compiled for. A
+	// value that misses one stops that collection, whose candidate then
+	// draws from the stack beneath — the interpreter's statement, which the
+	// island runs as it does a fn's (FitsHot).
+	Fits []core.ForwardFit
+	// Seat, on a root read's statement island (NUR352), is where the
+	// island's prefix comes from — the program residual's entries before
+	// the statement, where the compiled root keeps each (a constant it
+	// lays out at the program's end, a promoted slot, the frame region's
+	// entry), as a statement island's LandingWord.PrefixSrc does — in place
+	// of the frame region at the test. Held is how many of them are on the
+	// compiled stack there: the frame region is exactly those.
+	Seat []RestartSrc
+	Held int
+}
+
+// FitsHot reports whether v, a guarded read's value, misses one of the
+// point's forward fits (DeoptSpec.Fits): the interpreter's forward
+// collection stops at it where the compiled dispatch took it.
+func (d *DeoptSpec) FitsHot(v core.Value) bool {
+	return len(d.Fits) > 0 && !core.ForwardFitsAll(d.Fits, v)
 }
 
 // RenderWindow is window with each operand the compiled code assembled from
@@ -2507,7 +2642,7 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 	for i, in := range code {
 		fmt.Fprintf(sb, "%04d %-11s", i, in.Op.String())
 		switch in.Op {
-		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpLookupDynScopeRef, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope:
+		case OpPushConst, OpLookupDynScope, OpLookupDynScopeData, OpLookupDynScopeRef, OpBindDynScope, OpBindDynScopePeek, OpUndefDynScope, OpForPublish:
 			c := p.Consts[in.Arg]
 			fmt.Fprintf(sb, " k%-3d ; %s (%s)", in.Arg, core.CanonValue(c), c.Parent.Leaf())
 		case OpCallNative:
@@ -2543,6 +2678,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			if s.CountAlways {
 				guard += " [count island, always]"
 			}
+			if s.CountFrame {
+				guard += " [count island, unit]"
+			}
 			fmt.Fprintf(sb, " s%-3d ; %s (%s)%s", in.Arg, s.Word, strings.Join(names, ", "), guard)
 		case OpJmp, OpJmpIfFalse, OpForNext:
 			fmt.Fprintf(sb, " -> %04d", in.Arg)
@@ -2567,6 +2705,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			}
 			if pr.DynBodyPlain {
 				one = " [plain values, checked]"
+			}
+			if pr.Fit != nil {
+				one += " [fit island]"
 			}
 			fmt.Fprintf(sb, " p%-3d ; %s/%d (poly)%s", in.Arg, pr.Word, pr.Arity, one)
 		case OpCallUserPoly:
@@ -2621,6 +2762,8 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 				fmt.Fprintf(sb, " d%-3d ; re-step %d result(s) on the interpreter if one is a fn", in.Arg, deopts[in.Arg].Results)
 			} else if int(in.Arg) < len(deopts) && deopts[in.Arg].Live {
 				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the live binding of %s is not the compiled statement's", in.Arg, deopts[in.Arg].Name)
+			} else if int(in.Arg) < len(deopts) && len(deopts[in.Arg].Fits) > 0 {
+				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn or misses its collection's fit", in.Arg)
 			} else {
 				fmt.Fprintf(sb, " d%-3d ; deopt to the interpreter if the read holds a fn", in.Arg)
 			}

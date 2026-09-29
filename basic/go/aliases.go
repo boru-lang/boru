@@ -24,6 +24,7 @@ import (
 // *Type aliases — every exported type from core is re-exported here.
 type (
 	BranchRecord       = core.BranchRecord
+	PendingResidue     = core.PendingResidue
 	BranchJoin         = core.BranchJoin
 	CodeEffectInfo     = core.CodeEffectInfo
 	EmitRecorder       = core.EmitRecorder
@@ -338,6 +339,7 @@ var (
 	IsOpenParen              = core.IsOpenParen
 	IsOptionsType            = core.IsOptionsType
 	IsParenExpr              = core.IsParenExpr
+	PendingLiteralSteps      = core.PendingLiteralSteps
 	IsReach                  = core.IsReach
 	AsReach                  = core.AsReach
 	NewReach                 = core.NewReach
@@ -487,6 +489,7 @@ var (
 	ApplyGuardNarrowing      = core.ApplyGuardNarrowing
 	ApplyComplementNarrowing = core.ApplyComplementNarrowing
 	RunCarrierBodyWithDefs   = core.RunCarrierBodyWithDefs
+	RunCarrierArmBody        = core.RunCarrierArmBody
 	RunCarrierCondBody       = core.RunCarrierCondBody
 	InstallJoinedDefs        = core.InstallJoinedDefs
 	InstallTakenArmDefs      = core.InstallTakenArmDefs

@@ -134,12 +134,74 @@ func bestEffortNoMatch(r *core.Registry, fn *core.FnDefInfo, word string, window
 // for byte (NoMatchOverWindow). window is the poly's operands in signature
 // order: the written ones first, then the stack ones, top first. A walk
 // this host cannot drive returns nil too.
-func polySplitRaise(r *core.Registry, pr *compiler.PolyRef, fn *core.FnDefInfo, window []core.Value, curDebug []core.SrcPos, pc int) error {
+func polySplitRaise(r *core.Registry, pr *compiler.PolyRef, fn *core.FnDefInfo, window, stack, locals []core.Value, curDebug []core.SrcPos, pc int) error {
 	sp := pr.Split
 	if sp == nil {
 		return nil
 	}
-	return splitNoMatch(r, pr.Word, fn, window, sp.NFwd, sp.Beneath, sp.After, curDebug, pc)
+	beneath, ok := splitBeneath(sp, stack, locals)
+	if !ok {
+		return nil
+	}
+	return splitNoMatch(r, pr.Word, fn, window, sp.NFwd, beneath, sp.After, curDebug, pc)
+}
+
+// fitRestart takes a call's forward-fit island (PolyRef.Fit,
+// CompiledFn.CallFits, NUR357): the statement runs again on the interpreter
+// from its first token over the frame of the running unit (frames' top, the
+// program's at the root), its operands still on stack, and the run
+// continues at the island's RetPC.
+func (vc *vmContext) fitRestart(reg *core.Registry, fit *compiler.PolyFit, frames []vmFrame, stack, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	fb := 0
+	if len(frames) > 0 {
+		fb = frames[len(frames)-1].stackBase
+	}
+	vc.restartLocals = locals
+	ns, ent, err := vc.stopRestart(reg, fit.Restart, nil, fb, stack, curDebug, pc)
+	vc.restartLocals = nil
+	return ns, ent, err
+}
+
+// callFitAt is the forward-fit island of the CALL_USER at pc in the running
+// unit's code (CompiledFn.CallFits, the main code's Program.CallFits for a
+// negative unit), or nil.
+func callFitAt(p *compiler.Program, unit, pc int) *compiler.PolyFit {
+	if p == nil {
+		return nil
+	}
+	table := p.CallFits
+	if unit >= 0 {
+		if unit >= len(p.Fns) {
+			return nil
+		}
+		table = p.Fns[unit].CallFits
+	}
+	return table[pc]
+}
+
+// splitBeneath is the split's Beneath with each live entry (PolySplit.Live,
+// NUR351) read where the compiled code keeps it: the frame's local, or the
+// operand stack entry that deep below its top. ok is false for a place out
+// of range, and the arm then reads no layout.
+func splitBeneath(sp *compiler.PolySplit, stack, locals []core.Value) ([]core.Value, bool) {
+	if len(sp.Live) == 0 {
+		return sp.Beneath, true
+	}
+	out := append([]core.Value(nil), sp.Beneath...)
+	for _, l := range sp.Live {
+		if l.At < 0 || l.At >= len(out) {
+			return nil, false
+		}
+		switch {
+		case l.Local && l.Idx >= 0 && l.Idx < len(locals):
+			out[l.At] = locals[l.Idx]
+		case !l.Local && l.Idx >= 0 && l.Idx < len(stack):
+			out[l.At] = stack[len(stack)-1-l.Idx]
+		default:
+			return nil, false
+		}
+	}
+	return out, true
 }
 
 // splitNoMatch lays window (signature order, the nFwd written operands

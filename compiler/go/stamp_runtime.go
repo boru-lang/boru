@@ -142,7 +142,7 @@ func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 	// here), so the snapshot below describes exactly what the body resolved
 	// against — the analysis inside compileStoredFnUnit installs and restores
 	// its own body-local bindings.
-	deps := es.storedHandlerDeps(fd.Signatures[sigIdx].Body())
+	deps := es.storedHandlerDepsDeep(fd.Signatures[sigIdx].Body())
 	if keepsDefs {
 		// A name the KEEP-DEFS body defs itself is read live in its unit (the
 		// enclosing-binding lookup) and installed live (the kept

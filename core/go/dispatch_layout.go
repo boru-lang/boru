@@ -39,6 +39,11 @@ type DispatchLayout struct {
 	// boundary after them, in tape order: scalar literals, closed by a
 	// function word that bars the forward collection.
 	After []Value
+	// Live, on an optimistic dispatch's layout, indexes the Beneath entries
+	// that are no constant — a call's result, a carrier — whose value the
+	// run's stack holds there, not the pass's tape (NUR351). A record that
+	// cannot say where the compiled code keeps each one reads no layout.
+	Live []int
 }
 
 // LayoutFor returns the published layout when it describes args — the
@@ -92,7 +97,7 @@ func (e *Engine) exactLayout(args []Value, at []int, pos SrcPos) *DispatchLayout
 			return nil
 		}
 	}
-	beneath, after, ok := e.layoutSurround(e.Pointer-(n-k)-1, e.Pointer+k+1)
+	beneath, after, _, ok := e.layoutSurround(e.Pointer-(n-k)-1, e.Pointer+k+1, false)
 	if !ok {
 		return nil
 	}
@@ -104,16 +109,29 @@ func (e *Engine) exactLayout(args []Value, at []int, pos SrcPos) *DispatchLayout
 // boundary beneath (an open paren, an `end`, the tape's start) and from the
 // index after them up to the boundary above (a close paren, an `end`, the
 // tape's end). ok is false unless every value beneath is a constant the
-// run's tape holds as the pass's does (layoutConstant) and every token after
-// is a scalar literal, the run closed by a bare function word — the next
-// dispatch, which bars the forward collection on both lanes (NUR283).
-func (e *Engine) layoutSurround(below, after int) (beneath, afterToks []Value, ok bool) {
+// run's tape holds as the pass's does (layoutConstant) — or, where live
+// allows it, a value the run's stack holds (liveBeneath, listed in liveIdx
+// by its Beneath index) — and every token after is a scalar literal, the
+// run closed by a bare function word — the next dispatch, which bars the
+// forward collection on both lanes (NUR283).
+func (e *Engine) layoutSurround(below, after int, live bool) (beneath, afterToks []Value, liveIdx []int, ok bool) {
+	var fromTop []bool
 	for i := below; i >= 0 && !IsOpenParen(e.Tape.At(i)) && !IsEnd(e.Tape.At(i)); i-- {
 		v := e.Tape.At(i)
+		isLive := false
 		if !layoutConstant(v, true) {
-			return nil, nil, false
+			if !live || !liveBeneath(v) {
+				return nil, nil, nil, false
+			}
+			isLive = true
 		}
 		beneath = append([]Value{v}, beneath...)
+		fromTop = append(fromTop, isLive)
+	}
+	for j, isLive := range fromTop {
+		if isLive {
+			liveIdx = append(liveIdx, len(fromTop)-1-j)
+		}
 	}
 	for i := after; i < e.Tape.Len() && !IsCloseParen(e.Tape.At(i)) && !IsEnd(e.Tape.At(i)); i++ {
 		tok := e.Tape.At(i)
@@ -122,11 +140,20 @@ func (e *Engine) layoutSurround(below, after int) (beneath, afterToks []Value, o
 			continue
 		}
 		if w, err := AsWord(tok); err == nil && !tok.Quoted && unmodifiedWord(w) && FnWordBarrierOn(e.Registry, tok) {
-			return beneath, append(afterToks, tok), true
+			return beneath, append(afterToks, tok), liveIdx, true
 		}
-		return nil, nil, false
+		return nil, nil, nil, false
 	}
-	return beneath, afterToks, true
+	return beneath, afterToks, liveIdx, true
+}
+
+// liveBeneath reports whether v, a value beneath a dispatch's operands that
+// is no layout constant, is one the run's stack holds as a value of its own
+// — a call's result, a carrier — which a record can place by its identity:
+// never a word, a marker, or a value with no ID.
+func liveBeneath(v Value) bool {
+	return v.ID != "" && !IsWord(v) && !isEngineMarker(v) && !IsForward(v) && !IsParenExpr(v) &&
+		(v.Carrier || v.Dynamic || IsConcrete(v))
 }
 
 // unmodifiedWord reports whether w carries no modifier the source wrote —

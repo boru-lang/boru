@@ -66,6 +66,11 @@ type landingRestart struct {
 	// may still hold where the interpreter's def took them
 	// (noteRestartDepth).
 	leftovers, defBound []producer
+	// onFrame are the earlier statements' values a unit's island needs held
+	// beneath the statement (deoptPoint.onFrame): the walk admits the island
+	// only where the compiled frame holds each there and the region stands
+	// intact at the stop (heldIntact).
+	onFrame []producer
 	// run marks a count island of a `do` over a computed body, which its
 	// call takes on a run the interpreter's tape would step (a splice, or a
 	// fn value where the run is seated as data); always, one it takes
@@ -405,6 +410,9 @@ func (es *EmitState) planRematchRestart(lw *lowerer, residual []core.Value) stri
 // reason, "" when it lowered.
 func (es *EmitState) lowerRootEvents(lw *lowerer, residual []core.Value) string {
 	if reason := es.planRematchRestart(lw, residual); reason != "" {
+		return reason
+	}
+	if reason := es.pendingArmRefusal(es.frames[0]); reason != "" {
 		return reason
 	}
 	lw.numLocals = es.units[0].numLocals
@@ -853,9 +861,13 @@ func (es *EmitState) restartSubsts(tree map[int]treeEvent, body []core.Value, to
 			cands = append(cands, substPlan{path: path, span: 1, seq: s})
 		} else if sub, whole, ok := es.doBody(ev, body, tok); ok && !whole && inertBefore(body, tok, sub, cands...) {
 			cands = append(cands, substPlan{path: sub, span: 2, seq: s})
-		} else if run, span, ok := es.callRun(tree, ev, body, tok); ok && inertBefore(body, tok, run, cands...) {
+		} else if run, span, ok := es.callRun(tree, ev, body, tok); ok {
 			_, nout := callShape(ev)
-			cands = append(cands, substPlan{path: run, span: span, seq: s, none: nout == 0, run: true})
+			if paren, whole := wholeParen(body, run, span); whole && nout == 1 && inertBefore(body, tok, paren, cands...) {
+				cands = append(cands, substPlan{path: paren, span: 1, seq: s})
+			} else if inertBefore(body, tok, run, cands...) {
+				cands = append(cands, substPlan{path: run, span: span, seq: s, none: nout == 0, run: true})
+			}
 		}
 	}
 	var kept []substPlan
@@ -885,6 +897,26 @@ func (es *EmitState) restartSubsts(tree map[int]treeEvent, body []core.Value, to
 	}
 	sort.Slice(kept, func(i, j int) bool { return pathLess(kept[i].path, kept[j].path) })
 	return kept, true
+}
+
+// wholeParen reports whether the call run at path (span tokens) is every
+// token of the paren enclosing it — `(3 add 4)`, an infix call whose run
+// opens on its stack operand, not its word (NUR348) — and that paren's path.
+// A paren seals the stack off, so a call run over all of it leaves the
+// paren's one value exactly as parenOf's call does: the island writes it in
+// the paren's place, where the paren is no collection barrier any more.
+func wholeParen(body []core.Value, path []int, span int) ([]int, bool) {
+	n := len(path)
+	if n < 2 || path[n-1] != 0 {
+		return nil, false
+	}
+	toks := body
+	for _, at := range path[:n-2] {
+		toks, _ = nestedToks(toks[at])
+	}
+	outer := toks[path[n-2]]
+	inner, _ := nestedToks(outer)
+	return path[:n-1], core.IsParenExpr(outer) && len(inner) == span
 }
 
 // pathLess orders two token paths as the tokens they reach stand in the
@@ -1003,7 +1035,31 @@ func inertBefore(body []core.Value, tok int, path []int, written ...substPlan) b
 	}
 	level := path[:len(path)-1]
 	for i := from; i < path[len(path)-1]; i++ {
-		if !barrierFree(toks[i]) && !writtenOver(written, append(append([]int(nil), level...), i)) {
+		at := append(append([]int(nil), level...), i)
+		if !barrierFree(toks[i]) && !writtenOver(written, at) && !writtenParen(toks[i], at, written) {
+			return false
+		}
+	}
+	return true
+}
+
+// writtenParen reports whether t, the paren at path, holds nothing but
+// tokens no forward collection passes through once the island has written
+// its runs — each a barrier-free token, a run written over it that the VM
+// never lets write a dispatching fn value (a paren, a bare word, a call run:
+// RestartSubst's NUR297 defer), or such a paren itself — so the paren leaves
+// values alone and collects nothing: `((3 add 4))`, `(print "a" 5)` before a
+// do's count island (NUR348).
+func writtenParen(t core.Value, path []int, written []substPlan) bool {
+	inner, nested := nestedToks(t)
+	if !nested || !core.IsParenExpr(t) {
+		return false
+	}
+	for j, v := range inner {
+		at := append(append([]int(nil), path...), j)
+		if !barrierFree(v) && !writtenParen(v, at, written) && !slices.ContainsFunc(written, func(w substPlan) bool {
+			return w.covers(at) && (w.span == 1 || w.run) && !w.reach && !w.named && !w.results
+		}) {
 			return false
 		}
 	}
@@ -1488,11 +1544,15 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 		}
 		from := tok
 		tok = defsBefore(tree, rec.body, tok, stopPos(at.ev))
-		d := deoptPoint{seq: seq, slot: -1, start: statementStart(rec.body, tok), token: tok, restart: true}
+		d := deoptPoint{seq: seq, slot: -1, start: statementStart(rec.body, tok), token: tok, restart: true, frameHeld: true}
 		d.leftovers, d.defBound = defLeftovers(tree, rec.body, from, tok)
-		if d.start.Row == 0 || es.deoptDeferred(u, rec, &d, -1) || outsProducedBefore(rec.outOps, statementFirstSeq(tree, seq, d.start), d.leftovers) {
+		if d.start.Row == 0 || es.deoptDeferred(u, rec, &d, -1) {
 			continue
 		}
+		// The residual's earlier results, as the statement's operands
+		// (deoptPoint.onFrame): the walk finds each held beneath it, or the
+		// unit keeps it in a slot until its RET and the island is not seated.
+		d.onFrame = outsBefore(rec.outOps, statementFirstSeq(tree, seq, d.start), d.leftovers, d.onFrame)
 		substs, first, reruns := es.restartReruns(tree, at, seq, rec.body, tok)
 		if !reruns {
 			continue
@@ -1511,14 +1571,16 @@ func (es *EmitState) planUnitRestarts(u *emitUnit, rec *fnUnitRec) {
 	// root's (planCountRestarts).
 	es.notePhantomConsumersIn(rec.frag.events)
 	for _, seq := range sortedSeqs(tree) {
-		if te := tree[seq]; te.inLoop || !es.countSeat(seq) {
+		te := tree[seq]
+		run := es.dynBodyRun(te.ev)
+		if te.inLoop || (!run && !es.countSeat(seq)) {
 			continue
 		}
 		tok, substs, ok := es.countPoint(tree, seq, rec.body)
 		if !ok {
 			continue
 		}
-		d := deoptPoint{seq: seq, slot: -1, start: rec.body[tok].Pos(), token: tok, restart: true, count: true, substs: substs}
+		d := deoptPoint{seq: seq, slot: -1, start: rec.body[tok].Pos(), token: tok, restart: true, count: true, countRun: run, substs: substs}
 		if d.start.Row > 0 && !es.deoptDeferred(u, rec, &d, -1) && !outsProducedBefore(rec.outOps, statementFirstSeq(tree, seq, d.start), nil) {
 			rec.deopts = append(rec.deopts, d)
 		}
@@ -1548,6 +1610,19 @@ func outsProducedBefore(outs []EmitOperand, firstSeq int, seated []producer) boo
 	return false
 }
 
+// outsBefore is onFrame with every result of a unit's residual that an
+// event recorded before firstSeq produced, a def's leftover the island seats
+// from its slot aside.
+func outsBefore(outs []EmitOperand, firstSeq int, seated, onFrame []producer) []producer {
+	for _, op := range outs {
+		p := producer{seq: op.idx, idx: op.resIdx}
+		if op.kind == opEvent && op.idx < firstSeq && !slices.Contains(seated, p) && !slices.Contains(onFrame, p) {
+			onFrame = append(onFrame, p)
+		}
+	}
+	return onFrame
+}
+
 // restartAt is the planned statement island of event seq whose depth the
 // walk seated, or nil — nil too at the root when the compiled stack there is
 // not the residual's results the plan counted (rootPreStart), and in a unit
@@ -1565,6 +1640,9 @@ func (lw *lowerer) restartAt(seq int) *landingRestart {
 // value from beneath the statement (`(mk) end drop (m.f 7)`) left another in
 // its slot.
 func (lw *lowerer) heldIntact(r *landingRestart) bool {
+	if len(r.onFrame) > 0 {
+		return lw.frameIntact(r)
+	}
 	if r.held <= 0 {
 		return true
 	}
@@ -1586,6 +1664,20 @@ func (lw *lowerer) heldIntact(r *landingRestart) bool {
 	return true
 }
 
+// frameIntact is heldIntact for a unit's island over earlier statements'
+// values (landingRestart.onFrame): the compiled frame held each beneath the
+// statement at its start, and at the stop it still holds that region as it
+// was — so the frame region the island seats is the interpreter's there.
+func (lw *lowerer) frameIntact(r *landingRestart) bool {
+	for i, slot := range r.beneath {
+		if i >= len(lw.vm) || lw.vm[i] != slot || lw.variadic[slot.seq] {
+			return false
+		}
+	}
+	// A value the compiled code promoted to a slot is not on the frame.
+	return !slices.ContainsFunc(r.onFrame, func(p producer) bool { return !slices.Contains(r.beneath, vmSlot(p)) })
+}
+
 // noteRestartDepths seats the compiled stack's depth on every planned
 // statement island whose statement begins at or before p, the position of
 // the root event whose first op is about to be emitted. In a unit it seats
@@ -1593,7 +1685,7 @@ func (lw *lowerer) heldIntact(r *landingRestart) bool {
 // still holds on its stack bottom at the statement's start (deoptPrefix,
 // read from their slots), then the frame region.
 func (lw *lowerer) noteRestartDepths(p core.SrcPos) {
-	for _, m := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts} {
+	for _, m := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts, lw.fitRestarts} {
 		for _, r := range m {
 			lw.noteRestartDepth(r, p)
 		}
@@ -1606,8 +1698,8 @@ func (lw *lowerer) noteRestartDepth(r *landingRestart, p core.SrcPos) {
 		return
 	}
 	r.depth = len(lw.vm)
+	r.beneath = append([]vmSlot(nil), lw.vm...)
 	if lw.landingRoot {
-		r.beneath = append([]vmSlot(nil), lw.vm...)
 		return
 	}
 	params, ok := lw.deoptPrefix()
@@ -1896,7 +1988,31 @@ func (es *EmitState) parenLead(tree map[int]treeEvent, ev *EmitEvent, body []cor
 		// as the name's call treats it (the stop's own, RestartGuard).
 		return []substPlan{{path: path, span: 1, seq: methodSeq(ev), run: true, named: true}}
 	}
+	if lead, span := leadRun(body, path); span > 1 {
+		// A `/v` lead (`(m.f/v y)`) is its read's token and the modifier
+		// the parser mints after it at the same position: the island writes
+		// the value the apply found over both, placed (NUR336).
+		return []substPlan{{path: lead, span: span, seq: methodSeq(ev), run: true}}
+	}
 	return []substPlan{{path: path, span: 1, seq: methodSeq(ev), run: true, reach: es.rawReachLead(tree, methodSeq(ev), body, path)}}
+}
+
+// leadRun is the run of tokens a paren's lead at path stands in: tokenPath
+// reaches the last token at the lead's position, and a modifier the parser
+// mints after a read (`m.f/v`) stands at the read's own — so the run is
+// every token at that position, the first its path.
+func leadRun(body []core.Value, path []int) ([]int, int) {
+	toks := body
+	for _, at := range path[:len(path)-1] {
+		toks, _ = nestedToks(toks[at])
+	}
+	last := path[len(path)-1]
+	first := last
+	for first > 0 && toks[first-1].Pos() == toks[last].Pos() {
+		first--
+	}
+	lead := append(append([]int(nil), path[:len(path)-1]...), first)
+	return lead, last - first + 1
 }
 
 // rawRead reports whether event seq is a member read whose value nothing

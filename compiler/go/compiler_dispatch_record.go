@@ -1029,7 +1029,7 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 		// run's no-match lays the operands out as the interpreter's tape
 		// and plans them there (PolyRef.Split, NUR242 — `0 fold [add]
 		// b.data` over a String field).
-		if l := r.Check.LayoutFor(args); l != nil {
+		if l := r.Check.LayoutFor(args); l != nil && len(l.Live) == 0 {
 			call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
 		}
 	}

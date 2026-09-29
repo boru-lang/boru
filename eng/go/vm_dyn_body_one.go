@@ -77,3 +77,32 @@ func dynBodyValueReSteps(v core.Value) bool {
 	_, mod := core.AsDispatchMod(v)
 	return mod
 }
+
+// frameRunReSteps reports whether a unit's computed run holds a value its
+// island would step where the interpreter's frame steps on into the caller's
+// tape (SigRef.CountFrame, NUR348): a value the tape dispatches, as the run
+// left it or as a splice's payload (a list's elements, or the value itself).
+// The island ends at the unit's last token; the interpreter's frame does
+// not, so a named fn stepped last raises uncalled_function there and parks
+// on the island.
+func frameRunReSteps(results []core.Value) bool {
+	return slices.ContainsFunc(results, func(v core.Value) bool {
+		if info, err := core.AsSplice(v); err == nil {
+			return slices.ContainsFunc(splicePayload(info.Data), func(e core.Value) bool {
+				return core.IsSplice(e) || dynBodyValueReSteps(e)
+			})
+		}
+		return dynBodyValueReSteps(v)
+	})
+}
+
+// splicePayload is what a splice marker's payload contributes to the tape:
+// a list's elements, or any other value itself.
+func splicePayload(p core.Value) []core.Value {
+	if p.Parent.Equal(core.TList) {
+		if l, err := core.AsList(p); err == nil {
+			return l.Slice()
+		}
+	}
+	return []core.Value{p}
+}

@@ -63,7 +63,14 @@ type tokenBodyDeclined struct{}
 // no error (Engine.exitWithFlowCtrl's sub-engine contract), for the VM to
 // translate after the native returns (escapedFlow). `for 5 [do b i]` with
 // `b` a computed body whose fn breaks ends the `for`, on both lanes.
-type flowEscape struct{ op compiler.Opcode }
+//
+// The residual rides with it (hostedResidual): the sub-engine hands back its
+// unstepped tape, which `do` returns as its run — where the interpreter's
+// `outside loop` report points when no loop takes the signal (NUR355).
+type flowEscape struct {
+	op       compiler.Opcode
+	residual []core.Value
+}
 
 func (e *flowEscape) Error() string { return "flow signal escaping a hosted token body" }
 
@@ -160,7 +167,7 @@ func (vc *vmContext) invokeTokenBody(reg *core.Registry, body core.Value, inputs
 	res, err := vc.hostForeign(ref.Prog, reg, ref.Unit, inputs, nil, true)
 	if fe, escaped := err.(*flowEscape); escaped {
 		reg.FlowCtrl = flowCtrlOf(fe.op)
-		return nil, nil, true
+		return fe.residual, nil, true
 	}
 	return res, err, true
 }
