@@ -161,9 +161,57 @@ func TestFnValueSeamBracketsRootArgsForDynEnv(t *testing.T) {
 		t.Fatalf("args depth %d after, want %d (the bracket restores)", r.Args.Depth(), before)
 	}
 	// The no-op twin: outside a DynEnv program the bracket pushes nothing.
-	pop := pushRootArgs(r, oneConstProg(1), nil)
+	pop := pushRootArgs(r, oneConstProg(1), nil, false)
 	if r.Args.Depth() != before {
 		t.Fatal("a non-DynEnv program pushes no args list")
 	}
 	pop()
+}
+
+// TestFrameArgsListElision pins the VM half of NUR346: a frame of a unit
+// whose sig handler elides the args list (CompiledFn.ArgsElided) holds the
+// EMPTY list when entered from its home registry and the real args from any
+// other — the interpreter's handler against its CallBoru — and a unit that
+// pushes the real list always does; the root bracket's elided arm pushes the
+// empty list and restores the depth.
+func TestFrameArgsListElision(t *testing.T) {
+	home, err := core.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	other, err := core.NewRegistry()
+	if err != nil {
+		t.Fatalf("NewRegistry: %v", err)
+	}
+	args := []core.Value{core.NewInteger(7)}
+	listLen := func(v core.Value) int {
+		lst, lerr := core.AsList(v)
+		if lerr != nil {
+			t.Fatalf("args entry is not a list: %v", v)
+		}
+		return lst.Len()
+	}
+	elided := &compiler.CompiledFn{NArgs: 1, ArgsElided: true}
+	realArgs := &compiler.CompiledFn{NArgs: 1}
+	if n := listLen(frameArgsList(elided, home, home, args)); n != 0 {
+		t.Errorf("an elided unit entered from its home holds the empty list, got %d", n)
+	}
+	if n := listLen(frameArgsList(elided, other, home, args)); n != 1 {
+		t.Errorf("an elided unit entered from another registry holds the real args (CallBoru), got %d", n)
+	}
+	if n := listLen(frameArgsList(realArgs, home, home, args)); n != 1 {
+		t.Errorf("a real-args unit holds the real args, got %d", n)
+	}
+	p := oneConstProg(1)
+	p.DynEnv = true
+	before := home.Args.Depth()
+	pop := pushRootArgs(home, p, args, true)
+	top, ok, _ := home.Args.Top()
+	if !ok || listLen(top) != 0 {
+		t.Errorf("the elided root bracket pushes the empty list, got %v", top)
+	}
+	pop()
+	if home.Args.Depth() != before {
+		t.Errorf("the bracket restores the depth: %d, want %d", home.Args.Depth(), before)
+	}
 }

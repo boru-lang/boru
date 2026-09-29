@@ -107,7 +107,7 @@ func (vc *vmContext) runFnValueSig(reg *core.Registry, body core.Value, fd core.
 	delivered := deliverArgs(args)
 	// The fn's own frame: the interpreter's dispatch pushes the per-call
 	// args list for every frame, and a DynEnv unit reads `args` from it.
-	popArgs := pushRootArgs(reg, ref.Prog, delivered)
+	popArgs := pushRootArgs(reg, ref.Prog, delivered, elidesArgs(unit, reg, dispatchRegistry(unit.Reg, reg)))
 	res, err := vc.hostFnValueUnit(reg, ref, delivered)
 	popArgs()
 	if err != nil {
@@ -221,12 +221,18 @@ func checkFnValueReturn(r *core.Registry, fd core.FnDefInfo, sig *core.Signature
 // program never opened, so its args ride in from the seam. No-op outside a
 // DynEnv program, where nothing reads the list; the returned func restores
 // the depth (an error unwind included — callers defer or call it on every
-// path).
-func pushRootArgs(reg *core.Registry, p *compiler.Program, args []core.Value) func() {
+// path). elided pushes the EMPTY list instead — the token seam's dispatch of
+// a unit whose sig handler elides it (elidesArgs, NUR346); the callback seam
+// (CallBoru on the interpreter) always pushes the real args.
+func pushRootArgs(reg *core.Registry, p *compiler.Program, args []core.Value, elided bool) func() {
 	if p == nil || !p.DynEnv {
 		return func() {}
 	}
 	floor := reg.Args.Depth()
-	_ = reg.Args.Push(core.NewList(append([]core.Value(nil), args...)))
+	list := core.NewList(nil)
+	if !elided {
+		list = core.NewList(append([]core.Value(nil), args...))
+	}
+	_ = reg.Args.Push(list)
 	return func() { reg.Args.Truncate(floor) }
 }

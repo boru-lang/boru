@@ -387,3 +387,43 @@ func TestSkeletonForkConcurrent(t *testing.T) {
 		t.Fatalf("concurrent leaf call: %v", err)
 	}
 }
+
+// TestSkeletonArgsElidedMeta pins the decision's record (NUR346): the leaf
+// handler's args-list choice rides the sig's frame identity
+// (FnFrameMeta.ArgsElided, read by SigArgsElided) — true for a leaf body
+// that never reads `args`, false for one that does, for a frame-state body
+// (which always pushes the real list), and for a sig with no fn frame.
+func TestSkeletonArgsElidedMeta(t *testing.T) {
+	r := covRegistry(t, nil)
+	install := func(name string, body []Value) *Signature {
+		InstallFnDef(r, name, FnDefInfo{
+			Signatures: []Signature{{
+				Params:     []FnParam{{Name: "n", Type: TInteger}},
+				Returns:    []*Type{TAny},
+				Impl:       Boru(body),
+				BarrierPos: BarrierAllForward,
+			}},
+		})
+		top, _ := r.Defs.Top(name)
+		fd, _ := top.Data.(FnDefInfo)
+		for i := range fd.Signatures {
+			if !fd.Signatures[i].Fallback {
+				return &fd.Signatures[i]
+			}
+		}
+		t.Fatalf("%s: no own signature", name)
+		return nil
+	}
+	if s := install("elleaf", []Value{NewWord("cadd"), NewWord("n"), NewWord("n")}); !SigArgsElided(s) {
+		t.Error("a leaf body that never reads args elides the list")
+	}
+	if s := install("elargs", []Value{NewWord("args")}); SigArgsElided(s) {
+		t.Error("a body that reads args pushes the real list")
+	}
+	if s := install("eldef", []Value{NewWord("def"), NewWord("z"), NewInteger(1), NewWord("n")}); SigArgsElided(s) {
+		t.Error("a frame-state body pushes the real list")
+	}
+	if SigArgsElided(&Signature{Impl: &GoImpl{}}) {
+		t.Error("a native sig has no fn frame and elides nothing")
+	}
+}

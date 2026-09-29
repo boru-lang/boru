@@ -6883,6 +6883,7 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 		}
 	}
 
+	e.placeTrailingDeferred(valIdx)
 	e.Pointer++
 	return nil
 }
@@ -7102,7 +7103,9 @@ func compileFnDef(r *Registry, fnDef FnDefInfo) *FnDefInfo {
 				FnFrame:  meta,
 				dispatch: buildFnBodyHandler(r, fnDef.Name, sig, fnDef, meta),
 			}
-			compiled.ReturnsFn = r.analysisReturnsFn(fnDef.Name, sig, fnDef)
+			// The installed sig: its frame identity carries the handler's
+			// args-list decision (FnFrameMeta.ArgsElided).
+			compiled.ReturnsFn = r.analysisReturnsFn(fnDef.Name, compiled, fnDef)
 		}
 		NormalizeSig(&compiled)
 		out[i] = compiled
@@ -9579,24 +9582,32 @@ func (e *Engine) parenFeedsPendingForward(openIdx int) bool {
 // close paren once the rewind re-steps it — the interpreter's own rule
 // (execFnDefLiteral at the pointer: forward tokens first, the stack after),
 // which the trailing-apply record must not model as an apply over the
-// values inside the paren (NUR184). Nothing after the close, a word, a
-// close paren, an `end`, a marker or a `/v` modifier is not collectable
-// (the value falls to the stack: `(2 (mk 1)) mul 10` is 30). A literal is
-// collectable when the value is a fn-typed CARRIER (its runtime parameters
-// are unknown) or a concrete fn one of whose own signatures takes it at a
-// forward-eligible first position; an open paren is collectable (its result
-// arrives at the value's pending forward). A concrete fn none of whose
-// signatures takes the literal falls to the stack (`(2 (mk 1)) "s"` is
-// `[3 s]`).
+// values inside the paren (NUR184). Nothing after the close, a function
+// word (the strict forward barrier), a close paren, an `end`, a marker or a
+// `/v` modifier is not collectable (the value falls to the stack: `(2 (mk
+// 1)) mul 10` is 30). A literal is collectable when the value is a
+// fn-typed CARRIER (its runtime parameters are unknown) or a concrete fn one
+// of whose own signatures takes it at a forward-eligible first position. A
+// token whose value exists only once it runs — a group (an open paren, a
+// paren expression, a dot reach, an interpolated string: the forward walk's
+// FwdGroup, evaluated in place for the slot) or a non-function word (a value
+// binding or a splice, whose value ARRIVES at the value's pending forward) —
+// is collectable: the re-step decides with the value in hand, as the
+// interpreter's does (`("s" lam/v) (2 add 3)` is `[s 105]`, NUR344). A
+// concrete fn none of whose signatures takes the literal falls to the stack
+// (`(2 (mk 1)) "s"` is `[3 s]`).
 func (e *Engine) trailingFnCollectsPastClose(last Value, closeIdx int) bool {
 	if closeIdx+1 >= e.Tape.Len() {
 		return false
 	}
 	tok := e.Tape.At(closeIdx + 1)
-	if IsOpenParen(tok) {
+	if IsOpenParen(tok) || IsParenExpr(tok) || IsReach(tok) || IsInterpString(tok) {
 		return true
 	}
-	if IsWord(tok) || IsCloseParen(tok) || IsEnd(tok) || IsForward(tok) || IsMark(tok) || IsMove(tok) || !IsRecordableLiteral(tok) {
+	if IsWord(tok) {
+		return !e.fnWordBarrierAt(tok)
+	}
+	if IsCloseParen(tok) || IsEnd(tok) || IsForward(tok) || IsMark(tok) || IsMove(tok) || !IsRecordableLiteral(tok) {
 		return false
 	}
 	if _, mod := AsDispatchMod(tok); mod {
@@ -9974,6 +9985,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 				e.markForwardLeftover(last)
 			case e.trailingFnCollectsPastClose(last, closeIdx):
 				e.markReStepped(last)
+				e.noteTrailingDeferred(last)
 			default:
 				closeIdx = e.recordParenTrailingFnApply(es, last, openIdx, closeIdx, lastIdx, count)
 			}
@@ -10148,6 +10160,39 @@ func (e *Engine) markForwardLeftover(v Value) {
 		e.Registry.Check.ForwardLeftoverFnIDs = map[string]bool{}
 	}
 	e.Registry.Check.ForwardLeftoverFnIDs[v.ID] = true
+}
+
+// noteTrailingDeferred records a fn value a paren's collapse left to the
+// rewind's re-step over the token after the close
+// (CheckState.TrailingDeferredFnIDs, NUR344).
+func (e *Engine) noteTrailingDeferred(v Value) {
+	if v.ID == "" {
+		return
+	}
+	if e.Registry.Check.TrailingDeferredFnIDs == nil {
+		e.Registry.Check.TrailingDeferredFnIDs = map[string]bool{}
+	}
+	e.Registry.Check.TrailingDeferredFnIDs[v.ID] = true
+}
+
+// placeTrailingDeferred records a trailing-deferred fn value (see
+// noteTrailingDeferred) that its re-step matched against nothing as PLACED
+// (CheckState.ParenPlacedFnIDs): it parks where it lands, data beside the
+// value it did not take, exactly as a paren-placed value does, and nothing
+// re-steps it unless an enclosing rewind lands on it (ParenReSteppedFnIDs).
+func (e *Engine) placeTrailingDeferred(valIdx int) {
+	if e.Registry == nil || !e.Registry.analysisActive() || valIdx >= e.Tape.Len() {
+		return
+	}
+	id := e.Tape.At(valIdx).ID
+	cs := e.Registry.Check
+	if id == "" || !cs.TrailingDeferredFnIDs[id] {
+		return
+	}
+	if cs.ParenPlacedFnIDs == nil {
+		cs.ParenPlacedFnIDs = map[string]bool{}
+	}
+	cs.ParenPlacedFnIDs[id] = true
 }
 
 // findCloseParenAfter finds the index of the matching close-paren marker

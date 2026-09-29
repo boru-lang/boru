@@ -683,7 +683,15 @@ func specialWordResults(r *core.Registry, word string, args []core.Value, pos co
 		if es := r.Check.Recorder(); es.Active() && (es.InClosureUnit() || es.ArgsReadLive()) {
 			return nil, false
 		}
-		if top, ok, err := r.Args.Top(); err == nil && ok && core.IsConcrete(top) {
+		top, ok, err := r.Args.Top()
+		if es := r.Check.Recorder(); es.Active() && es.ArgsElidedFrame() {
+			// An args-elided unit's frame holds the EMPTY list the
+			// interpreter's leaf handler pushed: an `args` the handler's
+			// construction-time walk could not see (a word macro bound after
+			// the fn) reads `[]` there (NUR346).
+			top, ok, err = core.NewList(nil), true, nil
+		}
+		if err == nil && ok && core.IsConcrete(top) {
 			// A bare `args` read in a fn unit (`fn [[a b][List][args]]`)
 			// used to leave the projection with no compiled home ("body
 			// result of unknown provenance"); the recorder assembles it per

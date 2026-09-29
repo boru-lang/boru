@@ -443,6 +443,10 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		// the list contents.
 		refsArgs = bodyReferencesArgs(r, s.Body())
 		emptyArgs = NewList(nil)
+		// The decision rides the sig's frame identity, so the analysis
+		// pass (check BuildFnBodyReturnsFn) compiles the unit to push the
+		// same list (FnFrameMeta.ArgsElided, NUR346).
+		meta.ArgsElided = !refsArgs
 	}
 	return func(args []Value, _ map[string]Value, _ []Value, callReg *Registry) ([]Value, error) {
 		// Reached from a FOREIGN registry (callReg != the install registry r) — a
@@ -852,7 +856,9 @@ func compileFnSigs(r *Registry, name string, fnDef FnDefInfo, isStackOnly bool) 
 				FnFrame:  meta,
 				dispatch: buildFnBodyHandler(r, name, s, fnDefCopy, meta),
 			}
-			cs.ReturnsFn = r.analysisReturnsFn(name, s, fnDefCopy)
+			// The installed sig: its frame identity carries the handler's
+			// args-list decision (FnFrameMeta.ArgsElided).
+			cs.ReturnsFn = r.analysisReturnsFn(name, cs, fnDefCopy)
 		}
 		cs.BarrierPos = barrier
 		NormalizeSig(&cs)

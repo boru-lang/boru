@@ -48,6 +48,9 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	if e.ArgsReadLive() {
 		t.Fatal("inactive ArgsReadLive must be false")
 	}
+	if e.ArgsElidedFrame() {
+		t.Fatal("inactive ArgsElidedFrame must be false")
+	}
 	if e.StoredGradualActive() {
 		t.Fatal("inactive StoredGradualActive must be false")
 	}
@@ -255,6 +258,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.SetUnitBody(0, nil)
 	e.SetUnitSpecialisation(0, nil, nil, Value{})
 	e.SetUnitDecl(0, DeclSite{})
+	e.SetUnitArgsElided(0)
 	if e.UnitVariadic(0) {
 		t.Fatal("inactive UnitVariadic must be false")
 	}

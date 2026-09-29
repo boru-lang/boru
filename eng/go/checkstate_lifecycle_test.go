@@ -54,6 +54,7 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"ParenReSteppedFnIDs":      true,
 		"WordReadFnIDs":            true,
 		"ForwardLeftoverFnIDs":     true,
+		"TrailingDeferredFnIDs":    true,
 		"ArgsFrameUnnamed":         true,
 	}
 	// Fields Begin() resets to a canonical NON-zero per-pass value.

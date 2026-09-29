@@ -303,7 +303,24 @@ func LambdaCountContract(n int) []*core.Type {
 	return out
 }
 
+// ArgsElidedKeySuffix separates the fn-unit memo key of a sig whose
+// handler pushes the shared empty args list (core.SigArgsElided) from a
+// real-args twin of the same body: the unit's CompiledFn.ArgsElided is part
+// of what it runs (NUR346).
+const ArgsElidedKeySuffix = "|args-elided"
+
+// BuildFnBodyReturnsFn is the analysis half of a fn sig's dispatch — the
+// sig's handler — so its unit pushes the args list that handler pushes
+// (core.SigArgsElided).
 func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef core.FnDefInfo) core.ReturnsFunc {
+	return buildFnBodyReturnsFn(r, name, s, fnDef, core.SigArgsElided(&s))
+}
+
+// buildFnBodyReturnsFn is BuildFnBodyReturnsFn with the args-list decision
+// explicit: argsElided compiles the unit to push the shared empty list, the
+// leaf handler's; the stack-match path (SpliceFnValueCheckResult, whose run
+// is execFnDefSig) passes false, as that path pushes the real args.
+func buildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef core.FnDefInfo, argsElided bool) core.ReturnsFunc {
 	paramNames := make([]string, len(s.Params))
 	paramPatterns := make([]*core.Value, len(s.Params))
 	for i, p := range s.Params {
@@ -547,7 +564,7 @@ func BuildFnBodyReturnsFn(r *core.Registry, name string, s core.FnSig, fnDef cor
 			}
 			uc := &fnUnitCompile{r: r, es: es, name: nameCopy, body: bodyCopy, captures: capturesCopy, params: sigParams, paramNames: paramNames,
 				compileReturns: compileReturns, returns: declaredReturns, returnPatterns: declaredReturnPatterns, decl: declSite,
-				generic: genSpec != nil, anonymous: fnDef.Anonymous, pos: fnPos}
+				generic: genSpec != nil, anonymous: fnDef.Anonymous, argsElided: argsElided, pos: fnPos}
 			if fnUnit = specialiseCallSite(r, es, uc.compile, fnDef, core.FnHomeForeign(caller, &fnDef), nameCopy, bodyCopy, sigParams, args, genArgs); fnUnit < 0 {
 				fnUnit = uc.compile(genArgs, "")
 			}
@@ -787,6 +804,7 @@ type fnUnitCompile struct {
 	decl           core.DeclSite
 	generic        bool
 	anonymous      bool
+	argsElided     bool
 	pos            core.SrcPos
 }
 
@@ -797,9 +815,16 @@ type fnUnitCompile struct {
 func (c *fnUnitCompile) compile(unitArgs []core.Value, keySuffix string) int {
 	r, es := c.r, c.es
 	key := FnAnalysisKey(r.AnalysisScopeID(), c.name, unitArgs, c.captures, c.body) + keySuffix
-	unit, finish, ok := es.StartFnCompile(key, c.name, r, unitArgs, c.compileReturns, c.paramNames, c.captures, c.generic, c.pos)
+	unitKey := key
+	if c.argsElided {
+		unitKey += ArgsElidedKeySuffix
+	}
+	unit, finish, ok := es.StartFnCompile(unitKey, c.name, r, unitArgs, c.compileReturns, c.paramNames, c.captures, c.generic, c.pos)
 	if !ok {
 		return -1
+	}
+	if c.argsElided {
+		es.SetUnitArgsElided(unit)
 	}
 	// Record the declared PARAM types so the VM enforces them at
 	// CALL_USER entry (the gradual-Any param-guard, mirroring the RET

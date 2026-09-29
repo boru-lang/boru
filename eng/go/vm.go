@@ -384,7 +384,7 @@ func (vc *vmContext) enterCallbackUnit(reg *core.Registry, unit int, locals []co
 	// The value's own frame: its call args are the leading locals (inputs
 	// fill the leading param slots, captures the trailing ones).
 	fn := &vc.p.Fns[unit]
-	defer pushRootArgs(reg, vc.p, locals[:fn.NParams-fn.NCaptures])()
+	defer pushRootArgs(reg, vc.p, locals[:fn.NParams-fn.NCaptures], false)()
 	return vc.enterBodyUnit(reg, unit, locals)
 }
 
@@ -899,9 +899,13 @@ func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, ar
 	// Without it the body's `args` read the ENCLOSING frame's list — none
 	// at the top level — so `def g fn [[n:Integer] [Any] [do [args]]]
 	// each g/v [1 2]` raised `args: not inside a function` per element for
-	// the interpreter's `[[1] [2]]` (NUR166).
+	// the interpreter's `[[1] [2]]` (NUR166). The list is the one that
+	// dispatch pushes: the token seam steps the value through its sig's
+	// handler, which may elide it (elidesArgs); a closure handed in through
+	// the fn-VALUE seam (RetTrim, InvokeCallbackBody) stands for CallBoru,
+	// which pushes the real args (NUR346).
 	if fn := &vc.p.Fns[cl.Unit]; len(fn.Params) > 0 && fn.NArgs > 0 && fn.NArgs <= len(args) {
-		defer pushRootArgs(reg, vc.p, args[:fn.NArgs])()
+		defer pushRootArgs(reg, vc.p, args[:fn.NArgs], !cl.RetTrim && elidesArgs(fn, reg, dispatchRegistry(fn.Reg, reg)))()
 	}
 	res, err := vc.enterBodyUnit(reg, cl.Unit, bindUnitLocals(reg, &vc.p.Fns[cl.Unit], args, cl.Captures))
 	vc.rootRetTrim, vc.rootRetNamed = prev, prevNamed
@@ -964,19 +968,20 @@ func checkClosureReturn(r *core.Registry, cl core.ClosurePayload, res []core.Val
 }
 
 // pushFrameArgs is the DynEnv args bracket's frame-entry half: push the
-// callee's real args (locals[0:nArgs], sig order) as the frame's args list —
-// the interpreter's per-call push, so a dynamic code body's runtime sub-run
-// reads `args` identically. No-op outside DynEnv programs.
-func (vc *vmContext) pushFrameArgs(nl []core.Value, nArgs int) {
+// callee's args list (frameArgsList over locals[0:NArgs], sig order) — the
+// interpreter's per-call push, so a dynamic code body's runtime sub-run
+// reads `args` identically. caller is the calling unit's dispatch registry.
+// No-op outside DynEnv programs.
+func (vc *vmContext) pushFrameArgs(fn *compiler.CompiledFn, caller *core.Registry, nl []core.Value) {
 	if vc.p == nil || !vc.p.DynEnv {
 		return
 	}
-	_ = vc.r.Args.Push(core.NewList(append([]core.Value(nil), nl[:nArgs]...)))
+	_ = vc.r.Args.Push(frameArgsList(fn, caller, dispatchRegistry(fn.Reg, vc.r), nl[:fn.NArgs]))
 }
 
 // swapTailArgs is the bracket's TAIL-call form: the frame is replaced, so the
 // top args entry swaps for the new callee's, keeping the bracket depth stable.
-func (vc *vmContext) swapTailArgs(frames []vmFrame, nl []core.Value, nArgs int) {
+func (vc *vmContext) swapTailArgs(frames []vmFrame, fn *compiler.CompiledFn, caller *core.Registry, nl []core.Value) {
 	if vc.p == nil || !vc.p.DynEnv {
 		return
 	}
@@ -986,7 +991,27 @@ func (vc *vmContext) swapTailArgs(frames []vmFrame, nl []core.Value, nArgs int) 
 	} else {
 		vc.r.Args.Truncate(vc.argsFloor)
 	}
-	_ = vc.r.Args.Push(core.NewList(append([]core.Value(nil), nl[:nArgs]...)))
+	_ = vc.r.Args.Push(frameArgsList(fn, caller, dispatchRegistry(fn.Reg, vc.r), nl[:fn.NArgs]))
+}
+
+// frameArgsList is the args list a frame of fn's unit holds: a copy of its
+// real args — or, where elidesArgs holds, the EMPTY list the sig's handler
+// pushes (NUR346).
+func frameArgsList(fn *compiler.CompiledFn, caller, home *core.Registry, args []core.Value) core.Value {
+	if elidesArgs(fn, caller, home) {
+		return core.NewList(nil)
+	}
+	return core.NewList(append([]core.Value(nil), args...))
+}
+
+// elidesArgs reports whether a DISPATCH of fn's unit — a call, an apply, the
+// token seam stepping the value — pushes the empty args list: the unit's sig
+// handler elides it (CompiledFn.ArgsElided: a leaf body that never reads
+// `args`) and the caller runs in the unit's home registry. A call from
+// another registry is the interpreter's CallBoru, which pushes the real
+// args, as does the callback seam (InvokeCallback), which never asks.
+func elidesArgs(fn *compiler.CompiledFn, caller, home *core.Registry) bool {
+	return fn.ArgsElided && caller == home
 }
 
 // retFrameArgs is the bracket's frame-exit half: truncate to the popped
@@ -4414,7 +4439,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 			vc.frameDepth++ // balanced by the matching RET, like OpCallUser
 			nameFrameFns(curReg, fn, nl)
-			vc.pushFrameArgs(nl, fn.NArgs)
+			vc.pushFrameArgs(fn, curReg, nl)
 			locals = nl
 			enterUnit(unit)
 			pc = -1
@@ -4823,7 +4848,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth(), retFn: headNamedContract(ent.retFn, head), retAt: applyAnchor(ent, head)})
 				vc.frameDepth++ // balanced by the matching RET, like OpCallUser
 				nameFrameFns(curReg, fn, ent.locals)
-				vc.pushFrameArgs(ent.locals, fn.NArgs)
+				vc.pushFrameArgs(fn, curReg, ent.locals)
 				locals = ent.locals
 				enterUnit(ent.unit)
 				pc = -1
@@ -4889,7 +4914,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 			vc.frameDepth++ // balanced by the matching RET, like OpCallUser
 			nameFrameFns(curReg, fn, nl)
-			vc.pushFrameArgs(nl, fn.NArgs)
+			vc.pushFrameArgs(fn, curReg, nl)
 			locals = nl
 			enterUnit(unit)
 			pc = -1
@@ -4983,7 +5008,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 				vc.frameDepth++ // balanced by the matching RET below
 				nameFrameFns(curReg, fn, nl)
-				vc.pushFrameArgs(nl, fn.NArgs)
+				vc.pushFrameArgs(fn, curReg, nl)
 			} else {
 				// Tail call: REPLACE the frame — the language's
 				// tail-call guarantee in compiled form. The caller's
@@ -5002,7 +5027,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				}
 				loops = loops[:loopBase]
 				nameFrameFns(curReg, fn, nl)
-				vc.swapTailArgs(frames, nl, fn.NArgs)
+				vc.swapTailArgs(frames, fn, curReg, nl)
 			}
 			locals = nl
 			enterUnit(int(in.Arg))

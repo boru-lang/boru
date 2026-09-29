@@ -50,6 +50,25 @@ type FnFrameMeta struct {
 	// (`def go fn […] go 3`), a loop-carried base-branch read —
 	// breaks with undefined_word.
 	InstallNames []string
+	// ArgsElided records the leaf handler's args-list decision
+	// (buildFnBodyHandler): the body needs no frame state and never reads
+	// `args` (bodyReferencesArgs, macros resolved at construction), so a
+	// same-registry call pushes the shared EMPTY list where every other
+	// frame pushes the real args. Observable only through code the frame
+	// runs that the construction-time walk cannot see — a computed body
+	// (`each (mk) […]` over a list holding `args`) reads `[]` — and the
+	// compiled lane mirrors it per unit (compiler CompiledFn.ArgsElided,
+	// NUR346). Set once, at handler construction, before any call.
+	ArgsElided bool
+}
+
+// SigArgsElided reports whether s's handler pushes the shared empty args
+// list for a same-registry call (FnFrameMeta.ArgsElided): false for a sig
+// with no fn-body frame (a native, a Go-bridged value) and for every frame
+// that pushes its real args.
+func SigArgsElided(s *Signature) bool {
+	meta := s.FnFrame()
+	return meta != nil && meta.ArgsElided
 }
 
 // fnInstallNames computes the binding names a fn-body handler installs
