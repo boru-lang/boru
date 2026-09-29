@@ -179,14 +179,16 @@ func TestComputedDoBodyIslandCompiles(t *testing.T) {
 // for 10, silent). A run ALONE at the program's end is the island's, exact.
 // A run with entries after it takes the do's count island where one is
 // seated (NUR348): `do (mk) 5` re-steps g over the 5 as the interpreter
-// does. A run beneath a paren the island cannot write back as its value, and
-// a fn's run, keep the check's defer.
+// does, and so does a run beneath a paren the island writes back as its
+// value (`(1 add 8) do (mk)`, wholeParen). A fn's run keeps the check's
+// defer: its unit's island ends the frame on its own (SigRef.CountFrame).
 func TestComputedDoBodyCheckedPlain(t *testing.T) {
 	const g1 = `def g fn [[n:Integer][Integer][n add 1]] end def mk fn [[][List][quote [g/v]]] end `
 	const g0 = `def g fn [[][Integer][7]] end `
 	agreeOnBothLanes(t, g1+`do (mk) 5`, "[6]")
+	agreeOnBothLanes(t, g1+`(1 add 8) do (mk)`, "[10]")
 	for _, c := range []struct{ src, wantI string }{
-		{g1 + `(1 add 8) do (mk)`, "[10]"},
+		{g1 + `(8 dup drop) do (mk)`, "[9]"},
 		{g0 + `def f fn [[b:List][Any][do b]] end f (quote [g/v])`, "[7]"},
 		// A gradual body re-matches do's overloads (CALL_NATIVE_POLY) under
 		// the same check.
@@ -194,7 +196,7 @@ func TestComputedDoBodyCheckedPlain(t *testing.T) {
 	} {
 		requireCheckedPlainDefer(t, c.src, c.wantI)
 	}
-	if dis := compileDisasm(t, g1+`(1 add 8) do (mk)`); !strings.Contains(dis, "[plain values, checked]") {
+	if dis := compileDisasm(t, g1+`(8 dup drop) do (mk)`); !strings.Contains(dis, "[plain values, checked]") {
 		t.Errorf("the seated run's call carries the plain check; got:\n%s", dis)
 	}
 	// The generic unit's gradual body re-matches do; the call specialises on

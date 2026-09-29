@@ -176,7 +176,7 @@ func TestNUR348ComputedSpliceResult(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	// A fn unit's do plans no count island (the root's walk plans them): its
-	// run's splice keeps the screen's defer, loud, never the marker as data.
-	requireLoudDefer(t, w+`def f fn [[b:List][Any][do b]] end f (quote [w/v])`, "tape-coupled handler result at do", "ERROR:expected 1 return value(s), got 2")
+	// A fn unit's do plans its count island too (planUnitRestarts' run arm,
+	// NUR348 — pinned in TestNUR348UnitComputedRun).
+	agreeOnBothLanes(t, w+`def f fn [[b:List][Any][do b]] end f (quote [w/v])`, "ERROR:expected 1 return value(s), got 2")
 }

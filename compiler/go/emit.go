@@ -2412,6 +2412,10 @@ type deoptPoint struct {
 	// count, on a restart point, marks a do's count island (SigRef.Count,
 	// NUR222): the stop is the do's own call.
 	count bool
+	// countRun, on a count point, marks a do over a computed body
+	// (dynBodyRun): its call takes the island on a run the interpreter's
+	// tape would step (landingRestart.run, NUR348).
+	countRun bool
 	// first, on a restart point inside loops, is the first-iteration check
 	// its island takes at run time (firstIterGuard).
 	first []RestartFirst
@@ -2438,6 +2442,15 @@ type deoptPoint struct {
 	// defBound, beside leftovers, are the values those defs bound — the
 	// first result of each one's call.
 	defBound []producer
+	// frameHeld, on a unit's landing or shaped-apply island
+	// (planUnitRestarts), admits an operand an EARLIER statement's event
+	// produced (`(1 add 2) end (q.f 7) drop drop`, NUR336) where the
+	// accounting would call it deferred: onFrame lists each, and the walk
+	// seats the island only where the compiled frame holds every one beneath
+	// the statement at its start and still holds that region intact at the
+	// stop (heldIntact) — the island's prefix is then the interpreter's frame.
+	frameHeld bool
+	onFrame   []producer
 	// held, on a live-read point at the program root, is the root events
 	// whose results the compiled stack holds beneath the statement at the
 	// test, the interpreter's stack there (rootStackHeld): an operand of the
@@ -18950,7 +18963,7 @@ func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 			if flw.countRestarts == nil {
 				flw.countRestarts = map[int]*landingRestart{}
 			}
-			flw.countRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs}
+			flw.countRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, run: d.countRun}
 			return
 		}
 		if d.guard > 0 {
@@ -18963,7 +18976,7 @@ func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 		if flw.landingRestarts == nil {
 			flw.landingRestarts = map[int]*landingRestart{}
 		}
-		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first, leftovers: d.leftovers, defBound: d.defBound}
+		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first, leftovers: d.leftovers, defBound: d.defBound, onFrame: d.onFrame}
 		return
 	}
 	if d.live != nil {
@@ -20074,7 +20087,18 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 					return false
 				}
 				p := eventPos(events[j])
-				return p.Row > 0 && posAfter(d.start, p)
+				if p.Row == 0 || !posAfter(d.start, p) {
+					return false
+				}
+				if d.frameHeld {
+					// An earlier statement's value the walk must find
+					// held on the frame (deoptPoint.onFrame).
+					if pr := (producer{seq: op.idx, idx: op.resIdx}); !slices.Contains(d.onFrame, pr) {
+						d.onFrame = append(d.onFrame, pr)
+					}
+					return false
+				}
+				return true
 			}
 		}
 		return false

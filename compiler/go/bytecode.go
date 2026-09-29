@@ -1276,6 +1276,13 @@ type SigRef struct {
 	// interpreter's tape does — so the statement and the program after it
 	// are the interpreter's.
 	CountAlways bool
+	// CountFrame marks a UNIT's count island of a computed `do` body's run
+	// (planUnitRestarts, NUR348): the island runs the unit's body to its end
+	// on its own, where the interpreter's frame runs on into the caller's
+	// tape — a named fn value it steps last with nothing after it raises
+	// uncalled_function there, and is data on the island. The VM defers
+	// loudly on an island residual holding a value the tape re-steps.
+	CountFrame bool
 	// ReStep marks the CALL_NATIVE of a `do` whose results the interpreter's
 	// step loop re-steps where the check pass's model had already stepped
 	// them (eventFlags.reStepResults, NUR317): the body's own analysed run
@@ -2594,6 +2601,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			}
 			if s.CountAlways {
 				guard += " [count island, always]"
+			}
+			if s.CountFrame {
+				guard += " [count island, unit]"
 			}
 			fmt.Fprintf(sb, " s%-3d ; %s (%s)%s", in.Arg, s.Word, strings.Join(names, ", "), guard)
 		case OpJmp, OpJmpIfFalse, OpForNext:

@@ -4990,6 +4990,18 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				if s.Count == nil {
 					return nil, vmDefer(curReg, curDebug, pc, "vm:do-count", s.Word+": a caught body's run left "+strconv.Itoa(len(results))+" value(s) where the program seats "+strconv.Itoa(s.CountClaim)+" for a later word to take (NUR222); the compiled runtime cannot execute it")
 				}
+				if s.CountFrame && frameRunReSteps(results) {
+					// A unit's run island runs the body to its end on its
+					// own, where the interpreter's frame steps a value its
+					// tape dispatches on into the caller's tape
+					// (SigRef.CountFrame, NUR348): the plain seat's own
+					// defer over such a value the run left, and the frame's
+					// over one a splice it left holds.
+					if err := checkDynBodyPlain(curReg, s.Word, results, curDebug, pc); err != nil {
+						return nil, err
+					}
+					return nil, vmDefer(curReg, curDebug, pc, "vm:do-count-frame", s.Word+" over a computed body left a splice holding a value the interpreter re-steps (a fn value, class, reach or modifier), which a unit's island cannot step past the frame's end; the compiled runtime cannot execute it")
+				}
 				fb := 0
 				if len(frames) > 0 {
 					fb = frames[len(frames)-1].stackBase
@@ -4999,6 +5011,12 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				vc.restartLocals = nil
 				if rerr != nil {
 					return nil, rerr
+				}
+				if s.CountFrame && dynBodyPlainRefuses(ns[fb:]) {
+					// A value the island stepped last parks there, where the
+					// interpreter's frame steps on into the caller's tape (a
+					// native's re-stepped fn result — `word [[g/v] 0 get]`).
+					return nil, vmDefer(curReg, curDebug, pc, "vm:do-count-frame", s.Word+" over a computed body: the unit's island left a value the interpreter re-steps (a fn value, class, reach or modifier) at the frame's end; the compiled runtime cannot execute it")
 				}
 				stack = ns
 				pc = ent.jumpPC - 1

@@ -5533,12 +5533,16 @@ func (lw *lowerer) restartSubstSrcs(r *landingRestart, guarded EmitOperand, land
 func (lw *lowerer) emitCountedSig(ref SigRef, seq int, pos core.SrcPos) {
 	r := lw.countRestarts[seq]
 	run := r != nil && r.run && !ref.HostSplice && ref.Split == nil
-	if run || ref.CountCheck || (ref.DynBodyOne && !ref.HostSplice && !ref.DynBodyPlain && ref.Split == nil) {
+	seat := ref.CountCheck || (ref.DynBodyOne && !ref.HostSplice && !ref.DynBodyPlain && ref.Split == nil)
+	if run || seat {
 		ref.Count = lw.countIsland(seq)
 	}
 	// A computed body run before the program's terminal trap takes its
 	// island whatever it left (planCountRestarts' trap arm).
 	ref.CountAlways = run && r.always && ref.Count != nil
+	// A unit's run island a seat of its own does not check (a fn's result,
+	// NUR348) ends the frame on its own (SigRef.CountFrame).
+	ref.CountFrame = run && !seat && !lw.landingRoot && ref.Count != nil
 	lw.p.Sigs = append(lw.p.Sigs, ref)
 	if ref.Count != nil {
 		lw.restartSigs = append(lw.restartSigs, len(lw.p.Sigs)-1)
