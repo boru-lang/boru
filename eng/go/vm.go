@@ -2710,7 +2710,14 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		if err != nil {
 			return nil, nil, err
 		}
-		return vc.statementRestart(reg, spec.PrefixSrc, island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
+		// A root def-bound lead's name is the program's plain write of the
+		// value, where the interpreter's `def` installed it: the island may
+		// dispatch the name again after the stop (`k (g 7) (g 8)`), so it
+		// runs over the install, as a root deopt island does (bindRootRead).
+		unbind := vc.bindRootRead(reg, spec.Root && spec.LeadName != "", spec.LeadName, fnVal)
+		ns, ent, err := vc.statementRestart(reg, spec.PrefixSrc, island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
+		unbind()
+		return ns, ent, err
 	}
 	guard := func(results []core.Value) ([]core.Value, *dynEnter, error) {
 		// A placing apply (DynMethodSpec.Place) claims no count: nothing
@@ -4649,8 +4656,11 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// be re-stepped by the engine) must never have been
 			// compiled — the emitter declines fn-invoking and
 			// code-splicing words. Fail loudly, never push tokens as
-			// data.
-			if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil {
+			// data. A `do` whose splice results the pass fired seats
+			// the run without them (vm_splice_outs.go, NUR348).
+			if kept, ok := spliceOutsSeat(s.SpliceOuts, results); ok {
+				results = kept
+			} else if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil {
 				return nil, err
 			}
 			if (s.CountCheck && len(results) != s.CountClaim) || (s.DynBodyOne && s.Count != nil && dynBodyOneRefuses(results)) {

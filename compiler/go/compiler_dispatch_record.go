@@ -1122,6 +1122,10 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	// operand). The outs slice is the dispatch's live result values, so the
 	// fresh IDs flow to the downstream consumers exactly as in RecordCall.
 	es.produceRunOuts(args, outs, seq)
+	if !call.poly {
+		// A literal body's splice result the tape fires (splice_outs.go).
+		es.noteSpliceOuts(seq, outs)
+	}
 	// Arm the program-wide environment mirror (see the EmitState.dynEnv doc) —
 	// but ONLY for a body whose handler RE-RUNS a code body at run time
 	// (resolving names against r.Defs / reading r.Args). A value-eval `do {map}`

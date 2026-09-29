@@ -507,6 +507,12 @@ type EmitRecorder interface {
 	StoredGradualActive() bool
 	FoldFullStack(word string, args, preserved []Value) ([]Value, bool)
 	RecordSpliceDyn(payload Value, pos SrcPos) bool
+	// NoteSpliceFired tells the recorder the splice marker v fired at the
+	// pointer (stepLiteral): the tape replaced it with its payload, so the
+	// marker itself is gone from the stack the pass models — a value the
+	// recorder holds as a call's result (a `do` whose literal body read a
+	// `word` value by value, NUR348) is consumed there. Inactive: no-op.
+	NoteSpliceFired(v Value, pos SrcPos)
 	NoteShapedRead(id string)
 	MemberFnReadValue(id string) (Value, bool)
 	DynInputsProven(sig *Signature, args []Value) bool
@@ -742,6 +748,7 @@ func (inactiveEmit) ArgsElidedFrame() bool                                  { re
 func (inactiveEmit) StoredGradualActive() bool                              { return false }
 func (inactiveEmit) FoldFullStack(string, []Value, []Value) ([]Value, bool) { return nil, false }
 func (inactiveEmit) RecordSpliceDyn(Value, SrcPos) bool                     { return false }
+func (inactiveEmit) NoteSpliceFired(Value, SrcPos)                          {}
 func (inactiveEmit) NoteShapedRead(string)                                  {}
 func (inactiveEmit) MemberFnReadValue(string) (Value, bool)                 { return Value{}, false }
 func (inactiveEmit) Active() bool                                           { return false }

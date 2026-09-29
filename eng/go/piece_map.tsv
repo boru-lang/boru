@@ -31,3 +31,4 @@ vm_token_body.go	eng
 vm_fnvalue_park.go	eng	the unmatched fn value park/raise (execFnDefLiteral no-match fork)
 vm_fnvalue_zeroarg.go	eng	a named zero-argument fn value applied over a window (execFnDefLiteral zero-arg dispatch)
 vm_mixed_plan.go	eng	CALL_DYNAMIC_MIXED bound by the interpreter plan (execFnDefLiteral split rule)
+vm_splice_outs.go	eng	a do's fired splice results seated without them (NUR348)

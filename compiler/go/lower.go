@@ -2,6 +2,7 @@ package compiler
 
 import (
 	"maps"
+	"slices"
 
 	core "github.com/boru-lang/boru/core/go"
 )
@@ -1192,6 +1193,11 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 	for _, d := range lw.deopts {
 		if p.Row > 0 && posAfter(d.start, p) {
 			kept = append(kept, d)
+			continue
+		}
+		if d.trapHeld != nil && !slices.Equal(lw.vm, d.trapHeld) {
+			// A trap program's live point needs the interpreter's stack at
+			// its test (trapHeldBeneath): without it, no island.
 			continue
 		}
 		var prefix []int
@@ -4055,10 +4061,11 @@ type rootUnionSig struct {
 // (regionReStepCandidate) take their own for the same reason.
 func (lw *lowerer) siteSigRef(seq int, c *emitCall, dynOne, plainChk bool) (SigRef, bool) {
 	reStep := lw.reStepsResults(seq)
-	if !c.hostSplice && !dynOne && !plainChk && c.nativeSplit == nil && !reStep && !lw.regionReStepCandidate(seq) && !lw.rootUnionCandidate(seq) {
+	spliceOuts := lw.spliceOutsAt(seq)
+	if !c.hostSplice && !dynOne && !plainChk && c.nativeSplit == nil && spliceOuts == nil && !reStep && !lw.regionReStepCandidate(seq) && !lw.rootUnionCandidate(seq) {
 		return SigRef{}, false
 	}
-	ref := SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit}
+	ref := SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit, SpliceOuts: spliceOuts}
 	if reStep {
 		ref.ReStep, ref.ReStepOut = true, lw.reStepOut(seq, c.nout)
 	}

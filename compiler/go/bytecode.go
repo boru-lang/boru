@@ -1185,6 +1185,17 @@ type SigRef struct {
 	// as the program's last statement over an empty residual, where the
 	// island's run and the interpreter's inline splice cannot be told apart.
 	HostSplice bool
+	// SpliceOuts, when non-nil, marks the CALL_NATIVE of a `do` over a
+	// LITERAL body whose results hold a splice (a `word` value its body
+	// read by value — `do [w/v]`, NUR348): the interpreter splices the
+	// results back at its word and steps them, so the marker fires there,
+	// and the check pass stepped the very marker it modelled — the program
+	// after the call is the marker's expansion, recorded. The VM admits a
+	// result list only when it is these values' count and each tape-coupled
+	// result is a splice rendering as the one the pass stepped at its
+	// position (the run's binding is the model's); anything else is the
+	// screen's loud defer, as before.
+	SpliceOuts []core.Value
 	// DynBodyOne marks the CALL_NATIVE of a COMPUTED `do` body whose run a
 	// single-value seat consumes (eventFlags.dynBodyOne, dyn_body_one.go):
 	// the VM seats the handler's results only when they are exactly ONE

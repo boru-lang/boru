@@ -1496,6 +1496,12 @@ type EmitState struct {
 	// (NoteStatementStack): a root statement island seats exactly these
 	// beneath the statement (rootPreStart, NUR335).
 	rootStmtStacks map[core.SrcPos][]core.Value
+	// spliceOuts holds, by call seq, the results of a `do` one of which is
+	// a splice marker over a concrete payload, and firedSplices the markers
+	// among them the pass fired — each consumed by a recorded `drop`
+	// (splice_outs.go, NUR348).
+	spliceOuts   map[int][]core.Value
+	firedSplices map[string]bool
 	// leadReads holds the paren applies whose statement island steps the
 	// paren's lead as the interpreter does (noteLeadRead): a raw member read
 	// or no event's value, which the island may run before the lead ran.
@@ -2357,6 +2363,11 @@ type deoptPoint struct {
 	// serves: its value is the registry binding (DeoptSpec.Live), tested
 	// before the statement's first op.
 	live *keptLiveRead
+	// trapHeld, on a live-read point of a program the pass ended at a
+	// terminal trap (trapHeldBeneath, NUR348), is the compiled stack the
+	// point needs at its test — the interpreter's at the statement's start;
+	// nil on any other point.
+	trapHeld []vmSlot
 }
 
 // plainLambda reports a lambda VALUE unit (tryReturnedClosure's `fnval`

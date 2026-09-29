@@ -162,6 +162,7 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	}
 	e.NoteStatementEnd(SrcPos{Row: 1, Col: 1})
 	e.NoteStatementStack(SrcPos{Row: 1, Col: 1}, nil)
+	e.NoteSpliceFired(Value{}, SrcPos{Row: 1, Col: 1})
 	e.NoteLandingNext(Value{}, LandingNextEnd, false, Value{})
 	if _, ok := e.PendingClosureApply(nil); ok {
 		t.Fatal("inactive PendingClosureApply must miss")

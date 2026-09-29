@@ -1425,7 +1425,10 @@ func (lw *lowerer) heldIntact(r *landingRestart) bool {
 		return false
 	}
 	for i := 0; i < r.held; i++ {
-		if lw.vm[i] != want[i] {
+		// A variadic region's slot holds a run of any count, which the
+		// island cannot seat as the one value it counts (NUR348: a trap
+		// program keeps a computed body's run beneath its live read).
+		if lw.vm[i] != want[i] || lw.variadic[lw.vm[i].seq] {
 			return false
 		}
 	}

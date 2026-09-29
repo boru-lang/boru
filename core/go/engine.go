@@ -4667,6 +4667,11 @@ func (e *Engine) stepLiteral() error {
 					rec.MarkUncompilable("splice over a computed payload (runtime spread unknown at compile time)")
 				}
 			}
+			// The marker leaves the stack the pass models: a recorded
+			// result it was is consumed here (NoteSpliceFired, NUR348).
+			if rec := e.Registry.analysisRecorder(); rec.Active() {
+				rec.NoteSpliceFired(e.Tape.At(valIdx), e.Tape.At(valIdx).Pos())
+			}
 			expanded := SpliceExpand(info.Data)
 			// The expansion RE-STEPS every element against the live stack: a
 			// fn-valued one dispatches there, however it was parked before
