@@ -4520,6 +4520,12 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 	// such frame's entry depth.
 	keepDefs := startUnit >= 0 && startUnit < len(p.Fns) && p.Fns[startUnit].KeepsDefs
 	var frames []vmFrame
+	// rootTailAt is where the activation's root unit was last TAIL-called
+	// from with no frame to carry it (rootTailed): the root RET then owes the
+	// tail-called unit's own frame contract, anchored at that call, as the
+	// interpreter's ReturnCheck marker at the call does (NUR360).
+	var rootTailAt core.SrcPos
+	rootTailed := false
 	defer func() {
 		if runErr == nil {
 			return
@@ -5080,7 +5086,11 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// step takes a splice or a fn value among it: so a tape-coupled
 			// run takes the island, as does a run the plain seat refuses and
 			// every run of a CountAlways call.
-			stepped := s.Count != nil && (s.CountAlways || tapeCoupled(results) || (s.DynBodyPlain && dynBodyPlainRefuses(results)))
+			// A plain run whose only re-stepped values are fns that take no
+			// argument re-steps in place below (plainReSteps, NUR359): no
+			// island owes it, in a loop body or a unit's tail alike.
+			inPlace := s.DynBodyPlain && !s.ReStep && plainReSteps(results)
+			stepped := s.Count != nil && (s.CountAlways || tapeCoupled(results) || (s.DynBodyPlain && !inPlace && dynBodyPlainRefuses(results)))
 			if kept, ok := spliceOutsSeat(s.SpliceOuts, results); ok {
 				results = kept
 			} else if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil && !stepped {
@@ -5135,7 +5145,19 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					return nil, err
 				}
 			}
-			if s.DynBodyPlain {
+			if inPlace {
+				// A computed run seated as data whose only values the
+				// interpreter re-steps are fns that take no argument: each
+				// fires where the `do` stood over nothing, whatever lies
+				// beneath or after the run, so the step loop's re-step is
+				// the interpreter's own — its results, or the break /
+				// continue the fn raised for the enclosing loop to take
+				// (NUR359).
+				var rerr error
+				if results, rerr = vc.doReStep(curReg, &s, results, false, curCode, curUnit, curDebug, pc); rerr != nil {
+					return nil, rerr
+				}
+			} else if s.DynBodyPlain {
 				// A computed run seated as data beside its neighbours
 				// (vm_dyn_body_one.go): no value the interpreter re-steps.
 				if err := checkDynBodyPlain(curReg, s.Word, results, curDebug, pc); err != nil {
@@ -5532,6 +5554,15 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					loopBase = frames[len(frames)-1].loopBase
 				}
 				loops = loops[:loopBase]
+				// The replaced frame's RET now answers for the tail-called
+				// unit, whose contract error the interpreter anchors at THIS
+				// call (the word inside the caller's body), not at the call
+				// that entered the frame (NUR360).
+				if at := curDebug[pc]; len(frames) > 0 {
+					frames[len(frames)-1].retAt = at
+				} else {
+					rootTailAt, rootTailed = at, true
+				}
 				nameFrameFns(curReg, fn, nl)
 				vc.swapTailArgs(frames, fn, curReg, nl)
 			}
@@ -5768,7 +5799,17 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				}
 				var trimmed []core.Value
 				var err error
-				if len(frames) == 0 && vc.rootRetTrim {
+				if len(frames) == 0 && rootTailed {
+					// A unit this activation's root TAIL-called: the named
+					// frame's contract — the count as __RC enforces it — at
+					// the tail call's own position (NUR360), where the root's
+					// callback trim never counted and the root RET had no
+					// anchor.
+					trimmed, err = checkReturnContract(r, contract, stack, 0, true, core.SrcPos{})
+					if err != nil {
+						return nil, stampAt(err, []core.SrcPos{rootTailAt}, 0, curReg)
+					}
+				} else if len(frames) == 0 && vc.rootRetTrim {
 					// The root RET of a unit entered through the fn-VALUE seam
 					// (RunUnit / runUnitNested: InvokeCallback's compiled path):
 					// the interpreter's CallBoru would have run this body, so

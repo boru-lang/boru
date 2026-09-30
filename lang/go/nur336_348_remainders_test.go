@@ -102,10 +102,12 @@ func TestNUR348UnitComputedRun(t *testing.T) {
 		{g1 + `def w word [] end def f fn [[b:List][Any][do b]] end f (quote [w/v g/v])`, "ERROR:call to 'g' matched no signature"},
 		{g1 + `def w word [1 2] end def f fn [[b:List][Any][do b]] end f (quote [g/v w/v])`, "ERROR:call to 'g' matched no signature"},
 		{`def w word [] end def f fn [[b:List][Any][do b]] end f (quote [w/v ([x:Integer] => [x])])`, "[fn (Integer)]"},
-		{`def g fn [[][Integer][7]] end def f fn [[b:List][Any][do b]] end f (quote [g/v])`, "[7]"},
 	} {
 		requireLoudDefer(t, c.src, seatedAsData, c.want)
 	}
+	// A 0-argument fn the run left fires in place (NUR359): the answer, where
+	// the frame's check deferred.
+	agreeOnBothLanes(t, `def g fn [[][Integer][7]] end def f fn [[b:List][Any][do b]] end f (quote [g/v])`, "[7]")
 	const spliceHolds = "left a splice holding a value the interpreter re-steps"
 	for _, c := range []struct{ src, want string }{
 		{g1 + `def w word g/v end def f fn [[b:List][Any][do b]] end f (quote [w/v])`, "ERROR:call to 'g' matched no signature"},

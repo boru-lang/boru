@@ -1104,7 +1104,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// record a guarded CALL_USER instead of declining (it splices its own
 		// returns). Reached from the eng harness since the partitioned-dispatch
 		// recording landed (carrier_ljoin_test.go drives the recovery arm).
-		if e.TryRecordRecoveredUserFn(sig, fn, args, nStack, positions) {
+		if recoverUserFn(e, w, pos, sig, fn, args, nStack, positions) {
 			return nil
 		}
 		// A MULTI-overload user fn over a strict-disjunct operand (`g (h true)`
@@ -1215,7 +1215,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// decision walkers (find-kid / mk-tnode / lex-mustache). A MULTI-overload fn
 		// stays declined below (Cluster C): one baked overload would raise where the
 		// interpreter runtime-dispatches a sibling.
-		if e.TryRecordRecoveredUserFn(sig, fn, args, nStack, positions) {
+		if recoverUserFn(e, w, pos, sig, fn, args, nStack, positions) {
 			return nil
 		}
 		// A statically-failed dispatch that no recovery owns can still
@@ -1324,7 +1324,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 			// kg resolution suite) compiles this way instead of declining;
 			// a constrained param keeps the decline above (2026-09-26).
 			if es.Active() && anyImpreciseCarrier(args) && soleSigParamsNominal(sig, fn) &&
-				e.TryRecordRecoveredUserFn(sig, fn, args, nStack, positions) {
+				recoverUserFn(e, w, pos, sig, fn, args, nStack, positions) {
 				return nil
 			}
 			e.Registry.Check.Recorder().MarkUncompilable("unmatched dispatch recovered at " + w.Name)
@@ -1768,4 +1768,17 @@ func soleSigParamsNominal(sig *core.Signature, fn *core.FnDefInfo) bool {
 		}
 	}
 	return true
+}
+
+// recoverUserFn is the single-overload user-fn recovery
+// (Engine.TryRecordRecoveredUserFn) with the dispatching word's cursor
+// published again right before it: the recovery's earlier probes (the poly
+// re-match's CarrierResults) analyse the callee's body, whose own dispatches
+// move the cursor, and the recovered call's ReturnsFn reads it as the call
+// word and the CALL_USER's position — the caret of a no-match its entry
+// check raises (`k m.a` over an Integer inside g anchored at `keys` in k's
+// body, NUR360).
+func recoverUserFn(e *core.Engine, w core.WordInfo, pos core.SrcPos, sig *core.Signature, fn *core.FnDefInfo, args []core.Value, nStack int, positions []int) bool {
+	e.Registry.Check.CurCallWord, e.Registry.Check.CurCallPos = w.Name, pos
+	return e.TryRecordRecoveredUserFn(sig, fn, args, nStack, positions)
 }

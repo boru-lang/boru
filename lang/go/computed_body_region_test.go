@@ -189,13 +189,15 @@ func TestComputedDoBodyCheckedPlain(t *testing.T) {
 	agreeOnBothLanes(t, g1+`(1 add 8) do (mk)`, "[10]")
 	for _, c := range []struct{ src, wantI string }{
 		{g1 + `(8 dup drop) do (mk)`, "[9]"},
-		{g0 + `def f fn [[b:List][Any][do b]] end f (quote [g/v])`, "[7]"},
-		// A gradual body re-matches do's overloads (CALL_NATIVE_POLY) under
-		// the same check.
-		{g0 + `def f fn [[m:Map][Any][do m.k]] end f {k: (quote [g/v])}`, "[7]"},
 	} {
 		requireCheckedPlainDefer(t, c.src, c.wantI)
 	}
+	// A run whose only re-stepped values are fns that take no argument
+	// re-steps in place (NUR359): g fires over nothing, whatever lies beneath
+	// or after the run, exactly where the interpreter's step loop fires it.
+	// A gradual body re-matches do's overloads (CALL_NATIVE_POLY) the same way.
+	agreeOnBothLanes(t, g0+`def f fn [[b:List][Any][do b]] end f (quote [g/v])`, "[7]")
+	agreeOnBothLanes(t, g0+`def f fn [[m:Map][Any][do m.k]] end f {k: (quote [g/v])}`, "[7]")
 	if dis := compileDisasm(t, g1+`(8 dup drop) do (mk)`); !strings.Contains(dis, "[plain values, checked]") {
 		t.Errorf("the seated run's call carries the plain check; got:\n%s", dis)
 	}

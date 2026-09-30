@@ -1061,6 +1061,17 @@ type lowerer struct {
 	// binding marks a dyn-bind's own source re-push (lowerDynBind), which
 	// the deoptAtSlot hook must not take for the consumer's read.
 	binding bool
+	// sitesBefore / sitesAfter are the guarded read sites anchored before
+	// or after an event (by seq) or at a fragment's end (by id), and
+	// siteTable the emission target's deopt table (read_site_guard.go,
+	// NUR361). topEvents / topIdx are the frame's top-level events and the
+	// one being lowered, for a point's producer test (producerAhead).
+	sitesBefore map[int][]*readSite
+	sitesAfter  map[int][]*readSite
+	sitesAtEnd  map[int][]*readSite
+	siteTable   *[]DeoptSpec
+	topEvents   []EmitEvent
+	topIdx      int
 }
 
 // allocLocal reserves a fresh frame-local slot in the current unit (for a
@@ -1245,6 +1256,13 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 	for _, d := range lw.deopts {
 		if p.Row > 0 && posAfter(d.start, p) {
 			kept = append(kept, d)
+			continue
+		}
+		if d.id != "" && d.slot < 0 && d.live == nil && lw.topEvents != nil && producerAhead(lw.topEvents, lw.topIdx, d.seq) && lw.armReadSites(d.id) {
+			// The read's value is produced inside the statement the point
+			// would test before (`var [[] def v (mk) [v]]`), where its test
+			// reads a home not yet written: no island can start there, so
+			// the read is guarded where it happens (NUR361).
 			continue
 		}
 		if d.trapHeld != nil && !slices.Equal(lw.vm, d.trapHeld) {
@@ -1801,10 +1819,23 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 	}
 	lw.scopes = append(lw.scopes, events)
 	defer func() { lw.scopes = lw.scopes[:len(lw.scopes)-1] }()
+	if lw.depth == 0 {
+		// Once the frame's events are lowered, every producer ran: a point
+		// flushed after the walk tests a written home (producerAhead).
+		defer func() { lw.topEvents = nil }()
+	}
 	for i := range events {
 		ev := &events[i]
+		if lw.depth == 0 {
+			lw.topEvents, lw.topIdx = events, i
+		}
 		if lw.depth == 0 && len(lw.deopts) > 0 {
 			lw.emitDeoptsBefore(eventPos(*ev))
+		}
+		if ss := lw.sitesBefore[ev.seq]; len(ss) > 0 {
+			if reason := lw.emitReadSiteGuards(ss); reason != "" {
+				return reason
+			}
 		}
 		if lw.depth == 0 {
 			lw.noteRestartDepths(restartAnchor(ev))
@@ -1903,6 +1934,11 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 				len(lw.vm) > 0 && lw.vm[len(lw.vm)-1].seq == ev.seq {
 				lw.emit(OpDrop, 0, ev.br.pos)
 				lw.vm = lw.vm[:len(lw.vm)-1]
+			}
+		}
+		if ss := lw.sitesAfter[ev.seq]; len(ss) > 0 {
+			if reason := lw.emitReadSiteGuards(ss); reason != "" {
+				return reason
 			}
 		}
 	}
@@ -4173,6 +4209,10 @@ func (lw *lowerer) siteSigRef(seq int, c *emitCall, dynOne, plainChk bool) (SigR
 	ref := SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit, SpliceOuts: spliceOuts, FnArgPos: fnArgPos}
 	if reStep {
 		ref.ReStep, ref.ReStepOut = true, lw.reStepOut(seq, c.nout)
+	} else if plainChk {
+		// A plain run the VM may re-step in place (its dispatched values
+		// all take no argument) owes the seat's count (NUR359).
+		ref.ReStepOut = lw.reStepOut(seq, c.nout)
 	}
 	return ref, true
 }
@@ -4428,6 +4468,11 @@ func (lw *lowerer) lowerFragment(frag *EmitFragment, out *EmitOperand, allowVari
 	}
 	if reason := lw.lowerEvents(frag.events, frag.startSeq); reason != "" {
 		return reason
+	}
+	if ss := lw.sitesAtEnd[frag.id]; len(ss) > 0 {
+		if reason := lw.emitReadSiteGuards(ss); reason != "" {
+			return reason
+		}
 	}
 	if len(frag.applyArgs) > 0 {
 		// Per-iteration dynamic apply (`for n [(mk2 i) 10]`): the body events left

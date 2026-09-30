@@ -34,6 +34,12 @@ func (vc *vmContext) doReStep(reg *core.Registry, s *compiler.SigRef, results []
 	if err != nil {
 		return nil, stampAt(err, debug, pc, reg)
 	}
+	if flowPending(reg) {
+		// A fn the re-step dispatched raised a break / continue: the island
+		// left the signal for the enclosing loop, which abandons the run
+		// (the caller's resolveEscapedFlow), so no count is owed (NUR359).
+		return out, nil
+	}
 	// In a fn unit the interpreter's re-step meets the frame's tail markers,
 	// where a named fn that matched nothing raises (NUR186); the island's
 	// tape simply ends, as loopExitReStep's does.
@@ -59,4 +65,14 @@ func takesArgsAtPointer(v core.Value) bool {
 	}
 	sigs := fd.OwnSigs()
 	return len(sigs) == 0 || slices.ContainsFunc(sigs, func(sig core.Signature) bool { return len(sig.Params) > 0 })
+}
+
+// plainReSteps reports whether a computed run a plain seat refuses
+// (dynBodyPlainRefuses) holds, among the values the step loop dispatches,
+// only fns that take no argument — which doReStep re-steps in place, as the
+// interpreter's step loop does where the `do` stood (NUR359).
+func plainReSteps(results []core.Value) bool {
+	return dynBodyPlainRefuses(results) && !slices.ContainsFunc(results, func(v core.Value) bool {
+		return dynBodyValueReSteps(v) && (!core.FnValueDispatchesAtPointer(v) || takesArgsAtPointer(v))
+	})
 }

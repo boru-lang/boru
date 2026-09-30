@@ -1592,6 +1592,13 @@ type EmitState struct {
 	// at run time; Finalize plans each read (planRootWordReads).
 	rootWordReads  map[string]rootWordRead
 	rootLocalReads map[string][]core.SrcPos
+	// readSites are the gradual reads' sites in their frames' event streams
+	// by value ID (noteReadSite), pendingSites those still awaiting the next
+	// event of their frame, and siteGuarded the reads whose sites the
+	// lowering guards (read_site_guard.go, NUR361).
+	readSites    map[string][]*readSite
+	pendingSites []*readSite
+	siteGuarded  map[siteKey]bool
 	// valReadNoted records every `/v` read of a binding the pass noted
 	// (NoteValRead), program-wide — wider than valReadIDs below, which holds
 	// only the reads aliasValRead traced to a produced fn value. The value
@@ -2455,6 +2462,10 @@ type fnUnitRec struct {
 // the statement holding the read begins at (start: where the test runs,
 // before any of the statement's effects) and that statement's Body token.
 type deoptPoint struct {
+	// id is the read value's identity on a gradual read's point (planDeopts,
+	// the root's planRootWordReads): a point whose test would run before
+	// the value's producer arms the read's site guards instead (NUR361).
+	id    string
 	seq   int
 	slot  int // a CAPTURE's frame slot (the value's home in a closure unit); -1 for a producer (seq)
 	name  string
@@ -3649,6 +3660,7 @@ func (es *EmitState) appendEvent(ev EmitEvent) int {
 	ev.litDepth = es.inlineLitDepth()
 	es.keptDefsEvent(&ev)
 	es.frames[n] = append(es.frames[n], ev)
+	es.resolveReadSites(n, ev.seq)
 	return ev.seq
 }
 
@@ -17647,6 +17659,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// The polys whose gradual operand the pass collected forward, which the
 	// run may find the interpreter's collection stops at (NUR357).
 	es.planFitRestarts(lw, residual)
+	lw.indexReadSites(&lw.p.Deopts)
 	if reason := es.lowerRootEvents(lw, residual); reason != "" {
 		return nil, reason, false
 	}
@@ -17835,6 +17848,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		// counts descriptors, and a table that carries entries for discarded
 		// code is a table whose count means something else.
 		regionFloor := len(p.Regions)
+		flw.indexReadSites(&cf.Deopts)
 		if reason := es.lowerUnitEvents(flw, rec); reason != "" {
 			if rec.stampOnly {
 				es.unreachableUnitStub(p, rec, regionFloor)
@@ -18052,6 +18066,7 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 	if d, ok := es.deoptStatementStart(rec, seq, r.name, r.reads[0], ci, direct); ok && len(r.reads) == 1 && !alsoResidual &&
 		!es.deoptDeferred(es.units[0], rec, &d, ci) && !es.rootResidualBefore(residual, d.start) {
 		d.fits, d.fitConsumer = fits, es.frames[0][ci].seq
+		d.id = r.id
 		// Deferral is asked of a push-tested point too, as deoptPointFor
 		// asks it: the root lays its residual out at the program's end, so
 		// `7 j typeof` pushes j over nothing where the interpreter holds 7.
@@ -18079,6 +18094,7 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 	}
 	if d, ok := es.rootReadStatementPoint(lw, rec, r, seq, ci, alsoResidual, residual); ok {
 		d.fits, d.fitConsumer = fits, es.frames[0][ci].seq
+		d.id = r.id
 		lw.deopts = append(lw.deopts, d)
 		return
 	}
@@ -18086,7 +18102,10 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 	if start.Row == 0 {
 		start = r.reads[0]
 	}
-	lw.deopts = append(lw.deopts, deoptPoint{seq: seq, slot: -1, name: r.name, pos: r.reads[0], start: start, token: -1, bail: true})
+	// The guard tests before the consuming event's top-level statement; where
+	// the read's producer stands inside that statement, the read is guarded
+	// where it happens instead (emitDeoptsBefore, NUR361).
+	lw.deopts = append(lw.deopts, deoptPoint{id: r.id, seq: seq, slot: -1, name: r.name, pos: r.reads[0], start: start, token: -1, bail: true})
 }
 
 // residualCallableExempt names the program residual entries the rebuild's
@@ -18671,6 +18690,11 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 		}
 	}
 	rec.noteWordReadName(v.ID, name, pos)
+	if !u.capID[v.ID] {
+		// A capture's value is the enclosing unit's producer's, with no home
+		// in this frame but its slot: no site guard serves it.
+		es.noteReadSite(v, name, pos, rec)
+	}
 	// Only a FN-TYPED read is accounted strictly: the interpreter
 	// dispatches it whatever the call passed. A GRADUAL read (an `x:Any`
 	// param, a Dynamic local) dispatches only when the runtime value is a
@@ -18688,6 +18712,7 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 // rootWordRead is one root gradual read's binding name and every read
 // position (first first) — rootWordReads' entry.
 type rootWordRead struct {
+	id    string
 	name  string
 	reads []core.SrcPos
 }
@@ -18712,8 +18737,9 @@ func (es *EmitState) noteRootWordRead(v core.Value, name string, pos core.SrcPos
 	if es.rootWordReads == nil {
 		es.rootWordReads = map[string]rootWordRead{}
 	}
+	es.noteReadSite(v, name, pos, nil)
 	r := es.rootWordReads[v.ID]
-	r.name = name
+	r.id, r.name = v.ID, name
 	r.reads = append(r.reads, pos)
 	es.rootWordReads[v.ID] = r
 }
@@ -19419,15 +19445,23 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 			}
 			seq = pr.seq
 		}
-		if d, ok := es.deoptPointFor(u, rec, id, seq, slot, name, rec.wordReadFirst[id]); ok {
+		d, ok := es.deoptPointFor(u, rec, id, seq, slot, name, rec.wordReadFirst[id])
+		d.id = id
+		switch {
+		case ok:
 			rec.deopts = append(rec.deopts, d)
-		} else if lambda && (d.atPush || d.start.Row > 0) {
+		case lambda && (d.atPush || d.start.Row > 0):
 			// Only a LAMBDA value's body: its captured read has no other
 			// home once the point declines. A code body's read may still be
 			// taken by the forward-drift window or the closure-word bridge
 			// (`each [f add 10]` over a def-bound member read), so it keeps
 			// the slot push as before.
 			rec.bails = append(rec.bails, bailPoint(d))
+		case slot < 0 && es.nestedReadUnplaced(rec, id, name, seq):
+			// A read nested in a body the unit runs inline (a var body, an
+			// arm, a loop body) has no statement of its own to deopt from:
+			// guarded where it happens (NUR361).
+			es.guardReadSites(rec, id)
 		}
 	}
 	if len(rec.deopts) == 0 {
@@ -19456,6 +19490,7 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 		names, ok = es.deoptIslandNames(rec, lambda)
 	}
 	if !ok {
+		es.guardDroppedReads(rec, rec.deopts)
 		rec.deopts = nil
 		es.dropDeoptChildren(rec)
 		return
@@ -19762,6 +19797,7 @@ func (es *EmitState) planDeoptsEnv(u *emitUnit, rec *fnUnitRec) {
 func (es *EmitState) dropDeoptChildren(rec *fnUnitRec) {
 	for _, c := range rec.deoptChildren {
 		child := es.fnRecs[c]
+		es.guardDroppedReads(child, child.deopts)
 		child.deopts, child.deoptEnv, child.deoptNames = nil, false, nil
 	}
 	rec.deoptNames, rec.deoptChildren = nil, nil
@@ -20131,6 +20167,14 @@ func (es *EmitState) deoptStatementStart(rec *fnUnitRec, seq int, name string, f
 			switch {
 			case maker || (d.start.Row > 0 && (bodyTokenContaining(rec.body, d.start) == contTok || posAfter(d.start, tokPos))):
 				d.start = tokPos
+				if w, ok := collectingWordBefore(rec.body, events, contTok); ok {
+					// The token is collected forward by the word before
+					// it — its dispatch (`print [j]`, `size [j]`) or a body
+					// it runs inline (`var [[] [j]]`): the statement begins
+					// at the word, where an island started at the token
+					// lost it (NUR361).
+					d.start = w
+				}
 			case bodyTokenAt(rec.body, d.start) < 0:
 				return d, false
 			}
