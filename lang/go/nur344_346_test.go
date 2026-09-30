@@ -143,52 +143,47 @@ func TestNUR344LandingAtTheProgramEnd(t *testing.T) {
 	requireLoudDefer(t, lam+`({a:1} lam/v) do [lam/v] end 7`, "no compiled apply re-steps it (NUR286)", `[{a:1} fn lam(Integer) fn lam(Integer) 7]`)
 }
 
-// TestNUR346LeafFrameArgsElision pins NUR346's close. A fn body that needs
-// no frame state and never reads `args` (core bodyReferencesArgs, macros
-// resolved when the fn is built) is a LEAF: the interpreter's handler pushes
-// the shared EMPTY args list for it (buildFnBodyHandler), so code the frame
-// runs that the construction-time walk cannot see — a computed body (`each
-// (mk) […]` over a list holding `args`), a word macro bound after the fn —
-// reads `[]`. The VM pushed the real args in every DynEnv frame, and a
-// macro's `args` projected the params: `[[7] [7]]` for the interpreter's
-// `[[] []]`, silent. The decision now rides the sig's frame identity
-// (FnFrameMeta.ArgsElided) onto the unit (CompiledFn.ArgsElided), the VM's
-// dispatches push the same empty list — a call, an apply, the token seam
-// stepping the value — and an args-elided frame projects `[]`; the callback
-// seam (InvokeCallback's CallBoru) and a call from another registry push
-// the real list on both lanes.
-func TestNUR346LeafFrameArgsElision(t *testing.T) {
+// TestNUR350FrameArgsAlwaysReal pins NUR350's verdict (it replaces NUR346's
+// mirrored elision). A fn body that needs no frame state and never reads
+// `args` used to push the shared EMPTY args list (buildFnBodyHandler), so
+// code the frame runs that the construction-time walk cannot see — a
+// computed body (`each (mk) […]` over a list holding `args`), a word macro
+// bound after the fn — read `[]`, and the VM mirrored it (ArgsElided). Every
+// frame now holds the call's REAL args on both lanes: the interpreter pushes
+// the leaf frame's copy lazily (ArgsStack.PushLazy, no allocation of its
+// own), the VM's frames and seams push the real list.
+func TestNUR350FrameArgsAlwaysReal(t *testing.T) {
 	const mk = `def mk fn [[] [List] [quote [args]]] end `
 	const w = `def w fn [[x:Integer] [Any] [each (mk) [x 5]]] end `
 	for _, tc := range []struct{ src, want string }{
 		// the register's repro, two calls, a list of calls
-		{mk + w + `w 7`, `[[[] []]]`},
-		{mk + w + `w 7 end w 8`, `[[[] []] [[] []]]`},
-		{mk + w + `[(w 7) (w 8)]`, `[[[[] []] [[] []]]]`},
+		{mk + w + `w 7`, `[[[7] [7]]]`},
+		{mk + w + `w 7 end w 8`, `[[[7] [7]] [[8] [8]]]`},
+		{mk + w + `[(w 7) (w 8)]`, `[[[[7] [7]] [[8] [8]]]]`},
 		// a tail call, an overloaded fn, a call from a fn that reads args
-		{mk + `def w fn [[x:Integer][Any][if (x gt 3) [each (mk) [x 5]] [w (x add 1)]]] end w 1`, `[[[] []]]`},
-		{mk + `def w fn [[x:Integer][Any][each (mk) [x 5]] [s:String][Any][each (mk) [s 5]]] end [(w 1) (w "a")]`, `[[[[] []] [[] []]]]`},
-		{mk + w + `def v fn [[x:Integer][Any][args drop w x]] end v 3`, `[[[] []]]`},
-		{mk + w + `def v fn [[y:Integer][Any][args drop [(each (mk) [y]) (w y)]]] end v 3`, `[[[[3]] [[] []]]]`},
+		{mk + `def w fn [[x:Integer][Any][if (x gt 3) [each (mk) [x 5]] [w (x add 1)]]] end w 1`, `[[[4] [4]]]`},
+		{mk + `def w fn [[x:Integer][Any][each (mk) [x 5]] [s:String][Any][each (mk) [s 5]]] end [(w 1) (w "a")]`, `[[[[1] [1]] [['a'] ['a']]]]`},
+		{mk + w + `def v fn [[x:Integer][Any][args drop w x]] end v 3`, `[[[3] [3]]]`},
+		{mk + w + `def v fn [[y:Integer][Any][args drop [(each (mk) [y]) (w y)]]] end v 3`, `[[[[3]] [[3] [3]]]]`},
 		// an unnamed param, a branch body
-		{mk + `def w fn [[Integer][Any][each (mk) [1 5]]] end w 3`, `[[[] []]]`},
-		{mk + `def w fn [[x:Integer][Any][if true (mk) [0]]] end w 3`, `[[]]`},
+		{mk + `def w fn [[Integer][Any][each (mk) [1 5]]] end w 3`, `[[[3] [3]]]`},
+		{mk + `def w fn [[x:Integer][Any][if true (mk) [0]]] end w 3`, `[[3]]`},
 		// a lambda: a named call, a paren apply, a member apply
-		{mk + `def lam ([x:Integer] => [each (mk) [x 5]]) end lam 7`, `[[[] []]]`},
-		{mk + `def lam ([x:Integer] => [each (mk) [x 5]]) end (lam/v 7)`, `[[[] []]]`},
-		{mk + `def lam ([x:Integer] => [each (mk) [x 5]]) end def m {f:lam/v} end m.f 7`, `[[[] []]]`},
-		{mk + `def lam ([x:Integer] => [each (mk) [x 5]]) end def m {f:lam/v} end each m.f [1 2]`, `[[[[] []] [[] []]]]`},
+		{mk + `def lam ([x:Integer] => [each (mk) [x 5]]) end lam 7`, `[[[7] [7]]]`},
+		{mk + `def lam ([x:Integer] => [each (mk) [x 5]]) end (lam/v 7)`, `[[[7] [7]]]`},
+		{mk + `def lam ([x:Integer] => [each (mk) [x 5]]) end def m {f:lam/v} end m.f 7`, `[[[7] [7]]]`},
+		{mk + `def lam ([x:Integer] => [each (mk) [x 5]]) end def m {f:lam/v} end each m.f [1 2]`, `[[[[1] [1]] [[2] [2]]]]`},
 		// the token seam stepping a fn value, apply, a Function param
-		{mk + w + `each w/v [1 2]`, `[[[[] []] [[] []]]]`},
-		{mk + w + `(w/v 7)`, `[[[] []]]`},
-		{mk + w + `w/v apply 7`, `[[[] []]]`},
-		{mk + w + `def g fn [[f:Function] [Any] [f 7]] end g w/v`, `[[[] []]]`},
+		{mk + w + `each w/v [1 2]`, `[[[[1] [1]] [[2] [2]]]]`},
+		{mk + w + `(w/v 7)`, `[[[7] [7]]]`},
+		{mk + w + `w/v apply 7`, `[[[7] [7]]]`},
+		{mk + w + `def g fn [[f:Function] [Any] [f 7]] end g w/v`, `[[[7] [7]]]`},
 		// a word macro bound after the fn splices an `args` read
-		{`def w fn [[x:Integer][Any][m]] end def m word [args] end w 3`, `[[]]`},
-		{`def w fn [[x:Integer][Any][m]] end def m word [args] end [(w 3) (w 4)]`, `[[[] []]]`},
-		{`def w fn [[x:Integer][Any][m]] end def m word [args.0] end w 3`, `[None]`},
-		{`def w ([x:Integer] => [m]) end def m word [args] end w 3`, `[[]]`},
-		{`def w fn [[Integer][Any][m]] end def m word [args] end w 3`, `[[]]`},
+		{`def w fn [[x:Integer][Any][m]] end def m word [args] end w 3`, `[[3]]`},
+		{`def w fn [[x:Integer][Any][m]] end def m word [args] end [(w 3) (w 4)]`, `[[[3] [4]]]`},
+		{`def w fn [[x:Integer][Any][m]] end def m word [args.0] end w 3`, `[3]`},
+		{`def w ([x:Integer] => [m]) end def m word [args] end w 3`, `[[3]]`},
+		{`def w fn [[Integer][Any][m]] end def m word [args] end w 3`, `[[3]]`},
 	} {
 		requireCompiledParity(t, tc.src)
 		got, err := mustNew(t).RunInterp(tc.src)
@@ -231,19 +226,12 @@ func TestNUR346RealArgsFramesStayReal(t *testing.T) {
 	}
 }
 
-// TestNUR346ForeignCallKeepsRealArgs pins the review of #522's finding: the
-// leaf handler elides the args list only for a call from its OWN registry. A
-// module fn called from the importer takes the handler's CallBoruStrict arm,
-// which pushes the real args; the same fn called inside the module pushes
-// `[]`. One unit serves both calls, so nothing static can answer an `args`
-// read the handler's construction-time walk could not see (a word macro
-// bound after the fn): in a program-home unit it compiles to the LIVE read
-// of the args stack the VM's per-frame bracket maintains (empty from home,
-// real from anywhere else), and in a module-home unit — whose bracket the VM
-// keeps on the program's registry, not the one the native reads — it
-// declines, loudly, instead of baking either list (it had baked `[]`, and
-// `M.w 7` answered `[[]]` for the interpreter's `[[7]]`). A computed body's
-// `args` is read at run time from the bracket and needs neither.
+// TestNUR346ForeignCallKeepsRealArgs: a module fn called from the importer
+// (the handler's CallBoruStrict arm) and from inside the module (the leaf
+// handler) holds the call's real args either way (NUR350) — the review of
+// #522's split between the two (real from outside, empty from inside) is
+// gone, and a module-home unit's late `args` read now compiles and agrees
+// instead of declining.
 func TestNUR346ForeignCallKeepsRealArgs(t *testing.T) {
 	const mod = `import module [def w fn [[x:Integer][Any][m]] end def m word [args] end def v fn [[x:Integer][Any][w x]] end export "M" {w:w/v v:v/v}] end `
 	const modBody = `import module [def mk fn [[] [List] [quote [args]]] end def w fn [[x:Integer] [Any] [each (mk) [x 5]]] end def v fn [[x:Integer][Any][w x]] end export "M" {w:w/v v:v/v}] end `
@@ -251,8 +239,8 @@ func TestNUR346ForeignCallKeepsRealArgs(t *testing.T) {
 		// a module fn whose body runs a computed `quote [args]` body: the
 		// real args from the importer, the empty list from inside
 		{modBody + `M.w 7`, `[[[7] [7]]]`},
-		{modBody + `M.v 8`, `[[[] []]]`},
-		{modBody + `[(M.w 7) (M.v 8)]`, `[[[[7] [7]] [[] []]]]`},
+		{modBody + `M.v 8`, `[[[8] [8]]]`},
+		{modBody + `[(M.w 7) (M.v 8)]`, `[[[[7] [7]] [[8] [8]]]]`},
 		{modBody + `each M.w/v [1 2]`, `[[[[1] [1]] [[2] [2]]]]`},
 		{modBody + `7 M.w/v apply`, `[[[7] [7]]]`},
 		{modBody + `(M.w/v 7)`, `[[[7] [7]]]`},
@@ -263,11 +251,11 @@ func TestNUR346ForeignCallKeepsRealArgs(t *testing.T) {
 		{mod + `def g fn [[f:Function][Any][f 7]] end g M.w/v`, `[[7]]`},
 		// a body that reads args itself pushes the real list at home too
 		{`import module [def w fn [[x:Integer][Any][args drop m]] end def m word [args] end export "M" {w:w/v}] end M.w 7`, `[[7]]`},
-		// program-home late-macro reads: the live read, empty from home
-		{`def w fn [[x:Integer][Any][m] [s:String][Any][m]] end def m word [args] end def g fn [[a:Any][Any][w a]] end [(g 1) (g "s")]`, `[[[] []]]`},
-		{`def w fn [[x:Integer][Any][m]] end def m word [args] end def v fn [[y:Integer][Any][w y]] end v 7`, `[[]]`},
-		{`def w fn [[x:Integer][Any][m]] end def m word [args] end 7 w/v apply`, `[[]]`},
-		{`def w fn [[x:Integer][Any][m]] end def m word [args] end each w/v [1 2]`, `[[[] []]]`},
+		// program-home late-macro reads: the real list
+		{`def w fn [[x:Integer][Any][m] [s:String][Any][m]] end def m word [args] end def g fn [[a:Any][Any][w a]] end [(g 1) (g "s")]`, `[[[1] ['s']]]`},
+		{`def w fn [[x:Integer][Any][m]] end def m word [args] end def v fn [[y:Integer][Any][w y]] end v 7`, `[[7]]`},
+		{`def w fn [[x:Integer][Any][m]] end def m word [args] end 7 w/v apply`, `[[7]]`},
+		{`def w fn [[x:Integer][Any][m]] end def m word [args] end each w/v [1 2]`, `[[[1] [2]]]`},
 		{`def w fn [[acc:Any kv:Any][Any][m]] end def m word [args] end fold w/v {a:1} 0`, `[[0 {k:'a' v:1 i:0 n:1}]]`},
 		{`def w fn [[kv:Any][Any][m]] end def m word [args] end each w/v {a:1}`, `[{a:[{k:'a' v:1 i:0 n:1}]}]`},
 	} {
@@ -277,21 +265,17 @@ func TestNUR346ForeignCallKeepsRealArgs(t *testing.T) {
 			t.Errorf("%q: interpreted %v [%v], want %s", tc.src, got, err, tc.want)
 		}
 	}
-	// A module-home unit's late `args` read declines the program, loudly —
-	// never a baked list — whichever registry calls it.
+	// A module-home unit's late `args` read: the real list, both lanes.
 	for _, tc := range []struct{ src, want string }{
 		{mod + `M.w 7`, `[[7]]`},
 		{mod + `7 M.w/v apply`, `[[7]]`},
 		{mod + `(M.w/v 7)`, `[[7]]`},
 		{mod + `each M.w/v [1 2]`, `[[[1] [2]]]`},
-		{mod + `M.v 8`, `[[]]`},
-		{mod + `[(M.w 7) (M.v 8) (M.w 9)]`, `[[[7] [] [9]]]`},
+		{mod + `M.v 8`, `[[8]]`},
+		{mod + `[(M.w 7) (M.v 8) (M.w 9)]`, `[[[7] [8] [9]]]`},
 		{`import module [def w fn [[x:Integer][Any][m] [s:String][Any][m]] end def m word [args] end export "M" {w:w/v}] end def g fn [[a:Any][Any][M.w a]] end [(g 1) (g "s")]`, `[[[1] ['s']]]`},
 	} {
-		prog, reason, _, cerr := mustNew(t).CompileCheck(tc.src)
-		if prog != nil || cerr != nil || !strings.Contains(reason, "context-dependent word args") {
-			t.Errorf("%q: a module-home late args read must decline loudly: prog=%v reason=%q err=%v", tc.src, prog != nil, reason, cerr)
-		}
+		requireCompiledParity(t, tc.src)
 		got, err := mustNew(t).RunInterp(tc.src)
 		if err != nil || fmt.Sprint(got) != tc.want {
 			t.Errorf("%q: interpreted %v [%v], want %s", tc.src, got, err, tc.want)
@@ -300,11 +284,11 @@ func TestNUR346ForeignCallKeepsRealArgs(t *testing.T) {
 }
 
 // TestNUR346ArgsElisionOtherUnitCompiles pins the two remaining unit-compile
-// paths that carry the sig's args-list decision (NUR346): a run-time
-// dispatched overload arm (CALL_USER_POLY — compileUserPolyArm, call-site
-// specialisation off so the generic arm table runs) and the outer overload
-// a conditional redefinition replaces (check.CompileFnSigUnit, the routed
-// dispatch of a speculative fn def).
+// paths a frame's args list rides (NUR346, NUR350: always the real list): a
+// run-time dispatched overload arm (CALL_USER_POLY — compileUserPolyArm,
+// call-site specialisation off so the generic arm table runs) and the outer
+// overload a conditional redefinition replaces (check.CompileFnSigUnit, the
+// routed dispatch of a speculative fn def).
 func TestNUR346ArgsElisionOtherUnitCompiles(t *testing.T) {
 	const mk = `def mk fn [[] [List] [quote [args]]] end `
 	poly := mk + `def wrapfn fn [[m:Map] [Any] [def helper fn [[a:Integer] [Any] [each (mk) [a 5]] [b:String] [Any] [7]] helper (m get k/q)]] wrapfn {k:3}`
@@ -312,13 +296,13 @@ func TestNUR346ArgsElisionOtherUnitCompiles(t *testing.T) {
 		t.Errorf("expected a CALL_USER_POLY lowering:\n%s", dis)
 	}
 	gotC, compiled, errC, gotI, errI := runBothEnginesNoSpec(t, poly)
-	if !compiled || fmt.Sprint(gotC, errC) != fmt.Sprint(gotI, errI) || fmt.Sprint(gotI) != `[[[] []]]` {
-		t.Errorf("%q: compiled %v [%v] (compiled=%v), interpreted %v [%v], want [[[] []]]", poly, gotC, errC, compiled, gotI, errI)
+	if !compiled || fmt.Sprint(gotC, errC) != fmt.Sprint(gotI, errI) || fmt.Sprint(gotI) != `[[[3] [3]]]` {
+		t.Errorf("%q: compiled %v [%v] (compiled=%v), interpreted %v [%v], want [[[3] [3]]]", poly, gotC, errC, compiled, gotI, errI)
 	}
 	const outer = `def f fn [[x:Integer][Any][each (mk) [x 5]]] end `
 	const arm = `[def f fn [[x:Integer][Any][x add 100]] end]`
 	for _, tc := range []struct{ src, want string }{
-		{mk + outer + `def m {e: false} end if (m "e" get) ` + arm + ` [] f 1`, `[[[] []]]`},
+		{mk + outer + `def m {e: false} end if (m "e" get) ` + arm + ` [] f 1`, `[[[1] [1]]]`},
 		{mk + outer + `def m {e: true} end if (m "e" get) ` + arm + ` [] f 1`, `[101]`},
 	} {
 		requireCompiledParity(t, tc.src)

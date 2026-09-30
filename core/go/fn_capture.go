@@ -85,63 +85,6 @@ func bodyNeedsFrameState(r *Registry, body []Value) bool {
 	return needs
 }
 
-// bodyReferencesArgs reports whether a fn body may read the per-call
-// args list (the `args` word / `args.N` reach). Computed once at handler
-// construction; when false — AND the body already passed the
-// !bodyNeedsFrameState gate, which excludes every opaque-code word
-// (do/call/eval/word/…) that could reach `args` dynamically — the
-// handler pushes a shared empty list instead of copying the call's args
-// into a fresh list per call (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5).
-// The WalkBodyWords token space is complete under that gate (it descends
-// into code lists, parens, interp/XML expressions and Reach receivers,
-// so `args.0` is seen), and macro splices are resolved recursively below.
-//
-// Same accepted gap as bodyNeedsFrameState: macro-ness is judged at
-// construction, so a word unbound now and later rebound to a `word`-macro
-// expanding to `args` would see the empty list — a visible empty `args`,
-// never a silently wrong value (args lists are value-semantics ListPayload).
-func bodyReferencesArgs(r *Registry, body []Value) bool {
-	refs := false
-	seen := map[string]bool{} // guards mutually-recursive macros
-	var walk func([]Value)
-	walk = func(toks []Value) {
-		walkBodyTokens(toks, func(w WordInfo, _ Value) {
-			if refs {
-				return
-			}
-			if w.Name == "args" {
-				refs = true
-				return
-			}
-			if r == nil || seen[w.Name] {
-				return
-			}
-			bound, ok := r.Defs.Top(w.Name)
-			if !ok {
-				return
-			}
-			info, ok := bound.Data.(SpliceInfo)
-			if !ok {
-				return
-			}
-			seen[w.Name] = true
-			walk(SpliceExpand(info.Data))
-		}, func(info SugarInfo, _ Value) {
-			// Same role-word judgement as bodyNeedsFrameState: a marker
-			// steps as its bound word, so it reads args iff that word is
-			// `args` (no current role is, but the binding decides).
-			if refs {
-				return
-			}
-			if name, bound := r.SugarWord(info.Kind); bound && name == "args" {
-				refs = true
-			}
-		})
-	}
-	walk(body)
-	return refs
-}
-
 // WalkBodyWords recursively visits every bare Word in a fn body's
 // value stream, invoking callback for each. Used by computeCaptures
 // to enumerate the names a body references at construction time.

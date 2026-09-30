@@ -161,25 +161,19 @@ func TestFnValueSeamBracketsRootArgsForDynEnv(t *testing.T) {
 		t.Fatalf("args depth %d after, want %d (the bracket restores)", r.Args.Depth(), before)
 	}
 	// The no-op twin: outside a DynEnv program the bracket pushes nothing.
-	pop := pushRootArgs(r, oneConstProg(1), nil, false)
+	pop := pushRootArgs(r, oneConstProg(1), nil)
 	if r.Args.Depth() != before {
 		t.Fatal("a non-DynEnv program pushes no args list")
 	}
 	pop()
 }
 
-// TestFrameArgsListElision pins the VM half of NUR346: a frame of a unit
-// whose sig handler elides the args list (CompiledFn.ArgsElided) holds the
-// EMPTY list when entered from its home registry and the real args from any
-// other — the interpreter's handler against its CallBoru — and a unit that
-// pushes the real list always does; the root bracket's elided arm pushes the
-// empty list and restores the depth.
-func TestFrameArgsListElision(t *testing.T) {
+// TestFrameArgsListReal pins the VM half of NUR350: a frame's args list is
+// always a copy of the call's real args — the interpreter's frame holds the
+// same whatever the body reads — and the root bracket pushes it and
+// restores the depth.
+func TestFrameArgsListReal(t *testing.T) {
 	home, err := core.NewRegistry()
-	if err != nil {
-		t.Fatalf("NewRegistry: %v", err)
-	}
-	other, err := core.NewRegistry()
 	if err != nil {
 		t.Fatalf("NewRegistry: %v", err)
 	}
@@ -191,24 +185,23 @@ func TestFrameArgsListElision(t *testing.T) {
 		}
 		return lst.Len()
 	}
-	elided := &compiler.CompiledFn{NArgs: 1, ArgsElided: true}
-	realArgs := &compiler.CompiledFn{NArgs: 1}
-	if n := listLen(frameArgsList(elided, home, home, args)); n != 0 {
-		t.Errorf("an elided unit entered from its home holds the empty list, got %d", n)
+	list := frameArgsList(args)
+	if n := listLen(list); n != 1 {
+		t.Errorf("a frame holds the real args, got %d", n)
 	}
-	if n := listLen(frameArgsList(elided, other, home, args)); n != 1 {
-		t.Errorf("an elided unit entered from another registry holds the real args (CallBoru), got %d", n)
-	}
-	if n := listLen(frameArgsList(realArgs, home, home, args)); n != 1 {
-		t.Errorf("a real-args unit holds the real args, got %d", n)
+	args[0] = core.NewInteger(8)
+	if lst, _ := core.AsList(list); lst.Len() == 1 {
+		if n, _ := core.AsInteger(lst.Get(0)); n != 7 {
+			t.Errorf("the frame's list is a copy: a later write to the locals read %d", n)
+		}
 	}
 	p := oneConstProg(1)
 	p.DynEnv = true
 	before := home.Args.Depth()
-	pop := pushRootArgs(home, p, args, true)
+	pop := pushRootArgs(home, p, args)
 	top, ok, _ := home.Args.Top()
-	if !ok || listLen(top) != 0 {
-		t.Errorf("the elided root bracket pushes the empty list, got %v", top)
+	if !ok || listLen(top) != 1 {
+		t.Errorf("the root bracket pushes the real args, got %v", top)
 	}
 	pop()
 	if home.Args.Depth() != before {

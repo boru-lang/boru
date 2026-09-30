@@ -199,6 +199,14 @@ type Registry struct {
 	// (compiler.FlowExit). The VM takes both with the signal (NUR355).
 	FlowAt    SrcPos
 	FlowAtSet bool
+	// FlowAtHeld reports that FlowAt already records where the pending
+	// signal stood, taken by the INNERMOST run that could not hand its tape
+	// back — an island, or a container literal's element run (NUR358). An
+	// enclosing island keeps it rather than overwriting it with its own
+	// position, and the top of an interpreted run reports it (the literal's
+	// elements stood where the signal escaped, not the run's pointer, which
+	// has moved past the literal). Cleared with the signal.
+	FlowAtHeld bool
 
 	// TCO is the tail-call-optimisation surface (design/legacy/TCO-STAGED.10.ignore).
 	// Lives on the registry (not the engine) so sub-engines sharing the
@@ -633,6 +641,7 @@ func (r *Registry) PutSubEngine(e *Engine) {
 		return
 	}
 	e.ElemEvalRecordable = false
+	e.ContainerRun = false
 	// Release any Values still held in the forward-collection scratch
 	// buffers before the engine idles in the pool. rearrangeForForward
 	// leaves the last call's collected args (which can be large list/map
@@ -1919,6 +1928,14 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 		for i := range result {
 			if result[i], err = sweep.autoEvalResidual(result[i]); err != nil {
 				return nil, err
+			}
+			if sweep.containerEscaped() {
+				// A break/continue escaped the residual literal (NUR358):
+				// the literal is still the call's body — its frame is gone,
+				// no loop of the caller is on it — so the signal raises
+				// `outside loop` there, as one the body's own tokens raised
+				// does (the sweep's top-level exit).
+				return nil, r.RaiseFlowOutsideLoop(SrcPos{}, r.Source)
 			}
 		}
 	}

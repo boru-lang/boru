@@ -2206,14 +2206,6 @@ type CompiledFn struct {
 	// pushes exactly locals[0:NArgs] as the frame's args list — the same list
 	// the interpreter's per-call args push holds.
 	NArgs int
-	// ArgsElided mirrors the interpreter's leaf-frame args elision
-	// (core.FnFrameMeta.ArgsElided): the unit's sig handler pushes the
-	// shared EMPTY args list for a call from its home registry, so the
-	// DynEnv args bracket pushes an empty list there too — a computed body
-	// the frame runs reads `args` as `[]` on both engines (NUR346). A call
-	// from another registry takes the interpreter's CallBoru, which pushes
-	// the real list, and so does the bracket.
-	ArgsElided bool
 	// NUnnamed is how many of the params are UNNAMED (stack-flowing): the
 	// lowering re-pushes each unnamed param onto the operand stack at unit
 	// entry (mirroring the interpreter's frame, where unnamed args sit

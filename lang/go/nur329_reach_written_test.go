@@ -49,7 +49,7 @@ func TestNUR329NoMatchNamesTheUnexpandedReach(t *testing.T) {
 		{m + `def f fn [[x:Type][Any][[x]]] end 7 f m.b m.a`, "the arguments were 2 (an Integer) and m.a (a Reach)"},
 		{m + `def f fn [[x:Type][Any][[x]]] end 7 f m.a m.b m.a`, "the arguments were 1 (an Integer), m.b (a Reach) and m.a (a Reach)"},
 		{m + `def f fn [[x:Type][Any][[x]]] end 7 f m.a m.b end 5`, "the arguments were 1 (an Integer) and m.b (a Reach)"},
-		{m + "def f fn [[x:Type][Any][[x]]] end 7 f m.a `s${m.a}`", "the arguments were 1 (an Integer) and interp('s' ${m.a})"},
+		{m + "def f fn [[x:Type][Any][[x]]] end 7 f m.a `s${m.a}`", "the arguments were 1 (an Integer) and `s${m.a}`"},
 		{`def m {a: 1 b: {c: 2}} end def f fn [[x:Type][Any][[x]]] end 7 f m.a m.b.c`, "the arguments were 1 (an Integer) and m.b.c (a Reach)"},
 		{m + `def f fn [[x:Type][Any][[x]]] end f m.a m.b`, "the arguments were 1 (an Integer) and m.b (a Reach)"},
 		{m + `def f fn [[x:Type][Any][[x]]] end def g fn [[] [Any] [f m.a m.b]] end g`, "the arguments were 1 (an Integer) and m.b (a Reach)"},

@@ -159,10 +159,10 @@ func TestNUR356EagerLiteralDeclines(t *testing.T) {
 func TestNUR356EagerLiteralCompiles(t *testing.T) {
 	const h = `def h fn [[] [Any] [3]] end `
 	for _, tc := range []struct{ src, want string }{
-		{h + `each (h) [1 add 2]`, "ERROR:[1 word(add) 2]"},
+		{h + `each (h) [1 add 2]`, "ERROR:[1 add 2]"},
 		{h + `each (h) [1 2]`, "ERROR:[1 2] (a List)"},
 		{h + `each (h) {a:1}`, "ERROR:{a:1} (a Map)"},
-		{`def x 4 end ` + h + `[x add 1] each (h)`, "ERROR:[word(x) word(add) 1]"},
+		{`def x 4 end ` + h + `[x add 1] each (h)`, "ERROR:[x add 1]"},
 		{h + `size (h) [print "p" 1]`, "[3 [1]]"},
 		{`def f fn [[a:List] [Any] [a]] end def h fn [[] [Any] [[1]]] end f (h) [print "p" 1]`, "[[1] [1]]"},
 	} {

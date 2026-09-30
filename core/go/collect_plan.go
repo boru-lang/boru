@@ -79,6 +79,9 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 	// runtime hot path never asks; hoisted here so the per-candidate loop
 	// asks once per dispatch rather than once per candidate.
 	mixedCarrierRejectIdx := -1
+	// The dispatching engine evaluates a pending container operand a
+	// pattern reads (NUR235); every other host matches the raw token.
+	pe, _ := h.(patternOperandHost)
 	noteSplit := func(positions []int, fwd int) {
 		if !checkActive || mixedCarrierRejectIdx < 0 || fwd == 0 {
 			return
@@ -187,7 +190,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 			// forward-matched positions too. The previous code
 			// short-circuited here without consulting Patterns,
 			// which made `def fact[0] (1)` fire for any integer.
-			if !patternsOk(sig, positions, win, fwd, reg) {
+			if !patternsOk(sig, positions, win, fwd, reg, pe) {
 				continue
 			}
 			if preferWordSig && !isPreferred {
@@ -226,7 +229,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 					// anyway (fn's tnot-List triple sig would claim a
 					// spec-list call made inside an enclosing pending
 					// forward with stack values available).
-					if !patternsOk(sig, positions, win, fwd, reg) {
+					if !patternsOk(sig, positions, win, fwd, reg, pe) {
 						continue
 					}
 					if preferWordSig && !isPreferred {
@@ -325,7 +328,7 @@ func PlanMatch(h CollectHost, win *Tape, reg *Registry, fn *FnDefInfo, w WordInf
 		// §1.1 fix: scalar literals route through Patterns regardless
 		// of whether they came from forward or stack matching, so the
 		// pattern check no longer skips forward positions.
-		if !patternsOk(sig, positions, win, fwd, reg) {
+		if !patternsOk(sig, positions, win, fwd, reg, pe) {
 			continue
 		}
 

@@ -10,8 +10,16 @@ import "errors"
 //
 // Extracted from Registry to match the DefTable / TypeTable /
 // ContextStack pattern.
+//
+// An entry may be LAZY (PushLazy): the call's argument values, held
+// without the list a reader sees until one reads it — the leaf frame's
+// per-call copy costs nothing where no code the frame runs reads `args`,
+// and every read still answers the call's real list (NUR350).
 type ArgsStack struct {
 	stack []Value
+	// lazy parallels stack: a non-nil entry is the unmaterialised values
+	// of a PushLazy entry, whose stack slot Top fills on first read.
+	lazy [][]Value
 }
 
 // errArgsStackNil is returned by every method when the receiver is
@@ -33,6 +41,22 @@ func (as *ArgsStack) Push(args Value) error {
 		return errArgsStackNil
 	}
 	as.stack = append(as.stack, args)
+	as.lazy = append(as.lazy, nil)
+	return nil
+}
+
+// PushLazy pushes the args list made of vals, built only when a reader
+// reads it (Top). vals must stay unchanged while the entry is on the stack:
+// the caller hands over a copy it owns.
+func (as *ArgsStack) PushLazy(vals []Value) error {
+	if as == nil {
+		return errArgsStackNil
+	}
+	if vals == nil {
+		vals = []Value{} // a nil entry marks an eager one
+	}
+	as.stack = append(as.stack, Value{})
+	as.lazy = append(as.lazy, vals)
 	return nil
 }
 
@@ -48,6 +72,8 @@ func (as *ArgsStack) Pop() (bool, error) {
 		return false, nil
 	}
 	as.stack = as.stack[:len(as.stack)-1]
+	as.lazy[len(as.lazy)-1] = nil
+	as.lazy = as.lazy[:len(as.lazy)-1]
 	return true, nil
 }
 
@@ -70,6 +96,8 @@ func (as *ArgsStack) Truncate(n int) {
 		return
 	}
 	as.stack = as.stack[:n]
+	clear(as.lazy[n:])
+	as.lazy = as.lazy[:n]
 }
 
 // Top returns the current top args entry. Returns (value, true, nil)
@@ -83,5 +111,12 @@ func (as *ArgsStack) Top() (Value, bool, error) {
 	if len(as.stack) == 0 {
 		return Value{}, false, nil
 	}
-	return as.stack[len(as.stack)-1], true, nil
+	top := len(as.stack) - 1
+	if vals := as.lazy[top]; vals != nil {
+		// First read of a lazy entry: build the list once, so every
+		// read in the frame answers the one value.
+		as.stack[top] = NewList(vals)
+		as.lazy[top] = nil
+	}
+	return as.stack[top], true, nil
 }

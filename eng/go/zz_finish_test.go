@@ -223,14 +223,14 @@ func TestSwapTailArgsBranches(t *testing.T) {
 	fn := &compiler.CompiledFn{NArgs: 1}
 	// Root tail swap: floor-truncate then push.
 	_ = r.Args.Push(core.NewList([]core.Value{core.NewInteger(1)}))
-	vc.swapTailArgs(nil, fn, r, nl)
+	vc.swapTailArgs(nil, fn, nl)
 	if r.Args.Depth() != 1 {
 		t.Errorf("root tail swap: want depth 1, got %d", r.Args.Depth())
 	}
 	// Framed tail swap: replace the top entry above the frame's base.
 	frames := []vmFrame{{argsBase: 1}}
 	_ = r.Args.Push(core.NewList([]core.Value{core.NewInteger(2)}))
-	vc.swapTailArgs(frames, fn, r, nl)
+	vc.swapTailArgs(frames, fn, nl)
 	if r.Args.Depth() != 2 {
 		t.Errorf("framed tail swap: want depth 2, got %d", r.Args.Depth())
 	}
@@ -246,8 +246,8 @@ func TestSwapTailArgsBranches(t *testing.T) {
 	// Non-DynEnv: all three helpers no-op.
 	off := &vmContext{p: &compiler.Program{}, r: r}
 	d := r.Args.Depth()
-	off.swapTailArgs(frames, fn, r, nl)
-	off.pushFrameArgs(fn, r, nl)
+	off.swapTailArgs(frames, fn, nl)
+	off.pushFrameArgs(fn, nl)
 	off.retFrameArgs(&vmFrame{argsBase: 0})
 	if r.Args.Depth() != d {
 		t.Errorf("non-DynEnv helpers must not touch the args stack")

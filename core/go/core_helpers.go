@@ -407,8 +407,6 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 	var (
 		skeleton   []Value
 		unnamedIdx []int // param positions whose args splice into the frame head
-		emptyArgs  Value
-		refsArgs   bool
 	)
 	if !needsFrameState {
 		for i, p := range s.Params {
@@ -436,17 +434,6 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 			EvalResidual:   ResidualEvalsInFrame(fnDefCopy.Anonymous, s.Body()),
 		})
 		skeleton = append(skeleton, NewCloseParen())
-		// When the body provably never reads `args` (sound under the
-		// !needsFrameState gate — see bodyReferencesArgs), push a shared
-		// empty list per call instead of copying the args into a fresh
-		// one; __pa only needs an entry to pop, and nothing else reads
-		// the list contents.
-		refsArgs = bodyReferencesArgs(r, s.Body())
-		emptyArgs = NewList(nil)
-		// The decision rides the sig's frame identity, so the analysis
-		// pass (check BuildFnBodyReturnsFn) compiles the unit to push the
-		// same list (FnFrameMeta.ArgsElided, NUR346).
-		meta.ArgsElided = !refsArgs
 	}
 	return func(args []Value, _ map[string]Value, _ []Value, callReg *Registry) ([]Value, error) {
 		// Reached from a FOREIGN registry (callReg != the install registry r) — a
@@ -485,13 +472,18 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		// (see the construction-time comment above).
 		if !needsFrameState {
 			r.PushFnBaseline(nil)
-			argsList := emptyArgs
-			if refsArgs {
-				argsCopy := make([]Value, len(args))
-				copy(argsCopy, args)
-				argsList = NewList(argsCopy)
-			}
-			if err := r.Args.Push(argsList); err != nil {
+			// ONE allocation holds the frame's tokens and, past them, its
+			// args copy, pushed lazily (ArgsStack.PushLazy): the list a
+			// reader sees is built only when code the frame runs reads
+			// `args` — a literal read, a word macro bound after the fn, a
+			// computed body — and is always the call's real list (NUR350).
+			// The token slice handed back is capped at the skeleton, so no
+			// append to it can reach the args.
+			n := len(skeleton)
+			buf := make([]Value, n+len(args))
+			argsCopy := buf[n:]
+			copy(argsCopy, args)
+			if err := r.Args.PushLazy(argsCopy); err != nil {
 				r.PopFnBaseline()
 				return nil, err
 			}
@@ -509,7 +501,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 					InstallFrameBinding(r, p.Name, RetagTypedContainerParam(p, arg))
 				}
 			}
-			out := make([]Value, len(skeleton))
+			out := buf[:n:n]
 			copy(out, skeleton)
 			for k, i := range unnamedIdx {
 				out[1+k] = args[i]
@@ -856,8 +848,7 @@ func compileFnSigs(r *Registry, name string, fnDef FnDefInfo, isStackOnly bool) 
 				FnFrame:  meta,
 				dispatch: buildFnBodyHandler(r, name, s, fnDefCopy, meta),
 			}
-			// The installed sig: its frame identity carries the handler's
-			// args-list decision (FnFrameMeta.ArgsElided).
+			// The installed sig, with its frame identity.
 			cs.ReturnsFn = r.analysisReturnsFn(name, cs, fnDefCopy)
 		}
 		cs.BarrierPos = barrier

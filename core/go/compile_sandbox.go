@@ -114,6 +114,7 @@ func (r *Registry) RestoreForCompile(s CompileSandbox) {
 		r.Check = s.check
 	}
 	r.FlowCtrl = s.flow
+	r.FlowAt, r.FlowAtSet, r.FlowAtHeld = SrcPos{}, false, false
 	r.pendingGen = s.pendGen
 	if r.Modules != nil {
 		r.Modules.seq = s.modSeq

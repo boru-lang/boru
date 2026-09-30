@@ -519,13 +519,6 @@ type EmitRecorder interface {
 	// args stack rather than projecting the unit's frame (the seam's run
 	// pushes no args frame, as the interpreter's RunResolved does not).
 	ArgsReadLive() bool
-	// ArgsElidedFrame reports the recording of an args-elided fn unit's own
-	// frame (SetUnitArgsElided): the list there is the CALLER's — empty
-	// from the fn's own registry, the real args (CallBoru) from any other —
-	// so an `args` read the construction-time walk could not see (a word
-	// macro bound after the fn) projects nothing: it reads the live args
-	// stack, or declines (NUR346, review of #522).
-	ArgsElidedFrame() bool
 	StoredGradualActive() bool
 	FoldFullStack(word string, args, preserved []Value) ([]Value, bool)
 	RecordSpliceDyn(payload Value, pos SrcPos) bool
@@ -717,12 +710,6 @@ type EmitRecorder interface {
 	// and, when one fails, applies fallback — the fn itself — instead.
 	SetUnitSpecialisation(unit int, params []int, fns []Value, fallback Value)
 	SetUnitDecl(unit int, decl DeclSite)
-	// SetUnitArgsElided marks unit as the body of a sig whose handler pushes
-	// the shared EMPTY args list (FnFrameMeta.ArgsElided): the VM's args
-	// bracket pushes the same list for a call from the unit's home registry,
-	// so dynamic code the frame runs reads `args` as the interpreter's does
-	// (NUR346).
-	SetUnitArgsElided(unit int)
 	UnitVariadic(unit int) bool
 	UnitNetsZero(unit int) bool
 	// ArmTailApply collapses a branch ARM's residual whose top is a PENDING
@@ -766,7 +753,6 @@ func (c *CheckState) Recorder() EmitRecorder {
 
 func (inactiveEmit) InClosureUnit() bool                                    { return false }
 func (inactiveEmit) ArgsReadLive() bool                                     { return false }
-func (inactiveEmit) ArgsElidedFrame() bool                                  { return false }
 func (inactiveEmit) StoredGradualActive() bool                              { return false }
 func (inactiveEmit) FoldFullStack(string, []Value, []Value) ([]Value, bool) { return nil, false }
 func (inactiveEmit) RecordSpliceDyn(Value, SrcPos) bool                     { return false }
@@ -926,7 +912,6 @@ func (inactiveEmit) SetUnitReturnPatterns(int, []*Value)              {}
 func (inactiveEmit) SetUnitBody(int, []Value)                         {}
 func (inactiveEmit) SetUnitSpecialisation(int, []int, []Value, Value) {}
 func (inactiveEmit) SetUnitDecl(int, DeclSite)                        {}
-func (inactiveEmit) SetUnitArgsElided(int)                            {}
 func (inactiveEmit) UnitVariadic(int) bool                            { return false }
 func (inactiveEmit) UnitNetsZero(int) bool                            { return false }
 func (inactiveEmit) UnitTailApply(int) (int, bool)                    { return 0, false }

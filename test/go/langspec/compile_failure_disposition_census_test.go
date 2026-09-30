@@ -74,7 +74,7 @@ var compileFailureDispositions = map[string]compileFailureDisposition{
 
 	// check/go — the analysis pass's own compile failures.
 	"check/go/carrier.go:runFnBodyOnce#1":                   {dispGeneric, 8, "an analysis failure is not a program error (soundiness): the body lowers generically instead of declining"},
-	"check/go/check_fnbody.go:buildFnBodyReturnsFn#1":       {dispGeneric, 3, "an Atom param bound to a computed value in a closure body: the capture rides as a value"},
+	"check/go/check_fnbody.go:BuildFnBodyReturnsFn#1":       {dispGeneric, 3, "an Atom param bound to a computed value in a closure body: the capture rides as a value"},
 	"check/go/check_recovery.go:DeclineForwardStackDrift#1": {dispGeneric, 5, "forward accounting across a dynamic residual: inside a region the stack is the address"},
 	"check/go/check_recovery.go:declineStrandedMemberFn#1":  {dispGeneric, 3, "a member fn value auto-applying mid-expression: the arrival model over the Apply kernel"},
 	"check/go/check_recovery.go:checkModeSurfaceShape#1":    {dispGeneric, 4, "surface-shape typed dispatch: OpDispatchGeneric selects at run time"},

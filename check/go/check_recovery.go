@@ -435,12 +435,19 @@ func concreteEvalOnce(e *core.Engine, items []core.Value) (core.Value, bool) {
 	// fold needs a real value, so Mode is off for its duration) — without
 	// the explicit tag its interpreter entries would report unattributed.
 	restoreAtt := r.SetInterpAttribution("check:const-fold")
-	res, err := core.RunPooledSub(r, append([]core.Value(nil), items...), false)
+	res, err := core.RunContainerSub(r, append([]core.Value(nil), items...), false)
 	restoreAtt()
 	r.Check.Mode = prev
+	// A break/continue escaping the expression (a container member's run,
+	// NUR358) is no constant: the fold declines, and the signal stays the
+	// recorded run's to raise, not this scratch run's.
+	escaped := core.BodyEscaped(r)
+	if escaped {
+		r.TakeFlow()
+	}
 	changed := r.Defs.ChangedSince(snap)
 	r.Defs.RestoreEntriesSnapshot(snap)
-	if changed || err != nil || len(res) != 1 || !core.IsConcrete(res[0]) {
+	if escaped || changed || err != nil || len(res) != 1 || !core.IsConcrete(res[0]) {
 		return core.Value{}, false
 	}
 	return res[0], true
@@ -496,9 +503,7 @@ func trimUnnamedArgs(result []core.Value, nret, unnamed int) []core.Value {
 // design/legacy/boru-bytecode-stage3-inlining-plan.0.ignore "THE shared crux:
 // body-bearing fn-VALUE dispatch (__pa)".
 func SpliceFnValueCheckResult(e *core.Engine, valIdx, nArgs int, fnDef core.FnDefInfo, sig *core.FnSig, args []core.Value) error {
-	// The stack-match path runs execFnDefSig, which pushes the real args
-	// whatever the sig's handler would push (NUR346).
-	returns := buildFnBodyReturnsFn(e.Registry, fnDef.Name, *sig, fnDef, false)
+	returns := BuildFnBodyReturnsFn(e.Registry, fnDef.Name, *sig, fnDef)
 	result := returns(args, e.Registry)
 	if len(result) == 0 && len(sig.Returns) > 0 { //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 		// A declared-return fn that produced no carrier (the body unit
@@ -981,6 +986,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// own position. Without it a recovered user call's ReturnsFn read the
 	// PREVIOUS dispatch's cursor and keyed its region claim by that.
 	e.Registry.Check.CurCallWord, e.Registry.Check.CurCallPos = w.Name, pos
+	defer e.ClearRecoveryRaw()
 	owner := recoveryPolyOwner(e, w, fn)
 	// Gather candidate positions once and try to pick a signature
 	// whose arity matches and whose declared types are compatible
@@ -1710,6 +1716,10 @@ func recoveryArgsAt(e *core.Engine, positions []int) []core.Value {
 		}
 		if core.IsConcrete(av) && av.Parent != nil && av.Parent.ConformsTo(core.TMap) && core.BearsActiveTokens(av) {
 			if ev, everr := e.AutoEvalMap(av, false, true); everr == nil {
+				// The interpreter's failed match never evaluates the
+				// literal: its report renders it as written, so a trap built
+				// over this tape must too (NUR235).
+				e.NoteRecoveryRaw(p, e.Tape.At(p))
 				e.Tape.Set(p, ev)
 				av = ev
 			}

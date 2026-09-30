@@ -251,6 +251,12 @@ func diagClamp(s string) string {
 }
 
 func diagValueDepth(v Value, depth int) string {
+	if diagCodeToken(v) {
+		// A code token — a pending literal's word, group, member path,
+		// template or sugar — renders as the source it was written as, never
+		// its debug form (`(1 add 1)`, not `paren([1 word(add) 1])`; NUR235).
+		return CanonValue(v)
+	}
 	if v.Parent == nil || !IsConcrete(v) {
 		return v.String()
 	}
@@ -292,6 +298,12 @@ func diagValueDepth(v Value, depth int) string {
 		return keys[i] + ":" + diagValueDepth(val, depth+1)
 	})
 	return "{" + strings.Join(parts, " ") + "}"
+}
+
+// diagCodeToken reports whether v is a token of unevaluated code a
+// diagnostic may meet inside a pending literal it renders.
+func diagCodeToken(v Value) bool {
+	return IsWord(v) || IsParenExpr(v) || IsReach(v) || IsInterpString(v) || IsSugar(v)
 }
 
 // diagHead renders the first diagMaxListHead of n entries through render
