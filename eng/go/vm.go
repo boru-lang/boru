@@ -1202,6 +1202,12 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 		window[i] = stack[len(stack)-1-i]
 	}
 	stampFnArgPos(window, pr.FnArgPos)
+	// A candidate whose barrier stops short of the written operands takes
+	// another window on the interpreter: the run plans this one as the
+	// interpreter does (vm_poly_barrier.go, NUR362).
+	if polyBarred(pr, sigs) {
+		return vc.callPolyPlanned(dispReg, pr, fn, window, stack, curDebug, pc)
+	}
 	// The poly inline cache (vm_poly_cache.go): a window with the tags the
 	// site's last pick was made for takes that pick without re-matching.
 	ic := vc.polyCacheFor(pr)
@@ -1473,6 +1479,12 @@ func (vc *vmContext) matchUserPoly(pr *compiler.UserPolyRef, stack []core.Value,
 	window := make([]core.Value, n)
 	for i := 0; i < n; i++ {
 		window[i] = stack[len(stack)-1-i]
+	}
+	// An arm whose barrier stops short of the written operands takes
+	// another window on the interpreter: the run plans this one as the
+	// interpreter does (vm_poly_barrier.go, NUR362).
+	if fd != nil && pr.Split != nil && core.BarrierBars(fd.Signatures, pr.Split.NFwd) {
+		return vc.matchUserPolyPlanned(pr, fd, units, window, stack, curDebug, pc)
 	}
 	mr := core.MatchSignature(subset, window, core.WordInfo{ArgCount: n})
 	if mr == nil || mr.Sig == nil {

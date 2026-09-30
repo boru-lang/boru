@@ -979,6 +979,16 @@ type UserPolyRef struct {
 	// program point. Empty = the live-Lookup mode with its index/Impl drift
 	// guard (module-scope words, where a later rebind must defer).
 	Sigs []core.Signature
+	// Split, when non-nil, is the call's exact operand layout where an arm's
+	// barrier stops its forward collection short of the operands written
+	// after the word (core.BarrierBars, NUR362): the flat re-match is not
+	// the interpreter's there, so the run plans the window over the live
+	// binding as PolyRef.Split's barred poly does. Live-Lookup mode only.
+	Split *PolySplit
+	// WordPos, set with Split, is the dispatching word's position, where
+	// the interpreter reports a planned no-match (the op's own position is
+	// its first operand's).
+	WordPos core.SrcPos
 }
 
 const (

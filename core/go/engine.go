@@ -3852,6 +3852,9 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		// A gradual operand collected forward rides its unproven fits to the
 		// same record (forward_fit.go, NUR357).
 		restoreFits := e.publishForwardFits(match)
+		// How many operands were written after the word rides to the record
+		// too, so a runtime re-match holds a candidate's barrier (NUR362).
+		restoreWritten := e.PublishWritten(match.Args, e.forwardSplit())
 		// A behave-installed capability may run in this frame over a value
 		// of its type (NUR257).
 		e.Registry.Check.NoteBehaveDispatch(match.Args)
@@ -3862,6 +3865,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 		}
 		results := e.Registry.analysisCarrierResults(name, match.Sig, match.Args, pos, match.Reg, tailConsumed)
 		e.Registry.Check.BareCallPos = prevBare
+		restoreWritten()
 		restoreFits()
 		restoreLayout()
 		e.Registry.Check.NoteFnMemberRead(name, match.Args, results)

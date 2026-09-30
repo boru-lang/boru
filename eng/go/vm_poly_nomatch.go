@@ -216,6 +216,16 @@ func splitBeneath(sp *compiler.PolySplit, stack, locals []core.Value) ([]core.Va
 // report alone: the interpreter's plan read the binding and left the word
 // on its tape.
 func splitNoMatch(r *core.Registry, word string, fn *core.FnDefInfo, window []core.Value, nFwd int, beneath, after []core.Value, words map[int]core.Value, curDebug []core.SrcPos, pc int) error {
+	var pos core.SrcPos
+	if pc >= 0 && pc < len(curDebug) {
+		pos = curDebug[pc]
+	}
+	return splitNoMatchAt(r, word, fn, window, nFwd, beneath, after, words, pos, curDebug, pc)
+}
+
+// splitNoMatchAt is splitNoMatch reporting at pos, the dispatching word's
+// position, where the op's own is not the word's (a user poly's, NUR362).
+func splitNoMatchAt(r *core.Registry, word string, fn *core.FnDefInfo, window []core.Value, nFwd int, beneath, after []core.Value, words map[int]core.Value, pos core.SrcPos, curDebug []core.SrcPos, pc int) error {
 	if fn == nil || nFwd < 0 || nFwd > len(window) {
 		return nil
 	}
@@ -229,10 +239,6 @@ func splitNoMatch(r *core.Registry, word string, fn *core.FnDefInfo, window []co
 				"`"+word+"`'s dispatch takes a value the compiled call's operands do not hold (NUR283)")
 		}
 		return nil
-	}
-	var pos core.SrcPos
-	if pc >= 0 && pc < len(curDebug) {
-		pos = curDebug[pc]
 	}
 	at := len(beneath) + len(window) - nFwd
 	return stampAt(core.NoMatchOverWindow(r.Source, splitReportTape(h.win, at, words), at, word, fn, pos), curDebug, pc, r)

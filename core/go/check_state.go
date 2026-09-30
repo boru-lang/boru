@@ -90,6 +90,10 @@ type CheckState struct {
 	// results a compiling pass is modelling (forward_fit.go, NUR357), set
 	// around the modelling like CurLayout and read through FitsFor.
 	CurFits *forwardFitsPub
+	// CurWritten is how many leading operands of the dispatch whose results
+	// a compiling pass is modelling were written after its word (NUR362),
+	// set around the modelling like CurLayout and read through WrittenFor.
+	CurWritten *writtenPub
 	// Mode toggles static type-checking execution. When true, the
 	// engine runs the same dispatch/matching machinery but carries
 	// type-only Carrier values instead of concrete payloads, and

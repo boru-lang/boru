@@ -51,6 +51,58 @@ type DispatchLayout struct {
 	Live []int
 }
 
+// writtenPub is CheckState.CurWritten: how many leading operands (signature
+// positions 0..nFwd-1) of one dispatch were written after its word, for the
+// dispatch's own operand slice (NUR362). Unlike a DispatchLayout it claims
+// nothing about the tape around the operands, so it is published wherever
+// the split is known.
+type writtenPub struct {
+	args []Value
+	nFwd int
+}
+
+// WrittenFor returns the published written count when it describes args —
+// the very slice the dispatch published it for, as LayoutFor answers — and
+// false for any other record.
+func (c *CheckState) WrittenFor(args []Value) (int, bool) {
+	p := c.CurWritten
+	if p == nil || len(args) == 0 || len(p.args) != len(args) || &p.args[0] != &args[0] {
+		return 0, false
+	}
+	return p.nFwd, true
+}
+
+// PublishWritten publishes that the leading nFwd of args (signature order)
+// were written after the dispatching word, and returns the restore the
+// caller runs once the dispatch is recorded. Only a recording pass
+// publishes, and only a split that holds a written operand.
+func (e *Engine) PublishWritten(args []Value, nFwd int) func() {
+	if nFwd <= 0 || nFwd > len(args) || !e.Registry.analysisRecorder().Active() {
+		return func() {}
+	}
+	prev := e.Registry.Check.CurWritten
+	e.Registry.Check.CurWritten = &writtenPub{args: args, nFwd: nFwd}
+	return func() { e.Registry.Check.CurWritten = prev }
+}
+
+// BarrierBars reports whether an overload among sigs stops its forward
+// collection short of nFwd written operands and then reads the stack: its
+// barrier (the unmodified word's forward limit) is below nFwd and below its
+// own arity. The interpreter's plan for such an overload takes the leading
+// operands up to its barrier and the rest off the stack beneath the word —
+// never the window a dispatch whose leading nFwd operands were written
+// after the word holds — so a flat match of that window against it is not
+// the interpreter's match (NUR362: `get (h) {k:1}`, every get overload's
+// barrier 1, raises signature_error however (h) comes out).
+func BarrierBars(sigs []Signature, nFwd int) bool {
+	for i := range sigs {
+		if s := &sigs[i]; !s.Fallback && s.BarrierPos >= 0 && s.BarrierPos < nFwd && s.BarrierPos < s.TotalArgs() {
+			return true
+		}
+	}
+	return false
+}
+
 // LayoutFor returns the published layout when it describes args — the
 // very slice the dispatch published it for, which the record path hands
 // down unchanged — and nil for any other record, which a nested analysis

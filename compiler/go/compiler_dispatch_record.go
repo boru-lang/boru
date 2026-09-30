@@ -877,6 +877,18 @@ func tryRecordPoly(r *core.Registry, word string, sig *core.Signature, args, out
 	// core words too: poly only ever records BUILTINS (guarded above), which exist
 	// identically in every registry instance, so matchReg.Lookup always resolves.
 	ems, _ := es.(*EmitState)
+	// A candidate whose barrier stops its forward collection short of the
+	// operands written after the word takes another window on the
+	// interpreter (core.BarrierBars, NUR362), which only the dispatch's exact
+	// layout lets the run plan. Without one the poly would match the window
+	// flat: a recovery declines to its caller, whose unmatched-dispatch trap
+	// plans the interpreter's window; a committed dispatch records, and its
+	// lowering declines (emitCall.barredNoPlan).
+	if barred, sigs := ems.polyBarred(matchReg, word, args); barred && (disjunctStraddle || dynamicRecovery || noMatch != nil) {
+		if _, _, ok := ems.polyLayout(word, args, pos, noMatch, true, sigs); !ok {
+			return false
+		}
+	}
 	if ems != nil && !disjunctStraddle && !dynamicRecovery && noMatch == nil && !coreDefaultCarrier {
 		ems.pendingPolySeed = polySeedFor(fn.Signatures, sig, args)
 	}
