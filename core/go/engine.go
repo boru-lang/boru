@@ -2612,8 +2612,18 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 			}
 		}
 		// Propagate any flow-control signal raised by the step; the outer
-		// Run frame will resolve it.
+		// Run frame will resolve it. A paren is no loop boundary (NUR365,
+		// NUR358's rule): the word collecting the group is abandoned where
+		// it stands, and the report of a signal no loop takes points where
+		// the group's run stood — the pointer goes back to the word.
+		// The group is abandoned whole: the frames its run spliced are torn
+		// down here — the resolution's unwind starts at the word, behind the
+		// group, and would leave a callee's args and bindings in place — and
+		// its tokens leave the tape with them.
 		if e.Registry.FlowCtrl != FlowNone {
+			e.Registry.HoldFlowAt(e.currentPos(), e.Pointer < e.Tape.Len())
+			e.unwindLiveFrames(scanIdx, e.Tape.Len())
+			e.Tape.Splice(scanIdx, groupExtent(e.Tape, scanIdx))
 			e.Pointer = savedPointer
 			return nil
 		}
@@ -2649,6 +2659,25 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 
 	e.Pointer = savedPointer
 	return nil
+}
+
+// groupExtent is the token count of the paren group opening at open on
+// tape — through its matching close, or to the tape's end when the group
+// never closes.
+func groupExtent(tape *Tape, open int) int {
+	depth := 0
+	for i := open; i < tape.Len(); i++ {
+		v := tape.At(i)
+		if IsOpenParen(v) {
+			depth++
+		} else if IsCloseParen(v) {
+			depth--
+			if depth == 0 {
+				return i - open + 1
+			}
+		}
+	}
+	return tape.Len() - open
 }
 
 // stepWord handles a word (function reference) at the current pointer.

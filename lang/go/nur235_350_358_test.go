@@ -209,3 +209,55 @@ func TestNUR350ForkedFrameArgs(t *testing.T) {
 	agreeOnBothLanes(t, `def w fn [[Integer y:Integer][Any][args]] end w 3 4`, "[[3 4]]")
 	agreeOnBothLanes(t, `def w fn [[x:Integer][Any][x m]] end def m word [args] end w 3`, "ERROR:expected 1 return value(s), got 2 — [3 [3]]")
 }
+
+// TestNUR365ParenIsNoLoop pins NUR365's verdict (NUR358's rule for a
+// paren): a break/continue escaping a paren a word collects abandons the
+// word and belongs to the enclosing loop — continue included, nested
+// parens, a user fn's operand, a map member, a fn body — and with no loop
+// the run raises `outside loop` where the group's run stood; a fn frame the
+// group spliced is torn down with it.
+func TestNUR365ParenIsNoLoop(t *testing.T) {
+	const h = `def h fn [[a:Integer][Any][a]] end `
+	const f = `def f fn [[x:Integer][Any][break]] end `
+	for _, c := range []struct{ src, want string }{
+		{`for 2 [def x (1 break) end print "b"]`, "[]"},
+		{`for 2 [def x (1 continue) end print "b"]`, "[]"},
+		{`for 2 [def x ((1 break)) end print "b"]`, "[]"},
+		{`for 2 [def x ((1 continue)) end print "b"]`, "[]"},
+		{`for 2 [def x (2 add (1 break)) end print "b"]`, "[]"},
+		{h + `for 2 [h (1 break) print "b"]`, "[]"},
+		{h + `for 3 [h (if (i eq 1) [continue] [i])]`, "[0 2]"},
+		{h + `for 3 [h (if (i eq 1) [break] [i])]`, "[0]"},
+		{`for 2 [size (1 break)]`, "[]"},
+		{`for 2 [{a: (def x (1 break) end x)}]`, "[]"},
+		{`for 2 [i def x (1 break) end]`, "[]"},
+		{`for 3 [def x (if (i eq 1) [break] [i]) end x]`, "[0]"},
+		{`for 3 [def x (if (i eq 1) [continue] [i]) end x]`, "[0 2]"},
+		{`def g fn [[][Any][for 2 [def x (1 break) end print "b"] 7]] end g`, "[7]"},
+		{f + `def g fn [[y:Integer][Any][for 2 [def z (f 1) end] args]] end g 9`, "[[9]]"},
+		{`def f fn [[x:Integer][Any][continue]] end def g fn [[y:Integer][Any][for 2 [def z (f 1) end] args]] end g 9`, "[[9]]"},
+		// no loop: the run raises where the group's run stood
+		{`def g fn [[][Any][def x (1 break) end 7]] end g`, "ERROR:break outside loop\n  --> source position unknown"},
+		{`def g fn [[][Any][def x (1 break 2) end 7]] end g`, "ERROR:break outside loop\n  --> 1:34"},
+		{`def g fn [[b:List][Any][def x (do b) end 7]] end g (quote [1 break 2])`, "ERROR:break outside loop\n  --> 1:60"},
+		// negative: a quiet paren operand is the word's argument
+		{`for 2 [def x (1 add 1) end x]`, "[2 2]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// At the root the compiled lane declines (a break outside a compiled
+	// loop); the interpreter raises at the group's run, never a
+	// signature_error on the abandoned word.
+	for _, c := range []struct{ src, want string }{
+		{`def x (1 break) end`, "ERROR:break outside loop\n  --> source position unknown"},
+		{`def x (1 break 2) end`, "ERROR:break outside loop\n  --> 1:16"},
+		{`def x (1 continue) end`, "ERROR:continue outside loop"},
+		{h + `h (1 break 2)`, "ERROR:break outside loop\n  --> 1:47"},
+		{`{a: (def x (1 break) end x)}`, "ERROR:break outside loop"},
+	} {
+		requireInterpDeclined(t, c.src, c.want)
+	}
+	// A loop over a fn frame the group spliced, interpreter-only (a
+	// variadic loop result): the callee's args list does not outlive it.
+	requireInterpDeclined(t, f+`def g fn [[y:Integer][Any][for 2 [size (f 1)] args]] end g 9`, "[[9]]")
+}

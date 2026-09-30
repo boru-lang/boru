@@ -271,6 +271,75 @@ func TestNUR336CoreNoteParenStack(t *testing.T) {
 	e.noteParenStack(2)
 }
 
+// TestNUR365CoreParenOperandEscape: a break escaping a paren a word
+// collects forward abandons the word — at the top the run raises where the
+// group's run stood, in a loop the loop breaks — and a frame the group
+// spliced is torn down with it (the caller's args list is the one left).
+func TestNUR365CoreParenOperandEscape(t *testing.T) {
+	fwd := func(r *Registry) {
+		r.RegisterNativeFunc(NativeFunc{Name: "nfw", Signatures: []Signature{{
+			Args: []*Type{TInteger},
+			Impl: Go(func(args []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+				return []Value{args[0]}, nil
+			}),
+			Returns: []*Type{TInteger}, BarrierPos: -1,
+		}}})
+	}
+	brk := NewWord("nbrk")
+	after := WithPos(NewInteger(2), Value{pos: &SrcPos{Row: 4, Col: 9}})
+	r := nurReg(t)
+	fwd(r)
+	_, err := NewTop(r).Run([]Value{NewWord("nfw"), NewOpenParen(), NewInteger(1), brk, after, NewCloseParen()})
+	if be, ok := err.(*BoruError); !ok || be.Code != "flow_error" || be.Row != 4 || be.Col != 9 {
+		t.Fatalf("Run = %v, want flow_error at the group's run (4:9)", err)
+	}
+	// In a loop: the word is abandoned and the loop breaks, the
+	// iteration's partial values dropped.
+	r = nurReg(t)
+	fwd(r)
+	cont := &ForCont{Registry: r, IterName: "nuri", Current: 0, End: 3, Step: 1, Results: []Value{NewInteger(42)}}
+	InstallDef(r, "nuri", NewInteger(0))
+	out, err := NewTop(r).Run([]Value{
+		NewMark("nurP"), NewInteger(9),
+		NewWord("nfw"), NewOpenParen(), NewInteger(1), brk, NewCloseParen(),
+		NewMoveCont("nurP", "for loop", cont),
+	})
+	if err != nil || renderAll(out) != "42" {
+		t.Fatalf("Run = %s / %v, want 42", renderAll(out), err)
+	}
+	// A fn frame spliced inside the group is torn down: its args entry
+	// does not outlive the abandoned call.
+	r = nurReg(t)
+	fwd(r)
+	InstallFnDef(r, "nurf", FnDefInfo{Signatures: []Signature{{
+		Params: []FnParam{{Name: "x", Type: TInteger}}, Returns: []*Type{TAny},
+		Impl: Boru([]Value{brk}), BarrierPos: BarrierAllForward,
+	}}})
+	depth := r.Args.Depth()
+	cont = &ForCont{Registry: r, IterName: "nuri", Current: 0, End: 3, Step: 1}
+	if _, err := NewTop(r).Run([]Value{
+		NewMark("nurQ"),
+		NewWord("nfw"), NewOpenParen(), NewWord("nurf"), NewInteger(1), NewCloseParen(),
+		NewMoveCont("nurQ", "for loop", cont),
+	}); err != nil {
+		t.Fatalf("Run: %v", err)
+	}
+	if r.Args.Depth() != depth {
+		t.Fatalf("args depth %d after the loop, want %d (the callee's frame unwound)", r.Args.Depth(), depth)
+	}
+	// Negative: a quiet group is the word's argument as ever.
+	r = nurReg(t)
+	fwd(r)
+	out, err = NewTop(r).Run([]Value{NewWord("nfw"), NewOpenParen(), NewInteger(5), NewCloseParen()})
+	if err != nil || renderAll(out) != "5" {
+		t.Fatalf("Run = %s / %v, want 5", renderAll(out), err)
+	}
+	// groupExtent over a group that never closes runs to the tape's end.
+	if n := groupExtent(NewTape([]Value{NewOpenParen(), NewInteger(1)}, StackHeadroom), 0); n != 2 {
+		t.Fatalf("groupExtent of an open group = %d, want 2", n)
+	}
+}
+
 // TestNUR358CoreCallBoruDeferredResidualEscape: an anonymous lambda whose
 // body is a single literal defers its residual past the frame; a signal
 // escaping that literal raises `outside loop` inside the call, as one the
