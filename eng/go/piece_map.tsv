@@ -27,6 +27,7 @@ vm_rematch.go	eng
 vm_spec_guard.go	eng	call-site specialisation guard (CALL_USER entry)
 vm_poly_cache.go	eng	poly inline cache (CALL_NATIVE_POLY per-site pick keyed on operand tags)
 vm_poly_seed.go	eng	seeded poly pick guard (CALL_NATIVE_POLY checker pick under a tag guard)
+vm_poly_barrier.go	eng	barred poly re-match planned over the recorded layout (NUR362)
 vm_token_body.go	eng	
 vm_fnvalue_park.go	eng	the unmatched fn value park/raise (execFnDefLiteral no-match fork)
 vm_fnvalue_zeroarg.go	eng	a named zero-argument fn value applied over a window (execFnDefLiteral zero-arg dispatch)

@@ -86,7 +86,11 @@ func TestRegionOracleWiring(t *testing.T) {
 		if ev := find(evs, "g"); ev == nil || ev.Outcome != "declined" || ev.NFwd != 1 {
 			t.Errorf("a group a viable arm consumes is an evaluation the host declines: %+v", evs)
 		}
-		dis, evs, _ = run(t, `def y (if (1 gt 0) [1] ['s']) is y Integer`)
+		// A value beneath `is` for its barrier's stack slot: `is y Integer`
+		// alone is the interpreter's signature_error (is's barrier 1 stops
+		// the collection at y, and the stack beneath is empty), which the
+		// compiled run answered flat until NUR362.
+		dis, evs, _ = run(t, `def y (if (1 gt 0) [1] ['s']) Integer is y Integer`)
 		if strings.Index(dis, "collect oracle over is") > strings.Index(dis, "CALL_NATIVE_POLY") {
 			t.Fatalf("the oracle must precede the poly native call:\n%s", dis)
 		}

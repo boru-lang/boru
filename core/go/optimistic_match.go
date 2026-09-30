@@ -55,6 +55,14 @@ func (e *Engine) forwardSplit() int {
 	return 0
 }
 
+// ForwardSplit is forwardSplit for the compile seams outside core: how many
+// operands of the dispatch at the pointer its own forward collection took
+// from after the word. A word re-stepped by that collection's completion
+// reads every operand beneath it, but the leading ones were written after
+// it, so a stack-only model of the dispatch is not the interpreter's
+// (NUR362).
+func (e *Engine) ForwardSplit() int { return e.forwardSplit() }
+
 // regionMatch reports whether some operand of match is the modelled seat of
 // a runtime-counted region (EmitRecorder.RegionResult): its type is the
 // pass's approximation of the region — a loop's `[:T]` — so the match over

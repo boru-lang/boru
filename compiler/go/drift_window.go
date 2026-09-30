@@ -48,6 +48,15 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 	if sig == nil || sig.BarrierPos == 0 || sig.FullStack() || len(sig.NoEvalArgs) > 0 || len(positions) < 2 {
 		return false
 	}
+	// The completion of the word's own forward collection: its top operand
+	// was WRITTEN after the word, and the island's source-order window would
+	// lay it beneath the word instead — `1 g (h) 7` over `g [a:Integer |
+	// b:Integer]` islanded as `1 (h) g 7`, which collects the 7 (NUR362).
+	// The interpreter re-collects nothing there; the dispatch records as the
+	// collection laid it out.
+	if e.ForwardSplit() > 0 {
+		return false
+	}
 	topPos, minPos := -1, e.Tape.Len()
 	for _, p := range positions {
 		if p < 0 || p >= e.Tape.Len() {
@@ -142,8 +151,13 @@ func tryRecordDriftWindow(e *core.Engine, w core.WordInfo, sig *core.Signature, 
 		// raises (NUR287). It rides into the island inside its own paren,
 		// the interpreter's placement: a one-survivor paren parks a fn as
 		// data (fnReturnPark) and leaves any other value as it is. Top-first,
-		// so the close marker goes first.
-		if es.callResultPlaced(v) || es.placedNotReStepped(v) {
+		// so the close marker goes first. A bare read of a def bound to such
+		// a value undoes the placement, as callResultPlaced's own rule has it
+		// (ADR-011): the interpreter's read dispatches the fn, and so does the
+		// island's step of it — `each [def v (mk) v add 1] [1]` over a paren-
+		// placed fn islanded `( v )` and met the open paren (NUR363).
+		readDispatches := es.isDefRead(v) && !es.placedValRead(v.ID)
+		if es.callResultPlaced(v) || (es.placedNotReStepped(v) && !readDispatches) {
 			ops = append(ops, ConstOperand(es.intern(core.NewCloseParen())), op, ConstOperand(es.intern(core.NewOpenParen())))
 			continue
 		}

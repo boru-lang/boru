@@ -204,6 +204,46 @@ func walkEvents(events []EmitEvent, fn func(*EmitEvent)) {
 	}
 }
 
+// bodyEscapes reports whether a break or continue may leave a loop body's
+// iteration early — the body records one at any depth, or runs code that
+// may raise one: a user fn's unit that does (or one still open), a poly
+// user call, an island, a native running a body or a value. Its region's
+// size is then a runtime count. Over-reporting is sound: it only declines.
+func (es *EmitState) bodyEscapes(body *EmitFragment) bool {
+	seen := map[int]bool{}
+	var walk func(*EmitFragment) bool
+	walk = func(f *EmitFragment) bool {
+		escapes := false
+		if f == nil {
+			return false
+		}
+		walkEvents(f.events, func(ev *EmitEvent) {
+			switch ev.kind {
+			case evBranch, evLoop, evStore, evDynBind, evBindTwin, evTrap:
+				// Their own code raises no signal; walkEvents reaches the
+				// fragments they hold.
+			case evCall:
+				escapes = escapes || ev.call.poly || ev.call.sig != nil && sigRunsValue(ev.call.sig)
+			case evCallUser:
+				u := ev.uc.unit
+				switch {
+				case ev.uc.poly != nil || u < 0 || u >= len(es.fnRecs) || !es.fnRecs[u].finished:
+					escapes = true
+				case !seen[u]:
+					seen[u] = true
+					escapes = escapes || walk(es.fnRecs[u].frag)
+				}
+			default:
+				// break, continue, an island — and a kind this switch has
+				// not been told about.
+				escapes = true
+			}
+		})
+		return escapes
+	}
+	return walk(body)
+}
+
 // pendingStart moves start back, within the statement beginning at stmt,
 // to the frame's event holding the read at seq when that is lowered before
 // the test (a branch whose arm reads it, standing at its condition), and

@@ -46,6 +46,7 @@ var eventKindSites = map[string]string{
 	"readIsDeepestOperand":     "emit.go  — is a root read its plain call's deepest operand? (default: no — the read keeps its guard, NUR217)",
 	"forEachFragmentOperand":   "lower.go — the same walk over a fragment's own events",
 	"eachClosureCap":           "lower.go — the event's CLOSURE captures (a missing case leaves captures stale)",
+	"bodyEscapes":              "kept_live_deopt.go — may this event cut a loop iteration short with a break/continue? (default: yes — an unnamed kind declines the S5 first-value def bind)",
 	"childFragments":           "lower.go — the event's nested fragments (a missing case hides a whole subtree)",
 	"appliesFnOperand":         "read_site_guard.go — does this event dispatch a fn operand as the interpreter's word dispatch would? (default: no — a new kind that applies one must say so, or its read takes a guard that fires where the event answers right, NUR361)",
 	"RewritePromotedRefs":      "lower.go — rewrites promoted operand refs (a missing case leaves them stale)",

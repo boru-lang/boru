@@ -492,6 +492,7 @@ type emitCall struct {
 	polySplitLive     []splitLive           // the split's Beneath entries the run's stack holds (PolySplit.Live, NUR351), placed at lowering
 	polySplitFwdPos   []core.SrcPos         // the split's written operands' positions at the record — a word read's is the word's (PolySplit.Words, NUR356), resolved at lowering
 	quietGuard        bool                  // the NUR356 walks judged this poly quiet though an overload it may pick has an effect (polyEffectful): PolyRef.QuietGuard
+	barredNoPlan      bool                  // a BARRED poly (core.BarrierBars) the run could not plan — no layout the plan cannot leave (barredLayoutOK): the lowering declines it (barredNoPlanReason, NUR362)
 	nativeSplit       *NativeSplit          // an optimistic closure bake's exact operand layout, for the committed call's no-match arm (SigRef.Split, NUR263)
 	polySeed          *polySeed             // the checker's guarded pick (PolyRef.Seed; nil = none)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
@@ -797,6 +798,25 @@ type emitUserPolySpec struct {
 	// sigs is the frozen dispatch table for a body-local word (COMPILE FAILURE-
 	// CLOSURE.0 §6b) — see UserPolyRef.Sigs. Nil for the live-Lookup mode.
 	sigs []core.Signature
+	// split is the call's exact operand layout for a BARRED arm set
+	// (UserPolyRef.Split, NUR362), splitFwdPos its written operands' read
+	// positions; nil otherwise.
+	split       *PolySplit
+	splitFwdPos []core.SrcPos
+	wordPos     core.SrcPos
+	// barredNoPlan marks a barred arm set the run could not plan (no
+	// layout the plan cannot leave, or a frozen table): the lowering
+	// declines it (barredNoPlanReason, NUR362).
+	barredNoPlan bool
+}
+
+// barredNoPlanReason is the lowering's decline of a barred call the run
+// could not plan (emitCall.barredNoPlan, emitUserPolySpec.barredNoPlan): an
+// overload's barrier stops its forward collection short of the operands
+// written after the word, so a flat re-match is not the interpreter's
+// match, and no exact layout lets the run plan the window instead (NUR362).
+func barredNoPlanReason(word string) string {
+	return "`" + word + "`: an overload's barrier stops its forward collection short of the written operands, and the run could not plan the window it takes instead (NUR362)"
 }
 
 // emitFallback is a recorded interpreter-island fallback (Stage 5): a
@@ -8686,9 +8706,24 @@ func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, si
 		es.declineUndef(word, specFnUnrouted)
 		return
 	}
+	spec := &emitUserPolySpec{word: word, reg: ownerReg, sigIdx: sigIdx, units: units, impls: impls, sigs: sigs}
+	// An arm whose barrier stops its forward collection short of the
+	// operands written after the word takes another window on the
+	// interpreter (core.BarrierBars, NUR362): the arm table re-matches flat,
+	// so the call carries its exact layout for the run to plan the window
+	// over the live binding, or its lowering declines.
+	if barred, table := es.polyBarred(ownerReg, word, args); barred {
+		l := es.layoutFor(args)
+		if l == nil || !barredLayoutOK(l, table, len(args)) || len(sigs) > 0 || es.inStampCompile || !wordWrittenAt(es.reg.Source, callWord, wordPos) {
+			spec.barredNoPlan = true
+		} else {
+			spec.split = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After, Words: l.Words}
+			spec.splitFwdPos = es.writtenPositions(args, l.NFwd)
+			spec.wordPos = wordPos
+		}
+	}
 	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{
-		unit: -1, ops: ops, nout: len(outs), pos: pos, region: region,
-		poly: &emitUserPolySpec{word: word, reg: ownerReg, sigIdx: sigIdx, units: units, impls: impls, sigs: sigs},
+		unit: -1, ops: ops, nout: len(outs), pos: pos, region: region, poly: spec,
 	}})
 	es.noteArgSites(seq, args)
 	es.SiteCounts[SiteDynamic]++
@@ -9437,7 +9472,13 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 		// first-value def bind, whose splice-at-depth lowering needs the exact
 		// STATIC region size the caller computed (0 when not static).
 		f.variadicResult = true
-		f.regionN = regionN
+		// A break or continue that may leave an iteration early cuts the
+		// region short: its size is a runtime count, and the splice-at-depth
+		// bind, sized by the static count, would reach below it (`def x (for
+		// 3 [if (i eq 1) [break] [i]])` underflowed BIND_GLOBAL).
+		if !es.bodyEscapes(body) {
+			f.regionN = regionN
+		}
 		if len(bodyStk) > 0 && bodyStk[0].Parent != nil {
 			f.firstElemType = bodyStk[0].Parent
 		}
@@ -11439,17 +11480,20 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	// Not in a run-time stamp either: its unit's tape is the stamped body's,
 	// and the interpreter reports a lens's no-match at the caller's position
 	// (`5 $.name apply` points at 1:1, the unit's layout at the `.name`).
-	if l := es.layoutFor(args); l != nil && noMatch == nil && !es.inStampCompile && es.reg != nil && wordWrittenAt(es.reg.Source, word, pos) {
-		// A value beneath the operands that is no constant — an earlier
-		// call's result (`f g keys` over two Any results, NUR351) — is read
-		// where the compiled code keeps it when the arm runs (PolySplit.Live,
-		// placed at lowering); one produced outside the unit has no such
-		// home, and the record keeps its defer.
-		if live, ok := es.splitLiveProducers(l); ok {
-			call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After, Words: l.Words}
-			call.polySplitLive = live
-			call.polySplitFwdPos = es.writtenPositions(args, l.NFwd)
-		}
+	// A poly some candidate of which stops its forward collection short of
+	// the written operands (core.BarrierBars, NUR362) carries the layout
+	// even beside a no-match plan: the run plans such a window as the
+	// interpreter does instead of matching it flat (tryRecordPoly declined
+	// the record where no layout exists).
+	barred, sigs := es.polyBarred(ownerReg, word, args)
+	if l, live, ok := es.polyLayout(word, args, pos, noMatch, barred, sigs); ok {
+		call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After, Words: l.Words}
+		call.polySplitLive = live
+		call.polySplitFwdPos = es.writtenPositions(args, l.NFwd)
+	} else {
+		// Without one the poly would match the window flat: its lowering
+		// declines (a recovery declined to its caller in tryRecordPoly).
+		call.barredNoPlan = barred
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	es.noteArgSites(seq, args)
@@ -11487,6 +11531,84 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		}
 	}
 	return true
+}
+
+// polyLayout is the exact layout RecordPolyCall attaches to a poly over args
+// (PolyRef.Split), with where the compiled code keeps its live entries; ok
+// is false when none is attached. A value beneath the operands that is no
+// constant — an earlier call's result (`f g keys` over two Any results,
+// NUR351) — is read where the compiled code keeps it when the arm runs
+// (PolySplit.Live, placed at lowering); one produced outside the unit has
+// no such home, and the record keeps its defer. A record with a no-match
+// plan of its own takes none unless the poly is barred (polyBarred: its
+// candidates sigs), whose run plans every window over it — and then only a
+// layout the plan cannot leave (barredLayoutOK).
+func (es *EmitState) polyLayout(word string, args []core.Value, pos core.SrcPos, noMatch *core.PolyNoMatchSpec, barred bool, sigs []core.Signature) (*core.DispatchLayout, []splitLive, bool) {
+	l := es.layoutFor(args)
+	if l == nil || (noMatch != nil && !barred) || (barred && !barredLayoutOK(l, sigs, len(args))) || es.inStampCompile || es.reg == nil || !wordWrittenAt(es.reg.Source, word, pos) {
+		return nil, nil, false
+	}
+	live, ok := es.splitLiveProducers(l)
+	return l, live, ok
+}
+
+// barredLayoutOK reports whether a barred dispatch's layout (its nArgs
+// operands, l.NFwd of them written) lets its run plan the window without
+// meeting one the compiled call cannot take (NUR362). A candidate among
+// sigs whose barrier stops short of the written operands reads its later
+// slots off the stack: the call's stack operands, then the constants
+// beneath them. Where that stack runs short, or a constant there misses the
+// slot it would fill, the candidate fails whatever the run holds, and the
+// plan either takes the window the call holds or raises. A candidate that
+// could take its slots there takes a window the call does not hold — a
+// defer at run time — so such a layout, or one with a value beneath that is
+// no constant (Live), is not one to plan over.
+func barredLayoutOK(l *core.DispatchLayout, sigs []core.Signature, nArgs int) bool {
+	if len(l.Live) > 0 {
+		return false
+	}
+	nStack := nArgs - l.NFwd
+	for i := range sigs {
+		s := &sigs[i]
+		if limit := s.BarrierPos; !s.Fallback && limit >= 0 && limit < l.NFwd && limit < s.TotalArgs() && stackSlotsFit(s, limit, nStack, l.Beneath) {
+			return false
+		}
+	}
+	return true
+}
+
+// stackSlotsFit reports whether sig's slots from limit on could all be
+// filled off a stack of nStack unknown operands over the constants beneath
+// (tape order): none runs past the stack's end, and each constant fits.
+func stackSlotsFit(sig *core.Signature, limit, nStack int, beneath []core.Value) bool {
+	for j := limit; j < sig.TotalArgs(); j++ {
+		k := j - limit - nStack // the slot's depth beneath the stack operands
+		if k >= len(beneath) || (k >= 0 && !core.SigArgMatches(sig, j, beneath[len(beneath)-1-k])) {
+			return false
+		}
+	}
+	return true
+}
+
+// polyBarred reports whether a poly re-match of word over args could meet a
+// candidate whose barrier stops its forward collection short of the
+// operands the dispatch took from after the word (core.BarrierBars,
+// NUR362) — the split the pass published for args (its layout's, or
+// CheckState.WrittenFor's) — and returns word's candidates, ownerReg's, the
+// registry the VM re-matches over.
+func (es *EmitState) polyBarred(ownerReg *core.Registry, word string, args []core.Value) (bool, []core.Signature) {
+	if es == nil || es.reg == nil || ownerReg == nil {
+		return false, nil
+	}
+	nFwd, ok := es.reg.Check.WrittenFor(args)
+	if l := es.layoutFor(args); l != nil {
+		nFwd, ok = l.NFwd, true
+	}
+	fn := ownerReg.Lookup(word)
+	if !ok || fn == nil || !core.BarrierBars(fn.Signatures, nFwd) {
+		return false, nil
+	}
+	return true, fn.Signatures
 }
 
 // wordWrittenAt reports whether src spells word as a whole token at pos (a

@@ -76,6 +76,10 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"CurFits": "scoped: published by execMatch around one dispatch's carrier " +
 			"results and restored when they return (publishForwardFits), so it is nil " +
 			"outside a record; a reader asks for its own operand slice (FitsFor)",
+		"CurWritten": "scoped: published by execMatch around one dispatch's carrier " +
+			"results, and by a recovery around its record, and restored when they " +
+			"return (PublishWritten), so it is nil outside a record; a reader asks for " +
+			"its own operand slice (WrittenFor)",
 		"BareCallPos": "scoped: published by execMatch around one dispatch's carrier " +
 			"results and restored when they return, so it is zero outside a dispatch " +
 			"and no pass can begin with one set",

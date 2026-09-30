@@ -138,7 +138,11 @@ var pinnedAritySites = map[string]int{
 	// forwardReachMax clamps each overload's forward limit to its argument
 	// count (`limit > s.TotalArgs()`) — how far the argument rule's forward
 	// phase can reach, not a decision by arity.
-	"core/go/dispatch_layout.go": 2,
+	// NUR362 (2026-09-30): BarrierBars asks whether an overload's barrier
+	// stops its forward collection short of the written operands
+	// (`BarrierPos < nFwd`, `< s.TotalArgs()`) — where the argument rule's
+	// forward phase ends, not a decision by arity.
+	"core/go/dispatch_layout.go": 3,
 	// NUR357 (2026-09-30): unmodifiedWordInfo asks whether the written word
 	// carries no `/N` modifier (`w.ArgCount == -1`) — the token's syntax, as
 	// in dispatch_layout.go above, never a function's parameter count.
@@ -475,7 +479,11 @@ var pinnedAritySites = map[string]int{
 	// 0`), valueTrailNoMatch's own guard mirrored so the recorder knows
 	// which values raise their no-match. Neither decides behaviour by a
 	// function's arity.
-	"compiler/go/emit.go": 10,
+	// NUR362 (2026-09-30): barredLayoutOK / stackSlotsFit read a barred
+	// overload's barrier against the written operands and its remaining
+	// slots off the stack beneath (`limit < s.TotalArgs()`, `j <
+	// sig.TotalArgs()`) — the argument rule's layout, not a decision by arity.
+	"compiler/go/emit.go": 12,
 	// sameFnDecls compares two fn VALUES for declaration identity — the
 	// same signature list: the same count, then each position's declaration
 	// site (Signature.Decl). It decides whether a unit's recorded def event
@@ -611,6 +619,10 @@ var pinnedAritySites = map[string]int{
 	// step of the results alone is the interpreter's. How the argument rule
 	// collects, never behaviour decided by the count.
 	"eng/go/vm_do_restep.go": 1,
+	// NUR362 (2026-09-30): the barred re-match plans the interpreter's window
+	// (a plan's positions cover the overload's arguments, `sig.TotalArgs() !=
+	// n`, and the `/N` count it matches under) — the argument rule itself.
+	"eng/go/vm_poly_barrier.go": 2,
 
 	// ── Tooling and fixtures.
 	"tools/piecetool/demethod.go": 1,

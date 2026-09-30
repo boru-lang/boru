@@ -246,7 +246,15 @@ func (lw *lowerer) lowerResidentBind(d *emitDynBind) string {
 		return "arm-resident def `" + d.name + "` of unknown provenance"
 	}
 	if pushCopy {
+		// The install's own re-push of the source is not a READ of the name,
+		// as lowerDynBind's is not: a read's point tests at its consumer's
+		// push (deoptAtSlot), after the install. Taken here it ran before the
+		// def, and its island resumed at the read with the name unbound —
+		// `each [def v (mk) v] [1]` over mk's fn raised undefined_word
+		// (NUR363).
+		lw.binding = true
 		lw.pushOperand(src, d.pos)
+		lw.binding = false
 	}
 	idx := len(lw.p.ResidentBinds)
 	lw.p.ResidentBinds = append(lw.p.ResidentBinds, ResidentBindSpec{
@@ -3919,12 +3927,22 @@ func (lw *lowerer) lowerLiveRead(ev *EmitEvent, c *emitCall) string {
 	return lw.seatCallResults(ev, c)
 }
 
+// callDeclineReason is a call's decline before any of it lowers: a barred
+// poly the run could not plan (emitCall.barredNoPlan, NUR362), or a
+// body-map word's (bodyMapReason).
+func (lw *lowerer) callDeclineReason(c *emitCall) string {
+	if c.barredNoPlan {
+		return barredNoPlanReason(c.word)
+	}
+	return lw.bodyMapReason(c)
+}
+
 func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	c := &ev.call
 	if c.live {
 		return lw.lowerLiveRead(ev, c)
 	}
-	if reason := lw.bodyMapReason(c); reason != "" {
+	if reason := lw.callDeclineReason(c); reason != "" {
 		return reason
 	}
 	if lw.collectRegionTop(ev) {
@@ -5061,6 +5079,9 @@ func (lw *lowerer) lowerUserCallResult(ev *EmitEvent, uc *emitUserCall) string {
 // (the recorder gates every arm to a fixed, identical return count).
 func (lw *lowerer) lowerUserPolyCall(ev *EmitEvent) string {
 	uc := &ev.uc
+	if uc.poly.barredNoPlan {
+		return barredNoPlanReason(uc.poly.word)
+	}
 	n := len(uc.ops)
 	if reason := lw.layoutOperands(uc.ops, uc.pos, layoutMsgs{
 		loopResults:  "loop results as fn args (Stage 3)",
@@ -5079,13 +5100,15 @@ func (lw *lowerer) lowerUserPolyCall(ev *EmitEvent) string {
 	}
 	pi := len(lw.p.UserPolys)
 	lw.p.UserPolys = append(lw.p.UserPolys, UserPolyRef{
-		Word:   uc.poly.word,
-		Arity:  n,
-		Reg:    uc.poly.reg,
-		SigIdx: uc.poly.sigIdx,
-		Units:  uc.poly.units,
-		Impls:  uc.poly.impls,
-		Sigs:   uc.poly.sigs,
+		Word:    uc.poly.word,
+		Arity:   n,
+		Reg:     uc.poly.reg,
+		SigIdx:  uc.poly.sigIdx,
+		Units:   uc.poly.units,
+		Impls:   uc.poly.impls,
+		Sigs:    uc.poly.sigs,
+		Split:   lw.splitWords(uc.poly.split, uc.poly.wordPos, uc.poly.splitFwdPos),
+		WordPos: uc.poly.wordPos,
 	})
 	lw.emit(OpCallUserPoly, pi, uc.pos)
 	lw.vm = lw.vm[:len(lw.vm)-n]

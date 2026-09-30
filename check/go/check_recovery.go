@@ -233,6 +233,15 @@ func DeclineForwardStackDrift(e *core.Engine, sig *core.Signature, positions []i
 	if len(sig.NoEvalArgs) > 0 {
 		return false
 	}
+	// The completion of the word's own forward collection re-steps it with
+	// every operand beneath it, the written ones on top: the dynamic top was
+	// written AFTER the word, and the literal after it is what the collection
+	// left there (a `|` barrier or a slot it misses stopped the walk). The
+	// interpreter re-collects nothing (NUR362: `1 g (h) 7` over
+	// `g [a:Integer | b:Integer]`), so there is no drift to decline.
+	if e.ForwardSplit() > 0 {
+		return false
+	}
 	// Find the top-of-stack matched arg (highest tape position). Its operands
 	// beneath may be dynamic too: the match over carriers reached past the
 	// top either way (NUR287, `mk mk add 1` over two Any results).
@@ -960,6 +969,24 @@ func recoverySpec(p noMatchProber, fn *core.FnDefInfo, sw []core.Value) ([]core.
 	return sw, spec, spec != nil || !p.Uncalled()
 }
 
+// recoverPoly records a recovered dispatch as a poly re-match over its
+// window (args in tape order, the first nStack off the stack) — the
+// disjunct straddle, or else the dynamic recovery. The window's split rides
+// to the record (NUR362): where some candidate's barrier stops its forward
+// collection short of the written operands (core.BarrierBars) the flat
+// re-match is not the interpreter's, so the exact layout rides too, for the
+// run to plan the window, and tryRecordPoly declines a window without one —
+// the caller's unmatched-dispatch trap then plans it.
+func recoverPoly(e *core.Engine, probe noMatchProber, w core.WordInfo, fn *core.FnDefInfo, sig *core.Signature, args, outs []core.Value, positions []int, nStack int, pos core.SrcPos, owner *core.Registry, straddle bool) bool {
+	sw := core.SigOrderArgs(args, nStack)
+	defer e.PublishWritten(sw, len(sw)-nStack)()
+	if ofn := owner.Lookup(w.Name); ofn != nil && core.BarrierBars(ofn.Signatures, len(sw)-nStack) {
+		defer e.PublishLayout(sw, core.SigOrderPositions(positions, nStack), pos)()
+	}
+	sw, spec, ok := recoverySpec(probe, fn, sw)
+	return ok && dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, outs, pos, straddle, owner, !straddle, spec)
+}
+
 // recoveryPolyOwner is the registry a recovered dispatch's poly re-match runs
 // over (tryRecordPoly's ownerReg): the registry the word's native is
 // REGISTERED in. That is the dispatching registry for a core word, and for a
@@ -1101,7 +1128,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// fill the rest top-down (the deepest-last ascending run reversed).
 		// Feeding the raw tape order here was the prior `[1x]`-vs-`[x1]`
 		// operand-order divergence. Only decline when poly isn't safe.
-		if sw, spec, ok := recoverySpec(noMatchProbe, fn, core.SigOrderArgs(args, nStack)); ok && dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, out, pos, true, owner, false, spec) {
+		if recoverPoly(e, noMatchProbe, w, fn, sig, args, out, positions, nStack, pos, owner, true) {
 			spliceCheckResults(e, positions, out)
 			return nil
 		}
@@ -1125,6 +1152,9 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 		// non-plain-param arm sets.
 		if es := e.Registry.Check.Recorder(); es.Active() {
 			sw := core.SigOrderArgs(args, nStack)
+			// The window's split rides to the arm plan, which declines arms
+			// whose barriers stop short of the written operands (NUR362).
+			defer e.PublishWritten(sw, len(sw)-nStack)()
 			// The arms' bodies compile before the record — the same window a
 			// user-fn ReturnsFn holds its offer across (HoldRegion), and for
 			// the same reason: a body can re-offer under this call's key from
@@ -1203,7 +1233,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 				}
 			}
 		}
-		if sw, spec, ok := recoverySpec(noMatchProbe, fn, core.SigOrderArgs(args, nStack)); ok && dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, results, pos, false, owner, true, spec) {
+		if recoverPoly(e, noMatchProbe, w, fn, sig, args, results, positions, nStack, pos, owner, false) {
 			spliceCheckResults(e, positions, results)
 			return nil
 		}
@@ -1311,7 +1341,7 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 				resume := es.Suspend()
 				results := CarrierResults(e.Registry, w.Name, sig, args, pos, nil, false)
 				resume()
-				if sw, spec, ok := recoverySpec(noMatchProbe, fn, core.SigOrderArgs(args, nStack)); ok && dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, results, pos, false, owner, true, spec) {
+				if recoverPoly(e, noMatchProbe, w, fn, sig, args, results, positions, nStack, pos, owner, false) {
 					spliceCheckResults(e, positions, results)
 					recovered = true
 				}
@@ -1789,6 +1819,14 @@ func soleSigParamsNominal(sig *core.Signature, fn *core.FnDefInfo) bool {
 // check raises (`k m.a` over an Integer inside g anchored at `keys` in k's
 // body, NUR360).
 func recoverUserFn(e *core.Engine, w core.WordInfo, pos core.SrcPos, sig *core.Signature, fn *core.FnDefInfo, args []core.Value, nStack int, positions []int) bool {
+	// A window whose written operands reach past the signature's barrier is
+	// the recovery's shortfall fill, not the interpreter's collection, which
+	// stops at the barrier and finds the stack short (NUR362: `g (h) 7` over
+	// `g [a:Integer | b:Integer]` raises): no call is recorded, and the
+	// caller's unmatched-dispatch trap plans the window.
+	if core.BarrierBars([]core.Signature{*sig}, len(args)-nStack) {
+		return false
+	}
 	e.Registry.Check.CurCallWord, e.Registry.Check.CurCallPos = w.Name, pos
 	return e.TryRecordRecoveredUserFn(sig, fn, args, nStack, positions)
 }
