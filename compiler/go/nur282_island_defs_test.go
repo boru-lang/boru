@@ -62,6 +62,11 @@ func TestMarkIslandMadeDefs(t *testing.T) {
 	if es.deoptDefsBindable([]EmitEvent{{kind: evBranch, br: &emitBranch{then: &EmitFragment{events: []EmitEvent{inner}}}}}, names) {
 		t.Error("a def inside an arm the islands read cannot bind")
 	}
+	// The walk reaches a def any depth down: an arm nested in an arm.
+	deep := EmitEvent{kind: evBranch, br: &emitBranch{then: &EmitFragment{events: []EmitEvent{inner}}}}
+	if es.deoptDefsBindable([]EmitEvent{{kind: evBranch, br: &emitBranch{then: &EmitFragment{events: []EmitEvent{deep}}}}}, names) {
+		t.Error("a def inside a nested arm the islands read cannot bind")
+	}
 	// An island-made def neither needs a re-pushable source nor binds.
 	src := islandBind("ok", 5)
 	src.dyn.srcSeq, src.dyn.islandMade = 3, true
