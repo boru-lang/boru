@@ -942,5 +942,7 @@ for 2 [def x (1 break) end print "b"]
 A paren is not a list literal (NUR358's rule does not reach it); the lanes
 disagree on whether the escaped signal abandons `def`'s collection.
 
+**Verdict (maintainer, 2026-09-30):** a paren is no loop boundary either (NUR358's rule): the escaping break abandons the pending `def` and breaks the loop, `[]`. Fix the interpreter; the compiled lane already agrees.
+
 ---
 
