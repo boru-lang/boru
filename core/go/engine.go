@@ -1800,6 +1800,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 			e.Pointer++
 
 		case IsOpenParen(val):
+			e.noteParenStack(e.Pointer)
 			e.stepPastOpenParen(val)
 
 		case IsCloseParen(val):
@@ -8622,6 +8623,26 @@ func (e *Engine) noteStatementStack(endIdx int) {
 		stack = append(stack, v)
 	}
 	e.Registry.Check.Recorder().NoteStatementStack(e.statementStackPos(endIdx), stack)
+}
+
+// noteParenStack tells the recorder the stack a paren group at idx opens over
+// (EmitRecorder NoteParenStack) when the tape beneath it holds values alone:
+// nothing is pending there — no open paren, forward or engine marker — so a
+// statement island stopped inside the group may take the statement over from
+// the group's own token, over exactly that stack (NUR336's `drop (m.f 7)`).
+func (e *Engine) noteParenStack(idx int) {
+	if e.Registry == nil || e.Registry.Check == nil || !e.Registry.analysisActive() {
+		return
+	}
+	stack := make([]Value, 0, idx)
+	for i := 0; i < idx; i++ {
+		v := e.Tape.At(i)
+		if IsOpenParen(v) || IsForward(v) || isEngineMarker(v) {
+			return
+		}
+		stack = append(stack, v)
+	}
+	e.Registry.Check.Recorder().NoteParenStack(e.statementStackPos(idx), stack)
 }
 
 // stepMark records the mark's ID in the marks hash table and advances.

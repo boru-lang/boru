@@ -1,6 +1,8 @@
 package lang
 
 import (
+	"bytes"
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -196,11 +198,146 @@ func TestNUR336UnitIslandOverAnEarlierStatement(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
-	// The negative half: a statement that takes the earlier value off the
-	// frame before the stop leaves the region the island would seat changed
-	// (frameIntact), and a literal the compiled code pushes late is still
-	// deferred: no island, loud, never a wrong answer.
-	requireLoudDefer(t, mk+`def g fn [[q:Map][Any][(1 add 2) end drop (q.f 7) drop]] end g (mk)`, "not an appliable function", "[5]")
-	requireLoudDefer(t, mk+`def g fn [[q:Map][Any][(1 add 2) end (4 add 5) end swap (q.f 7) drop drop drop]] end g (mk)`, "not an appliable function", "[9]")
-	requireLoudDefer(t, mk+`def g fn [[q:Map][Any][(1 add 2) end 4 end (q.f 7) drop drop add]] end g (mk)`, "not an appliable function", "[7]")
+}
+
+// TestNUR336IslandOverATakenOrLateValue: a statement that takes an earlier
+// statement's value before the stop (`drop (q.f 7)`, `swap (q.f 7)`) left
+// the frame region the island seats changed at the stop (frameIntact), and a
+// value an earlier statement wrote that the compiled code pushes late (`4 end
+// (q.f 7)`, a read `z end (q.f 7)`) was a deferred operand: both deferred
+// loudly where the interpreter answers. The first now takes the statement
+// over from the stop's own token, where the interpreter holds nothing
+// pending (lateStart; at the root over the stack the pass told the paren
+// opens over, NoteParenStack); the second seats the value among the frame's
+// entries by where it was written (deoptPoint.lits, mergeLits): a literal as
+// its constant, a read from the value's slot.
+func TestNUR336IslandOverATakenOrLateValue(t *testing.T) {
+	const mk = `def mk fn [[] [Map] [{f: 5}]] end `
+	const m = mk + `def m (mk) end `
+	const inc = `def mk fn [[] [Map] [{f: ([x:Integer] => [x add 1])}]] end `
+	for _, c := range []struct{ src, want string }{
+		{mk + `def g fn [[q:Map][Any][(1 add 2) end drop (q.f 7) drop]] end g (mk)`, "[5]"}, // the register's witnesses
+		{mk + `def g fn [[q:Map][Any][(1 add 2) end (4 add 5) end swap (q.f 7) drop drop drop]] end g (mk)`, "[9]"},
+		{mk + `def g fn [[q:Map][Any][(1 add 2) end 4 end (q.f 7) drop drop add]] end g (mk)`, "[7]"},
+		// Taken before the stop.
+		{mk + `def g fn [[q:Map][Any][(1 add 2) end dup (q.f 7) drop drop add]] end g (mk)`, "[6]"},
+		{mk + `def g fn [[q:Map][Any][(1 add 2) end drop 4 (q.f 7) drop drop]] end g (mk)`, "[4]"},
+		{mk + `def g fn [[q:Map][Any][(1 add 2) end drop [(q.f 7)]]] end g (mk)`, "[[5 7]]"},
+		{mk + `def g fn [[q:Map][Any][(1 add 2) end drop 4 [(q.f 7)] drop]] end g (mk)`, "[4]"},
+		{mk + `def g fn [[q:Map][Any][(1 add 2) end drop (5 (q.f 7)) drop drop]] end g (mk)`, "[5]"},
+		{mk + `def g fn [[q:Map n:Integer][Any][n end drop (q.f 7) drop]] end g (mk) 5`, "[5]"},
+		{mk + `def g fn [[q:Map Integer][Any][drop (q.f 7) drop]] end g (mk) 5`, "[5]"},
+		{mk + `def g fn [[q:Map][Any][(1 add 2) end drop (q.f 7) drop]] end [g (mk) g (mk)]`, "[[5 5]]"},
+		{m + `(1 add 2) end drop (m.f 7) drop`, "[5]"},
+		{m + `(1 add 2) end (4 add 5) end swap (m.f 7) drop drop drop`, "[9]"},
+		{m + `1 end 2 end drop (m.f 7)`, "[1 5 7]"},
+		{m + `(1 add 2) end dup (m.f 7)`, "[3 3 5 7]"},
+		{m + `(1 add 2) end (4 add 5) end over (m.f 7)`, "[3 9 3 5 7]"},
+		{m + `(1 add 2) end print/s (m.f 7)`, "[5 7]"},
+		{m + `(1 add 2) end drop (m.f 7) (m.f 8)`, "[5 7 5 8]"},
+		{m + `(1 add 2) end drop 4 (m.f 7)`, "[4 5 7]"},
+		{m + `(1 add 2) end drop (5 (m.f 7)) drop drop`, "[5]"},
+		{inc + `def m (mk) end (1 add 2) end drop (m.f 7)`, "[8]"},
+		{`def mk fn [[] [Map] [{f: ([x:Integer y:Integer] => [x sub y])}]] end def m (mk) end (1 add 2) end drop 10 (m.f 7)`, "[-3]"},
+		{m + `def c (flex {n:0}) end def cg fn [[][Integer][c set 'n' (c.n add 1) drop c.n]] end 3 end drop (cg) (m.f 7) c.n`, "[1 5 7 1]"},
+		// Written by an earlier statement, pushed late.
+		{mk + `def g fn [[q:Map][Any][4 end (q.f 7) drop drop]] end g (mk)`, "[4]"},
+		{mk + `def g fn [[q:Map][Any]["s" end (q.f 7) drop drop]] end g (mk)`, "[s]"},
+		{mk + `def g fn [[q:Map][Any]["a" end 4 end (q.f 7) drop drop drop]] end g (mk)`, "[a]"},
+		{mk + `def g fn [[q:Map][Any][[1 2] end (q.f 7) drop drop]] end g (mk)`, "[[1 2]]"},
+		{mk + `def g fn [[q:Map][Any][{a:1} end (q.f 7) drop drop]] end g (mk)`, "[{a:1}]"},
+		{mk + `def g fn [[q:Map][Any][4 end (q.f 7) drop drop]] end [g (mk) g (mk)]`, "[[4 4]]"},
+		{mk + `def g fn [[q:Map][Any][def z 3 end z end (q.f 7) drop drop]] end g (mk)`, "[3]"},
+		{mk + `def g fn [[q:Map][Any][def z 3 end z end drop (q.f 7) drop]] end g (mk)`, "[5]"},
+		{mk + `def g fn [[q:Map][Any][def z [1 2] end z end (q.f 7) drop drop]] end g (mk)`, "[[1 2]]"},
+		{mk + `def g fn [[q:Map][Any][def z (1 add 2) end z end (q.f 7) drop drop]] end g (mk)`, "[3]"},
+		{mk + `def g fn [[q:Map n:Integer][Any][n end (q.f 7) drop drop]] end g (mk) 4`, "[4]"},
+		{mk + `def g fn [[q:Map n:Integer][Any][n end n end (q.f 7) drop drop add]] end g (mk) 4`, "[8]"},
+		{inc + `def g fn [[q:Map][Any][4 end (q.f 7) add]] end g (mk)`, "[12]"},
+		{m + `(1 add 2) end 4 end (m.f 7) drop drop add`, "[7]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// The negative half: a word that collected the stop's paren forward
+	// dispatches after it, so no token of the statement stands where the
+	// interpreter holds nothing pending (lateStart): loud, never a wrong
+	// answer.
+	for _, c := range []struct{ src, want string }{
+		{mk + `def g fn [[q:Map][Any][(1 add 2) end drop print (q.f 7)]] end g (mk)`, "[7]"},
+		{mk + `def g fn [[q:Map][Any][(1 add 2) end drop size [(q.f 7)]]] end g (mk)`, "[2]"},
+		{m + `(1 add 2) end drop print (m.f 7)`, "[7]"},
+	} {
+		requireLoudDefer(t, c.src, "not an appliable function", c.want)
+	}
+}
+
+// TestNUR336LoopContinuation: a paren apply's lead that no signature takes
+// the paren's values over, in a counted loop's body, `for 2 [(m.f y) 9
+// drop]`. Its statement island ran the loop's statement again from its first
+// token, which only the loop's first iteration may do, and the lead's own
+// run (the landing that stepped y) could not be written into a body every
+// iteration runs — so no island was seated and the apply deferred with a
+// message that misnamed it ("violates the host-registered shape claim").
+// The island is now the loop's per-iteration continuation
+// (compiler.LoopCont, loopContRestart): on whatever iteration the stop
+// fires, the interpreter resumes its own loop there — its mark, the values
+// the iteration left, the stop's statement with the paren written as its
+// survivors, the loop's continuation over the body with the earlier
+// iterations' values as its results — then the tokens after the loop.
+func TestNUR336LoopContinuation(t *testing.T) {
+	const two = `def mk fn [[] [Map] [{f: ([x:Integer y:Integer] => [x sub y])}]] end def m (mk) end def y fn [[] [Integer] [42]] end `
+	const unit = `def mk fn [[] [Map] [{f: ([x:Integer y:Integer] => [x sub y])}]] end def y fn [[] [Integer] [42]] end `
+	const mixed = `def mk fn [[] [List] [[([x:Integer] => [x]) 5]]] end `
+	for _, c := range []struct{ src, want string }{
+		{two + `for 2 [(m.f y) 9 drop]`, "[]"}, // the register's witness
+		{two + `for 3 [(m.f y) 9]`, "[33 33 33]"},
+		{two + `for 3 [(m.f y) i]`, "[42 41 40]"},
+		{two + `for [1 4] [(m.f y) i] end 5`, "[41 40 39 5]"},
+		{two + `for 3 [(m.f y) 9 if (i eq 1) [break] []]`, "[33]"},
+		{two + `for 3 [(m.f y) 9 raise oops 'x']`, "ERROR:x"},
+		{two + `1 end for 2 [(m.f y) 9 drop]`, "[1]"},
+		{two + `"a" end [1 2] end for 2 [(m.f y) 9 drop]`, "[a [1 2]]"},
+		{two + `def k 3 end k end for 2 [(m.f y) 9 drop]`, "[3]"},
+		{two + `def i 7 end for 2 [(m.f y) 9 drop] end i`, "[7]"},
+		{two + `for 2 [(m.f y) 9 drop] end for 2 [(m.f y) 8 drop]`, "[]"},
+		{two + `def g fn [[][Any][for 2 [(m.f y) 9 drop] 5]] end (g)`, "[5]"},
+		{unit + `def g fn [[q:Map][Any][10 end for 2 [(q.f y) 9 drop]]] end g (mk)`, "[10]"},
+		{unit + `def g fn [[q:Map][Any][(1 add 2) end for 2 [(q.f y) 9 drop]]] end g (mk)`, "[3]"},
+		{unit + `def g fn [[q:Map n:Integer][Any][n end for 2 [(q.f y) 9 drop]]] end g (mk) 4`, "[4]"},
+		{unit + `def g fn [[q:Map Integer][Any][for 2 [(q.f y) 9 drop]]] end g (mk) 4`, "[4]"},
+		{unit + `def g fn [[q:Map][Any][for 2 [(q.f y) 9 drop] 5]] end [g (mk) g (mk)]`, "[[5 5]]"},
+		{`def mk fn [[] [Map] [{f: 5}]] end def m (mk) end for 3 [(m.f i)]`, "[5 0 5 1 5 2]"},
+		// A stop on a later iteration only: the lead is a fn on the first.
+		{mixed + `def l (mk) end for 2 [(l.(i) 7) drop]`, "[5]"},
+		{mixed + `def l (mk) end for 3 [(l.(i mod 2) 7)]`, "[7 5 7 7]"},
+		{mixed + `def g fn [[l:List][Any][for 2 [(l.(i) 7) drop] 9]] end g (mk)`, "ERROR:expected 1 return value(s), got 2"},
+		{mixed + `def g fn [[l:List][Any][4 end for 2 [(l.(i) 7) drop]]] end g (mk)`, "ERROR:expected 1 return value(s), got 2"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// Effects run once: the lead's, and each iteration's print.
+	for _, src := range []string{
+		two + `for 3 [(m.f y) i print]`,
+		`def mk fn [[] [Map] [{f: ([x:Integer y:Integer] => [x sub y])}]] end def m (mk) end def y fn [[] [Integer] [print "y" 42]] end for 2 [(m.f y) 9 drop]`,
+	} {
+		var outC, outI bytes.Buffer
+		bc, bi := mustNew(t), mustNew(t)
+		bc.SetOutput(&outC)
+		bi.SetOutput(&outI)
+		gotC, compiled, errC := bc.RunCompiled(src)
+		gotI, errI := bi.RunInterp(src)
+		if !compiled || fmt.Sprint(gotC, errC) != fmt.Sprint(gotI, errI) || outC.String() != outI.String() || outI.Len() == 0 {
+			t.Errorf("%s: compiled %v / %v %q, interpreter %v / %v %q", src, gotC, errC, outC.String(), gotI, errI, outI.String())
+		}
+	}
+	// The negative half: a loop body that binds a name — a binding the
+	// continuation's later iterations could not see where the compiled code
+	// holds it — takes no continuation, and the apply keeps its loud stop,
+	// now named for what it is.
+	requireLoudDefer(t, two+`for 2 [def u 1 (m.f y) 9 drop]`, "no statement island takes the survivors", "[]")
+	// A stop after an earlier statement of the body, whose values the
+	// compiled code may push late (`i end`), and a body whose effect before
+	// the stop its island would repeat, take no continuation: loud.
+	requireLoudDefer(t, mixed+`def l (mk) end for 2 [i end (l.(i) 7) drop]`, "not an appliable function", "[0 1 5]")
+	requireLoudDefer(t, mixed+`def l (mk) end def c (flex {n:0}) end for 2 [c set 'n' (c.n add 1) drop (l.(i) 7) drop] c.n`, "not an appliable function", "[5 2]")
 }

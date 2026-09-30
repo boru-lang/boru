@@ -392,10 +392,23 @@ func TestNUR336ComputedDefOpenerParen(t *testing.T) {
 	// compiled frame holds it beneath the statement, intact at the stop, the
 	// island seats it with the frame (deoptPoint.onFrame, NUR336 — pinned in
 	// TestNUR336UnitIslandOverAnEarlierStatement).
-	// Negative: a leftover the island cannot name — a user fn's second
-	// result, whose def the island's names cannot bind — keeps the loud
-	// defer, never a wrong answer.
-	requireLoudDefer(t, `def mk fn [[] [Map] [{f: 5}]] end def two fn [[][Integer Integer][1 2]] end def g fn [[q:Map][Any][def k (two) (q.f 7) drop drop add k]] end g (mk)`, "not an appliable function", "[3]")
+	// A user fn's multi-result call bound by a def: the def takes its first
+	// result, which the island reads by name, so the call's results go to
+	// consecutive slots and the bind re-pushes the first
+	// (planValueDefLocals' dyn-bind source arm, deoptDefsBindable, NUR336);
+	// its second is the frame's leftover, seated from its slot.
+	const twoRes = `def mk fn [[] [Map] [{f: 5}]] end def two fn [[][Integer Integer][1 2]] end `
+	for _, c := range []struct{ src, want string }{
+		{twoRes + `def g fn [[q:Map][Any][def k (two) (q.f 7) drop drop add k]] end g (mk)`, "[3]"}, // the register's witness
+		{twoRes + `def g fn [[q:Map][Any][def k (two) (q.f 7)]] end g (mk)`, "ERROR:expected 1 return value(s), got 3"},
+		{twoRes + `def g fn [[q:Map][Any][def k (two) k add]] end g (mk)`, "[3]"},
+		{twoRes + `def g fn [[q:Map][Any][def k (two) print k (q.f 7) drop drop add k]] end g (mk)`, "[3]"},
+		{`def mk fn [[] [Map] [{f: 5}]] end def three fn [[][Integer Integer Integer][1 2 3]] end def g fn [[q:Map][Any][def k (three) (q.f 7) drop drop add k add]] end g (mk)`, "[6]"},
+		{`def two fn [[][Integer Integer][1 2]] end def g fn [[b:List][Any][def k (two) do b drop k add]] end g (quote [def k 10 1])`, "[12]"},
+		{`def two fn [[][Integer Integer][1 2]] end def g fn [[][Any][def k (two) k add]] end (g)`, "[3]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
 }
 
 // TestNUR336RematchTakesItsIsland: the pass holds a paren apply's result as
@@ -515,9 +528,9 @@ func TestNUR336LandingLeadSurvivors(t *testing.T) {
 			t.Errorf("%s: compiled %v / %v %q, interpreter %v / %v %q", src, gotC, errC, outC.String(), gotI, errI, outI.String())
 		}
 	}
-	// Negative: a lead no island can take keeps its loud stop — a loop's
-	// statement (its island would run the landing again). A `/v` lead takes
-	// its island now (leadRun, TestNUR336SlashVLead).
-	requireLoudDefer(t, two+y+`for 2 [(m.f y) 9 drop]`, "violates the host-registered shape claim", "[]")
+	// A loop's statement takes its per-iteration continuation (loopContPlan,
+	// TestNUR336LoopContinuation), and a `/v` lead its island (leadRun,
+	// TestNUR336SlashVLead).
+	agreeOnBothLanes(t, two+y+`for 2 [(m.f y) 9 drop]`, "[]")
 	agreeOnBothLanes(t, two+y+`(m.f/v y) 9`, "[33]")
 }

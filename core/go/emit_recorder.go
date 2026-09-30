@@ -469,6 +469,13 @@ type EmitRecorder interface {
 	// statement then consumes, which the program's residual no longer
 	// shows (`m end drop (m.f 7)`). Inactive: no-op.
 	NoteStatementStack(pos SrcPos, stack []Value)
+	// NoteParenStack records the stack a paren group at pos opens over — told
+	// only where the tape beneath it holds values alone, nothing pending. A
+	// statement island stopped inside the group whose statement ran words
+	// that took values from beneath it (`drop (m.f 7)`) takes the statement
+	// over from the group's token instead, over exactly this stack (NUR336).
+	// Inactive: no-op.
+	NoteParenStack(pos SrcPos, stack []Value)
 	// PendingClosureApply reports the fn VALUE of a pending `apply`-word
 	// application over a closure this pass PRODUCED whose body is `body`
 	// (matched by the body's first token position — one lambda source, one
@@ -852,6 +859,7 @@ func (inactiveEmit) MayBeFn(string) bool                                    { re
 func (inactiveEmit) RegionResult(string) bool                               { return false }
 func (inactiveEmit) NoteStatementEnd(SrcPos)                                {}
 func (inactiveEmit) NoteStatementStack(SrcPos, []Value)                     {}
+func (inactiveEmit) NoteParenStack(SrcPos, []Value)                         {}
 func (inactiveEmit) NoteLandingNext(Value, LandingNext, bool, Value)        {}
 func (inactiveEmit) PendingClosureApply([]Value) (Value, bool)              { return Value{}, false }
 func (inactiveEmit) NoteMemberFnRead(string, Value)                         {}

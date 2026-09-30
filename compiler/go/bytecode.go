@@ -1659,6 +1659,9 @@ type DynMethodSpec struct {
 	// FirstIter is the loops' first-iteration check the island takes at run
 	// time (RestartFirst); empty outside loops.
 	FirstIter []RestartFirst
+	// Loop, when set, makes the island a per-iteration loop continuation
+	// (LoopCont, NUR336): Island is the stop's statement in the loop's body.
+	Loop *LoopCont
 	// Paren marks a paren's leading apply (core's recordParenLeadingApply,
 	// `(m.f 7)`): the interpreter's paren applies its lead over the values
 	// after it — a lead the landing before it parked included, `(m.f y)` over
@@ -1755,6 +1758,8 @@ type Program struct {
 	FlowExits map[int]FlowExit
 	// CallFits is the main code's twin of CompiledFn.CallFits (see there).
 	CallFits map[int]*PolyFit
+	// CallResults is the main code's twin of CompiledFn.CallResults.
+	CallResults map[int]*StmtIsland
 	// StoreNames is the main code's twin of CompiledFn.StoreNames (see
 	// there), keyed by the main code's own pc.
 	StoreNames map[int]string
@@ -2002,6 +2007,23 @@ type StmtIsland struct {
 	FirstIter []RestartFirst
 }
 
+// LoopCont is a statement island's per-iteration continuation of the counted
+// `for` loop its stop is inside (compiler's loopContPlan, NUR336): the VM
+// resumes the interpreter's own loop at the stop's iteration — its mark,
+// the values the iteration left before the stop's statement, the island,
+// then the loop's continuation (core.ForCont) over Body with the earlier
+// iterations' values as its results and IterName bound to the iteration's
+// index — followed by After, the tokens after the loop.
+type LoopCont struct {
+	Body     []core.Value
+	After    []core.Value
+	IterName string
+	// Beneath is how many values of the frame region lie beneath the loop,
+	// the island's prefix (DynMethodSpec.PrefixSrc, when set, seats them
+	// from where the compiled code keeps each).
+	Beneath int
+}
+
 // RestartFirst is one loop's first-iteration check a statement island takes
 // at run time (compiler's firstIterGuard): the island runs the loop from its
 // start, so it may take the statement over only while the loop's index slot
@@ -2057,6 +2079,10 @@ type RestartSrc struct {
 	Kind RestartSrcKind
 	Idx  int
 	Val  core.Value
+	// Fresh, on a RestartConst, marks a compound literal a fn unit's code
+	// pushes as a fresh instance per evaluation (OpPushConstFresh): the
+	// island seats a fresh copy too (NUR336's seated literals).
+	Fresh bool
 }
 
 // RestartSrcKind names where a RestartSrc's value lives when the island runs.
@@ -2348,6 +2374,12 @@ type CompiledFn struct {
 	// or a window the param contract refuses — runs the statement again on
 	// the interpreter from its first token.
 	CallFits map[int]*PolyFit
+	// CallResults is a CALL_USER's call-result island, keyed by the call's
+	// pc (NUR334): the interpreter steps a fn frame's results where the call
+	// stood, so results the callee left tape-coupled (a `/v` read of a
+	// splice) run the call's statement again on the interpreter from its
+	// first token, the call written as those results.
+	CallResults map[int]*StmtIsland
 	// StoreNames names the DEF a promoted STORE_LOCAL binds a produced fn
 	// value under, keyed by the store's pc: the interpreter's installDef
 	// renames a fn value bound by `def` (`fnDef.Name = name`), so `def h
@@ -2503,6 +2535,11 @@ type DeoptSpec struct {
 	// compiled stack there: the frame region is exactly those.
 	Seat []RestartSrc
 	Held int
+	// Island, on a live-read point whose read the pass met in a spliced
+	// word's tokens (compiler's spliceBody, NUR334), is the island's tokens
+	// in place of the body's from Token: the program from the read's
+	// statement as the splice left it.
+	Island []core.Value
 }
 
 // FitsHot reports whether v, a guarded read's value, misses one of the
@@ -2608,10 +2645,10 @@ func (p *Program) StoredRefStampedCount() int {
 // Disassemble renders the program for golden tests and debugging.
 func (p *Program) Disassemble() string {
 	var sb strings.Builder
-	p.disasmUnit(&sb, p.Code, p.Deopts)
+	p.disasmUnit(&sb, p.Code, p.Deopts, p.CallResults)
 	for fi := range p.Fns {
 		fmt.Fprintf(&sb, "fn f%d %s/%d (locals=%d)%s%s:\n", fi, p.Fns[fi].Name, p.Fns[fi].NParams, p.Fns[fi].NLocals, slotNames(p.Fns[fi].LocalNames), specNote(p.Fns[fi]))
-		p.disasmUnit(&sb, p.Fns[fi].Code, p.Fns[fi].Deopts)
+		p.disasmUnit(&sb, p.Fns[fi].Code, p.Fns[fi].Deopts, p.Fns[fi].CallResults)
 	}
 	fmt.Fprintf(&sb, "; consts=%d types=%d sigs=%d fallbacks=%d fns=%d max-stack=%d locals=%d",
 		len(p.Consts), len(p.Types), len(p.Sigs), len(p.Fallbacks), len(p.Fns), p.MaxStack, p.NumLocals)
@@ -2630,7 +2667,7 @@ func (p *Program) Disassemble() string {
 	return sb.String()
 }
 
-func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSpec) {
+func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSpec, callResults map[int]*StmtIsland) {
 	for i, in := range code {
 		fmt.Fprintf(sb, "%04d %-11s", i, in.Op.String())
 		switch in.Op {
@@ -2686,7 +2723,11 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 			fb := p.Fallbacks[in.Arg]
 			fmt.Fprintf(sb, " b%-3d ; %s (nin=%d)", in.Arg, fb.Desc, fb.NIn)
 		case OpCallUser, OpTailCallUser:
-			fmt.Fprintf(sb, " f%-3d ; %s/%d", in.Arg, p.Fns[in.Arg].Name, p.Fns[in.Arg].NParams)
+			island := ""
+			if callResults[i] != nil {
+				island = " [call-result island]"
+			}
+			fmt.Fprintf(sb, " f%-3d ; %s/%d%s", in.Arg, p.Fns[in.Arg].Name, p.Fns[in.Arg].NParams, island)
 		case OpPushClosure:
 			fmt.Fprintf(sb, " f%-3d ; closure %s/%d", in.Arg, p.Fns[in.Arg].Name, p.Fns[in.Arg].NParams)
 		case OpCallNativePoly:

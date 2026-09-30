@@ -1,6 +1,9 @@
 package lang
 
-import "testing"
+import (
+	"strings"
+	"testing"
+)
 
 // nur333_334_live_deopt_test.go pins the live-read deopt (compiler
 // kept_live_deopt.go), the loud remainders of NUR333/NUR334. A read seated
@@ -203,10 +206,13 @@ func TestLiveDeoptPlainBindings(t *testing.T) {
 // result"). Where the call is the program's last op — the unit returns
 // straight to the root's end — the RET steps the results there on the
 // interpreter over the stack beneath (vmContext.rootEndStep,
-// rootEndResults, NUR334). Any other caller keeps the screen's defer: loud,
-// never the data.
+// rootEndResults, NUR334). Any other caller takes the call's result island
+// (compiler call_result_island.go, CompiledFn.CallResults): the call's
+// statement runs again on the interpreter, the call's run written as the
+// results it left.
 func TestLiveDeoptSpliceReturned(t *testing.T) {
 	const call = `f (quote [def t word [1 2] 1])`
+	const g = `def g fn [[][Any][`
 	for _, c := range []struct{ src, want string }{
 		{unitHead + `t/v]] end ` + call, "[1 2]"}, // the register's witness
 		{unitHead + `t/v]] end ` + call + ` end`, "[1 2]"},
@@ -218,20 +224,58 @@ func TestLiveDeoptSpliceReturned(t *testing.T) {
 		{unitHead + `t/v]] end f (quote [def t word [add] 1])`, "ERROR:cannot call `add`"},
 		{unitHead + `t/v]] end f (quote [def t word [nosuch] 1])`, "ERROR:undefined word: nosuch"},
 		{`def f fn [[b:List][Integer][def t 0 do b drop t/v]] end ` + call, "ERROR:expected Integer, got word()"},
-		// The negative half: a binding the statement takes stays compiled.
-		{unitHead + `t/v]] end f (quote [def t 5 1])`, "[5]"},
-	} {
-		agreeOnBothLanes(t, c.src, c.want)
-	}
-	// A caller that goes on after the call — a value it pushes at the
-	// program's end, a word, a list literal, a paren — keeps the screen's
-	// designed defer.
-	for _, c := range []struct{ src, want string }{
+		// A caller that goes on after the call — a value it pushes at the
+		// program's end, a word, a list literal, a paren — takes the call's
+		// result island (the register's former loud rows).
 		{unitHead + `t/v]] end 9 ` + call, "[9 1 2]"},
 		{unitHead + `t/v]] end ` + call + ` 5`, "[1 2 5]"},
 		{unitHead + `t/v]] end [` + call + `]`, "[[1 2]]"},
 		{unitHead + `t/v]] end def r (` + call + `) end r`, "[2 1]"},
 		{unitHead + `t/v]] end 4 5 f (quote [def t word [add] 1])`, "[9]"},
+		{unitHead + `t/v]] end 1 f (quote [def t word [add] 1]) 5`, "[6]"},
+		{unitHead + `t/v]] end ` + call + ` add 5`, "[1 7]"},
+		{unitHead + `t/v]] end (` + call + `) 5`, "[1 2 5]"},
+		{unitHead + `t/v]] end {a: (f (quote [def t word [1] 1]))}`, "[{a:1}]"},
+		{unitHead + `t/v]] end if true [` + call + `] [0] 5`, "[1 2 5]"},
+		{unitHead + `t/v]] end print "a" ` + call + ` print "b"`, "[1 2]"},
+		{unitHead + `t/v]] end f (quote [def t word [nosuch] 1]) 5`, "ERROR:undefined word: nosuch"},
+		{`def f fn [[b:List][Integer][def t 0 do b drop t/v]] end 9 ` + call, "ERROR:expected Integer, got word()"},
+		// In a fn body: the island runs the rest of the unit, whose return
+		// check takes the stepped results.
+		{unitHead + `t/v]] end ` + g + call + ` drop 4]] end (g)`, "ERROR:expected 1 return value(s), got 2"},
+		{unitHead + `t/v]] end ` + g + `f (quote [def t word [7] 1]) add 1]] end (g)`, "[8]"},
+		{unitHead + `t/v]] end ` + g + `[` + call + `]]] end (g)`, "[[1 2]]"},
+		{unitHead + `t/v]] end ` + g + `f (quote [def t word [5] 1]) end]] end 1 (g)`, "[1 5]"},
+		{unitHead + `t/v]] end ` + g + call + ` end]] end (g) 5`, "ERROR:expected 1 return value(s), got 2"},
+		{unitHead + `t/v]] end def g fn [[b:List][Any][f b 5]] end 3 g (quote [def t word [1 2] 1])`, "ERROR:expected 1 return value(s), got 3"},
+		{unitHead + `t/v]] end def g fn [[b:List][Any][f b 5]] end 3 g (quote [def t word [] 1])`, "[3 5]"},
+		// The negative half: a binding the statement takes stays compiled.
+		{unitHead + `t/v]] end f (quote [def t 5 1])`, "[5]"},
+		{unitHead + `t/v]] end f (quote [def t 5 1]) 9`, "[5 9]"},
+		{unitHead + `t/v]] end 9 f (quote [def t 5 1])`, "[9 5]"},
+		{unitHead + `t/v]] end [f (quote [def t 5 1])]`, "[[5]]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	if dis := compileDisasm(t, unitHead+`t/v]] end 9 `+call); !strings.Contains(dis, "[call-result island]") {
+		t.Errorf("the call takes its result island; got:\n%s", dis)
+	}
+	// Where no island can take the call's statement the screen keeps its
+	// designed defer: loud, never the data. A word before the call on its
+	// level may collect (`k`); a read the compiled code made before the call
+	// that the interpreter makes before a lazy list's elements (`c.n`) would
+	// be made again after the list's effects; and a call in a fn body's tail,
+	// whose frame the interpreter may eliminate or not by the caller's context
+	// (Engine.tcoEligible's forward-paren rule), keeps no island there.
+	const counter = `def c (flex {n:0}) end def cg fn [[][Integer][c set 'n' (c.n add 1) drop c.n]] end `
+	const tail = `def g fn [[][Any][(` + call + `)]] end `
+	for _, c := range []struct{ src, want string }{
+		{unitHead + `t/v]] end def k 3 end k f (quote [def t word [add] 1])`, "ERROR:cannot call `add`"},
+		{unitHead + `t/v]] end ` + counter + `[(cg) ` + call + `] c.n`, "[[1 1 2] 0]"},
+		{unitHead + `t/v]] end ` + tail + `def r (g) end r`, "ERROR:expected 1 return value(s), got 2"},
+		{unitHead + `t/v]] end ` + tail + `1 add (g)`, "ERROR:expected 1 return value(s), got 2"},
+		{unitHead + `t/v]] end ` + tail + `[(g)]`, "[[1 2]]"},
+		{unitHead + `t/v]] end def g fn [[b:List][Any][f b]] end 3 g (quote [def t word [1 2] 1])`, "[3 1 2]"},
 	} {
 		requireLoudDefer(t, c.src, "tape-coupled deopt result", c.want)
 	}
@@ -256,14 +300,33 @@ func TestLiveDeoptIslandMadeLoopDef(t *testing.T) {
 	}
 }
 
-// TestLiveDeoptSplicedWordStaysLoud: a read the pass met in a spliced word's
-// tokens, which carry the definition's positions, plans no live point (the
-// island would start at the definition's list — silentWordBefore), so the
-// lookup keeps its designed defer where the binding is one the compiled
-// statement cannot take: loud, never the stale value. A binding it takes
-// answers as the interpreter does.
-func TestLiveDeoptSplicedWordStaysLoud(t *testing.T) {
-	requireLoudDefer(t, mkSplice+`def w word [do (mk) end x] w`, "dynamic-scope read of an active token `x`", "[1 2]")
-	requireLoudDefer(t, mkFn+`def w word [do (mk) end x] w`, "dynamic-scope read of a dispatching binding `x`", "[7]")
-	agreeOnBothLanes(t, mkList+`def w word [do (mk) end x] w`, "[[1 2]]")
+// TestLiveDeoptSplicedWord: a read the pass met in a spliced word's tokens
+// carries the definition's positions, so no point started in the program's
+// own tokens (silentWordBefore — the island would start at the definition's
+// list) and the lookup kept its designed defer where the binding is one the
+// compiled statement cannot take. The point's island is now the program as
+// the splice left it (compiler spliceBody, DeoptSpec.Island): `def w word [
+// … ]` fires where the program's one later bare `w` stands, and the island
+// runs from the read's statement in the word's tokens, then the program
+// after `w`.
+func TestLiveDeoptSplicedWord(t *testing.T) {
+	const x5 = `def x 0 end def mk fn [[][List][quote [def x word [5]]]] end `
+	for _, c := range []struct{ src, want string }{
+		{mkSplice + `def w word [do (mk) end x] w`, "[1 2]"}, // the register's witnesses
+		{mkFn + `def w word [do (mk) end x] w`, "[7]"},
+		{mkList + `def w word [do (mk) end x] w`, "[[1 2]]"},
+		{mkSplice + `def w word [do (mk) end x] end w`, "[1 2]"},
+		{mkSplice + `def w word [do (mk) end x] end w end 9`, "[1 2 9]"},
+		{x5 + `def w word [do (mk) end x add 1] end w`, "[6]"},
+		{x5 + `def w word [do (mk) end [x]] end w`, "[[5]]"},
+		{x5 + `def w word [do (mk) end x/v] end w`, "[word()({[5]})]"},
+		{`def x 0 end def mk fn [[][List][quote [def x 5]]] end def w word [do (mk) end x] end w`, "[5]"},
+		{`def x 0 end def mk fn [[][List][quote [undef x]]] end def w word [do (mk) end x] end w`, "ERROR:undefined word: x"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// The negative half: a word before `w` in its statement may collect what
+	// the splice leaves, so the program as the splice left it is no island's
+	// to run from the read: the lookup keeps its designed defer, loud.
+	requireLoudDefer(t, mkSplice+`def w word [do (mk) end x] end print "a" w`, "dynamic-scope read of an active token `x`", "[1 2]")
 }
