@@ -4163,7 +4163,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 			// do for the CALL_NATIVE twin, so the op commits no claim.
 			nout = PolyNOutRegion
 		}
-		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: lw.seatSplitLive(c.polySplit, c.polySplitLive), DynBodyOne: dynOne, DynBodyPlain: plainChk, Raw: lw.polyRawOperands(n)}
+		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: lw.splitWords(lw.seatSplitLive(c.polySplit, c.polySplitLive), c.pos, c.polySplitFwdPos), DynBodyOne: dynOne, DynBodyPlain: plainChk, Raw: lw.polyRawOperands(n), QuietGuard: c.quietGuard}
 		if c.polySeed != nil && (c.polySeed.tags == nil || len(c.polySeed.tags) == n) {
 			pref.Seed, pref.SeedTags = c.polySeed.sig, c.polySeed.tags
 		}

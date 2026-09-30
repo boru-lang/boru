@@ -17,7 +17,7 @@ package native
 // Parameterised by the per-import temporal mints (tt) — the Timeout /
 // Interval handles the timer words return carry that import's types.
 func TimeAsyncModuleNatives(tt TemporalModuleTypes) []NativeFunc {
-	return []NativeFunc{
+	return SideEffecting([]NativeFunc{
 		{
 			Name: "now",
 			Signatures: []Signature{{
@@ -78,5 +78,5 @@ func TimeAsyncModuleNatives(tt TemporalModuleTypes) []NativeFunc {
 				{Args: []*Type{tt.Interval}, Impl: Go(cancelIntervalofHandler), Returns: []*Type{}, BarrierPos: -1},
 			},
 		},
-	}
+	})
 }

@@ -49,7 +49,7 @@ func apiDescriptorMirror(word string) ReturnsFunc {
 }
 
 func NetModuleNatives(ft FetchModuleTypes) []NativeFunc {
-	return []NativeFunc{
+	return SideEffecting([]NativeFunc{
 		{
 			Name: "fetch",
 			Signatures: []Signature{
@@ -73,5 +73,5 @@ func NetModuleNatives(ft FetchModuleTypes) []NativeFunc {
 				{Args: []*Type{TMap}, Impl: Go(directAPIHandler), Patterns: map[int]Value{0: apiPatternValue()}, Returns: []*Type{TAny}, ReturnsFn: apiDescriptorMirror("direct"), BarrierPos: -1},
 			},
 		},
-	}
+	})
 }

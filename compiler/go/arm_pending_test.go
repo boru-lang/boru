@@ -60,14 +60,14 @@ func TestPendingArmWalk(t *testing.T) {
 			t.Errorf("%s: open=%v reason=%q", tc.name, open.Left, reason)
 		}
 	}
-	if r := es.pendingArmRefusal([]EmitEvent{armPendingBranch(1, readsX), {seq: 2, kind: evTrap}}); !strings.Contains(r, "NUR356") {
+	if r := es.pendingArmRefusal([]EmitEvent{armPendingBranch(1, readsX), {seq: 2, kind: evTrap}}, nil, nil); !strings.Contains(r, "NUR356") {
 		t.Errorf("a trap before the literal's evaluation declines: %q", r)
 	}
 	rec := &fnUnitRec{frag: &EmitFragment{events: []EmitEvent{armPendingBranch(1, readsX), {seq: 2, kind: evTrap}}}}
 	if r := es.lowerUnitEvents(&lowerer{}, rec); !strings.Contains(r, "NUR356") {
 		t.Errorf("a unit's refusal is its lowering's: %q", r)
 	}
-	if r := es.pendingArmRefusal([]EmitEvent{armPendingBranch(1, readsX)}); r != "" {
+	if r := es.pendingArmRefusal([]EmitEvent{armPendingBranch(1, readsX)}, nil, nil); r != "" {
 		t.Errorf("a sequence whose end evaluates it compiles: %q", r)
 	}
 }
@@ -174,32 +174,32 @@ func TestEagerLiteralRefusal(t *testing.T) {
 	// The literal's element run records one level deeper than the call.
 	print := EmitEvent{seq: 2, kind: evCall, litDepth: 1, call: emitCall{word: "print", sig: &core.Signature{}}}
 	poly := EmitEvent{seq: 3, kind: evCall, call: emitCall{word: "each", poly: true}}
-	if r := es.eagerLiteralRefusal([]EmitEvent{h, print, poly}); !strings.Contains(r, "NUR356") {
+	if r := es.eagerLiteralRefusal([]EmitEvent{h, print, poly}, nil, nil); !strings.Contains(r, "NUR356") {
 		t.Errorf("an effect in a literal a poly takes declines: %q", r)
 	}
 	br := EmitEvent{seq: 4, kind: evBranch, br: &emitBranch{then: &EmitFragment{events: []EmitEvent{print, poly}}, els: nil}}
-	if r := es.eagerLiteralRefusal([]EmitEvent{br}); r == "" {
+	if r := es.eagerLiteralRefusal([]EmitEvent{br}, nil, nil); r == "" {
 		t.Error("a nested sequence is walked")
 	}
 	committed := poly
 	committed.call.poly = false
-	if r := es.eagerLiteralRefusal([]EmitEvent{h, print, committed}); r != "" {
+	if r := es.eagerLiteralRefusal([]EmitEvent{h, print, committed}, nil, nil); r != "" {
 		t.Errorf("a committed call takes it as the interpreter does: %q", r)
 	}
-	if r := es.eagerLiteralRefusal([]EmitEvent{print, h, poly}); r != "" {
+	if r := es.eagerLiteralRefusal([]EmitEvent{print, h, poly}, nil, nil); r != "" {
 		t.Errorf("the block ends at the call's other operand: %q", r)
 	}
 	shallow := print
 	shallow.litDepth = 0
-	if r := es.eagerLiteralRefusal([]EmitEvent{h, shallow, poly}); r != "" {
+	if r := es.eagerLiteralRefusal([]EmitEvent{h, shallow, poly}, nil, nil); r != "" {
 		t.Errorf("an effect at the call's own depth is no assembly of its literal: %q", r)
 	}
 	add := EmitEvent{seq: 2, kind: evCall, litDepth: 1, call: emitCall{word: "add", nout: 1, sig: &core.Signature{}}}
 	asm := EmitEvent{seq: 5, kind: evCall, call: emitCall{makeList: true, nout: 1}}
-	if r := es.eagerLiteralRefusal([]EmitEvent{h, add, asm, poly}); r != "" {
+	if r := es.eagerLiteralRefusal([]EmitEvent{h, add, asm, poly}, nil, nil); r != "" {
 		t.Errorf("a quiet assembly: %q", r)
 	}
-	if r := es.eagerLiteralRefusal([]EmitEvent{h, print, asm, poly}); r == "" {
+	if r := es.eagerLiteralRefusal([]EmitEvent{h, print, asm, poly}, nil, nil); r == "" {
 		t.Error("an effect before the assembly declines")
 	}
 }

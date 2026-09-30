@@ -138,7 +138,7 @@ func (e *Engine) optimisticLayout(match *MatchResult, indices []int) *DispatchLa
 			return nil
 		}
 	}
-	beneath, after, live, ok := e.layoutSurround(e.Pointer-n-1, e.Pointer+1, true)
+	beneath, after, live, ok := e.layoutSurround(e.Pointer-n-1, e.Pointer+1, nFwd, true)
 	if !ok {
 		return nil
 	}

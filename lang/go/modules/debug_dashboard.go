@@ -27,7 +27,7 @@ import (
 // dashboardNatives returns the dashboard primitives, appended into
 // debugNatives()'s slice (see debug.go).
 func dashboardNatives() []native.NativeFunc {
-	return []native.NativeFunc{
+	return native.SideEffecting([]native.NativeFunc{
 		{
 			// Render a one-shot snapshot of a list of widget maps.
 			Name: "debug-dashboard",
@@ -70,7 +70,7 @@ func dashboardNatives() []native.NativeFunc {
 				}),
 			}},
 		},
-	}
+	})
 }
 
 // renderDashboard renders every widget once into a single string. Each

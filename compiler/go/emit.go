@@ -490,6 +490,8 @@ type emitCall struct {
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)
 	polySplit         *PolySplit            // the dispatch's exact operand layout, for the poly's runtime no-match arm (PolyRef.Split, NUR242)
 	polySplitLive     []splitLive           // the split's Beneath entries the run's stack holds (PolySplit.Live, NUR351), placed at lowering
+	polySplitFwdPos   []core.SrcPos         // the split's written operands' positions at the record — a word read's is the word's (PolySplit.Words, NUR356), resolved at lowering
+	quietGuard        bool                  // the NUR356 walks judged this poly quiet though an overload it may pick has an effect (polyEffectful): PolyRef.QuietGuard
 	nativeSplit       *NativeSplit          // an optimistic closure bake's exact operand layout, for the committed call's no-match arm (SigRef.Split, NUR263)
 	polySeed          *polySeed             // the checker's guarded pick (PolyRef.Seed; nil = none)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
@@ -1862,9 +1864,13 @@ type EmitState struct {
 	// (gotcha #13) is untouched.
 	constIDIdx map[string]int
 	types      []TypeRef
-	typeIdx    map[string]int        // type ID → Types index
-	fallbacks  []core.FallbackSpan   // Stage 5 interpreter islands
-	origByID   map[string]core.Value // stripped literal ID → original value
+	typeIdx    map[string]int // type ID → Types index
+	// runTypes marks the type nodes a type-run install replaces at run time
+	// (recordTypeRun, NUR308): a match over the pass's node proves nothing
+	// of the run's (literalMatchSure).
+	runTypes  map[string]bool
+	fallbacks []core.FallbackSpan   // Stage 5 interpreter islands
+	origByID  map[string]core.Value // stripped literal ID → original value
 	// trapAt is the seq of a recorded TOP-LEVEL terminal trap (a check-mode-
 	// suppressed runtime error compiled as OpTrap), or 0 for none. When set,
 	// Finalize ends the program at the trap. seqs start at 1, so 0 is a safe
@@ -6634,6 +6640,12 @@ func (es *EmitState) recordTypeRun(p *pendingTypeRun, pos core.SrcPos) bool {
 	}
 	es.bindTwins[twin].WrittenBack = true
 	spec := core.TypeRunInstallSpec{Name: p.name, Node: p.node}
+	if p.node != nil {
+		if es.runTypes == nil {
+			es.runTypes = map[string]bool{}
+		}
+		es.runTypes[p.node.ID] = true
+	}
 	es.SiteCounts[SiteDynamic]++
 	es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordTypeRun, ops: []EmitOperand{op}, nout: 0, pos: pos, typeRun: &spec}})
 	return true
@@ -11434,8 +11446,9 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		// placed at lowering); one produced outside the unit has no such
 		// home, and the record keeps its defer.
 		if live, ok := es.splitLiveProducers(l); ok {
-			call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
+			call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After, Words: l.Words}
 			call.polySplitLive = live
+			call.polySplitFwdPos = es.writtenPositions(args, l.NFwd)
 		}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
@@ -17656,6 +17669,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// the interpreter steps where the call stood (NUR334).
 	es.planCallResultRestarts(lw, residual)
 	lw.indexReadSites(&lw.p.Deopts)
+	es.walkUnitsBeforeLowering()
 	if reason := es.lowerRootEvents(lw, residual); reason != "" {
 		return nil, reason, false
 	}

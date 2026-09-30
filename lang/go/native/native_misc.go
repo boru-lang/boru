@@ -37,7 +37,8 @@ func init() {
 
 		// ---- help (language overview) ----
 		{
-			Name: "help",
+			Name:          "help",
+			CompileEffect: CompileSideEffect,
 
 			Signatures: []Signature{
 				// Prints the overview to r.Output; produces no value.
@@ -47,7 +48,8 @@ func init() {
 
 		// ---- describe (per-word documentation) ----
 		{
-			Name: "describe",
+			Name:          "describe",
+			CompileEffect: CompileSideEffect,
 
 			Signatures: []Signature{
 				// Prints the documentation to r.Output; produces no value.

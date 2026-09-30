@@ -1277,6 +1277,13 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 // matched) and lands the results.
 func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, sig *core.Signature, args []core.Value, n int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
 	r := dispReg
+	// A poly the compiler ran where the interpreter runs it later judged it
+	// quiet (PolyRef.QuietGuard, NUR356): an overload with an effect of its
+	// own would run early, so the pick is a designed defer.
+	if pr.QuietGuard && sig.CompileEffect.Has(core.CompileSideEffect) {
+		return nil, vmDefer(r, curDebug, pc, "vm:quiet-poly-effect",
+			"`"+pr.Word+"` picked an overload with an effect where the compiled code runs it before the interpreter would (NUR356)")
+	}
 	// Per-export module policy gate (NUR045): a module poly word's
 	// re-match resolved a stamped sub-registry sig — the same identity
 	// the interpreter's execMatch gate reads, checked AFTER the match so

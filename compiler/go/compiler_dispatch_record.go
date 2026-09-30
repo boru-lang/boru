@@ -1030,7 +1030,8 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 		// and plans them there (PolyRef.Split, NUR242 — `0 fold [add]
 		// b.data` over a String field).
 		if l := r.Check.LayoutFor(args); l != nil && len(l.Live) == 0 {
-			call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
+			call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After, Words: l.Words}
+			call.polySplitFwdPos = es.writtenPositions(args, l.NFwd)
 		}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})

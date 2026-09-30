@@ -81,7 +81,7 @@ func loggerNatives(st *loggerState) []NativeFunc {
 	} {
 		funcs = append(funcs, loggerLevelNative(st, lvl.word, lvl.level))
 	}
-	return funcs
+	return SideEffecting(funcs)
 }
 
 // loggerLevelNative builds one severity method (l.info, …) that emits

@@ -247,22 +247,92 @@ func (es *EmitState) planLandingRestarts(lw *lowerer, residual []core.Value) {
 // value included — and reads the names it bound through the unit's island
 // environment.
 func defsBefore(tree map[int]treeEvent, body []core.Value, tok int, p core.SrcPos) int {
+	defs := treeDefs(tree)
+	for at := bodyTokenContaining(body, p); ; {
+		next := leadingDef(tree, defs, body, tok)
+		if next < 0 || next > at {
+			return tok
+		}
+		tok = next
+	}
+}
+
+// treeDefs indexes a tree's def binds by their def site.
+func treeDefs(tree map[int]treeEvent) map[core.SrcPos]*emitDynBind {
 	defs := map[core.SrcPos]*emitDynBind{}
 	for _, te := range tree {
 		if d := te.ev.dyn; te.ev.kind == evDynBind && d != nil {
 			defs[d.pos] = d
 		}
 	}
-	for at := bodyTokenContaining(body, p); tok+3 <= at; tok += 3 {
-		w, err := core.AsWord(body[tok])
-		if err != nil || w.Name != "def" || !core.IsWord(body[tok+1]) {
-			break
-		}
-		if d := defs[body[tok+1].Pos()]; d == nil || !tookWhole(tree, d, body, tok+2) {
-			break
-		}
+	return defs
+}
+
+// leadingDef is the body token after the def or the def-making branch a
+// statement opens with at token tok, or -1 when it opens with neither. A def takes its value whole from the one token
+// after its name (tookWhole); a branch is `if` over one condition token and
+// its arm lists (quietBranchAt) — NUR357's `if c [def q 3] [def q 4] {b:2}
+// keys m.a`, whose arms bind and leave nothing: it ran in the compiled code,
+// never again, and the island starts past it.
+func leadingDef(tree map[int]treeEvent, defs map[core.SrcPos]*emitDynBind, body []core.Value, tok int) int {
+	if tok+3 > len(body) {
+		return -1
 	}
-	return tok
+	w, err := core.AsWord(body[tok])
+	if err != nil {
+		return -1
+	}
+	switch {
+	case w.Name == "def" && core.IsWord(body[tok+1]):
+		if d := defs[body[tok+1].Pos()]; d != nil && tookWhole(tree, d, body, tok+2) {
+			return tok + 3
+		}
+	case w.Name == "if":
+		return quietBranchAt(tree, body, tok)
+	}
+	return -1
+}
+
+// quietBranchAt is the body token after an `if` at token tok whose branch
+// event stands in the tree (outside any loop) over body arms that leave
+// nothing — no value, no pending literal — its condition the one token after
+// the word and its arms the list tokens after that; -1 otherwise.
+func quietBranchAt(tree map[int]treeEvent, body []core.Value, tok int) int {
+	if tok < 0 || tok+3 > len(body) {
+		return -1
+	}
+	if w, err := core.AsWord(body[tok]); err != nil || w.Name != "if" || !unmodifiedWordInfo(w) {
+		return -1
+	}
+	for _, te := range tree {
+		br := te.ev.br
+		if te.ev.kind != evBranch || br == nil || te.inLoop || br.pending.Left || br.condFrag != nil || br.thenIsVal || br.elsIsVal {
+			continue
+		}
+		if br.pos != body[tok+1].Pos() && br.pos != body[tok].Pos() {
+			continue
+		}
+		span := 3
+		if br.hasElse {
+			span = 4
+		}
+		if tok+span > len(body) || !armLeavesNothing(br.then, body[tok+2]) || (br.hasElse && !armLeavesNothing(br.els, body[tok+3])) {
+			return -1
+		}
+		return tok + span
+	}
+	return -1
+}
+
+// armLeavesNothing reports whether a branch arm is the body list tok and its
+// recorded fragment leaves no value.
+func armLeavesNothing(frag *EmitFragment, tok core.Value) bool {
+	return frag != nil && frag.residualN == 0 && tok.Parent.Equal(core.TList) && tok.Eval && !tok.Quoted
+}
+
+// unmodifiedWordInfo reports whether w carries no modifier the source wrote.
+func unmodifiedWordInfo(w core.WordInfo) bool {
+	return w.ArgCount == -1 && !w.ForceStack && !w.ForceForward && !w.ForceVal && !w.ForceUsurp
 }
 
 // defLeftovers are the results the defs from body token tok up to (not
@@ -273,14 +343,14 @@ func defsBefore(tree map[int]treeEvent, body []core.Value, tok int, p core.SrcPo
 // NUR336). A def's call of a result count this cannot read leaves none it
 // can name, and an island over it keeps finding such a value deferred.
 func defLeftovers(tree map[int]treeEvent, body []core.Value, tok, to int) (leftovers, bound []producer) {
-	defs := map[core.SrcPos]*emitDynBind{}
-	for _, te := range tree {
-		if d := te.ev.dyn; te.ev.kind == evDynBind && d != nil {
-			defs[d.pos] = d
+	defs := treeDefs(tree)
+	for tok+3 <= to {
+		if next := quietBranchAt(tree, body, tok); next >= 0 {
+			tok = next
+			continue
 		}
-	}
-	for ; tok+3 <= to; tok += 3 {
 		d := defs[body[tok+1].Pos()]
+		tok += 3
 		if d == nil || d.srcSeq < 0 {
 			continue
 		}
@@ -445,7 +515,7 @@ func (es *EmitState) lowerRootEvents(lw *lowerer, residual []core.Value) string 
 	if reason := es.planRematchRestart(lw, residual); reason != "" {
 		return reason
 	}
-	if reason := es.pendingArmRefusal(es.frames[0]); reason != "" {
+	if reason := es.pendingArmRefusal(es.frames[0], es.rootBody, es.reg); reason != "" {
 		return reason
 	}
 	lw.numLocals = es.units[0].numLocals
@@ -491,6 +561,23 @@ func literalDefsBefore(tree map[int]treeEvent, body []core.Value, tok int, p cor
 		}
 	}
 	return tok
+}
+
+// fitStartBefore is literalDefsBefore past the def-making branches the
+// statement opens with too (quietBranchAt, NUR357): `if c [def q 3] [def q
+// 4] {b:2} keys m.a` — the branch ran in the compiled code and left
+// nothing, and the poly's forward-fit island takes the statement over after
+// it.
+func fitStartBefore(tree map[int]treeEvent, body []core.Value, tok int, p core.SrcPos) int {
+	at := bodyTokenContaining(body, p)
+	for {
+		tok = literalDefsBefore(tree, body, tok, p)
+		next := quietBranchAt(tree, body, tok)
+		if next < 0 || next > at {
+			return tok
+		}
+		tok = next
+	}
 }
 
 // The guards of a branch (NUR292) a statement island may take over: the

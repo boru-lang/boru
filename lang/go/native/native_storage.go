@@ -115,7 +115,7 @@ var storageNatives = []NativeFunc{
 			// FlexMap (in-place key set; returns the node for chaining)
 			{
 				Args:          []*Type{TString, TAny, TFlexMap},
-				CompileEffect: CompileStoresFn,
+				CompileEffect: CompileStoresFn | CompileSideEffect,
 				Impl:          Go(setFlexMapHandler),
 				Returns:       []*Type{TFlexMap},
 				ReturnsFn:     setFlexMapReturns, BarrierPos: -1,
@@ -123,7 +123,7 @@ var storageNatives = []NativeFunc{
 			{
 				Args:          []*Type{TAtom, TAny, TFlexMap},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn,
+				CompileEffect: CompileQuoteKey | CompileStoresFn | CompileSideEffect,
 				Impl:          Go(setFlexMapHandler),
 				Returns:       []*Type{TFlexMap},
 				ReturnsFn:     setFlexMapReturns, BarrierPos: -1,
@@ -133,7 +133,7 @@ var storageNatives = []NativeFunc{
 			// an error, growth is append's job)
 			{
 				Args:          []*Type{TInteger, TAny, TFlexList},
-				CompileEffect: CompileStoresFn,
+				CompileEffect: CompileStoresFn | CompileSideEffect,
 				Impl:          Go(setFlexListHandler),
 				Returns:       []*Type{TFlexList},
 				ReturnsFn:     setFlexListReturns, BarrierPos: -1,
@@ -143,14 +143,14 @@ var storageNatives = []NativeFunc{
 			// setAttribute. Children grow via `append`.)
 			{
 				Args:          []*Type{TString, TAny, TFlexXml},
-				CompileEffect: CompileStoresFn,
+				CompileEffect: CompileStoresFn | CompileSideEffect,
 				Impl:          Go(setFlexXmlHandler),
 				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TAny, TFlexXml},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn,
+				CompileEffect: CompileQuoteKey | CompileStoresFn | CompileSideEffect,
 				Impl:          Go(setFlexXmlHandler),
 				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
 			},
@@ -163,7 +163,7 @@ var storageNatives = []NativeFunc{
 			// weak payload, by design.)
 			{
 				Args:          []*Type{TString, TAny, TWeakFlexMap},
-				CompileEffect: CompileStoresFn,
+				CompileEffect: CompileStoresFn | CompileSideEffect,
 				Impl:          Go(setWeakFlexMapHandler),
 				Returns:       []*Type{TWeakFlexMap},
 				ReturnsFn:     weakSetMapReturns, BarrierPos: -1,
@@ -171,7 +171,7 @@ var storageNatives = []NativeFunc{
 			{
 				Args:          []*Type{TAtom, TAny, TWeakFlexMap},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn,
+				CompileEffect: CompileQuoteKey | CompileStoresFn | CompileSideEffect,
 				Impl:          Go(setWeakFlexMapHandler),
 				Returns:       []*Type{TWeakFlexMap},
 				ReturnsFn:     weakSetMapReturns, BarrierPos: -1,
@@ -181,7 +181,7 @@ var storageNatives = []NativeFunc{
 			// view; same value domain as WeakFlexMap).
 			{
 				Args:          []*Type{TInteger, TAny, TWeakFlexList},
-				CompileEffect: CompileStoresFn,
+				CompileEffect: CompileStoresFn | CompileSideEffect,
 				Impl:          Go(setWeakFlexListHandler),
 				Returns:       []*Type{TWeakFlexList},
 				ReturnsFn:     weakSetListReturns, BarrierPos: -1,
@@ -191,14 +191,14 @@ var storageNatives = []NativeFunc{
 			// of the element and always store strongly).
 			{
 				Args:          []*Type{TString, TAny, TWeakFlexXml},
-				CompileEffect: CompileStoresFn,
+				CompileEffect: CompileStoresFn | CompileSideEffect,
 				Impl:          Go(setWeakFlexXmlHandler),
 				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TAny, TWeakFlexXml},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey | CompileStoresFn,
+				CompileEffect: CompileQuoteKey | CompileStoresFn | CompileSideEffect,
 				Impl:          Go(setWeakFlexXmlHandler),
 				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
@@ -292,15 +292,16 @@ var storageNatives = []NativeFunc{
 
 			// FlexMap (in-place key delete; returns the node for chaining).
 			{
-				Args:      []*Type{TString, TFlexMap},
-				Impl:      Go(delFlexMapHandler),
-				Returns:   []*Type{TFlexMap},
-				ReturnsFn: delFlexMapReturns, BarrierPos: -1,
+				Args:          []*Type{TString, TFlexMap},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(delFlexMapHandler),
+				Returns:       []*Type{TFlexMap},
+				ReturnsFn:     delFlexMapReturns, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TFlexMap},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				CompileEffect: CompileQuoteKey | CompileSideEffect,
 				Impl:          Go(delFlexMapHandler),
 				Returns:       []*Type{TFlexMap},
 				ReturnsFn:     delFlexMapReturns, BarrierPos: -1,
@@ -310,15 +311,16 @@ var storageNatives = []NativeFunc{
 			// reason set's is: the inherited FlexMap handler's
 			// AsMutableMap declines the weak payload by design.
 			{
-				Args:      []*Type{TString, TWeakFlexMap},
-				Impl:      Go(delWeakFlexMapHandler),
-				Returns:   []*Type{TWeakFlexMap},
-				ReturnsFn: delWeakFlexMapReturns, BarrierPos: -1,
+				Args:          []*Type{TString, TWeakFlexMap},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(delWeakFlexMapHandler),
+				Returns:       []*Type{TWeakFlexMap},
+				ReturnsFn:     delWeakFlexMapReturns, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TWeakFlexMap},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				CompileEffect: CompileQuoteKey | CompileSideEffect,
 				Impl:          Go(delWeakFlexMapHandler),
 				Returns:       []*Type{TWeakFlexMap},
 				ReturnsFn:     delWeakFlexMapReturns, BarrierPos: -1,
@@ -326,26 +328,28 @@ var storageNatives = []NativeFunc{
 
 			// FlexXml / WeakFlexXml (in-place attribute delete).
 			{
-				Args:    []*Type{TString, TFlexXml},
-				Impl:    Go(delFlexXmlHandler),
-				Returns: []*Type{TFlexXml}, BarrierPos: -1,
-			},
-			{
-				Args:          []*Type{TAtom, TFlexXml},
-				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				Args:          []*Type{TString, TFlexXml},
+				CompileEffect: CompileSideEffect,
 				Impl:          Go(delFlexXmlHandler),
 				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:    []*Type{TString, TWeakFlexXml},
-				Impl:    Go(delWeakFlexXmlHandler),
-				Returns: []*Type{TWeakFlexXml}, BarrierPos: -1,
+				Args:          []*Type{TAtom, TFlexXml},
+				QuoteArgs:     map[int]bool{0: true},
+				CompileEffect: CompileQuoteKey | CompileSideEffect,
+				Impl:          Go(delFlexXmlHandler),
+				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
+			},
+			{
+				Args:          []*Type{TString, TWeakFlexXml},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(delWeakFlexXmlHandler),
+				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
 			{
 				Args:          []*Type{TAtom, TWeakFlexXml},
 				QuoteArgs:     map[int]bool{0: true},
-				CompileEffect: CompileQuoteKey,
+				CompileEffect: CompileQuoteKey | CompileSideEffect,
 				Impl:          Go(delWeakFlexXmlHandler),
 				Returns:       []*Type{TWeakFlexXml}, BarrierPos: -1,
 			},
@@ -394,16 +398,18 @@ var storageNatives = []NativeFunc{
 				ReturnsFn: delListReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TInteger, TFlexList},
-				Impl:      Go(delListHandler),
-				Returns:   []*Type{},
-				ReturnsFn: delListReturns, BarrierPos: -1,
+				Args:          []*Type{TInteger, TFlexList},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(delListHandler),
+				Returns:       []*Type{},
+				ReturnsFn:     delListReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TInteger, TWeakFlexList},
-				Impl:      Go(delListHandler),
-				Returns:   []*Type{},
-				ReturnsFn: delListReturns, BarrierPos: -1,
+				Args:          []*Type{TInteger, TWeakFlexList},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(delListHandler),
+				Returns:       []*Type{},
+				ReturnsFn:     delListReturns, BarrierPos: -1,
 			},
 		},
 	},

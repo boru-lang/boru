@@ -91,7 +91,7 @@ func debugParseHandler(args []native.Value, _ map[string]native.Value, _ []nativ
 }
 
 func debugNatives() []native.NativeFunc {
-	return []native.NativeFunc{
+	return native.SideEffecting([]native.NativeFunc{
 		// ── (A) Printing & tracing ────────────────────────────────────
 		{
 			Name: "debug-tap",
@@ -499,7 +499,7 @@ func debugNatives() []native.NativeFunc {
 				}),
 			}},
 		},
-	}
+	})
 }
 
 // typeLeavesToList renders a slice of types as a List of their leaf names.

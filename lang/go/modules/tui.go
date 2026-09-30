@@ -599,7 +599,7 @@ func tuiNatives() []native.NativeFunc {
 // tuiTier1Natives lists the Tier-1 raw-terminal words.
 func tuiTier1Natives() []native.NativeFunc {
 	T := func(ts ...*native.Type) []*native.Type { return ts }
-	return []native.NativeFunc{
+	return native.SideEffecting([]native.NativeFunc{
 		{Name: "open", Signatures: []native.Signature{
 			{Args: T(native.TMap), Impl: native.Go(tuiOpenHandler), Returns: T(TTerminal),
 				ReturnsFn: tuiOpenMirror(), BarrierPos: -1},
@@ -641,7 +641,7 @@ func tuiTier1Natives() []native.NativeFunc {
 			{Args: T(TTerminal), Impl: native.Go(tuiBellHandler), Returns: T(),
 				ReturnsFn: tuiNoReturns, BarrierPos: -1},
 		}},
-	}
+	})
 }
 
 // BuildTuiModule creates the "boru:tui" native module: the Tier-1 words

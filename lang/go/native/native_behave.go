@@ -42,7 +42,8 @@ import (
 // accepts new capability slots without losing previously installed
 // ones.
 var behaveNative = NativeFunc{
-	Name: "behave",
+	Name:          "behave",
+	CompileEffect: CompileSideEffect,
 
 	Signatures: []Signature{
 		// behave STORES its fn for later invocation through the type's

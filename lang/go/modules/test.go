@@ -269,7 +269,7 @@ func activeRun(parent *native.Registry) *testRun {
 // are registered into the module sub-registry; their handlers reach
 // the active testRun via the captured parent registry.
 func testNatives(parent *native.Registry) []native.NativeFunc {
-	return []native.NativeFunc{
+	return native.SideEffecting([]native.NativeFunc{
 		// describe "name" [body] — push name onto the path, run body,
 		// pop. Body errors abort the describe but leave already-
 		// recorded results in place.
@@ -728,7 +728,7 @@ func testNatives(parent *native.Registry) []native.NativeFunc {
 				},
 			},
 		},
-	}
+	})
 }
 
 // ---- check-mode shape ReturnsFns -------------------------------------

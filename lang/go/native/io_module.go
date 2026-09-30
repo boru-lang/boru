@@ -148,7 +148,7 @@ func IOModuleNativeFuncs(t IOModuleTypes) []NativeFunc {
 	writeMmapImpl := func(a []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 		return writeMmapWord(a, r)
 	}
-	return []NativeFunc{
+	return SideEffecting([]NativeFunc{
 		{
 			Name: "printstr",
 			Signatures: []Signature{{
@@ -536,7 +536,7 @@ func IOModuleNativeFuncs(t IOModuleTypes) []NativeFunc {
 				{Args: []*Type{TPathon}, Impl: Go(touchHandler), Returns: []*Type{TPathon}, BarrierPos: -1},
 			},
 		},
-	}
+	}, "stdin", "stdout", "stderr")
 }
 
 // IOWordExtensions builds the WORD-EXTENSION clones the boru:io module exports
@@ -560,12 +560,12 @@ func IOWordExtensions(fileType *Type) []FnDefInfo {
 	}
 	return []FnDefInfo{
 		NewWordExtension(core.OwnerKernel, "list", []Signature{
-			{Args: []*Type{TPathon, TMap}, Impl: Go(listImpl(true)), Returns: []*Type{TList}, BarrierPos: -1},
-			{Args: []*Type{TPathon}, Impl: Go(listImpl(false)), Returns: []*Type{TList}, BarrierPos: -1},
+			{Args: []*Type{TPathon, TMap}, Impl: Go(listImpl(true)), Returns: []*Type{TList}, BarrierPos: -1, CompileEffect: CompileSideEffect},
+			{Args: []*Type{TPathon}, Impl: Go(listImpl(false)), Returns: []*Type{TList}, BarrierPos: -1, CompileEffect: CompileSideEffect},
 		}),
 		NewWordExtension(core.OwnerKernel, "remove", []Signature{
-			{Args: []*Type{TPathon, TMap}, Impl: Go(ioRemoveOptsHandler), Returns: []*Type{TPathon}, BarrierPos: -1},
-			{Args: []*Type{TPathon}, Impl: Go(ioRemoveHandler), Returns: []*Type{TPathon}, BarrierPos: -1},
+			{Args: []*Type{TPathon, TMap}, Impl: Go(ioRemoveOptsHandler), Returns: []*Type{TPathon}, BarrierPos: -1, CompileEffect: CompileSideEffect},
+			{Args: []*Type{TPathon}, Impl: Go(ioRemoveHandler), Returns: []*Type{TPathon}, BarrierPos: -1, CompileEffect: CompileSideEffect},
 		}),
 	}
 }

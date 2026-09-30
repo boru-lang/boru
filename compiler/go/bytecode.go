@@ -858,6 +858,12 @@ type PolyRef struct {
 	// (NUR352). The no-match arms render the window with these in place
 	// (RenderWindow); the match itself reads the evaluated values.
 	Raw map[int]core.Value
+	// QuietGuard marks a poly the compiler judged QUIET — run where the
+	// interpreter runs it later, or never (an eager literal's element, an
+	// event between an `if` arm and its pending literal, NUR356) — though
+	// some overload it may pick declares an effect (core.CompileSideEffect):
+	// the run's pick of such an overload raises a designed defer instead.
+	QuietGuard bool
 	// Fit, when non-nil, is the poly's FORWARD-FIT island (NUR357): an
 	// operand the pass collected forward was gradual, and the interpreter's
 	// forward collection takes the run's value there only where it fits
@@ -895,6 +901,12 @@ type PolySplit struct {
 	NFwd    int
 	Beneath []core.Value
 	After   []core.Value
+	// Words, by written operand index, is the source word a written operand
+	// was read from. The interpreter's plan reads a word's binding without
+	// stepping it, so at its no-match the word still stands on its tape and
+	// its report stops there (core.ReorderForwardCandidates); the report is
+	// rendered over the tape with the word in place (NUR356).
+	Words map[int]core.Value
 	// Live are the Beneath entries that are no constant — an earlier
 	// call's result the run's stack holds there (NUR351) — each read where
 	// the compiled code keeps it when the arm runs.
