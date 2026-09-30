@@ -97,10 +97,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR356](#nur356) | A native that raises by value inside a literal handed to a call matched at run time raises before the no-match; a computed arm's pending literal defers | the NUR351/352 pass (2026-09-29); narrowed twice |
 | [NUR359](#nur359) | A computed run re-stepping an argument-taking fn value defers compiled (loud) | the NUR355 pass (2026-09-29); narrowed 2026-09-30 |
 | [NUR361](#nur361) | A gradual read nested in an inline body that holds a fn defers compiled (loud; was silent) | the NUR356 pass (2026-09-29); narrowed 2026-09-30 |
-| [NUR362](#nur362) | A poly re-match ignores signature barriers: `get (h) {k:1}` answers compiled where the interpreter raises (silent) | the NUR356 pass (2026-09-30) |
-| [NUR363](#nur363) | `each [def v (mk) v] [1]` reads an undefined word compiled (loud) | the NUR361 pass (2026-09-30) |
 | [NUR364](#nur364) | A failed call over a pending literal in a fn body renders a wider operand window compiled (notes only) | the NUR235 pass (2026-09-30) |
-| [NUR365](#nur365) | A break escaping a def's paren operand in a loop: signature_error interpreted, `[]` compiled (silent) | the NUR358 pass (2026-09-30) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -884,36 +881,6 @@ An exact compile needs an island that resumes mid nested body. Root
 
 ---
 
-## NUR362 — a poly re-match ignores signature barriers {#nur362}
-
-**Status:** Pending (a silent wrong answer) · **Recorded:** 2026-09-30 · pre-existing at 474954ff1
-
-```
-def h fn [[] [Any] ["k"]] end get (h) {k:1}
-  interpreted   signature_error (get's (String, Map) overload has barrier 1)
-  compiled      [1]
-```
-
-`get (h) l` and the fn-body twin do the same. The VM's poly re-match
-(`MatchSignature` over the run's values) collects past a barrier the
-interpreter's forward plan respects.
-
----
-
-## NUR363 — a def-then-read callback body reads an undefined word compiled {#nur363}
-
-**Status:** Pending (loud) · **Recorded:** 2026-09-30 · pre-existing at 474954ff1
-
-```
-def g fn [[] [Integer] [5]] end def mk fn [[] [Any] [g/v]] end each [def v (mk) v] [1]
-  interpreted   [[5]]
-  compiled      undefined word: v
-```
-
-With `add 1` or a `drop` in front likewise.
-
----
-
 ## NUR364 — a failed call over a pending literal in a fn body renders a wider window {#nur364}
 
 **Status:** Pending (notes only) · **Recorded:** 2026-09-30 · pre-existing at 474954ff1
@@ -926,23 +893,6 @@ def g fn [[x:Integer][Any][{f: (1 add 1)} mul x]] end g 3
 
 The user-call twin (`h {f: (1 add 1)} x` in a fn body) splits the same way.
 Code and caret agree.
-
----
-
-## NUR365 — a break escaping a def's paren operand inside a loop {#nur365}
-
-**Status:** Pending (a silent wrong answer) · **Recorded:** 2026-09-30 · pre-existing at 474954ff1
-
-```
-for 2 [def x (1 break) end print "b"]
-  interpreted   signature_error on def
-  compiled      []
-```
-
-A paren is not a list literal (NUR358's rule does not reach it); the lanes
-disagree on whether the escaped signal abandons `def`'s collection.
-
-**Verdict (maintainer, 2026-09-30):** a paren is no loop boundary either (NUR358's rule): the escaping break abandons the pending `def` and breaks the loop, `[]`. Fix the interpreter; the compiled lane already agrees.
 
 ---
 

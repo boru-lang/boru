@@ -766,6 +766,19 @@ user still gets an answer while the case is open:
   - A typed-map or typed-list pattern negative (`h {f: "a"}` over
     `m:{f:Integer}`) stops the check pass (`record_shape_mismatch`) where
     the interpreter raises signature_error at run time.
+- **Open refusals recorded 2026-09-30 (round 5):**
+  - A call whose overload's barrier stops its forward collection short of
+    the written operands, where the run could not plan the window the
+    interpreter's barrier-bound collection takes instead, declines
+    ("`<word>`: an overload's barrier stops its forward collection short of
+    the written operands, and the run could not plan the window it takes
+    instead (NUR362)"): `9 g "x" (h)` over a user poly whose arms' barriers
+    differ, `get "message" (h) [z]` (which compiled correctly before for an
+    Error `h`, and was a silent wrong answer for a Map), `get (h) {k:1} [z]`
+    and a fn-body `g (h) 7` over `g [a:Integer | b:Integer]`. A barred
+    re-match the plan cannot place at run time defers loudly
+    (`vm:poly-barrier`, `vm:user-poly-barrier`; backstops, unreached by the
+    corpus).
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
