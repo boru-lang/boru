@@ -9,6 +9,10 @@ today". Update this file at the end of every increment.
 
 Last updated: **2026-09-25**.
 
+> **2026-09-30:** the NUR rounds (#520–#526) are handed over in
+> [NUR-ROUND6-HANDOVER.0.md](NUR-ROUND6-HANDOVER.0.md): the state at stop,
+> the six open records, and round 6's unmerged work saved as patches.
+
 **Read in this order:** the definition of done below; then
 [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md) (2026-09-17,
 the plan re-examined and re-staged — its §5 is the work order) and
