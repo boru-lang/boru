@@ -779,6 +779,18 @@ user still gets an answer while the case is open:
     re-match the plan cannot place at run time defers loudly
     (`vm:poly-barrier`, `vm:user-poly-barrier`; backstops, unreached by the
     corpus).
+  - A def binding the first value of a loop whose iteration a break or
+    continue may cut short declines ("def `x` consumes loop results"):
+    `def x (for 3 [if (i eq 1) [break] [i]]) end x`, and the same through a
+    fn that breaks. The first-value bind (S5) finds that value at a depth
+    set by the loop's static count, and an early exit shrinks the region
+    under it — the compiled run underflowed `BIND_GLOBAL` before. The loop
+    body's events decide it (`EmitState.bodyEscapes`: a break, continue,
+    island, poly call, code-running native, or a user unit that may raise
+    one). A loop that no signal cuts short keeps the split. A loop inside a
+    paren a word collects forward (`1 add (for 3 [… break …])`) refuses on
+    its existing variadic-loop-result reasons; the interpreter now answers
+    it (the loop takes its own signal).
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

@@ -9472,7 +9472,13 @@ func (es *EmitState) recordLoopEvent(word string, lp *emitLoop, body *EmitFragme
 		// first-value def bind, whose splice-at-depth lowering needs the exact
 		// STATIC region size the caller computed (0 when not static).
 		f.variadicResult = true
-		f.regionN = regionN
+		// A break or continue that may leave an iteration early cuts the
+		// region short: its size is a runtime count, and the splice-at-depth
+		// bind, sized by the static count, would reach below it (`def x (for
+		// 3 [if (i eq 1) [break] [i]])` underflowed BIND_GLOBAL).
+		if !es.bodyEscapes(body) {
+			f.regionN = regionN
+		}
 		if len(bodyStk) > 0 && bodyStk[0].Parent != nil {
 			f.firstElemType = bodyStk[0].Parent
 		}

@@ -261,3 +261,42 @@ func TestNUR365ParenIsNoLoop(t *testing.T) {
 	// variadic loop result): the callee's args list does not outlive it.
 	requireInterpDeclined(t, f+`def g fn [[y:Integer][Any][for 2 [size (f 1)] args]] end g 9`, "[[9]]")
 }
+
+// TestNUR365LoopInsideParen: a loop the collected paren itself holds is the
+// nearest loop — its break/continue stays inside the group, and the word
+// collects the loop's results (Codex on #526: `size (for 2 [break])` raised
+// `break outside loop`, and inside another loop broke that one). A def
+// binding the first value of a loop whose iteration a break/continue may
+// cut short declines: the static count no longer sizes its region (the
+// compiled run underflowed BIND_GLOBAL).
+func TestNUR365LoopInsideParen(t *testing.T) {
+	const f = `def f fn [[][Any][break]] end `
+	for _, c := range []struct{ src, want string }{
+		{`def g fn [[][Any][def x (for 3 [if (i eq 1) [break] [i]]) end x]] end g`, "[0]"},
+		{`def g fn [[][Any][def x (for 3 [if (i gt 0) [continue] [i]]) end x]] end g`, "[0]"},
+		// negative: a loop no signal cuts short keeps the static split
+		{`def x (for 3 [i]) end x`, "[1 2 0]"},
+		{`for 2 [def x (for 1 [i]) end x]`, "[0 0]"},
+	} {
+		agreeOnBothLanes(t, c.src, c.want)
+	}
+	for _, c := range []struct{ src, want string }{
+		{`size (for 2 [break])`, "ERROR:argument expression produced no value for size"},
+		{`size (for 2 [continue])`, "ERROR:argument expression produced no value for size"},
+		{`for 3 [size (for 2 [break])]`, "ERROR:argument expression produced no value for size"},
+		{`1 add (for 3 [if (i eq 1) [break] [i]])`, "[1]"},
+		{`1 add (for 3 [if (i lt 2) [continue] [i]])`, "[3]"},
+		{`1 add (for 3 [if (i eq 1) [(break)] [i]])`, "[1]"},
+		{`1 add ((for 3 [if (i eq 1) [break] [i]]))`, "[1]"},
+		{`for 2 [1 add (for 3 [if (i eq 1) [break] [i]])]`, "[1 1]"},
+		{`for 2 [def x (for 3 [if (i eq 1) [break] [i]]) end x]`, "[0 0]"},
+		{`def x (for 3 [if (i eq 1) [break] [i]]) end x`, "[0]"},
+		{`def x (for 3 [if (i eq 2) [break] [i]]) end x`, "[1 0]"},
+		{`def x (for 3 [if (i gt 0) [continue] [i]]) end x`, "[0]"},
+		{`def x (for 3 [if (i eq 1) [(break)] [i]]) end x`, "[0]"},
+		{`def x (for 3 [(for 2 [i break]) i]) end x`, "[1 2 0]"},
+		{f + `def x (for 3 [if (i eq 1) [f] [i]]) end x`, "[0]"},
+	} {
+		requireInterpDeclined(t, c.src, c.want)
+	}
+}

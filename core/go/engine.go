@@ -2620,6 +2620,15 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 		// down here — the resolution's unwind starts at the word, behind the
 		// group, and would leave a callee's args and bindings in place — and
 		// its tokens leave the tape with them.
+		// A loop the group itself holds is the nearest one and takes the
+		// signal first — `size (for 2 [break])` breaks the inner loop and
+		// size collects its result. Its resolution rewrites the group's
+		// tokens (the loop region, with any paren the signal escaped), so
+		// the depth is read back from the tape.
+		if e.Registry.FlowCtrl != FlowNone && e.loopContWithin(scanIdx+groupExtent(e.Tape, scanIdx)) && e.handleFlowCtrl() {
+			depth = openDepthBetween(e.Tape, scanIdx, e.Pointer)
+			continue
+		}
 		if e.Registry.FlowCtrl != FlowNone {
 			e.Registry.HoldFlowAt(e.currentPos(), e.Pointer < e.Tape.Len())
 			e.unwindLiveFrames(scanIdx, e.Tape.Len())
@@ -2659,6 +2668,32 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 
 	e.Pointer = savedPointer
 	return nil
+}
+
+// loopContWithin reports whether the nearest loop continuation ahead of the
+// pointer — the one handleLoopBreak / handleLoopContinue resolve a signal
+// against — stands before end.
+func (e *Engine) loopContWithin(end int) bool {
+	for i := e.Pointer; i < end; i++ {
+		if info, err := AsMove(e.Tape.At(i)); err == nil && info.Cont != nil {
+			return true
+		}
+	}
+	return false
+}
+
+// openDepthBetween is the paren depth at to of a group opening at from:
+// the open markers in [from, to) less the closes among them.
+func openDepthBetween(tape *Tape, from, to int) int {
+	depth := 0
+	for i := from; i < to; i++ {
+		if v := tape.At(i); IsOpenParen(v) {
+			depth++
+		} else if IsCloseParen(v) {
+			depth--
+		}
+	}
+	return depth
 }
 
 // groupExtent is the token count of the paren group opening at open on

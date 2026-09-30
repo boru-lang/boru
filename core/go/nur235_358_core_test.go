@@ -334,6 +334,25 @@ func TestNUR365CoreParenOperandEscape(t *testing.T) {
 	if err != nil || renderAll(out) != "5" {
 		t.Fatalf("Run = %s / %v, want 5", renderAll(out), err)
 	}
+	// A loop the group itself holds takes the signal first: the word
+	// collects the loop's results — from inside a paren nested in the loop
+	// too, whose open marker leaves with the loop region.
+	for _, body := range [][]Value{{brk}, {NewOpenParen(), brk, NewCloseParen()}} {
+		r = nurReg(t)
+		fwd(r)
+		inner := &ForCont{Registry: r, IterName: "nuri", Current: 0, End: 3, Step: 1, Results: []Value{NewInteger(7)}}
+		InstallDef(r, "nuri", NewInteger(0))
+		toks := append([]Value{NewWord("nfw"), NewOpenParen(), NewMark("nurQ")}, body...)
+		toks = append(toks, NewMoveCont("nurQ", "for loop", inner), NewCloseParen())
+		out, err = NewTop(r).Run(toks)
+		if err != nil || renderAll(out) != "7" || r.FlowCtrl != FlowNone {
+			t.Fatalf("Run = %s / %v (flow %v), want 7 with the signal taken", renderAll(out), err, r.FlowCtrl)
+		}
+	}
+	// The depth read back counts a closed group's markers out.
+	if d := openDepthBetween(NewTape([]Value{NewOpenParen(), NewOpenParen(), NewCloseParen(), NewInteger(1)}, StackHeadroom), 0, 4); d != 1 {
+		t.Fatalf("openDepthBetween = %d, want 1", d)
+	}
 	// groupExtent over a group that never closes runs to the tape's end.
 	if n := groupExtent(NewTape([]Value{NewOpenParen(), NewInteger(1)}, StackHeadroom), 0); n != 2 {
 		t.Fatalf("groupExtent of an open group = %d, want 2", n)
