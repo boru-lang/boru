@@ -15,21 +15,21 @@ const nur356H = `def h fn [[] [Any] [3]] end `
 
 // TestNUR356UserCallNoMatchRendersLiteral: a user call over a gradual
 // argument whose contract refuses it raises the interpreter's no-match, and
-// the window's pending literal renders as written — `[word(x)]`, not the
+// the window's pending literal renders as written — `[x]`, not the
 // `[1]` the compiled call assembled (NUR356 (a), CallWindows).
 func TestNUR356UserCallNoMatchRendersLiteral(t *testing.T) {
 	const x = `def x 1 end `
 	const f = `def f fn [[a:List b:List][Any][a]] end `
 	for _, tc := range []struct{ src, want string }{
-		{nur356H + x + f + `f [x] (h)`, "ERROR:the arguments were [word(x)] (a List) and 3"},
-		{nur356H + f + `f [1 add 2] (h)`, "ERROR:[1 word(add) 2] (a List)"},
-		{nur356H + f + `f [[1 add 2] 5] (h)`, "ERROR:[[1 word(add) 2] 5]"},
-		{nur356H + x + `def f fn [[a:Map b:List][Any][a]] end f {a:x} (h)`, "ERROR:{a:word(x)} (a Map)"},
-		{nur356H + x + `def f fn [[a:Map b:List][Any][a]] end f {a:(x add 1)} (h)`, "ERROR:{a:paren([word(x) word(add) 1])}"},
-		{nur356H + x + `def f fn [[b:List a:List][Any][a]] end f (h) [x]`, "ERROR:3 (an Integer) and [word(x)]"},
-		{nur356H + x + f + `[x] (h) f`, "ERROR:3 (an Integer) and [word(x)]"},
-		{nur356H + f + `def g fn [[y:Integer][Any][f [y 1 add 2] (h)]] end g 4`, "ERROR:[word(y) 1 word(add) 2]"},
-		{nur356H + x + f + `def g fn [[][Any][f [x] (h)]] end g`, "ERROR:[word(x)] (a List)"},
+		{nur356H + x + f + `f [x] (h)`, "ERROR:the arguments were [x] (a List) and 3"},
+		{nur356H + f + `f [1 add 2] (h)`, "ERROR:[1 add 2] (a List)"},
+		{nur356H + f + `f [[1 add 2] 5] (h)`, "ERROR:[[1 add 2] 5]"},
+		{nur356H + x + `def f fn [[a:Map b:List][Any][a]] end f {a:x} (h)`, "ERROR:{a:x} (a Map)"},
+		{nur356H + x + `def f fn [[a:Map b:List][Any][a]] end f {a:(x add 1)} (h)`, "ERROR:{a:(x add 1)}"},
+		{nur356H + x + `def f fn [[b:List a:List][Any][a]] end f (h) [x]`, "ERROR:3 (an Integer) and [x]"},
+		{nur356H + x + f + `[x] (h) f`, "ERROR:3 (an Integer) and [x]"},
+		{nur356H + f + `def g fn [[y:Integer][Any][f [y 1 add 2] (h)]] end g 4`, "ERROR:[y 1 add 2]"},
+		{nur356H + x + f + `def g fn [[][Any][f [x] (h)]] end g`, "ERROR:[x] (a List)"},
 		// The contract holds: the literal is taken and evaluated.
 		{`def h fn [[] [Any] [[3]]] end def x 1 end ` + f + `f [x] (h)`, "[[1]]"},
 		// A scalar literal renders the same either way.
