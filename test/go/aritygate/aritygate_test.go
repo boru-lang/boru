@@ -134,8 +134,15 @@ var pinnedAritySites = map[string]int{
 	// NUR242 (2026-09-26): the exact layout is published only for a PLAIN
 	// dispatching word (`w.ArgCount != -1` rules out an `/N` modifier), since
 	// a modifier overrides the forward limit the plan reads — the token's
-	// syntax, not a function's parameter count.
-	"core/go/dispatch_layout.go": 1,
+	// syntax, not a function's parameter count. NUR356 (2026-09-30):
+	// forwardReachMax clamps each overload's forward limit to its argument
+	// count (`limit > s.TotalArgs()`) — how far the argument rule's forward
+	// phase can reach, not a decision by arity.
+	"core/go/dispatch_layout.go": 2,
+	// NUR357 (2026-09-30): unmodifiedWordInfo asks whether the written word
+	// carries no `/N` modifier (`w.ArgCount == -1`) — the token's syntax, as
+	// in dispatch_layout.go above, never a function's parameter count.
+	"compiler/go/landing_restart.go": 1,
 	// NUR264/NUR263 (2026-09-27): an optimistic dispatch's window and layout
 	// are published only when the match's positions cover its operands
 	// (`len(indices) != len(match.Args)`, an empty match) and, for the
