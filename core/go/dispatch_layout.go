@@ -39,6 +39,11 @@ type DispatchLayout struct {
 	// boundary after them, in tape order: scalar literals, closed by a
 	// function word that bars the forward collection.
 	After []Value
+	// Words, by written operand index, is the word token a written operand
+	// was read from where the tape still holds it (exactLayout): the
+	// interpreter's plan reads a data binding without stepping its word, so
+	// its report stops there (NUR356).
+	Words map[int]Value
 	// Live, on an optimistic dispatch's layout, indexes the Beneath entries
 	// that are no constant — a call's result, a carrier — whose value the
 	// run's stack holds there, not the pass's tape (NUR351). A record that
@@ -88,20 +93,46 @@ func (e *Engine) exactLayout(args []Value, at []int, pos SrcPos) *DispatchLayout
 	for k < n && at[k] > e.Pointer {
 		k++
 	}
+	var words map[int]Value
 	for i := 0; i < n; i++ {
 		want := e.Pointer + 1 + i
 		if i >= k {
 			want = e.Pointer - (i - k) - 1
 		}
-		if at[i] != want || want < 0 || want >= e.Tape.Len() || args[i].ID == "" || e.Tape.At(want).ID != args[i].ID {
+		if at[i] != want || want < 0 || want >= e.Tape.Len() || args[i].ID == "" {
 			return nil
 		}
+		if tok := e.Tape.At(want); tok.ID != args[i].ID {
+			// A written word whose data binding is the operand: the plan
+			// read it and left the word on the tape (Words).
+			if i >= k || !e.readsDataBinding(tok, args[i]) {
+				return nil
+			}
+			if words == nil {
+				words = map[int]Value{}
+			}
+			words[i] = tok
+		}
 	}
-	beneath, after, _, ok := e.layoutSurround(e.Pointer-(n-k)-1, e.Pointer+k+1, false)
+	beneath, after, _, ok := e.layoutSurround(e.Pointer-(n-k)-1, e.Pointer+k+1, k, false)
 	if !ok {
 		return nil
 	}
-	return &DispatchLayout{args: args, NFwd: k, Beneath: beneath, After: after}
+	return &DispatchLayout{args: args, NFwd: k, Beneath: beneath, After: after, Words: words}
+}
+
+// readsDataBinding reports whether tok is a bare word whose binding is the
+// operand v, and data (readsData) of a type the pass knows: the
+// interpreter's plan reads such a word's binding where it stands and steps
+// nothing (a fn binding is a collection barrier instead, and a gradual one
+// may be either).
+func (e *Engine) readsDataBinding(tok, v Value) bool {
+	w, err := AsWord(tok)
+	if err != nil || w.ForceVal {
+		return false
+	}
+	top, ok := e.Registry.Defs.Top(w.Name)
+	return ok && top.ID == v.ID && !top.Dynamic && readsData(e.Registry, w.Name)
 }
 
 // layoutSurround reads what a dispatch's plan could reach around its
@@ -113,8 +144,11 @@ func (e *Engine) exactLayout(args []Value, at []int, pos SrcPos) *DispatchLayout
 // allows it, a value the run's stack holds (liveBeneath, listed in liveIdx
 // by its Beneath index) — and every token after is a scalar literal, the
 // run closed by a bare function word — the next dispatch, which bars the
-// forward collection on both lanes (NUR283).
-func (e *Engine) layoutSurround(below, after int, live bool) (beneath, afterToks []Value, liveIdx []int, ok bool) {
+// forward collection on both lanes (NUR283) — or by any word standing past
+// every forward position the word's overloads reach (forwardReachMax, nFwd
+// of them already written): no plan steps it, and the report's walk stops
+// at it (NUR356).
+func (e *Engine) layoutSurround(below, after, nFwd int, live bool) (beneath, afterToks []Value, liveIdx []int, ok bool) {
 	var fromTop []bool
 	for i := below; i >= 0 && !IsOpenParen(e.Tape.At(i)) && !IsEnd(e.Tape.At(i)); i-- {
 		v := e.Tape.At(i)
@@ -142,9 +176,36 @@ func (e *Engine) layoutSurround(below, after int, live bool) (beneath, afterToks
 		if w, err := AsWord(tok); err == nil && !tok.Quoted && unmodifiedWord(w) && FnWordBarrierOn(e.Registry, tok) {
 			return beneath, append(afterToks, tok), liveIdx, true
 		}
+		if reach, known := e.forwardReachMax(); IsWord(tok) && !tok.Quoted && known && nFwd+len(afterToks) >= reach {
+			return beneath, append(afterToks, tok), liveIdx, true
+		}
 		return nil, nil, nil, false
 	}
 	return beneath, afterToks, liveIdx, true
+}
+
+// forwardReachMax is the most forward positions any overload of the word at
+// the pointer can claim (effectiveForwardLimit, an all-forward barrier its
+// arity), and false when the pointer holds no word the registry names.
+func (e *Engine) forwardReachMax() (int, bool) {
+	w, err := AsWord(e.Tape.At(e.Pointer))
+	if err != nil {
+		return 0, false
+	}
+	fn := e.Registry.Lookup(w.Name)
+	if fn == nil {
+		return 0, false
+	}
+	most := 0
+	for i := range fn.Signatures {
+		s := &fn.Signatures[i]
+		limit := effectiveForwardLimit(s, w)
+		if limit < 0 || limit > s.TotalArgs() {
+			limit = s.TotalArgs()
+		}
+		most = max(most, limit)
+	}
+	return most, true
 }
 
 // liveBeneath reports whether v, a value beneath a dispatch's operands that

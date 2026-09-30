@@ -47,7 +47,7 @@ func (es *EmitState) planFitRestarts(lw *lowerer, residual []core.Value) {
 		}
 		// Past the literal defs the statement opens with, as a landing's
 		// island takes it over (literalDefsBefore, toldAfter).
-		tok = es.toldAfter(literalDefsBefore(tree, es.rootBody, tok, stopPos(at.ev)), stopPos(at.ev))
+		tok = es.toldAfter(fitStartBefore(tree, es.rootBody, tok, stopPos(at.ev)), stopPos(at.ev))
 		d := deoptPoint{seq: seq, slot: -1, start: statementStart(es.rootBody, tok), token: tok}
 		if _, told := es.stackAtStart(tok); d.start.Row == 0 || (!told && (trapped || es.deoptDeferred(es.units[0], rec, &d, -1))) {
 			continue

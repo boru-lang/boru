@@ -185,7 +185,7 @@ func coverWalkValue(v native.Value, rows map[int]bool) {
 // importing registry, whose shared hook holder every module sub-registry
 // inherits — so arming it captures the module-under-test's executed rows.
 func coverNatives(parent *native.Registry) []native.NativeFunc {
-	return []native.NativeFunc{
+	return native.SideEffecting([]native.NativeFunc{
 		{
 			// Test.cover [body] — run body with the coverage hook armed, recording
 			// every source row the module-under-test executes IN WHATEVER MODE the
@@ -277,5 +277,5 @@ func coverNatives(parent *native.Registry) []native.NativeFunc {
 				}),
 			}},
 		},
-	}
+	})
 }

@@ -159,7 +159,10 @@ func windowStopPrefix(es *EmitState, out []callWinOp, pw pendingWindow, args []c
 }
 
 // callWindowOp is one window value's home: an argument by identity, a
-// definite scalar by value, an event result of the unit being recorded, or
+// definite scalar by value, a pending list or map literal as written (the
+// window holds the literal unevaluated — the interpreter evaluates it only
+// once a signature takes it — though the compiled call holds its value,
+// NUR356), an event result of the unit being recorded, or
 // a frame local read whose binding had not moved when the window was
 // offered (stable — a rebind between the read and the call leaves the slot
 // holding the new value, where the interpreter's window holds the one
@@ -172,7 +175,7 @@ func (es *EmitState) callWindowOp(v core.Value, stable bool, args []core.Value) 
 			}
 		}
 	}
-	if windowScalar(v) || unexpandedToken(v) {
+	if windowScalar(v) || unexpandedToken(v) || core.IsPendingLiteral(v) {
 		return callWinOp{kind: WinValue, value: v}, true
 	}
 	if v.ID == "" {

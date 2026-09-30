@@ -608,7 +608,17 @@ func (es *EmitState) planRootLiveReads(lw *lowerer, residual []core.Value) {
 		ci, direct := rootReadConsumer(es.frames[0], es.keptLiveReads[seq].name, seq, 0, lw.promoted)
 		d, ok := es.livePointAt(es.units[0], rec, seq, ci, direct, lw)
 		if !ok {
-			continue
+			// A read the pass met in a spliced word's tokens: its island
+			// runs the program as the splice left it (spliceBody, NUR334).
+			spliced, sok := es.spliceBody(es.keptLiveReads[seq].pos)
+			if !sok {
+				continue
+			}
+			srec := &fnUnitRec{frag: rec.frag, body: spliced, localReads: rec.localReads}
+			if d, ok = es.livePointAt(es.units[0], srec, seq, ci, direct, lw); !ok {
+				continue
+			}
+			d.island = spliced[d.token:]
 		}
 		if es.trapAt != 0 {
 			held, ok := es.trapHeldBeneath(lw, tree, d.start)
@@ -622,6 +632,48 @@ func (es *EmitState) planRootLiveReads(lw *lowerer, residual []core.Value) {
 		lw.deopts = append(lw.deopts, d)
 		lw.deoptTable = &lw.p.Deopts
 	}
+}
+
+// spliceBody is the program root's body as the interpreter's tape holds it
+// once the `word` splice holding the read at pos fired: a read the pass met
+// in a spliced word's tokens carries the definition's position, not the
+// use's, so no point starts in the program's own tokens (silentWordBefore).
+// The splice is `def w word [ … ]` at the root, its list the top-level token
+// holding pos, and fires where the program's one later bare word `w` stands
+// — which the tape replaces with the list's tokens (core's stepLiteral). ok
+// is false for any other shape: a name read elsewhere (nested, twice, or
+// before its def), or a def the program makes again.
+func (es *EmitState) spliceBody(pos core.SrcPos) ([]core.Value, bool) {
+	body := es.rootBody
+	t := bodyTokenContaining(body, pos)
+	if t < 3 || !literalListTok(body[t]) || !isWordNamed(body[t-1], "word") || !isWordNamed(body[t-3], "def") || !core.IsWord(body[t-2]) {
+		return nil, false
+	}
+	name, _ := core.AsWord(body[t-2])
+	fire := -1
+	for k := range body {
+		names := map[string]bool{}
+		collectWordNames(body[k:k+1], names)
+		switch {
+		case k == t-2 || !names[name.Name]:
+		case k > t && isWordNamed(body[k], name.Name) && fire < 0:
+			fire = k
+		default:
+			return nil, false
+		}
+	}
+	// The pass met the read, so the splice fired: at the one bare `w` found.
+	elems, _ := nestedToks(body[t])
+	at := max(fire, t)
+	out := make([]core.Value, 0, len(body)+len(elems))
+	out = append(append(append(out, body[:at]...), elems...), body[at+1:]...)
+	return out, fire > t
+}
+
+// isWordNamed reports whether v is a bare word token named name.
+func isWordNamed(v core.Value, name string) bool {
+	w, err := core.AsWord(v)
+	return err == nil && w.Name == name && !w.ForceVal
 }
 
 // trapHeldBeneath is rootHeldBeneath for a program the pass ended at a

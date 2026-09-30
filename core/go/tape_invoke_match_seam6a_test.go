@@ -109,7 +109,7 @@ func TestS6aPatternsOkSkipsPositionBeyondMatched(t *testing.T) {
 		Patterns: map[int]Value{1: NewInteger(0)},
 	}
 	tape := NewTape([]Value{NewInteger(5)}, 0)
-	if !patternsOk(sig, []int{0}, tape, 0, nil) {
+	if !patternsOk(sig, []int{0}, tape, 0, nil, nil) {
 		t.Error("patternsOk should skip a pattern position beyond len(positions)")
 	}
 }
@@ -124,11 +124,11 @@ func TestS6aPatternsOkSkipsNonConcreteForwardPattern(t *testing.T) {
 		Patterns: map[int]Value{0: NewTypeLiteral(TInteger)},
 	}
 	tape := NewTape([]Value{NewString("not-an-integer")}, 0)
-	if !patternsOk(sig, []int{0}, tape, 1, nil) {
+	if !patternsOk(sig, []int{0}, tape, 1, nil, nil) {
 		t.Error("patternsOk should skip a non-concrete pattern on a forward position")
 	}
 	// Negative twin: the same pattern on a STACK position is enforced.
-	if patternsOk(sig, []int{0}, tape, 0, nil) {
+	if patternsOk(sig, []int{0}, tape, 0, nil, nil) {
 		t.Error("patternsOk must enforce the pattern on a stack position")
 	}
 }

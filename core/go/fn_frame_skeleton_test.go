@@ -148,11 +148,12 @@ func TestSkeletonInterleavedParams(t *testing.T) {
 	}
 }
 
-// TestSkeletonArgsElision pins the args-list behavior of the fast path:
-// a leaf body that never reads `args` pushes the shared empty list; a body
-// that reads it (directly or through a word-macro splice) gets the real
-// per-call copy.
-func TestSkeletonArgsElision(t *testing.T) {
+// TestSkeletonArgsReal pins the args-list behavior of the fast path
+// (NUR350): every leaf frame holds the call's REAL args list — a body that
+// never reads `args` included, since code it cannot see at construction (a
+// word macro bound later, a computed body) may read it. The list is pushed
+// lazily (ArgsStack.PushLazy), so the copy costs no allocation of its own.
+func TestSkeletonArgsReal(t *testing.T) {
 	install := func(r *Registry, name string, body []Value) {
 		InstallFnDef(r, name, FnDefInfo{
 			Signatures: []Signature{{
@@ -163,7 +164,7 @@ func TestSkeletonArgsElision(t *testing.T) {
 			}},
 		})
 	}
-	argsTopLen := func(t *testing.T, r *Registry) int {
+	argsTop := func(t *testing.T, r *Registry) []Value {
 		t.Helper()
 		top, ok, err := r.Args.Top()
 		if err != nil || !ok {
@@ -173,101 +174,49 @@ func TestSkeletonArgsElision(t *testing.T) {
 		if err != nil {
 			t.Fatalf("args entry is not a concrete list: %v", err)
 		}
-		return lst.Len()
+		return lst.Slice()
 	}
-
-	t.Run("elided when body never reads args", func(t *testing.T) {
-		r := covRegistry(t, nil)
-		install(r, "leafplain", []Value{NewWord("cadd"), NewWord("n"), NewWord("n")})
-		h := skelHandler(t, r, "leafplain")
-		if _, err := h([]Value{NewInteger(3)}, nil, nil, r); err != nil {
-			t.Fatal(err)
-		}
-		if n := argsTopLen(t, r); n != 0 {
-			t.Errorf("expected the shared empty args list, got %d entries", n)
-		}
-		popFrameEntry(t, r, "n")
-	})
-
-	t.Run("real list when body reads args", func(t *testing.T) {
-		r := covRegistry(t, nil)
-		install(r, "leafargs", []Value{NewWord("args")})
-		h := skelHandler(t, r, "leafargs")
-		if _, err := h([]Value{NewInteger(3)}, nil, nil, r); err != nil {
-			t.Fatal(err)
-		}
-		if n := argsTopLen(t, r); n != 1 {
-			t.Errorf("expected the real 1-entry args list, got %d entries", n)
-		}
-		popFrameEntry(t, r, "n")
-	})
-
-	t.Run("real list when args hides behind a word-macro", func(t *testing.T) {
-		r := covRegistry(t, nil)
-		InstallDef(r, "margs", NewSplice(NewList([]Value{NewWord("args")})))
-		install(r, "leafmacro", []Value{NewWord("margs")})
-		h := skelHandler(t, r, "leafmacro")
-		if _, err := h([]Value{NewInteger(3)}, nil, nil, r); err != nil {
-			t.Fatal(err)
-		}
-		if n := argsTopLen(t, r); n != 1 {
-			t.Errorf("macro-hidden args read must keep the real list, got %d entries", n)
-		}
-		popFrameEntry(t, r, "n")
-	})
-
-	t.Run("elided when args appears only in quoted data", func(t *testing.T) {
-		r := covRegistry(t, nil)
-		quoted := NewList([]Value{NewWord("args")})
-		quoted.Quoted = true
-		install(r, "leafquoted", []Value{quoted})
-		h := skelHandler(t, r, "leafquoted")
-		if _, err := h([]Value{NewInteger(3)}, nil, nil, r); err != nil {
-			t.Fatal(err)
-		}
-		if n := argsTopLen(t, r); n != 0 {
-			t.Errorf("quoted data is not a read — expected elision, got %d entries", n)
-		}
-		popFrameEntry(t, r, "n")
-	})
-}
-
-// TestBodyReferencesArgs unit-pins the scan itself, including the
-// macro-splice recursion and its cycle guard.
-func TestBodyReferencesArgs(t *testing.T) {
+	quoted := NewList([]Value{NewWord("args")})
+	quoted.Quoted = true
+	for _, c := range []struct {
+		name string
+		body []Value
+	}{
+		{"leafplain", []Value{NewWord("cadd"), NewWord("n"), NewWord("n")}},
+		{"leafargs", []Value{NewWord("args")}},
+		{"leafquoted", []Value{quoted}},
+	} {
+		t.Run(c.name, func(t *testing.T) {
+			r := covRegistry(t, nil)
+			install(r, c.name, c.body)
+			h := skelHandler(t, r, c.name)
+			if _, err := h([]Value{NewInteger(3)}, nil, nil, r); err != nil {
+				t.Fatal(err)
+			}
+			got := argsTop(t, r)
+			if len(got) != 1 {
+				t.Fatalf("expected the real args list [3], got %v", got)
+			}
+			if n, _ := AsInteger(got[0]); n != 3 {
+				t.Errorf("expected the real args list [3], got %v", got)
+			}
+			popFrameEntry(t, r, "n")
+		})
+	}
+	// A word macro bound AFTER the fn was built reads the real list too:
+	// nothing about the frame depends on what the construction-time walk
+	// could see.
 	r := covRegistry(t, nil)
-
-	if !bodyReferencesArgs(r, []Value{NewWord("args")}) {
-		t.Error("direct args read not detected")
+	install(r, "leafmacro", []Value{NewWord("margs")})
+	h := skelHandler(t, r, "leafmacro")
+	InstallDef(r, "margs", NewSplice(NewList([]Value{NewWord("args")})))
+	if _, err := h([]Value{NewInteger(4)}, nil, nil, r); err != nil {
+		t.Fatal(err)
 	}
-	if !bodyReferencesArgs(r, []Value{NewList([]Value{NewWord("args")})}) {
-		t.Error("args inside a code list not detected")
+	if got := argsTop(t, r); len(got) != 1 {
+		t.Errorf("a later-bound macro's args read must see the real list, got %v", got)
 	}
-	if bodyReferencesArgs(r, []Value{NewWord("cadd"), NewInteger(1)}) {
-		t.Error("false positive on an args-free body")
-	}
-	// Reach receiver (`args.0`).
-	if !bodyReferencesArgs(r, []Value{NewReachFromKeys(NewWord("args"), []Value{NewInteger(0)})}) {
-		t.Error("args as a Reach receiver not detected")
-	}
-	// Mutually-recursive macros, one of which expands to args.
-	InstallDef(r, "sm1", NewSplice(NewList([]Value{NewWord("sm2")})))
-	InstallDef(r, "sm2", NewSplice(NewList([]Value{NewWord("sm1"), NewWord("args")})))
-	if !bodyReferencesArgs(r, []Value{NewWord("sm1")}) {
-		t.Error("args through mutually-recursive macros not detected")
-	}
-	// Pure macro cycle without args: must terminate and report false.
-	InstallDef(r, "cyc", NewSplice(NewList([]Value{NewWord("cyc")})))
-	if bodyReferencesArgs(r, []Value{NewWord("cyc")}) {
-		t.Error("macro cycle without args reported true")
-	}
-	// nil registry: no macro resolution, direct hits only.
-	if bodyReferencesArgs(nil, []Value{NewWord("sm1")}) {
-		t.Error("nil registry must not resolve macros")
-	}
-	if !bodyReferencesArgs(nil, []Value{NewWord("args")}) {
-		t.Error("nil registry must still detect a direct read")
-	}
+	popFrameEntry(t, r, "n")
 }
 
 // The three tests below are the SLOW-path (needsFrameState) twins of arms
@@ -385,45 +334,5 @@ func TestSkeletonForkConcurrent(t *testing.T) {
 	close(errs)
 	for err := range errs {
 		t.Fatalf("concurrent leaf call: %v", err)
-	}
-}
-
-// TestSkeletonArgsElidedMeta pins the decision's record (NUR346): the leaf
-// handler's args-list choice rides the sig's frame identity
-// (FnFrameMeta.ArgsElided, read by SigArgsElided) — true for a leaf body
-// that never reads `args`, false for one that does, for a frame-state body
-// (which always pushes the real list), and for a sig with no fn frame.
-func TestSkeletonArgsElidedMeta(t *testing.T) {
-	r := covRegistry(t, nil)
-	install := func(name string, body []Value) *Signature {
-		InstallFnDef(r, name, FnDefInfo{
-			Signatures: []Signature{{
-				Params:     []FnParam{{Name: "n", Type: TInteger}},
-				Returns:    []*Type{TAny},
-				Impl:       Boru(body),
-				BarrierPos: BarrierAllForward,
-			}},
-		})
-		top, _ := r.Defs.Top(name)
-		fd, _ := top.Data.(FnDefInfo)
-		for i := range fd.Signatures {
-			if !fd.Signatures[i].Fallback {
-				return &fd.Signatures[i]
-			}
-		}
-		t.Fatalf("%s: no own signature", name)
-		return nil
-	}
-	if s := install("elleaf", []Value{NewWord("cadd"), NewWord("n"), NewWord("n")}); !SigArgsElided(s) {
-		t.Error("a leaf body that never reads args elides the list")
-	}
-	if s := install("elargs", []Value{NewWord("args")}); SigArgsElided(s) {
-		t.Error("a body that reads args pushes the real list")
-	}
-	if s := install("eldef", []Value{NewWord("def"), NewWord("z"), NewInteger(1), NewWord("n")}); SigArgsElided(s) {
-		t.Error("a frame-state body pushes the real list")
-	}
-	if SigArgsElided(&Signature{Impl: &GoImpl{}}) {
-		t.Error("a native sig has no fn frame and elides nothing")
 	}
 }

@@ -92,24 +92,6 @@ func TestBodyFrameStateSugarMarkers(t *testing.T) {
 			t.Errorf("%s: bodyNeedsFrameState = %v, want %v", c.name, got, c.want)
 		}
 	}
-
-	// bodyReferencesArgs judges markers the same way: only a role bound
-	// to the word `args` counts (no real language does this — the
-	// binding decides, so the analysis stays name-blind).
-	argsR, err := NewRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	argsR.BindSugarWord(SugarLambda, "args")
-	if !bodyReferencesArgs(argsR, []Value{lambda}) {
-		t.Errorf("a marker whose role binds `args` must count as an args reference")
-	}
-	if bodyReferencesArgs(argsR, []Value{NewWord("args"), lambda}) != true {
-		t.Errorf("marker after refs=true must keep the result true")
-	}
-	if bodyReferencesArgs(r, []Value{lambda}) {
-		t.Errorf("a marker bound to a non-args word must not count as an args reference")
-	}
 }
 
 // TestWalkBodyWordsSugarDescent — the body walker descends into a

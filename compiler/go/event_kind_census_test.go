@@ -47,6 +47,7 @@ var eventKindSites = map[string]string{
 	"forEachFragmentOperand":   "lower.go — the same walk over a fragment's own events",
 	"eachClosureCap":           "lower.go — the event's CLOSURE captures (a missing case leaves captures stale)",
 	"childFragments":           "lower.go — the event's nested fragments (a missing case hides a whole subtree)",
+	"appliesFnOperand":         "read_site_guard.go — does this event dispatch a fn operand as the interpreter's word dispatch would? (default: no — a new kind that applies one must say so, or its read takes a guard that fires where the event answers right, NUR361)",
 	"RewritePromotedRefs":      "lower.go — rewrites promoted operand refs (a missing case leaves them stale)",
 	"collectPromotableEvents":  "lower.go — which events may be promoted to frame locals",
 	"planValueDefLocals":       "lower.go — the promotion plan itself",

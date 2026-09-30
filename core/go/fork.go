@@ -88,7 +88,7 @@ func (r *Registry) ForkConcurrent() *Registry {
 	// empty holder of its own; the reassignment happens here, on the
 	// parent-owning goroutine, before the fork is published.
 	fork.dispatchCache = newDispatchCache()
-	fork.FlowCtrl = FlowNone
+	fork.TakeFlow()
 	fork.pendingGen = nil
 	fork.macroCache = nil
 	fork.errs = nil

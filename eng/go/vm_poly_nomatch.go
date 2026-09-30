@@ -143,7 +143,7 @@ func polySplitRaise(r *core.Registry, pr *compiler.PolyRef, fn *core.FnDefInfo, 
 	if !ok {
 		return nil
 	}
-	return splitNoMatch(r, pr.Word, fn, window, sp.NFwd, beneath, sp.After, curDebug, pc)
+	return splitNoMatch(r, pr.Word, fn, window, sp.NFwd, beneath, sp.After, sp.Words, curDebug, pc)
 }
 
 // fitRestart takes a call's forward-fit island (PolyRef.Fit,
@@ -211,8 +211,11 @@ func splitBeneath(sp *compiler.PolySplit, stack, locals []core.Value) ([]core.Va
 // signature; nil when the plan finds one over the operands or cannot be
 // driven, and for a layout out of range. A plan that takes a value beneath
 // or a token after is a dispatch the interpreter makes over a window the
-// program never assembled: a designed defer.
-func splitNoMatch(r *core.Registry, word string, fn *core.FnDefInfo, window []core.Value, nFwd int, beneath, after []core.Value, curDebug []core.SrcPos, pc int) error {
+// program never assembled: a designed defer. words (PolySplit.Words) puts
+// the source word back at each written operand read from one, for the
+// report alone: the interpreter's plan read the binding and left the word
+// on its tape.
+func splitNoMatch(r *core.Registry, word string, fn *core.FnDefInfo, window []core.Value, nFwd int, beneath, after []core.Value, words map[int]core.Value, curDebug []core.SrcPos, pc int) error {
 	if fn == nil || nFwd < 0 || nFwd > len(window) {
 		return nil
 	}
@@ -231,7 +234,27 @@ func splitNoMatch(r *core.Registry, word string, fn *core.FnDefInfo, window []co
 	if pc >= 0 && pc < len(curDebug) {
 		pos = curDebug[pc]
 	}
-	return stampAt(core.NoMatchOverWindow(r.Source, h.win, len(beneath)+len(window)-nFwd, word, fn, pos), curDebug, pc, r)
+	at := len(beneath) + len(window) - nFwd
+	return stampAt(core.NoMatchOverWindow(r.Source, splitReportTape(h.win, at, words), at, word, fn, pos), curDebug, pc, r)
+}
+
+// splitReportTape is win, the plan's tape with the dispatching word at at,
+// with each written operand read from a source word (words, by written
+// index) put back as that word; win itself when none is.
+func splitReportTape(win *core.Tape, at int, words map[int]core.Value) *core.Tape {
+	if len(words) == 0 {
+		return win
+	}
+	toks := make([]core.Value, win.Len())
+	for i := range toks {
+		toks[i] = win.At(i)
+	}
+	for i, w := range words {
+		if k := at + 1 + i; i >= 0 && k < len(toks) {
+			toks[k] = w
+		}
+	}
+	return core.NewTape(toks, core.StackHeadroom)
 }
 
 // planReaches reports whether a plan's tape positions reach outside the
@@ -257,5 +280,5 @@ func nativeSplitRaise(r *core.Registry, word string, sp *compiler.NativeSplit, a
 	}
 	window := append([]core.Value(nil), args...)
 	window[sp.BodyAt] = sp.Body
-	return splitNoMatch(r, word, r.Lookup(word), window, sp.NFwd, sp.Beneath, sp.After, curDebug, pc)
+	return splitNoMatch(r, word, r.Lookup(word), window, sp.NFwd, sp.Beneath, sp.After, nil, curDebug, pc)
 }

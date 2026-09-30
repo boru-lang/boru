@@ -99,7 +99,8 @@ func BuildModelModule(parent *native.Registry) (native.ModuleDesc, error) {
 
 	// Model.new <spec:Map> -> Model
 	subReg.RegisterNativeFunc(native.NativeFunc{
-		Name: "model-new",
+		Name:          "model-new",
+		CompileEffect: native.CompileSideEffect,
 		Signatures: []native.Signature{{
 			Args:       []*native.Type{native.TMap},
 			Returns:    []*native.Type{tModel},
@@ -116,7 +117,8 @@ func BuildModelModule(parent *native.Registry) (native.ModuleDesc, error) {
 
 	// Model.stop <Model> -> (nothing)
 	subReg.RegisterNativeFunc(native.NativeFunc{
-		Name: "model-stop",
+		Name:          "model-stop",
+		CompileEffect: native.CompileSideEffect,
 		Signatures: []native.Signature{{
 			Args:       []*native.Type{tModel},
 			Returns:    []*native.Type{},
@@ -139,7 +141,8 @@ func BuildModelModule(parent *native.Registry) (native.ModuleDesc, error) {
 func registerModelWord(tModel *native.Type, subReg *native.Registry, exports *native.OrderedMap, name string, h native.Handler) {
 	inner := "model-" + name
 	subReg.RegisterNativeFunc(native.NativeFunc{
-		Name: inner,
+		Name:          inner,
+		CompileEffect: native.CompileSideEffect,
 		Signatures: []native.Signature{{
 			Args:       []*native.Type{tModel},
 			Returns:    []*native.Type{native.TMap},

@@ -258,6 +258,7 @@ const (
 	CompileRunsBodyIsolated   = core.CompileRunsBodyIsolated
 	CompileRunsBodyOnRegistry = core.CompileRunsBodyOnRegistry
 	CompileDynBody            = core.CompileDynBody
+	CompileSideEffect         = core.CompileSideEffect
 
 	// CallableSpec.BodyOut's whole-residual sentinel (core.BodyOutResidual):
 	// the driving handler returns the body's entire residual (`do`).

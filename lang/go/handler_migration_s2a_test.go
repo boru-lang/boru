@@ -99,7 +99,10 @@ func TestS2ADeclarationsByWordAndShape(t *testing.T) {
 			// A shape may register more than once (def's two Map-keyword
 			// forms, one per constructor); every copy declares alike.
 			found[shape]++
-			if sig.CompileEffect != flag {
+			// core.CompileSideEffect is no compile fact of the handler's
+			// operands — an observable effect (`describe` prints, NUR356) —
+			// so the exact pin reads the rest.
+			if sig.CompileEffect&^core.CompileSideEffect != flag {
 				t.Errorf("%s %s: CompileEffect %v, want exactly %v", word, shape, sig.CompileEffect, flag)
 			}
 			// The one exclusion the new flag carries: never an admission

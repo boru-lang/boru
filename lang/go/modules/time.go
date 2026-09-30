@@ -412,7 +412,8 @@ func timeNatives(tt native.TemporalModuleTypes) []native.NativeFunc {
 		},
 		// --- Current time (stack-only zero-arg words) ---
 		{
-			Name: "time-now-local",
+			Name:          "time-now-local",
+			CompileEffect: native.CompileSideEffect,
 
 			Signatures: []native.Signature{{
 				Args: []*native.Type{},
@@ -423,7 +424,8 @@ func timeNatives(tt native.TemporalModuleTypes) []native.NativeFunc {
 			}},
 		},
 		{
-			Name: "time-today",
+			Name:          "time-today",
+			CompileEffect: native.CompileSideEffect,
 
 			Signatures: []native.Signature{{
 				Args: []*native.Type{},
@@ -436,7 +438,8 @@ func timeNatives(tt native.TemporalModuleTypes) []native.NativeFunc {
 			}},
 		},
 		{
-			Name: "time-today-utc",
+			Name:          "time-today-utc",
+			CompileEffect: native.CompileSideEffect,
 
 			Signatures: []native.Signature{{
 				Args: []*native.Type{},
@@ -724,7 +727,8 @@ func timeNatives(tt native.TemporalModuleTypes) []native.NativeFunc {
 			}},
 		},
 		{
-			Name: "elapsed",
+			Name:          "elapsed",
+			CompileEffect: native.CompileSideEffect,
 
 			Signatures: []native.Signature{{
 				Args: []*native.Type{native.TInstant},

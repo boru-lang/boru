@@ -147,8 +147,9 @@ func TestS2BReceiveDeclaresRunsBodyOnRegistry(t *testing.T) {
 	// A literal clause list takes the registry-body rule, a COMPUTED one the
 	// dyn-body backstop (the sweep's `receive` × module-export cell); the two
 	// flags split on the operand, and nothing else rides beside them.
-	if want := core.CompileRunsBodyOnRegistry | core.CompileDynBody; sig.CompileEffect != want {
-		t.Errorf("receive %s: CompileEffect %v, want exactly CompileRunsBodyOnRegistry|CompileDynBody", s2aShape(sig), sig.CompileEffect)
+	// Beside them, the observable effect a mailbox read is (NUR356).
+	if want := core.CompileRunsBodyOnRegistry | core.CompileDynBody | core.CompileSideEffect; sig.CompileEffect != want {
+		t.Errorf("receive %s: CompileEffect %v, want exactly CompileRunsBodyOnRegistry|CompileDynBody|CompileSideEffect", s2aShape(sig), sig.CompileEffect)
 	}
 	if sig.RunInCheckMode() || sig.ReturnsFn != nil {
 		t.Errorf("receive: the check pass must not run the clause bodies (check mode %v, ReturnsFn %v) — the replay-hazard exemption rests on it",

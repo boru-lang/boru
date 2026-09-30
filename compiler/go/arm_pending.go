@@ -45,17 +45,29 @@ const pendingArmReason = "a branch arm leaves a list or map literal the interpre
 // — or "" when every pending literal a branch leaves in it is consumed in
 // time and no call matched at run time takes a literal whose evaluation may
 // have an effect (eagerLiteralRefusal).
-func (es *EmitState) pendingArmRefusal(events []EmitEvent) string {
+func (es *EmitState) pendingArmRefusal(events []EmitEvent, body []core.Value, reg *core.Registry) string {
 	if _, reason := es.pendingArmWalk(events); reason != "" {
 		return reason
 	}
-	return es.eagerLiteralRefusal(events)
+	return es.eagerLiteralRefusal(events, body, reg)
+}
+
+// walkUnitsBeforeLowering runs every unit's NUR356 walk before any unit
+// lowers: a walk that judges a poly quiet marks it (polyEffectful's guard),
+// and a walk reaches into the units the one it judges calls, which may lower
+// first. The lowering walks each again for its decline.
+func (es *EmitState) walkUnitsBeforeLowering() {
+	for _, rec := range es.fnRecs {
+		if rec != nil && rec.frag != nil {
+			es.pendingArmRefusal(rec.frag.events, rec.body, rec.reg)
+		}
+	}
 }
 
 // lowerUnitEvents lowers a fn unit's events with flw, after the unit's
 // NUR356 refusal (pendingArmRefusal); the decline reason, "" when lowered.
 func (es *EmitState) lowerUnitEvents(flw *lowerer, rec *fnUnitRec) string {
-	if reason := es.pendingArmRefusal(rec.frag.events); reason != "" {
+	if reason := es.pendingArmRefusal(rec.frag.events, rec.body, rec.reg); reason != "" {
 		return reason
 	}
 	return flw.lowerEvents(rec.frag.events, rec.frag.startSeq)

@@ -95,6 +95,7 @@ func buildInstrumentInstance(st *instrumentState) (*OrderedMap, error) {
 	}
 	method := instrumentMethodName(st.kind)
 	n := instrumentNative("instrument-"+method, st)
+	n.CompileEffect |= CompileSideEffect
 	subReg.RegisterNativeFunc(n)
 	inst := NewOrderedMap()
 	inst.Set("name", NewString(st.name))

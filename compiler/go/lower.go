@@ -92,7 +92,7 @@ func (lw *lowerer) lowerLoop(ev *EmitEvent) string {
 	}
 	head := len(*lw.code)
 	fn := lw.emit(OpForNext, 0, lp.pos)
-	lw.loops = append(lw.loops, loopCtx{nextPC: head, iterName: lp.iterName, iterSlot: lp.iterSlot, publish: publish})
+	lw.loops = append(lw.loops, loopCtx{nextPC: head, iterName: lp.iterName, iterSlot: lp.iterSlot, publish: publish, outerVM: append([]vmSlot(nil), lw.vm...)})
 	// A CONDITION loop (RecordWhile, `while [cond] [body]`): the condition's
 	// one value is tested at the head of every iteration — falsy jumps to the
 	// FLOW_BREAK placed past the back-edge, which pops the loop frame and
@@ -792,6 +792,9 @@ type loopCtx struct {
 	// publish marks a loop whose index is registry-visible too
 	// (publishesIndex, OpForPublish): a body def of the index re-publishes.
 	publish bool
+	// outerVM is the simulated stack beneath the loop: a per-iteration
+	// island (loopCont) seats exactly that beneath the loop.
+	outerVM []vmSlot
 }
 
 // publishesIndex reports whether a counted loop's index must be
@@ -892,6 +895,13 @@ type lowerer struct {
 	// calls (Program.CallFits / CompiledFn.CallFits), keyed by the target's
 	// own pc — see seatCallFit.
 	callFits *map[int]*PolyFit
+	// callResultRestarts are the call-result islands of the user calls
+	// whose callee may return a tape-coupled result (NUR334), keyed by the
+	// call event's seq; callResults the emission target's table of the
+	// seated ones (Program.CallResults / CompiledFn.CallResults), keyed by
+	// the call's pc — see seatCallResult.
+	callResultRestarts map[int]*landingRestart
+	callResults        *map[int]*StmtIsland
 	// collectedApplies are the fn-value applies a planned collect takes as
 	// regions (planRegionCollectOver, NUR247/NUR249): lowered count-agnostic,
 	// never in a one-result form.
@@ -1061,6 +1071,17 @@ type lowerer struct {
 	// binding marks a dyn-bind's own source re-push (lowerDynBind), which
 	// the deoptAtSlot hook must not take for the consumer's read.
 	binding bool
+	// sitesBefore / sitesAfter are the guarded read sites anchored before
+	// or after an event (by seq) or at a fragment's end (by id), and
+	// siteTable the emission target's deopt table (read_site_guard.go,
+	// NUR361). topEvents / topIdx are the frame's top-level events and the
+	// one being lowered, for a point's producer test (producerAhead).
+	sitesBefore map[int][]*readSite
+	sitesAfter  map[int][]*readSite
+	sitesAtEnd  map[int][]*readSite
+	siteTable   *[]DeoptSpec
+	topEvents   []EmitEvent
+	topIdx      int
 }
 
 // allocLocal reserves a fresh frame-local slot in the current unit (for a
@@ -1247,6 +1268,13 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 			kept = append(kept, d)
 			continue
 		}
+		if d.id != "" && d.slot < 0 && d.live == nil && lw.topEvents != nil && producerAhead(lw.topEvents, lw.topIdx, d.seq) && lw.armReadSites(d.id) {
+			// The read's value is produced inside the statement the point
+			// would test before (`var [[] def v (mk) [v]]`), where its test
+			// reads a home not yet written: no island can start there, so
+			// the read is guarded where it happens (NUR361).
+			continue
+		}
 		if d.trapHeld != nil && !slices.Equal(lw.vm, d.trapHeld) {
 			// A trap program's live point needs the interpreter's stack at
 			// its test (trapHeldBeneath): without it, no island.
@@ -1277,7 +1305,7 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 		if d.live != nil {
 			// A live-read point (kept_live_deopt.go): its value is the
 			// registry binding, read by the test itself.
-			spec.Live, spec.Ref, spec.Model = true, d.live.ref, d.live.model
+			spec.Live, spec.Ref, spec.Model, spec.Island = true, d.live.ref, d.live.model, d.island
 		} else if d.slot >= 0 {
 			spec.Slot = d.slot
 		} else if slot, ok := lw.promoted[d.seq]; ok {
@@ -1801,13 +1829,28 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 	}
 	lw.scopes = append(lw.scopes, events)
 	defer func() { lw.scopes = lw.scopes[:len(lw.scopes)-1] }()
+	if lw.depth == 0 {
+		// Once the frame's events are lowered, every producer ran: a point
+		// flushed after the walk tests a written home (producerAhead).
+		defer func() { lw.topEvents = nil }()
+	}
 	for i := range events {
 		ev := &events[i]
+		if lw.depth == 0 {
+			lw.topEvents, lw.topIdx = events, i
+		}
 		if lw.depth == 0 && len(lw.deopts) > 0 {
 			lw.emitDeoptsBefore(eventPos(*ev))
 		}
+		if ss := lw.sitesBefore[ev.seq]; len(ss) > 0 {
+			if reason := lw.emitReadSiteGuards(ss); reason != "" {
+				return reason
+			}
+		}
 		if lw.depth == 0 {
 			lw.noteRestartDepths(restartAnchor(ev))
+		} else if lw.depth == 1 {
+			lw.noteLoopRestartDepths(restartAnchor(ev))
 		}
 		if lw.markBefore[ev.seq] {
 			lw.emit(OpStackMark, 0, eventPos(*ev))
@@ -1903,6 +1946,11 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 				len(lw.vm) > 0 && lw.vm[len(lw.vm)-1].seq == ev.seq {
 				lw.emit(OpDrop, 0, ev.br.pos)
 				lw.vm = lw.vm[:len(lw.vm)-1]
+			}
+		}
+		if ss := lw.sitesAfter[ev.seq]; len(ss) > 0 {
+			if reason := lw.emitReadSiteGuards(ss); reason != "" {
+				return reason
 			}
 		}
 	}
@@ -2550,7 +2598,8 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 	if unit != nil {
 		deoptNames, keepsDefs = unit.deoptNames, unit.keepsDefs
 	}
-	if dynBindSrc := es.collectDynBindSources(events, deoptNames, keepsDefs); len(dynBindSrc) > 0 {
+	dynBindSrc := es.collectDynBindSources(events, deoptNames, keepsDefs)
+	if len(dynBindSrc) > 0 {
 		merged := make(map[int]bool, len(forceOrder)+len(dynBindSrc))
 		for k := range forceOrder {
 			merged[k] = true
@@ -2767,7 +2816,11 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 			// linearisation single-output events use. Only the forceOrder trigger
 			// applies (a multi-output result is never a named value-def nor a
 			// >=2-ref operand in Stage 1); a user fn's multi-return stays Stage 3.
-			if !isUser && nout > 1 && es.promotesMultiOut(ev.seq, nout, forceOrder, allEvents) {
+			// A user fn's multi-return goes to slots only as a registry-visible
+			// def's source: the def binds its first result, re-pushed from the
+			// first slot for the install (NUR336's `def k (two)`), and the rest
+			// re-push in order.
+			if nout > 1 && es.multiOutToSlots(ev.seq, nout, isUser, forceOrder, dynBindSrc, allEvents) {
 				if promoted == nil {
 					promoted = map[int]int{}
 				}
@@ -2888,6 +2941,16 @@ func (es *EmitState) planValueDefLocals(unit *emitUnit, events []EmitEvent, extr
 		}
 	}
 	return promoted, dead
+}
+
+// multiOutToSlots reports whether the nout-result call event seq goes to
+// consecutive frame slots: a native's when promotesMultiOut says so, a user
+// fn's only as a registry-visible def's source (dynBindSrc).
+func (es *EmitState) multiOutToSlots(seq, nout int, isUser bool, forceOrder, dynBindSrc map[int]bool, events []*EmitEvent) bool {
+	if isUser {
+		return dynBindSrc[seq] && !es.eventInfo[seq].variadicResult
+	}
+	return es.promotesMultiOut(seq, nout, forceOrder, events)
 }
 
 // promotesMultiOut reports whether a multi-output native word's results go
@@ -3596,6 +3659,13 @@ func singleOutputCall(ev *EmitEvent) bool {
 	}
 }
 
+// callWithResults reports whether ev is a call event of a fixed count of one
+// or more results (a native's or a user fn's recorded nout).
+func callWithResults(ev *EmitEvent) bool {
+	_, nout := callShape(ev)
+	return ev != nil && (ev.kind == evCall || ev.kind == evCallUser) && nout >= 1
+}
+
 // promoteLateDynBind seats a finished fn unit's dyn-bound COMPUTED def sources
 // into frame locals, for the case where es.dynEnv armed AFTER the unit's
 // value-def promotion was planned (a later tryRecordDynBody — e.g. a `do {…}`
@@ -4020,6 +4090,12 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 			// The lead's plan (parenLead) writes the value the apply holds.
 			if substs, ok := lw.restartSubstSrcs(r, c.ops[0], -1); ok {
 				spec.Restart, spec.Root, spec.Depth, spec.Island, spec.RetPC, spec.PrefixSrc, spec.Substs, spec.FirstIter = true, lw.landingRoot, r.depth, lw.landingBody[r.token:], -1, r.srcs, substs, r.first
+				if lc := r.loop; lc != nil {
+					// The per-iteration continuation: the island is the stop's
+					// statement in the loop's body (NUR336).
+					spec.Island = lc.elems[r.token:]
+					spec.Loop = &LoopCont{Body: lc.elems, After: lc.after, IterName: lc.iterName, Beneath: lc.outerDepth}
+				}
 				spec.LeadUnrun = lw.leadUnrunAt(ev.seq, substs)
 				lw.restartMethods = append(lw.restartMethods, di)
 			}
@@ -4087,7 +4163,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 			// do for the CALL_NATIVE twin, so the op commits no claim.
 			nout = PolyNOutRegion
 		}
-		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: lw.seatSplitLive(c.polySplit, c.polySplitLive), DynBodyOne: dynOne, DynBodyPlain: plainChk, Raw: lw.polyRawOperands(n)}
+		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: lw.splitWords(lw.seatSplitLive(c.polySplit, c.polySplitLive), c.pos, c.polySplitFwdPos), DynBodyOne: dynOne, DynBodyPlain: plainChk, Raw: lw.polyRawOperands(n), QuietGuard: c.quietGuard}
 		if c.polySeed != nil && (c.polySeed.tags == nil || len(c.polySeed.tags) == n) {
 			pref.Seed, pref.SeedTags = c.polySeed.sig, c.polySeed.tags
 		}
@@ -4173,6 +4249,10 @@ func (lw *lowerer) siteSigRef(seq int, c *emitCall, dynOne, plainChk bool) (SigR
 	ref := SigRef{Word: c.word, Sig: c.sig, HostSplice: c.hostSplice, DynBodyOne: dynOne, DynBodyPlain: plainChk, Split: c.nativeSplit, SpliceOuts: spliceOuts, FnArgPos: fnArgPos}
 	if reStep {
 		ref.ReStep, ref.ReStepOut = true, lw.reStepOut(seq, c.nout)
+	} else if plainChk {
+		// A plain run the VM may re-step in place (its dispatched values
+		// all take no argument) owes the seat's count (NUR359).
+		ref.ReStepOut = lw.reStepOut(seq, c.nout)
 	}
 	return ref, true
 }
@@ -4428,6 +4508,11 @@ func (lw *lowerer) lowerFragment(frag *EmitFragment, out *EmitOperand, allowVari
 	}
 	if reason := lw.lowerEvents(frag.events, frag.startSeq); reason != "" {
 		return reason
+	}
+	if ss := lw.sitesAtEnd[frag.id]; len(ss) > 0 {
+		if reason := lw.emitReadSiteGuards(ss); reason != "" {
+			return reason
+		}
 	}
 	if len(frag.applyArgs) > 0 {
 		// Per-iteration dynamic apply (`for n [(mk2 i) 10]`): the body events left
@@ -4851,6 +4936,7 @@ func (lw *lowerer) lowerUserCall(ev *EmitEvent) string {
 		lw.vm = lw.vm[:len(lw.vm)-n]
 		return ""
 	}
+	lw.seatCallResult(ev.seq)
 	lw.emit(OpCallUser, uc.unit, uc.callPos())
 	lw.vm = lw.vm[:len(lw.vm)-n]
 	return lw.lowerUserCallResult(ev, uc)
@@ -4925,8 +5011,12 @@ func (lw *lowerer) lowerUserCallResult(ev *EmitEvent, uc *emitUserCall) string {
 			lw.es.fnRecs[uc.unit].variadic {
 			return lw.es.fnRecs[uc.unit].name + ": variadic fn result promoted to a frame slot (runtime count differs from the one store)"
 		}
-		lw.seatStoreName(ev.seq, 0)
-		lw.emit(OpStoreLocal, slot, uc.pos)
+		// A multi-return stores each result, top (highest index) first
+		// (planValueDefLocals' dyn-bind source arm).
+		for i := uc.nout - 1; i >= 0; i-- {
+			lw.seatStoreName(ev.seq, i)
+			lw.emit(OpStoreLocal, slot+i, uc.pos)
+		}
 		lw.note()
 		return ""
 	}
@@ -5671,7 +5761,7 @@ func (lw *lowerer) stashSubst(ev *EmitEvent) {
 // substSeq reports whether a planned statement island (a landing's or a
 // branch guard's) writes event seq's value in its paren's place.
 func (lw *lowerer) substSeq(seq int) bool {
-	for _, plans := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts, lw.fitRestarts} {
+	for _, plans := range []map[int]*landingRestart{lw.landingRestarts, lw.guardRestarts, lw.countRestarts, lw.fitRestarts, lw.callResultRestarts} {
 		for _, r := range plans {
 			for _, sp := range r.substs {
 				// The stop's own run is written from the stop, never read

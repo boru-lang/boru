@@ -195,6 +195,31 @@ type Engine struct {
 	// rather than one per consequence: a second island entry point that set
 	// only the flow half would silently regress the scoping half.
 	FlowUnwind bool
+	// ContainerRun marks the sub-engine that evaluates a container literal's
+	// elements — a pending list's contents, a map member, an interpolation
+	// hole (runContainerSub). A literal is not a loop and not a body whose
+	// residual an outer run keeps stepping (NUR358): a break/continue that
+	// escapes its elements belongs to the run that holds the literal, as it
+	// would were the elements written inline. So an escaping signal tears
+	// down the frames the run spliced — the literal's tape is never handed
+	// back, and its frame-cleanup markers must not leak into the value — and
+	// holds where the run stood (Registry.HoldFlowAt) for the `outside loop`
+	// report; the flag stays set for the literal's evaluator, which abandons
+	// the value (containerEscaped). Reset by PutSubEngine.
+	ContainerRun bool
+	// recoveryRaw holds, by tape index, the pending map literals a
+	// check-mode no-match recovery evaluated in place (NoteRecoveryRaw): the
+	// interpreter's failed match never evaluates them, so a trap's report
+	// renders them as written (TryRecordUnmatchedDispatchTrap, NUR235).
+	recoveryRaw map[int]Value
+	// patternEval* carry a word dispatch's evaluation of a pending container
+	// operand a signature pattern reads (patternDispatch, NUR235):
+	// patternEvalMake is `make`'s construction-body map rule; patternEvalErr
+	// holds an error the evaluation raised, for the dispatch to return;
+	// patternEvalDid notes that an evaluation replaced an operand.
+	patternEvalMake bool
+	patternEvalDid  bool
+	patternEvalErr  error
 	// startAt is a one-shot start offset for the next Run: the leading
 	// startAt input values are RESOLVED arguments (a callback's inputs, a
 	// fn call's unnamed args) and enter as stack data below the pointer,
@@ -1775,6 +1800,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 			e.Pointer++
 
 		case IsOpenParen(val):
+			e.noteParenStack(e.Pointer)
 			e.stepPastOpenParen(val)
 
 		case IsCloseParen(val):
@@ -1939,6 +1965,11 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	if !e.DeferResidual {
 		if err := e.sweepResidual(); err != nil {
 			return nil, e.faultReturn(err)
+		}
+		if e.Registry.FlowCtrl != FlowNone {
+			// A residual literal let a break/continue out (NUR358): no
+			// loop is left on this tape, so the signal leaves the run.
+			return e.exitWithFlowCtrl()
 		}
 	}
 
@@ -3284,17 +3315,9 @@ func (e *Engine) stepWord(val Value) error {
 	}
 
 	// Unified signature matching: one path for all words.
-	resolved := e.EffectiveResolved()
-	sig, positions, specAt := e.MatchSignature(fn, w, resolved)
-
-	// Retry fallback for words with forward-collecting sigs: when
-	// nearest-first matching fails, retry with deepest-first
-	// (ForceStack). Handles CallBoru sub-engines where FnDef args are
-	// placed in deepest-first order on the input stack.
-	if sig == nil && fn.HasForwardSigs() && !w.ForceStack {
-		wDeep := w
-		wDeep.ForceStack = true
-		sig, positions, specAt = e.MatchSignature(fn, wDeep, resolved)
+	sig, positions, specAt, _, abandon, err := e.matchForDispatch(fn, w)
+	if abandon {
+		return err
 	}
 	// The word-dispatch commit, as planned (dispatch_probe.go): the
 	// admission-agreement census reads it here, before the check-mode
@@ -3691,6 +3714,11 @@ func (e *Engine) execMatch(match *MatchResult) error {
 					match.Args[i] = evaluated
 				}
 			}
+		}
+		if e.containerEscaped() {
+			// A break/continue escaped the operand literal: the call is
+			// abandoned, and its run resolves the signal (NUR358).
+			return nil
 		}
 		e.resolveConsumedInertTypeShape(match, i)
 		match.Args[i].Eval = false
@@ -5035,6 +5063,11 @@ func (e *Engine) autoEvalStack() error {
 		if err != nil {
 			return err
 		}
+		if e.containerEscaped() {
+			// The run resolves the signal a residual literal let out
+			// (NUR358): Run's post-sweep check.
+			return nil
+		}
 		e.Tape.Set(i, result)
 	}
 	return nil
@@ -5062,6 +5095,17 @@ func (e *Engine) autoEvalResidual(val Value) (Value, error) {
 	}
 	return val, nil
 }
+
+// containerEscaped reports whether a break/continue escaped the container
+// literal element run that just returned (RunContainerSub) — the registry's
+// FlowCtrl left set. A list literal is not a loop (NUR358): the signal
+// belongs to the run holding the literal, so the literal's evaluator
+// abandons the value and every caller that would consume it — a call's
+// argument, the end-of-run sweep, a loop's iteration collection, a frame's
+// residual — stops and lets that run resolve the signal, exactly as it
+// resolves one its own tokens raised: the nearest enclosing loop takes it,
+// else the run raises `<ctrl> outside loop`.
+func (e *Engine) containerEscaped() bool { return e.Registry.FlowCtrl != FlowNone }
 
 // autoEvalList evaluates the contents of a plain list in a sub-engine,
 // returning a new list containing the results. For example, [1 add 2] → [3].
@@ -5095,11 +5139,11 @@ func AutoEvalConsumedMap(r *Registry, v Value, dataMap bool) (Value, error) {
 // exactly RunPooledSub — the hot interpreter path pays nothing.
 func (e *Engine) runInlineCtxRegion(input []Value, elemEvalRecordable bool) ([]Value, error) {
 	if !e.Registry.analysisActive() {
-		return RunPooledSub(e.Registry, input, elemEvalRecordable)
+		return RunContainerSub(e.Registry, input, elemEvalRecordable)
 	}
 	es := e.Registry.analysisRecorder()
 	es.PushInlineCtxBoundary()
-	res, err := RunPooledSub(e.Registry, input, elemEvalRecordable)
+	res, err := RunContainerSub(e.Registry, input, elemEvalRecordable)
 	es.PopInlineCtxBoundary()
 	return res, err
 }
@@ -5114,6 +5158,11 @@ func (e *Engine) autoEvalList(val Value, consumed bool) (Value, error) {
 	result, err := e.runInlineCtxRegion(input, e.IsTop || consumed || e.ElemEvalRecordable)
 	if err != nil {
 		return Value{}, err
+	}
+	if e.containerEscaped() {
+		// A break/continue escaped the elements: the literal has no value —
+		// the empty list stands in, and the caller abandons it (NUR358).
+		return NewList(nil), nil
 	}
 	// An evaluated element is STORED (the list is data): consume any
 	// dispatch ascription here (`[(m as T)]` must not smuggle a live
@@ -5671,13 +5720,18 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 	}
 
 	for _, key := range m.Keys() {
+		if e.containerEscaped() {
+			// A break/continue escaped the previous member's run: the
+			// literal has no value (NUR358 — autoEvalList's rule).
+			return NewMap(NewOrderedMap()), nil
+		}
 		v, _ := m.Get(key)
 		resolvedKey := key
 
 		// Computed key: evaluate the key text as boru code to get
 		// the actual string key. E.g., {[a]:1} with def a 'x' → {x:1}
 		if ckSet[key] {
-			keyResult, err := RunPooledSub(e.Registry, []Value{NewWord(key)}, false)
+			keyResult, err := RunContainerSub(e.Registry, []Value{NewWord(key)}, false)
 			if err != nil {
 				return Value{}, fmt.Errorf("computed key [%s]: %w", key, err)
 			}
@@ -5763,7 +5817,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 					// own assembly — and the folded value takes that result's
 					// identity (foldedReferenceIdentity).
 					out.Set(resolvedKey, e.foldedReferenceIdentity(folded, dataMap, func() ([]Value, error) {
-						return RunPooledSub(e.Registry, []Value{v}, e.IsTop || consumed || e.ElemEvalRecordable)
+						return RunContainerSub(e.Registry, []Value{v}, e.IsTop || consumed || e.ElemEvalRecordable)
 					}))
 					continue
 				}
@@ -5778,7 +5832,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 			continue
 		}
 		// Evaluate each value in a pooled sub-engine.
-		result, err := RunPooledSub(e.Registry, []Value{v},
+		result, err := RunContainerSub(e.Registry, []Value{v},
 			e.IsTop || consumed || e.ElemEvalRecordable)
 		if err != nil {
 			return Value{}, err
@@ -5800,7 +5854,7 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 		// re-assembles from its operands per run, so it never freezes a per-call
 		// binding. RecordMakeListInner declines (leaving es untouched) for an
 		// unresolvable / stateful / type-pattern element, so the map then falls back.
-		if (consumed || e.ElemEvalRecordable) && e.Registry.analysisActive() {
+		if (consumed || e.ElemEvalRecordable) && e.Registry.analysisActive() && !e.containerEscaped() {
 			if es := e.Registry.analysisRecorder(); es.Armed() {
 				if lv, _ := out.Get(resolvedKey); lv.Parent.Equal(TList) && !IsInertConst(lv) {
 					if lp, isList := lv.Data.(ListPayload); isList {
@@ -5809,6 +5863,9 @@ func (e *Engine) AutoEvalMap(val Value, dataMap, consumed bool) (Value, error) {
 				}
 			}
 		}
+	}
+	if e.containerEscaped() {
+		return NewMap(NewOrderedMap()), nil
 	}
 	// An evaluated map value is STORED (the map is data): consume any
 	// dispatch ascription (`{a:(m as T)}`), mirroring autoEvalList's
@@ -6194,16 +6251,10 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 		}
 	}
 
-	resolved := e.EffectiveResolved()
-	sig, positions, specAt := e.MatchSignature(fn, w, resolved)
-
-	// Retry fallback for words with forward-collecting sigs: when
-	// nearest-first matching fails, retry with deepest-first
-	// (ForceStack). Mirrors stepWord's CallBoru-input recovery.
-	if sig == nil && fn.HasForwardSigs() && !w.ForceStack {
-		wDeep := w
-		wDeep.ForceStack = true
-		sig, positions, specAt = e.MatchSignature(fn, wDeep, resolved)
+	// Mirrors stepWord's match, with its CallBoru-input recovery.
+	sig, positions, specAt, resolved, abandon, err := e.matchForDispatch(fn, w)
+	if abandon {
+		return err
 	}
 
 	// Function-value dispatch does NOT fire Fallback sigs. Fallback
@@ -7165,8 +7216,7 @@ func compileFnDef(r *Registry, fnDef FnDefInfo) *FnDefInfo {
 				FnFrame:  meta,
 				dispatch: buildFnBodyHandler(r, fnDef.Name, sig, fnDef, meta),
 			}
-			// The installed sig: its frame identity carries the handler's
-			// args-list decision (FnFrameMeta.ArgsElided).
+			// The installed sig, with its frame identity.
 			compiled.ReturnsFn = r.analysisReturnsFn(fnDef.Name, compiled, fnDef)
 		}
 		NormalizeSig(&compiled)
@@ -7232,6 +7282,9 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 					if err != nil {
 						return err
 					}
+					if e.containerEscaped() {
+						return nil
+					}
 					args[i] = evaluated
 				}
 			} else if args[i].Parent.Equal(TList) &&
@@ -7243,6 +7296,9 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 					evaluated, err := e.autoEvalList(args[i], true)
 					if err != nil {
 						return err
+					}
+					if e.containerEscaped() {
+						return nil
 					}
 					args[i] = evaluated
 				}
@@ -8569,6 +8625,26 @@ func (e *Engine) noteStatementStack(endIdx int) {
 	e.Registry.Check.Recorder().NoteStatementStack(e.statementStackPos(endIdx), stack)
 }
 
+// noteParenStack tells the recorder the stack a paren group at idx opens over
+// (EmitRecorder NoteParenStack) when the tape beneath it holds values alone:
+// nothing is pending there — no open paren, forward or engine marker — so a
+// statement island stopped inside the group may take the statement over from
+// the group's own token, over exactly that stack (NUR336's `drop (m.f 7)`).
+func (e *Engine) noteParenStack(idx int) {
+	if e.Registry == nil || e.Registry.Check == nil || !e.Registry.analysisActive() {
+		return
+	}
+	stack := make([]Value, 0, idx)
+	for i := 0; i < idx; i++ {
+		v := e.Tape.At(i)
+		if IsOpenParen(v) || IsForward(v) || isEngineMarker(v) {
+			return
+		}
+		stack = append(stack, v)
+	}
+	e.Registry.Check.Recorder().NoteParenStack(e.statementStackPos(idx), stack)
+}
+
 // stepMark records the mark's ID in the marks hash table and advances.
 
 // isPendingResidualContainer reports whether v is a pending
@@ -8638,6 +8714,14 @@ func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 				// without the callee's params/args/locals bound in the
 				// caller's scope (faultReturn).
 				return err
+			}
+			if e.containerEscaped() {
+				// A break/continue escaped the residual literal (NUR358):
+				// the frame is still open on the tape, so the resolution's
+				// unwind replays this marker's truncation with the rest of
+				// its tail (unwindLiveFrames) — truncating here too would
+				// pop the caller's bindings.
+				return nil
 			}
 			ev.Eval = false
 			e.Tape.Set(i, ev)
@@ -8761,7 +8845,7 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 	}
 
 	// Collect resolved values between mark and move (this iteration's output).
-	if err := e.collectLoopRegion(cont, markIdx, moveIdx); err != nil {
+	if escaped, err := e.collectLoopRegion(cont, markIdx, moveIdx); err != nil || escaped {
 		return err
 	}
 
@@ -8836,19 +8920,30 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 // iteration with the loop's own (NUR197). Everything else — a typed
 // container's inert shape included — is collected as it stands and
 // resolved where every other value resolves, the end-of-run sweep.
-func (e *Engine) collectLoopRegion(cont *ForCont, markIdx, moveIdx int) error {
+//
+// A break/continue that escapes a literal's elements belongs to this loop
+// (NUR358 — a literal is not a loop): the iteration's collection is undone
+// and escaped reports it, leaving the signal set and the pointer on the move
+// for the run's resolver, which finds this loop there and breaks or
+// continues it as it would for a signal the body raised itself.
+func (e *Engine) collectLoopRegion(cont *ForCont, markIdx, moveIdx int) (escaped bool, err error) {
+	base := len(cont.Results)
 	for j := markIdx + 1; j < moveIdx; j++ {
 		v := e.Tape.At(j)
 		if isPendingResidualContainer(v) {
 			ev, err := e.autoEvalResidual(v)
 			if err != nil {
-				return err
+				return false, err
+			}
+			if e.containerEscaped() {
+				cont.Results = cont.Results[:base]
+				return true, nil
 			}
 			v = ev
 		}
 		cont.Results = append(cont.Results, v)
 	}
-	return nil
+	return false, nil
 }
 
 // stepMoveWhile drives a while loop's alternating regions. A CONDITION
@@ -8864,7 +8959,7 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 	cont := info.Cont
 
 	if cont.WhileInBody {
-		if err := e.collectLoopRegion(cont, markIdx, moveIdx); err != nil {
+		if escaped, err := e.collectLoopRegion(cont, markIdx, moveIdx); err != nil || escaped {
 			return err
 		}
 		cont.WhileInBody = false
@@ -8989,7 +9084,7 @@ func (e *Engine) handleFlowCtrl() bool {
 		handled = e.handleLoopContinue()
 	}
 	if handled {
-		e.Registry.FlowCtrl = FlowNone
+		e.Registry.TakeFlow()
 	}
 	return handled
 }
@@ -9013,18 +9108,21 @@ func (e *Engine) isIsland() bool { return e.FlowUnwind }
 // cleanly so an outer Run can resolve it.
 func (e *Engine) exitWithFlowCtrl() ([]Value, error) {
 	if e.IsTop {
-		ctrl := e.Registry.FlowCtrl
-		e.Registry.FlowCtrl = FlowNone
-		return nil, e.runtimeError("flow_error", fmt.Sprintf("%s outside loop", ctrl), ctrl.String(), "")
+		// Where the signal stood: this run's pointer, unless a container
+		// literal's element run let it out — the literal's elements stood
+		// where it escaped, and the pointer here has moved on (NUR358).
+		return nil, e.Registry.RaiseFlowOutsideLoop(e.currentPos(), e.effectiveSource())
 	}
-	if e.FlowUnwind {
-		// A VM island: no outer TAPE exists to adopt the residual — tear down
-		// the live spliced frames (their registry state: args stack, body-local
-		// defs, captures) and return nothing; the VM translates the signal.
-		// Where the island stood goes with it (Registry.FlowAt): the token the
+	if e.FlowUnwind || e.ContainerRun {
+		// A VM island, or a container literal's element run: no outer TAPE
+		// adopts the residual — tear down the live spliced frames (their
+		// registry state: args stack, body-local defs, captures) and return
+		// nothing; the VM translates the signal, or the literal's evaluator
+		// abandons the value and its run resolves the signal (NUR358).
+		// Where the run stood goes with it (Registry.FlowAt): the token the
 		// interpreter's own `outside loop` report points at, when no loop
-		// takes the signal (NUR355).
-		e.Registry.FlowAt, e.Registry.FlowAtSet = e.currentPos(), e.Pointer < e.Tape.Len()
+		// takes the signal (NUR355) — an inner run's, when one holds it.
+		e.Registry.HoldFlowAt(e.currentPos(), e.Pointer < e.Tape.Len())
 		e.unwindLiveFrames(0, e.Tape.Len())
 		e.Tape.TakeAll()
 		return nil, nil
@@ -10549,6 +10647,96 @@ func (e *Engine) MatchSignature(fn *FnDefInfo, w WordInfo, resolved []Value) (*S
 	return PlanMatch(e, e.Tape, e.Registry, fn, w, resolved, e.Pointer, e.isInsidePendingForward(), checkActive, compiling)
 }
 
+// matchForDispatch is a word dispatch's signature match (stepWord, and a
+// fn value at the pointer): MatchSignature over the effective resolved
+// stack, with the deepest-first retry for words with forward-collecting
+// sigs when nearest-first matching fails (a CallBoru sub-engine places FnDef
+// args deepest-first on its input stack). Across the match a pending
+// container operand a pattern reads is evaluated as the call will evaluate
+// it (evalPatternOperand, NUR235); abandon reports that evaluation raised
+// (err) or let a break/continue out (nil — the run resolves the signal),
+// and the dispatch stops there.
+//
+// resolved is the effective resolved stack the match ran over — re-read
+// when an evaluation replaced an operand, so it holds the values the call
+// takes.
+func (e *Engine) matchForDispatch(fn *FnDefInfo, w WordInfo) (sig *Signature, positions []int, specAt int, resolved []Value, abandon bool, err error) {
+	resolved = e.EffectiveResolved()
+	e.patternEvalMake, e.patternEvalDid = w.Name == "make", false
+	sig, positions, specAt = e.matchSignatureDispatching(fn, w, resolved)
+	if sig == nil && fn.HasForwardSigs() && !w.ForceStack && !e.patternEvalAbandoned() {
+		wDeep := w
+		wDeep.ForceStack = true
+		sig, positions, specAt = e.matchSignatureDispatching(fn, wDeep, e.patternResolved(resolved))
+	}
+	if e.patternEvalAbandoned() {
+		err, e.patternEvalErr = e.patternEvalErr, nil
+		return nil, nil, 0, nil, true, err
+	}
+	return sig, positions, specAt, e.patternResolved(resolved), false, nil
+}
+
+// patternResolved is resolved, re-read when a pattern operand's evaluation
+// replaced a value on the tape.
+func (e *Engine) patternResolved(resolved []Value) []Value {
+	if e.patternEvalDid {
+		return e.EffectiveResolved()
+	}
+	return resolved
+}
+
+// patternEvalAbandoned reports whether a pattern operand's evaluation during
+// this dispatch's match raised or let a flow signal out.
+func (e *Engine) patternEvalAbandoned() bool {
+	return e.patternEvalErr != nil || e.Registry.FlowCtrl != FlowNone
+}
+
+// matchSignatureDispatching is MatchSignature for the dispatch itself: the
+// matcher's host is patternDispatch, the one host that evaluates a pending
+// container operand a pattern reads (NUR235). Every other seat on the
+// matcher — the check pass's plan probes, the VM's re-matches — matches the
+// raw token.
+func (e *Engine) matchSignatureDispatching(fn *FnDefInfo, w WordInfo, resolved []Value) (*Signature, []int, int) {
+	checkActive := e.Registry != nil && e.Registry.analysisActive()
+	compiling := checkActive && e.Registry.analysisCompiling()
+	return PlanMatch(patternDispatch{e}, e.Tape, e.Registry, fn, w, resolved, e.Pointer, e.isInsidePendingForward(), checkActive, compiling)
+}
+
+// patternDispatch is the dispatching engine as the matcher's host
+// (patternOperandHost): the engine's own collection seat, plus the
+// evaluation of a pending container operand a pattern reads.
+type patternDispatch struct{ *Engine }
+
+// evalPatternOperand evaluates the pending container literal v at tape index
+// i as the call's own argument evaluation (execMatch / execFnDefSig)
+// evaluates a consumed operand; the value replaces it on the tape — Eval
+// cleared, so no later candidate and not the call itself evaluates it again.
+func (d patternDispatch) evalPatternOperand(i int, v Value) (Value, bool) {
+	e := d.Engine
+	if e.patternEvalAbandoned() {
+		return v, false
+	}
+	var ev Value
+	var err error
+	if v.Parent.Equal(TMap) {
+		ev, err = e.AutoEvalMap(v, e.patternEvalMake, true)
+	} else {
+		ev, err = e.autoEvalList(v, true)
+	}
+	if err != nil {
+		e.patternEvalErr = err
+		return v, false
+	}
+	if e.containerEscaped() {
+		return v, false
+	}
+	ev.Eval = false
+	ev.pos = v.pos
+	e.Tape.Set(i, ev)
+	e.patternEvalDid = true
+	return ev, true
+}
+
 // sigOrderArgs reorders the recovery path's tape-ordered operands
 // (the first nStack are stack args, ascending toward the pointer; the
 // rest are forward args in source order) into SIGNATURE order, where
@@ -11011,11 +11199,23 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 		// raise on no-match). The provenance requirement still gates: a
 		// dynamic with no compiled home fails RecordDispatchRematchValues'
 		// operand resolution and the compile failure stands.
-		if v.Carrier || v.Dynamic {
+		//
+		// A container holding one — a pending literal a pattern evaluated
+		// before its match (NUR235: `[("a" add "b")]` is the list of the
+		// add's carrier) — is the same case: the report renders the
+		// elements' run-time values.
+		if v.Carrier || v.Dynamic || e.Registry.analysisValueCarriesCarrier(v) {
 			needsRematch = true
 		}
 	}
 	if needsRematch {
+		// A literal the recovery evaluated renders as written in the
+		// interpreter's report; the rematch renders run-time values.
+		for _, p := range window {
+			if _, raw := e.recoveryRaw[p]; raw {
+				return false
+			}
+		}
 		// Not statically definite — but every position is a runtime-stable
 		// value or a provenance-carrying carrier: record the runtime
 		// rematch (OpDispatchRematch), under three byte-identity guards.
@@ -11095,9 +11295,43 @@ func (e *Engine) TryRecordUnmatchedDispatchTrap(w WordInfo, fn *FnDefInfo, pos S
 	// interpreter's does, and every other nested region declines.
 	ae := e.voidArgErrorFor(w.Name, pos)
 	if ae == nil {
+		restore := e.withRecoveryRaw()
 		ae = e.sigError(w.Name, fn, pos)
+		restore()
 	}
 	return es.RecordTrapErr(ae, pos) || es.RecordArmTrapErr(ae, pos)
+}
+
+// NoteRecoveryRaw records the pending literal raw a check-mode no-match
+// recovery is about to replace at tape index i with its evaluation
+// (engine.recoveryRaw).
+func (e *Engine) NoteRecoveryRaw(i int, raw Value) {
+	if e.recoveryRaw == nil {
+		e.recoveryRaw = map[int]Value{}
+	}
+	e.recoveryRaw[i] = raw
+}
+
+// ClearRecoveryRaw forgets the recovery's replaced literals — the
+// recovery's own exit, so no later dispatch reads its indices.
+func (e *Engine) ClearRecoveryRaw() { e.recoveryRaw = nil }
+
+// withRecoveryRaw puts the replaced literals back on the tape for a report
+// built over it, returning the undo.
+func (e *Engine) withRecoveryRaw() func() {
+	if len(e.recoveryRaw) == 0 {
+		return func() {}
+	}
+	evaluated := make(map[int]Value, len(e.recoveryRaw))
+	for i, raw := range e.recoveryRaw {
+		evaluated[i] = e.Tape.At(i)
+		e.Tape.Set(i, raw)
+	}
+	return func() {
+		for i, v := range evaluated {
+			e.Tape.Set(i, v)
+		}
+	}
 }
 
 // rematchRenderTuple resolves the attempted written tuple to distinct

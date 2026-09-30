@@ -490,6 +490,8 @@ type emitCall struct {
 	polyNoMatch       *core.PolyNoMatchSpec // faithful-raise plan for the poly's runtime no-match arm (nil = defer)
 	polySplit         *PolySplit            // the dispatch's exact operand layout, for the poly's runtime no-match arm (PolyRef.Split, NUR242)
 	polySplitLive     []splitLive           // the split's Beneath entries the run's stack holds (PolySplit.Live, NUR351), placed at lowering
+	polySplitFwdPos   []core.SrcPos         // the split's written operands' positions at the record — a word read's is the word's (PolySplit.Words, NUR356), resolved at lowering
+	quietGuard        bool                  // the NUR356 walks judged this poly quiet though an overload it may pick has an effect (polyEffectful): PolyRef.QuietGuard
 	nativeSplit       *NativeSplit          // an optimistic closure bake's exact operand layout, for the committed call's no-match arm (SigRef.Split, NUR263)
 	polySeed          *polySeed             // the checker's guarded pick (PolyRef.Seed; nil = none)
 	makeList          bool                  // assemble len(ops) operands into a list (OpMakeList) instead of dispatching a word
@@ -1592,6 +1594,13 @@ type EmitState struct {
 	// at run time; Finalize plans each read (planRootWordReads).
 	rootWordReads  map[string]rootWordRead
 	rootLocalReads map[string][]core.SrcPos
+	// readSites are the gradual reads' sites in their frames' event streams
+	// by value ID (noteReadSite), pendingSites those still awaiting the next
+	// event of their frame, and siteGuarded the reads whose sites the
+	// lowering guards (read_site_guard.go, NUR361).
+	readSites    map[string][]*readSite
+	pendingSites []*readSite
+	siteGuarded  map[siteKey]bool
 	// valReadNoted records every `/v` read of a binding the pass noted
 	// (NoteValRead), program-wide — wider than valReadIDs below, which holds
 	// only the reads aliasValRead traced to a produced fn value. The value
@@ -1629,6 +1638,11 @@ type EmitState struct {
 	// operand beside a value written after them (NoteTakenLanding, NUR349):
 	// a landing the lowering cannot guard declines the program.
 	landingTaken map[int]bool
+	// rootParenStacks holds, by the position of a ROOT paren group, the
+	// stack it opened over where nothing was pending beneath it
+	// (NoteParenStack): a statement island may take its statement over from
+	// the group's token (lateRootRestart, NUR336).
+	rootParenStacks map[core.SrcPos][]core.Value
 	// rootStmtStacks holds, by the position of a ROOT statement boundary
 	// that closed nothing, the stack it left for the next statement
 	// (NoteStatementStack): a root statement island seats exactly these
@@ -1850,9 +1864,13 @@ type EmitState struct {
 	// (gotcha #13) is untouched.
 	constIDIdx map[string]int
 	types      []TypeRef
-	typeIdx    map[string]int        // type ID → Types index
-	fallbacks  []core.FallbackSpan   // Stage 5 interpreter islands
-	origByID   map[string]core.Value // stripped literal ID → original value
+	typeIdx    map[string]int // type ID → Types index
+	// runTypes marks the type nodes a type-run install replaces at run time
+	// (recordTypeRun, NUR308): a match over the pass's node proves nothing
+	// of the run's (literalMatchSure).
+	runTypes  map[string]bool
+	fallbacks []core.FallbackSpan   // Stage 5 interpreter islands
+	origByID  map[string]core.Value // stripped literal ID → original value
 	// trapAt is the seq of a recorded TOP-LEVEL terminal trap (a check-mode-
 	// suppressed runtime error compiled as OpTrap), or 0 for none. When set,
 	// Finalize ends the program at the trap. seqs start at 1, so 0 is a safe
@@ -2204,12 +2222,8 @@ type fnUnitRec struct {
 	// on CompiledFn.Decl so a compiled RET return error labels the
 	// declaration as a secondary span exactly as the interpreter does.
 	// Zero for closures / anonymous units (no meaningful declaration).
-	decl core.DeclSite
-	// argsElided stamps CompiledFn.ArgsElided: the unit is the body of a
-	// sig whose handler pushes the shared empty args list
-	// (core.FnFrameMeta.ArgsElided, SetUnitArgsElided).
-	argsElided bool
-	locals     []string // slot→name table (params then captures)
+	decl   core.DeclSite
+	locals []string // slot→name table (params then captures)
 	// slotNames names the unit's OTHER frame locals — loop variables,
 	// carried and arm-bound defs — captured at unit close (unitSlotNames)
 	// for CompiledFn.LocalNames (NUR146).
@@ -2455,6 +2469,10 @@ type fnUnitRec struct {
 // the statement holding the read begins at (start: where the test runs,
 // before any of the statement's effects) and that statement's Body token.
 type deoptPoint struct {
+	// id is the read value's identity on a gradual read's point (planDeopts,
+	// the root's planRootWordReads): a point whose test would run before
+	// the value's producer arms the read's site guards instead (NUR361).
+	id    string
 	seq   int
 	slot  int // a CAPTURE's frame slot (the value's home in a closure unit); -1 for a producer (seq)
 	name  string
@@ -2540,6 +2558,25 @@ type deoptPoint struct {
 	// fit, on a restart point, marks a poly's forward-fit island
 	// (PolyRef.Fit, NUR357): the stop is the poly's own call.
 	fit bool
+	// lits, on a unit's statement island (frameHeld), are the literals an
+	// earlier statement wrote that a later event consumes: the compiled code
+	// pushes each where its consumer runs, so the frame lacks them at the
+	// statement's start where the interpreter's stack holds them. The walk
+	// seats each as a constant among the frame region's entries by where it
+	// was written (noteRestartDepth, NUR336's `4 end (q.f 7)`); posOf is
+	// where each of the unit's events was written, for that merge.
+	lits  []seatLit
+	posOf map[int]core.SrcPos
+	// loopCont, on a restart point, is a unit's per-iteration loop island
+	// (loopContPlan), seated whole.
+	loopCont *landingRestart
+	// island, on a root live-read point whose read the pass met in a spliced
+	// word's tokens (spliceBody), is the island's tokens: the program from
+	// the read's statement as the splice left it (DeoptSpec.Island).
+	island []core.Value
+	// callResult, on a restart point, marks a user call's result island
+	// (CompiledFn.CallResults, NUR334): the stop is the call's return.
+	callResult bool
 	// fits, on a read's island point, are the unproven forward fits of the
 	// dispatch that collected the read forward (DeoptSpec.Fits, NUR357): a
 	// value missing one is a collection the interpreter makes differently,
@@ -2847,36 +2884,6 @@ func (es *EmitState) InClosureUnit() bool {
 		return false
 	}
 	return es.fnRecs[rec].closure
-}
-
-// ArgsElidedFrame reports that the recorder is inside an args-elided fn
-// unit's own frame (SetUnitArgsElided) — its innermost open unit — whose
-// args list the interpreter's handler elides for a call from the fn's own
-// registry, while CallBoru from any other pushes the real args (NUR346).
-func (es *EmitState) ArgsElidedFrame() bool {
-	if es == nil || len(es.openUnitRecs) == 0 {
-		return false
-	}
-	rec := es.openUnitRecs[len(es.openUnitRecs)-1]
-	return rec >= 0 && rec < len(es.fnRecs) && es.fnRecs[rec].argsElided
-}
-
-// argsLiveInElidedFrame is RecordCall's live-read arm for an `args` read in
-// an args-elided unit's own frame (NUR346): which list the frame holds —
-// the EMPTY list the leaf handler pushes from the fn's own registry, the
-// real args CallBoru pushes from any other (a module export called from
-// the importer; review of #522) — is the caller's, so the native reads the
-// live args stack, and the program keeps the per-frame args bracket
-// (DynEnv) that maintains it. Reports whether the read is live. A unit
-// whose home is a FOREIGN sub-registry (a module fn) declines instead: the
-// VM keeps the bracket on the program's registry while the native reads the
-// unit's dispatch registry, so a live read there would find no frame.
-func (es *EmitState) argsLiveInElidedFrame() bool {
-	if !es.ArgsElidedFrame() || es.isForeignRegistry(es.fnRecs[es.openUnitRecs[len(es.openUnitRecs)-1]].reg) {
-		return false
-	}
-	es.dynEnv = true
-	return true
 }
 
 // ArgsReadLive reports that the recorder is inside a TOKEN body stamp's own
@@ -3649,6 +3656,7 @@ func (es *EmitState) appendEvent(ev EmitEvent) int {
 	ev.litDepth = es.inlineLitDepth()
 	es.keptDefsEvent(&ev)
 	es.frames[n] = append(es.frames[n], ev)
+	es.resolveReadSites(n, ev.seq)
 	return ev.seq
 }
 
@@ -4450,7 +4458,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	r.Check.Emit = probe
 	// bodyOut 1: a fn VALUE body keeps the single declared return (it is not a
 	// 0-output side-effect body like a test case).
-	_, probeOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, ps.ArgsElided, pos)
+	_, probeOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	r.Check.Emit = es
 	if !probeOK {
 		return EmitOperand{}, false
@@ -4469,7 +4477,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 		es.dynEnv = true
 	}
 	// REAL: compile into this program (deterministic success after a clean probe).
-	unit, realOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, ps.ArgsElided, pos)
+	unit, realOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return EmitOperand{}, false
 	}
@@ -4605,7 +4613,7 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 		probe.liveArgsUnitDepth = len(probe.units) + es.liveArgsUnitDepth - len(es.units)
 	}
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, core.SigArgsElided(lam), pos)
+	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	r.Check.Emit = es
 	if !probeOK {
 		// Surface the probe's failure for the -compile-report attribution
@@ -4620,7 +4628,7 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	if probe.dynEnv {
 		es.dynEnv = true
 	}
-	unit, realOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, core.SigArgsElided(lam), pos)
+	unit, realOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	if !realOK || unit < 0 {
 		// Reachable: a body the probe pass accepted can still decline in the
 		// real pass (the variation sweep produces such shapes — a splice-
@@ -4690,7 +4698,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, false, bodyList.Pos())
+	_, probeOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, bodyList.Pos())
 	r.Check.Emit = es
 	if !probeOK {
 		return core.Value{}, false
@@ -4699,7 +4707,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	if probe.dynEnv {
 		es.dynEnv = true
 	}
-	unit, realOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, false, bodyList.Pos())
+	unit, realOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, bodyList.Pos())
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return core.Value{}, false
 	}
@@ -4786,14 +4794,14 @@ func (es *EmitState) compileStoredParamBody(bodyList core.Value, params []core.F
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, false, bodyList.Pos())
+	_, probeOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, bodyList.Pos())
 	r.Check.Emit = es
 	if !probeOK {
 		return core.Value{}, false
 	}
 	// Probe-terminal environment mode → real pass (see tryReturnedClosure).
 	es.dynEnv = es.dynEnv || probe.dynEnv
-	unit, realOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, false, bodyList.Pos())
+	unit, realOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, bodyList.Pos())
 	if !realOK || unit < 0 {
 		// Unlike compileStoredBody's spawn shape, the real pass CAN decline
 		// after a clean probe here: it records into the LIVE mid-recording
@@ -6632,6 +6640,12 @@ func (es *EmitState) recordTypeRun(p *pendingTypeRun, pos core.SrcPos) bool {
 	}
 	es.bindTwins[twin].WrittenBack = true
 	spec := core.TypeRunInstallSpec{Name: p.name, Node: p.node}
+	if p.node != nil {
+		if es.runTypes == nil {
+			es.runTypes = map[string]bool{}
+		}
+		es.runTypes[p.node.ID] = true
+	}
 	es.SiteCounts[SiteDynamic]++
 	es.appendEvent(EmitEvent{kind: evCall, call: emitCall{word: wordTypeRun, ops: []EmitOperand{op}, nout: 0, pos: pos, typeRun: &spec}})
 	return true
@@ -8480,20 +8494,6 @@ func (es *EmitState) SetUnitDecl(unit int, decl core.DeclSite) {
 		return
 	}
 	es.fnRecs[unit].decl = decl
-}
-
-// SetUnitArgsElided marks a compiled fn unit as the body of a sig whose
-// interpreter handler pushes the shared EMPTY args list
-// (core.FnFrameMeta.ArgsElided — a leaf body that never reads `args`),
-// stamped on CompiledFn.ArgsElided so the VM's DynEnv args bracket pushes
-// the same list: dynamic code the frame runs reads `args` as `[]` on both
-// engines (NUR346). The caller keys the unit apart from a real-args twin
-// (check's ArgsElidedKeySuffix).
-func (es *EmitState) SetUnitArgsElided(unit int) {
-	if unit < 0 || unit >= len(es.fnRecs) {
-		return
-	}
-	es.fnRecs[unit].argsElided = true
 }
 
 func (es *EmitState) RecordUserCall(unit int, word string, args, outs []core.Value, pos, wordPos core.SrcPos) {
@@ -10766,7 +10766,7 @@ func (es *EmitState) recordCallCompileFailure(word string, sig *core.Signature, 
 		// landing (the break-2 closure) and re-declines what it cannot claim.
 		es.SiteCounts[SiteMeta]++
 		es.MarkUncompilable("fn value read from a container auto-dispatches (Stage 3)")
-	case (word == "args" && !es.ArgsReadLive() && !es.argsLiveInElidedFrame()) || word == "__pa":
+	case (word == "args" && !es.ArgsReadLive()) || word == "__pa":
 		// `args` reads the interpreter's per-call args stack, which the
 		// VM's CALL_USER frame does not maintain (it binds params to
 		// frame locals instead). A compiled fn body that reads `args`
@@ -11446,8 +11446,9 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 		// placed at lowering); one produced outside the unit has no such
 		// home, and the record keeps its defer.
 		if live, ok := es.splitLiveProducers(l); ok {
-			call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After}
+			call.polySplit = &PolySplit{NFwd: l.NFwd, Beneath: l.Beneath, After: l.After, Words: l.Words}
 			call.polySplitLive = live
+			call.polySplitFwdPos = es.writtenPositions(args, l.NFwd)
 		}
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
@@ -11813,6 +11814,23 @@ func (es *EmitState) NoteStatementEnd(pos core.SrcPos) {
 // NoteStatementStack keeps the stack a ROOT statement boundary left for the
 // next statement (EmitRecorder; the rootStmtStacks field). A boundary inside
 // an open unit's body, or one with no position, is not the root's.
+// NoteParenStack is the recorder side of the engine's paren-group note
+// (EmitRecorder NoteParenStack): the stack a ROOT paren group at pos opens
+// over, nothing pending beneath it. A position's first note is its token's
+// own, as NoteStatementStack keeps it.
+func (es *EmitState) NoteParenStack(pos core.SrcPos, stack []core.Value) {
+	if !es.Active() || pos.Row == 0 || len(es.openUnitRecs) > 0 {
+		return
+	}
+	if _, told := es.rootParenStacks[pos]; told {
+		return
+	}
+	if es.rootParenStacks == nil {
+		es.rootParenStacks = map[core.SrcPos][]core.Value{}
+	}
+	es.rootParenStacks[pos] = append([]core.Value(nil), stack...)
+}
+
 func (es *EmitState) NoteStatementStack(pos core.SrcPos, stack []core.Value) {
 	if !es.Active() || pos.Row == 0 || len(es.openUnitRecs) > 0 {
 		return
@@ -17538,7 +17556,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		LiveLeadNames:   maps.Clone(es.liveLeadNames),
 		LiveReadNames:   maps.Clone(es.liveReadNames),
 		CondBoundNames:  maps.Clone(es.condBoundNames)}
-	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, callWindows: &p.CallWindows, callFits: &p.CallFits, flowExits: &p.FlowExits, dynApplyName: &p.DynApplyName, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
+	lw := &lowerer{boundSlots: boundSlotsOf(es.units[0]), es: es, p: p, code: &p.Code, debug: &p.Debug, closureRet: &p.ClosureRet, storeNames: &p.StoreNames, landingWords: &p.LandingWords, callWindows: &p.CallWindows, callFits: &p.CallFits, callResults: &p.CallResults, flowExits: &p.FlowExits, dynApplyName: &p.DynApplyName, sigIdx: map[*core.Signature]int{}, variadic: map[int]bool{}, landingBody: es.rootBody, landingRoot: true}
 	// Value-def locals: a top-level computed result referenced more than once
 	// (counting the program residual) is promoted to a frame local so the
 	// single-consume stack discipline holds. Count the residual references,
@@ -17647,6 +17665,11 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 	// The polys whose gradual operand the pass collected forward, which the
 	// run may find the interpreter's collection stops at (NUR357).
 	es.planFitRestarts(lw, residual)
+	// The user calls whose callee may return a tape-coupled result, which
+	// the interpreter steps where the call stood (NUR334).
+	es.planCallResultRestarts(lw, residual)
+	lw.indexReadSites(&lw.p.Deopts)
+	es.walkUnitsBeforeLowering()
 	if reason := es.lowerRootEvents(lw, residual); reason != "" {
 		return nil, reason, false
 	}
@@ -17790,7 +17813,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		names := make([]string, rec.numLoc)
 		copy(names, rec.locals)
 		fillSlotNames(names, rec.slotNames)
-		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render, Lambda: rec.lambdaUnit, FnReadParams: rec.fnReadParams, ArgsElided: rec.argsElided}
+		cf := CompiledFn{Name: rec.name, NParams: rec.nParams + len(rec.caps), NArgs: rec.nParams, NCaptures: len(rec.caps), NUnnamed: rec.nUnnamed, NLocals: rec.numLoc, InShape: rec.inShape, Returns: rec.returns, ReturnPatterns: rec.returnPatterns, Params: rec.paramTypes, ParamPatterns: rec.paramPatterns, Decl: rec.decl, LocalNames: names, Render: rec.render, Lambda: rec.lambdaUnit, FnReadParams: rec.fnReadParams}
 		if es.isForeignRegistry(rec.reg) {
 			// Stamp the unit's dispatch registry ONLY for a FOREIGN sub-registry
 			// (a `module [...]` preamble fn — decision.cond, repl-eval-line):
@@ -17812,7 +17835,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		}
 		cf.KeepsDefs = rec.keepsDefs
 		seatSpecGuards(&cf, rec)
-		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, callWindows: &cf.CallWindows, callFits: &cf.CallFits, flowExits: &cf.FlowExits, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs, rec: rec}
+		flw := &lowerer{boundSlots: boundSlotsOf(es.units[len(es.units)-1]), es: es, p: p, code: &cf.Code, debug: &cf.Debug, closureRet: &cf.ClosureRet, storeNames: &cf.StoreNames, landingWords: &cf.LandingWords, callWindows: &cf.CallWindows, callFits: &cf.CallFits, callResults: &cf.CallResults, flowExits: &cf.FlowExits, dynApplyName: &cf.DynApplyName, sigIdx: lw.sigIdx, variadic: map[int]bool{}, numLocals: rec.numLoc, promoted: rec.promoted, dead: rec.dead, bindConsumes: mergeBindConsumes(collectResidentBindConsumes(rec.frag.events, rec.dead), collectArmBindConsumes(rec.frag.events, rec.dead)), isFnUnit: true, frameTail: !rec.closure || rec.lambdaUnit, keepsDefs: rec.keepsDefs, rec: rec}
 		// The unit's own region-prefix plan, armed BEFORE its lowerEvents walk
 		// so the OpStackMark lands ahead of the region-starting event (the
 		// walk reads flw.markBefore as it goes).
@@ -17835,6 +17858,7 @@ func (es *EmitState) Finalize(residual []core.Value) (*Program, string, bool) {
 		// counts descriptors, and a table that carries entries for discarded
 		// code is a table whose count means something else.
 		regionFloor := len(p.Regions)
+		flw.indexReadSites(&cf.Deopts)
 		if reason := es.lowerUnitEvents(flw, rec); reason != "" {
 			if rec.stampOnly {
 				es.unreachableUnitStub(p, rec, regionFloor)
@@ -18052,6 +18076,7 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 	if d, ok := es.deoptStatementStart(rec, seq, r.name, r.reads[0], ci, direct); ok && len(r.reads) == 1 && !alsoResidual &&
 		!es.deoptDeferred(es.units[0], rec, &d, ci) && !es.rootResidualBefore(residual, d.start) {
 		d.fits, d.fitConsumer = fits, es.frames[0][ci].seq
+		d.id = r.id
 		// Deferral is asked of a push-tested point too, as deoptPointFor
 		// asks it: the root lays its residual out at the program's end, so
 		// `7 j typeof` pushes j over nothing where the interpreter holds 7.
@@ -18079,6 +18104,7 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 	}
 	if d, ok := es.rootReadStatementPoint(lw, rec, r, seq, ci, alsoResidual, residual); ok {
 		d.fits, d.fitConsumer = fits, es.frames[0][ci].seq
+		d.id = r.id
 		lw.deopts = append(lw.deopts, d)
 		return
 	}
@@ -18086,7 +18112,10 @@ func (es *EmitState) seatRootConsumedRead(lw *lowerer, rec *fnUnitRec, r rootWor
 	if start.Row == 0 {
 		start = r.reads[0]
 	}
-	lw.deopts = append(lw.deopts, deoptPoint{seq: seq, slot: -1, name: r.name, pos: r.reads[0], start: start, token: -1, bail: true})
+	// The guard tests before the consuming event's top-level statement; where
+	// the read's producer stands inside that statement, the read is guarded
+	// where it happens instead (emitDeoptsBefore, NUR361).
+	lw.deopts = append(lw.deopts, deoptPoint{id: r.id, seq: seq, slot: -1, name: r.name, pos: r.reads[0], start: start, token: -1, bail: true})
 }
 
 // residualCallableExempt names the program residual entries the rebuild's
@@ -18671,6 +18700,11 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 		}
 	}
 	rec.noteWordReadName(v.ID, name, pos)
+	if !u.capID[v.ID] {
+		// A capture's value is the enclosing unit's producer's, with no home
+		// in this frame but its slot: no site guard serves it.
+		es.noteReadSite(v, name, pos, rec)
+	}
 	// Only a FN-TYPED read is accounted strictly: the interpreter
 	// dispatches it whatever the call passed. A GRADUAL read (an `x:Any`
 	// param, a Dynamic local) dispatches only when the runtime value is a
@@ -18688,6 +18722,7 @@ func (es *EmitState) NoteWordRead(v core.Value, name string, pos core.SrcPos) {
 // rootWordRead is one root gradual read's binding name and every read
 // position (first first) — rootWordReads' entry.
 type rootWordRead struct {
+	id    string
 	name  string
 	reads []core.SrcPos
 }
@@ -18712,8 +18747,9 @@ func (es *EmitState) noteRootWordRead(v core.Value, name string, pos core.SrcPos
 	if es.rootWordReads == nil {
 		es.rootWordReads = map[string]rootWordRead{}
 	}
+	es.noteReadSite(v, name, pos, nil)
 	r := es.rootWordReads[v.ID]
-	r.name = name
+	r.id, r.name = v.ID, name
 	r.reads = append(r.reads, pos)
 	es.rootWordReads[v.ID] = r
 }
@@ -19149,6 +19185,20 @@ func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 			flw.countRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, run: d.countRun}
 			return
 		}
+		if d.loopCont != nil {
+			if flw.landingRestarts == nil {
+				flw.landingRestarts = map[int]*landingRestart{}
+			}
+			flw.landingRestarts[d.seq] = d.loopCont
+			return
+		}
+		if d.callResult {
+			if flw.callResultRestarts == nil {
+				flw.callResultRestarts = map[int]*landingRestart{}
+			}
+			flw.callResultRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs}
+			return
+		}
 		if d.fit {
 			if flw.fitRestarts == nil {
 				flw.fitRestarts = map[int]*landingRestart{}
@@ -19166,7 +19216,7 @@ func seatDeoptPoint(flw *lowerer, rec *fnUnitRec, d deoptPoint) {
 		if flw.landingRestarts == nil {
 			flw.landingRestarts = map[int]*landingRestart{}
 		}
-		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first, leftovers: d.leftovers, defBound: d.defBound, onFrame: d.onFrame}
+		flw.landingRestarts[d.seq] = &landingRestart{token: d.token, start: d.start, depth: -1, held: -1, substs: d.substs, first: d.first, leftovers: d.leftovers, defBound: d.defBound, onFrame: d.onFrame, lits: d.lits, posOf: d.posOf}
 		return
 	}
 	if d.live != nil {
@@ -19392,6 +19442,9 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 		// (fit_restart.go, NUR357) count with the live points: the newest,
 		// dropped first where the islands cannot be served.
 		live += es.planUnitFitRestarts(u, rec)
+		// Its user calls whose callee may return a tape-coupled result
+		// (call_result_island.go, NUR334), dropped with them.
+		live += es.planUnitCallResults(u, rec)
 	}
 	if len(rec.body) == 0 || (len(rec.wordReadNames) == 0 && len(rec.deopts) == 0) {
 		es.planDeoptsEnv(u, rec)
@@ -19419,15 +19472,23 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 			}
 			seq = pr.seq
 		}
-		if d, ok := es.deoptPointFor(u, rec, id, seq, slot, name, rec.wordReadFirst[id]); ok {
+		d, ok := es.deoptPointFor(u, rec, id, seq, slot, name, rec.wordReadFirst[id])
+		d.id = id
+		switch {
+		case ok:
 			rec.deopts = append(rec.deopts, d)
-		} else if lambda && (d.atPush || d.start.Row > 0) {
+		case lambda && (d.atPush || d.start.Row > 0):
 			// Only a LAMBDA value's body: its captured read has no other
 			// home once the point declines. A code body's read may still be
 			// taken by the forward-drift window or the closure-word bridge
 			// (`each [f add 10]` over a def-bound member read), so it keeps
 			// the slot push as before.
 			rec.bails = append(rec.bails, bailPoint(d))
+		case slot < 0 && es.nestedReadUnplaced(rec, id, name, seq):
+			// A read nested in a body the unit runs inline (a var body, an
+			// arm, a loop body) has no statement of its own to deopt from:
+			// guarded where it happens (NUR361).
+			es.guardReadSites(rec, id)
 		}
 	}
 	if len(rec.deopts) == 0 {
@@ -19449,13 +19510,14 @@ func (es *EmitState) planDeopts(u *emitUnit, rec *fnUnitRec) {
 		// where their islands cannot be served, the unit keeps the points
 		// it planned without them, and each such read its lookup's defer —
 		// with none left, as a unit that planned none (below the loop).
-		if rec.deopts = dropLivePoints(dropFitPoints(rec.deopts)); len(rec.deopts) == 0 {
+		if rec.deopts = dropLivePoints(dropFitPoints(dropCallResultPoints(rec.deopts))); len(rec.deopts) == 0 {
 			es.planDeoptsEnv(u, rec)
 			return
 		}
 		names, ok = es.deoptIslandNames(rec, lambda)
 	}
 	if !ok {
+		es.guardDroppedReads(rec, rec.deopts)
 		rec.deopts = nil
 		es.dropDeoptChildren(rec)
 		return
@@ -19762,6 +19824,7 @@ func (es *EmitState) planDeoptsEnv(u *emitUnit, rec *fnUnitRec) {
 func (es *EmitState) dropDeoptChildren(rec *fnUnitRec) {
 	for _, c := range rec.deoptChildren {
 		child := es.fnRecs[c]
+		es.guardDroppedReads(child, child.deopts)
 		child.deopts, child.deoptEnv, child.deoptNames = nil, false, nil
 	}
 	rec.deoptNames, rec.deoptChildren = nil, nil
@@ -19949,8 +20012,11 @@ func (es *EmitState) deoptDefsBindable(events []EmitEvent, names map[string]bool
 			}
 			continue
 		}
+		// A multi-output call's FIRST result is the def's (RecordDefBind's
+		// srcSeq), promoted with its siblings to consecutive slots: the
+		// bind re-pushes it from the first (NUR336's `def k (two)`).
 		src := bySeq[ev.dyn.srcSeq]
-		if !singleOutputCall(src) || es.eventInfo[ev.dyn.srcSeq].variadicResult {
+		if !callWithResults(src) || es.eventInfo[ev.dyn.srcSeq].variadicResult {
 			return false
 		}
 	}
@@ -20131,6 +20197,14 @@ func (es *EmitState) deoptStatementStart(rec *fnUnitRec, seq int, name string, f
 			switch {
 			case maker || (d.start.Row > 0 && (bodyTokenContaining(rec.body, d.start) == contTok || posAfter(d.start, tokPos))):
 				d.start = tokPos
+				if w, ok := collectingWordBefore(rec.body, events, contTok); ok {
+					// The token is collected forward by the word before
+					// it — its dispatch (`print [j]`, `size [j]`) or a body
+					// it runs inline (`var [[] [j]]`): the statement begins
+					// at the word, where an island started at the token
+					// lost it (NUR361).
+					d.start = w
+				}
 			case bodyTokenAt(rec.body, d.start) < 0:
 				return d, false
 			}
@@ -20149,6 +20223,36 @@ func (es *EmitState) deoptStatementStart(rec *fnUnitRec, seq int, name string, f
 		return d, false
 	}
 	return d, true
+}
+
+// eventDefBound reports whether a def among events binds event seq's
+// (first) result.
+func eventDefBound(events []EmitEvent, seq int) bool {
+	for i := range events {
+		if ev := &events[i]; ev.kind == evDynBind && ev.dyn != nil && ev.dyn.srcSeq == seq {
+			return true
+		}
+	}
+	return false
+}
+
+// typeDeferred reports whether the type value types[idx] an earlier
+// statement wrote or read — its name's tokens and its reads before the
+// start against its consumptions there — is on the interpreter's stack at
+// deopt point d's start, where the compiled code pushes it late (`Integer
+// end (q.f 7)`, NUR336).
+func (es *EmitState) typeDeferred(rec *fnUnitRec, d *deoptPoint, idx int, readsBefore func(string) int, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool, int) int) bool {
+	if idx < 0 || idx >= len(es.types) {
+		return false
+	}
+	tr := es.types[idx]
+	n := readsBefore(tr.ID)
+	for _, t := range rec.body {
+		if w, err := core.AsWord(t); err == nil && w.Name == tr.Name && t.Pos().Row > 0 && posAfter(d.start, t.Pos()) {
+			n++
+		}
+	}
+	return n > consumedBefore(func(o EmitOperand) bool { return o.kind == opType && o.idx == idx }, nil, -1)
 }
 
 // deoptDeferred is the deferred-operand accounting over the events the
@@ -20207,20 +20311,30 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 		}
 		return n
 	}
-	deferredRead := func(id string) bool {
+	// deferredRead reports whether a read of the value id before the start
+	// is pushed after it; seat, when set, is where a unit's statement island
+	// finds that value instead, seated at each such read (seatReads).
+	deferredRead := func(id string, seat *RestartSrc) bool {
 		pr, hasPr := es.producedBy[id]
 		slot, isLocal := u.localByID[id]
 		bindSeq := -1
 		if hasPr {
 			bindSeq = pr.seq
 		}
-		return readsBefore(id) > consumedBefore(func(op EmitOperand) bool {
+		reads, consumed := readsBefore(id), consumedBefore(func(op EmitOperand) bool {
 			return (op.kind == opEvent && hasPr && op.idx == pr.seq) || (op.kind == opLocal && isLocal && op.idx == slot)
 		}, nil, bindSeq)
+		if reads <= consumed {
+			return false
+		}
+		return !(consumed == 0 && seat != nil && d.restart && d.frameHeld && es.seatReads(rec, d, id, *seat))
 	}
 	deferredConst := func(c core.Value) bool {
 		if len(rec.localReads[c.ID]) > 0 {
-			return deferredRead(c.ID)
+			return deferredRead(c.ID, &RestartSrc{Kind: RestartConst, Val: c, Fresh: isCompoundValue(c)})
+		}
+		if d.restart && d.frameHeld && es.seatLiteral(rec, d, c, consumedBefore) {
+			return false
 		}
 		compound := isCompoundValue(c)
 		if p := c.Pos(); compound && p.Row > 0 {
@@ -20242,14 +20356,6 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 			return op.kind == opConst && op.idx >= 0 && op.idx < len(es.consts) && core.CanonValue(es.consts[op.idx]) == canon
 		}, sameCanon, -1)
 	}
-	defBound := func(seq int) bool {
-		for i := range events {
-			if ev := &events[i]; ev.kind == evDynBind && ev.dyn != nil && ev.dyn.srcSeq == seq {
-				return true
-			}
-		}
-		return false
-	}
 	deferred := func(op EmitOperand) bool {
 		switch op.kind {
 		case opConst:
@@ -20258,10 +20364,12 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 			}
 		case opLocal:
 			for id, slot := range u.localByID {
-				if slot == op.idx && deferredRead(id) {
+				if slot == op.idx && deferredRead(id, &RestartSrc{Kind: RestartLocal, Idx: slot}) {
 					return true
 				}
 			}
+		case opType:
+			return es.typeDeferred(rec, d, op.idx, readsBefore, consumedBefore)
 		case opEvent:
 			// A RE-STEP point's own event just left its results on top:
 			// they are exactly what the island re-steps.
@@ -20276,7 +20384,7 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 				if events[j].seq != op.idx {
 					continue
 				}
-				if op.resIdx == 0 && defBound(op.idx) {
+				if op.resIdx == 0 && eventDefBound(events, op.idx) {
 					// A def consumed it on both lanes (promoted to its slot
 					// here, bound in the interpreter's frame); the island
 					// reads it by name through the dyn-scope bind. A def
@@ -20284,8 +20392,12 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 					// srcSeq): another result of the same call — the value
 					// `def k (3 dup)` leaves beneath k — is the frame's, and
 					// its push after the statement's start is deferred
-					// (NUR336's fn-body twin).
-					return false
+					// (NUR336's fn-body twin). A READ of the name an earlier
+					// statement made is on the interpreter's stack at the
+					// start, where the compiled code pushes it late (`def z
+					// (1 add 2) end z end (q.f 7)`, NUR336): seated from the
+					// value's slot at each such read, or deferred.
+					return es.boundReadDeferred(rec, d, op.idx, events, consumedBefore)
 				}
 				p := eventPos(events[j])
 				if p.Row == 0 || !posAfter(d.start, p) {
@@ -20305,6 +20417,107 @@ func (es *EmitState) deoptDeferred(u *emitUnit, rec *fnUnitRec, d *deoptPoint, c
 		return false
 	}
 	return deoptAnyDeferred(events, rec, d, ci, later, deferred)
+}
+
+// seatLit is one literal a unit's statement island seats among its frame
+// region (deoptPoint.lits): the value and the top-level token it was
+// written at.
+type seatLit struct {
+	src RestartSrc
+	pos core.SrcPos
+	// prod, when set, is the event whose promoted slot holds the value: the
+	// walk resolves it to that slot (mergeLits).
+	prod *producer
+}
+
+// boundReadDeferred reports whether the value the def-bound event seq
+// produced is read before d's start more often than events before the start
+// consumed those reads: such a read is on the interpreter's stack at the
+// start and pushed late by the compiled code. A unit's statement island
+// seats every such read (none consumed) from the value's promoted slot
+// (seatLit.prod) and reports false; otherwise true.
+func (es *EmitState) boundReadDeferred(rec *fnUnitRec, d *deoptPoint, seq int, events []EmitEvent, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool, int) int) bool {
+	var reads []core.SrcPos
+	for i := range events {
+		if ev := &events[i]; ev.kind == evDynBind && ev.dyn != nil && ev.dyn.srcSeq == seq && ev.dyn.val.ID != "" {
+			for _, q := range rec.localReads[ev.dyn.val.ID] {
+				if posAfter(d.start, q) && !slices.Contains(reads, q) {
+					reads = append(reads, q)
+				}
+			}
+		}
+	}
+	consumed := consumedBefore(func(op EmitOperand) bool {
+		return op.kind == opEvent && op.idx == seq && op.resIdx == 0
+	}, nil, -1)
+	if len(reads) <= consumed {
+		return false
+	}
+	if consumed > 0 || !d.restart || !d.frameHeld {
+		return true
+	}
+	for _, q := range reads {
+		es.noteSeatLit(rec, d, RestartSrc{}, q)
+		d.lits[len(d.lits)-1].prod = &producer{seq: seq}
+	}
+	return false
+}
+
+// seatReads seats the value id, read before d's start and pushed after it
+// by the compiled code, at each such read (d.lits): a def-bound literal as
+// its constant, a slot's value from the slot (src). The reads' positions
+// order them among the frame region's entries.
+func (es *EmitState) seatReads(rec *fnUnitRec, d *deoptPoint, id string, src RestartSrc) bool {
+	ok := src.Kind != RestartConst || (!src.Val.Carrier && !src.Val.Dynamic && core.DeepConcrete(src.Val))
+	for _, q := range rec.localReads[id] {
+		if ok && posAfter(d.start, q) {
+			es.noteSeatLit(rec, d, src, q)
+		}
+	}
+	return ok
+}
+
+// seatLiteral reports whether the literal c, an operand of an event the
+// statement island at d takes over, is written in earlier statements of the
+// unit's body — top-level tokens before d's start that spell it, none of
+// them consumed before the start — so each is a value the interpreter's
+// stack holds at the start and the island seats as a constant (d.lits). A
+// literal one of whose spellings before the start was consumed there cannot
+// be told apart and stays deferred.
+func (es *EmitState) seatLiteral(rec *fnUnitRec, d *deoptPoint, c core.Value, consumedBefore func(func(EmitOperand) bool, func(core.Value) bool, int) int) bool {
+	compound := isCompoundValue(c)
+	canon := core.CanonValue(c)
+	sameCanon := func(v core.Value) bool {
+		return !core.IsWord(v) && isCompoundValue(v) == compound && core.CanonValue(v) == canon
+	}
+	var toks []core.SrcPos
+	for _, t := range rec.body {
+		q := t.Pos()
+		if q.Row > 0 && sameCanon(t) && (compound || core.IsSteplessValue(t)) && posAfter(d.start, q) {
+			toks = append(toks, q)
+		}
+	}
+	if len(toks) == 0 || c.Carrier || c.Dynamic || !core.DeepConcrete(c) || consumedBefore(func(op EmitOperand) bool {
+		return op.kind == opConst && op.idx >= 0 && op.idx < len(es.consts) && core.CanonValue(es.consts[op.idx]) == canon
+	}, sameCanon, -1) > 0 {
+		return false
+	}
+	for _, q := range toks {
+		es.noteSeatLit(rec, d, RestartSrc{Kind: RestartConst, Val: c, Fresh: compound}, q)
+	}
+	return true
+}
+
+// noteSeatLit adds the literal c written at q to d's seated literals, once,
+// and indexes where the unit's events were written for the walk's merge.
+func (es *EmitState) noteSeatLit(rec *fnUnitRec, d *deoptPoint, src RestartSrc, q core.SrcPos) {
+	if !slices.ContainsFunc(d.lits, func(l seatLit) bool { return l.pos == q }) {
+		d.lits = append(d.lits, seatLit{src: src, pos: q})
+	}
+	if d.posOf == nil {
+		d.posOf = map[int]core.SrcPos{}
+		walkEvents(rec.frag.events, func(ev *EmitEvent) { d.posOf[ev.seq] = eventPos(*ev) })
+	}
 }
 
 // deoptAnyDeferred walks the operands a deopt island takes over — every

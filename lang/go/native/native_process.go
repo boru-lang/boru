@@ -35,7 +35,7 @@ import (
 //   - `receive` is consume-front + patrun dispatch (no selective receive).
 
 // processNatives installs the process words.
-var processNatives = []NativeFunc{
+var processNatives = SideEffecting([]NativeFunc{
 	{
 		Name: "spawn",
 		Signatures: []Signature{
@@ -127,7 +127,7 @@ var processNatives = []NativeFunc{
 			{Args: []*Type{TAtom}, Impl: Go(unregisterHandler), Returns: []*Type{}, BarrierPos: -1},
 		},
 	},
-}
+}, "self", "whereis")
 
 // checkProcessPolicy gates `spawn` behind the `process` capability scope
 // (PROCESSES.0.md §7), mirroring fetch.go::checkFetchPolicy. No policy

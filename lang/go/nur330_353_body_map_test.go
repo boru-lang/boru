@@ -126,7 +126,8 @@ func TestNUR353BodyMapLoopIndexAndEscape(t *testing.T) {
 	for _, c := range []struct{ src, want, why string }{
 		{rnd + `Rand.map-from {a:[1 break]}`, "ERROR", "outside a compiled loop"},
 		{rnd + `Rand.map-from {a:[1 continue]} 5`, "ERROR", "outside a compiled loop"},
-		{rnd + `[Rand.map-from {a:[1 break]}]`, "[[]]", "outside a compiled loop"},
+		// A list literal is not a loop (NUR358): the escape raises.
+		{rnd + `[Rand.map-from {a:[1 break]}]`, "ERROR", "outside a compiled loop"},
 		{rnd + `if true [Rand.map-from {a:[1 break]}] [0]`, "ERROR", "outside a compiled loop"},
 	} {
 		requireBodyMapDeclines(t, c.src, c.want, c.why)

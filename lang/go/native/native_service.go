@@ -159,7 +159,7 @@ func (s *serviceState) FormatService() string {
 
 // serviceNatives installs the service words. `add` and `send` carry
 // Service overloads folded onto the existing words (upsertFnDef appends).
-var serviceNatives = []NativeFunc{
+var serviceNatives = SideEffecting([]NativeFunc{
 	{
 		Name: "service",
 		Signatures: []Signature{
@@ -214,7 +214,7 @@ var serviceNatives = []NativeFunc{
 				BarrierPos: -1, CompileEffect: CompileStoresFn | CompileFnHandlerStrict},
 		},
 	},
-}
+}, "service", "state-of")
 
 func serviceNewHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	mp, err := RequireConcreteMap(args[0], "service")

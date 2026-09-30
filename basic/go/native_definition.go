@@ -585,6 +585,17 @@ func DefFormVia(base *Signature, offset int, genChain bool) func([]Value, map[st
 				if err != nil {
 					return nil, err
 				}
+				if core.BodyEscaped(r) {
+					// A break/continue escaped the operand literal (NUR358):
+					// the definition is abandoned, the run resolves it — and
+					// the gen spec opened for it goes with it, or a loop
+					// the signal resumes would end in an orphan gen.
+					restore()
+					if spec := r.TakePendingGen(); spec != nil {
+						core.PopGenBindings(r, spec)
+					}
+					return nil, nil
+				}
 			}
 			// The tail constructor is the intended consumer — restore
 			// the spec before its handler runs (restore-once: the

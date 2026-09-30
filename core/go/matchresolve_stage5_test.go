@@ -40,7 +40,7 @@ func TestWt5PatternsOkCarrierPattern(t *testing.T) {
 	// A CARRIER pattern is a check-mode placeholder — never enforced.
 	sig := &Signature{Args: []*Type{TInteger}, Patterns: map[int]Value{0: NewCarrier(TInteger)}}
 	tape := NewTape([]Value{NewInteger(99)}, 0)
-	if !patternsOk(sig, []int{0}, tape, 0, nil) {
+	if !patternsOk(sig, []int{0}, tape, 0, nil, nil) {
 		t.Fatal("carrier pattern must be skipped, not enforced")
 	}
 }
@@ -54,14 +54,14 @@ func TestWt5PatternsOkForwardWordResolution(t *testing.T) {
 
 	sig := &Signature{Args: []*Type{TInteger}, Patterns: map[int]Value{0: NewInteger(5)}}
 	tape := NewTape([]Value{NewWord("wt5bound")}, 0)
-	if !patternsOk(sig, []int{0}, tape, 1, r) {
+	if !patternsOk(sig, []int{0}, tape, 1, r, nil) {
 		t.Fatal("forward word bound to the pattern value must match")
 	}
 	// The same word bound to a mismatching value must fail.
 	r.Defs.Push("wt5bound2", NewInteger(7))
 	defer r.Defs.Pop("wt5bound2")
 	tape2 := NewTape([]Value{NewWord("wt5bound2")}, 0)
-	if patternsOk(sig, []int{0}, tape2, 1, r) {
+	if patternsOk(sig, []int{0}, tape2, 1, r, nil) {
 		t.Fatal("forward word bound to a mismatching value must fail")
 	}
 }
@@ -71,16 +71,16 @@ func TestWt5PatternsOkStructuralMapArms(t *testing.T) {
 
 	// Forward position: structural map patterns are stack-only — skip.
 	tape := NewTape([]Value{wt5KindMap("db")}, 0)
-	if !patternsOk(sig, []int{0}, tape, 1, nil) {
+	if !patternsOk(sig, []int{0}, tape, 1, nil, nil) {
 		t.Fatal("structural map pattern must be skipped on forward positions")
 	}
 	// Stack position, mismatching map: OpenUnifyMap rejects.
-	if patternsOk(sig, []int{0}, tape, 0, nil) {
+	if patternsOk(sig, []int{0}, tape, 0, nil, nil) {
 		t.Fatal("stack-matched structural map pattern must reject a mismatch")
 	}
 	// Stack position, matching map: continue.
 	tapeOk := NewTape([]Value{wt5KindMap("api")}, 0)
-	if !patternsOk(sig, []int{0}, tapeOk, 0, nil) {
+	if !patternsOk(sig, []int{0}, tapeOk, 0, nil, nil) {
 		t.Fatal("stack-matched structural map pattern must accept a subset match")
 	}
 }
@@ -91,12 +91,12 @@ func TestWt5PatternsOkNegationArms(t *testing.T) {
 
 	// A list operand violates tnot List.
 	tapeList := NewTape([]Value{NewList([]Value{NewInteger(1)})}, 0)
-	if patternsOk(sig, []int{0}, tapeList, 0, nil) {
+	if patternsOk(sig, []int{0}, tapeList, 0, nil, nil) {
 		t.Fatal("tnot List vs a concrete list must reject")
 	}
 	// A non-list operand passes the negation and continues.
 	tapeInt := NewTape([]Value{NewInteger(7)}, 0)
-	if !patternsOk(sig, []int{0}, tapeInt, 0, nil) {
+	if !patternsOk(sig, []int{0}, tapeInt, 0, nil, nil) {
 		t.Fatal("tnot List vs an integer must accept")
 	}
 }

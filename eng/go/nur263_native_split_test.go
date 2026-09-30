@@ -34,7 +34,7 @@ func TestNativeSplitRaiseIsTheInterpretersPlan(t *testing.T) {
 	sp := &compiler.NativeSplit{NFwd: 2, BodyAt: 0, Body: body}
 	err := nativeSplitRaise(r, "zzfold", sp, []core.Value{closure, s, zero}, []core.SrcPos{{Row: 1, Col: 3}}, 0)
 	be, ok := err.(*core.BoruError)
-	if !ok || be.Code != "signature_error" || !strings.Contains(err.Error(), "[word(add)]") || !strings.Contains(err.Error(), "'s'") || be.Row != 1 || be.Col != 3 {
+	if !ok || be.Code != "signature_error" || !strings.Contains(err.Error(), "[add]") || !strings.Contains(err.Error(), "'s'") || be.Row != 1 || be.Col != 3 {
 		t.Fatalf("0 zzfold [add] 's': the interpreter's no-match over [add] and 's', at the op; got %v", err)
 	}
 	// The operands the handler saw are not rewritten.
@@ -79,7 +79,7 @@ func TestNativeSplitRaisePlansTheSurround(t *testing.T) {
 	closure, s, zero := core.NewInteger(99), core.NewString("s"), core.NewInteger(0)
 	sp := &compiler.NativeSplit{NFwd: 2, BodyAt: 0, Body: body, Beneath: []core.Value{core.NewInteger(7)}, After: []core.Value{core.NewWord("zzfold")}}
 	err := nativeSplitRaise(r, "zzfold", sp, []core.Value{closure, s, zero}, []core.SrcPos{{Row: 1, Col: 5}}, 0)
-	if be, ok := err.(*core.BoruError); !ok || be.Code != "signature_error" || !strings.Contains(err.Error(), "[word(add)]") {
+	if be, ok := err.(*core.BoruError); !ok || be.Code != "signature_error" || !strings.Contains(err.Error(), "[add]") {
 		t.Fatalf("7 0 zzfold [add] 's' zzfold: the interpreter's no-match over its tape; got %v", err)
 	}
 	// The 3-operand form collects the literal after the written pair.

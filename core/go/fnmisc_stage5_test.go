@@ -153,14 +153,6 @@ func TestFnMiscStage5WalkBodyValueSkipArms(t *testing.T) {
 	}
 }
 
-func TestFnMiscStage5BodyReferencesArgsShortCircuit(t *testing.T) {
-	// The first `args` sets the flag; the trailing word exercises the
-	// short-circuit return inside the walker callback.
-	if !bodyReferencesArgs(nil, []Value{NewWord("args"), NewWord("zz-later")}) {
-		t.Error("a body reading args must report true")
-	}
-}
-
 func TestFnMiscStage5ComputeCapturesDupAndUnbound(t *testing.T) {
 	r, err := NewRegistry()
 	if err != nil {

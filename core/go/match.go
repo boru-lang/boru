@@ -19,7 +19,15 @@ package core
 //     Tightening it would break callers like `create` whose 1-arg
 //     `(Map) Patterns={kind:"api"}` sig was previously matched on
 //     non-api maps when the handler then routed by stack contents.
-func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registry) bool {
+//
+// A pending container literal at a slot whose pattern reads its contents —
+// `{f: (1 add 1)}` against `m:{f:Integer}`, `[(1 add 1)]` against
+// `xs:[:Integer]` — is matched as the value it evaluates to, the value the
+// callee receives, not as the unevaluated tokens (NUR235). The dispatching
+// engine (pe) evaluates it once, in place on the tape, the first time a
+// candidate's pattern reads it; a host that is not dispatching matches the
+// raw token.
+func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registry, pe patternOperandHost) bool {
 	for idx := 0; idx < sig.TotalArgs(); idx++ {
 		pattern, ok := SigPattern(sig, idx)
 		if !ok {
@@ -86,6 +94,10 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 				// stack positions. See doc comment.
 				continue
 			}
+			var ok bool
+			if val, ok = patternOperand(pe, sig, idx, positions[idx], val); !ok {
+				return false
+			}
 			if !OpenUnifyMap(pattern, val) {
 				return false
 			}
@@ -96,6 +108,12 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 		// Skip — handlers may further constrain inside the body.
 		if isForward && !IsConcrete(pattern) {
 			continue
+		}
+		if patternReadsContents(pattern) {
+			var ok bool
+			if val, ok = patternOperand(pe, sig, idx, positions[idx], val); !ok {
+				return false
+			}
 		}
 		// A negation pattern takes the direct unifyNegation path —
 		// skipping Unify's ResolveWordsDeep prepass, which deep-resolves
@@ -116,6 +134,45 @@ func patternsOk(sig *Signature, positions []int, tape *Tape, fwd int, r *Registr
 		}
 	}
 	return true
+}
+
+// patternOperandHost is the dispatching engine's seat on a pending
+// container operand a signature pattern reads (NUR235): it evaluates the
+// literal at tape index i as the call will — the value the callee receives
+// — writes it back so the evaluation happens once (every later candidate,
+// and the call's own argument evaluation, see the value), and reports false
+// when the evaluation raised or let a break/continue out, which rejects the
+// candidate and abandons the dispatch (the engine raises the error, or its
+// run resolves the signal). Only the dispatch's own host implements it
+// (patternDispatch); every other host of the matcher judges the raw token.
+type patternOperandHost interface {
+	evalPatternOperand(i int, v Value) (Value, bool)
+}
+
+// patternReadsContents reports whether a pattern's verdict reads a
+// container operand's CONTENTS — a map shape, a typed map or list — so a
+// pending literal must be evaluated before it is judged (NUR235).
+func patternReadsContents(pattern Value) bool {
+	return pattern.Data != nil && pattern.Parent != nil &&
+		(pattern.Parent.Equal(TMap) || pattern.Parent.Equal(TList))
+}
+
+// patternOperand is the operand a pattern at sig position idx judges: a
+// pending container literal with active tokens is evaluated by the
+// dispatching host (patternOperandHost) unless the slot takes it raw
+// (NoEvalArgs / NoEvalMapArgs — a code body); anything else is itself.
+func patternOperand(pe patternOperandHost, sig *Signature, idx, at int, val Value) (Value, bool) {
+	if pe == nil || !IsPendingActiveContainer(val) {
+		return val, true
+	}
+	if val.Parent.Equal(TMap) {
+		if sig.NoEvalMapArgs[idx] {
+			return val, true
+		}
+	} else if sig.NoEvalArgs[idx] {
+		return val, true
+	}
+	return pe.evalPatternOperand(at, val)
 }
 
 // forwardPatternRejects reports whether a concrete forward value at sig

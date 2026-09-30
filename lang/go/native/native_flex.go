@@ -58,10 +58,11 @@ var flexNatives = []NativeFunc{
 			// than the Any sig, so it wins whenever the argument is a
 			// list (including another FlexList, which conforms to List).
 			{
-				Args:      []*Type{TList, TFlexList},
-				Impl:      Go(appendListHandler),
-				Returns:   []*Type{TFlexList},
-				ReturnsFn: appendListReturns, BarrierPos: -1,
+				Args:          []*Type{TList, TFlexList},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendListHandler),
+				Returns:       []*Type{TFlexList},
+				ReturnsFn:     appendListReturns, BarrierPos: -1,
 			},
 			// Any other value: append as a single element. CompileStoresFn:
 			// the element is STORED, never stepped — the rule at `set`
@@ -71,7 +72,7 @@ var flexNatives = []NativeFunc{
 				Impl:      Go(appendElemHandler),
 				Returns:   []*Type{TFlexList},
 				ReturnsFn: flexGrowReturns("append"), BarrierPos: -1,
-				CompileEffect: CompileStoresFn,
+				CompileEffect: CompileStoresFn | CompileSideEffect,
 			},
 			// WeakFlexList: append ONE element, classified per the weak
 			// value domain (scalar → strong, handle → weak, immutable
@@ -83,35 +84,40 @@ var flexNatives = []NativeFunc{
 			// classify path instead of the FlexList concatenate sig,
 			// which sorts first on position 0 otherwise.
 			{
-				Args:      []*Type{TList, TWeakFlexList},
-				Impl:      Go(appendWeakElemHandler),
-				Returns:   []*Type{TWeakFlexList},
-				ReturnsFn: weakAppendListReturns, BarrierPos: -1,
+				Args:          []*Type{TList, TWeakFlexList},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendWeakElemHandler),
+				Returns:       []*Type{TWeakFlexList},
+				ReturnsFn:     weakAppendListReturns, BarrierPos: -1,
 			},
 			{
-				Args:      []*Type{TAny, TWeakFlexList},
-				Impl:      Go(appendWeakElemHandler),
-				Returns:   []*Type{TWeakFlexList},
-				ReturnsFn: weakAppendListReturns, BarrierPos: -1,
+				Args:          []*Type{TAny, TWeakFlexList},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendWeakElemHandler),
+				Returns:       []*Type{TWeakFlexList},
+				ReturnsFn:     weakAppendListReturns, BarrierPos: -1,
 			},
 			// WeakFlexXml: append one child, same classification.
 			{
-				Args:      []*Type{TAny, TWeakFlexXml},
-				Impl:      Go(appendWeakXmlChildHandler),
-				Returns:   []*Type{TWeakFlexXml},
-				ReturnsFn: weakAppendXmlReturns, BarrierPos: -1,
+				Args:          []*Type{TAny, TWeakFlexXml},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendWeakXmlChildHandler),
+				Returns:       []*Type{TWeakFlexXml},
+				ReturnsFn:     weakAppendXmlReturns, BarrierPos: -1,
 			},
 			// FlexXml: append child nodes (elements or text) in place.
 			// A List splices its elements; any other value is one child.
 			{
-				Args:    []*Type{TList, TFlexXml},
-				Impl:    Go(appendXmlListHandler),
-				Returns: []*Type{TFlexXml}, BarrierPos: -1,
+				Args:          []*Type{TList, TFlexXml},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendXmlListHandler),
+				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
 			},
 			{
-				Args:    []*Type{TAny, TFlexXml},
-				Impl:    Go(appendXmlChildHandler),
-				Returns: []*Type{TFlexXml}, BarrierPos: -1,
+				Args:          []*Type{TAny, TFlexXml},
+				CompileEffect: CompileSideEffect,
+				Impl:          Go(appendXmlChildHandler),
+				Returns:       []*Type{TFlexXml}, BarrierPos: -1,
 			},
 		},
 	},

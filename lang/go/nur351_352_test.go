@@ -145,11 +145,11 @@ func TestNUR352ArmPendingListRaiseDeclines(t *testing.T) {
 func TestNUR352NoMatchRendersTheLiteral(t *testing.T) {
 	const h = `def h fn [[] [Any] [3]] end `
 	for _, tc := range []struct{ src, want string }{
-		{h + `each (h) [1 add 2]`, "ERROR:the arguments were 3 (an Integer) and [1 word(add) 2] (a List)"},
-		{h + `each (h) [1 add 2] end 5`, "ERROR:[1 word(add) 2]"},
-		{h + `each (h) [[1 add 2] 5]`, "ERROR:[[1 word(add) 2] 5]"},
-		{h + `def x 4 end each (h) [x add 1]`, "ERROR:[word(x) word(add) 1]"},
-		{h + `def g fn [[] [Any] [each (h) [1 add 2]]] end g`, "ERROR:[1 word(add) 2]"},
+		{h + `each (h) [1 add 2]`, "ERROR:the arguments were 3 (an Integer) and [1 add 2] (a List)"},
+		{h + `each (h) [1 add 2] end 5`, "ERROR:[1 add 2]"},
+		{h + `each (h) [[1 add 2] 5]`, "ERROR:[[1 add 2] 5]"},
+		{h + `def x 4 end each (h) [x add 1]`, "ERROR:[x add 1]"},
+		{h + `def g fn [[] [Any] [each (h) [1 add 2]]] end g`, "ERROR:[1 add 2]"},
 		{h + `each (h) [1 2]`, "ERROR:[1 2] (a List)"},
 		// The match takes the evaluated literal where a signature fits.
 		{`def h fn [[] [Any] [[4]]] end each (h) [1 add 2]`, "[[4]]"},

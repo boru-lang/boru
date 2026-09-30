@@ -378,10 +378,24 @@ func IsVMDefer(err error) bool {
 // recording flag (see Engine.elemEvalRecordable); pass false when the
 // caller does not evaluate recordable container elements.
 func RunPooledSub(r *Registry, input []Value, elemEvalRecordable bool) ([]Value, error) {
+	return runPooledSub(r, input, elemEvalRecordable, false)
+}
+
+// RunContainerSub is RunPooledSub for a container literal's elements — a
+// pending list's contents, a map member, an interpolation hole — on a
+// ContainerRun sub-engine: a break/continue escaping the elements tears
+// down the frames they spliced and returns nothing, the registry's FlowCtrl
+// left set for the literal's evaluator to abandon the value (NUR358).
+func RunContainerSub(r *Registry, input []Value, elemEvalRecordable bool) ([]Value, error) {
+	return runPooledSub(r, input, elemEvalRecordable, true)
+}
+
+func runPooledSub(r *Registry, input []Value, elemEvalRecordable, container bool) ([]Value, error) {
 	// Observability seam (interp_entry.go): the per-element sub-evaluation path.
 	r.noteInterp("runPooledSub")
 	sub := r.TakeSubEngine()
 	sub.ElemEvalRecordable = elemEvalRecordable
+	sub.ContainerRun = container
 	res, err := sub.Run(input)
 	if err != nil {
 		r.PutSubEngine(sub)

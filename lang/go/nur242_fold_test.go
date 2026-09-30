@@ -42,8 +42,8 @@ func TestNUR242FoldNoMatchIsTheInterpreters(t *testing.T) {
 	// The report is the interpreter's attempted window: the written pair,
 	// and for one written operand the stack value beneath it too.
 	for _, c := range []struct{ prog, note string }{
-		{`0 fold [add] b.data`, "the arguments were [word(add)] (a List) and 's' (a ProperString)"},
-		{`b.data 0 fold [add]`, "the arguments were [word(add)] (a List) and 0 (an Integer)"},
+		{`0 fold [add] b.data`, "the arguments were [add] (a List) and 's' (a ProperString)"},
+		{`b.data 0 fold [add]`, "the arguments were [add] (a List) and 0 (an Integer)"},
 	} {
 		if _, err := mustNew(t).Run(fmt.Sprintf(box, `"s"`) + c.prog); err == nil || !strings.Contains(err.Error(), c.note) {
 			t.Errorf("%s: the compiled report names %q, got %v", c.prog, c.note, err)

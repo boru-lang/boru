@@ -728,6 +728,24 @@ const (
 	// owes CompileDynBody / CompileRunsBody* / a CallableSpec, never this,
 	// and a word whose result the tape re-steps owes CompileResteps.
 	CompileOwnLowering
+	// CompileSideEffect marks a word whose handler has an effect the program
+	// or its host may observe beyond the values it returns: it reads or
+	// writes the world outside the run (files, the environment, stdin, the
+	// terminal, the network, a database, the vault), reads the clock or a
+	// random source, prints or logs, runs or signals another process, or
+	// changes state that outlives the call (a flex container in place, a
+	// matcher, a service, a stored registration, a counter). A value-returning
+	// word is otherwise taken to be QUIET — the same value, and nothing else,
+	// whenever it runs — which is what lets the recorder run it where the
+	// interpreter runs it later or never: a list or map literal handed to a
+	// call matched at run time is assembled before the match, where the
+	// interpreter evaluates it only once a signature takes it
+	// (compiler eager_literal.go mayEffect, NUR356). A literal holding a call
+	// of a word that declares this flag declines there. A word that returns
+	// nothing is taken to be called for its effect whether or not it declares
+	// it; declaring it anyway keeps the census honest (effect_census_test.go
+	// in lang/go/native).
+	CompileSideEffect
 )
 
 // CompileDefault is an ordinary word: no compile-relevant capability. A

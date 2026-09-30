@@ -17,7 +17,8 @@ import (
 
 var macroNatives = []NativeFunc{
 	{
-		Name: "gensym",
+		Name:          "gensym",
+		CompileEffect: CompileSideEffect,
 		// `gensym` mints a fresh, never-colliding atom (`tmp$G<n>`) — the
 		// Common-Lisp temporary generator. Capture-free temporaries for
 		// hand-written `word`/`__SP` macros today, and the manual-hygiene

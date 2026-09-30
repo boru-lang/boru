@@ -25,6 +25,13 @@ func isPendingMap(v Value) bool {
 	return v.Eval && !v.Quoted && v.Parent.Equal(TMap) && v.Data != nil && !IsTypedMap(v) && !IsRecordType(v) && !IsOptionsType(v)
 }
 
+// IsPendingLiteral reports whether v is a pending list or map literal as
+// the parser wrote it: a failed dispatch's window holds it unevaluated, and
+// the interpreter's no-match report renders it as written (NUR356).
+func IsPendingLiteral(v Value) bool {
+	return !v.Carrier && !v.Dynamic && (isPendingList(v) || isPendingMap(v))
+}
+
 // PendingResidue describes the observable pending literals a spliced arm's
 // model run left at its end (RunCarrierArmBody): literals whose evaluation
 // is not a copy of what was written — they hold a token the evaluation

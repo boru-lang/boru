@@ -749,6 +749,23 @@ user still gets an answer while the case is open:
     `def g fn [[m:Map][Any][Rand.map-from m]] end for 2 [g {a:(quote [i])}]`
     ("read of `Rand` after it") — the same shape inside a fn compiles and
     agrees.
+- **Open refusals recorded 2026-09-30 (round 4):**
+  - NUR357's fit island now starts past a statement-opening `if` whose arms
+    make defs and leave nothing; still declining "(NUR357)": a fn-unit
+    island that would read the branch's def (`… keys m.a q`), a two-operand
+    `if`, and an `if m.z` reach condition in a unit.
+  - The NUR356 eager-literal decline now names a native that declares an
+    effect (`core.CompileSideEffect`) or diverges by value (`div`/`mod` by a
+    computed zero); a poly only some of whose overloads have an effect
+    compiles with a runtime guard (`vm:quiet-poly-effect`, a designed
+    defer), and a poly over constants, types and literals as written that is
+    sure to match compiles. `def fl (flex [1]) end def c true end if c [[size fl]] [0] end push 9 fl end 5`
+    (a silent wrong answer before) now declines.
+  - `for 2 [1 do (mk)] 7` and `for 2 [do (mk) 1] 7` decline ("body nets
+    multiple values per iteration").
+  - A typed-map or typed-list pattern negative (`h {f: "a"}` over
+    `m:{f:Integer}`) stops the check pass (`record_shape_mismatch`) where
+    the interpreter raises signature_error at run time.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

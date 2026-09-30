@@ -78,3 +78,73 @@ func literalTokenAt(body []core.Value, p core.SrcPos) (core.Value, bool) {
 func rawRenderedAssembly(ev *EmitEvent) bool {
 	return ev.kind == evCall && (ev.call.makeList || ev.call.makeMap)
 }
+
+// writtenPositions is where each of args' first nFwd operands — the ones
+// written after the word — was read, for splitWords: the position of the
+// latest read of its binding (NoteLocalRead, which the forward collection's
+// step of the word just made), else its own.
+func (es *EmitState) writtenPositions(args []core.Value, nFwd int) []core.SrcPos {
+	out := make([]core.SrcPos, 0, nFwd)
+	for i := 0; i < nFwd && i < len(args); i++ {
+		p := args[i].Pos()
+		if rp, ok := es.readPos[args[i].ID]; ok && args[i].ID != "" {
+			p = rp
+		}
+		out = append(out, p)
+	}
+	return out
+}
+
+// splitWords is sp with its Words (PolySplit.Words, NUR356) completed: each
+// written operand whose read position (fwdPos) is a word token standing
+// after the dispatching word (at wordPos) in the same token sequence of the
+// body being lowered — a read the interpreter's plan leaves on its tape,
+// where its no-match report stops. The pass's forward collection stepped
+// such a word before an optimistic match (the layout's own Words cover a
+// failed dispatch's tape, which still holds it). sp itself when none is
+// added.
+func (lw *lowerer) splitWords(sp *PolySplit, wordPos core.SrcPos, fwdPos []core.SrcPos) *PolySplit {
+	if sp == nil || len(fwdPos) == 0 {
+		return sp
+	}
+	toks, at, ok := siblingTokens(lw.sourceBody(), wordPos)
+	if !ok {
+		return sp
+	}
+	var words map[int]core.Value
+	for i, p := range fwdPos {
+		j := bodyTokenAt(toks, p)
+		if _, known := sp.Words[i]; known || j <= at || !core.IsWord(toks[j]) {
+			continue
+		}
+		if words == nil {
+			words = make(map[int]core.Value, len(sp.Words)+1)
+			for k, w := range sp.Words {
+				words[k] = w
+			}
+		}
+		words[i] = toks[j]
+	}
+	if words == nil {
+		return sp
+	}
+	out := *sp
+	out.Words = words
+	return &out
+}
+
+// siblingTokens is the token sequence of body — the body itself, or a
+// paren's or list literal's at any depth — holding the token written at p,
+// and its index there; false when no token stands exactly at p.
+func siblingTokens(body []core.Value, p core.SrcPos) ([]core.Value, int, bool) {
+	path := tokenPath(body, p)
+	if len(path) == 0 {
+		return nil, 0, false
+	}
+	toks := body
+	for _, at := range path[:len(path)-1] {
+		toks, _ = nestedToks(toks[at])
+	}
+	at := path[len(path)-1]
+	return toks, at, toks[at].Pos() == p
+}

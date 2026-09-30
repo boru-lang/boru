@@ -285,7 +285,7 @@ func wrapRandFnDefNoEval(
 // new set of natives bound to a specific PRNG instance. No global
 // capability lookup — the state pointer is captured at construction.
 func randNativesForState(state *randState) []native.NativeFunc {
-	return []native.NativeFunc{
+	return native.SideEffecting([]native.NativeFunc{
 		{
 			Name: "rand-int",
 			Signatures: []native.Signature{{
@@ -564,5 +564,5 @@ func randNativesForState(state *randState) []native.NativeFunc {
 				}),
 			}},
 		},
-	}
+	}, "rand-with-seed")
 }

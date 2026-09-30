@@ -26,7 +26,7 @@ func kwSig(lit string) *Signature {
 func kwPatternsOk(t *testing.T, sig *Signature, tok Value) bool {
 	t.Helper()
 	tape := NewTape([]Value{NewWord("g"), tok}, StackHeadroom)
-	return patternsOk(sig, []int{0, 1}, tape, 2, nil)
+	return patternsOk(sig, []int{0, 1}, tape, 2, nil, nil)
 }
 
 func TestKeywordSlotMatchesLiteralWord(t *testing.T) {

@@ -171,6 +171,11 @@ type vmFrame struct {
 	// registry's dynamic-scope bindings back to it (the interpreter's
 	// def-cleanup discipline for the frame's OpBindDynScope installs).
 	dynBase int
+	// resultIsland is the CALL_USER's call-result island
+	// (CompiledFn.CallResults, NUR334): results this frame returns
+	// tape-coupled run the call's statement on the interpreter, the call
+	// written as them. Nil on every other frame, whose results screen.
+	resultIsland *compiler.StmtIsland
 }
 
 // dynBindEntry records one OpBindDynScope install: the name and the def
@@ -208,6 +213,10 @@ type vmContext struct {
 	// root statement island seats an earlier result the root promoted from
 	// its slot (compiler.RestartLocal).
 	restartLocals []core.Value
+	// restartLoop is the running unit's innermost open loop while an op of
+	// the dynamic family runs (nil outside one): a per-iteration loop
+	// continuation resumes it (loopContRestart, NUR336).
+	restartLoop *vmLoop
 	// rootEndReturn is set by the run loop around an OpDeoptIfFn whose unit
 	// returns straight to the program root's end (the root's CALL_USER is its
 	// last op), and rootEndStep by a live-read island there that left a
@@ -216,6 +225,11 @@ type vmContext struct {
 	// root's end runs them on the interpreter over the stack beneath
 	// (rootEndResults) instead of the screen's defer.
 	rootEndReturn, rootEndStep bool
+	// callerIsland is set by the run loop around an OpDeoptIfFn whose unit
+	// returns to a call with a call-result island (vmFrame.resultIsland,
+	// NUR334): a live-read island's tape-coupled residual goes back to it
+	// unscreened, and the island steps it where the call stood.
+	callerIsland bool
 	// polyUnmatched is set by a poly re-match that found no overload
 	// (callPolyIn's no-match arms), before any handler ran: a poly with a
 	// forward-fit island takes it then (PolyRef.Fit, NUR357).
@@ -468,7 +482,7 @@ func (vc *vmContext) enterCallbackUnit(reg *core.Registry, unit int, locals []co
 	// The value's own frame: its call args are the leading locals (inputs
 	// fill the leading param slots, captures the trailing ones).
 	fn := &vc.p.Fns[unit]
-	defer pushRootArgs(reg, vc.p, locals[:fn.NParams-fn.NCaptures], false)()
+	defer pushRootArgs(reg, vc.p, locals[:fn.NParams-fn.NCaptures])()
 	return vc.enterBodyUnit(reg, unit, locals)
 }
 
@@ -992,13 +1006,10 @@ func (vc *vmContext) applyClosure(reg *core.Registry, cl core.ClosurePayload, ar
 	// Without it the body's `args` read the ENCLOSING frame's list — none
 	// at the top level — so `def g fn [[n:Integer] [Any] [do [args]]]
 	// each g/v [1 2]` raised `args: not inside a function` per element for
-	// the interpreter's `[[1] [2]]` (NUR166). The list is the one that
-	// dispatch pushes: the token seam steps the value through its sig's
-	// handler, which may elide it (elidesArgs); a closure handed in through
-	// the fn-VALUE seam (RetTrim, InvokeCallbackBody) stands for CallBoru,
-	// which pushes the real args (NUR346).
+	// the interpreter's `[[1] [2]]` (NUR166). The list is the call's real
+	// args on every seam, as the interpreter's frame's is (NUR350).
 	if fn := &vc.p.Fns[cl.Unit]; len(fn.Params) > 0 && fn.NArgs > 0 && fn.NArgs <= len(args) {
-		defer pushRootArgs(reg, vc.p, args[:fn.NArgs], !cl.RetTrim && elidesArgs(fn, reg, dispatchRegistry(fn.Reg, reg)))()
+		defer pushRootArgs(reg, vc.p, args[:fn.NArgs])()
 	}
 	res, err := vc.enterBodyUnit(reg, cl.Unit, bindUnitLocals(reg, &vc.p.Fns[cl.Unit], args, cl.Captures))
 	vc.rootRetTrim, vc.rootRetNamed = prev, prevNamed
@@ -1111,18 +1122,17 @@ func closureFrameName(cl core.ClosurePayload) string {
 // pushFrameArgs is the DynEnv args bracket's frame-entry half: push the
 // callee's args list (frameArgsList over locals[0:NArgs], sig order) — the
 // interpreter's per-call push, so a dynamic code body's runtime sub-run
-// reads `args` identically. caller is the calling unit's dispatch registry.
-// No-op outside DynEnv programs.
-func (vc *vmContext) pushFrameArgs(fn *compiler.CompiledFn, caller *core.Registry, nl []core.Value) {
+// reads `args` identically. No-op outside DynEnv programs.
+func (vc *vmContext) pushFrameArgs(fn *compiler.CompiledFn, nl []core.Value) {
 	if vc.p == nil || !vc.p.DynEnv {
 		return
 	}
-	_ = vc.r.Args.Push(frameArgsList(fn, caller, dispatchRegistry(fn.Reg, vc.r), nl[:fn.NArgs]))
+	_ = vc.r.Args.Push(frameArgsList(nl[:fn.NArgs]))
 }
 
 // swapTailArgs is the bracket's TAIL-call form: the frame is replaced, so the
 // top args entry swaps for the new callee's, keeping the bracket depth stable.
-func (vc *vmContext) swapTailArgs(frames []vmFrame, fn *compiler.CompiledFn, caller *core.Registry, nl []core.Value) {
+func (vc *vmContext) swapTailArgs(frames []vmFrame, fn *compiler.CompiledFn, nl []core.Value) {
 	if vc.p == nil || !vc.p.DynEnv {
 		return
 	}
@@ -1132,27 +1142,15 @@ func (vc *vmContext) swapTailArgs(frames []vmFrame, fn *compiler.CompiledFn, cal
 	} else {
 		vc.r.Args.Truncate(vc.argsFloor)
 	}
-	_ = vc.r.Args.Push(frameArgsList(fn, caller, dispatchRegistry(fn.Reg, vc.r), nl[:fn.NArgs]))
+	_ = vc.r.Args.Push(frameArgsList(nl[:fn.NArgs]))
 }
 
-// frameArgsList is the args list a frame of fn's unit holds: a copy of its
-// real args — or, where elidesArgs holds, the EMPTY list the sig's handler
-// pushes (NUR346).
-func frameArgsList(fn *compiler.CompiledFn, caller, home *core.Registry, args []core.Value) core.Value {
-	if elidesArgs(fn, caller, home) {
-		return core.NewList(nil)
-	}
+// frameArgsList is the args list a frame holds: a copy of its real args,
+// whatever the frame's body reads — the interpreter's frame holds the same
+// (NUR350: the list a leaf frame once elided was observable to a computed
+// body or a word macro bound after the fn).
+func frameArgsList(args []core.Value) core.Value {
 	return core.NewList(append([]core.Value(nil), args...))
-}
-
-// elidesArgs reports whether a DISPATCH of fn's unit — a call, an apply, the
-// token seam stepping the value — pushes the empty args list: the unit's sig
-// handler elides it (CompiledFn.ArgsElided: a leaf body that never reads
-// `args`) and the caller runs in the unit's home registry. A call from
-// another registry is the interpreter's CallBoru, which pushes the real
-// args, as does the callback seam (InvokeCallback), which never asks.
-func elidesArgs(fn *compiler.CompiledFn, caller, home *core.Registry) bool {
-	return fn.ArgsElided && caller == home
 }
 
 // retFrameArgs is the bracket's frame-exit half: truncate to the popped
@@ -1279,6 +1277,13 @@ func (vc *vmContext) callPolyIn(dispReg *core.Registry, pr *compiler.PolyRef, st
 // matched) and lands the results.
 func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef, sig *core.Signature, args []core.Value, n int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
 	r := dispReg
+	// A poly the compiler ran where the interpreter runs it later judged it
+	// quiet (PolyRef.QuietGuard, NUR356): an overload with an effect of its
+	// own would run early, so the pick is a designed defer.
+	if pr.QuietGuard && sig.CompileEffect.Has(core.CompileSideEffect) {
+		return nil, vmDefer(r, curDebug, pc, "vm:quiet-poly-effect",
+			"`"+pr.Word+"` picked an overload with an effect where the compiled code runs it before the interpreter would (NUR356)")
+	}
 	// Per-export module policy gate (NUR045): a module poly word's
 	// re-match resolved a stamped sub-registry sig — the same identity
 	// the interpreter's execMatch gate reads, checked AFTER the match so
@@ -2246,30 +2251,9 @@ func (vc *vmContext) statementRestart(reg *core.Registry, srcs []compiler.Restar
 	if len(island) == 0 || retPC < 0 || depth < 0 || frameBase+depth > len(stack) {
 		return nil, nil, vmErrAt(curDebug, pc, "bad statement-island entry")
 	}
-	prefix := append([]core.Value(nil), stack[frameBase:frameBase+depth]...)
-	if len(srcs) > 0 {
-		prefix = prefix[:0]
-		for _, src := range srcs {
-			switch {
-			case src.Kind == compiler.RestartConst:
-				prefix = append(prefix, src.Val)
-			case src.Kind == compiler.RestartLocal && src.Idx < len(vc.restartLocals):
-				prefix = append(prefix, vc.restartLocals[src.Idx])
-			case src.Kind == compiler.RestartStack && src.Idx < depth:
-				prefix = append(prefix, stack[frameBase+src.Idx])
-			case src.Kind == compiler.RestartType:
-				t := reg.Types.LookupByID(src.Val.ID)
-				if t == nil {
-					t = core.Builtin.LookupByID(src.Val.ID)
-				}
-				if t == nil {
-					return nil, nil, vmErrAt(curDebug, pc, "unresolvable statement-island type "+src.Val.String())
-				}
-				prefix = append(prefix, core.NewTypeLiteral(core.ForwardedType(t)))
-			default:
-				return nil, nil, vmErrAt(curDebug, pc, "bad statement-island prefix source")
-			}
-		}
+	prefix, err := vc.seatPrefix(reg, srcs, depth, frameBase, stack, curDebug, pc)
+	if err != nil {
+		return nil, nil, err
 	}
 	snapshot := reg.Defs.Snapshot()
 	results, err := runIslandResolved(reg, prefix, append([]core.Value(nil), island...))
@@ -2283,6 +2267,41 @@ func (vc *vmContext) statementRestart(reg *core.Registry, srcs []compiler.Restar
 		return nil, nil, err
 	}
 	return append(stack[:frameBase], results...), &dynEnter{jump: true, jumpPC: retPC}, nil
+}
+
+// seatPrefix is a statement island's prefix: the depth values of the frame
+// region beneath the statement, or — at the root, where the program
+// residual's earlier entries may live elsewhere — srcs, each where the
+// compiled code keeps it.
+func (vc *vmContext) seatPrefix(reg *core.Registry, srcs []compiler.RestartSrc, depth, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	prefix := append([]core.Value(nil), stack[frameBase:frameBase+depth]...)
+	if len(srcs) > 0 {
+		prefix = prefix[:0]
+		for _, src := range srcs {
+			switch {
+			case src.Kind == compiler.RestartConst && src.Fresh:
+				prefix = append(prefix, core.WithFreshFnIdentity(core.CloneValueKeeping(src.Val, nil)))
+			case src.Kind == compiler.RestartConst:
+				prefix = append(prefix, src.Val)
+			case src.Kind == compiler.RestartLocal && src.Idx < len(vc.restartLocals):
+				prefix = append(prefix, vc.restartLocals[src.Idx])
+			case src.Kind == compiler.RestartStack && src.Idx < depth:
+				prefix = append(prefix, stack[frameBase+src.Idx])
+			case src.Kind == compiler.RestartType:
+				t := reg.Types.LookupByID(src.Val.ID)
+				if t == nil {
+					t = core.Builtin.LookupByID(src.Val.ID)
+				}
+				if t == nil {
+					return nil, vmErrAt(curDebug, pc, "unresolvable statement-island type "+src.Val.String())
+				}
+				prefix = append(prefix, core.NewTypeLiteral(core.ForwardedType(t)))
+			default:
+				return nil, vmErrAt(curDebug, pc, "bad statement-island prefix source")
+			}
+		}
+	}
+	return prefix, nil
 }
 
 // guardRestart is a branch guard's statement island (SigRef.Restart,
@@ -2305,6 +2324,55 @@ func (vc *vmContext) stopRestart(reg *core.Registry, is *compiler.StmtIsland, st
 		return nil, nil, err
 	}
 	return vc.statementRestart(reg, is.PrefixSrc, island, is.Depth, is.RetPC, is.Root, frameBase, stack, curDebug, pc)
+}
+
+// loopContRestart is a statement island's per-iteration loop continuation
+// (compiler.LoopCont, NUR336). The stop sits in the first statement of the
+// body of the running unit's innermost open loop (vmContext.restartLoop), on
+// whatever iteration: the interpreter resumes its own loop there — its
+// mark, the island (the statement from its first token, the runs the
+// compiled code made written as their values), then the loop's continuation
+// at this iteration's index over the body with the earlier iterations'
+// values as its results — and the tokens after the loop, over what lies
+// beneath the loop (srcs, or its Beneath values of the frame region). The
+// index is installed as the loop's first iteration installs it, and its
+// level is the continuation's (ForCont.IterDepth). The residual replaces the
+// frame region, and the run continues at retPC.
+func (vc *vmContext) loopContRestart(reg *core.Registry, lc *compiler.LoopCont, srcs []compiler.RestartSrc, island []core.Value, depth, retPC int, root bool, frameBase int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	lp := vc.restartLoop
+	if lp == nil || lp.base != frameBase+lc.Beneath || depth != 0 || retPC < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (the lowering seats a loop continuation only on its loop's first body statement, over the loop's own frame region) (§compiler)
+		return nil, nil, vmErrAt(curDebug, pc, "bad loop-continuation island entry")
+	}
+	prefix, err := vc.seatPrefix(reg, srcs, lc.Beneath, frameBase, stack, curDebug, pc)
+	if err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (a prefix source the walk seated is always in range) (§compiler)
+		return nil, nil, err
+	}
+	snapshot := reg.Defs.Snapshot()
+	iterBefore := reg.Defs.Depth(lc.IterName)
+	cur := lp.cur - lp.step
+	core.InstallDef(reg, lc.IterName, core.NewInteger(cur))
+	id := core.NextMarkID()
+	cont := &core.ForCont{
+		Registry: reg, IterName: lc.IterName, Current: cur, End: lp.end, Step: lp.step,
+		Body: lc.Body, Results: append([]core.Value(nil), stack[lp.base:lp.iterBase]...), IterDepth: reg.Defs.Depth(lc.IterName),
+	}
+	tokens := make([]core.Value, 0, len(island)+len(lc.After)+2)
+	tokens = append(tokens, core.NewMark(id, lc.Body...))
+	tokens = append(tokens, island...)
+	tokens = append(tokens, core.NewMoveCont(id, "for loop", cont))
+	tokens = append(tokens, lc.After...)
+	results, err := runIslandResolved(reg, prefix, tokens)
+	if !root {
+		core.TruncateFrameDefs(reg, snapshot)
+	}
+	if err != nil {
+		reg.Defs.Truncate(lc.IterName, iterBefore)
+		return nil, nil, stampAt(err, curDebug, pc, reg)
+	}
+	if err := vc.screenResults(results, "loop continuation result", curDebug, pc); err != nil { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (the island's results are interpreter residuals, tape-coupled only on a compiler bug) (§compiler)
+		return nil, nil, err
+	}
+	return append(stack[:frameBase], results...), &dynEnter{jump: true, jumpPC: retPC}, nil
 }
 
 // substToken is toks with the span tokens from path on replaced by vs — a
@@ -2934,7 +3002,7 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		args[i] = stack[top-1-i]
 	}
 	restart := func(survivors bool) ([]core.Value, *dynEnter, error) {
-		if !vc.firstIteration(spec.FirstIter) {
+		if spec.Loop == nil && !vc.firstIteration(spec.FirstIter) {
 			return nil, nil, laterIterationDefer(reg, curDebug, pc)
 		}
 		// The lead's own run (compiler's parenLead) is written as the value
@@ -2955,10 +3023,17 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		// dispatch the name again after the stop (`k (g 7) (g 8)`), so it
 		// runs over the install, as a root deopt island does (bindRootRead).
 		unbind := vc.bindRootRead(reg, spec.Root && spec.LeadName != "", spec.LeadName, fnVal)
-		ns, ent, err := vc.statementRestart(reg, spec.PrefixSrc, island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
+		var ns []core.Value
+		var ent *dynEnter
+		if spec.Loop != nil {
+			ns, ent, err = vc.loopContRestart(reg, spec.Loop, spec.PrefixSrc, island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
+		} else {
+			ns, ent, err = vc.statementRestart(reg, spec.PrefixSrc, island, spec.Depth, spec.RetPC, spec.Root, frameBase, stack, curDebug, pc)
+		}
 		unbind()
 		return ns, ent, err
 	}
+	missed := false
 	guard := func(results []core.Value) ([]core.Value, *dynEnter, error) {
 		// A placing apply (DynMethodSpec.Place) claims no count: nothing
 		// after it reads beneath what it leaves, so the paren's own count
@@ -2985,6 +3060,14 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 			// (runtimeShouldFallback still resolves it by re-running on the
 			// tolerant interpreter, fenced as ever); the runtime-bail census
 			// counts DESIGNED model-miss defers only, and this is not one.
+			if missed {
+				// A paren lead no signature of which takes the paren's values:
+				// the interpreter's close re-steps its survivors, which only a
+				// statement island takes, and none was seated for this stop.
+				return nil, nil, vmErrAt(curDebug, pc, fmt.Sprintf(
+					"shaped method apply %s: no signature of the paren's lead takes its values, and no statement island takes the survivors the paren's close re-steps (NUR336)",
+					spec.Word))
+			}
 			return nil, nil, vmErrAt(curDebug, pc, fmt.Sprintf(
 				"shaped method apply %s: result count %d violates the host-registered shape claim %d",
 				spec.Word, len(results), spec.NOut))
@@ -3014,6 +3097,7 @@ func (vc *vmContext) callDynMethod(reg *core.Registry, spec *compiler.DynMethodS
 		// run and its count check. A def-bound word's lead is its name's
 		// dispatch: one of no argument runs, any other raises (named*).
 		named := spec.LeadName != ""
+		missed = true
 		switch {
 		case named && !namedRuns(fnVal):
 			return nil, nil, vc.namedMissRaise(spec, fnVal, args, curDebug, pc)
@@ -3736,9 +3820,8 @@ func (vc *vmContext) escapedFlow(regs ...*core.Registry) compiler.Opcode {
 // takeFlowAt clears reg's signal and takes where an island stood when it
 // ended on it (core.Registry.FlowAt) onto vc, for the resolution that follows.
 func (vc *vmContext) takeFlowAt(reg *core.Registry) {
-	reg.FlowCtrl = core.FlowNone
 	vc.flowAt, vc.flowAtSet = reg.FlowAt, reg.FlowAtSet
-	reg.FlowAt, reg.FlowAtSet = core.SrcPos{}, false
+	reg.TakeFlow()
 }
 
 // tryNativeFnApply dispatches a Function VALUE VM-native when it resolves to a
@@ -4162,15 +4245,19 @@ func (vc *vmContext) liveDeopt(reg *core.Registry, body []core.Value, root bool,
 	if !spec.LiveHot(reg.Defs.Top(spec.Name)) {
 		return stack, false, nil
 	}
-	if spec.Token < 0 || spec.Token >= len(body) || spec.RetPC < 0 {
+	if (spec.Island == nil && (spec.Token < 0 || spec.Token >= len(body))) || spec.RetPC < 0 {
 		return nil, false, vmErrAt(curDebug, pc, "DEOPT_IF_FN bad table entry")
 	}
 	prefix, err := deoptPrefix(spec, frameBase, len(stack), stack, locals, curDebug, pc)
 	if err != nil {
 		return nil, false, err
 	}
+	tokens := spec.Island
+	if tokens == nil {
+		tokens = body[spec.Token:]
+	}
 	snapshot := reg.Defs.Snapshot()
-	results, err := runIslandResolved(reg, prefix, append([]core.Value(nil), body[spec.Token:]...))
+	results, err := runIslandResolved(reg, prefix, append([]core.Value(nil), tokens...))
 	if !root {
 		core.TruncateFrameDefs(reg, snapshot)
 	}
@@ -4182,12 +4269,44 @@ func (vc *vmContext) liveDeopt(reg *core.Registry, body []core.Value, root bool,
 		// The unit returns straight to the program's end, where the
 		// interpreter steps its results (rootEndResults).
 		vc.rootEndStep = true
+	case !root && vc.callerIsland:
+		// The call returns to a call-result island, which steps a
+		// tape-coupled result where the call stood (callResultRestart).
 	case !root:
 		if err := vc.screenResults(results, "deopt result", curDebug, pc); err != nil {
 			return nil, false, err
 		}
 	}
 	return append(stack[:frameBase], results...), true, nil
+}
+
+// callResultRestart is a call's result island (vmFrame.resultIsland,
+// NUR334): the frame just returned results, stack[base:], holding a token
+// the interpreter steps where the call stood — a `/v` read of a splice. The
+// call's statement runs again on the interpreter from its first token over
+// the running unit's frame (frames' top, the program's at the root), the
+// call's run written as those results, and the run continues at the
+// island's RetPC.
+func (vc *vmContext) callResultRestart(reg *core.Registry, is *compiler.StmtIsland, frames []vmFrame, stack []core.Value, base int, locals []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, *dynEnter, error) {
+	fb := 0
+	if len(frames) > 0 {
+		fb = frames[len(frames)-1].stackBase
+	}
+	vc.restartLocals = locals
+	ns, ent, err := vc.stopRestart(reg, is, append([]core.Value(nil), stack[base:]...), fb, stack[:base], curDebug, pc)
+	vc.restartLocals = nil
+	return ns, ent, err
+}
+
+// callResultAt is the call-result island of the CALL_USER at pc in the
+// running unit's code (CompiledFn.CallResults, the main code's
+// Program.CallResults for a negative unit), or nil.
+func callResultAt(p *compiler.Program, unit, pc int) *compiler.StmtIsland {
+	table := p.CallResults
+	if unit >= 0 && unit < len(p.Fns) {
+		table = p.Fns[unit].CallResults
+	}
+	return table[pc]
 }
 
 // rootEndResults steps a unit's tape-coupled results where the root's
@@ -4520,6 +4639,12 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 	// such frame's entry depth.
 	keepDefs := startUnit >= 0 && startUnit < len(p.Fns) && p.Fns[startUnit].KeepsDefs
 	var frames []vmFrame
+	// rootTailAt is where the activation's root unit was last TAIL-called
+	// from with no frame to carry it (rootTailed): the root RET then owes the
+	// tail-called unit's own frame contract, anchored at that call, as the
+	// interpreter's ReturnCheck marker at the call does (NUR360).
+	var rootTailAt core.SrcPos
+	rootTailed := false
 	defer func() {
 		if runErr == nil {
 			return
@@ -4841,7 +4966,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 			vc.frameDepth++ // balanced by the matching RET, like OpCallUser
 			nameFrameFns(curReg, fn, nl)
-			vc.pushFrameArgs(fn, curReg, nl)
+			vc.pushFrameArgs(fn, nl)
 			locals = nl
 			enterUnit(unit)
 			pc = -1
@@ -5080,7 +5205,11 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// step takes a splice or a fn value among it: so a tape-coupled
 			// run takes the island, as does a run the plain seat refuses and
 			// every run of a CountAlways call.
-			stepped := s.Count != nil && (s.CountAlways || tapeCoupled(results) || (s.DynBodyPlain && dynBodyPlainRefuses(results)))
+			// A plain run whose only re-stepped values are fns that take no
+			// argument re-steps in place below (plainReSteps, NUR359): no
+			// island owes it, in a loop body or a unit's tail alike.
+			inPlace := s.DynBodyPlain && !s.ReStep && plainReSteps(results)
+			stepped := s.Count != nil && (s.CountAlways || tapeCoupled(results) || (s.DynBodyPlain && !inPlace && dynBodyPlainRefuses(results)))
 			if kept, ok := spliceOutsSeat(s.SpliceOuts, results); ok {
 				results = kept
 			} else if err := vc.screenResults(results, "handler result at "+s.Word, curDebug, pc); err != nil && !stepped {
@@ -5135,7 +5264,19 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					return nil, err
 				}
 			}
-			if s.DynBodyPlain {
+			if inPlace {
+				// A computed run seated as data whose only values the
+				// interpreter re-steps are fns that take no argument: each
+				// fires where the `do` stood over nothing, whatever lies
+				// beneath or after the run, so the step loop's re-step is
+				// the interpreter's own — its results, or the break /
+				// continue the fn raised for the enclosing loop to take
+				// (NUR359).
+				var rerr error
+				if results, rerr = vc.doReStep(curReg, &s, results, false, curCode, curUnit, curDebug, pc); rerr != nil {
+					return nil, rerr
+				}
+			} else if s.DynBodyPlain {
 				// A computed run seated as data beside its neighbours
 				// (vm_dyn_body_one.go): no value the interpreter re-steps.
 				if err := checkDynBodyPlain(curReg, s.Word, results, curDebug, pc); err != nil {
@@ -5299,8 +5440,11 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			head := dynApplyNameAt(p, curUnit, pc)
 			vc.restartLocals = locals
+			if n := len(loops); n > 0 && loops[n-1].unit == curUnit {
+				vc.restartLoop = &loops[n-1]
+			}
 			ns, ent, err := vc.callDynFamily(curReg, in.Op, int(in.Arg), fb, stack, curDebug, pc, dynFrameWordsAt(p, curUnit, pc), head, landingWordAt(p, curUnit, pc))
-			vc.restartLocals = nil
+			vc.restartLocals, vc.restartLoop = nil, nil
 			if err != nil {
 				return nil, err
 			}
@@ -5331,7 +5475,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth(), retFn: headNamedContract(ent.retFn, head), retAt: applyAnchor(ent, head)})
 				vc.frameDepth++ // balanced by the matching RET, like OpCallUser
 				nameFrameFns(curReg, fn, ent.locals)
-				vc.pushFrameArgs(fn, curReg, ent.locals)
+				vc.pushFrameArgs(fn, ent.locals)
 				locals = ent.locals
 				enterUnit(ent.unit)
 				pc = -1
@@ -5397,7 +5541,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
 			vc.frameDepth++ // balanced by the matching RET, like OpCallUser
 			nameFrameFns(curReg, fn, nl)
-			vc.pushFrameArgs(fn, curReg, nl)
+			vc.pushFrameArgs(fn, nl)
 			locals = nl
 			enterUnit(unit)
 			pc = -1
@@ -5511,10 +5655,10 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				continue
 			}
 			if in.Op == compiler.OpCallUser {
-				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth()})
+				frames = append(frames, vmFrame{retUnit: curUnit, retPC: pc + 1, locals: locals, loopBase: len(loops), stackBase: len(stack), dynBase: len(vc.dynBinds), argsBase: r.Args.Depth(), resultIsland: callResultAt(p, curUnit, pc)})
 				vc.frameDepth++ // balanced by the matching RET below
 				nameFrameFns(curReg, fn, nl)
-				vc.pushFrameArgs(fn, curReg, nl)
+				vc.pushFrameArgs(fn, nl)
 			} else {
 				// Tail call: REPLACE the frame — the language's
 				// tail-call guarantee in compiled form. The caller's
@@ -5530,10 +5674,25 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				loopBase := 0
 				if len(frames) > 0 {
 					loopBase = frames[len(frames)-1].loopBase
+					// The replacing unit's results go back to the call the
+					// frame was pushed for, where the interpreter's may nest
+					// the tail call instead and step them in this unit's
+					// frame (Engine.tcoEligible): no result island takes
+					// them there (NUR334).
+					frames[len(frames)-1].resultIsland = nil
 				}
 				loops = loops[:loopBase]
+				// The replaced frame's RET now answers for the tail-called
+				// unit, whose contract error the interpreter anchors at THIS
+				// call (the word inside the caller's body), not at the call
+				// that entered the frame (NUR360).
+				if at := curDebug[pc]; len(frames) > 0 {
+					frames[len(frames)-1].retAt = at
+				} else {
+					rootTailAt, rootTailed = at, true
+				}
 				nameFrameFns(curReg, fn, nl)
-				vc.swapTailArgs(frames, fn, curReg, nl)
+				vc.swapTailArgs(frames, fn, nl)
 			}
 			locals = nl
 			enterUnit(int(in.Arg))
@@ -5547,8 +5706,9 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// NUR207): a root point's island runs to the program's end.
 			spec, body := deoptEntry(p, curUnit, int(in.Arg))
 			vc.rootEndReturn = curUnit >= 0 && len(frames) == 1 && frames[0].retUnit < 0 && frames[0].retPC >= len(p.Code)
+			vc.callerIsland = len(frames) > 0 && frames[len(frames)-1].resultIsland != nil
 			ns, fired, err := vc.deoptIfFn(curReg, body, curUnit < 0, spec, fb, stack, locals, curDebug, pc)
-			vc.rootEndReturn = false
+			vc.rootEndReturn, vc.callerIsland = false, false
 			if err != nil {
 				return nil, err
 			}
@@ -5768,7 +5928,17 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 				}
 				var trimmed []core.Value
 				var err error
-				if len(frames) == 0 && vc.rootRetTrim {
+				if len(frames) == 0 && rootTailed {
+					// A unit this activation's root TAIL-called: the named
+					// frame's contract — the count as __RC enforces it — at
+					// the tail call's own position (NUR360), where the root's
+					// callback trim never counted and the root RET had no
+					// anchor.
+					trimmed, err = checkReturnContract(r, contract, stack, 0, true, core.SrcPos{})
+					if err != nil {
+						return nil, stampAt(err, []core.SrcPos{rootTailAt}, 0, curReg)
+					}
+				} else if len(frames) == 0 && vc.rootRetTrim {
 					// The root RET of a unit entered through the fn-VALUE seam
 					// (RunUnit / runUnitNested: InvokeCallback's compiled path):
 					// the interpreter's CallBoru would have run this body, so
@@ -5850,6 +6020,15 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 					return nil, err
 				}
 				stack = ns
+			} else if f.resultIsland != nil && tapeCoupled(stack[f.stackBase:]) {
+				// A tape-coupled result, stepped where the call stood by the
+				// call's statement island (NUR334).
+				ns, ent, err := vc.callResultRestart(curReg, f.resultIsland, frames, stack, f.stackBase, locals, curDebug, pc)
+				if err != nil {
+					return nil, err
+				}
+				stack = ns
+				pc = ent.jumpPC - 1
 			}
 		case compiler.OpFlowBreak, compiler.OpFlowContinue:
 			// A break/continue raised in a fn body with no enclosing loop in its

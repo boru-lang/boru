@@ -512,7 +512,7 @@ func vaultNatives() []native.NativeFunc {
 			BarrierPos: -1,
 		}},
 	})
-	return out
+	return native.SideEffecting(out)
 }
 
 // BuildVaultModule creates the "boru:vault" native module: the op-table
