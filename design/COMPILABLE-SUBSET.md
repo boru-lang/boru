@@ -791,6 +791,122 @@ user still gets an answer while the case is open:
     paren a word collects forward (`1 add (for 3 [… break …])`) refuses on
     its existing variadic-loop-result reasons; the interpreter now answers
     it (the loop takes its own signal).
+- **Open refusals recorded 2026-10-02 (downstream: the voxgig-boru libraries):**
+  - A module fn imported from a FILE runs as a stored fn unit
+    (`storedfn$body`, stamped once at import, not per call). When its body's
+    RESULT is a bare read of a gradual binding that is not a parameter, the
+    stamp declines ("stored fn: bare read of `r` may hold a fn the
+    interpreter dispatches as a word (NUR279)"), and EVERY call of that fn,
+    data or fn, then runs on the interpreter (`boru -compile-report`: "did
+    not compile"). `def tail-bare fn [[m:Map] [Any] [ def r (m get "x") r ]]`
+    exported from a file and called `L.tail-bare {x: 5}` answers `[5]` on
+    both lanes with the stamp declined. NUR279's fix names a gradual CAPTURE
+    left in the residual; a body-local def is the same decline and the
+    commoner shape (compute a value from data, then leave it). The same read
+    mid-body (`r drop "done"`), a gradual PARAM read in the result (the
+    per-call `FnReadParams` refusal) and `r/v` all keep the unit. Owed: a
+    guard at a stored unit's result-position read (data takes the compiled
+    push; a fn sends that one call to the interpreter's dispatch, or raises a
+    designed defer), as the param case already has per call. Surfaced by
+    `eval-table-first`, `eval-table-priority`, `eval-tree`, `find-node` and
+    `find-branch-next` in voxgig-boru/decision, which have since read those
+    values with `/v` as a library fix of their own (a stored `then` is data),
+    so the library no longer exhibits it. When such a body also breaks its
+    declared return count, the compiled caller raises `internal_error`
+    instead of the contract's `type_error` — an answer divergence, NUR366.
+  - Calling a fn value obtained at RUN TIME and held in a local (a
+    library's result, `def out2 (give {x: inc/v})` where `give` returns
+    `m get "x"`, or a map read, `def out2 ({x: inc/v} get "x")`): with
+    `inc` taking one Integer, `print (out2 41)` declines ("fn-value
+    application bounded by a paren (dynamic value precedes args)") for the
+    returned lead (the map-read lead compiles and agrees); `def z (41 out2)
+    print (z)` declines ("member fn value auto-applies mid-expression
+    (fn-value-call boundary, Stage 3)"); `[(41 out2) 7]` declines
+    ("residual value of unknown provenance"); a 0-arg fn read from a map,
+    `def out ({x: f42/v} get "x")`, then `print (out)`, `def r (out)` or
+    `out/v apply`, declines ("fn value read from a container auto-dispatches
+    (Stage 3): 0-arg landing not modelable"); `print (out/v apply)` over a returned 0-arg fn declines
+    ("apply of a produced closure the program never dispatched (no matching
+    arguments beneath it)"); and `n g/v apply` in a fn body whose param is
+    `g:Any` declines ("unmatched dispatch recovered at apply"). All of
+    these answer `42` on the interpreter. What compiles and agrees: `41
+    out2/v apply` at the main program (inside `print`, a `def`, or followed
+    by more values), `(41 out2) 7 add`, `print (out)` over a returned 0-arg
+    fn, and a fn whose param is declared `g:Function` (`(g n)` or `n g/v
+    apply`). Three neighbouring spellings are answer divergences, not
+    refusals — NUR368. Surfaced by voxgig-boru/decision, whose evaluators
+    return a stored fn `then` / leaf `result` as data for the caller to
+    apply.
+  - A var-binding `each` nested in a TOP-LEVEL var-binding `each` body
+    declines with NUR330's string ("twin regime: a bind transition has no
+    stream placement"), outside the `Rand.map-from` shape listed above:
+    `print (each [ var [[n] (each [ var [[m] m ]] [1]) ]] [1])` declines;
+    the interpreter prints `[[1]]`. The same nesting inside a fn body
+    compiles and agrees. Surfaced by voxgig-boru/aless's smoke suite (its
+    fixture walk is now a fn).
+  - A program whose top level drives a large fn many times exhausts the
+    compile pass's check-mode analysis (`core.DefaultCheckStepBudget =
+    500_000`) and is reported as a compiler defect under whatever reason
+    the truncated analysis trips first — "unmatched dispatch recovered at
+    def", or "code-body word test-test (Stage 2)" — with `boru check` clean
+    on the same file. voxgig-boru/aless's headless app suite (14 scenarios,
+    ~100 `Aless.feed` calls) failed this way after ~60–80 s; a 64c5ab2
+    build with the budget raised to 5,000,000 compiles it and prints `all
+    green` (in ~12 min). Owed: a budget-exhaustion reason of its own (or
+    an analysis that does not grow with the top level's call count); no
+    small synthetic repro yet. The suite is split into three files, each
+    at ~66–78% of the budget.
+  - A runtime callback whose body applies a fn-valued FIELD of its own
+    param declines its stamp ("closure storedfn$body: unapplied fn-value
+    in body residual (dynamic apply not lowered)") and runs on the
+    interpreter; the answers agree. `def run fn [[cb:Function] [Any] [
+    (cb {int: (n:Integer => [n add 1])}) ]]` then `print (run ([r:Map] =>
+    [r.int 5]))` prints `6`, with the lambda (and `cb`) reported "did not
+    compile". It is the shape of every `boru:test` property generator
+    (`Test.check-prop "p" [ r.int 0 5 ] […] …`, whose body applies the
+    random source's `r.int`). Across the nine voxgig-boru libraries
+    (58 suites, all compiling as programs) it is 81 of the 89 runtime
+    callbacks that still decline, all in 15 property-test suites; the rest
+    are "finalize left the unit unstamped" (6), "undef of the loop-carried
+    def `rule` (Stage 3)" (1) and "body result of unknown provenance" (1),
+    also in property suites. No library function declines. The libraries
+    have since removed all 89 with natural rewrites: each direct draw
+    grouped (`[ (r.int 0 5) ]`, which stamps), a nested generator moved
+    into a named fn whose param is `r`, and one `var` renamed (the next
+    bullet). Each shape stays open here.
+  - A runtime callback whose `var` reuses the name of a loop-carried `def`
+    inside a word the callback calls declines its stamp ("undef of the
+    loop-carried def `x` (Stage 3)") and runs on the interpreter; the
+    answers agree. `def count-big fn [[xs:List] [Integer] [def n 0 for (xs
+    size) [def idx i def x (xs idx get) if (x 5 gt) [def n (n 1 add)] []]
+    end n]]`, then a `Test.prop` property body that calls `count-big xs`
+    and also folds `xs each [ var [[x] (if (x 5 gt) [1] [0]) ] ]`: the
+    property body is reported "did not compile codebody @ 3:44"; rename
+    the callback's `x` to `y` and it stamps. Both answer `ok: true`.
+    Surfaced by voxgig-boru/decision (its `eval-table-*` loops bind `rule`;
+    the suite renamed its callback's `rule` to `candidate`).
+  - A `Test.check-prop` call made INSIDE a fn body, whose property body
+    contains an interpolated template string, refuses the program:
+    "operand of unknown provenance or not statically materialisable at
+    test-check-prop". ``def run fn [[] [] [ def res (Test.check-prop "p" [
+    5 ] [ var [[k] def s `g ${k}` (s size) gt 0 ] ] 2 1 0) print (res "ok"
+    get) ]] run`` prints `true` on the interpreter, and `boru check` is
+    clean. Any `${…}` triggers it; the same call at the top level, or in
+    the fn with a plain string (`def s "g"`), compiles and prints `true`.
+    Found by a voxgig-boru/sort scratch harness (its suites call
+    `check-prop` at top level).
+  - A `Test.prop` whose generator or property body contains an
+    interpolated template string refuses the program: "unannotated or
+    opaque word test-prop" at top level (in a list literal or not),
+    "code-body word test-prop (Stage 2)" inside a fn body. ``def p
+    (Test.prop "a" [ (r.int 0 12) ] [ var [[v] (`<${v}>` size) gte 3 ] ])``
+    then `print ((p Test.run-property) get "ok")` prints `true` on the
+    interpreter, and `boru check` is clean; so does the generator
+    ``[ `<${(r.int 0 12)}>` ]``. Any interpolation triggers it, even of a
+    literal (`` `<${1}>` ``). With `(convert String v)` in place of the
+    template it compiles and prints `true`, and the same body under a
+    top-level `Test.check-prop` compiles. Found by a voxgig-boru/template
+    scratch harness.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
