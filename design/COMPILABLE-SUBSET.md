@@ -856,6 +856,20 @@ user still gets an answer while the case is open:
     an analysis that does not grow with the top level's call count); no
     small synthetic repro yet. The suite is split into three files, each
     at ~66–78% of the budget.
+  - A runtime callback whose body applies a fn-valued FIELD of its own
+    param declines its stamp ("closure storedfn$body: unapplied fn-value
+    in body residual (dynamic apply not lowered)") and runs on the
+    interpreter; the answers agree. `def run fn [[cb:Function] [Any] [
+    (cb {int: (n:Integer => [n add 1])}) ]]` then `print (run ([r:Map] =>
+    [r.int 5]))` prints `6`, with the lambda (and `cb`) reported "did not
+    compile". It is the shape of every `boru:test` property generator
+    (`Test.check-prop "p" [ r.int 0 5 ] […] …`, whose body applies the
+    random source's `r.int`). Across the nine voxgig-boru libraries
+    (58 suites, all compiling as programs) it is 81 of the 89 runtime
+    callbacks that still decline, all in 15 property-test suites; the rest
+    are "finalize left the unit unstamped" (6), "undef of the loop-carried
+    def `rule` (Stage 3)" (1) and "body result of unknown provenance" (1),
+    also in property suites. No library function declines.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
