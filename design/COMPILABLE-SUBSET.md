@@ -791,7 +791,7 @@ user still gets an answer while the case is open:
     paren a word collects forward (`1 add (for 3 [… break …])`) refuses on
     its existing variadic-loop-result reasons; the interpreter now answers
     it (the loop takes its own signal).
-- **Open refusals recorded 2026-10-02 (downstream: voxgig-boru/decision):**
+- **Open refusals recorded 2026-10-02 (downstream: the voxgig-boru libraries):**
   - A module fn imported from a FILE runs as a stored fn unit
     (`storedfn$body`, stamped once at import, not per call). When its body's
     RESULT is a bare read of a gradual binding that is not a parameter, the
@@ -837,6 +837,25 @@ user still gets an answer while the case is open:
     refusals — NUR368. Surfaced by voxgig-boru/decision, whose evaluators
     return a stored fn `then` / leaf `result` as data for the caller to
     apply.
+  - A var-binding `each` nested in a TOP-LEVEL var-binding `each` body
+    declines with NUR330's string ("twin regime: a bind transition has no
+    stream placement"), outside the `Rand.map-from` shape listed above:
+    `print (each [ var [[n] (each [ var [[m] m ]] [1]) ]] [1])` declines;
+    the interpreter prints `[[1]]`. The same nesting inside a fn body
+    compiles and agrees. Surfaced by voxgig-boru/aless's smoke suite (its
+    fixture walk is now a fn).
+  - A program whose top level drives a large fn many times exhausts the
+    compile pass's check-mode analysis (`core.DefaultCheckStepBudget =
+    500_000`) and is reported as a compiler defect under whatever reason
+    the truncated analysis trips first — "unmatched dispatch recovered at
+    def", or "code-body word test-test (Stage 2)" — with `boru check` clean
+    on the same file. voxgig-boru/aless's headless app suite (14 scenarios,
+    ~100 `Aless.feed` calls) failed this way after ~60–80 s; a 64c5ab2
+    build with the budget raised to 5,000,000 compiles it and prints `all
+    green` (in ~12 min). Owed: a budget-exhaustion reason of its own (or
+    an analysis that does not grow with the top level's call count); no
+    small synthetic repro yet. The suite is split into three files, each
+    at ~66–78% of the budget.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
