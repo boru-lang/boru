@@ -99,6 +99,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR361](#nur361) | A gradual read nested in an inline body that holds a fn defers compiled (loud; was silent) | the NUR356 pass (2026-09-29); narrowed 2026-09-30 |
 | [NUR364](#nur364) | A failed call over a pending literal in a fn body renders a wider operand window compiled (notes only) | the NUR235 pass (2026-09-30) |
 | [NUR366](#nur366) | A stored fn whose stamp declined and whose result count breaks its declared returns raises internal_error compiled; the interpreter raises the return contract's type_error | downstream: the voxgig-boru/decision migration (2026-10-02) |
+| [NUR367](#nur367) | A local rebound in a loop body and read bare in an arm after the loop, holding a fn: compiled returns the fn uncalled (`for`/`while`, silent) or raises (`each`/`for-each`); the interpreter calls it | downstream: the voxgig-boru/decision migration (2026-10-02) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -929,5 +930,53 @@ contract's `type_error` with the interpreter's text. The stamp decline
 behind it is a refusal, tracked separately in
 [design/COMPILABLE-SUBSET.md](design/COMPILABLE-SUBSET.md) §5 ("open
 refusals recorded 2026-10-02").
+
+---
+
+## NUR367 — a loop-rebound local read bare in an arm after the loop returns its fn uncalled compiled {#nur367}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/decision migration)
+
+```
+def f ([] => [42])
+def g fn [[m:Map] [Any] [ def r 0 for 1 [def r (m get "x")] end if (m has "x") [r] [0] ]]
+def o (g {x: f/v})
+print (o/v typeof)
+  interpreted   Integer    (the arm's bare `r` calls f, per ADR-011)
+  compiled      Function   (the fn comes back uncalled; `boru check`: 0 errors)
+```
+
+The same body with the rebinding in other loops (`r` rebound in the loop
+body, then the arm read after the loop, `x` holding `f`):
+
+| loop around `def r (m get "x")` | interpreted | compiled |
+|---|---|---|
+| `for 1 [ … ] end` | `Integer` | `Function` (silent) |
+| `def k 0 while [k 1 lt] [ … def k (k 1 add)]` | `Integer` | `Function` (silent) |
+| `[1] each [ … 0] drop` | `Integer` | `[boru/type_error] g: expected 1 return value(s), got 2 — [[0] 42]` |
+| `def ys ([1] each [ … 0])` | `Integer` | `` [boru/internal_error] bytecode: internal: dynamic-scope read of a dispatching binding `r` `` |
+| `[1] for-each [ … ]` | `Integer` | `[boru/type_error] g: expected 1 return value(s), got 2 — [[] 42]` |
+
+The lanes agree when the rebinding is straight-line (`def r 0 def r (m
+get "x") if … [r] [0]`), when the read after the loop is the body's tail
+(`… end r`), when `x` holds data, and on `r/v` in the arm. The init does
+not matter: `def r {a: 1}`, `def r None` and a gradual `def r (m get
+"y")` diverge alike, as does a read in the else arm or inside `def z (if
+… [r] [0])`. The read is a gradual read nested in an arm, the case
+[NUR361](#nur361)'s read-site guard makes loud; here the guard does not
+fire, so the `for`/`while` rows are a silent wrong answer beside the one
+NUR361's verdict names.
+
+Live instance: voxgig-boru/decision's `unique` hit policy ended `if
+(match-count 1 eq) [result] [ … ]` after a `for` that rebinds `result`.
+On 64c5ab2 its stamped unit returned a stored fn `then` uncalled, while
+the `first` and `priority` paths (declined under NUR279, so interpreted)
+called it. The library now reads `result/v` on every path, because a
+stored `then` is data under its own contract, so it no longer depends on
+either lane.
+
+**Proposed verdict:** resolve by fix — guard the post-loop read
+(dispatch a fn as the interpreter does) or decline soundly, as NUR361's
+verdict asks for its family.
 
 ---
