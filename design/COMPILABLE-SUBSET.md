@@ -869,7 +869,44 @@ user still gets an answer while the case is open:
     callbacks that still decline, all in 15 property-test suites; the rest
     are "finalize left the unit unstamped" (6), "undef of the loop-carried
     def `rule` (Stage 3)" (1) and "body result of unknown provenance" (1),
-    also in property suites. No library function declines.
+    also in property suites. No library function declines. The libraries
+    have since removed all 89 with natural rewrites: each direct draw
+    grouped (`[ (r.int 0 5) ]`, which stamps), a nested generator moved
+    into a named fn whose param is `r`, and one `var` renamed (the next
+    bullet). Each shape stays open here.
+  - A runtime callback whose `var` reuses the name of a loop-carried `def`
+    inside a word the callback calls declines its stamp ("undef of the
+    loop-carried def `x` (Stage 3)") and runs on the interpreter; the
+    answers agree. `def count-big fn [[xs:List] [Integer] [def n 0 for (xs
+    size) [def idx i def x (xs idx get) if (x 5 gt) [def n (n 1 add)] []]
+    end n]]`, then a `Test.prop` property body that calls `count-big xs`
+    and also folds `xs each [ var [[x] (if (x 5 gt) [1] [0]) ] ]`: the
+    property body is reported "did not compile codebody @ 3:44"; rename
+    the callback's `x` to `y` and it stamps. Both answer `ok: true`.
+    Surfaced by voxgig-boru/decision (its `eval-table-*` loops bind `rule`;
+    the suite renamed its callback's `rule` to `candidate`).
+  - A `Test.check-prop` call made INSIDE a fn body, whose property body
+    contains an interpolated template string, refuses the program:
+    "operand of unknown provenance or not statically materialisable at
+    test-check-prop". ``def run fn [[] [] [ def res (Test.check-prop "p" [
+    5 ] [ var [[k] def s `g ${k}` (s size) gt 0 ] ] 2 1 0) print (res "ok"
+    get) ]] run`` prints `true` on the interpreter, and `boru check` is
+    clean. Any `${…}` triggers it; the same call at the top level, or in
+    the fn with a plain string (`def s "g"`), compiles and prints `true`.
+    Found by a voxgig-boru/sort scratch harness (its suites call
+    `check-prop` at top level).
+  - A `Test.prop` whose generator or property body contains an
+    interpolated template string refuses the program: "unannotated or
+    opaque word test-prop" at top level (in a list literal or not),
+    "code-body word test-prop (Stage 2)" inside a fn body. ``def p
+    (Test.prop "a" [ (r.int 0 12) ] [ var [[v] (`<${v}>` size) gte 3 ] ])``
+    then `print ((p Test.run-property) get "ok")` prints `true` on the
+    interpreter, and `boru check` is clean; so does the generator
+    ``[ `<${(r.int 0 12)}>` ]``. Any interpolation triggers it, even of a
+    literal (`` `<${1}>` ``). With `(convert String v)` in place of the
+    template it compiles and prints `true`, and the same body under a
+    top-level `Test.check-prop` compiles. Found by a voxgig-boru/template
+    scratch harness.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

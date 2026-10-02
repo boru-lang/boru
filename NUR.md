@@ -105,6 +105,9 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR370](#nur370) | A fn param called on a def made in the same `each`/`var` body from a gradual read raises internal_error DISPATCH_GENERIC compiled | downstream: the voxgig-boru/template migration (2026-10-02) |
 | [NUR371](#nur371) | A def in an `if` arm of an imported fn's fold body clobbers a same-named local of the caller compiled (`undefined_word`) | downstream: the voxgig-boru/template migration (2026-10-02) |
 | [NUR372](#nur372) | A module fn whose fold body reads its param raises `undefined_word` on its 5th–8th compile in one process compiled (library-scale repro) | downstream: the voxgig-boru/template migration (2026-10-02) |
+| [NUR373](#nur373) | A fn whose result is an ungrouped `r.list-of` over its random-source param draws once and repeats the value compiled (silent); the `[List]`-declared twin is refused by a checker false positive | downstream: the voxgig-boru/aless migration (2026-10-02) |
+| [NUR374](#nur374) | A `Test.check-prop` generator whose body is a grouped `r.list-of` raises `undefined word: r` compiled (the element body does not see the generator's `r`); the check pass refuses a var-bound `r` there | downstream: the voxgig-boru/aless migration (2026-10-02) |
+| [NUR375](#nur375) | A callback that binds an `r.int` draw with `def` and leaves the bindings raises internal_error "a landed fn value takes arguments (NUR298)" compiled; in a `check-prop` generator the property fails | downstream: the voxgig-boru property-generator rewrites (2026-10-02) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1138,5 +1141,98 @@ A cut-down standalone module did not reproduce it. The library's current
 the fold body, and agrees on every call.
 
 **Proposed verdict:** resolve by fix (owed: a minimal repro).
+
+---
+
+## NUR373 — a fn whose result is an ungrouped `r.list-of` over its random-source param repeats the first draw compiled {#nur373}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/aless migration) · **silent**
+
+```
+import "boru:rand"
+def g fn [[r:Map] [Any] [ r.list-of [r.int 0 999] 4 ]]
+print (g (Rand.with-seed 7))
+  interpreted   [550, 417, 502, 54]
+  compiled      [550, 550, 550, 550]
+```
+
+The compiled call draws once and repeats that value. The same happens
+with `[r.float]` (`[0.9188921592527635, 0.9188921592527635, …]`), with
+`r:Any`, with a trailing `end`, with a computed count
+(`[[n:Integer r:Map] [Any] [ r.list-of [r.int 0 999] n ]]`), and when the
+fn is called from a `Test.check-prop` generator (`[ (g r) ]`), where
+every property still passes on the repeated lists — only a value-level
+diff shows it. Grouping the call (`[ (r.list-of [r.int 0 999] 4) ]`) or
+binding it first (`def xs (r.list-of [r.int 0 999] 4) xs`) agrees with
+the interpreter.
+
+Related, not a divergence: with the declared return `[List]` instead of
+`[Any]`, the pre-flight check refuses the program — `type_error: g:
+return value 1: expected List, got Integer` — for the grouped body too,
+which runs and answers `[550, 417, 502, 54]` on both lanes under
+`-no-check`. A checker false positive over `r.list-of`'s result.
+
+**Proposed verdict:** resolve by fix.
+
+---
+
+## NUR374 — a `check-prop` generator whose body is a grouped `r.list-of` raises `undefined word: r` compiled {#nur374}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/aless migration)
+
+```
+import "boru:test"
+def p (Test.check-prop "p" [(r.list-of [r.int 0 999] 4)] [ var [[ops] (ops size) eq 4 ] ] 3 7 0)
+print (p)
+  interpreted   {"name": "p", "ok": true, "runs": 3, …, "error": null}
+  compiled      {"name": "p", "ok": false, "runs": 1, …, "error": error(undefined word: r)}
+```
+
+`r.list-of` runs its element body (`[r.int 0 999]`) by itself (on a
+pooled interpreter, see [design/COMPILABLE-SUBSET.md](design/COMPILABLE-SUBSET.md)
+§5), and there the generator's random source `r` is not bound. The
+property reports a failure the interpreter does not. The same call in a
+named fn whose PARAM is `r` (`def ints fn [[n:Integer r:Map] [List] [
+(r.list-of [r.int 0 999] n) ]]`, generator `[ (ints 4 r) ]`), or in a
+lambda handed to a `Function`-typed param, agrees. The check pass has
+the same blind spot for a var-bound `r`: `print (rs each [ var [[r]
+(r.list-of [r.int 0 999] 4) ] ])` over `def rs [(Rand.with-seed 7)]` is
+refused by the pre-flight check (`undefined_word: undefined word: r` at
+the element body), and answers `[[550, 417, 502, 54]]` on the
+interpreter.
+
+**Proposed verdict:** resolve by fix — the element body sees the
+bindings of the code that calls `r.list-of`, on both lanes and in the
+check pass.
+
+---
+
+## NUR375 — a callback that binds a draw with `def` and leaves the binding raises "a landed fn value takes arguments" compiled {#nur375}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru property-generator rewrites)
+
+```
+import "boru:rand"
+def rs [(Rand.with-seed 1)]
+print (rs each [ var [[r] def a (r.int 0 9) def b (r.int 0 9) [a b] ] ])
+  interpreted   [[5, 7]]
+  compiled      [boru/internal_error] bytecode: internal: a landed fn value takes
+                arguments: the interpreter's re-step applies it here over the value
+                written after it, and no compiled apply re-steps it (NUR298); the
+                compiled runtime cannot execute it (pc=5, src 3:34)
+```
+
+`boru check` is clean and the program compiles; the compiled runtime
+then fails at the first `r.int`. In a `Test.check-prop` generator the
+same body (`[ def a (r.int 0 9) def b (r.int 0 9) [a b] ]`, or `[ def xs
+(r.list-of [r.int 0 999] 4) xs ]`) does not stop the program: the
+property reports `ok: false` with that error after one run, where the
+interpreter passes. The same body in a lambda handed to a fn whose param
+is `cb:Function` (`(cb (Rand.with-seed 1))`) answers `[5, 7]` on both
+lanes, and so does the generator `[ [(r.int 0 9) (r.int 0 9)] ]`. The
+error text names NUR298 (closed 2026-09-27); this is a shape its fix
+does not reach.
+
+**Proposed verdict:** resolve by fix.
 
 ---
