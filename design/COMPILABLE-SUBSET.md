@@ -791,6 +791,29 @@ user still gets an answer while the case is open:
     paren a word collects forward (`1 add (for 3 [… break …])`) refuses on
     its existing variadic-loop-result reasons; the interpreter now answers
     it (the loop takes its own signal).
+- **Open refusals recorded 2026-10-02 (downstream: voxgig-boru/decision):**
+  - A module fn imported from a FILE runs as a stored fn unit
+    (`storedfn$body`, stamped once at import, not per call). When its body's
+    RESULT is a bare read of a gradual binding that is not a parameter, the
+    stamp declines ("stored fn: bare read of `r` may hold a fn the
+    interpreter dispatches as a word (NUR279)"), and EVERY call of that fn,
+    data or fn, then runs on the interpreter (`boru -compile-report`: "did
+    not compile"). `def tail-bare fn [[m:Map] [Any] [ def r (m get "x") r ]]`
+    exported from a file and called `L.tail-bare {x: 5}` answers `[5]` on
+    both lanes with the stamp declined. NUR279's fix names a gradual CAPTURE
+    left in the residual; a body-local def is the same decline and the
+    commoner shape (compute a value from data, then leave it). The same read
+    mid-body (`r drop "done"`), a gradual PARAM read in the result (the
+    per-call `FnReadParams` refusal) and `r/v` all keep the unit. Owed: a
+    guard at a stored unit's result-position read (data takes the compiled
+    push; a fn sends that one call to the interpreter's dispatch, or raises a
+    designed defer), as the param case already has per call. Surfaced by
+    `eval-table-first`, `eval-table-priority`, `eval-tree`, `find-node` and
+    `find-branch-next` in voxgig-boru/decision, which have since read those
+    values with `/v` as a library fix of their own (a stored `then` is data),
+    so the library no longer exhibits it. When such a body also breaks its
+    declared return count, the compiled caller raises `internal_error`
+    instead of the contract's `type_error` — an answer divergence, NUR366.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

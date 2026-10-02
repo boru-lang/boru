@@ -98,6 +98,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR359](#nur359) | A computed run re-stepping an argument-taking fn value defers compiled (loud) | the NUR355 pass (2026-09-29); narrowed 2026-09-30 |
 | [NUR361](#nur361) | A gradual read nested in an inline body that holds a fn defers compiled (loud; was silent) | the NUR356 pass (2026-09-29); narrowed 2026-09-30 |
 | [NUR364](#nur364) | A failed call over a pending literal in a fn body renders a wider operand window compiled (notes only) | the NUR235 pass (2026-09-30) |
+| [NUR366](#nur366) | A stored fn whose stamp declined and whose result count breaks its declared returns raises internal_error compiled; the interpreter raises the return contract's type_error | downstream: the voxgig-boru/decision migration (2026-10-02) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -896,3 +897,37 @@ Code and caret agree.
 
 ---
 
+## NUR366 — a declined stored fn that breaks its declared return count raises internal_error compiled {#nur366}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/decision migration)
+
+```
+# lib.boru, imported from a FILE, so `tail-arity` is a stored fn unit; its
+# stamp declines: "stored fn: bare read of `r` may hold a fn the
+# interpreter dispatches as a word (NUR279)"
+def tail-arity fn [[m:Map] [Any] [ def r (m get "x") 10 r ]]
+export "L" { tail-arity: tail-arity/v }
+
+import "<dir>/lib.boru" L.tail-arity {x: 5}
+  interpreted   [boru/type_error] tail-arity: expected 1 return value(s), got 2 — [10 5]
+  compiled      [boru/internal_error] bytecode: internal: dynamic frame replay tail-arity:
+                result count 2 differs from the declared 1; the compiled runtime cannot
+                execute it (pc=0, src 0:0) — "this is a compiler defect"
+```
+
+With a fn in `x` (`(n:Integer => [n add 1])`) the tail read takes the `10`
+and both lanes answer `[11]`. A STAMPED fn that breaks the same contract
+(`def two-plain fn [[m:Map] [Any] [ 10 (m get "x") ]]`, same file) raises
+the type_error on both lanes. So the compiled caller's dynamic frame
+replay over the declined unit sees the count breach but reports it as its
+own internal failure, where the contract's error is owed. (Both lanes also
+render the caller's column against line 1 of the module file; that part
+agrees.)
+
+**Proposed verdict:** resolve by fix — the replay raises the return
+contract's `type_error` with the interpreter's text. The stamp decline
+behind it is a refusal, tracked separately in
+[design/COMPILABLE-SUBSET.md](design/COMPILABLE-SUBSET.md) §5 ("open
+refusals recorded 2026-10-02").
+
+---
