@@ -101,6 +101,10 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR366](#nur366) | A stored fn whose stamp declined and whose result count breaks its declared returns raises internal_error compiled; the interpreter raises the return contract's type_error | downstream: the voxgig-boru/decision migration (2026-10-02) |
 | [NUR367](#nur367) | A local rebound in a loop body and read bare in an arm after the loop, holding a fn: compiled returns the fn uncalled (`for`/`while`, silent) or raises (`each`/`for-each`); the interpreter calls it | downstream: the voxgig-boru/decision migration (2026-10-02) |
 | [NUR368](#nur368) | A fn value obtained at run time and held in a local, applied at the main program: `print (41 f)` prints the argument and the call lands on the next value (silent); a 0-arg one bound through a paren reads back undefined | downstream: the voxgig-boru/decision migration (2026-10-02) |
+| [NUR369](#nur369) | A fn value passed as a param and called from an `each` callback, when the callee re-enters the same fn: the outer loop applies the inner call's fn compiled (silent) | downstream: the voxgig-boru/template migration (2026-10-02) |
+| [NUR370](#nur370) | A fn param called on a def made in the same `each`/`var` body from a gradual read raises internal_error DISPATCH_GENERIC compiled | downstream: the voxgig-boru/template migration (2026-10-02) |
+| [NUR371](#nur371) | A def in an `if` arm of an imported fn's fold body clobbers a same-named local of the caller compiled (`undefined_word`) | downstream: the voxgig-boru/template migration (2026-10-02) |
+| [NUR372](#nur372) | A module fn whose fold body reads its param raises `undefined_word` on its 5th–8th compile in one process compiled (library-scale repro) | downstream: the voxgig-boru/template migration (2026-10-02) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1032,5 +1036,107 @@ agree.
 **Proposed verdict:** resolve by fix — apply the run-time lead where the
 paren closes (as the interpreter does), or decline before any effect of
 the enclosing call runs; bind `def r (out)` as the interpreter does.
+
+---
+
+## NUR369 — a re-entered fn-value param called from an `each` callback applies the inner call's fn compiled {#nur369}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/template migration)
+
+```
+def tj fn [ [xs:List body:Function] [List] [ (xs each [ var [[x] (body x) ] ]) ] ]
+def b2 fn [ [c:Integer] [Integer] [ c mul 10 ] ]
+def b1 fn [ [c:Integer] [Integer] [ (tj [7 8] b2/v) size ] ]
+print (tj [1 2] b1/v)
+  interpreted   [2, 2]
+  compiled      [10, 20]    (`boru check` clean; exit 0)
+```
+
+`b1`'s call re-enters `tj` with `b2`; when it returns, the outer loop's
+callback applies `b2` (the inner frame's `body`) instead of its own `b1`.
+A silent wrong answer. voxgig-boru/template's block renderers had this
+shape whenever blocks nested (a liquid `for` inside a `for` rendered one
+outer iteration); the library now lowers every block to a named generated
+fn and passes no fn values.
+
+**Proposed verdict:** resolve by fix — each activation's callback reads its
+own frame's param.
+
+---
+
+## NUR370 — a fn param called on a def made in the same `each`/`var` body raises DISPATCH_GENERIC compiled {#nur370}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/template migration)
+
+```
+def apply-each fn [ [xs:List f:Function] [List] [
+  (xs each [ var [[e] def x (e get "k") (f x) ] ])
+] ]
+print (apply-each [{k:1} {k:2}] (fn [ [c:Any] [Any] [ c ] ]))
+  interpreted   [1, 2]
+  compiled      [boru/internal_error] bytecode: internal: DISPATCH_GENERIC at f: the live
+                plan claims 1 forward of 1 where the record claimed 0 of 1; the compiled
+                runtime cannot execute it (vm:generic-claim-drift)
+```
+
+`(f x/v)`, `(f (x))` and `(f (e get "k"))` answer `[1, 2]` on both lanes.
+
+**Proposed verdict:** resolve by fix.
+
+---
+
+## NUR371 — a def in an `if` arm of an imported fn's fold body clobbers the caller's same-named local compiled {#nur371}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/template migration)
+
+```
+# mod.boru (imported from a file)
+def collect fn [ [n:Integer] [List] [
+  def out (flex [])
+  def res (do {k:[""]} (iota n) [ var [[i acc]
+    if (i eq 1) [ def _ (out push i)  do {k:[""]} ] [ acc ]
+  ] ] fold)
+  slice 0 (out size) out
+] ]
+def work fn [ [s:String] [String] [ if (s eq "zz") [ convert String ((collect 3) size) ] [ add "?" s ] ] ]
+export "M" { work: work/v }
+
+# main.boru
+import "<dir>/mod.boru"
+def f fn [ [s:String] [String] [ def out (M.work s) `out=${out}` ] ]
+print (f "ab")
+  interpreted   out=ab?
+  compiled      [boru/undefined_word] undefined word: out
+```
+
+`work` only reaches `collect` in an arm never taken. Renaming either
+`out`, or reading it with a plain `print (out)` instead of the template
+string, makes the lanes agree.
+
+**Proposed verdict:** resolve by fix — a callee's defs never touch the
+caller's frame.
+
+---
+
+## NUR372 — a fold body reading its fn's param raises undefined_word on the 5th–8th compile in a process {#nur372}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/template migration) · **library-scale repro; not isolated below it**
+
+`template.aql` at voxgig-boru/template `bea732e`, whose `split-args`
+folds over the characters of its param `s` reading `s` inside the fold
+body. Calling `Template.compile` twelve times on a liquid template with a
+filter argument (`{{ v | append: "a" }}`), each in
+`do [(… Template.compile).program size)] error [get "message"]`:
+
+```
+  interpreted   5635 (all twelve)
+  compiled      5635 ×4, then `undefined word: s` ×4, then 5635 ×4
+```
+
+A cut-down standalone module did not reproduce it. The library's current
+`split-args` folds over `StringUtil.split "" s` and reads no outer name in
+the fold body, and agrees on every call.
+
+**Proposed verdict:** resolve by fix (owed: a minimal repro).
 
 ---
