@@ -9,6 +9,12 @@ today". Update this file at the end of every increment.
 
 Last updated: **2026-09-25**.
 
+> **2026-10-02:** the downstream voxgig-boru libraries are handed over in
+> [VOXGIG-BORU-HANDOVER.0.md](VOXGIG-BORU-HANDOVER.0.md): every suite
+> compiles and every runtime callback stamps on 64c5ab2f3, but 30 of 58
+> suites still enter the interpreter at run time; the stopped pass to remove
+> that is saved as patches, and the defects found are NUR366–NUR377.
+
 **Read in this order:** the definition of done below; then
 [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md) (2026-09-17,
 the plan re-examined and re-staged — its §5 is the work order) and

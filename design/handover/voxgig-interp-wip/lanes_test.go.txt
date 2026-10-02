@@ -1,0 +1,41 @@
+package zzlanes
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
+	"strings"
+	"testing"
+
+	lang "github.com/boru-lang/boru/lang/go"
+)
+
+// Untracked probe: run each LANES_FILES file on the interpreter and compiled; print both.
+func TestZZLanes(t *testing.T) {
+	for _, f := range strings.Fields(os.Getenv("LANES_FILES")) {
+		src, err := os.ReadFile(f)
+		if err != nil {
+			t.Fatal(err)
+		}
+		for _, lane := range []string{"interp", "compiled"} {
+			a, err := lang.New(lang.Options{BaseDir: filepath.Dir(f)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			a.SetOutput(&buf)
+			var rerr error
+			var note string
+			if lane == "interp" {
+				_, rerr = a.RunInterp(string(src))
+			} else {
+				var ran bool
+				var reason string
+				_, ran, reason, rerr = a.RunCompiledReason(string(src))
+				note = fmt.Sprintf(" ran=%v reason=%q", ran, reason)
+			}
+			fmt.Printf("=== %s [%s]%s err=%v\n%s", filepath.Base(f), lane, note, rerr, buf.String())
+		}
+	}
+}

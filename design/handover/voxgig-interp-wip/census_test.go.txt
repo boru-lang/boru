@@ -1,0 +1,79 @@
+package zzcensus
+
+import (
+	"bytes"
+	"fmt"
+	"os"
+	"path/filepath"
+	"sort"
+	"strings"
+	"testing"
+
+	lang "github.com/boru-lang/boru/lang/go"
+)
+
+// TestZZCensus runs every suite of every library named in CENSUS_LIBS
+// (root dir CENSUS_ROOT) compiled, with the interpreter-entry and
+// runtime-bail hooks armed, and prints one line per suite.
+func TestZZCensus(t *testing.T) {
+	root := os.Getenv("CENSUS_ROOT")
+	libs := strings.Fields(os.Getenv("CENSUS_LIBS"))
+	out := os.Getenv("CENSUS_OUT")
+	var lines []string
+	for _, lib := range libs {
+		dir := filepath.Join(root, lib)
+		suites, _ := filepath.Glob(filepath.Join(dir, "test", "*_test.aql"))
+		specs, _ := filepath.Glob(filepath.Join(dir, "test", "*_spec.aql"))
+		suites = append(suites, specs...)
+		sort.Strings(suites)
+		for _, s := range suites {
+			if err := os.Chdir(dir); err != nil {
+				t.Fatal(err)
+			}
+			src, _ := os.ReadFile(s)
+			a, err := lang.New(lang.Options{BaseDir: filepath.Dir(s)})
+			if err != nil {
+				t.Fatal(err)
+			}
+			var buf bytes.Buffer
+			a.SetOutput(&buf)
+			bySeam := map[string]int{}
+			unattr, attr := 0, 0
+			disarm := a.ArmInterpEntryHook(func(e lang.InterpEntry) {
+				if e.Attribution == "" && !e.CheckMode {
+					unattr++
+					bySeam[e.Seam]++
+				} else {
+					attr++
+				}
+			})
+			bails := map[string]int{}
+			disarmB := a.ArmRuntimeBailHook(func(b lang.BailEvent) { bails[b.Site]++ })
+			_, ran, reason, rerr := a.RunCompiledReason(string(src))
+			disarm()
+			disarmB()
+			green := strings.Contains(buf.String(), "all green")
+			var seams []string
+			for k, v := range bySeam {
+				seams = append(seams, fmt.Sprintf("%s=%d", k, v))
+			}
+			sort.Strings(seams)
+			var bl []string
+			for k, v := range bails {
+				bl = append(bl, fmt.Sprintf("%s=%d", k, v))
+			}
+			sort.Strings(bl)
+			es := "-"
+			if rerr != nil {
+				es = strings.SplitN(rerr.Error(), "\n", 2)[0]
+			}
+			line := fmt.Sprintf("%-13s %-28s ran=%-5v green=%-5v unattributed=%-6d attributed=%-6d seams=[%s] bails=[%s] reason=%q err=%s",
+				lib, filepath.Base(s), ran, green, unattr, attr, strings.Join(seams, " "), strings.Join(bl, " "), reason, es)
+			lines = append(lines, line)
+			t.Log(line)
+		}
+	}
+	if out != "" {
+		os.WriteFile(out, []byte(strings.Join(lines, "\n")+"\n"), 0o644)
+	}
+}
