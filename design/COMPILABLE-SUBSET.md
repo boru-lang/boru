@@ -814,6 +814,29 @@ user still gets an answer while the case is open:
     so the library no longer exhibits it. When such a body also breaks its
     declared return count, the compiled caller raises `internal_error`
     instead of the contract's `type_error` — an answer divergence, NUR366.
+  - Calling a fn value obtained at RUN TIME and held in a local (a
+    library's result, `def out2 (give {x: inc/v})` where `give` returns
+    `m get "x"`, or a map read, `def out2 ({x: inc/v} get "x")`): with
+    `inc` taking one Integer, `print (out2 41)` declines ("fn-value
+    application bounded by a paren (dynamic value precedes args)") for the
+    returned lead (the map-read lead compiles and agrees); `def z (41 out2)
+    print (z)` declines ("member fn value auto-applies mid-expression
+    (fn-value-call boundary, Stage 3)"); `[(41 out2) 7]` declines
+    ("residual value of unknown provenance"); a 0-arg fn read from a map,
+    `def out ({x: f42/v} get "x")`, then `print (out)`, `def r (out)` or
+    `out/v apply`, declines ("fn value read from a container auto-dispatches
+    (Stage 3): 0-arg landing not modelable"); `print (out/v apply)` over a returned 0-arg fn declines
+    ("apply of a produced closure the program never dispatched (no matching
+    arguments beneath it)"); and `n g/v apply` in a fn body whose param is
+    `g:Any` declines ("unmatched dispatch recovered at apply"). All of
+    these answer `42` on the interpreter. What compiles and agrees: `41
+    out2/v apply` at the main program (inside `print`, a `def`, or followed
+    by more values), `(41 out2) 7 add`, `print (out)` over a returned 0-arg
+    fn, and a fn whose param is declared `g:Function` (`(g n)` or `n g/v
+    apply`). Three neighbouring spellings are answer divergences, not
+    refusals — NUR368. Surfaced by voxgig-boru/decision, whose evaluators
+    return a stored fn `then` / leaf `result` as data for the caller to
+    apply.
 
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and

@@ -100,6 +100,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR364](#nur364) | A failed call over a pending literal in a fn body renders a wider operand window compiled (notes only) | the NUR235 pass (2026-09-30) |
 | [NUR366](#nur366) | A stored fn whose stamp declined and whose result count breaks its declared returns raises internal_error compiled; the interpreter raises the return contract's type_error | downstream: the voxgig-boru/decision migration (2026-10-02) |
 | [NUR367](#nur367) | A local rebound in a loop body and read bare in an arm after the loop, holding a fn: compiled returns the fn uncalled (`for`/`while`, silent) or raises (`each`/`for-each`); the interpreter calls it | downstream: the voxgig-boru/decision migration (2026-10-02) |
+| [NUR368](#nur368) | A fn value obtained at run time and held in a local, applied at the main program: `print (41 f)` prints the argument and the call lands on the next value (silent); a 0-arg one bound through a paren reads back undefined | downstream: the voxgig-boru/decision migration (2026-10-02) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -978,5 +979,58 @@ either lane.
 **Proposed verdict:** resolve by fix — guard the post-loop read
 (dispatch a fn as the interpreter does) or decline soundly, as NUR361's
 verdict asks for its family.
+
+---
+
+## NUR368 — a run-time fn value in a local, applied at the main program, applies late compiled {#nur368}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/decision migration)
+
+```
+def inc (n:Integer => [n add 1])
+def out2 ({x: inc/v} get "x")      # a fn value obtained at run time
+print (41 out2) 7
+  interpreted   prints 42, leaves [7]
+  compiled      prints 41, leaves [8]   (`boru check`: 0 errors; exit 0)
+```
+
+The compiled lane prints the argument and the deferred call of `out2`
+then takes the next value. Without the trailing `7`, `print (41 out2)`
+prints `41` and only then raises the NUR123 defer (`` internal_error:
+gradual read `out2` holds a fn the interpreter dispatches here and the
+unit could not re-step ``), so the defer is loud only after a wrong
+effect, and silent whenever a value follows. A lead returned by a fn instead
+(`def give fn [[m:Map] [Any] [m get "x"]]`, `def out2 (give {x:
+inc/v})`) gives the same two rows. A 0-arg fn returned by a fn and bound
+through a paren reads back undefined:
+
+```
+def give fn [[m:Map] [Any] [m get "x"]]
+def f42 ([] => [42])
+def out (give {x: f42/v})
+def r (out)
+print (r/v)
+  interpreted   prints 42
+  compiled      [boru/undefined_word] undefined word: r   (at the `def r`)
+```
+
+The lanes agree on `41 out2/v apply` (in `print`, in a `def`, or followed
+by more values), on `(41 out2) 7 add`, on `print (out)` over a returned
+0-arg fn, when the value is passed to a fn whose param is declared
+`g:Function`, and when the lead is statically a fn (`def out2 inc/v`). The other spellings of
+the same call decline to compile; they are listed in
+[design/COMPILABLE-SUBSET.md](design/COMPILABLE-SUBSET.md) §5 ("open
+refusals recorded 2026-10-02"). The `print (41 out2)` read is a gradual
+read the root runs inline, the case [NUR361](#nur361)'s guard covers; it
+fires, but after `print` has consumed the paren's value.
+
+Downstream: voxgig-boru/decision's evaluators return a fn stored in a
+rule's `then` or a leaf's `result` as data, for the caller to apply; its
+docs now name `apply` and a `Function`-typed param as the spellings that
+agree.
+
+**Proposed verdict:** resolve by fix — apply the run-time lead where the
+paren closes (as the interpreter does), or decline before any effect of
+the enclosing call runs; bind `def r (out)` as the interpreter does.
 
 ---
