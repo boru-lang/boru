@@ -108,6 +108,8 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR373](#nur373) | A fn whose result is an ungrouped `r.list-of` over its random-source param draws once and repeats the value compiled (silent); the `[List]`-declared twin is refused by a checker false positive | downstream: the voxgig-boru/aless migration (2026-10-02) |
 | [NUR374](#nur374) | A `Test.check-prop` generator whose body is a grouped `r.list-of` raises `undefined word: r` compiled (the element body does not see the generator's `r`); the check pass refuses a var-bound `r` there | downstream: the voxgig-boru/aless migration (2026-10-02) |
 | [NUR375](#nur375) | A callback that binds an `r.int` draw with `def` and leaves the bindings raises internal_error "a landed fn value takes arguments (NUR298)" compiled; in a `check-prop` generator the property fails | downstream: the voxgig-boru property-generator rewrites (2026-10-02) |
+| [NUR376](#nur376) | A fn-local name read inside a `do {k: [expr]}` map value leaves a later same-named `var`/`def` binding undefined compiled (`undefined_word`), even in an unrelated fn | downstream: the voxgig-boru/stats migration (2026-10-02) |
+| [NUR377](#nur377) | `boru:test` mints its record types from a fresh ID counter: a user type made after `import "boru:test"` fails its own return contract (`expected Box, got Box`) and `is` answers false compiled (silent) | downstream: the voxgig-boru/bloom-filter and stats migrations (2026-10-02) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1234,5 +1236,76 @@ error text names NUR298 (closed 2026-09-27); this is a shape its fix
 does not reach.
 
 **Proposed verdict:** resolve by fix.
+
+---
+
+## NUR376 — a name read inside a `do {k: [expr]}` map value leaves a same-named callback binding undefined compiled {#nur376}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/stats migration)
+
+```
+def f fn [[x:Integer] [Map] [ def r (x add 1) do {k: [r]} ]]
+def g fn [[xs:List] [List] [ xs each [var [[r] r]] ]]
+print (f 1)
+print (g [1 2])
+  interpreted   {"k": 2}
+                [1, 2]
+  compiled      {"k": 2}
+                each: element 0: [boru/undefined_word]: undefined word: r (at g's `r`)
+```
+
+A fn-local name read inside a `do {…}` map value makes a later binding
+of the same name unresolvable — here a `var` in a later, unrelated fn's
+`each` callback; a def-bound name does the same (`def f fn [[xs:List]
+[Map] [ def fs xs do {k: [fs get 0]} ]]`, then `def g fn [[xs:List]
+[List] [ def fs xs fs each [var [[x] (x add 1)]] ]]`: `g [1 2]` answers
+`[2, 3]` interpreted, `undefined word: fs` compiled). `boru check` is
+clean. voxgig-boru/stats met it three ways (`Stats.mode`, `Stats.ols`
+after `Stats.linreg`, `Stats.zscores` after `Stats.mode`), so one failing
+call broke later, unrelated ones; it now writes plain map literals
+(`{k: (expr)}`), which agree. A `do {…}` map also runs every value body
+on the interpreter at run time (design/COMPILABLE-SUBSET.md §5).
+
+**Proposed verdict:** resolve by fix.
+
+---
+
+## NUR377 — `boru:test` mints its record types from a fresh ID counter; a type made after it compares as a different type compiled {#nur377}
+
+**Status:** Pending · **Recorded:** 2026-10-02 · measured at 64c5ab2 · surfaced downstream (the voxgig-boru/bloom-filter and stats migrations) · **silent** (`is`)
+
+```
+# lib.boru
+def Box class { v: 0 }
+def mk fn [ [n:Integer] [Box] [ make Box {v: n} ] ]
+def mk-any fn [ [n:Integer] [Any] [ make Box {v: n} ] ]
+export "L" { mk: mk/v, mk-any: mk-any/v, Box: Box }
+
+# main.boru
+import "boru:test"
+import "./lib.boru"
+print (L.mk 1)
+  interpreted   Class/Box{v:1}
+  compiled      [boru/type_error] mk: return value 1: expected Box, got Box
+print ((L.mk-any 2) is L.Box)
+  interpreted   true
+  compiled      false
+```
+
+`BuildTestModule` (`lang/go/modules/test.go`) builds its sub-registry
+with `newDefaultRegistry()` and never calls
+`modReg.Types.AdoptSeqFrom(parent.Types)`, so the record types its
+preamble mints draw IDs from a fresh counter and collide with types
+minted elsewhere in the program. e69b9ac35 ("Fix minted-type ID
+collisions across sibling registries") added the call to the module-body
+path and to `parse`, `model`, `matrix-util`, `time-util`, `io`, `net` and
+`minilang`, not to `boru:test`. The compiled return check and `is` look
+the declared type up by ID (`core.CanonicalType`) and find `boru:test`'s
+type; the interpreter compares the nodes directly. With `./lib.boru`
+imported BEFORE `boru:test` both lanes answer `Class/Box{v:1}`, which is
+the workaround every affected library documents.
+
+**Proposed verdict:** resolve by fix — `BuildTestModule` adopts the
+parent's type-ID sequence like its siblings.
 
 ---
