@@ -31,8 +31,8 @@ Last updated: **2026-10-05** (the baseline block below; the rest of the page is 
 >   `TestServeStepShutdownDrains` (cmd/go's debugcmd package, a ten-second
 >   SIGINT wait) on the same commit — a timing flake, not pinned yet.
 > - **The live gates on that tree** (CI's table; `make gate-status`
->   regenerates `test/go/langspec/GATE_STATUS.md`, whose committed copy had
->   sat at #518's values through rounds 1–5): compile failures 1,
+>   regenerates `test/go/langspec/GATE_STATUS.md`; its committed copy sat at
+>   #518's values through rounds 1–5 and this baseline refreshes it): compile failures 1,
 >   interp-entry census rows 18, engine entries 159, locally-resolved defers
 >   1, reducible rows 1, sweep call-form failures 286, sweep compile failures
 >   1, sweep islands 2, diagnostic-parity divergences 46, type-soundness
@@ -60,7 +60,7 @@ Last updated: **2026-10-05** (the baseline block below; the rest of the page is 
 >   interpreter-entry shapes R1–R6 the census found.
 > - **Work in progress, saved as patches**: round 6's four in
 >   `handover/round6-wip/` (per-patch state in the round-6 page's table;
->   A passes every module suite and lang/go's full root suite and is the candidate to land; B, C and D build and pass the module suites), and the voxgig pass's trie rewrite and sort
+>   A landed in this baseline and NUR334 is narrowed a fifth time; B, C and D build and pass the module suites, saved for the next round), and the voxgig pass's trie rewrite and sort
 >   prototype in `handover/voxgig-interp-wip/`, with the instrumented trace
 >   build, the two-lane probe and the census probe beside them.
 > - **Open PRs.** #527 and #528 are superseded by this baseline; close them

@@ -47,10 +47,8 @@ func TestNUR334CallResultEdges(t *testing.T) {
 		{`def r fn [[n:Integer][Any][if (n gt 0) [r (n sub 1)] [n]]] end 9 r 3`, "[9 0]"},
 		// A program ending in a terminal trap plans none.
 		{f + `9 ` + call + ` end 1 add "a" nosuchword`, "ERROR:undefined word"},
-		// A statement the island cannot take over: a word before the call
-		// on its level, a call in a list with a later read, a stack operand
-		// from an earlier statement.
-		{f + `def k 3 end k ` + call, "[3 1 2]"},
+		// A statement the island cannot take over: a call in a list with a
+		// later read, a stack operand from an earlier statement.
 		{f + `(quote [def t word [1 2] 1]) end f`, "[1 2]"},
 		{f + `def g fn [[b:List][Any][def z 5 end z f b]] end g (quote [def t word [7] 1])`, "ERROR:expected 1 return value(s), got 2"},
 		{f + `def g fn [[b:List][Any][4 end f b]] end g (quote [def t word [7] 1])`, "ERROR:expected 1 return value(s), got 2"},

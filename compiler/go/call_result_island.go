@@ -1,6 +1,7 @@
 package compiler
 
 import (
+	"slices"
 	"sort"
 
 	core "github.com/boru-lang/boru/core/go"
@@ -64,7 +65,16 @@ func (es *EmitState) callResultWanted(ev *EmitEvent) bool {
 // as the results it left. Only scalar literals, or runs the island writes,
 // may stand before the call's run on its level (inertBefore): written as
 // values, the results are no collection barrier.
-func (es *EmitState) callResultPoint(tree map[int]treeEvent, seq int, body []core.Value) (int, []substPlan, bool) {
+//
+// The island runs AFTER the call, whose effects may have moved what a read
+// made before it would read again: a member read (`c.n f …`, where the call
+// sets `c.n`), a def-bound word (`k f …`, where the call's body may undef
+// `k`). So the reads the compiled code made in the statement before the call
+// — on the call's own level before its run, or at the statement's top level
+// after it, which the interpreter makes before a lazy list literal's
+// elements (`[(g) f …] c.n`) — are written as the values the compiled code
+// read (heldReadPlan, boundWordPlans), never made again (NUR334).
+func (es *EmitState) callResultPoint(tree map[int]treeEvent, seq int, body []core.Value, reads map[string][]core.SrcPos) (int, []substPlan, bool) {
 	ev := tree[seq].ev
 	tok := statementToken(body, eventPos(*ev))
 	if tok < 0 {
@@ -75,26 +85,140 @@ func (es *EmitState) callResultPoint(tree map[int]treeEvent, seq int, body []cor
 		return 0, nil, false
 	}
 	first := statementFirstSeq(tree, seq, statementStart(body, tok))
-	var pending []int
+	var before []int
 	for s, te := range tree {
-		if s < first || s >= seq || inSpan(body, eventPos(*te.ev), run, span) {
+		if s >= first && s < seq && !inSpan(body, eventPos(*te.ev), run, span) {
+			before = append(before, s)
+		}
+	}
+	sort.Ints(before)
+	var held []substPlan
+	for _, s := range before {
+		if sp, ok := heldReadPlan(tree, before, tree[s].ev, body, tok, run, posAfter(eventPos(*tree[s].ev), eventPos(*ev))); ok {
+			held = append(held, sp)
+		}
+	}
+	var pending []int
+	for _, s := range before {
+		p := eventPos(*tree[s].ev)
+		if writtenOver(held, tokenPath(body, p)) {
 			continue
 		}
-		if p := eventPos(*te.ev); p.Row == 0 || posAfter(p, eventPos(*ev)) {
-			// Written after the call and run before it — the read after a
-			// lazy list literal the interpreter makes before the list's
-			// elements (`[(g) f …] c.n`): the island would make it again
-			// after the effects the compiled code ran (NUR334).
+		if p.Row == 0 || posAfter(p, eventPos(*ev)) {
+			// Written after the call and run before it, and no read the
+			// island writes as its value: it would run again after the
+			// effects the compiled code ran (NUR334).
 			return 0, nil, false
 		}
 		pending = append(pending, s)
 	}
-	sort.Ints(pending)
-	substs, ok := es.restartSubsts(tree, body, tok, pending)
+	substs, ok := es.restartSubsts(tree, body, tok, pending, append(held, boundWordPlans(tree, body, tok, run, reads)...)...)
 	if !ok || !inertBefore(body, tok, run, substs...) {
 		return 0, nil, false
 	}
 	return tok, append(substs, substPlan{path: run, span: span, seq: seq, results: true}), true
+}
+
+// heldReadPlan plans the member read ev — a native read the island could
+// make again (restartRead) on a reach's token (`c.n`), the token's last —
+// as the value the compiled code read, written over its token: on the
+// call's level before the call's run, or, written after the call (after),
+// at the statement's top level. A chained reach (`c.a.b`) reads once per
+// member there, each a restartRead; the last read, of the statement's
+// events before the call (before), is the token's value. ok is false for
+// any other event.
+func heldReadPlan(tree map[int]treeEvent, before []int, ev *EmitEvent, body []core.Value, tok int, run []int, after bool) (substPlan, bool) {
+	if !restartRead(ev) || ev.call.nout != 1 {
+		return substPlan{}, false
+	}
+	path := tokenPath(body, eventPos(*ev))
+	if len(path) == 0 || path[0] < tok || !core.IsReach(tokenAt(body, path)) {
+		return substPlan{}, false
+	}
+	for _, s := range before {
+		if o := tree[s].ev; o != ev && slices.Equal(tokenPath(body, eventPos(*o)), path) && (s > ev.seq || !restartRead(o)) {
+			return substPlan{}, false
+		}
+	}
+	// The token the island writes: the reach, or a paren holding it alone
+	// (`(c.n) f …`), which leaves the read's one value the same way.
+	w := path
+	for len(w) > 1 {
+		holder := tokenAt(body, w[:len(w)-1])
+		if inner, _ := nestedToks(holder); !core.IsParenExpr(holder) || len(inner) != 1 {
+			break
+		}
+		w = w[:len(w)-1]
+	}
+	n := len(w)
+	switch {
+	case after && n != 1:
+		return substPlan{}, false
+	case !after && (n != len(run) || !slices.Equal(w[:n-1], run[:n-1]) || w[n-1] >= run[n-1]):
+		return substPlan{}, false
+	}
+	return substPlan{path: w, span: 1, seq: ev.seq}, true
+}
+
+// tokenAt is the token at path (tokenPath) in body.
+func tokenAt(body []core.Value, path []int) core.Value {
+	toks := body
+	for _, at := range path[:len(path)-1] {
+		toks, _ = nestedToks(toks[at])
+	}
+	return toks[path[len(path)-1]]
+}
+
+// boundWordPlans plans each bare word on the call's level before its run
+// that no event reads — a read of a def-bound scalar the pass folded (`def
+// k 3 end k f …`) — as the value the pass read there (boundReadValue), a
+// constant the island writes over the word.
+func boundWordPlans(tree map[int]treeEvent, body []core.Value, tok int, run []int, reads map[string][]core.SrcPos) []substPlan {
+	toks, from := body, tok
+	for _, at := range run[:len(run)-1] {
+		toks, _ = nestedToks(toks[at])
+		from = 0
+	}
+	var out []substPlan
+	for i := from; i < run[len(run)-1]; i++ {
+		t := toks[i]
+		if !core.IsWord(t) {
+			continue
+		}
+		if v, ok := boundReadValue(tree, reads, t.Pos()); ok {
+			out = append(out, substPlan{path: append(append([]int(nil), run[:len(run)-1]...), i), span: 1, seq: -1, lit: true, val: v})
+		}
+	}
+	return out
+}
+
+// boundReadValue is the value the pass read at position p: the read's one
+// binding (reads, NoteLocalRead's positions by the value read), bound by a
+// def of a scalar written as it is — the constant the compiled code pushes
+// for the read. ok is false for a read of anything else, and at a position
+// no read or more than one binding's read stands at.
+func boundReadValue(tree map[int]treeEvent, reads map[string][]core.SrcPos, p core.SrcPos) (core.Value, bool) {
+	id := ""
+	for rid, ps := range reads {
+		if containsPos(ps, p) {
+			if id != "" {
+				return core.Value{}, false
+			}
+			id = rid
+		}
+	}
+	if id == "" {
+		return core.Value{}, false
+	}
+	for _, te := range tree {
+		d := te.ev.dyn
+		if te.ev.kind != evDynBind || d == nil || d.val.ID != id {
+			continue
+		}
+		v := d.val
+		return v, d.srcSeq < 0 && d.src.kind != opLocal && core.IsSteplessValue(v) && !v.Carrier && !v.Dynamic
+	}
+	return core.Value{}, false
 }
 
 // planCallResultRestarts plans the root's call-result islands: one per root
@@ -115,7 +239,7 @@ func (es *EmitState) planCallResultRestarts(lw *lowerer, residual []core.Value) 
 		}
 		// Where the pass told the stack at the statement's start the island
 		// seats exactly that; else no operand may be deferred past it.
-		tok, substs, ok := es.callResultPoint(tree, seq, es.rootBody)
+		tok, substs, ok := es.callResultPoint(tree, seq, es.rootBody, es.rootLocalReads)
 		d := deoptPoint{seq: seq, slot: -1, start: statementStart(es.rootBody, tok), token: tok}
 		_, told := es.stackAtStart(tok)
 		srcs, held, slots, seated := es.rootPreStart(lw, tree, residual, tok, d.start, statementFirstSeq(tree, seq, d.start))
@@ -142,7 +266,7 @@ func (es *EmitState) planUnitCallResults(u *emitUnit, rec *fnUnitRec) int {
 		if te.inLoop || !es.callResultWanted(te.ev) {
 			continue
 		}
-		tok, substs, ok := es.callResultPoint(tree, seq, rec.body)
+		tok, substs, ok := es.callResultPoint(tree, seq, rec.body, rec.localReads)
 		if !ok || tailRun(rec.body, substs[len(substs)-1]) {
 			continue
 		}

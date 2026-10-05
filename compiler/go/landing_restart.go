@@ -113,6 +113,11 @@ type substPlan struct {
 	// named marks a paren apply's lead that is a def-bound word (parenLead):
 	// the island writes its fn as the name's call runs it (RestartSubst.Named).
 	named bool
+	// lit marks a def-bound word's read the pass folded (boundWordPlans): the
+	// island writes val, the constant the compiled code pushes for it
+	// (RestartConst), and seq is -1.
+	lit bool
+	val core.Value
 }
 
 // covers reports whether path lies in the run of tokens p replaces: it

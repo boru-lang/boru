@@ -92,7 +92,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 
 | # | Title | Surfaced by / provenance |
 |---|-------|--------------------------|
-| [NUR334](#nur334) | A read after a computed keep-defs body: a returned `/v` splice at a tail call or behind a word, and a spliced word read twice or nested, stay loud | main's 50 uncovered statements (2026-09-28); narrowed four times |
+| [NUR334](#nur334) | A read after a computed keep-defs body: a returned `/v` splice at a tail call, a compound read before the call or a call after the lazy list, and a spliced word read twice or nested, stay loud | main's 50 uncovered statements (2026-09-28); narrowed five times, the fifth round 6's first slice (2026-10-05) |
 | [NUR336](#nur336) | A paren apply over a data member: loop continuations beyond a counted loop's first statement, a word collecting the paren forward, a type value before the stop, stay loud | main's 50 uncovered statements (2026-09-28); narrowed four times |
 | [NUR356](#nur356) | A native that raises by value inside a literal handed to a call matched at run time raises before the no-match; a computed arm's pending literal defers | the NUR351/352 pass (2026-09-29); narrowed twice |
 | [NUR359](#nur359) | A computed run re-stepping an argument-taking fn value defers compiled (loud) | the NUR355 pass (2026-09-29); narrowed 2026-09-30 |
@@ -803,20 +803,31 @@ names this split). `lang/go/context_boundary_differential_test.go` (the
 
 ## NUR334 — a read after a computed keep-defs body: the loud remainder {#nur334}
 
-**Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-09-30 (four times)
+**Status:** Pending (loud) · **Recorded:** 2026-09-28 · **Narrowed:** 2026-10-05 (five times; the fifth is round 6's first slice, landed with the baseline)
 
 A unit returning a `/v`-read splice now takes a per-call-site result island
 (compiler `call_result_island.go`, eng `callResultRestart`), and a live read
 inside a spliced word's body an island of the spliced body at its firing
-(`spliceBody`). Still a loud compiled defer where the interpreter answers:
+(`spliceBody`). Since 2026-10-05 the island also writes what the compiled
+code READ in the statement before the call as the value it read there,
+never reading it again over the call's effects: a def-bound scalar before
+the call on its level (`def k 3 end k f …`, folded to the constant the
+island writes), a member read before it (`c.n f …`, alone, in a paren or
+chained) and a member read written after a lazy list holding the call
+(`[(cg) f …] c.n`) agree on both lanes (lang
+`TestNUR334CallResultReadsWritten`, with its negative half). Still a loud
+compiled defer where the interpreter answers:
 
 - the call at a fn body's tail (the interpreter's tail call depends on the
-  caller's context), a tail replacement, a word before the call on its
-  level (`def k 3 end k f …`), or a lazy list read written after the call;
+  caller's context) and a tail replacement;
+- a read of a COMPOUND binding before the call (`def k [1] end k f …`,
+  whose identity the island cannot write) and a call written after the lazy
+  list that the compiled code ran before it (`[(cg) f …] c.n add 1`);
 - a spliced word read more than once or nested (`[w]`, `(w)`), redefined,
   or preceded by a word that may collect it.
 
-Pinned by lang `TestNUR334CallResultEdges`, `TestNUR334SplicedWordEdges`.
+Pinned by lang `TestNUR334CallResultEdges`, `TestNUR334SplicedWordEdges`,
+`TestNUR334CallResultReadsWritten`.
 
 **Verdict (maintainer, 2026-09-29):** resolve by fix — compile every remaining shape and agree.
 

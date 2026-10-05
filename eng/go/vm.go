@@ -2224,6 +2224,11 @@ func (vc *vmContext) substIsland(island []core.Value, substs []compiler.RestartS
 		case sb.Src.Kind == compiler.RestartResults && stop != nil:
 			vs = stop
 		case sb.Src.Kind == compiler.RestartNone:
+		case sb.Src.Kind == compiler.RestartConst && sb.Src.Val.Parent != nil:
+			// A def-bound scalar's read the pass folded, written as the
+			// constant the compiled code pushed for it (NUR334); the zero
+			// Value — no constant at all — is the compiler's own fault, below.
+			vs = []core.Value{sb.Src.Val}
 		case sb.Src.Kind == compiler.RestartGuard && len(stop) == 1:
 			vs = stop
 		case sb.Src.Kind == compiler.RestartLocal && i >= 0 && i < len(vc.restartLocals):
