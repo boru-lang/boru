@@ -1,0 +1,272 @@
+diff --git a/check/go/check_recovery.go b/check/go/check_recovery.go
+index 54b1f54d2..4104fe188 100644
+--- a/check/go/check_recovery.go
++++ b/check/go/check_recovery.go
+@@ -964,11 +964,48 @@ type noMatchProber interface {
+ // Uncalled) whose spec is unproven would record a no-spec poly, and that
+ // defer's alt raise is a word's signature_error where the interpreter raises
+ // the value's uncalled_function (core.windowArityFirstMatch).
+-func recoverySpec(p noMatchProber, fn *core.FnDefInfo, sw []core.Value) ([]core.Value, *core.PolyNoMatchSpec, bool) {
+-	spec := p.Spec(fn, sw)
++func recoverySpec(p noMatchProber, fn *core.FnDefInfo, sw []core.Value, raw map[int]core.Value) ([]core.Value, *core.PolyNoMatchSpec, bool) {
++	spec := p.Spec(fn, rawWindow(sw, raw))
++	if spec != nil && len(raw) > 0 {
++		spec.Raw = raw
++	}
+ 	return sw, spec, spec != nil || !p.Uncalled()
+ }
+ 
++// recoveryRawOperands is, by window index, the pending literal each operand
++// of a recovered dispatch was evaluated from in place (core
++// Engine.RecoveryRawAt) — positions are the operands' tape positions in
++// signature order; nil when none was.
++func recoveryRawOperands(e *core.Engine, positions []int) map[int]core.Value {
++	var raw map[int]core.Value
++	for k, p := range positions {
++		if tok, ok := e.RecoveryRawAt(p); ok {
++			if raw == nil {
++				raw = map[int]core.Value{}
++			}
++			raw[k] = tok
++		}
++	}
++	return raw
++}
++
++// rawWindow is sw with each operand evaluated from a pending literal (raw)
++// taking that literal's identity: the no-match probe snapshot the tape
++// before the recovery evaluated it, so its tuples hold the literal, and the
++// spec locates it at the operand's window index (NUR364).
++func rawWindow(sw []core.Value, raw map[int]core.Value) []core.Value {
++	if len(raw) == 0 {
++		return sw
++	}
++	out := append([]core.Value(nil), sw...)
++	for k, tok := range raw {
++		if k < len(out) {
++			out[k].ID = tok.ID
++		}
++	}
++	return out
++}
++
+ // recoverPoly records a recovered dispatch as a poly re-match over its
+ // window (args in tape order, the first nStack off the stack) — the
+ // disjunct straddle, or else the dynamic recovery. The window's split rides
+@@ -983,7 +1020,7 @@ func recoverPoly(e *core.Engine, probe noMatchProber, w core.WordInfo, fn *core.
+ 	if ofn := owner.Lookup(w.Name); ofn != nil && core.BarrierBars(ofn.Signatures, len(sw)-nStack) {
+ 		defer e.PublishLayout(sw, core.SigOrderPositions(positions, nStack), pos)()
+ 	}
+-	sw, spec, ok := recoverySpec(probe, fn, sw)
++	sw, spec, ok := recoverySpec(probe, fn, sw, recoveryRawOperands(e, core.SigOrderPositions(positions, nStack)))
+ 	return ok && dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, outs, pos, straddle, owner, !straddle, spec)
+ }
+ 
+diff --git a/compiler/go/eager_literal.go b/compiler/go/eager_literal.go
+index 52d0c6174..4486a8aa3 100644
+--- a/compiler/go/eager_literal.go
++++ b/compiler/go/eager_literal.go
+@@ -67,6 +67,14 @@ func (es *EmitState) eagerLiteralEffect(events []EmitEvent, i int, body []core.V
+ 			return true
+ 		}
+ 	}
++	if zzRaise != "" {
++		for j := i - 1; j >= 0 && (events[j].litDepth > events[i].litDepth || rawRenderedAssembly(&events[j])); j-- {
++			if !rawRenderedAssembly(&events[j]) {
++				zzLog("ZZRAISE kind=%d word=%s", events[i].kind, events[i].call.word)
++				return zzRaise == "decline"
++			}
++		}
++	}
+ 	return false
+ }
+ 
+diff --git a/compiler/go/emit.go b/compiler/go/emit.go
+index 26ed20a56..c73d369a9 100644
+--- a/compiler/go/emit.go
++++ b/compiler/go/emit.go
+@@ -1,6 +1,9 @@
+ package compiler
+ 
+ import (
++	"fmt"
++	"os"
++	"runtime/debug"
+ 	"maps"
+ 	"math"
+ 	"slices"
+@@ -8722,8 +8725,16 @@ func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, si
+ 			spec.wordPos = wordPos
+ 		}
+ 	}
++	// The no-match window the arms' dispatch reports (NoteCallWindow,
++	// NUR320): the run's refusal renders it where the interpreter's does —
++	// a pending literal as written, a word read the report stops at (NUR364).
++	window := es.callWindowOps(callWord, wordPos, args)
++	if window != nil && es.reg != nil && wordWrittenAt(es.reg.Source, callWord, wordPos) {
++		// Where the interpreter's refusal points: the dispatching word.
++		spec.wordPos = wordPos
++	}
+ 	seq := es.appendEvent(EmitEvent{kind: evCallUser, uc: emitUserCall{
+-		unit: -1, ops: ops, nout: len(outs), pos: pos, region: region, poly: spec,
++		unit: -1, ops: ops, nout: len(outs), pos: pos, region: region, poly: spec, window: window,
+ 	}})
+ 	es.noteArgSites(seq, args)
+ 	es.SiteCounts[SiteDynamic]++
+@@ -11407,6 +11418,12 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
+ 	if !es.Active() {
+ 		return false
+ 	}
++	if os.Getenv("ZZDBG") != "" {
++		fmt.Fprintf(os.Stderr, "ZZ RecordPolyCall %s @%v args=%v noMatch=%+v layout=%+v\n", word, pos, args, noMatch, es.layoutFor(args))
++		if os.Getenv("ZZDBG") == "2" {
++			debug.PrintStack()
++		}
++	}
+ 	if reason := es.polyCallDeclineReason(word, args, outs, pos); reason != "" {
+ 		es.SiteCounts[SiteMeta]++
+ 		es.MarkUncompilable(reason)
+diff --git a/compiler/go/lower.go b/compiler/go/lower.go
+index 807333a93..7dbb2a833 100644
+--- a/compiler/go/lower.go
++++ b/compiler/go/lower.go
+@@ -5098,6 +5098,7 @@ func (lw *lowerer) lowerUserPolyCall(ev *EmitEvent) string {
+ 		lw.p.Regions = append(lw.p.Regions, *uc.region)
+ 		lw.emitRegionOracle(len(lw.p.Regions)-1, uc.pos)
+ 	}
++	lw.seatCallWindow(uc.window, n)
+ 	pi := len(lw.p.UserPolys)
+ 	lw.p.UserPolys = append(lw.p.UserPolys, UserPolyRef{
+ 		Word:    uc.poly.word,
+diff --git a/core/go/check_specs.go b/core/go/check_specs.go
+index 41105ad39..c7ec77626 100644
+--- a/core/go/check_specs.go
++++ b/core/go/check_specs.go
+@@ -42,6 +42,27 @@ type PolyNoMatchSpec struct {
+ 	// 'w' matched no signature") at Pos, not sigError's signature_error, so
+ 	// the VM raises that instead. Written / StackTuple are unused for it.
+ 	Uncalled bool
++	// Raw, by window index, is the pending list or map literal an operand
++	// was evaluated from where the check pass's recovery evaluated it in
++	// place (Engine.RecoveryRawAt): the interpreter's failed match never
++	// evaluates it, so its report renders the literal as written, and its
++	// tuples hold the literal where the window holds the value (NUR364).
++	Raw map[int]Value
++}
++
++// RenderWindow is window with each Raw operand put back as written; window
++// itself when there is none.
++func (s *PolyNoMatchSpec) RenderWindow(window []Value) []Value {
++	if len(s.Raw) == 0 {
++		return window
++	}
++	out := append([]Value(nil), window...)
++	for i, v := range s.Raw {
++		if i >= 0 && i < len(out) {
++			out[i] = v
++		}
++	}
++	return out
+ }
+ 
+ // FallbackSpan is one interpreter island: a recorded token sequence
+diff --git a/core/go/engine.go b/core/go/engine.go
+index 31b8bbdf1..cbe3dd4d8 100644
+--- a/core/go/engine.go
++++ b/core/go/engine.go
+@@ -11384,6 +11384,13 @@ func (e *Engine) NoteRecoveryRaw(i int, raw Value) {
+ // recovery's own exit, so no later dispatch reads its indices.
+ func (e *Engine) ClearRecoveryRaw() { e.recoveryRaw = nil }
+ 
++// RecoveryRawAt is the pending literal the recovery replaced at tape index
++// i with its evaluation (NoteRecoveryRaw), or false.
++func (e *Engine) RecoveryRawAt(i int) (Value, bool) {
++	v, ok := e.recoveryRaw[i]
++	return v, ok
++}
++
+ // withRecoveryRaw puts the replaced literals back on the tape for a report
+ // built over it, returning the undo.
+ func (e *Engine) withRecoveryRaw() func() {
+diff --git a/eng/go/vm.go b/eng/go/vm.go
+index e9e430f99..29f280914 100644
+--- a/eng/go/vm.go
++++ b/eng/go/vm.go
+@@ -19,6 +19,7 @@ package eng
+ 
+ import (
+ 	"fmt"
++	"os"
+ 	"slices"
+ 	"strconv"
+ 	"strings"
+@@ -5411,6 +5412,9 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
+ 			// literal (PolyRef.Raw) keeps its own report, which renders the
+ 			// literal as written: the island writes the runs inside it as
+ 			// their values (NUR352).
++			if os.Getenv("ZZDBG") != "" {
++				fmt.Fprintf(os.Stderr, "ZZ poly %s missed=%v err=%v fit=%v raw=%d\n", pr.Word, missed, err != nil, pr.Fit != nil, len(pr.Raw))
++			}
+ 			if missed || (err != nil && pr.Fit != nil && vc.polyUnmatched && len(pr.Raw) == 0) {
+ 				// A gradual operand the pass collected forward that the
+ 				// interpreter's collection stops at, or a window no
+@@ -5528,7 +5532,7 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
+ 			// re-match and the re-check share one run of each predicate.
+ 			unit, sigArgs, err := vc.matchUserPoly(&p.UserPolys[in.Arg], stack, curDebug, pc)
+ 			if err != nil {
+-				return nil, err
++				return nil, userPolyWindowed(err, curReg, &p.UserPolys[in.Arg], p, curUnit, pc, curDebug, stack, locals)
+ 			}
+ 			fn := &p.Fns[unit]
+ 			stack = stack[:len(stack)-fn.NParams]
+diff --git a/eng/go/vm_poly_nomatch.go b/eng/go/vm_poly_nomatch.go
+index 2c802804b..70fff3037 100644
+--- a/eng/go/vm_poly_nomatch.go
++++ b/eng/go/vm_poly_nomatch.go
+@@ -40,6 +40,9 @@ func (vc *vmContext) polyNoMatchRaise(r *core.Registry, pr *compiler.PolyRef, fn
+ 			return nil
+ 		}
+ 	}
++	// An operand the pass's recovery evaluated from a pending literal is the
++	// literal as written in the interpreter's report (NUR364).
++	window = spec.RenderWindow(window)
+ 	written, ok := tupleAt(window, spec.Written)
+ 	if !ok {
+ 		return nil
+@@ -123,6 +126,36 @@ func bestEffortNoMatch(r *core.Registry, fn *core.FnDefInfo, word string, window
+ 	return ae //covergate:allow stampAt returns the same *BoruError it was given (§compiler)
+ }
+ 
++// userPolyWindowed is err, a multi-overload user call's failed re-match
++// (matchUserPoly), with its no-match raise rendered over the window the
++// interpreter's failed dispatch reports where the record seated one at pc
++// (CallWindows, NUR320): a pending literal as written, the report stopping
++// at a word read after the word (NUR364) — where the best-effort raise
++// rendered the call's evaluated arguments. Any other error is err.
++func userPolyWindowed(err error, r *core.Registry, pr *compiler.UserPolyRef, p *compiler.Program, unit, pc int, curDebug []core.SrcPos, stack, locals []core.Value) error {
++	ae, ok := err.(*core.BoruError)
++	if !ok || ae.DeferAlt == nil || len(stack) < pr.Arity {
++		return err
++	}
++	window := make([]core.Value, pr.Arity)
++	for i := range window {
++		window[i] = stack[len(stack)-1-i]
++	}
++	win, ok := callWindowAt(r, pr.Word, p, unit, pc, window, stack[:len(stack)-pr.Arity], locals)
++	if !ok {
++		return err
++	}
++	fd := dispatchRegistry(pr.Reg, r).Lookup(pr.Word)
++	// The raise points at the dispatching word where the record knows it
++	// (UserPolyRef.WordPos), else where the best-effort one stood.
++	alt := core.NoMatchDiag(r.Source, pr.Word, fd, win, pr.WordPos, core.ReorderHintFor(pr.Word, fd, win))
++	if pr.WordPos.Row == 0 {
++		alt.Row, alt.Col, alt.Src = ae.DeferAlt.Row, ae.DeferAlt.Col, ae.DeferAlt.Src
++	}
++	ae.DeferAlt = alt
++	return ae
++}
++
+ // polySplitRaise is the no-match arm for a poly whose record carried its
+ // exact operand layout (PolyRef.Split, NUR242). The interpreter's tape at
+ // the failed dispatch is the operands laid out around the word — the stack

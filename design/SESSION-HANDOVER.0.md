@@ -9,6 +9,10 @@ today". Update this file at the end of every increment.
 
 Last updated: **2026-09-25**.
 
+> **2026-09-30:** the NUR rounds (#520–#526) are handed over in
+> [NUR-ROUND6-HANDOVER.0.md](NUR-ROUND6-HANDOVER.0.md): the state at stop,
+> the six open records, and round 6's unmerged work saved as patches.
+
 > **2026-10-02:** the downstream voxgig-boru libraries are handed over in
 > [VOXGIG-BORU-HANDOVER.0.md](VOXGIG-BORU-HANDOVER.0.md): every suite
 > compiles and every runtime callback stamps on 64c5ab2f3, but 30 of 58
