@@ -107,31 +107,51 @@ func TestHeldReadPlanGuards(t *testing.T) {
 
 // TestBoundReadValueGuards pins the reads boundReadValue declines (NUR334,
 // round 6): a position no read stands at, one that two bindings' reads stand
-// at, and a read whose binding no dyn-bind event of the tree records. A def
-// of a scalar read once is the positive half; a def of a list is found but
-// not written.
+// at, a read whose binding no dyn-bind event of the tree records, a name the
+// tree binds to the value more than once, and a word whose token is no word.
+// A def of a scalar read once is the positive half; two defs sharing one
+// value identity (`def a 3  def b:Pos a`) are told apart by the name read
+// (the Codex review of #529); a def of a list is found but not written.
 func TestBoundReadValueGuards(t *testing.T) {
 	p := core.SrcPos{Row: 1, Col: 1}
 	three := core.NewInteger(3)
 	three.ID = "r1"
-	bind := func(v core.Value) map[int]treeEvent {
-		return map[int]treeEvent{1: {ev: &EmitEvent{seq: 1, kind: evDynBind, dyn: &emitDynBind{val: v, srcSeq: -1, src: EmitOperand{kind: opEvent}}}}}
+	bind := func(seq int, name string, v core.Value) treeEvent {
+		return treeEvent{ev: &EmitEvent{seq: seq, kind: evDynBind, dyn: &emitDynBind{name: name, val: v, srcSeq: -1, src: EmitOperand{kind: opEvent}}}}
 	}
-	if _, ok := boundReadValue(bind(three), map[string][]core.SrcPos{}, p); ok {
+	tree := map[int]treeEvent{1: bind(1, "a", three)}
+	r1 := map[string][]core.SrcPos{"r1": {p}}
+	if _, ok := boundReadValue(tree, map[string][]core.SrcPos{}, p, "a"); ok {
 		t.Error("a position no read stands at is written as nothing")
 	}
-	if _, ok := boundReadValue(bind(three), map[string][]core.SrcPos{"r1": {p}, "r2": {p}}, p); ok {
+	if _, ok := boundReadValue(tree, map[string][]core.SrcPos{"r1": {p}, "r2": {p}}, p, "a"); ok {
 		t.Error("a position two bindings' reads stand at is written as nothing")
 	}
-	if _, ok := boundReadValue(map[int]treeEvent{}, map[string][]core.SrcPos{"r1": {p}}, p); ok {
+	if _, ok := boundReadValue(map[int]treeEvent{}, r1, p, "a"); ok {
 		t.Error("a read whose binding no event records is written as nothing")
 	}
-	if v, ok := boundReadValue(bind(three), map[string][]core.SrcPos{"r1": {p}}, p); !ok || v.String() != "3" {
+	if _, ok := boundReadValue(tree, r1, p, "b"); ok {
+		t.Error("a name the tree does not bind to the value is written as nothing")
+	}
+	if v, ok := boundReadValue(tree, r1, p, "a"); !ok || v.String() != "3" {
 		t.Errorf("a def-bound scalar read once is written as its value: %v %v", v, ok)
+	}
+	// Two defs sharing one value identity: the name read picks the binding.
+	four := core.NewInteger(4)
+	four.ID = "r1"
+	alias := map[int]treeEvent{1: bind(1, "a", three), 2: bind(2, "b", four)}
+	if v, ok := boundReadValue(alias, r1, p, "b"); !ok || v.String() != "4" {
+		t.Errorf("the read of b is b's binding, not a's: %v %v", v, ok)
+	}
+	if v, ok := boundReadValue(alias, r1, p, "a"); !ok || v.String() != "3" {
+		t.Errorf("the read of a is a's binding, not b's: %v %v", v, ok)
+	}
+	if _, ok := boundReadValue(map[int]treeEvent{1: bind(1, "a", three), 2: bind(2, "a", four)}, r1, p, "a"); ok {
+		t.Error("a name bound to the value twice is ambiguous and written as nothing")
 	}
 	list := core.NewList(nil)
 	list.ID = "r3"
-	if _, ok := boundReadValue(bind(list), map[string][]core.SrcPos{"r3": {p}}, p); ok {
+	if _, ok := boundReadValue(map[int]treeEvent{1: bind(1, "l", list)}, map[string][]core.SrcPos{"r3": {p}}, p, "l"); ok {
 		t.Error("a compound binding is not written as a constant")
 	}
 }

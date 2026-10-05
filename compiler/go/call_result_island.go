@@ -182,22 +182,28 @@ func boundWordPlans(tree map[int]treeEvent, body []core.Value, tok int, run []in
 	var out []substPlan
 	for i := from; i < run[len(run)-1]; i++ {
 		t := toks[i]
-		if !core.IsWord(t) {
-			continue
+		wi, err := core.AsWord(t)
+		if err != nil {
+			continue // not a word
 		}
-		if v, ok := boundReadValue(tree, reads, t.Pos()); ok {
+		if v, ok := boundReadValue(tree, reads, t.Pos(), wi.Name); ok {
 			out = append(out, substPlan{path: append(append([]int(nil), run[:len(run)-1]...), i), span: 1, seq: -1, lit: true, val: v})
 		}
 	}
 	return out
 }
 
-// boundReadValue is the value the pass read at position p: the read's one
-// binding (reads, NoteLocalRead's positions by the value read), bound by a
-// def of a scalar written as it is — the constant the compiled code pushes
-// for the read. ok is false for a read of anything else, and at a position
-// no read or more than one binding's read stands at.
-func boundReadValue(tree map[int]treeEvent, reads map[string][]core.SrcPos, p core.SrcPos) (core.Value, bool) {
+// boundReadValue is the value the pass read at position p by the bare word
+// name: the read's one binding (reads, NoteLocalRead's positions by the
+// value read), bound by exactly one def of that NAME holding that value —
+// two defs may share one value identity under different parents (`def a 3
+// def b:Pos a`), and only the name read tells which the compiled code
+// pushed — and bound by a def of a scalar written as it is: the constant
+// the compiled code pushes for the read. ok is false for a read of anything
+// else, at a position no read or more than one binding's read stands at,
+// for a name no dyn-bind event binds to that value, and for a name bound to
+// it more than once.
+func boundReadValue(tree map[int]treeEvent, reads map[string][]core.SrcPos, p core.SrcPos, name string) (core.Value, bool) {
 	id := ""
 	for rid, ps := range reads {
 		if containsPos(ps, p) {
@@ -210,15 +216,22 @@ func boundReadValue(tree map[int]treeEvent, reads map[string][]core.SrcPos, p co
 	if id == "" {
 		return core.Value{}, false
 	}
+	var found *emitDynBind
 	for _, te := range tree {
 		d := te.ev.dyn
-		if te.ev.kind != evDynBind || d == nil || d.val.ID != id {
+		if te.ev.kind != evDynBind || d == nil || d.val.ID != id || d.name != name {
 			continue
 		}
-		v := d.val
-		return v, d.srcSeq < 0 && d.src.kind != opLocal && core.IsSteplessValue(v) && !v.Carrier && !v.Dynamic
+		if found != nil {
+			return core.Value{}, false
+		}
+		found = d
 	}
-	return core.Value{}, false
+	if found == nil {
+		return core.Value{}, false
+	}
+	v := found.val
+	return v, found.srcSeq < 0 && found.src.kind != opLocal && core.IsSteplessValue(v) && !v.Carrier && !v.Dynamic
 }
 
 // planCallResultRestarts plans the root's call-result islands: one per root

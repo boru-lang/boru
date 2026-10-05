@@ -40,6 +40,12 @@ func TestNUR334CallResultReadsWritten(t *testing.T) {
 		{f + `def k true end k ` + call, "[true 1 2]"},
 		{f + `def k "s" end k f (quote [def t word [add 1] 1])`, "[s1]"},
 		{f + `def k 3.5 end k f (quote [def t word [add] 1])`, "ERROR:cannot call `add`"},
+		// Two defs sharing one value identity under different parents (a typed
+		// re-def): the island writes the binding the NAME read, so the value
+		// keeps its brand on both lanes (the Codex review of #529 found the
+		// compiled lane answering Integer at random here).
+		{f + `def Pos refine Integer end def a 3 end def b:Pos a end b f (quote [def t word [1] 1]) end drop typeof`, "[Pos]"},
+		{f + `def Pos refine Integer end def a 3 end def b:Pos a end a f (quote [def t word [1] 1]) end drop typeof`, "[Integer]"},
 		// A member read before the call, over a body that sets it.
 		{c + `c.n f (quote [c set 'n' 5 drop def t word [1 2] 1])`, "[0 1 2]"},
 		{c + `[c.n f (quote [c set 'n' 5 drop def t word [1 2] 1])]`, "[[0 1 2]]"},
