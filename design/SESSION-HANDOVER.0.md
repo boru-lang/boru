@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-09-25**.
+Last updated: **2026-10-05** (the baseline block below; the rest of the page is the 2026-09-25 state and its history).
 
 > **2026-09-30:** the NUR rounds (#520–#526) are handed over in
 > [NUR-ROUND6-HANDOVER.0.md](NUR-ROUND6-HANDOVER.0.md): the state at stop,
@@ -18,6 +18,65 @@ Last updated: **2026-09-25**.
 > compiles and every runtime callback stamps on 64c5ab2f3, but 30 of 58
 > suites still enter the interpreter at run time; the stopped pass to remove
 > that is saved as patches, and the defects found are NUR366–NUR377.
+
+> ## Where things stand on 2026-10-05 — the baseline
+>
+> Read this block first. Everything after the two pointers above is the
+> full-compilation project's state as of 2026-09-25 and the history behind
+> it; this block is what changed since.
+>
+> - **Main** is at 64c5ab2f3 (NUR round 5, #526). CI is green on every push
+>   to it, and the merged ADR-008 coverage gate (`cover-gate.yml`, nightly)
+>   is green on 10-02, 10-04 and 10-05; its 10-03 run failed on
+>   `TestServeStepShutdownDrains` (cmd/go's debugcmd package, a ten-second
+>   SIGINT wait) on the same commit — a timing flake, not pinned yet.
+> - **The live gates on that tree** (CI's table; `make gate-status`
+>   regenerates `test/go/langspec/GATE_STATUS.md`, whose committed copy had
+>   sat at #518's values through rounds 1–5): compile failures 1,
+>   interp-entry census rows 18, engine entries 159, locally-resolved defers
+>   1, reducible rows 1, sweep call-form failures 286, sweep compile failures
+>   1, sweep islands 2, diagnostic-parity divergences 46, type-soundness
+>   violations 6, armed-only diagnostics 2; compute gaps, correct-error
+>   compile failures, interpreter islands, interpreter-only rows, runtime
+>   defers and the sweep's crash, empty-cell and invalid-seed gates at 0.
+> - **Two handovers were integrated into this baseline** (they were PRs
+>   #527 and #528, which it supersedes):
+>   [NUR-ROUND6-HANDOVER.0.md](NUR-ROUND6-HANDOVER.0.md) — the NUR rounds
+>   (#520–#526), the six open records with their verdicts, round 6's four
+>   patches re-saved in a form that builds and measured — and
+>   [VOXGIG-BORU-HANDOVER.0.md](VOXGIG-BORU-HANDOVER.0.md) — the nine
+>   downstream libraries on main, the interpreter-entry census (415,854
+>   run-time entries in 30 of 58 suites, six root shapes), and the defects
+>   they surfaced.
+> - **The register's open list** ([NUR.md](../NUR.md)): the rounds' six
+>   (NUR334, NUR336, NUR356, NUR359, NUR361, NUR364 — five with a
+>   resolve-by-fix verdict of 2026-09-29, NUR364 notes only), the migration's
+>   twelve (NUR366–NUR377), and six recorded 2026-10-05 from the same pass
+>   (NUR378–NUR383). The SILENT wrong answers among them, none with a verdict
+>   yet: NUR367, NUR368, NUR369, NUR373, NUR377, NUR378, NUR379, NUR380,
+>   NUR381 (NUR381 is the interpreter's). The compile refusals are in
+>   [COMPILABLE-SUBSET.md](COMPILABLE-SUBSET.md) §5, the blocks dated
+>   2026-10-02 and 2026-10-05, the latter also holding the six run-time
+>   interpreter-entry shapes R1–R6 the census found.
+> - **Work in progress, saved as patches**: round 6's four in
+>   `handover/round6-wip/` (per-patch state in the round-6 page's table;
+>   A passes every module suite and lang/go's full root suite and is the candidate to land; B, C and D build and pass the module suites), and the voxgig pass's trie rewrite and sort
+>   prototype in `handover/voxgig-interp-wip/`, with the instrumented trace
+>   build, the two-lane probe and the census probe beside them.
+> - **Open PRs.** #527 and #528 are superseded by this baseline; close them
+>   once it merges. #452 (wire-format compatibility and portability,
+>   2026-09-14) is 249 commits behind main and conflicts in eight files:
+>   `.github/workflows/ci.yml` (163 conflict lines against the restructured
+>   CI), the Makefile, cmd/go's build and fmt packages (15–32 lines each) and
+>   the generated graph. Its body says it resolves NUR141–NUR143, but those
+>   records never existed in its tree, and main gave those numbers to other
+>   records on 2026-09-15. It needs a rebase by someone whose token can push
+>   workflow files; a cloud session's cannot.
+> - **Next.** A round, as the round-6 page describes: split the open records
+>   by mechanism, one agent per track, integrate, record, gate, merge. The
+>   maintainer's verdicts are owed on NUR364 and on NUR366–NUR383 before
+>   their fixes count as directed work; the silent records above are the
+>   natural first track.
 
 **Read in this order:** the definition of done below; then
 [FULL-COMPILATION-REVIEW.0.md](FULL-COMPILATION-REVIEW.0.md) (2026-09-17,

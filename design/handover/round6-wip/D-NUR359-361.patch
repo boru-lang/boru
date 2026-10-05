@@ -181,18 +181,10 @@ index 000000000..861fffcd1
 +	return len(sites) == 1 && sites[0].seq < 0 && sites[0].pos.Row > 0 && bodyTokenContaining(toks, sites[0].pos) == at+1
 +}
 diff --git a/eng/go/vm.go b/eng/go/vm.go
-index e9e430f99..2bc7769b6 100644
+index e9e430f99..d86632399 100644
 --- a/eng/go/vm.go
 +++ b/eng/go/vm.go
-@@ -411,6 +411,7 @@ func runProgram(p *compiler.Program, r *core.Registry, stepLimit int) (result []
- 	if p == nil {
- 		return nil, vmEntryError("bytecode: nil program")
- 	}
-+	dumpXProgram(p)
- 	// §6.5's rollback, carried by the Program: roll this registry's bindings
- 	// back to the base the recorder captured before the check pass, so the
- 	// placed twins replay onto it instead of stacking a second install on
-@@ -1336,7 +1337,18 @@ func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef,
+@@ -1336,7 +1336,18 @@ func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef,
  			return nil, err
  		}
  	}
@@ -212,7 +204,7 @@ index e9e430f99..2bc7769b6 100644
  		if err := checkDynBodyPlain(r, pr.Word, results, curDebug, pc); err != nil {
  			return nil, err
  		}
-@@ -5221,6 +5233,11 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
+@@ -5221,6 +5232,11 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
  			// argument re-steps in place below (plainReSteps, NUR359): no
  			// island owes it, in a loop body or a unit's tail alike.
  			inPlace := s.DynBodyPlain && !s.ReStep && plainReSteps(results)
@@ -224,7 +216,7 @@ index e9e430f99..2bc7769b6 100644
  			stepped := s.Count != nil && (s.CountAlways || tapeCoupled(results) || (s.DynBodyPlain && !inPlace && dynBodyPlainRefuses(results)))
  			if kept, ok := spliceOutsSeat(s.SpliceOuts, results); ok {
  				results = kept
-@@ -5285,7 +5302,12 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
+@@ -5285,7 +5301,12 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
  				// continue the fn raised for the enclosing loop to take
  				// (NUR359).
  				var rerr error

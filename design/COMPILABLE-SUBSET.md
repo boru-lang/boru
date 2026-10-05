@@ -908,6 +908,88 @@ user still gets an answer while the case is open:
     top-level `Test.check-prop` compiles. Found by a voxgig-boru/template
     scratch harness.
 
+- **Open refusals recorded 2026-10-05 (downstream: the voxgig-boru libraries, U7–U14 and R1–R6 of [VOXGIG-BORU-HANDOVER.0.md](VOXGIG-BORU-HANDOVER.0.md)):**
+  found by the interpreter-entry pass of 2026-10-02 and recorded here when
+  that work was integrated. The answer divergences found beside them are
+  NUR378–NUR383.
+  - **U7.** A top-level `def by-val-key (Sort.by-key val-key/v)` read as
+    `by-val-key/v` inside a `Test.check-prop` body refuses the program
+    ("operand of unknown provenance or not statically materialisable at
+    test-check-prop"); the interpreter passes it (voxgig-boru/sort's
+    `sort_prop_test` P6 shape).
+  - **U8.** The forward spelling of NUR123's recursive shape refuses: `def go
+    fn [[comp:Function n:Integer xs:List] [Integer] [ def c (comp (xs get 1)
+    (xs get 0)) def _r (if (n gt 0) [ (xs (n sub 1) comp/v go) ] [ 0 ]) n ]]`,
+    then `print ([3 1] 2 cmp/v go)`: interpreted `2`; compiled "fn go:
+    unapplied fn-value in body residual (dynamic apply not compiled in a fn
+    body)". The bare and `/v` spellings of the same helper compile and are
+    NUR380's silent wrong answer, so `comp/v apply` is the one spelling a
+    library can use.
+  - **U9.** `for` over an untyped def bound from a `boru:rand` member call:
+    `def f fn [ [lo:Integer hi:Integer r:Map] [List] [ def n (r.int lo hi)
+    [for n [ 7 ]] ] ]`, `print (f 2 4 (Rand.with-seed 7))`: interpreted `[7,
+    7, 7]`; compiled "unmatched dispatch recovered at for". In a property
+    generator helper the stamp declines silently and the generator runs on
+    the interpreter. `def n:Integer (…)` compiles, and so does an untyped def
+    from a plain Map field.
+  - **Run-time interpreter use, answers agreeing (§6: each one "owed a real
+    lowering").** An instrumented build (the handover's
+    `interp-trace-build.patch`) counted 415,854 unattributed interpreter
+    entries in 30 of the libraries' 58 suites on 64c5ab2, from six root
+    shapes: **R1** `do {k: [expr], …}` — native `do` over a Map evaluates
+    each list value on the interpreter (`doEvalDataList < DoEvalMapValue <
+    DoMapHandler`); a plain map literal `{k: (expr)}` costs 0. **R2**
+    `r.list-of [gen] n` (boru:rand) runs its element body on a pooled
+    interpreter once per element (`runPooledAt < RunPooled`); a named fn
+    drawing in a loop (`[for n [(r.int 0 999)]]`) makes the same draws in
+    the same order at 0 entries. **R3** sort's comparator application —
+    `xi xj comp/v apply` re-steps through an island (`runIslandResolved <
+    applyReStep < callDynApply`) and a trailing `fn comp(Any, Any) 5 3`
+    islands through `callDynTrailTop`. **R4** a generator list literal
+    holding `r.int …` / `r.one-of […]` calls islands (`islandRun <
+    makeListReStep`). **R5** `if (i gte (toks size)) [do {code:[''] next:[i]
+    …}] [ … ]` in a lexer loop islands through `liveDeopt < deoptIfFn`, with
+    most of template's entries nested inside it. **R6** fold bodies (`doFold
+    < InvokeBody < RunResolved`), Reach lenses (`each $.1` → `ApplyReach <
+    RunPooledSub`) and a property body run through `CallBoru` after a stale
+    stamp. Four named shapes sit under those roots:
+    - **U10.** A run-time-stamped property body goes stale on EVERY run when
+      the top-level loop variable driving `Test.run-property` /
+      `check-prop` shares a name bound inside the property's callees and a
+      Reach lens (`each $.1`) is on the call path; after the re-stamp
+      budget (`RestampMaxTries = 3`, `compiler/go/stamp_runtime.go`) the
+      remaining runs go through `CallBoru` (16 of 20 runs in the handover's
+      repro; both lanes answer `ok: true`). Renaming the loop variable, or
+      replacing the lens with a `var` each, gives 0. Why callee-local names
+      enter the property body's dependency snapshot when a lens is present
+      is not determined.
+    - **U11.** A native word value (`cmp/v`) passed through a FILE-module
+      fn's `Function` param is applied on an island, not the native fast
+      path (`print (Sort.quick cmp/v [5 3 8 1 9 2 7 4 6 0])`: 52 entries;
+      every algorithm with `cmp/v`: 4,440). A diagnostic build shows the
+      param rename (`name="comp" nativeWord=true regNative=false`) defeating
+      the by-name native lookup. Owed: key the fast path on the value's own
+      native identity (NUR379 is the wrong-answer twin of the same rename).
+      In one file: 0 entries.
+    - **U12.** A program-level fn value read inside a property body and
+      applied inside a module fn runs on an island (`CallBoru`): a top-level
+      `def by-num (Sort.by-number/v)` read as `by-num/v` in a `Test.prop`
+      body costs 41,200 entries; a 0-arg fn returning the MODULE member
+      costs 0; a program-defined comparator islands either way.
+    - **U13.** A forward application `(comp y x)` of a `Function` param
+      inside a module fn islands via `callDynFrame` (2 islands per call with
+      `cmp/v`).
+  - **Checker false positives (U14).** `def f fn [ [lo:Integer hi:Integer
+    r:Map] [Integer] [ def n:Integer (r.int lo hi) n ] ]`, `print (f 2 4
+    (Rand.with-seed 7))`: the check refuses with "expected 1 return
+    value(s), got 3"; both lanes answer `3`. The untyped def and `def n
+    ((r.int lo hi))` pass. Beside it, the `[List]`-declared `r.list-of`
+    helper (NUR373's text) and a var-bound `r` in an `r.list-of` element
+    body (NUR374's text).
+  - One more, transcript only (no repro survived): a trie harness draft
+    failed to compile with "twin regime: a bind transition has no stream
+    placement", on the old and new modules alike.
+
 The **branch-join narrow-preservation** rule (§2) removed a former
 over-refusal here — an enclosing local read inside both `if` arms and
 reused after the join now compiles.

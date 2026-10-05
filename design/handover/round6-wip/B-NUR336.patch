@@ -16,6 +16,22 @@ index e323aabb2..ceb24bd48 100644
  	// Place marks a paren apply at the program root after which the code only
  	// pushes (stampRootRestarts): a data lead with no statement island is
  	// placed where the apply stands, the program's residual taking the extra
+diff --git a/compiler/go/call_result_island_test.go b/compiler/go/call_result_island_test.go
+index e92e87652..97621cffc 100644
+--- a/compiler/go/call_result_island_test.go
++++ b/compiler/go/call_result_island_test.go
+@@ -40,10 +40,9 @@ func TestCallResultPointUnplaced(t *testing.T) {
+ // late-start accounting TestNUR336LateStartEdges drives end to end).
+ func TestTypeDeferredUnknownIndex(t *testing.T) {
+ 	es := &EmitState{}
+-	reads := func(string) int { return 1 }
+ 	consumed := func(func(EmitOperand) bool, func(core.Value) bool, int) int { return 0 }
+ 	for _, idx := range []int{-1, 0} {
+-		if es.typeDeferred(&fnUnitRec{}, &deoptPoint{}, idx, reads, consumed) {
++		if es.typeDeferred(&fnUnitRec{}, &deoptPoint{}, idx, consumed) {
+ 			t.Errorf("type index %d: an unknown type defers nothing", idx)
+ 		}
+ 	}
 diff --git a/compiler/go/emit.go b/compiler/go/emit.go
 index 26ed20a56..fadf27b6f 100644
 --- a/compiler/go/emit.go
@@ -235,7 +251,7 @@ index 26ed20a56..fadf27b6f 100644
  // may lack: all of them, unless the read is a capture the residual itself
  // holds and nothing else consumes (`do [10 j]`, NUR217) — the residual is
 diff --git a/compiler/go/landing_restart.go b/compiler/go/landing_restart.go
-index 04075cfb8..776a45262 100644
+index 04075cfb8..0d3c75ecc 100644
 --- a/compiler/go/landing_restart.go
 +++ b/compiler/go/landing_restart.go
 @@ -1735,7 +1735,7 @@ func (es *EmitState) unitRestartPoint(u *emitUnit, rec *fnUnitRec, tree map[int]
@@ -370,26 +386,17 @@ index 04075cfb8..776a45262 100644
  }
  
  // unitLoopOuter is rootLoopOuter in a fn unit: the frame region beneath the
-@@ -1935,7 +1974,8 @@ func (es *EmitState) rootLoopOuter(lw *lowerer, forTok int) (*landingRestart, bo
+@@ -1935,7 +1974,7 @@ func (es *EmitState) rootLoopOuter(lw *lowerer, forTok int) (*landingRestart, bo
  func (es *EmitState) unitLoopOuter(u *emitUnit, rec *fnUnitRec, tree map[int]treeEvent, seq, forTok int) (*landingRestart, bool) {
  	d := deoptPoint{seq: seq, slot: -1, start: rec.body[forTok].Pos(), token: forTok, restart: true, frameHeld: true}
  	ok := d.start.Row > 0 && !es.deoptDeferred(u, rec, &d, -1)
 -	d.onFrame = outsBefore(rec.outOps, statementFirstSeq(tree, seq, d.start), nil, d.onFrame)
-+	dbg336("unitLoopOuter ok=%v lits=%v onFrame=%v", ok, d.lits, d.onFrame)
 +	d.onFrame = outsBefore(rec.outOps, statementFirstSeq(tree, seq, d.start), d.litProds(), d.onFrame)
  	return &landingRestart{token: forTok, start: d.start, depth: -1, held: -1, onFrame: d.onFrame, lits: d.lits, posOf: d.posOf}, ok
  }
  
-@@ -1973,6 +2013,7 @@ func (lw *lowerer) noteLoopRestartDepths(p core.SrcPos) {
- 			lw.noteRestartDepth(o, o.start)
- 			lw.vm = saved
- 		}
-+		dbg336("noteLoop depth=%d o.depth=%d o.held=%d o.unseat=%v outer=%v o.beneath=%v o.onFrame=%v o.srcs=%v", r.depth, r.loop.beneath.depth, r.loop.beneath.held, r.loop.beneath.unseatable, lw.loops[0].outerVM, r.loop.beneath.beneath, r.loop.beneath.onFrame, r.loop.beneath.srcs)
- 		if o := r.loop.beneath; r.depth == 0 && lw.loopOuterIntact(o, lw.loops[0].outerVM) {
- 			r.srcs, r.loop.outerDepth = o.srcs, o.depth
- 		} else {
 diff --git a/core/go/emit_recorder.go b/core/go/emit_recorder.go
-index eb7f1c06e..15489665f 100644
+index eb7f1c06e..abfa2694b 100644
 --- a/core/go/emit_recorder.go
 +++ b/core/go/emit_recorder.go
 @@ -317,6 +317,12 @@ type EmitRecorder interface {
@@ -409,7 +416,7 @@ index eb7f1c06e..15489665f 100644
  func (inactiveEmit) RecordDynMethod(Value, []Value, []Value, string, SrcPos) bool {
  	return false
  }
-+func (inactiveEmit) NoteParenForward(string) {}
++func (inactiveEmit) NoteParenForward(string)                                  {}
  func (inactiveEmit) NoteReStepLanding(Value, SrcPos)                          {}
  func (inactiveEmit) NoteDelivery(Value)                                       {}
  func (inactiveEmit) NoteTakenLanding(Value)                                   {}

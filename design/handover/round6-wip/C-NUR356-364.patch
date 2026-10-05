@@ -62,39 +62,22 @@ index 54b1f54d2..4104fe188 100644
  	return ok && dispatchTryRecordPoly(e.Registry, w.Name, sig, sw, outs, pos, straddle, owner, !straddle, spec)
  }
  
-diff --git a/compiler/go/eager_literal.go b/compiler/go/eager_literal.go
-index 52d0c6174..4486a8aa3 100644
---- a/compiler/go/eager_literal.go
-+++ b/compiler/go/eager_literal.go
-@@ -67,6 +67,14 @@ func (es *EmitState) eagerLiteralEffect(events []EmitEvent, i int, body []core.V
- 			return true
- 		}
- 	}
-+	if zzRaise != "" {
-+		for j := i - 1; j >= 0 && (events[j].litDepth > events[i].litDepth || rawRenderedAssembly(&events[j])); j-- {
-+			if !rawRenderedAssembly(&events[j]) {
-+				zzLog("ZZRAISE kind=%d word=%s", events[i].kind, events[i].call.word)
-+				return zzRaise == "decline"
-+			}
-+		}
-+	}
- 	return false
- }
- 
 diff --git a/compiler/go/emit.go b/compiler/go/emit.go
-index 26ed20a56..c73d369a9 100644
+index 26ed20a56..15d4f49dd 100644
 --- a/compiler/go/emit.go
 +++ b/compiler/go/emit.go
-@@ -1,6 +1,9 @@
+@@ -1,8 +1,11 @@
  package compiler
  
  import (
 +	"fmt"
-+	"os"
-+	"runtime/debug"
  	"maps"
  	"math"
++	"os"
++	"runtime/debug"
  	"slices"
+ 	"sort"
+ 	"strconv"
 @@ -8722,8 +8725,16 @@ func (es *EmitState) RecordUserPolyCall(word string, ownerReg *core.Registry, si
  			spec.wordPos = wordPos
  		}

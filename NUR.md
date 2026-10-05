@@ -110,6 +110,12 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR375](#nur375) | A callback that binds an `r.int` draw with `def` and leaves the bindings raises internal_error "a landed fn value takes arguments (NUR298)" compiled; in a `check-prop` generator the property fails | downstream: the voxgig-boru property-generator rewrites (2026-10-02) |
 | [NUR376](#nur376) | A fn-local name read inside a `do {k: [expr]}` map value leaves a later same-named `var`/`def` binding undefined compiled (`undefined_word`), even in an unrelated fn | downstream: the voxgig-boru/stats migration (2026-10-02) |
 | [NUR377](#nur377) | `boru:test` mints its record types from a fresh ID counter: a user type made after `import "boru:test"` fails its own return contract (`expected Box, got Box`) and `is` answers false compiled (silent) | downstream: the voxgig-boru/bloom-filter and stats migrations (2026-10-02) |
+| [NUR378](#nur378) | An `each` callback applying its fn's `Function` param reuses the FIRST call's fn on later calls compiled (silent) | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05) |
+| [NUR379](#nur379) | A param named after a built-in word: the interpreter raises `reserved_word`, `boru check` is silent, and the compiled lane runs and may apply the BUILT-IN instead of the passed fn (silent) | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05) |
+| [NUR380](#nur380) | NUR123's shape in a recursive helper: a `Function` param read bare or forward and by `/v`, reached from an `each` body, corrupts a LATER unrelated call's loop state compiled (silent; library-scale repro) | downstream: voxgig-boru/sort (found 2026-10-02, recorded 2026-10-05) |
+| [NUR381](#nur381) | A `var`-bound name in a plain map literal inside an `if` arm of a fold body resolves to a same-named top-level def INTERPRETED; compiled reads the `var` (silent; the interpreter's side) | downstream: voxgig-boru/trie (found 2026-10-02, recorded 2026-10-05) |
+| [NUR382](#nur382) | A FILE-module fn whose `each` callback forward-applies its `Function` param to another param raises `signature_error` compiled; the interpreter answers (loud) | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05) |
+| [NUR383](#nur383) | A module-made closure bound by a program-level `def` and read by `/v` in a property body fails the property compiled (`undefined word: q`); the interpreter passes it (loud) | downstream: voxgig-boru/sort (found 2026-10-02, recorded 2026-10-05) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1307,5 +1313,162 @@ the workaround every affected library documents.
 
 **Proposed verdict:** resolve by fix — `BuildTestModule` adopts the
 parent's type-ID sequence like its siblings.
+
+---
+
+## NUR378 — an `each` callback applying its fn's `Function` param reuses the first call's fn compiled {#nur378}
+
+**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 by the voxgig-boru interpreter-entry pass, [design/VOXGIG-BORU-HANDOVER.0.md](design/VOXGIG-BORU-HANDOVER.0.md) U1) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · **silent**
+
+```
+def f fn [[c:Function x:Integer] [List] [ [x] each [ var [[e] (e 3 c) ] ] ]]
+print (f add/v 5)
+  interpreted   [8]
+  compiled      [8]
+print (f sub/v 7)
+  interpreted   [4]
+  compiled      [10]      (`boru check` clean; exit 0)
+```
+
+The second call's callback applies the FIRST call's fn: `10` is `3 add 7`,
+not `7 sub 3`. The forward spelling `(c 3 e)` is affected the same way;
+`(e 3 c/v apply)` agrees on both lanes. Possibly the root of
+[NUR369](#nur369), whose shape is re-entrant where this one is sequential.
+
+**Proposed verdict:** resolve by fix — each activation's callback reads its
+own frame's param (NUR369's verdict).
+
+---
+
+## NUR379 — a param named after a built-in word runs compiled where the interpreter raises `reserved_word` {#nur379}
+
+**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 by the voxgig-boru interpreter-entry pass, U2) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · **silent** (a wrong value, or a run where the interpreter refuses)
+
+```
+def g fn [[sub:Function] [List] [ [5] each [ var [[e] (e 3 sub/v apply) ] ] ]]
+print (g add/v)
+  interpreted   [boru/reserved_word] undef sub: 'sub' is a built-in word and cannot be redefined
+  compiled      [2]        (`boru check`: 0 errors; `add` would give [8])
+```
+
+Three answers for one program: the interpreter refuses the param name,
+the check pass says nothing, and the compiled lane runs and applies the
+BUILT-IN `sub` instead of the passed `add`. With `[[cmp:Function xs:List]
+…]` and `sub/v` passed, the compiled lane answers `[1, -1]` where `sub`
+gives `[2, -2]`. The likely mechanism, read from the VM and not proven:
+the frame renames a native word value to its param name and the native
+fast path looks the native up by that name — the same mechanism as the
+`cmp/v` island in design/COMPILABLE-SUBSET.md §5 ("recorded 2026-10-05",
+U11). The libraries' params are not built-in names.
+
+**Proposed verdict:** resolve by fix — the check pass and the compiled
+lane raise the interpreter's `reserved_word`, and the native fast path
+keys on the value's own native identity, never on the param's name.
+
+---
+
+## NUR380 — NUR123's shape in a recursive helper corrupts a later call's loop state compiled {#nur380}
+
+**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 in the voxgig-boru/sort migration, U3) · measured at 64c5ab2 · **silent** · **library-scale repro; a minimal one is owed**
+
+[NUR123](design/NUR-ARCHIVE.0.md) (a bare read of a fn-valued frame binding
+is a word dispatch) is archived as fixed, yet its shape reproduces inside a
+recursive helper: a `Function` param read bare (`def c ((arr get 0) (arr
+get 1) comp)`) or forward (`def c (comp (arr get 1) (arr get 0))`) and by
+`/v`, reached from an `each` body, silently corrupts a LATER, unrelated
+call's loop state. voxgig-boru/sort's `DX-REPORT.md` "workaround 1" holds
+the repro (`sd` / `first` / `second`): `print (cmp/v first)` then `print (3
+second)` prints `0` `4` interpreted and `0` `1` compiled; with `comp/v
+apply` both lanes print `0` `4`. In the suites, `Sort.heap` followed by
+`Sort.tim` returned its input unsorted. The forward spelling of the same
+recursive shape at the top level refuses instead (design/COMPILABLE-SUBSET.md
+§5, "recorded 2026-10-05", U8), so the library keeps `comp/v apply`.
+
+**Proposed verdict:** resolve by fix — find the read NUR123's guard does
+not reach inside a recursive helper (owed first: a minimal repro, from the
+sort DX-REPORT's three fns).
+
+---
+
+## NUR381 — a `var`-bound name in a map literal inside an `if` arm of a fold body resolves to a top-level def interpreted {#nur381}
+
+**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 in the voxgig-boru/trie migration, U4) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · **silent** · the INTERPRETER's side
+
+```
+def acc {n: 100}
+def count fn [ [xs:List] [Map] [
+  {n: 0} xs [ var [[x acc] if true [ {n: ((acc "n" get) 1 add)} ] [acc] ] ] fold
+] ]
+print (count [7 8 9])
+  interpreted   {"n": 101}
+  compiled      {"n": 3}
+```
+
+The interpreter resolves the `acc` inside the arm's map literal to the
+same-named TOP-LEVEL def (and raises `undefined word: acc` without one);
+the compiled lane reads the `var` binding, which is the intended answer.
+Without the `if`, `boru check` refuses the program (`undefined word:
+acc`); with it, the check is clean, so the pass shares the interpreter's
+blind spot in one shape and not the other. Any path that runs such a fold
+on the interpreter at run time — a stale property stamp
+(design/COMPILABLE-SUBSET.md §5, U10) — turns this into a wrong value or a
+failure inside a program that compiled.
+
+**Proposed verdict:** resolve by fix on the interpreter and the check pass
+— a `var` binding is in scope inside its body's literals, arm or not; the
+compiled lane already agrees with that rule.
+
+---
+
+## NUR382 — a file-module fn's `each` callback forward-applying its `Function` param to another param raises compiled {#nur382}
+
+**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 by the voxgig-boru interpreter-entry pass, U5) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · loud
+
+```
+# mod.boru (imported from a FILE)
+def h fn [[f:Function y:Any] [List] [ [5] each [ var [[e] (f y e) ] ] ]]
+export "M" { h: h/v }
+
+# main.boru
+import "./mod.boru"
+print (M.h sub/v 3)
+  interpreted   [2]
+  compiled      each: element 0: [boru/signature_error]: cannot call `f` — no signature matches the arguments
+                (with a user fn in f's place: undefined word: y)
+```
+
+The same fn defined in the one file agrees on both lanes, and so does the
+trailing spelling `(e y f)`.
+
+**Proposed verdict:** resolve by fix.
+
+---
+
+## NUR383 — a module-made closure bound by a program-level def and read by `/v` in a property body fails compiled {#nur383}
+
+**Status:** Pending · **Recorded:** 2026-10-05 (found 2026-10-02 in the voxgig-boru/sort migration, U6) · measured at 64c5ab2 on both lanes, re-verified 2026-10-05 · loud (the property reports a failure)
+
+```
+# mod.boru (imported from a FILE)
+def mk fn [[n:Integer] [Function] [ [a:Any] => [ a add n ] ]]
+def use fn [[q:Function x:Integer] [Integer] [ (x q) ]]
+export "M" { mk: mk/v, use: use/v }
+
+# main.boru
+import "boru:test"
+import "./mod.boru"
+def c (M.mk 10)
+print (Test.check-prop "p" [ 5 ] [ var [[x] ((M.use c/v x) eq 15) ] ] 2 1 0)
+  interpreted   {"name": "p", "ok": true, "runs": 2, … "error": null}
+  compiled      {"name": "p", "ok": false, "runs": 1, "failing-input": 5, … "error": error(undefined word: q)}
+```
+
+`def c (Sort.by-key k/v)` read as `c/v` in a `check-prop` body fails the
+same way (`undefined word: comp`). A 0-arg fn returning a MODULE member in
+place of the `/v` read agrees on both lanes, which is the libraries'
+workaround; a program-defined comparator still islands
+(design/COMPILABLE-SUBSET.md §5, U12).
+
+**Proposed verdict:** resolve by fix.
 
 ---

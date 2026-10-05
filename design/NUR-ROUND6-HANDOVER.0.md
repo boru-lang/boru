@@ -4,6 +4,10 @@ This page is for whoever picks up the Non-Uniformity Register (NUR.md) work
 next. It covers the state at stop, the six open records, the round-6 work in
 progress (saved as patches beside this file), and how each round was run. The
 project-wide state page is [SESSION-HANDOVER.0.md](SESSION-HANDOVER.0.md).
+**Corrected 2026-10-05**, when this handover was integrated into the baseline
+branch with the voxgig-boru handover: the patches were re-saved in a form that
+builds and measured on the baseline (the table under "Round 6" says what each
+one does), and the claims below that a review found wrong were fixed.
 The design rules are in [COMPILABLE-SUBSET.md](COMPILABLE-SUBSET.md), and
 root [CLAUDE.md](../CLAUDE.md) has the argument rule and the gates.
 
@@ -18,30 +22,54 @@ root [CLAUDE.md](../CLAUDE.md) has the argument rule and the gates.
   narrowed the rest.
 - Round 6 was started on 64c5ab2f3 and **stopped on request**. Nothing from it
   is merged. The partial work is in `handover/round6-wip/` (see below).
+- **2026-10-05, the baseline.** This page, the voxgig-boru handover
+  ([VOXGIG-BORU-HANDOVER.0.md](VOXGIG-BORU-HANDOVER.0.md), NUR366–NUR383
+  and its §5 refusals) and the re-saved patches were merged onto 64c5ab2f3 on
+  one branch; [SESSION-HANDOVER.0.md](SESSION-HANDOVER.0.md) opens with where
+  that leaves the project.
 
-### Gates at stop (`make gate-status` on round 5's tree)
+### Gates at stop (round 5's tree, 64c5ab2f3)
+
+The generated table `test/go/langspec/GATE_STATUS.md` (`make gate-status`)
+is the authority and has twenty rows; CI renders the seventeen the langspec
+shards measure into every run's summary. The values on round 5's tree:
 
 | Gate | Live | End state |
 |---|---:|---:|
-| Corpus rows that fail to compile | 1 | 0 |
-| Interp-entry census rows | 18 | 0 |
-| Engine entries (uncounted interpreter runs on the compiled path) | 159 | 0 |
-| Diagnostic-parity divergences (plain vs compile-armed check) | 46 | 0 |
-| Type-soundness violations | 6 | 0 |
-| Armed-only diagnostics | 2 | 0 |
-| Reducible (tier-2) rows | 1 | 0 |
-| Locally-resolved defers | 1 | 0 |
-| Runtime defers, interpreter islands, interpreter-only rows, compute gaps | 0 | 0 |
+| compile failures (corpus rows that fail to compile) | 1 | 0 |
+| interp-entry census rows | 18 | 0 |
+| engine entries (unattributed interpreter runs on the compiled path) | 159 | 0 |
+| diagnostic parity divergences (plain vs compile-armed check) | 46 | 0 |
+| type-soundness violations | 6 | 0 |
+| armed-only diagnostics | 2 | 0 |
+| reducible (tier-2) rows | 1 | 0 |
+| locally-resolved defers | 1 | 0 |
+| sweep call-form failures | 286 | 0 |
+| sweep compile failures | 1 | 0 |
+| sweep islands | 2 | 0 |
+| compute gaps | 0 | 0 |
+| correct-error compile failures | 0 | 0 |
+| interpreter islands | 0 | 0 |
+| interpreter-only rows | 0 | 0 |
+| runtime defers | 0 | 0 |
+| sweep call-form crashes, sweep crashes, sweep empty cells, sweep invalid seeds | 0 | 0 |
 
-Five of the thirteen gates are at their end state, eight are open, and there
-are no regressions. Core coverage (`make cover-gate-core`) is 100%.
+Eleven of the twenty gates are open, nine are at their end state, and there
+are no regressions. Core coverage (`make cover-gate-core`) is 100%, and the
+merged ADR-008 gate passes on that commit (its nightly run of 2026-10-03
+failed on a cmd/go timing test, `TestServeStepShutdownDrains`, and passed
+the nights before and after).
 
 ## The open records
 
-All six have a binding maintainer verdict: **resolve by fix**, meaning every
-remaining shape compiles and agrees with the interpreter. None is a silent
-wrong answer. Each remaining shape is a loud compile refusal or a loud runtime
-defer. NUR.md has the full text.
+Five of the six have a binding maintainer verdict (2026-09-29): **resolve by
+fix**, meaning every remaining shape compiles and agrees with the interpreter.
+NUR364 is notes only and has no verdict yet, so work on it is not
+maintainer-directed. None of the six is a silent wrong answer. What remains of
+NUR334, NUR336, NUR359 and NUR361 is a loud compile refusal or a loud runtime
+defer; NUR356 and NUR364 are diagnostic divergences (a wrong runtime error
+raised before the interpreter's no-match, and a wider operand window). NUR.md
+has the full text.
 
 | Record | What remains | Pinned by |
 |---|---|---|
@@ -56,23 +84,29 @@ defer. NUR.md has the full text.
 
 Four agents ran in parallel, each in its own worktree on 64c5ab2f3. They were
 stopped mid-task. Each one's diff against 64c5ab2f3 (committed WIP plus
-uncommitted edits, without their debug scratch files) is saved here as a
-patch. All four apply cleanly to 64c5ab2f3 (`git apply --check`), and each
-agent's own record tests (`go test -run 'TestNUR…' ./lang/go`) passed in its
-worktree at stop. **Nothing broader was run on any of them**: no full unit
-suites, lint, langspec, census, or coverage. The brief they worked to is
+uncommitted edits) is saved here as a patch. The patches first saved on
+2026-09-30 applied cleanly but three of them did NOT build: they called
+debug helpers (`dbg336`, `zzRaise`/`zzLog`, `dumpXProgram`) that lived in
+the agents' scratch files and were stripped with them. On 2026-10-05 the
+patches were re-saved with those calls removed and gofmt applied, and each
+was measured on 64c5ab2f3: `go build` and `go vet` of the touched modules,
+the unit suites of core/go, check/go, compiler/go and eng/go, and lang/go's
+record tests (`cd lang/go && go test -run 'NUR33[46]|NUR35[69]|NUR36[14]'
+.`). Still not run on any of them: lang/go's full suite, the langspec gates,
+the census and coverage (A excepted, below). The brief they worked to is
 `handover/round6-wip/BRIEF.md`.
 
-| Patch | Records | State at stop |
-|---|---|---|
-| `A-NUR334.patch` (8 files, +226/−25) | NUR334 | Two shapes closed with tests: a word before the call on its level, and a read after a lazy list holding the call. Both are written into the call-result island as the values the compiled code read (`compiler/go/call_result_island.go`). New test file `lang/go/nur334_round6_test.go` (`TestNUR334CallResultReadsWritten`, with negatives). Was starting on the fn-body tail call. Still loud: the tail call and tail replacement, and the spliced-word shapes. |
-| `B-NUR336.patch` (7 files, +265/−41) | NUR336 | Three WIP commits: seat type values and literal parens in a unit island; late start past forward words (a parked lead in a paren collected forward); a root late start at a list or a waiting word. The "word collecting the paren forward" rows in `nur336_348_remainders_test.go` changed from loud to agreeing. The comment cites `TestNUR336ForwardWordLateStart`, which does not exist yet. Uncommitted edits in `emit.go` and `landing_restart.go` were mid-debug. Loop-continuation shapes not started. |
-| `C-NUR356-364.patch` (8 files, +133/−5) | NUR356, NUR364 | All uncommitted, no tests yet. Was wiring the interpreter's operand window into the user-poly record, the lowering and the VM (`check_recovery.go`, `check_specs.go`, `vm_poly_nomatch.go`, `eager_literal.go`). Treat it as a sketch: re-derive and test before trusting it. |
-| `D-NUR359-361.patch` (5 files, +244/−4) | NUR359, NUR361 | One WIP commit: re-step an argument-taking fn in a computed run at a collection stop (`compiler/go/restep_tail.go`, `eng/go/vm_do_restep.go`). Uncommitted edits were mid-way through the `vm.go` integration. `TestNUR359ArgTakingFnStaysLoud` is not yet converted. NUR361 not started. |
+| Patch | Records | State at stop (2026-09-30) | Measured on 64c5ab2f3 (2026-10-05) |
+|---|---|---|---|
+| `A-NUR334.patch` | NUR334 | Two shapes closed with tests: a word before the call on its level, and a read after a lazy list holding the call. Both are written into the call-result island as the values the compiled code read (`compiler/go/call_result_island.go`). New test file `lang/go/nur334_round6_test.go` (`TestNUR334CallResultReadsWritten`, with negatives). Was starting on the fn-body tail call. Still loud: the tail call and tail replacement, and the spliced-word shapes. | Builds, vet clean, the four unit suites pass once `TestSubstIsland` is updated for the new `RestartConst` arm (A had changed the contract without the test; the arm now also refuses the zero Value as the compiler's fault); the record tests and lang/go's full root suite (118 s) pass. The langspec quick subset was still running when this was written; the baseline's next commit records its result and whether A landed. |
+| `B-NUR336.patch` | NUR336 | Three WIP commits: seat type values and literal parens in a unit island; late start past forward words (a parked lead in a paren collected forward); a root late start at a list or a waiting word. The "word collecting the paren forward" rows in `nur336_348_remainders_test.go` changed from loud to agreeing. The comment cites `TestNUR336ForwardWordLateStart`, which does not exist yet. Uncommitted edits in `emit.go` and `landing_restart.go` were mid-debug. Loop-continuation shapes not started. | Builds once its two `dbg336` calls are removed (`landing_restart.go`) and `core/go/emit_recorder.go` is gofmt'd. B narrowed `typeDeferred`'s signature without updating the existing `TestTypeDeferredUnknownIndex`; with that call narrowed too, vet is clean, the four unit suites pass and the record tests pass — the rows the agent reported as agreeing do. |
+| `C-NUR356-364.patch` | NUR356, NUR364 | All uncommitted, no tests yet. Was wiring the interpreter's operand window into the user-poly record, the lowering and the VM (`check_recovery.go`, `check_specs.go`, `vm_poly_nomatch.go`, `eager_literal.go`). Treat it as a sketch: re-derive and test before trusting it. | Builds once the `zzRaise`/`zzLog` block is removed from `eager_literal.go` and `compiler/go/emit.go` is gofmt'd. Vet clean, the four unit suites pass, the record tests pass — which says only that it breaks nothing it has no tests of its own. |
+| `D-NUR359-361.patch` | NUR359, NUR361 | One WIP commit: re-step an argument-taking fn in a computed run at a collection stop (`compiler/go/restep_tail.go`, `eng/go/vm_do_restep.go`). Uncommitted edits were mid-way through the `vm.go` integration. `TestNUR359ArgTakingFnStaysLoud` is not yet converted. NUR361 not started. | Builds once the `dumpXProgram(p)` call is removed from `eng/go/vm.go`. Vet clean, the four unit suites pass, the record tests pass — `TestNUR359ArgTakingFnStaysLoud` among them, so the shape still defers loudly: D's re-step is not yet reached. |
 
 To resume one: `git apply design/handover/round6-wip/<patch>` on a fresh
-branch off main (or off 64c5ab2f3 if main has moved), read the matching rows
-above, and finish against the brief. The worktrees themselves
+branch off main (or off 64c5ab2f3 if main has moved), build it, run the
+measurements above to confirm the starting state, read the matching rows,
+and finish against the brief. The worktrees themselves
 (`.claude/worktrees/agent-*`) lived in a temporary container. Do not count on
 them surviving; the patches are the durable copy. Delete
 `design/handover/round6-wip/` once its work is merged or dropped.
@@ -126,6 +160,14 @@ them surviving; the patches are the durable copy. Delete
   lane.
 - **Known flake.** `TestVariationDifferential` can report "HUNG" (30 s) on
   module-sift variants when the machine is loaded. It passes alone.
+- **A saved patch is not a build.** Three of the four patches first saved here
+  called debug helpers that lived in the stripped scratch files, so "applies
+  cleanly" was true and "builds" was not. Re-apply a saved patch in a clean
+  worktree and build it before describing its state.
+- **A changed contract needs its existing tests re-run.** A's new
+  `RestartConst` arm and B's narrowed `typeDeferred` signature each broke an
+  existing unit test in a module the agent had not re-run (eng/go,
+  compiler/go). The four module suites take under a minute together.
 - **Long runs.** Container restarts kill detached (`nohup`) processes, so use
   tracked background commands. A langspec coverage profile takes about 25
   minutes.

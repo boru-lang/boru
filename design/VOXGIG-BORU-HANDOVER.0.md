@@ -9,9 +9,13 @@ patches beside this file), the defects found and where each is recorded, and
 the tools. The compiler rules are in [COMPILABLE-SUBSET.md](COMPILABLE-SUBSET.md);
 the answer-divergence ledger is [NUR.md](../NUR.md).
 
-> **Read first.** Four SILENT wrong answers found at the very end (U1–U4
-> under "Defects found") are not yet in NUR.md. This page is their only
-> record in this repo. Recording them is the first thing to do.
+> **Recorded 2026-10-05.** The fourteen defects found at the very end
+> (U1–U14 under "Defects found") are now in the ledgers they belong to:
+> U1–U6 are [NUR378–NUR383](../NUR.md#nur378) (U1, U2, U4, U5 and U6
+> re-verified on both lanes at 64c5ab2 with the lanes probe below; U3 keeps
+> its library-scale repro), and U7–U14 with the root shapes R1–R6 are in
+> [COMPILABLE-SUBSET.md](COMPILABLE-SUBSET.md) §5 ("Open refusals recorded
+> 2026-10-05"). The U-numbers below are kept as the detailed account.
 
 ## State at stop
 
@@ -34,8 +38,9 @@ the answer-divergence ledger is [NUR.md](../NUR.md).
 | admin | voxgig-boru/admin#1 | `51681b9` | no CI | the cross-library sweep tools and the 2026-10-02 baseline; the baseline is stale in two places (below) |
 
 - This repo: boru-lang/boru#528 (branch `claude/record-stored-fn-tail-read`)
-  carries every record listed under "Defects found" and this page. Its CI
-  was green (20/20) at `bbe443cf4`, before this page was added.
+  carried every record listed under "Defects found" and this page; on
+  2026-10-05 it was merged with the round-6 handover (#527) into one
+  baseline branch, which also records U1–U14 (above).
 - Each library's gate (`test/divergence/run.sh`, decision's
   `test/diverge.sh`) passes at its head: every suite compiles, runs green and
   checks with 0 errors, and every module checks clean.
@@ -213,8 +218,8 @@ declines (decision row K); a fn-local `Test.check-prop` whose property
 interpolates a template refuses (sort harness); a `Test.prop` with an
 interpolated template refuses (template harness).
 
-**Not yet recorded in NUR.md or §5 — U1–U14** (owed; this page is the only
-record):
+**U1–U14 — recorded 2026-10-05** (U1–U6 as NUR378–NUR383, U7–U14 in §5;
+this is the detailed account):
 
 Found while measuring and re-verified on both lanes after the stop
 (standalone repros; the interpreter lane via the lanes probe). Record
@@ -382,11 +387,10 @@ on the old and new modules alike.
 
 ## Next, in order
 
-0. **Record U1–U14** (above): U1–U6 in NUR.md (U1–U4 are silent), U7–U9
-   and U10–U13 in COMPILABLE-SUBSET.md §5 (U10–U13 with R1–R6, as
-   run-time interpreter use, which §6 calls a defect "owed a real
-   lowering"), U14 with the libraries' checker false positives. Check that
-   the NUR numbers are free first (see "Lessons").
+0. Done 2026-10-05: U1–U14 recorded — U1–U6 as NUR378–NUR383, U7–U9,
+   U10–U13 with R1–R6 (run-time interpreter use, which §6 calls a defect
+   "owed a real lowering") and U14 in COMPILABLE-SUBSET.md §5. NUR380 (U3)
+   still owes a minimal repro.
 1. **trie**: finish and verify the WIP patch (below), then commit and push
    to trie#16.
 2. **sort**: decide the comparator shape (below), then the same.
@@ -395,8 +399,7 @@ on the old and new modules alike.
    must stay in a named fn whose param is `r` (inline forms decline or hit
    NUR374), and every rewrite needs an old-vs-new value check over several
    seeds — every run, seed and max-shrinks unchanged.
-4. **Record the interpreter-entry shapes** R1–R6 in COMPILABLE-SUBSET.md
-   §5 alongside U10–U13.
+4. Done 2026-10-05: R1–R6 are in COMPILABLE-SUBSET.md §5 beside U10–U13.
 5. **Point the libraries' dx-reports at the records.** Several still say
    "not yet recorded upstream" for what is now NUR373–NUR377 or a §5 bullet:
    aless `dx-report.md` (~265–286: NUR374, NUR373), bloom-filter
