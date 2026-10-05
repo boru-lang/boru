@@ -261,17 +261,14 @@ func TestLiveDeoptSpliceReturned(t *testing.T) {
 		t.Errorf("the call takes its result island; got:\n%s", dis)
 	}
 	// Where no island can take the call's statement the screen keeps its
-	// designed defer: loud, never the data. A word before the call on its
-	// level may collect (`k`); a read the compiled code made before the call
-	// that the interpreter makes before a lazy list's elements (`c.n`) would
-	// be made again after the list's effects; and a call in a fn body's tail,
+	// designed defer: loud, never the data. A call in a fn body's tail,
 	// whose frame the interpreter may eliminate or not by the caller's context
-	// (Engine.tcoEligible's forward-paren rule), keeps no island there.
-	const counter = `def c (flex {n:0}) end def cg fn [[][Integer][c set 'n' (c.n add 1) drop c.n]] end `
+	// (Engine.tcoEligible's forward-paren rule), keeps no island there. (A
+	// word before the call on its level, `k`, and a read the interpreter
+	// makes before a lazy list's elements, `c.n`, are written as the values
+	// the compiled code read: TestNUR334CallResultReadsWritten.)
 	const tail = `def g fn [[][Any][(` + call + `)]] end `
 	for _, c := range []struct{ src, want string }{
-		{unitHead + `t/v]] end def k 3 end k f (quote [def t word [add] 1])`, "ERROR:cannot call `add`"},
-		{unitHead + `t/v]] end ` + counter + `[(cg) ` + call + `] c.n`, "[[1 1 2] 0]"},
 		{unitHead + `t/v]] end ` + tail + `def r (g) end r`, "ERROR:expected 1 return value(s), got 2"},
 		{unitHead + `t/v]] end ` + tail + `1 add (g)`, "ERROR:expected 1 return value(s), got 2"},
 		{unitHead + `t/v]] end ` + tail + `[(g)]`, "[[1 2]]"},

@@ -98,6 +98,12 @@ func TestSubstIsland(t *testing.T) {
 	if err != nil || got[0].String() != "1" || got[1].String() != "2" || got[2].String() != "3" || !core.IsParenExpr(island[0]) {
 		t.Fatalf("each value from its source, the program's tokens untouched: %v %v", got, err)
 	}
+	// A def-bound scalar's folded read is written as the constant the
+	// compiled code pushed for it (NUR334, round 6); a constant with no
+	// value stays the compiler's fault (below).
+	if got, err := vc.substIsland([]core.Value{core.NewParenExpr(nil)}, []compiler.RestartSubst{{Path: []int{0}, Span: 1, Src: compiler.RestartSrc{Kind: compiler.RestartConst, Val: core.NewInteger(9)}}}, nil, 1, stack, seam7Dbg, 0); err != nil || len(got) != 1 || got[0].String() != "9" {
+		t.Fatalf("a constant source is written as its value: %v %v", got, err)
+	}
 	for _, c := range []struct {
 		name string
 		sb   compiler.RestartSubst
@@ -106,7 +112,7 @@ func TestSubstIsland(t *testing.T) {
 		{"a slot the frame lacks", sub(0, compiler.RestartLocal, 4)},
 		{"a negative slot", sub(0, compiler.RestartLocal, -1)},
 		{"an entry past the stack", sub(0, compiler.RestartStack, 1)},
-		{"a constant", sub(0, compiler.RestartConst, 0)},
+		{"a constant with no value", sub(0, compiler.RestartConst, 0)},
 		{"a path past the island", sub(7, compiler.RestartStack, 0)},
 		{"an empty run", compiler.RestartSubst{Path: []int{0}, Src: compiler.RestartSrc{Kind: compiler.RestartStack}}},
 	} {

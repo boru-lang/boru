@@ -1,0 +1,438 @@
+diff --git a/burst.aql b/burst.aql
+index d2d1ccd..472e6f9 100644
+--- a/burst.aql
++++ b/burst.aql
+@@ -59,12 +59,16 @@ def burst-limit fn [ [] [Integer] [8] ]
+ 
+ # --- node construction ----------------------------------------------
+ 
+-def mk-bucket fn [ [items:Any] [Map] [ do {kind: ["bucket"], items: [items]} ] ]
++# Both builders are plain map literals, not `do {kind: […], …}`: `do {…}`
++# would run its value bodies on the interpreter at run time
++# (boru-lang/boru#528, design/COMPILABLE-SUBSET.md §5). Same maps, same field
++# order.
++def mk-bucket fn [ [items:Any] [Map] [ {kind: "bucket", items: items} ] ]
+ 
+ # `fin` is the terminal flag (named `fin`, not the reserved `end`). Call: `kids val fin mk-trienode`.
+ def mk-trienode fn [
+   [fin:Any val:Any kids:Any] [Map] [
+-    do {kind: ["trie"], end: [fin], val: [val], kids: [kids]}
++    {kind: "trie", end: fin, val: val, kids: kids}
+   ]
+ ]
+ 
+@@ -423,10 +427,12 @@ def map-from-entries fn [
+   ]
+ ]
+ 
++# The encode payloads are plain map literals, not `do {kind: […], …}`
++# (see `mk-bucket`: `do {…}` runs its value bodies on the interpreter).
+ def map-encode fn [
+   [t:Map] [String] [
+     def es ([] "" t collect-eb)
+-    def payload (do {kind: ["burstmap"], size: [t count-b], entries: [es]})
++    def payload {kind: "burstmap", size: (t count-b), entries: es}
+     payload StructUtil.jsonify
+   ]
+ ]
+@@ -475,7 +481,7 @@ def set-from-keys fn [
+ def set-encode fn [
+   [t:Map] [String] [
+     def ks ([] "" t collect-b)
+-    def payload (do {kind: ["burstset"], size: [t count-b], keys: [ks]})
++    def payload {kind: "burstset", size: (t count-b), keys: ks}
+     payload StructUtil.jsonify
+   ]
+ ]
+diff --git a/radix.aql b/radix.aql
+index f871d91..27d35a2 100644
+--- a/radix.aql
++++ b/radix.aql
+@@ -54,8 +54,11 @@ def empty-node fn [ [] [Map] [ {end: false, val: none, kids: {}} ] ]
+ 
+ # Build a node from its fields. `fin` (not `end`) because `end` is the boru
+ # call terminator and cannot be a binding name. Call: `kids val fin mk-node`.
++# A plain map literal, not `do {end: [fin], …}`: `do {…}` would run its value
++# bodies on the interpreter at run time (boru-lang/boru#528,
++# design/COMPILABLE-SUBSET.md §5). Same map, same field order.
+ def mk-node fn [
+-  [fin:Any val:Any kids:Any] [Map] [ do {end: [fin], val: [val], kids: [kids]} ]
++  [fin:Any val:Any kids:Any] [Map] [ {end: fin, val: val, kids: kids} ]
+ ]
+ 
+ # A node with no value and no edges is dead and gets pruned after a delete.
+@@ -78,6 +81,11 @@ def common-len fn [
+     # def `m` of unpromoted computed value" (a `do {…}` at the head of a paren
+     # that then reads a fn-local def loses the def) — `do {n: [0], ok: [true]}`
+     # here is equivalent; remove when fixed upstream.
++    # The two `do {…}` steps below stay: they read the `var`-bound `acc`, and a
++    # plain literal `{n: ((acc "n" get) 1 add), …}` there raises
++    # `undefined word: acc` whenever this fold runs on the interpreter (it
++    # does under a property callback); compiled, the `do {…}` makes no
++    # interpreter entry (DX-REPORT, "Run-time interpreter entries").
+     def res ({n: 0, ok: true} (iota m) [
+       var [[i acc]
+         if (acc "ok" get) [
+@@ -405,10 +413,12 @@ def map-from-entries fn [
+   ]
+ ]
+ 
++# The encode payloads are plain map literals, not `do {kind: […], …}`
++# (see `mk-node`: `do {…}` runs its value bodies on the interpreter).
+ def map-encode fn [
+   [t:Map] [String] [
+     def es ([] "" t collect-er)
+-    def payload (do {kind: ["radixmap"], size: [t count-keys], entries: [es]})
++    def payload {kind: "radixmap", size: (t count-keys), entries: es}
+     payload StructUtil.jsonify
+   ]
+ ]
+@@ -462,7 +472,7 @@ def set-from-keys fn [
+ def set-encode fn [
+   [t:Map] [String] [
+     def ks ([] "" t collect-r)
+-    def payload (do {kind: ["radixset"], size: [t count-keys], keys: [ks]})
++    def payload {kind: "radixset", size: (t count-keys), keys: ks}
+     payload StructUtil.jsonify
+   ]
+ ]
+diff --git a/test/burst_prop_spec.aql b/test/burst_prop_spec.aql
+index 6dcc3a6..3765bd0 100644
+--- a/test/burst_prop_spec.aql
++++ b/test/burst_prop_spec.aql
+@@ -17,18 +17,26 @@ def charset "abcdefghijklmnopqrstuvwxyz"
+ 
+ # Generator member calls are grouped — `(r.string …)`, `(r.int …)`: the bare
+ # form declines its compile stamp and runs on the interpreter (boru
+-# COMPILABLE-SUBSET §5, boru-lang/boru#528). A list-of generator (a member
+-# call taking an inner generator body) lives in `key-list`, called grouped,
+-# because inline it either declines or, grouped inline, loses `r`; the call
+-# inside `key-list` must stay grouped too (bare, the generators calling it
+-# decline again). `r.list-of` still runs its element body on the interpreter,
+-# once per key (DX-REPORT). Same draws, same order, same values per seed.
++# COMPILABLE-SUBSET §5, boru-lang/boru#528). A list generator lives in
++# `key-list`, called grouped from each generator.
++#
++# `key-list` draws the count, then collects one key per `for` iteration. It
++# does not call `r.list-of [ r.string … ] (r.int lo hi)`: that native runs its
++# element body on a pooled interpreter, once per key, even from compiled code
++# (and inline it either declines or, grouped inline, loses `r`). The draws
++# are the same ones in the same order — count first, then for each key its
++# length and its characters — so every seed generates the same lists
++# (DX-REPORT, "Run-time interpreter entries"). The count's def is typed:
++# untyped, `for` cannot dispatch on it at compile time and every generator
++# calling `key-list` declines its stamp ("unmatched dispatch recovered at
++# for").
+ 
+ # A list of (r.int lo hi) random keys, each 1..maxlen chars from `charset`.
+ # Call: `(key-list maxlen lo hi r)`.
+ def key-list fn [
+   [maxlen:Integer lo:Integer hi:Integer r:Map] [List] [
+-    (r.list-of [ r.string charset (r.int 1 maxlen) ] (r.int lo hi))
++    def n:Integer (r.int lo hi)
++    [for n [ (r.string charset (r.int 1 maxlen)) ]]
+   ]
+ ]
+ 
+@@ -142,7 +150,14 @@ def specs [
+ ]
+ 
+ 
+-def _ (specs each [ var [[s] (s Test.run-property end) report 0 ] ])
++# The loop variable is `spec`, a name nothing on the properties' call paths
++# binds. As `s` it was live at top level while each property ran, and the
++# fns the properties call bind `s` too (so do `k`, `acc`, `ks`, `x`, `p`).
++# With a Reach lens (`each $.1`) also on the path, boru found the stamped
++# property body stale at every run, and after three re-stamps the rest of
++# its runs took the interpreter (radix and tst: 96 runs each; DX-REPORT,
++# "Run-time interpreter entries").
++def _ (specs each [ var [[spec] (spec Test.run-property end) report 0 ] ])
+ 
+ 
+ # --- summary -------------------------------------------------------
+diff --git a/test/radix_prop_spec.aql b/test/radix_prop_spec.aql
+index 0d92736..b8f7e1b 100644
+--- a/test/radix_prop_spec.aql
++++ b/test/radix_prop_spec.aql
+@@ -18,18 +18,26 @@ def charset "abcdefghijklmnopqrstuvwxyz"
+ 
+ # Generator member calls are grouped — `(r.string …)`, `(r.int …)`: the bare
+ # form declines its compile stamp and runs on the interpreter (boru
+-# COMPILABLE-SUBSET §5, boru-lang/boru#528). A list-of generator (a member
+-# call taking an inner generator body) lives in `key-list`, called grouped,
+-# because inline it either declines or, grouped inline, loses `r`; the call
+-# inside `key-list` must stay grouped too (bare, the generators calling it
+-# decline again). `r.list-of` still runs its element body on the interpreter,
+-# once per key (DX-REPORT). Same draws, same order, same values per seed.
++# COMPILABLE-SUBSET §5, boru-lang/boru#528). A list generator lives in
++# `key-list`, called grouped from each generator.
++#
++# `key-list` draws the count, then collects one key per `for` iteration. It
++# does not call `r.list-of [ r.string … ] (r.int lo hi)`: that native runs its
++# element body on a pooled interpreter, once per key, even from compiled code
++# (and inline it either declines or, grouped inline, loses `r`). The draws
++# are the same ones in the same order — count first, then for each key its
++# length and its characters — so every seed generates the same lists
++# (DX-REPORT, "Run-time interpreter entries"). The count's def is typed:
++# untyped, `for` cannot dispatch on it at compile time and every generator
++# calling `key-list` declines its stamp ("unmatched dispatch recovered at
++# for").
+ 
+ # A list of (r.int lo hi) random keys, each 1..maxlen chars from `charset`.
+ # Call: `(key-list maxlen lo hi r)`.
+ def key-list fn [
+   [maxlen:Integer lo:Integer hi:Integer r:Map] [List] [
+-    (r.list-of [ r.string charset (r.int 1 maxlen) ] (r.int lo hi))
++    def n:Integer (r.int lo hi)
++    [for n [ (r.string charset (r.int 1 maxlen)) ]]
+   ]
+ ]
+ 
+@@ -151,7 +159,14 @@ def specs [
+ ]
+ 
+ 
+-def _ (specs each [ var [[s] (s Test.run-property end) report 0 ] ])
++# The loop variable is `spec`, a name nothing on the properties' call paths
++# binds. As `s` it was live at top level while each property ran, and the
++# fns the properties call bind `s` too (so do `k`, `acc`, `ks`, `x`, `p`).
++# With a Reach lens (`each $.1`) also on the path, boru found the stamped
++# property body stale at every run, and after three re-stamps the rest of
++# its runs took the interpreter (radix and tst: 96 runs each; DX-REPORT,
++# "Run-time interpreter entries").
++def _ (specs each [ var [[spec] (spec Test.run-property end) report 0 ] ])
+ 
+ 
+ # --- summary -------------------------------------------------------
+diff --git a/test/trie_prop_spec.aql b/test/trie_prop_spec.aql
+index 6ac3634..e5283cb 100644
+--- a/test/trie_prop_spec.aql
++++ b/test/trie_prop_spec.aql
+@@ -24,18 +24,26 @@ def charset "abcdefghijklmnopqrstuvwxyz"
+ 
+ # Generator member calls are grouped — `(r.string …)`, `(r.int …)`: the bare
+ # form declines its compile stamp and runs on the interpreter (boru
+-# COMPILABLE-SUBSET §5, boru-lang/boru#528). A list-of generator (a member
+-# call taking an inner generator body) lives in `key-list`, called grouped,
+-# because inline it either declines or, grouped inline, loses `r`; the call
+-# inside `key-list` must stay grouped too (bare, the generators calling it
+-# decline again). `r.list-of` still runs its element body on the interpreter,
+-# once per key (DX-REPORT). Same draws, same order, same values per seed.
++# COMPILABLE-SUBSET §5, boru-lang/boru#528). A list generator lives in
++# `key-list`, called grouped from each generator.
++#
++# `key-list` draws the count, then collects one key per `for` iteration. It
++# does not call `r.list-of [ r.string … ] (r.int lo hi)`: that native runs its
++# element body on a pooled interpreter, once per key, even from compiled code
++# (and inline it either declines or, grouped inline, loses `r`). The draws
++# are the same ones in the same order — count first, then for each key its
++# length and its characters — so every seed generates the same lists
++# (DX-REPORT, "Run-time interpreter entries"). The count's def is typed:
++# untyped, `for` cannot dispatch on it at compile time and every generator
++# calling `key-list` declines its stamp ("unmatched dispatch recovered at
++# for").
+ 
+ # A list of (r.int lo hi) random keys, each 1..maxlen chars from `charset`.
+ # Call: `(key-list maxlen lo hi r)`.
+ def key-list fn [
+   [maxlen:Integer lo:Integer hi:Integer r:Map] [List] [
+-    (r.list-of [ r.string charset (r.int 1 maxlen) ] (r.int lo hi))
++    def n:Integer (r.int lo hi)
++    [for n [ (r.string charset (r.int 1 maxlen)) ]]
+   ]
+ ]
+ 
+@@ -193,8 +201,15 @@ def specs [
+ ]
+ 
+ 
++# The loop variable is `spec`, a name nothing on the properties' call paths
++# binds. As `s` it was live at top level while each property ran, and the
++# fns the properties call bind `s` too (so do `k`, `acc`, `ks`, `x`, `p`).
++# With a Reach lens (`each $.1`) also on the path, boru found the stamped
++# property body stale at every run, and after three re-stamps the rest of
++# its runs took the interpreter (radix and tst: 96 runs each; DX-REPORT,
++# "Run-time interpreter entries").
+ def _ (specs each [
+-  var [[s] (s Test.run-property end) report 0 ]
++  var [[spec] (spec Test.run-property end) report 0 ]
+ ])
+ 
+ 
+diff --git a/test/trie_prop_test.aql b/test/trie_prop_test.aql
+index 0571e40..d9a299d 100644
+--- a/test/trie_prop_test.aql
++++ b/test/trie_prop_test.aql
+@@ -30,19 +30,22 @@ def charset "abcdefghijklmnopqrstuvwxyz"
+ 
+ # Generator member calls are grouped — `(r.string …)`: the bare form declines
+ # its compile stamp and runs on the interpreter (boru COMPILABLE-SUBSET §5,
+-# boru-lang/boru#528). A list-of generator (a member call taking an inner
+-# generator body) lives in `fixed-keys`, called grouped, because inline it
+-# either declines or, grouped inline, loses `r`; the call inside `fixed-keys`
+-# must stay grouped too (bare, it compiles but repeats its first draw, and
+-# every property still passes). `r.list-of` still runs its element body on
+-# the interpreter, once per key (DX-REPORT). Same draws, same order, same
+-# values per seed.
++# boru-lang/boru#528). A list generator lives in `fixed-keys`, called grouped
++# from each generator.
++#
++# `fixed-keys` collects one key per `for` iteration. It does not call
++# `r.list-of [r.string charset klen] n`: that native runs its element body on
++# a pooled interpreter, once per key, even from compiled code (inline it
++# either declines or, grouped inline, loses `r`; bare as this fn's result it
++# compiles but repeats its first draw, and every property still passes). The
++# draws are the same ones in the same order, so every seed generates the same
++# lists (DX-REPORT, "Run-time interpreter entries").
+ 
+ # A list of `n` random keys, each exactly `klen` chars from `charset`.
+ # Call: `(fixed-keys klen n r)`.
+ def fixed-keys fn [
+   [klen:Integer n:Integer r:Map] [List] [
+-    (r.list-of [r.string charset klen] n)
++    [for n [ (r.string charset klen) ]]
+   ]
+ ]
+ 
+diff --git a/test/tst_prop_spec.aql b/test/tst_prop_spec.aql
+index 7bffab3..82cd0d8 100644
+--- a/test/tst_prop_spec.aql
++++ b/test/tst_prop_spec.aql
+@@ -17,18 +17,26 @@ def charset "abcdefghijklmnopqrstuvwxyz"
+ 
+ # Generator member calls are grouped — `(r.string …)`, `(r.int …)`: the bare
+ # form declines its compile stamp and runs on the interpreter (boru
+-# COMPILABLE-SUBSET §5, boru-lang/boru#528). A list-of generator (a member
+-# call taking an inner generator body) lives in `key-list`, called grouped,
+-# because inline it either declines or, grouped inline, loses `r`; the call
+-# inside `key-list` must stay grouped too (bare, the generators calling it
+-# decline again). `r.list-of` still runs its element body on the interpreter,
+-# once per key (DX-REPORT). Same draws, same order, same values per seed.
++# COMPILABLE-SUBSET §5, boru-lang/boru#528). A list generator lives in
++# `key-list`, called grouped from each generator.
++#
++# `key-list` draws the count, then collects one key per `for` iteration. It
++# does not call `r.list-of [ r.string … ] (r.int lo hi)`: that native runs its
++# element body on a pooled interpreter, once per key, even from compiled code
++# (and inline it either declines or, grouped inline, loses `r`). The draws
++# are the same ones in the same order — count first, then for each key its
++# length and its characters — so every seed generates the same lists
++# (DX-REPORT, "Run-time interpreter entries"). The count's def is typed:
++# untyped, `for` cannot dispatch on it at compile time and every generator
++# calling `key-list` declines its stamp ("unmatched dispatch recovered at
++# for").
+ 
+ # A list of (r.int lo hi) random keys, each 1..maxlen chars from `charset`.
+ # Call: `(key-list maxlen lo hi r)`.
+ def key-list fn [
+   [maxlen:Integer lo:Integer hi:Integer r:Map] [List] [
+-    (r.list-of [ r.string charset (r.int 1 maxlen) ] (r.int lo hi))
++    def n:Integer (r.int lo hi)
++    [for n [ (r.string charset (r.int 1 maxlen)) ]]
+   ]
+ ]
+ 
+@@ -142,7 +150,14 @@ def specs [
+ ]
+ 
+ 
+-def _ (specs each [ var [[s] (s Test.run-property end) report 0 ] ])
++# The loop variable is `spec`, a name nothing on the properties' call paths
++# binds. As `s` it was live at top level while each property ran, and the
++# fns the properties call bind `s` too (so do `k`, `acc`, `ks`, `x`, `p`).
++# With a Reach lens (`each $.1`) also on the path, boru found the stamped
++# property body stale at every run, and after three re-stamps the rest of
++# its runs took the interpreter (radix and tst: 96 runs each; DX-REPORT,
++# "Run-time interpreter entries").
++def _ (specs each [ var [[spec] (spec Test.run-property end) report 0 ] ])
+ 
+ 
+ # --- summary -------------------------------------------------------
+diff --git a/trie.aql b/trie.aql
+index 77e7f52..b0eaf5b 100644
+--- a/trie.aql
++++ b/trie.aql
+@@ -56,9 +56,12 @@ def empty-node fn [
+ # Build a node from its three fields. The flag parameter is named `fin` (not
+ # `end`) because `end` is the boru call terminator and cannot be a binding name;
+ # the stored *field* is still "end". Call: `kids val fin mk-node`.
++# A plain map literal, not `do {end: [fin], …}`: `do {…}` would run its value
++# bodies on the interpreter at run time (boru-lang/boru#528,
++# design/COMPILABLE-SUBSET.md §5). Same map, same field order.
+ def mk-node fn [
+   [fin:Any val:Any kids:Any] [Map] [
+-    do {end: [fin], val: [val], kids: [kids]}
++    {end: fin, val: val, kids: kids}
+   ]
+ ]
+ 
+@@ -255,14 +258,15 @@ def build-from-entries fn [
+ 
+ # --- serialisation --------------------------------------------------
+ #
+-# `encode` interpolates a payload map to its jsonic text; `decode` parses
+-# that text back (`StructUtil.parse`) and rebuilds the trie from the data.
+-# A payload of the wrong kind raises a catchable error.
++# `encode` serialises a payload map to JSON text (`StructUtil.jsonify`);
++# `decode` parses that text back (`StructUtil.parse`) and rebuilds the trie
++# from the data. A payload of the wrong kind raises a catchable error. The
++# payloads are plain map literals, not `do {kind: […], …}` (see `mk-node`).
+ 
+ def encode-map fn [
+   [nd:Map] [String] [
+     def es ([] "" nd collect-entries)
+-    def payload (do {kind: ["triemap"], size: [nd count-keys], entries: [es]})
++    def payload {kind: "triemap", size: (nd count-keys), entries: es}
+     payload StructUtil.jsonify
+   ]
+ ]
+@@ -270,7 +274,7 @@ def encode-map fn [
+ def encode-set fn [
+   [nd:Map] [String] [
+     def ks ([] "" nd collect-keys)
+-    def payload (do {kind: ["trieset"], size: [nd count-keys], keys: [ks]})
++    def payload {kind: "trieset", size: (nd count-keys), keys: ks}
+     payload StructUtil.jsonify
+   ]
+ ]
+diff --git a/tst.aql b/tst.aql
+index 37e89d8..fd38a6f 100644
+--- a/tst.aql
++++ b/tst.aql
+@@ -45,9 +45,12 @@ import "boru:struct-util"
+ 
+ # Build a node. `fin` is the terminal flag (named `fin`, not `end`, which is
+ # reserved). Call: `ch fin val lo mid hi mk-tnode`.
++# A plain map literal, not `do {ch: [ch], …}`: `do {…}` would run its value
++# bodies on the interpreter at run time (boru-lang/boru#528,
++# design/COMPILABLE-SUBSET.md §5). Same map, same field order.
+ def mk-tnode fn [
+   [hi:Any mid:Any lo:Any val:Any fin:Any ch:String] [Map] [
+-    do {ch: [ch], end: [fin], val: [val], lo: [lo], mid: [mid], hi: [hi]}
++    {ch: ch, end: fin, val: val, lo: lo, mid: mid, hi: hi}
+   ]
+ ]
+ 
+@@ -326,10 +329,12 @@ def map-from-entries fn [
+   ]
+ ]
+ 
++# The encode payloads are plain map literals, not `do {kind: […], …}`
++# (see `mk-tnode`: `do {…}` runs its value bodies on the interpreter).
+ def map-encode fn [
+   [t:Any] [String] [
+     def es ([] "" t collect-et)
+-    def payload (do {kind: ["tstmap"], size: [t count-t], entries: [es]})
++    def payload {kind: "tstmap", size: (t count-t), entries: es}
+     payload StructUtil.jsonify
+   ]
+ ]
+@@ -399,7 +404,7 @@ def set-from-keys fn [
+ def set-encode fn [
+   [t:Any] [String] [
+     def ks ([] "" t collect-t)
+-    def payload (do {kind: ["tstset"], size: [t count-t], keys: [ks]})
++    def payload {kind: "tstset", size: (t count-t), keys: ks}
+     payload StructUtil.jsonify
+   ]
+ ]

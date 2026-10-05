@@ -1,0 +1,347 @@
+diff --git a/compiler/go/bytecode.go b/compiler/go/bytecode.go
+index e323aabb2..5596dfe1d 100644
+--- a/compiler/go/bytecode.go
++++ b/compiler/go/bytecode.go
+@@ -878,8 +878,13 @@ type PolyRef struct {
+ 	DynBodyOne bool
+ 	// DynBodyPlain is SigRef.DynBodyPlain for a poly re-match of a computed
+ 	// `do` body: any count of results, none of them one the interpreter
+-	// re-steps, or the loud defer.
++	// re-steps, or the loud defer — but a run whose re-stepped values are
++	// fns the VM re-steps in place exactly, as the CALL_NATIVE twin's
++	// (NUR359).
+ 	DynBodyPlain bool
++	// ReStepTail is SigRef.ReStepTail for the poly re-match of a computed
++	// `do` body (NUR359).
++	ReStepTail bool
+ 	// Seed is the checker's own pick, where it holds for the runtime window
+ 	// under a cheap guard (polySeedFor): the VM dispatches it directly — no
+ 	// lookup, no match — when the guard holds, and re-matches (the inline
+@@ -1361,6 +1366,14 @@ type SigRef struct {
+ 	// another count, it is a designed defer (vm:do-restep).
+ 	ReStep    bool
+ 	ReStepOut int
++	// ReStepTail marks a DynBodyPlain run that lands where the interpreter's
++	// collection stops after it (compiler's runAtStop, NUR359): the `do` is
++	// the last statement of the unit's body or of a loop's body, so a fn the
++	// run holds collects nothing forward past the run. The VM re-steps such
++	// a run in place when each fn's widest signature fits in the values the
++	// run leaves beneath it (tailReSteps) — its collection never reaches past
++	// the run either way — where it deferred (vm:dyn-body-plain).
++	ReStepTail bool
+ }
+ 
+ // NativeSplit is SigRef.Split: how many of the call's operands, in
+@@ -2723,6 +2736,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
+ 			if s.DynBodyPlain {
+ 				guard = " [plain values, checked]"
+ 			}
++			if s.ReStepTail {
++				guard += " [re-stepped at a stop]"
++			}
+ 			if s.ReStep {
+ 				guard = " [results re-stepped]"
+ 			}
+@@ -2761,6 +2777,9 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
+ 			if pr.DynBodyPlain {
+ 				one = " [plain values, checked]"
+ 			}
++			if pr.ReStepTail {
++				one += " [re-stepped at a stop]"
++			}
+ 			if pr.Fit != nil {
+ 				one += " [fit island]"
+ 			}
+diff --git a/compiler/go/lower.go b/compiler/go/lower.go
+index 807333a93..aa98aa8d9 100644
+--- a/compiler/go/lower.go
++++ b/compiler/go/lower.go
+@@ -4182,6 +4182,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
+ 			nout = PolyNOutRegion
+ 		}
+ 		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: lw.splitWords(lw.seatSplitLive(c.polySplit, c.polySplitLive), c.pos, c.polySplitFwdPos), DynBodyOne: dynOne, DynBodyPlain: plainChk, Raw: lw.polyRawOperands(n), QuietGuard: c.quietGuard}
++		pref.ReStepTail = plainChk && lw.runAtStop(ev.seq, c)
+ 		if c.polySeed != nil && (c.polySeed.tags == nil || len(c.polySeed.tags) == n) {
+ 			pref.Seed, pref.SeedTags = c.polySeed.sig, c.polySeed.tags
+ 		}
+@@ -4269,8 +4270,10 @@ func (lw *lowerer) siteSigRef(seq int, c *emitCall, dynOne, plainChk bool) (SigR
+ 		ref.ReStep, ref.ReStepOut = true, lw.reStepOut(seq, c.nout)
+ 	} else if plainChk {
+ 		// A plain run the VM may re-step in place (its dispatched values
+-		// all take no argument) owes the seat's count (NUR359).
++		// all take no argument, or it lands where the interpreter's
++		// collection stops after it) owes the seat's count (NUR359).
+ 		ref.ReStepOut = lw.reStepOut(seq, c.nout)
++		ref.ReStepTail = lw.runAtStop(seq, c)
+ 	}
+ 	return ref, true
+ }
+diff --git a/compiler/go/restep_tail.go b/compiler/go/restep_tail.go
+new file mode 100644
+index 000000000..861fffcd1
+--- /dev/null
++++ b/compiler/go/restep_tail.go
+@@ -0,0 +1,98 @@
++package compiler
++
++import (
++	core "github.com/boru-lang/boru/core/go"
++)
++
++// The RUN AT A STOP (SigRef.ReStepTail, NUR359). A computed `do` body's run
++// seated as data (SigRef.DynBodyPlain) that holds a fn value is re-stepped
++// by the interpreter where the `do` stood: the fn collects forward over the
++// tokens after it, then from the stack beneath it. Seated as data, the run
++// cannot do that, so the VM re-steps it in place — exactly, when every value
++// the fn could collect is the run's own. The run's stack side the VM bounds
++// at run time (vm_do_restep.go's tailReSteps: each fn's widest signature
++// fits in what the run leaves beneath it). The forward side is the tape
++// after the run, which only the program's tokens know: runAtStop proves it
++// holds nothing to collect — the `do` and its one body operand are the last
++// tokens of a body whose end is a collection stop on the interpreter's tape.
++
++// runAtStop reports whether the `do` call seq is the last statement of a
++// body whose end stops a collection: the unit's own body (a fn frame's tail
++// markers, or the program's end at the root), or a loop's body or a branch
++// arm (stopBodyTok). The word is the body's last token (its body operand
++// beneath it) or its last but one, the body operand written right after it —
++// a paren, a literal list, or a read of a def-bound value, each of which the
++// word's forward-first collection takes.
++func (lw *lowerer) runAtStop(seq int, c *emitCall) bool {
++	body := lw.sourceBody()
++	if lw.es == nil || c.word != "do" || len(c.ops) != 1 || len(body) == 0 {
++		return false
++	}
++	path := tokenPath(body, c.pos)
++	if len(path) == 0 {
++		return false
++	}
++	toks, parent := body, []core.Value(nil)
++	for _, at := range path[:len(path)-1] {
++		parent = toks
++		toks, _ = nestedToks(toks[at])
++	}
++	at := path[len(path)-1]
++	if !core.IsWord(toks[at]) || toks[at].Pos() != c.pos {
++		return false
++	}
++	switch {
++	case at == len(toks)-1:
++	case at == len(toks)-2 && lw.es.bodyOperandAfter(seq, toks, at):
++	default:
++		return false
++	}
++	if len(path) == 1 {
++		// The program's end, a fn frame's tail (a named fn's or a lambda's),
++		// or a callback's end: a code body whose word collects its residual
++		// (each, fold, …) runs it on its own. A body whose word hands its
++		// whole residual back to the caller's tape (`do [...]`,
++		// residualToCaller) is spliced where the tokens after that word
++		// follow it.
++		return lw.landingRoot || (lw.isFnUnit && lw.rec != nil && (lw.frameTail || (lw.rec.closure && !lw.rec.residualToCaller)))
++	}
++	return stopBodyTok(parent, path[len(path)-2])
++}
++
++// stopBodyTok reports whether the literal list at parent[bt] is a body whose
++// end stops a collection on the interpreter's tape: a `for` / `while` loop's
++// body (`for n [body]`, `while [c] [body]` — the loop's continuation marker
++// follows it) or an `if`'s arm (`if c [then] [else]` — the arm runs on its
++// own, a fn left at its end parked in its results).
++func stopBodyTok(parent []core.Value, bt int) bool {
++	if bt < 2 || !literalListTok(parent[bt]) {
++		return false
++	}
++	w := wordName(parent[bt-2])
++	if w == "for" || w == "while" || w == "if" {
++		return true
++	}
++	return bt >= 3 && wordName(parent[bt-3]) == "if" && literalListTok(parent[bt-1])
++}
++
++// wordName is the name of the word token v, or "".
++func wordName(v core.Value) string {
++	w, err := core.AsWord(v)
++	if err != nil {
++		return ""
++	}
++	return w.Name
++}
++
++// bodyOperandAfter reports whether the token after the word at toks[at] is
++// the call seq's one operand, written there: a paren or a literal list —
++// values the word's forward-first collection always takes — or a read whose
++// site is that token.
++func (es *EmitState) bodyOperandAfter(seq int, toks []core.Value, at int) bool {
++	next := toks[at+1]
++	if core.IsParenExpr(next) || literalListTok(next) {
++		return true
++	}
++	sites := es.argSites[seq]
++	return len(sites) == 1 && sites[0].seq < 0 && sites[0].pos.Row > 0 && bodyTokenContaining(toks, sites[0].pos) == at+1
++}
+diff --git a/eng/go/vm.go b/eng/go/vm.go
+index e9e430f99..d86632399 100644
+--- a/eng/go/vm.go
++++ b/eng/go/vm.go
+@@ -1336,7 +1336,18 @@ func (vc *vmContext) polyDispatch(dispReg *core.Registry, pr *compiler.PolyRef,
+ 			return nil, err
+ 		}
+ 	}
+-	if pr.DynBodyPlain {
++	if pr.DynBodyPlain && (plainReSteps(results) || (pr.ReStepTail && tailReSteps(r, results))) {
++		// A computed run whose re-stepped values the island steps exactly in
++		// place, as the CALL_NATIVE twin's (NUR359): its results, its raise,
++		// or the break / continue the run resolves next.
++		var err error
++		if results, err = vc.tailReStep(r, &compiler.SigRef{Word: pr.Word, ReStepOut: -1}, results, curDebug, pc); err != nil {
++			return nil, err
++		}
++		if flowPending(r, vc.r) {
++			return append(stack[:len(stack)-n], results...), nil
++		}
++	} else if pr.DynBodyPlain {
+ 		if err := checkDynBodyPlain(r, pr.Word, results, curDebug, pc); err != nil {
+ 			return nil, err
+ 		}
+@@ -5221,6 +5232,11 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
+ 			// argument re-steps in place below (plainReSteps, NUR359): no
+ 			// island owes it, in a loop body or a unit's tail alike.
+ 			inPlace := s.DynBodyPlain && !s.ReStep && plainReSteps(results)
++			// A plain run landing at a collection stop whose fns each fit in
++			// the values it leaves beneath them re-steps in place too
++			// (tailReStep, NUR359).
++			tail := s.DynBodyPlain && !s.ReStep && !inPlace && s.ReStepTail && s.SpliceOuts == nil && tailReSteps(curReg, results)
++			inPlace = inPlace || tail
+ 			stepped := s.Count != nil && (s.CountAlways || tapeCoupled(results) || (s.DynBodyPlain && !inPlace && dynBodyPlainRefuses(results)))
+ 			if kept, ok := spliceOutsSeat(s.SpliceOuts, results); ok {
+ 				results = kept
+@@ -5285,7 +5301,12 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
+ 				// continue the fn raised for the enclosing loop to take
+ 				// (NUR359).
+ 				var rerr error
+-				if results, rerr = vc.doReStep(curReg, &s, results, false, curCode, curUnit, curDebug, pc); rerr != nil {
++				if tail {
++					results, rerr = vc.tailReStep(curReg, &s, results, curDebug, pc)
++				} else {
++					results, rerr = vc.doReStep(curReg, &s, results, false, curCode, curUnit, curDebug, pc)
++				}
++				if rerr != nil {
+ 					return nil, rerr
+ 				}
+ 			} else if s.DynBodyPlain {
+diff --git a/eng/go/vm_do_restep.go b/eng/go/vm_do_restep.go
+index 182f78149..04d6b77c2 100644
+--- a/eng/go/vm_do_restep.go
++++ b/eng/go/vm_do_restep.go
+@@ -46,12 +46,110 @@ func (vc *vmContext) doReStep(reg *core.Registry, s *compiler.SigRef, results []
+ 	if unit >= 0 && slices.ContainsFunc(out, namedDispatchingFn) {
+ 		return nil, vmDefer(reg, debug, pc, "vm:do-restep", s.Word+"'s named fn result meets its fn frame's tail, where the interpreter raises and the island's tape simply ends (NUR317); the compiled runtime cannot execute it")
+ 	}
++	return reStepSeated(reg, s, out, debug, pc)
++}
++
++// reStepSeated is a re-step's results where the program seats them: a count
++// the program does not hold (SigRef.ReStepOut) is a designed defer.
++func reStepSeated(reg *core.Registry, s *compiler.SigRef, out []core.Value, debug []core.SrcPos, pc int) ([]core.Value, error) {
+ 	if s.ReStepOut >= 0 && len(out) != s.ReStepOut {
+ 		return nil, vmDefer(reg, debug, pc, "vm:do-restep", s.Word+"'s re-stepped results are "+strconv.Itoa(len(out))+" value(s) where the program seats "+strconv.Itoa(s.ReStepOut)+" (NUR317); the compiled runtime cannot execute it")
+ 	}
+ 	return out, nil
+ }
+ 
++// tailReStep re-steps in place a computed run that lands at a collection
++// stop (SigRef.ReStepTail) and that tailReSteps admitted: each fn it holds
++// takes an argument, and the interpreter's step loop dispatches it where
++// the `do` stood, collecting forward over the run's later values — the tape
++// after the run holds nothing it collects — and from the stack beneath it,
++// which its widest signature never reaches past the run's own values. So
++// the island stepping the run alone is the interpreter's own re-step: its
++// results, its raise (a no-match, or the fn's body's), or the break /
++// continue the fn raised for the enclosing loop to take (NUR359). A value
++// the re-step left that the tape would step again — a fn that matched
++// nothing parks as data on the island, where the interpreter's frame tail
++// or a later arrival acts on it — is the plain seat's designed defer.
++func (vc *vmContext) tailReStep(reg *core.Registry, s *compiler.SigRef, results []core.Value, debug []core.SrcPos, pc int) ([]core.Value, error) {
++	out, err := runIslandResolved(reg, nil, append([]core.Value(nil), results...))
++	if err != nil {
++		return nil, stampAt(err, debug, pc, reg)
++	}
++	if flowPending(reg) {
++		return out, nil
++	}
++	if err := checkDynBodyPlain(reg, s.Word, out, debug, pc); err != nil {
++		return nil, err
++	}
++	return reStepSeated(reg, s, out, debug, pc)
++}
++
++// tailReSteps reports whether a computed run a plain seat refuses
++// (dynBodyPlainRefuses) re-steps exactly on its own where it lands at a
++// collection stop (SigRef.ReStepTail): every value among it the step loop
++// dispatches is a boru fn whose widest signature fits in the values the run
++// has surely left beneath it when the step reaches it. Walking the run, a
++// plain value adds one — unless a fn before it may claim it forward — and a
++// fn takes at most its widest count from beneath, claims at most as many
++// values after it, and leaves at least its narrowest declared result count
++// (a return contract the frame enforces: a run that breaks it raises on
++// both lanes before any later dispatch). So no signature any dispatch tries
++// reads a value beneath the run, and the run's own values are the
++// interpreter's.
++func tailReSteps(reg *core.Registry, results []core.Value) bool {
++	// A tape-coupled token (a word, a splice, a marker) is the screen's to
++	// refuse: what it steps to is no value the walk can bound.
++	if !dynBodyPlainRefuses(results) || tapeCoupled(results) {
++		return false
++	}
++	beneath, claimable := 0, 0
++	for _, v := range results {
++		if !dynBodyValueReSteps(v) {
++			if claimable > 0 {
++				claimable--
++				continue
++			}
++			beneath++
++			continue
++		}
++		in, out, ok := boruSigBounds(reg, v)
++		if !ok || in > beneath {
++			return false
++		}
++		beneath, claimable = beneath-in+out, in
++	}
++	return true
++}
++
++// boruSigBounds is the widest signature's argument count (in) and the
++// narrowest declared result count (out; 0 where a signature declares none)
++// of a boru fn value whose own signatures its dispatch at the pointer
++// matches (a registry-local fn or a lambda: execFnDefLiteral's own-sig arm),
++// each a boru body — its results park where they land, never stepped again
++// by the dispatch — and none reading the whole stack. ok is false for
++// anything else the step loop dispatches.
++func boruSigBounds(reg *core.Registry, v core.Value) (in, out int, ok bool) {
++	fd, isFn := v.Data.(core.FnDefInfo)
++	if !isFn || !core.FnValueDispatchesAtPointer(v) || len(fd.Signatures) == 0 || core.FnHomeForeign(reg, &fd) {
++		return 0, 0, false
++	}
++	out = -1
++	for i := range fd.Signatures {
++		sig := &fd.Signatures[i]
++		if sig.Fallback {
++			continue
++		}
++		if _, boru := sig.Impl.(*core.BoruImpl); !boru || sig.FullStack() {
++			return 0, 0, false
++		}
++		in = max(in, sig.TotalArgs())
++		if out < 0 || len(sig.Returns) < out {
++			out = len(sig.Returns)
++		}
++	}
++	return in, max(out, 0), true
++}
++
+ // takesArgsAtPointer reports whether v is a value the step loop dispatches
+ // that may take an argument: anything it dispatches but a fn whose every
+ // signature takes none.
