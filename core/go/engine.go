@@ -2867,7 +2867,7 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 			// stay pinned there. No noteWordRead: a `/v` read never
 			// dispatches.
 			if cv, hit := CheckFnCarrierBind(e.Registry, w.Name); hit {
-				e.Registry.noteAnalysisUse(w.Name)
+				e.Registry.noteAnalysisUseAt(w.Name, val.Pos())
 				e.Registry.analysisRecorder().NoteDefRead(cv.ID, w.Name)
 				e.Registry.analysisRecorder().NoteLocalRead(cv.ID, val.Pos())
 				// The value spelling is noted here as on the Defs path
@@ -3191,7 +3191,7 @@ func (e *Engine) stepWord(val Value) error {
 			}
 			// Record the substitution as a "use" for unused-def
 			// tracking in check mode.
-			e.Registry.noteAnalysisUse(w.Name)
+			e.Registry.noteAnalysisUseAt(w.Name, e.currentPos())
 			// Remember which NAME produced this value (compile passes): if the
 			// value later has no compiled home in a fn unit, the read was a
 			// dynamic-scope reference and lowers to a runtime name lookup
@@ -3249,7 +3249,7 @@ func (e *Engine) stepWord(val Value) error {
 	if fn != nil {
 		// User-code dispatch — record the name as "used" for
 		// unused-def analysis in check mode.
-		e.Registry.noteAnalysisUse(w.Name)
+		e.Registry.noteAnalysisUseAt(w.Name, e.currentPos())
 		if err := e.policyGateWord(w.Name); err != nil {
 			return err
 		}
@@ -3373,7 +3373,7 @@ func (e *Engine) stepWord(val Value) error {
 			if stop, err := e.fnCarrierBarrier(cv, w.Name); stop || err != nil {
 				return err
 			}
-			e.Registry.noteAnalysisUse(w.Name)
+			e.Registry.noteAnalysisUseAt(w.Name, val.Pos())
 			e.Registry.analysisRecorder().NoteDefRead(cv.ID, w.Name)
 			e.Registry.analysisRecorder().NoteLocalRead(cv.ID, val.Pos())
 			e.noteWordRead(cv, w.Name, val.Pos())

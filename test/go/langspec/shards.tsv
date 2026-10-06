@@ -24,6 +24,7 @@
 2	TestCheckTypeSoundness
 3	TestDiagnosticParityAcrossPasses
 3	TestBindLedgerCensus
+3	TestDefCensusCorpus
 4	TestSpecCompiledOrFallback
 4	TestDispatchAdmissionAgreementCensus
 4	TestRegionSlotTokenKinds

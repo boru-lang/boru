@@ -36,6 +36,7 @@ func InstallDef(r *Registry, name string, body Value, stackOnly ...bool) {
 // design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore).
 func InstallFrameBinding(r *Registry, name string, body Value) {
 	installDef(r, name, body, true)
+	r.Defs.MarkTopFrame(name)
 }
 
 // UninstallFrameBinding pops a binding InstallFrameBinding pushed — a
@@ -64,6 +65,25 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 			pos = body.Pos()
 		}
 		r.Check.NoteRootDefSite(name, pos)
+	}
+	// The def census (def_census.go): what the scope rule will make of this
+	// install over the standing binding, if any. A shadowing frame install
+	// (a param, a capture) is a frame's own binding and is not a def.
+	if !shadow {
+		standing, has := r.Defs.TopEntry(name)
+		newFn, isFn := body.Data.(FnDefInfo)
+		var overlap *DefEntry
+		if has && isFn {
+			// Any entry of the stack, as the overlap filter below tests them.
+			for _, entry := range r.Defs.Entries(name) {
+				if oldFn, ok := entry.Body.Data.(FnDefInfo); ok && FnDefsOverlap(oldFn, newFn) {
+					e := entry
+					overlap = &e
+					break
+				}
+			}
+		}
+		r.noteBindCensus(name, standing, has, isFn, overlap)
 	}
 	// The rebind notification, seated with the operation rather than with the
 	// `def` word (core/go/rebind_notify.go). `!shadow` is the same test every
@@ -113,6 +133,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// new name so bare-word dispatch behaves exactly like pkg.word.
 		if rebound, ok := WrapperUnderName(r, name, fnDef); ok {
 			r.Defs.Push(name, rebound)
+			r.stampDefSite(name)
 			if !shadow {
 				r.NoteBindTransition(BindDef, name, body.Pos())
 			}
@@ -146,16 +167,17 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		fresh := !shadow && len(r.Defs.Stack(name)) == 0
 		replaced := false
 		var dropped Value
-		if stack := r.Defs.Stack(name); !shadow && len(stack) > 0 {
+		if stack := r.Defs.Entries(name); !shadow && len(stack) > 0 {
 			filtered := stack[:0:0]
 			changed := false
 			for _, entry := range stack {
-				oldFn, ok := entry.Data.(FnDefInfo)
+				oldFn, ok := entry.Body.Data.(FnDefInfo)
 				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(oldFn, fnDef) {
 					changed = true
-					dropped = entry
+					dropped = entry.Body
 					continue
 				}
+				// The survivors keep their scope and site (SetEntries).
 				filtered = append(filtered, entry)
 			}
 			if changed {
@@ -226,7 +248,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 				if failure != "" {
 					r.analysisRecorder().MarkUncompilable(failure)
 				}
-				r.Defs.Set(name, filtered)
+				r.Defs.SetEntries(name, filtered)
 				replaced = true
 			}
 		}
@@ -295,6 +317,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		}
 		body = NewClassType(def, info)
 		r.Defs.Push(name, body)
+		r.stampDefSite(name)
 		if !shadow {
 			r.NoteTypeInstall(name, body.Pos())
 		}
@@ -302,6 +325,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 	}
 
 	r.Defs.Push(name, body)
+	r.stampDefSite(name)
 	if !shadow {
 		r.NoteBindTransition(BindDef, name, body.Pos())
 	}
@@ -762,6 +786,7 @@ func installFnDef(r *Registry, name string, fnDef FnDefInfo, hook bool, stackOnl
 	SortSignatures(entry.Signatures)
 	entry.MaxForwardArgs = calcMaxForwardArgs(entry.Signatures)
 	r.Defs.Push(name, NewFunction(entry))
+	r.stampDefSite(name)
 	// Construction-time body check (first-class, post-binding). Replaces the
 	// dynamic-help example eval's accidental side-channel: that eval ran each fn
 	// body against SYNTHETIC example args ({a:1,b:2}), producing false positives
@@ -868,11 +893,11 @@ func UninstallFnSigs(r *Registry, name string, specs FnUndefInfo) {
 	// fire only when a removal COMMITS, so a sig-undef whose every match is
 	// locked would notify nothing while still being a rebind the user wrote.
 	noteRebind(r, name)
-	stack := r.Defs.Stack(name)
+	// Entries, not bodies: the survivors keep their scope and site.
+	stack := r.Defs.Entries(name)
 	if len(stack) == 0 {
 		return
 	}
-	stack = append([]Value(nil), stack...)
 
 	// For each spec, find and remove the most recent matching DefStack entry.
 	// Each removal is COMMITTED and NOTED individually: a sig-undef never
@@ -888,7 +913,7 @@ func UninstallFnSigs(r *Registry, name string, specs FnUndefInfo) {
 	// from depth 2 to 1 while recording delta 0.)
 	for _, spec := range specs.Sigs {
 		for j := len(stack) - 1; j >= 0; j-- {
-			fnDef, ok := stack[j].Data.(FnDefInfo)
+			fnDef, ok := stack[j].Body.Data.(FnDefInfo)
 			if !ok {
 				continue
 			}
@@ -909,9 +934,9 @@ func UninstallFnSigs(r *Registry, name string, specs FnUndefInfo) {
 			if matched {
 				rm := stack[j]
 				stack = append(stack[:j], stack[j+1:]...)
-				r.Defs.Set(name, stack)
+				r.Defs.SetEntries(name, stack)
 				r.NoteBindTransitionEntry(BindSigUndef, name, SrcPos{},
-					DefEntry{Body: rm})
+					DefEntry{Body: rm.Body})
 				break
 			}
 		}

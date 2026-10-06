@@ -335,7 +335,13 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 			}
 			j := BranchJoin{Name: k, Joined: joinBranchDef(tv, ev), ThenBinds: true, ElseBinds: true, Taken: taken}
 			j.Pre, j.HasPre = r.Defs.Top(k)
-			r.Defs.Push(k, j.Joined)
+			if j.HasPre {
+				r.Defs.Push(k, j.Joined)
+			} else {
+				// Both arms bound a name the enclosing scope did not: the
+				// post-branch binding models today's leak (def_census.go).
+				r.Defs.PushLeaked(k, j.Joined, tv.Pos())
+			}
 			joins = append(joins, j)
 			// The both-arms join is a transition exactly like the one-arm
 			// joins below — this note was MISSING (the doc above claimed
@@ -356,7 +362,7 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 			r.Defs.Push(k, j.Joined)
 		} else {
 			j.Joined = condBoundCarrier(r, k, tv, taken)
-			r.Defs.Push(k, j.Joined)
+			r.Defs.PushLeaked(k, j.Joined, tv.Pos())
 			if specFnJoin(r, k) {
 				continue
 			}
@@ -379,7 +385,7 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 			r.Defs.Push(k, j.Joined)
 		} else {
 			j.Joined = condBoundCarrier(r, k, ev, taken)
-			r.Defs.Push(k, j.Joined)
+			r.Defs.PushLeaked(k, j.Joined, ev.Pos())
 			if specFnJoin(r, k) {
 				continue
 			}

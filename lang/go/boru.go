@@ -385,7 +385,7 @@ func (a *Boru) Check(src string) (CheckResult, error) {
 	a.registry.Check.EmitUnusedDefDiagnostics()
 	a.registry.Check.EmitLateBindingHints()
 	if err != nil {
-		return CheckResult{Diagnostics: a.registry.Check.Diagnostics}, err
+		return CheckResult{Diagnostics: a.registry.Check.Diagnostics, DefCensus: a.registry.Check.SortedDefCensus()}, err
 	}
 
 	stack := make([]string, len(result))
@@ -416,7 +416,7 @@ func (a *Boru) Check(src string) (CheckResult, error) {
 			summary.Infos++
 		}
 	}
-	return CheckResult{Stack: stack, Diagnostics: diags, Summary: summary}, nil
+	return CheckResult{Stack: stack, Diagnostics: diags, Summary: summary, DefCensus: a.registry.Check.SortedDefCensus()}, nil
 }
 
 // Program is the bytecode unit the compile pass produces — re-exported
@@ -1395,6 +1395,11 @@ type CheckResult struct {
 	Stack       []string          `json:"stack"`
 	Diagnostics []CheckDiagnostic `json:"diagnostics"`
 	Summary     CheckSummary      `json:"summary"`
+	// DefCensus is the pass's binding census (core/go/def_census.go): every
+	// def the scope rule of design/IMMUTABLE-DEF.1.md will refuse, warn on
+	// or silently change, in source order. Report-only; `boru check
+	// --def-census` prints it.
+	DefCensus []DefCensusEntry `json:"def_census,omitempty"`
 	// SiteCounts tallies dispatch sites by compilation class during the
 	// bytecode recording pass — "mono" (a single resolved signature,
 	// compiles to CALL_NATIVE), "poly" (polymorphic, not lowered),
@@ -1440,6 +1445,10 @@ const (
 
 // CheckDiagnostic is a single finding from the static checker.
 type CheckDiagnostic = native.CheckDiagnostic
+
+// DefCensusEntry is one finding of the check pass's def census
+// (core/go/def_census.go), re-exported for the CLI.
+type DefCensusEntry = core.DefCensusEntry
 
 // BoruError is the structured diagnostic every engine failure surfaces
 // as (design/DIAGNOSTICS.0.md): code, detail, primary position,

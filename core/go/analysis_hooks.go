@@ -29,8 +29,26 @@ func (r *Registry) analysisCompiling() bool { return r.Check.Compiling }
 // noteAnalysisDiagnostic forwards a diagnostic to the checker.
 func (r *Registry) noteAnalysisDiagnostic(d CheckDiagnostic) { r.Check.AddDiagnostic(d) }
 
-// noteAnalysisUse marks a name as read (unused-def accounting).
+// noteAnalysisUse marks a name as read (unused-def accounting, and the def
+// census's read record — def_census.go).
+//
+// This is the BOOKKEEPING note — a reference (`f/v`), or the opaque-body
+// walk that marks every word a quotation names so none is flagged unused —
+// and not a read: it never reaches the def census, whose leak-read and
+// shadow-rebind questions are about the reads the program performs
+// (noteAnalysisUseAt). The walk in particular runs over a loop body between
+// analysis rounds, when the model holds a block's defs re-installed as
+// leaked, and counting it as a read of them reported every `if` arm in a kg
+// fold body as a leak.
 func (r *Registry) noteAnalysisUse(name string) { r.Check.recordUse(name) }
+
+// noteAnalysisUseAt records a READ of name at pos: the bookkeeping note plus
+// the census's read (def_census.go) — a bare word's dispatch or value
+// substitution, a fn carrier's read.
+func (r *Registry) noteAnalysisUseAt(name string, pos SrcPos) {
+	r.Check.recordUse(name)
+	r.noteReadCensus(name, pos)
+}
 
 // noteAnalysisFnBinder attributes a body-local def to its enclosing fn
 // for the dynamic-scope undefined-word rescue (check mode only; no-op

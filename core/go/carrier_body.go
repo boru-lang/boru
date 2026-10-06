@@ -175,6 +175,11 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	raiseCond := !keep && !condFrag
 	if raiseCond {
 		r.Check.CondBodyDepth++
+		// A branch arm, a loop or a callback body is a BLOCK scope under the
+		// rule (design/IMMUTABLE-DEF.1.md §2.1): the def census reads the
+		// scope its installs carry. `do` (keep) and a condition fragment are
+		// not blocks.
+		r.Defs.EnterScope(ScopeBlock)
 		// A rolled-back CONDITIONAL body is a speculative region: an
 		// `undef` of an enclosing binding inside it must not leak the
 		// deletion into the model (SpecUndefBlocked — the wrapped-undef FP
@@ -184,6 +189,7 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	}
 	result, err := sub.Run(tokens)
 	if raiseCond {
+		r.Defs.LeaveScope()
 		r.Check.PopSpecBaseline()
 		r.Check.CondBodyDepth--
 	}

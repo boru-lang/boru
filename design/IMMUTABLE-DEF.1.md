@@ -279,24 +279,69 @@ same codes at run time for the shapes only a run can see (a computed body
 
 ## 4 Migration
 
-Measured in IMMUTABLE-DEF.0 §3 and re-counted on `d56a59922`:
+### 4.1 The census (phase 0, measured 2026-10-06)
+
+`boru check --def-census` (§3.4) classifies every binding and every read of
+a block's leaked def by what the rule makes of it; `test/go/langspec`'s
+`TestDefCensusCorpus` runs it over the whole spec corpus and ratchets the
+count of rows with a finding the rule forbids (`defCensusRowCeiling`,
+**151** of 8,684 rows; `BORU_LOG_DEF_CENSUS=1` lists them). The classes
+are the rule's own cases (core/go/def_census.go):
+
+| class | becomes | corpus rows | where |
+|---|---|---:|---|
+| `rebind` — a second def of a name in one scope (a module `def x … def x`, a fn-body local re-bound, a body def over a param, a `do` body's def over the enclosing scope's) | `redefinition` | 30 (33 sites, 11 files) | fn-locals-scope 12, edge-quote-4 6, def-node-binding 3, edge-modules-2 2, one each in generics, edge-quote-3, edge-modules-1, edge-fns-1, each-variants, code-bodies, bytecode-combinations |
+| `overlap` — a `def f fn […]` overlapping an overload the scope already has | `redefinition` | 3 | compare-restrict L163, fn-value L333, open-words L77 |
+| `extend-inner` — a fn body adding an overload to an enclosing scope's word | `redefinition` | 0 | — (NUR149's family is pinned in Go tests, not corpus rows) |
+| `leak-read` — a read of a block's def after the block, nothing live under it | `undefined_word` | 11 | fn-locals-scope only (L167–168, L211, L245–251, L254) |
+| `shadow-rebind` — a block binding a name an enclosing scope binds, having read it: the loop counter | legal; `shadow_rebind` warning; answers differently | 39 (43 sites) | code-bodies 14, fn-locals-scope 10, control 9, module-fnvalue-boundary 2, module-composition 2, callbacks 1, bytecode-migrated 1 |
+| `undef` | removed | 59 (67 sites, 19 files) | open-words 8, edge-types-1 8, fn-value 7, class 6, module-fnvalue-boundary 5, fn-locals-scope 4, callbacks 4, fn-triple 3, module-time 2, module-parselang 2, def-node-binding 2, one each in 8 files |
+| `var-construct` | `[e acc] => […]` | 9 (10 sites) | code-bodies 6, three others |
+| `shadow` — any other inner-scope shadow | legal, unchanged | 17 rows (not counted) | fn-locals-scope |
+
+Fourteen rows add disjoint overloads (`def f fn … def f fn …`); they are no
+finding and stay legal. A repeat `import` of one native module is a cache
+no-op today (edge-modules-1 L64, L98) and stays one; a second module bound
+to one namespace is a `rebind` of kind `module`.
+
+The tree, by the same census over every `.boru` file (a finding inside an
+imported module's fn is reported under the importer with the module's
+positions and `in <fn>`; counted once per site):
+
+| where | findings |
+|---|---|
+| `kg/*.boru`, `kg/tests` | **119** `var-construct` sites the pass runs (187 constructs by text — the pass does not run `filter`'s body, so a `var` inside one is not seen); nothing else |
+| `utils/*.boru` | 1 `shadow` (`seq.boru` 448:9, `c` in `seq-main`) |
+| `lang/go/modules/*.boru`, `design/examples/**` | nothing (the sift module's per-fn local `loop` helpers are each fn's own: a caller's binding is dynamically visible but encloses nothing, §2.1) |
+| `bench/interp/fixtures` | 2 `shadow-rebind` (`loopsum.boru`, `nestloop.boru`: `def total 0 for … [def total …]`) |
+| `editors/linguist/samples`, `lang/go/test/check_fixtures`, `testdata` | 2 `shadow` |
+
+So the tree's migration is the kg `var` rewrite (phase 1) and two bench
+fixtures; the corpus's is 151 rows across the classes above, 59 of them
+`undef` demonstrations.
+
+### 4.2 The earlier estimate
+
+Counted by hand in IMMUTABLE-DEF.0 §3 and re-counted on `d56a59922`,
+kept for the record; the census above supersedes it where they differ
+(the hand count missed fn-body `undef`s and the `each`-callback
+accumulators, and counted the `var` construct by its one-line spelling):
 
 | what breaks | corpus rows | tree sites | rewrite |
 |---|---:|---:|---|
-| loop counter / accumulator by rebinding (`def n 0 while … [def n …]`, `def t 0 for … [def t …]`) — now a legal shadow that answers differently | ~26 | 2 (`bench/interp/fixtures/loopsum.boru`, `nestloop.boru`) | `var`; the `shadow_rebind` warning (#13) finds every site |
-| sequential rebinding at module level (`def x … def x …`) | ~45 sites in 64 rows | 10 in 7 files (3 are demos) | `var`, or a second name |
+| loop counter / accumulator by rebinding (`def n 0 while … [def n …]`, `def t 0 for … [def t …]`) — now a legal shadow that answers differently | ~26 (census: 39) | 2 (`bench/interp/fixtures/loopsum.boru`, `nestloop.boru`) | `var`; the `shadow_rebind` warning (#13) finds every site |
+| sequential rebinding at module level (`def x … def x …`) | ~45 sites in 64 rows (census: 30 rows, every scope) | 10 in 7 files (3 are demos; census: 0 — those were `var` constructs and callers' locals) | `var`, or a second name |
 | sequential rebinding inside a fn body | 34 | 4 | `var`, or a second name |
-| a def inside an `if`/`case` arm or loop body read after it | 2 (`do` rows are unaffected, #11) | ≤2 | `def x (if c [a] [b])`; `fold` |
+| a def inside an `if`/`case` arm or loop body read after it | 2 (census: 11) | ≤2 (census: 0) | `def x (if c [a] [b])`; `fold` |
 | late-binding pins (`def c 1 def xs [c add 1] def c 10 xs`) | ~13 | 0 | become `redefinition` rows |
 | a second `def f fn […]` adding disjoint overloads | 14 | 0 | **unchanged** — additive overloads stay legal |
 | a second `def f fn […]` replacing an overload; a closure rebound | 3 | 0 | become `redefinition` rows |
-| `undef` | 34 rows in 11 files | 0 (two comments) | deleted, or rewritten as the scope they demonstrate |
-| the `var [[…]]` construct | 9 | 69 (63 in `kg/*.boru`, 6 in `kg/tests`) | `[e acc] => […]` |
-| double `import` | 3 | 0 | idempotent import |
+| `undef` | 34 rows in 11 files (census: 59 in 19) | 0 (two comments) | deleted, or rewritten as the scope they demonstrate |
+| the `var [[…]]` construct | 9 | 69 (63 in `kg/*.boru`, 6 in `kg/tests`; by text 187) | `[e acc] => […]` |
+| double `import` | 3 | 0 | idempotent import (already a cache no-op for a native module) |
 | a type def'd per element in an `each` body | 3 | 0 | legal (block-local) or hoisted |
 
-The census (Phase 0) replaces these estimates with the exact list, and the
-nine downstream voxgig-boru libraries (not in this tree) get the same
+The nine downstream voxgig-boru libraries (not in this tree) get the same
 census before they take the release.
 
 ## 5 Phases and gates
@@ -308,7 +353,7 @@ same series.
 
 | phase | deliverable | gate | size |
 |---|---|---|---|
-| **0 — census and the code** | `redefinition`/`var_error`/`export_error` registered; the scope model's static finding in the check pass (report-only); a run-time census hook on `installDef`; `boru check --def-census`; a langspec test that lists the rows the rule will fail (report, not assert) | the census over lang/spec, kg, utils, examples agrees with §4 within the counted shapes; coverage 100 % | 2–3 days |
+| **0 — census and the code** (done 2026-10-06) | scope ids on the def table (module / frame / block, lexical enclosure); the census classes in the check pass (report-only, §4.1); `boru check --def-census` and `CheckResult.DefCensus`; `TestDefCensusCorpus`, a downward ratchet on the corpus rows the rule will fail. `var_error`/`export_error` exist; `redefinition` and `shadow_rebind` are minted with their first raising sites in phase 3 — the code gate (`TestEveryRegisteredCodeIsMinted`) refuses a registered code no site raises | the census over lang/spec, kg, utils, examples agrees with §4 within the counted shapes (it does: §4.1); coverage 100 % | 2–3 days |
 | **1 — constructs** | untyped lambda params; the `var` word on both lanes (interpreter cell + compiler slot/live cell, typed and untyped, captures, export refusal); kg's 69 sites and the 9 corpus rows rewritten; the `var [[…]]` construct, `__varundef` and `VarHandler` deleted | kg's suites and `make -C kg graph` byte-identical before and after; the var rows of §2.9 pinned both lanes | 4–6 days |
 | **2 — block scopes** | scope records; `InvokeBody` and arm/loop block entry/exit on the interpreter; arm/body locals as scoped unit locals on the compiler; the TCO probe through `BlockEnd`; NUR204 generalised | the 2 leak rows and the arm/loop examples of §2.9 pinned; TCO counters equal on the recursion rows; differential green | 5–8 days (the compiler half is most of it) |
 | **3 — immutability** | `installDef` refuses same-scope rebinding and inner-scope extension; additive overloads with overlap → error; types; idempotent import; `undef` removed, `__ud`; the REPL notice; the corpus rewrite of §4 with the late-binding and replacement rows as negative tests; the bench fixtures | `boru check` reports the errors; every census class has a pinned negative row; all gates green | 3–5 days |

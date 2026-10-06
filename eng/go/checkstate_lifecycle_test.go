@@ -58,6 +58,8 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"TrailingDeferredFnIDs":    true,
 		"StoodAsideLandingIDs":     true,
 		"ArgsFrameUnnamed":         true,
+		"DefCensus":                true,
+		"DefCensusSeen":            true,
 	}
 	// Fields Begin() resets to a canonical NON-zero per-pass value.
 	resetByBeginToCanonical := map[string]string{

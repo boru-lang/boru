@@ -156,16 +156,17 @@ func ReserveTypeParts(r *Registry, name string) {
 // constructed outside the recorder carries no ID). A twin that cannot
 // find its entry removes NOTHING — a twin never guesses by position.
 func applyTwinSigUndef(r *Registry, name string, removed Value) {
-	stack := r.Defs.Stack(name)
+	stack := r.Defs.Entries(name)
 	for j := len(stack) - 1; j >= 0; j-- {
-		if stack[j].ID != removed.ID {
+		if stack[j].Body.ID != removed.ID {
 			continue
 		}
-		if removed.ID == "" && !ValuesEqual(stack[j], removed) {
+		if removed.ID == "" && !ValuesEqual(stack[j].Body, removed) {
 			continue
 		}
-		rest := append([]Value(nil), stack[:j]...)
-		r.Defs.Set(name, append(rest, stack[j+1:]...))
+		// The survivors keep their scope and site (SetEntries).
+		rest := append([]DefEntry(nil), stack[:j]...)
+		r.Defs.SetEntries(name, append(rest, stack[j+1:]...))
 		return
 	}
 }

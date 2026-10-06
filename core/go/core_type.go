@@ -347,7 +347,10 @@ func installTypeBinding(r *Registry, name string, def *Type, pushed Value) {
 	if !IsBareTypeNode(pushed) {
 		def.SetTypeBody(pushed)
 	}
+	standing, has := r.Defs.TopEntry(name)
+	r.noteBindCensus(name, standing, has, false, nil)
 	r.Defs.PushType(name, def, pushed)
+	r.stampDefSite(name)
 	r.NoteTypeInstall(name, pushed.Pos())
 }
 
@@ -671,7 +674,10 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		if err := validateSubtypeNameFor(canon, name); err != nil {
 			return err
 		}
+		standing, has := r.Defs.TopEntry(name)
+		r.noteBindCensus(name, standing, has, false, nil)
 		r.Defs.PushTypeAdopted(name, canon, body)
+		r.stampDefSite(name)
 		r.NoteTypeInstall(name, body.Pos())
 	} else {
 		// Structural / singleton bodies (record shape, `def One 1`,

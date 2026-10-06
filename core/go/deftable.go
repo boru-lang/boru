@@ -12,6 +12,61 @@ type DefEntry struct {
 	Body    Value
 	TypeDef *Type
 	Minted  bool
+	// Scope is the id of the scope that bound this entry (EnterScope): 0 is
+	// the module scope, every fn call and — under the check pass — every
+	// code body a word runs is a scope of its own. The def census reads it
+	// (def_census.go, design/IMMUTABLE-DEF.1.md §3.1); the rule itself
+	// arrives with the immutability phase.
+	Scope int32
+	// Site is the def-name token that bound the entry, when the binder knew
+	// it (InstallAndRecordDef's PendingBindPos); zero otherwise.
+	Site SrcPos
+	// Leaked marks a binding the check pass holds AFTER the block that made
+	// it ended — a branch join or a loop's post-body join over a name the
+	// enclosing scope did not bind, or a multi-run body's kept def — to
+	// model today's leak. A read of it, with no live binding under it, is a
+	// read the block-scope rule will make undefined (the census's leak-read
+	// class).
+	Leaked bool
+	// Frame marks a per-call frame binding (InstallFrameBinding): a param or
+	// a capture, which a body def over it rebinds.
+	Frame bool
+}
+
+// ScopeKind names what opened a binding scope (DefTable.EnterScope).
+type ScopeKind uint8
+
+const (
+	// ScopeModule is the root: the top level of a program or a module
+	// body. It is never entered or left; it is what remains when the
+	// scope stack is empty.
+	ScopeModule ScopeKind = iota
+	// ScopeFrame is a fn or lambda call (PushFnBaseline / PopFnBaseline).
+	ScopeFrame
+	// ScopeBlock is a code body a word runs — a branch arm, a loop or
+	// callback body. The check pass enters one around every rolled-back
+	// body run (runCarrierBody); the interpreter will with block scoping.
+	ScopeBlock
+)
+
+// String names the kind for the census report.
+func (k ScopeKind) String() string {
+	switch k {
+	case ScopeFrame:
+		return "frame"
+	case ScopeBlock:
+		return "block"
+	}
+	return "module"
+}
+
+// defScope is one open scope: its id, its kind and, lazily, the names read
+// while it was the innermost scope (NoteRead) — what the census's
+// shadow-rebind class asks: did this block read the name it now binds?
+type defScope struct {
+	id    int32
+	kind  ScopeKind
+	reads map[string]bool
 }
 
 // DefTable holds the stacked bindings for every name. Post the
@@ -47,11 +102,98 @@ type DefTable struct {
 	// push for `n` does not invalidate the cached dispatch table for
 	// `add` — the property that makes the cache pay off in hot loops.
 	gen map[string]int64
+	// scopes is the stack of open scopes above the module scope
+	// (EnterScope / LeaveScope); nextScope mints their ids, so a scope id
+	// is never reused within one table and a dead block's bindings stay
+	// distinguishable from a live one's.
+	scopes    []defScope
+	nextScope int32
 }
 
 // NewDefTable returns an empty def table ready for use.
 func NewDefTable() *DefTable {
 	return &DefTable{stacks: make(map[string][]DefEntry), gen: make(map[string]int64)}
+}
+
+// EnterScope opens a scope of the given kind and returns its id.
+func (dt *DefTable) EnterScope(kind ScopeKind) int32 {
+	if dt == nil {
+		return 0
+	}
+	dt.nextScope++
+	dt.scopes = append(dt.scopes, defScope{id: dt.nextScope, kind: kind})
+	return dt.nextScope
+}
+
+// LeaveScope closes the innermost open scope. A no-op at the module scope,
+// so a cleanup path can run it unconditionally, as PopFnBaseline is.
+func (dt *DefTable) LeaveScope() {
+	if dt == nil || len(dt.scopes) == 0 {
+		return
+	}
+	dt.scopes = dt.scopes[:len(dt.scopes)-1]
+}
+
+// ScopeID is the innermost open scope's id, 0 at the module scope.
+func (dt *DefTable) ScopeID() int32 {
+	if dt == nil || len(dt.scopes) == 0 {
+		return 0
+	}
+	return dt.scopes[len(dt.scopes)-1].id
+}
+
+// ScopeKindNow is the innermost open scope's kind.
+func (dt *DefTable) ScopeKindNow() ScopeKind {
+	if dt == nil || len(dt.scopes) == 0 {
+		return ScopeModule
+	}
+	return dt.scopes[len(dt.scopes)-1].kind
+}
+
+// NoteRead records that the innermost scope read name. Nothing is recorded
+// at the module scope: the census asks the question of blocks and frames
+// only, and the hot interpreter lane never calls this (analysis_hooks.go
+// gates it on an active check).
+func (dt *DefTable) NoteRead(name string) {
+	if dt == nil || len(dt.scopes) == 0 {
+		return
+	}
+	top := &dt.scopes[len(dt.scopes)-1]
+	if top.reads == nil {
+		top.reads = map[string]bool{}
+	}
+	top.reads[name] = true
+}
+
+// LexicallyEncloses reports whether the scope with the given id is one the
+// innermost scope's code sees lexically: the innermost scope itself, a block
+// enclosing it within its frame, that frame, or the module scope (id 0). A
+// scope below the current frame on the stack — a CALLER's frame or block —
+// is dynamically visible, as every binding is, but not an enclosing scope:
+// the scope rule binds lexically (design/IMMUTABLE-DEF.1.md §2.1), so a
+// callee's def of a name its caller happens to bind is the callee's own.
+func (dt *DefTable) LexicallyEncloses(id int32) bool {
+	if dt == nil || id == 0 {
+		return true
+	}
+	for i := len(dt.scopes) - 1; i >= 0; i-- {
+		if dt.scopes[i].id == id {
+			return true
+		}
+		if dt.scopes[i].kind == ScopeFrame {
+			return false // the frame bounds the lexical region
+		}
+	}
+	return false // a closed scope's (a leaked binding's)
+}
+
+// ReadInScope reports whether the innermost scope has read name since it
+// opened (NoteRead).
+func (dt *DefTable) ReadInScope(name string) bool {
+	if dt == nil || len(dt.scopes) == 0 {
+		return false
+	}
+	return dt.scopes[len(dt.scopes)-1].reads[name]
 }
 
 // touch bumps name's generation counter. Called from every mutator that
@@ -109,14 +251,72 @@ func (dt *DefTable) TopEntry(name string) (DefEntry, bool) {
 	return ds[len(ds)-1], true
 }
 
-// Push pushes a new value binding for name.
+// Push pushes a new value binding for name, bound in the innermost scope.
 func (dt *DefTable) Push(name string, v Value) {
+	dt.PushAt(name, v, SrcPos{})
+}
+
+// PushAt is Push recording the def-name token that bound the entry.
+func (dt *DefTable) PushAt(name string, v Value, site SrcPos) {
 	if dt == nil {
 		return
 	}
 	dt.mutations++
 	dt.touch(name)
-	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: v})
+	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: v, Scope: dt.ScopeID(), Site: site})
+}
+
+// SetTopSite records site as the def-name token that bound name's top entry
+// — the binders push first and stamp after, so every push form (a value, a
+// fn entry, a minted or adopted type) carries the site the same way.
+func (dt *DefTable) SetTopSite(name string, site SrcPos) {
+	if dt == nil {
+		return
+	}
+	ds := dt.stacks[name]
+	if len(ds) == 0 {
+		return
+	}
+	ds[len(ds)-1].Site = site
+}
+
+// MarkTopFrame marks name's top entry as a frame binding (DefEntry.Frame).
+func (dt *DefTable) MarkTopFrame(name string) {
+	if dt == nil {
+		return
+	}
+	ds := dt.stacks[name]
+	if len(ds) == 0 {
+		return
+	}
+	ds[len(ds)-1].Frame = true
+}
+
+// MarkScopeLeaked marks every entry the scope with the given id bound as
+// Leaked: the check pass closed the scope and kept its bindings, as the
+// each-kin body analysis does, to model today's leak.
+func (dt *DefTable) MarkScopeLeaked(id int32) {
+	if dt == nil {
+		return
+	}
+	for _, ds := range dt.stacks {
+		for i := range ds {
+			if ds[i].Scope == id {
+				ds[i].Leaked = true
+			}
+		}
+	}
+}
+
+// PushLeaked pushes a value binding the check pass re-installs after the
+// block that made it ended (DefEntry.Leaked), carrying the block's def site.
+func (dt *DefTable) PushLeaked(name string, v Value, site SrcPos) {
+	if dt == nil {
+		return
+	}
+	dt.mutations++
+	dt.touch(name)
+	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: v, Scope: dt.ScopeID(), Site: site, Leaked: true})
 }
 
 // PushType pushes a new type binding for name: the body plus the
@@ -127,7 +327,7 @@ func (dt *DefTable) PushType(name string, def *Type, body Value) {
 	}
 	dt.mutations++
 	dt.touch(name)
-	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: body, TypeDef: def, Minted: true})
+	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: body, TypeDef: def, Minted: true, Scope: dt.ScopeID()})
 }
 
 // PushTypeAdopted pushes a type binding whose TypeDef is an EXISTING
@@ -141,7 +341,7 @@ func (dt *DefTable) PushTypeAdopted(name string, def *Type, body Value) {
 	}
 	dt.mutations++
 	dt.touch(name)
-	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: body, TypeDef: def})
+	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: body, TypeDef: def, Scope: dt.ScopeID()})
 }
 
 // Pop pops the top binding for name. Returns true if there was a
@@ -297,6 +497,25 @@ func (dt *DefTable) Set(name string, bodies []Value) {
 		entries[i] = DefEntry{Body: b}
 	}
 	dt.stacks[name] = entries
+}
+
+// SetEntries replaces name's entire stack with entries, keeping each
+// entry's scope, site and type half — the form a filter that drops some
+// of a stack's entries (an overlapping overload, an undef'd signature)
+// uses, where Set's bodies-only rebuild would re-stamp every survivor as a
+// module-scope binding. If entries is empty the name is removed.
+func (dt *DefTable) SetEntries(name string, entries []DefEntry) {
+	if dt == nil {
+		return
+	}
+	dt.touch(name)
+	if len(entries) == 0 {
+		delete(dt.stacks, name)
+		return
+	}
+	cp := make([]DefEntry, len(entries))
+	copy(cp, entries)
+	dt.stacks[name] = cp
 }
 
 // Entries returns a snapshot of the full DefEntry stack for name,
@@ -542,7 +761,11 @@ func (dt *DefTable) Clone() *DefTable {
 	for name, g := range dt.gen {
 		gen[name] = g
 	}
-	return &DefTable{stacks: stacks, gen: gen}
+	// The scope counter continues, so a clone's new scopes never collide
+	// with ids its inherited entries carry; the open scopes themselves are
+	// the parent's run state and start empty (fork.go resets FnBaselines
+	// the same way).
+	return &DefTable{stacks: stacks, gen: gen, nextScope: dt.nextScope}
 }
 
 // HoldsType reports whether any LIVE entry, under any name, binds def — the

@@ -848,6 +848,11 @@ func DefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 		// (core/go/rebind_notify.go) — this arm returning the installer's
 		// result directly is exactly how a type rebind reached no
 		// notification at all before the funnel existed.
+		// The def census (core/go/def_census.go) sites a type binding at
+		// the `def` word itself (CheckState.CurWordPos): staging the name
+		// token as InstallAndRecordDef does would move the install event
+		// the compiled unit's twin op stamps a runtime error at, and the
+		// interpreter stamps that error at the word.
 		return nil, core.InstallType(r, name, body)
 	}
 	if err := ValidateWordName(name); err != nil {
@@ -1705,10 +1710,18 @@ func varUndefHandler(args []Value, named map[string]Value, future []Value, r *Re
 	if name := DefName(args[0]); name != "" {
 		r.Check.Recorder().RecordDynUndef(name, args[0].Pos())
 	}
-	return undefHandler(args, named, future, r)
+	return undefByName(args, named, future, r)
 }
 
-func undefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+// undefHandler is the user-written `undef NAME`: the def census notes it
+// (core/go/def_census.go — the scope rule removes the word), then the
+// unbind the var splice's own cleanup shares (undefByName) runs.
+func undefHandler(args []Value, named map[string]Value, future []Value, r *Registry) ([]Value, error) {
+	core.NoteDefCensusUse(r, core.CensusUndef, DefName(args[0]), args[0].Pos())
+	return undefByName(args, named, future, r)
+}
+
+func undefByName(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	name := DefName(args[0])
 	// A speculative check region (a rolled-back nested body, a fn-body
 	// analysis) must not commit the deletion of an ENCLOSING binding: the
@@ -1789,6 +1802,7 @@ func undefHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 
 func UndefFnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	name := DefName(args[0])
+	core.NoteDefCensusUse(r, core.CensusUndef, name, args[0].Pos())
 	undefInfo, ok := args[1].Data.(FnUndefInfo)
 	if !ok {
 		return nil, fmt.Errorf("undef: expected fn undef spec, got %s", args[1].String())
@@ -1818,6 +1832,14 @@ func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 	}
 	decls, _ := AsList(declVal)
 	body := elems.Slice()[1:]
+	// The def census (core/go/def_census.go): the scope rule replaces this
+	// construct with untyped lambda parameters. The finding names the
+	// declared names as written, `[e acc]`.
+	declNames := make([]string, 0, decls.Len())
+	for _, d := range decls.Slice() {
+		declNames = append(declNames, DefName(d))
+	}
+	core.NoteDefCensusUse(r, core.CensusVarConstruct, "["+strings.Join(declNames, " ")+"]", list.Pos())
 
 	var result []Value
 	var varNames []string

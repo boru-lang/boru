@@ -2586,6 +2586,9 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 		}
 		installed = installed[:0]
 		joined := map[string]core.Value{}
+		// Names the body bound that the enclosing scope did not: their
+		// post-loop binding models today's leak (core's def census).
+		fresh := map[string]bool{}
 		// Deterministic name order: carried-slot allocation and the joined
 		// installs must not depend on Go map iteration (slot numbering and
 		// the emit goldens would jitter run to run).
@@ -2625,7 +2628,7 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 					// joined ID so the next round's / post-loop reads resolve.
 					es.NoteLoopCarried(k, j, pre)
 				}
-			} else if loopCapture && !proven && loopFreshCarriable(k, v) {
+			} else if fresh[k] = true; loopCapture && !proven && loopFreshCarriable(k, v) {
 				// A FRESH name in a loop that may run zero times is bound
 				// after the loop only if the body ran: the post-loop
 				// binding is a carrier with its own identity (no read can
@@ -2644,7 +2647,11 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 				// A narrowing-only add was skipped above — nothing to install.
 				continue
 			}
-			r.Defs.Push(k, jv)
+			if fresh[k] {
+				r.Defs.PushLeaked(k, jv, adds[k].Pos())
+			} else {
+				r.Defs.Push(k, jv)
+			}
 			installed = append(installed, k)
 		}
 		prevJoined, lastJoined = lastJoined, joined
@@ -2936,6 +2943,7 @@ func bindFrameValue(r *core.Registry, name string, v core.Value) {
 		return
 	}
 	r.Defs.Push(name, v)
+	r.Defs.MarkTopFrame(name) // a param or capture, as the run's frame binds it
 }
 
 func RunFnBodyOnce(r *core.Registry, name string, paramNames []string, body, args []core.Value, captures []core.CapturedBinding, anonymous bool) []core.Value {

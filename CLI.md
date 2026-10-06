@@ -394,6 +394,7 @@ boru check script.boru --json        # flags may follow the targets
 boru check --soft script.boru        # exit 0 even on errors
 boru check --strict script.boru      # surface every dynamic dispatch
 boru check --pedantic script.boru    # exit non-zero on warnings and infos too
+boru check --def-census src           # list the bindings the scope rule will reject
 boru check -- -odd-name.boru         # -- ends flag parsing for its segment
 boru check -h                        # the documented usage, exit 0
 ```
@@ -428,6 +429,26 @@ Flags:
 * `-r PATH`, `-s SEED` — same as `boru run`.
 * `--color auto|always|never` — as for `run` and `do` (see **Color**
   below).
+* `--def-census` — after each target's diagnostics, print the pass's
+  **def census**: one line per binding or read the immutable-def rule
+  (`design/IMMUTABLE-DEF.1.md`) will treat differently, as
+  `row:col  class  name  (scope)  <- row:col  kind` — the site, the
+  class, the name, the kind of scope it is in, then the standing binding
+  it rebinds, shadows or leaks from and what that binding is (`value`,
+  `fn`, `type`, `module`, or `param` for a parameter or a captured binding). The
+  classes: `rebind` (a second def of a name in one scope — becomes
+  `redefinition`), `overlap` (a `def f fn` overlapping an overload the
+  scope already has), `extend-inner` (a fn body adding an overload to an
+  enclosing scope's word), `leak-read` (a read of a block's def after the
+  block — becomes `undefined_word`), `shadow-rebind` (the loop counter
+  `def n 0 for 3 [def n (n add 1)]`: a block shadowing a name it read —
+  legal, warned), `shadow` (any other inner-scope shadow — legal),
+  `undef` and `var-construct` (uses of the two constructs the rule
+  removes). Report-only: the census never changes the exit code. The
+  same list is `def_census` in the `--json` result. A finding inside a fn
+  body ends `in <fn>`, naming the fn: the positions are the body's
+  source's, which for an imported module's fn is the module's file, not
+  the target's.
 
 **What it catches** (full list in the language reference's diagnostics
 table):

@@ -962,6 +962,10 @@ func (r *Registry) IsHelpWord(name string) bool {
 // module / global scope.
 func (r *Registry) PushFnBaseline(snap map[string]int) {
 	r.FnBaselines = append(r.FnBaselines, snap)
+	// A fn call is a binding scope (deftable.go ScopeFrame): the entries it
+	// installs carry this scope's id, which is how a body def over a module
+	// name reads as a shadow and a second body def of one name as a rebind.
+	r.Defs.EnterScope(ScopeFrame)
 }
 
 // PopFnBaseline removes the innermost fn-body baseline. Safe to call on
@@ -972,6 +976,7 @@ func (r *Registry) PopFnBaseline() {
 		return
 	}
 	r.FnBaselines = r.FnBaselines[:n-1]
+	r.Defs.LeaveScope()
 }
 
 // TopFnBaseline returns the innermost enclosing-fn def-depth snapshot,

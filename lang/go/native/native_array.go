@@ -1763,7 +1763,16 @@ func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value 
 	// `undef` of an enclosing binding inside it must not leak the deletion
 	// into the pass model (SpecUndefBlocked — the wrapped-undef FP class).
 	r.Check.PushSpecBaseline(r.Defs.Snapshot())
+	// A callback body is a BLOCK scope under the scope rule
+	// (design/IMMUTABLE-DEF.1.md §2.1): the def census reads the scope its
+	// installs carry. The body's defs still stay in the model (the leak
+	// fidelity above) until block scoping lands.
+	// The body is a block scope for the def census; its defs are kept past
+	// the run (today's leak), so they are marked as the leak they model.
+	block := r.Defs.EnterScope(core.ScopeBlock)
 	result, err := sub.Run(input)
+	r.Defs.LeaveScope()
+	r.Defs.MarkScopeLeaked(block)
 	r.Check.PopSpecBaseline()
 	r.Check.CondBodyDepth--
 	if err != nil {

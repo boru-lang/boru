@@ -90,6 +90,11 @@ type Opts struct {
 	// imported file module's body to learn its exports, so the profile that
 	// governs the run must govern that execution too (NUR079).
 	Policy policy.Policy
+	// DefCensus prints the pass's def census (core/go/def_census.go) after
+	// each target's diagnostics: one line per finding — site, class, name,
+	// the standing binding's site and the note. Report only; the exit code
+	// is the check's as before.
+	DefCensus bool
 }
 
 // Target is one unit of work: Source is the boru text and Path is the
@@ -111,6 +116,7 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 	soft := fs.Bool("soft", false, "report diagnostics but still exit 0")
 	strict := fs.Bool("strict", false, "additionally report every dispatch over a dynamic operand")
 	pedantic := fs.Bool("pedantic", false, "gate on the advisory tiers too, not only on errors (composes under --soft)")
+	defCensus := fs.Bool("def-census", false, "list every def the scope rule of design/IMMUTABLE-DEF.1.md will refuse, warn on or change (report only)")
 	emit := fs.Bool("emit", false, "print the bytecode disassembly instead of the check report")
 	colorMode := fs.String("color", "auto", "colorize diagnostics: auto|always|never")
 	base := fs.String("base", "", "resolve relative imports against this directory instead of the file's own")
@@ -188,15 +194,16 @@ func RunCLI(args []string, stdout, stderr io.Writer) int {
 		return runEmit(stdout, stderr, work, *registry, seed, pol)
 	}
 	opts := Opts{
-		Registry: *registry,
-		Seed:     seed,
-		JSON:     *jsonOut,
-		Soft:     *soft,
-		Strict:   *strict,
-		Pedantic: *pedantic,
-		Color:    lang.ResolveColor(nil, stderr, *colorMode),
-		Base:     *base,
-		Policy:   pol,
+		Registry:  *registry,
+		Seed:      seed,
+		JSON:      *jsonOut,
+		Soft:      *soft,
+		Strict:    *strict,
+		Pedantic:  *pedantic,
+		Color:     lang.ResolveColor(nil, stderr, *colorMode),
+		Base:      *base,
+		Policy:    pol,
+		DefCensus: *defCensus,
 	}
 	if err := RunTargets(stdout, stderr, work, opts); err != nil {
 		fmt.Fprintf(stderr, "%s\n", err)
@@ -349,6 +356,9 @@ Options:
   --strict       also report every dispatch over a dynamic operand (info)
   --pedantic     gate on the advisory tiers too, not only on errors;
                  composes under --soft, so --soft --pedantic exits 0
+  --def-census   list every def the scope rule (design/IMMUTABLE-DEF.1.md)
+                 will refuse, warn on or change: site, class, name, the
+                 standing binding's site; report only
   --emit         print the bytecode disassembly instead of checking
   --color MODE   auto (default), always, or never
   --base DIR     resolve relative imports against DIR, not the file's
@@ -532,6 +542,9 @@ func RunTargets(stdout, stderr io.Writer, targets []Target, o Opts) error {
 			fmt.Fprintf(stderr, "check: file %s\n", t.Path)
 		}
 		printDiagnostics(stderr, res.Diagnostics, t.Source, o.Color)
+		if o.DefCensus {
+			printDefCensus(stdout, t.Path, res.DefCensus)
+		}
 		if cerr != nil {
 			// A failed analysis has no trustworthy summary or carrier
 			// stack, so neither is printed. With one target the caller
@@ -721,4 +734,30 @@ func PreflightPolicyAt(stderr io.Writer, source, registry string, seed int64, ve
 		return fmt.Errorf("check failed: %d error(s)", res.Summary.Errors)
 	}
 	return nil
+}
+
+// printDefCensus writes one line per def-census finding (core/go/
+// def_census.go): `path:row:col  class  name  <- standing-row:col  note`,
+// with the path omitted for an -e expression and the standing site omitted
+// when the binder knew none. Nothing is written for an empty census, so a
+// clean file prints nothing.
+func printDefCensus(w io.Writer, path string, census []lang.DefCensusEntry) {
+	for _, e := range census {
+		site := fmt.Sprintf("%d:%d", e.Site.Row, e.Site.Col)
+		if path != "" {
+			site = path + ":" + site
+		}
+		standing := ""
+		if e.Standing.Row > 0 {
+			standing = fmt.Sprintf("  <- %d:%d", e.Standing.Row, e.Standing.Col)
+		}
+		note := ""
+		if e.Note != "" {
+			note = "  " + e.Note
+		}
+		if e.Fn != "" {
+			note += "  in " + e.Fn
+		}
+		fmt.Fprintf(w, "%s  %s  %s  (%s)%s%s\n", site, e.Class, e.Name, e.Scope, standing, note)
+	}
 }

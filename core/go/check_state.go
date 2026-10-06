@@ -527,6 +527,12 @@ type CheckState struct {
 	// body reads a module-scope name that a LATER def in the same file
 	// rebinds, and module names resolve late.
 	RootDefSites map[string][]SrcPos
+	// DefCensus is the pass's binding census (def_census.go): every install
+	// and leaked read classified by what the scope rule
+	// (design/IMMUTABLE-DEF.1.md) will make of it. Report-only.
+	DefCensus []DefCensusEntry
+	// DefCensusSeen dedupes DefCensus by class, name and site (defCensusKey).
+	DefCensusSeen map[string]bool
 	// FnReads maps a named fn under analysis to every name its body reads
 	// (recordUse while FnNameStack is non-empty) — the late-binding hint's
 	// other half (NUR097): a read of a name that RootDefSites shows rebound
@@ -989,6 +995,11 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	// the table is the single source of truth; TestCheckSeverityTableComplete
 	// gates that every emitted code has an entry).
 	"unused_def": SeverityWarning,
+	// The scope rule (design/IMMUTABLE-DEF.1.md §2.8): a second binding of a
+	// name in one scope, an inner scope extending a word, an overlapping
+	// overload — a guaranteed runtime failure once the rule lands; and the
+	// block-local def that shadows the very name it read (the loop counter
+	// by rebinding), legal and answering differently, so a warning.
 	// A fn body reads a module-scope name a LATER root def rebinds — the
 	// closure computes with the later binding (NUR097, Allowed with this
 	// hint as the mitigation).
@@ -1184,6 +1195,8 @@ func (c *CheckState) Clone() *CheckState {
 	// nil, so a nil ledger clones as nil without a guard to keep covered.
 	cp.BindLedger = append([]BindTransition(nil), c.BindLedger...)
 	cp.PassEndCleanups = append([]func(){}, c.PassEndCleanups...)
+	cp.DefCensus = append([]DefCensusEntry(nil), c.DefCensus...)
+	cp.DefCensusSeen = cloneMap(c.DefCensusSeen)
 	cp.ParenPlacedFnIDs = cloneMap(c.ParenPlacedFnIDs)
 	cp.ReachSurvivorFnIDs = cloneMap(c.ReachSurvivorFnIDs)
 	if c.RaiseWatches != nil {
@@ -1348,6 +1361,8 @@ func (c *CheckState) Begin() func() {
 	c.ReachSurvivorFnIDs = nil
 	c.ForceFnReanalysis = false
 	c.RootDefSites = nil
+	c.DefCensus = nil
+	c.DefCensusSeen = nil
 	c.FnReads = nil
 	c.ParenReSteppedFnIDs = nil
 	c.WordReadFnIDs = nil
