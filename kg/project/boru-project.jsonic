@@ -332,6 +332,16 @@
       metadata: { repository: "boru-lang/boru" }
     }
     {
+      id: "src:immutable-def"
+      kind: "text"
+      locator: "design/IMMUTABLE-DEF.0.md"
+      title: "immutable def: what breaks, and how to resolve it (investigation, measured)"
+      retrieved_at: null
+      content_hash: "immutable-def-2026-10-06"
+      authority: "primary"
+      metadata: { repository: "boru-lang/boru" }
+    }
+    {
       id: "src:full-compilation-assessment"
       kind: "text"
       locator: "design/FULL-COMPILATION-ASSESSMENT.0.md"
@@ -620,6 +630,8 @@
       attributes: { role: "the handover page for the downstream voxgig-boru libraries on boru main (2026-10-02): where the nine libraries' migration PRs stand, the three levels of distance from full compilation (every suite compiles, every runtime callback stamps, and an instrumented build still counts 415,854 run-time interpreter entries in 30 of 58 suites from six root shapes R1\u2013R6), the stopped interpreter-entry pass saved as patches in design/handover/voxgig-interp-wip/ with the trace build and the two-lane probe, and the defects found: NUR366\u2013NUR383 and the \u00a75 refusals, each measured on both lanes" } }
     { key: "in-place-compilation", type: "Document", label: "design/IN-PLACE-COMPILATION.0.md"
       attributes: { role: "the prototype design (2026-10-06, not built) for in-place compilation in the tree-walking interpreter: when a word's call is fully matched the engine overwrites cells instead of moving, removing and splicing them — the last cell of the call's span becomes a call cell holding the matched dispatch (signature, arguments in signature order, the word's position) and every other claimed cell becomes a nop cell that every scan skips; the next step executes the call cell through execMatch and its results replace that one cell. Records the maintainer's decision that the arguments are not rearranged into Forth order (forward matching is sufficient) and the defaults taken for the other design questions, the measured cost of today's path (seven structural edits and ten cross-gap copies for `add 1 2 7 8 9`, two plans per forward call, the planner at 54% of the loop profile), the layout invariant under in-place arrival and the one helper that reads it (claimedCells), the audit of every tape reader and the treatment each needs, the gating (an option, off by default, never under an analysis pass or the recorder, with a verify mode that counts plan/re-plan disagreements), seven soundness risks with the check for each, the measurement instruments and targets, the phases (hot path, no marker insert, cold completions, a call-site plan cache), and the questions left open for the maintainer" } }
+    { key: "immutable-def", type: "Document", label: "design/IMMUTABLE-DEF.0.md"
+      attributes: { role: "the measured investigation (2026-10-06) of making def immutable — a second def of a name in the same module a semantic error — asked for by the maintainer: what def means today (bindings stack; a def inside a do, an if/case arm or a loop body leaks into its frame and stacks per execution; only fn frames, var blocks and the loop iterator are scoped), three census instruments and their blind spots, the impact on the spec corpus (117 of 8,684 rows bind an already-bound name; 64 at module scope, mostly while/for counters by rebinding, late-binding pins and overload accumulation) and on the tree's 3,352 defs (ten literal redefinition sites in seven files lexically, about 400 by the engine's frame rule — the scope question itself), the inventory of compiler and checker machinery that exists only because names can be rebound (freeze discipline, rebind notifications, generation-keyed dispatch cache, bind twins, loop-carried lowering, seven refusals), the eight decisions the rule needs (scope, fn overloads via extend, undef, the REPL, types, import, var as a frame, a state-carrying while), the resolution for each breaking idiom with counts, a migration plan, and the recommendation" } }
     { key: "full-compilation-assessment", type: "Document", label: "design/FULL-COMPILATION-ASSESSMENT.0.md"
       attributes: { role: "the dated (2026-09-14) progress assessment and forecast for the full-compilation project, measured on main at c34a2fb (increment 59) rather than transcribed from the design's status lines: it separates the two progress curves the project has — the corpus SAMPLE (frontier ledger 127 -> 29, interp-entry census 184 -> 28 in seventeen days) and the gate INVENTORY the mission is actually defined against (92 MarkUncompilable sites of 96, 114 undeclared handlers of 114, 5 defers of 5 across 17 vmDefer sites, 281 unattributed engine entries under a 505 ceiling never lowered, OpFallback and the drift window and BORU_COMPILE_FALLBACK all live, OpCollect and OpDispatchGeneric declared nowhere) — and reads the stage table against the tree (0-2 landed, 3 mostly, 4 half: twins flipped and the dispatch half unbuilt, 5 in narrow form, 6 started by rows, 7-9 not started). It classifies the remaining 29 ledger rows and 28 census rows by mechanism and reach (about 20 row-level, about 25 needing a Stage 5 or 7 slice, about 12 structural), gives calibrated probabilities per end state (corpus-native with rulings roughly 70% within a month and 90% by year end; T1 + T2 as written under 5% within a month, about 25% by year end, about 55% eventually; with an amended carve-out list 45% by year end), and sizes the remaining effort in session-days (18-33 to corpus-native with rulings, a further 65-115 to T1 + T2 with carve-outs, against about 20 spent). Its recommendations: rule O2, O4 and the attributed set in writing; build the generic lane's first executing slice on the k pair next; stop taking rows whose fix is a Stage 5 or 7 slice as row-level increments; assign every refusal site a disposition in one census pass; fence the registry at the spawn seam; keep the one-in-seven negative-result rate; refresh this note at the end of each tier" } }
     { key: "handler-migration-line", type: "Document", label: "design/HANDLER-MIGRATION-LINE.0.md"
@@ -1053,6 +1065,21 @@
       object: { kind: "entity", entity: "core-go" }
       evidence: [{ source: "src:in-place-compilation", locator: "10 Files",
         quote: "`inPlaceOn`, step-loop arms, `stepCall`, `placeResults`, `claimedCells`" }]
+      confidence: 0.95 }
+    { subject: "immutable-def", predicate: "part_of"
+      object: { kind: "entity", entity: "design-notes" }
+      evidence: [{ source: "src:immutable-def", locator: "title",
+        quote: "what breaks, and how to resolve it" }]
+      confidence: 0.95 }
+    { subject: "immutable-def", predicate: "related_to"
+      object: { kind: "entity", entity: "nur" }
+      evidence: [{ source: "src:immutable-def", locator: "4 What exists only because names can be rebound",
+        quote: "the freeze discipline becomes a theorem" }]
+      confidence: 0.95 }
+    { subject: "immutable-def", predicate: "supports"
+      object: { kind: "entity", entity: "core-go" }
+      evidence: [{ source: "src:immutable-def", locator: "4 What exists only because names can be rebound",
+        quote: "NotifyNameRebound" }]
       confidence: 0.95 }
     { subject: "full-compilation-assessment", predicate: "part_of"
       object: { kind: "entity", entity: "design-notes" }

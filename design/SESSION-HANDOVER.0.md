@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-10-06** (the baseline block below, with the in-place compilation design note; the rest of the page is the 2026-09-25 state and its history).
+Last updated: **2026-10-06** (the baseline block below, with the in-place compilation design note and the immutable-def investigation; the rest of the page is the 2026-09-25 state and its history).
 
 > **2026-09-30:** the NUR rounds (#520–#526) are handed over in
 > [NUR-ROUND6-HANDOVER.0.md](NUR-ROUND6-HANDOVER.0.md): the state at stop,
@@ -82,6 +82,16 @@ Last updated: **2026-10-06** (the baseline block below, with the in-place compil
 >   the arguments into Forth order. Design only, not built; off by default
 >   when built; interpreter-mode performance, orthogonal to T1–T4. Its §11
 >   lists the questions still open for the maintainer.
+> - **An investigation (2026-10-06):**
+> [IMMUTABLE-DEF.0.md](IMMUTABLE-DEF.0.md) — the measured impact of making
+>   `def` immutable (a second `def` of a name in the same module an error),
+>   asked for by the maintainer: ten literal redefinition sites in seven of
+>   the tree's 129 boru files, 64 of 8,684 spec rows at module scope (mostly
+>   `while`/`for` counters by rebinding), about 400 sites by the engine's
+>   frame rule because loop, arm and `do` bodies leak their defs — which is
+>   the scope decision the rule needs — plus the compiler machinery that
+>   exists only for rebinding, the resolutions per idiom, and a migration
+>   plan. Its §8 lists the decisions still open for the maintainer.
 > - **Next.** A round, as the round-6 page describes: split the open records
 >   by mechanism, one agent per track, integrate, record, gate, merge. The
 >   maintainer's verdicts are owed on NUR364 and on NUR366–NUR383 before

@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '4165982539428354764');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '7079685081566895552');
 INSERT INTO input_files VALUES ('../AGENTS.md', '6665130395557295718', 15330);
 INSERT INTO input_files VALUES ('../CLI.md', '1936818953179421473', 83450);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
@@ -45,6 +45,7 @@ INSERT INTO input_files VALUES ('../design/FUNCTION-VALUE-SCOPE.0.md', '59656315
 INSERT INTO input_files VALUES ('../design/GO-TS-PARITY.0.md', '298886948117144679', 23594);
 INSERT INTO input_files VALUES ('../design/HANDLER-MIGRATION-LINE.0.md', '5774651396100651588', 18879);
 INSERT INTO input_files VALUES ('../design/HOT-CODE-LOADING.0.md', '4181002289371161566', 19083);
+INSERT INTO input_files VALUES ('../design/IMMUTABLE-DEF.0.md', '5800558334443536280', 24765);
 INSERT INTO input_files VALUES ('../design/IN-PLACE-COMPILATION.0.md', '834950126872869913', 39379);
 INSERT INTO input_files VALUES ('../design/MODULE-VIEWS.0.md', '570466612363092696', 22324);
 INSERT INTO input_files VALUES ('../design/NUR-ARCHIVE.0.md', '2574920545089865532', 183827);
@@ -52,7 +53,7 @@ INSERT INTO input_files VALUES ('../design/NUR-ROUND6-HANDOVER.0.md', '801405935
 INSERT INTO input_files VALUES ('../design/NUR-RUN-HANDOFF.0.md', '2640723508142864479', 280357);
 INSERT INTO input_files VALUES ('../design/PAREN-RESTEP-RULE.0.md', '6362463872929681453', 16140);
 INSERT INTO input_files VALUES ('../design/RELOAD-INVALIDATION.0.md', '1747462305432078777', 25012);
-INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '7442842578515944487', 119067);
+INSERT INTO input_files VALUES ('../design/SESSION-HANDOVER.0.md', '3303447621054688716', 119811);
 INSERT INTO input_files VALUES ('../design/STATE-MACHINES.0.md', '988109864692237677', 90476);
 INSERT INTO input_files VALUES ('../design/VOXGIG-BORU-HANDOVER.0.md', '6535089044425083822', 27423);
 INSERT INTO input_files VALUES ('../design/legacy/BASIC-CHECK-CUT.0.ignore', '2999343245563700976', 8203);
@@ -79,7 +80,7 @@ INSERT INTO input_files VALUES ('../test/specfix/go.mod', '7601104241745438425',
 INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '4566725813820157164', 550);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '509860570392406449', 630);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '6391144975494364028', 99427);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '7645769616221386878', 101904);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -238,6 +239,9 @@ INSERT INTO sources VALUES ('src:higher-order-functions', 'text', 'design/legacy
 INSERT INTO sources VALUES ('src:hot-code-loading', 'text', 'design/HOT-CODE-LOADING.0.md', 'hot code loading: the mechanism report and reload design', NULL, 'hot-code-loading-2026-08', 'primary', '{
   "repository": "boru-lang/boru"
 }');
+INSERT INTO sources VALUES ('src:immutable-def', 'text', 'design/IMMUTABLE-DEF.0.md', 'immutable def: what breaks, and how to resolve it (investigation, measured)', NULL, 'immutable-def-2026-10-06', 'primary', '{
+  "repository": "boru-lang/boru"
+}');
 INSERT INTO sources VALUES ('src:in-place-compilation', 'text', 'design/IN-PLACE-COMPILATION.0.md', 'in-place compilation: the interpreter writes compiled call cells into its own tape (prototype design)', NULL, 'in-place-compilation-2026-10-06', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -324,6 +328,8 @@ INSERT INTO entities VALUES ('ent:Document:2413361039686810166', 'Document', 'de
 INSERT INTO entity_attributes VALUES ('ent:Document:2413361039686810166', 'role', 'the handover page for the Non-Uniformity Register rounds (#520–#526, 2026-09-29/30), written when round 6 was stopped on request: the state at stop and the gate table, the six open records with what remains of each and the tests that pin it, the four round-6 agents'' unmerged work saved as patches in design/handover/round6-wip/ with each patch''s measured state on the baseline (what builds, what its own record tests and the module unit suites say), how a round was run, and the lessons that cost a day');
 INSERT INTO entities VALUES ('ent:Document:2599686088131995550', 'Document', 'design/FULL-COMPILATION-REPLAN.0.md', 'design/full-compilation-replan.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:2599686088131995550', 'role', 'the dated (2026-09-18) re-plan and re-estimate of the full-compilation project, measured on PR #471 head fb094de, superseding the session-day numbers in FULL-COMPILATION-REVIEW.0.md section 2.3 and the session-days column of FULL-COMPILATION.0.md section 10.1 while leaving the review''s architecture findings and S0-S7 content standing. Its premise is a timestamp: the review''s 105-175 session-days were taken at 19:31 on 2026-09-17, two hours before 7178699 (two lanes, the corpus filter, sharded CI) and five before a9cb212 (the three-minute contract, parallel walks), so it prices a verification loop that no longer exists. It measures what actually got faster - the pre-commit ritual about 60 min to a 66 s commit gate (about 50x, and partly a scope change because cover-gate left the per-commit loop), CI 12 min 30 s to 1 min 58 s (about 6x), ten gates over one spec family to 6 s (about 20x) - against the loop that binds, the full unfiltered langspec corpus, which went from about 25 min to about 12 and so only halved. It re-measures the debt (8513 rows, 8054 compiled, 113 failing to compile; root causes 80 coverage, 32 soundness, 1 correct-error, 0 scheduling, 0 opcode) and finds three clusters of exactly nineteen, of which the third - each/fold/filter/scan over a gradual-Any collection, ambiguous List vs Map - is a type-commitment question one operand to the left of the callback rather than a fn-value lowering, and is carved out as S1a ahead of S1. Four plan changes: P0 per-file compile-failure ratchets first (BORU_SPEC_FILES reports counts instead of asserting them, which is how two regressions reached a working tree on 2026-09-18 while six-second filtered runs stayed green); S1a carved out; S2 split into 35 declaration-only signatures and 59 code-body signatures that need a mechanism depending on S1b; and S2 judged by undeclaredHandlerCeiling rather than by the compile-failure count, since on 2026-09-18 the census moved 114 to 94 while compile failures moved by zero. The re-estimate is 75-130 session-days (65-115 conditional on P0 delivering), which is about 1.4x faster overall and not fifty; year end is about 75 session-days away so only the low end with zero overrun reaches it, and T1 + T2 by year end moves 15% to about 20%. It calibrates against one measured session''s throughput and records that zero of the 113 compile failures were fixed that day, naming S1a, S1b, S2b and S4 as the only steps that move the headline number');
+INSERT INTO entities VALUES ('ent:Document:268210795961119346', 'Document', 'design/IMMUTABLE-DEF.0.md', 'design/immutable-def.0.md', 'accepted');
+INSERT INTO entity_attributes VALUES ('ent:Document:268210795961119346', 'role', 'the measured investigation (2026-10-06) of making def immutable — a second def of a name in the same module a semantic error — asked for by the maintainer: what def means today (bindings stack; a def inside a do, an if/case arm or a loop body leaks into its frame and stacks per execution; only fn frames, var blocks and the loop iterator are scoped), three census instruments and their blind spots, the impact on the spec corpus (117 of 8,684 rows bind an already-bound name; 64 at module scope, mostly while/for counters by rebinding, late-binding pins and overload accumulation) and on the tree''s 3,352 defs (ten literal redefinition sites in seven files lexically, about 400 by the engine''s frame rule — the scope question itself), the inventory of compiler and checker machinery that exists only because names can be rebound (freeze discipline, rebind notifications, generation-keyed dispatch cache, bind twins, loop-carried lowering, seven refusals), the eight decisions the rule needs (scope, fn overloads via extend, undef, the REPL, types, import, var as a frame, a state-carrying while), the resolution for each breaking idiom with counts, a migration plan, and the recommendation');
 INSERT INTO entities VALUES ('ent:Document:3080274854606714513', 'Document', 'ADR.md', 'adr.md', 'accepted');
 INSERT INTO entities VALUES ('ent:Document:3534903004749141856', 'Document', 'design/CONTENT-ADDRESSING.0.md', 'design/content-addressing.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:3534903004749141856', 'role', 'the design note for deriving a definition''s identity from its content rather than its name: the three costs that share that root cause (the per-invoke DepsFresh walk, the AOT codec''s symbolic-reference refusals, the pre-1.0 rename tax), the split between an ARTIFACT digest over file bytes — unblocked, already specified by boru-vendor §5 — and a DEFINITION digest over meaning, which needs canonicity, alpha normalisation, macro expansion, referent substitution and cycle components; three options for referent substitution under call-time binding, recommending a (text digest, world digest) compound key; a five-phase sequence; and the rejections — codebase-as-database, hash-based type identity, immutable definitions as a language rule. Measured by design/legacy/unison-hash-identity-probe.0.ignore and scripts/hash-identity-probe.sh');
@@ -759,6 +765,8 @@ INSERT INTO assertions VALUES ('ast:3612971925750437545', 'ent:SoftwareModule:85
 INSERT INTO assertion_evidence VALUES ('ast:3612971925750437545', 'src:go-tree', 'lang/go/tuikit', NULL, 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:362581806158443442', 'ent:Document:4472215996454426427', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:362581806158443442', 'src:go-module-graph', 'title', 'Go module graph and per-module coverage', 'direct_record', 'kg-ingest');
+INSERT INTO assertions VALUES ('ast:3650956151181899799', 'ent:Document:268210795961119346', 'related_to', 'entity', 'ent:Document:5292060467150439417', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:3650956151181899799', 'src:immutable-def', '4 What exists only because names can be rebound', 'the freeze discipline becomes a theorem', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:3656929081728712135', 'ent:SoftwareModule:7327774866203707838', 'part_of', 'entity', 'ent:Product:4032424380612892464', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:3656929081728712135', 'src:go-work', 'use block', './tools/piecetool', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:3727255686445494517', 'ent:SoftwareModule:3568378724923050340', 'part_of', 'entity', 'ent:SoftwareModule:5138375578915662736', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
@@ -773,6 +781,8 @@ INSERT INTO assertions VALUES ('ast:3940080421122549792', 'ent:Document:20304784
 INSERT INTO assertion_evidence VALUES ('ast:3940080421122549792', 'src:decl-grammar', 'title', 'DECLARATIVE-GRAMMAR.0 — one grammar artifact for both parser twins', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:3943803469274392275', 'ent:Document:6482726874773933255', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:3943803469274392275', 'src:basic-check-cut', 'title', 'BASIC-CHECK-CUT.0 — removing `basic`''s dependency on `check`', 'direct_record', 'kg-ingest');
+INSERT INTO assertions VALUES ('ast:3947802532973390240', 'ent:Document:268210795961119346', 'supports', 'entity', 'ent:SoftwareModule:2013670336276694550', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:3947802532973390240', 'src:immutable-def', '4 What exists only because names can be rebound', 'NotifyNameRebound', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:4108524001740220242', 'ent:Document:8907875005045743780', 'related_to', 'entity', 'ent:Concept:4587555710592773395', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:4108524001740220242', 'src:in-place-compilation', '3.4 The layout invariant and the one helper that reads it', 'the collected arguments stay **after** the marker, in arrival order', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:4109835522011898628', 'ent:Concept:3854395902791518463', 'has_attribute', 'literal', NULL, '"typed, word-based query language"', 'String', NULL, NULL, 0.98, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
@@ -899,6 +909,8 @@ INSERT INTO assertions VALUES ('ast:6971541933488349891', 'ent:Document:85146399
 INSERT INTO assertion_evidence VALUES ('ast:6971541933488349891', 'src:root-module', 'title', 'ROOT-MODULE-FEASIBILITY.0 — measuring a shared module below core and parser', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:6971877089875160938', 'ent:SoftwareModule:559301050642427014', 'depends_on', 'entity', 'ent:SoftwareModule:2013670336276694550', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:6971877089875160938', 'src:gomod:check-go', 'require block', 'github.com/boru-lang/boru/core/go v0.0.0', 'rule', 'kg-gomod');
+INSERT INTO assertions VALUES ('ast:6993491119150685773', 'ent:Document:268210795961119346', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:6993491119150685773', 'src:immutable-def', 'title', 'what breaks, and how to resolve it', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:699504737122703801', 'ent:Document:4880036076125012648', 'supports', 'entity', 'ent:SoftwareModule:8275629451197117420', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:699504737122703801', 'src:hot-code-loading', '2.3', 'Re-import **is** reload, today, for', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:7011485005147552963', 'ent:SoftwareModule:4192460694199531608', 'supports', 'entity', 'ent:Concept:3854395902791518463', NULL, NULL, NULL, NULL, 0.9, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
