@@ -25,6 +25,7 @@ migration aid. Nothing here is built yet; §5 is the order it is built in.
 | 10 | the REPL | **Allowed with a notice** (`redefined x`) — its registry persists across lines by design |
 | 11 | `do` | **Transparent**: `do`'s body is not a block; its defs reach the enclosing scope (one `do [def x …]` at module level is a module def) |
 | 12 | `undef` | **Removed** from the language (§2.5) |
+| 13 | the loop-counter shape under block shadowing (`def n 0 for 3 [def n (n add 1)] n`, now a legal block-local shadow answering `0` where today it answers `3`) | **Legal, with a check warning** `shadow_rebind` when a block-local def's value reads the very name it binds; the interpreter stays silent |
 
 Everything the maintainer asked for in one sentence: *a name binds once
 per scope; blocks are scopes; `def f fn […]` adds overloads and never
@@ -153,19 +154,21 @@ there, as today. Scripts, modules and `boru -e` keep the error.
 | `var_error` | assignment across a fn boundary; a capitalised name; the fn/type spellings; `var` of a name bound by `def` in the same scope | the var's declaration site |
 | `export_error` | exporting a var | the var's declaration site |
 | `type_error` | a typed var assigned a value of another type | the declared type, the value |
+| `shadow_rebind` (warning) | a block-local `def NAME v` whose `v` reads NAME — the counter/accumulator shape, now a shadow that answers differently | the shadowed binding's site; the rewrite (`var`, or a new name) |
 
 The check pass reports every statically visible case (the static census
 is the default `boru check`); `installDef` and the var handler raise the
 same codes at run time for the shapes only a run can see (a computed body
 `do (quote [def x …])`, a macro expansion, `unpack` of a run-time map).
+`shadow_rebind` is a check warning only — the run is legal.
 
 ### 2.9 Examples
 
 | program | today | under the rule |
 |---|---|---|
 | `def a 1 def a 2 a` | `2` | `redefinition` at `def a 2`, pointing at `def a 1` |
-| `def n 0 for 3 [def n (n add 1)] n` | `3` | `redefinition` (the loop body rebinds its enclosing scope's `n`); rewrite `var n 0 for 3 [var n (n add 1)] n` → `3` |
-| `def t 0 each [def t (t add 1) t] [1 2 3]` | `[1 2 3]`, `t` is `3` after | `redefinition`; `var t 0 each [var t (t add 1) t] [1 2 3]` → `[1 2 3]`, `t` is `3` |
+| `def n 0 for 3 [def n (n add 1)] n` | `3` | `0` — the body's `def n` is a block-local shadow (#1), and `boru check` warns `shadow_rebind` (#13); the intended program is `var n 0 for 3 [var n (n add 1)] n` → `3` |
+| `def t 0 each [def t (t add 1) t] [1 2 3]` | `[1 2 3]`, `t` is `3` after | `[1 1 1]`, `t` is `0`, with the same warning; `var t 0 each [var t (t add 1) t] [1 2 3]` → `[1 2 3]`, `t` is `3` |
 | `if true [def w 1] [def w 2] w` | `1` | `undefined word: w` (the arm's `w` ended with the arm); write `def w (if true [1] [2])` |
 | `do [def q 5] q` | `5` | `5` (#11) |
 | `for 2 [def x 9] x` | `9` | `undefined word: x` |
@@ -280,7 +283,7 @@ Measured in IMMUTABLE-DEF.0 §3 and re-counted on `d56a59922`:
 
 | what breaks | corpus rows | tree sites | rewrite |
 |---|---:|---:|---|
-| loop counter / accumulator by rebinding (`def n 0 while … [def n …]`, `def t 0 for … [def t …]`) | ~26 | 2 (`bench/interp/fixtures/loopsum.boru`, `nestloop.boru`) | `var` |
+| loop counter / accumulator by rebinding (`def n 0 while … [def n …]`, `def t 0 for … [def t …]`) — now a legal shadow that answers differently | ~26 | 2 (`bench/interp/fixtures/loopsum.boru`, `nestloop.boru`) | `var`; the `shadow_rebind` warning (#13) finds every site |
 | sequential rebinding at module level (`def x … def x …`) | ~45 sites in 64 rows | 10 in 7 files (3 are demos) | `var`, or a second name |
 | sequential rebinding inside a fn body | 34 | 4 | `var`, or a second name |
 | a def inside an `if`/`case` arm or loop body read after it | 2 (`do` rows are unaffected, #11) | ≤2 | `def x (if c [a] [b])`; `fold` |
@@ -334,6 +337,11 @@ order; 3 needs both (it removes the only spelling of loop state otherwise).
   have dispatched. Legal by ruling; the check pass's dispatch model
   already resolves names by the def stack, so no new machinery, but the
   census should report it as a *shadow* so authors see it.
+- **The silent shape (#13).** `def n 0 for 3 [def n (n add 1)] n` runs and
+  answers `0`; only `boru check` says why. `boru run` pre-flights the check
+  pass by default, so the warning reaches the terminal, but a run under
+  `--no-check` sees nothing. Check: the census lists every site in the
+  corpus and the tree before Phase 3 lands; the warning has a pinned row.
 - **Captured vars are snapshots (#6)** — a closure made in a loop body
   sees the var as it was; authors expecting shared state will be
   surprised once. The REFERENCE paragraph states it with an example.
