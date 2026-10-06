@@ -257,8 +257,10 @@ func (lw *lowerer) lowerResidentBind(d *emitDynBind) string {
 		lw.binding = false
 	}
 	idx := len(lw.p.ResidentBinds)
+	replace := d.residentTwin >= 0 && d.residentTwin < len(lw.p.BindTwins) &&
+		lw.p.BindTwins[d.residentTwin].Kind == core.BindDefReplace
 	lw.p.ResidentBinds = append(lw.p.ResidentBinds, ResidentBindSpec{
-		Name: d.name, Twin: d.residentTwin, Pop: pop,
+		Name: d.name, Twin: d.residentTwin, Pop: pop, Replace: replace,
 	})
 	lw.emit(OpBindResident, idx, d.pos)
 	if pop {
@@ -568,9 +570,25 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			}
 		}
 	}
-	if needDyn && peekDyn {
+	switch {
+	case needDyn && d.assign:
+		// A var ASSIGNMENT replaces the cell (OpAssignDynScope): the value
+		// peeked when live on the sim top, else re-pushed and consumed.
+		idx := len(lw.p.VarAssigns)
+		if peekDyn {
+			lw.p.VarAssigns = append(lw.p.VarAssigns, VarAssignSpec{Name: d.name})
+			lw.emit(OpAssignDynScope, idx, d.pos)
+		} else {
+			lw.binding = true
+			lw.pushOperand(src, d.pos)
+			lw.binding = false
+			lw.p.VarAssigns = append(lw.p.VarAssigns, VarAssignSpec{Name: d.name, Pop: true})
+			lw.emit(OpAssignDynScope, idx, d.pos)
+			lw.vm = lw.vm[:len(lw.vm)-1]
+		}
+	case needDyn && peekDyn:
 		lw.emit(OpBindDynScopePeek, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
-	} else if needDyn {
+	case needDyn:
 		// The bind's own re-push of the source is not a READ of the name
 		// (a deopt tests at the consumer's push — deoptAtSlot).
 		lw.binding = true

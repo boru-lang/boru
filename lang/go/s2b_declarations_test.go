@@ -69,6 +69,9 @@ func TestS2BDeclarationsByWordAndShape(t *testing.T) {
 				continue
 			}
 			shape := s2aShape(sig)
+			if word == "var" && len(sig.Args) > 1 {
+				continue // var's mirrored constructor forms: counted with def's below
+			}
 			flag, ok := shapes[shape]
 			if !ok {
 				t.Errorf("%s %s: a code-body signature the pin does not name — the worklist moved", word, shape)
@@ -89,36 +92,48 @@ func TestS2BDeclarationsByWordAndShape(t *testing.T) {
 	// def's keyword forms: every code-body form declares CompileOwnLowering
 	// beside S2a's quoted-operand answer — the Atom-named form's NAME is a
 	// key, the String-named form's quoted operands are Pattern-pinned
-	// keywords (inert).
-	fd := reg.Lookup("def")
-	if fd == nil {
-		t.Fatal("def: not registered")
-	}
-	defForms := 0
-	for i := range fd.Signatures {
-		sig := &fd.Signatures[i]
-		if len(sig.NoEvalArgs) == 0 {
-			continue
+	// keywords (inert). The var word mirrors every form to REFUSE it with
+	// var_error (design/IMMUTABLE-DEF.1.md §2.3: a var holds a value), so
+	// the same 34 forms carry the same declarations under `var`.
+	keywordForms := func(word string) int {
+		fd := reg.Lookup(word)
+		if fd == nil {
+			t.Fatalf("%s: not registered", word)
 		}
-		defForms++
-		wantDef := inert | own
-		if len(sig.Args) > 0 && sig.Args[0] != nil && sig.Args[0].Equal(core.TAtom) {
-			wantDef = key | own
+		forms := 0
+		for i := range fd.Signatures {
+			sig := &fd.Signatures[i]
+			if len(sig.NoEvalArgs) == 0 {
+				continue
+			}
+			if word == "var" && len(sig.Args) == 1 {
+				continue // the `var [[…]]` construct's one-list signature, pinned above
+			}
+			forms++
+			wantForm := inert | own
+			if len(sig.Args) > 0 && sig.Args[0] != nil && sig.Args[0].Equal(core.TAtom) {
+				wantForm = key | own
+			}
+			if sig.CompileEffect != wantForm {
+				t.Errorf("%s %s: CompileEffect %v, want exactly %v", word, s2aShape(sig), sig.CompileEffect, wantForm)
+			}
 		}
-		if sig.CompileEffect != wantDef {
-			t.Errorf("def %s: CompileEffect %v, want exactly %v", s2aShape(sig), sig.CompileEffect, wantDef)
-		}
+		return forms
 	}
 	// 32 -> 34 at the merge of main's #510 with the reverse-order NUR run:
 	// fn's 0-argument refusal (NUR091, a base signature that always raises)
 	// synthesizes the gen chain's `def name gen [T] fn` in both its
 	// Atom-named and String-named spellings, code-body forms like the rest.
+	defForms, varForms := keywordForms("def"), keywordForms("var")
 	if defForms != 34 {
 		t.Errorf("def: %d code-body keyword forms, want 34 (the census's S2b worklist)", defForms)
 	}
-	// 26 named above + def's 34 = the 60 signatures S2b declares.
-	if seen+defForms != 60 {
-		t.Errorf("pinned %d code-body signatures, want 60", seen+defForms)
+	if varForms != 34 {
+		t.Errorf("var: %d code-body keyword forms, want 34 (def's, mirrored to refuse)", varForms)
+	}
+	// 26 named above + def's 34 + var's 34 = the 94 signatures S2b declares.
+	if seen+defForms+varForms != 94 {
+		t.Errorf("pinned %d code-body signatures, want 94", seen+defForms+varForms)
 	}
 }
 

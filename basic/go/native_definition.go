@@ -142,7 +142,7 @@ var DefinitionNatives = []NativeFunc{
 		// recorder cannot lower marks the program uncompilable through the same
 		// path it does anywhere else, so a declining body DECLINES rather than
 		// producing a silent empty unit.
-		Signatures: []Signature{{
+		Signatures: append([]Signature{{
 			Args:       []*Type{TList},
 			NoEvalArgs: map[int]bool{0: true},
 			Impl:       Go(VarHandler, RunInCheck()),
@@ -150,7 +150,7 @@ var DefinitionNatives = []NativeFunc{
 			// The splice above is the S2a rule's re-stepped result (S2b's
 			// declaration): CompileResteps, the handler contract written down.
 			CompileEffect: CompileResteps,
-		}},
+		}}, varWordSignatures...),
 	},
 	{
 		Name: "fn",
@@ -377,6 +377,15 @@ var DefinitionNatives = []NativeFunc{
 // `return nil, nil`, so it is consolidated here. The optional stackOnly flag
 // is forwarded to InstallDef (only the plain `def` path sets it).
 func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stackOnly ...bool) ([]Value, error) {
+	return installAndRecord(r, name, value, pos, func(v Value) { InstallDef(r, name, v, stackOnly...) })
+}
+
+// installAndRecord is the binding choke point behind InstallAndRecordDef and
+// the var word's declaration and assignment (native_var.go): the bind-site
+// staging, the loop-region split, the install itself (install — InstallDef,
+// core.InstallVar or core.AssignVar) and the recorder hooks every binding
+// dispatch owes, in one order.
+func installAndRecord(r *Registry, name string, value Value, pos SrcPos, install func(Value)) ([]Value, error) {
 	// Stage the def SITE for the bind ledger: this is the only frame that knows
 	// it (§6.5). SAVE/RESTORE rather than set — a fn's construction body
 	// analysis installs its own body-locals inside this call, and each must see
@@ -413,7 +422,7 @@ func InstallAndRecordDef(r *Registry, name string, value Value, pos SrcPos, stac
 		// outs push — the splice lowering removes the bound value at depth.
 		value = elem
 	}
-	InstallDef(r, name, value, stackOnly...)
+	install(value)
 	r.Check.RecordDef(name, pos)
 	if checking {
 		if r.Check.DefsUsed == nil {
@@ -824,6 +833,16 @@ func RegisterDefKeywordForms(r *Registry) {
 			}
 			r.Register("def", synthDefKeywordSigNamed(ctor, &base, genChain, TAtom))
 			r.Register("def", synthDefKeywordSigNamed(ctor, &base, genChain, TString))
+			// The var word mirrors every constructor form only to REFUSE it:
+			// a var holds a value (design/IMMUTABLE-DEF.1.md §2.3), so
+			// `var f fn […]`, `var C class {…}`, … are var_error with the
+			// one message, rather than the forward-collection barrier error
+			// the bare word would meet.
+			for _, nameType := range []*Type{TAtom, TString} {
+				sig := synthDefKeywordSigNamed(ctor, &base, genChain, nameType)
+				sig.Impl = Go(varFormRefuse(ctor), RunInCheck())
+				r.Register("var", sig)
+			}
 		}
 	}
 	for _, ctor := range defKeywordConstructors {
@@ -831,6 +850,15 @@ func RegisterDefKeywordForms(r *Registry) {
 	}
 	for _, tail := range defGenChainTails {
 		synth(tail, true)
+	}
+}
+
+// varFormRefuse is the run implementation of a var keyword form: var_error,
+// naming the constructor and the def spelling.
+func varFormRefuse(ctor string) func([]Value, map[string]Value, []Value, *Registry) ([]Value, error) {
+	return func(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
+		return nil, r.BoruError("var_error",
+			fmt.Sprintf("var %s: a var holds a value: use def for a %s (`def %s %s …`)", DefName(args[0]), ctor, DefName(args[0]), ctor), "var")
 	}
 }
 

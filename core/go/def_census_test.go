@@ -524,3 +524,209 @@ func TestDefCensusKeptBodyDefsAndFrameBindings(t *testing.T) {
 	nilTable.MarkScopeLeaked(1)
 	r.Defs.MarkTopFrame("nobody") // no such name: nothing
 }
+
+// A var binding (the var word, design/IMMUTABLE-DEF.1.md §2.3): declared
+// in the current scope with its mark, assigned in place within its frame
+// — a replace the ledger notes as one — and never from another frame.
+func TestInstallAndAssignVar(t *testing.T) {
+	r := newTestRegistry(t)
+	InstallVar(r, "n", NewInteger(0), nil)
+	e, ok := r.Defs.TopEntry("n")
+	if !ok || !e.Var || e.VarType != nil || e.Scope != 0 {
+		t.Fatalf("the declared var: %+v", e)
+	}
+	InstallVar(r, "s", NewString("a"), TString)
+	if e, _ := r.Defs.TopEntry("s"); !e.Var || e.VarType != TString {
+		t.Fatalf("the typed var: %+v", e)
+	}
+	// Assignment keeps the depth and the marks, bumps the generation.
+	gen := r.Defs.Gen("n")
+	AssignVar(r, "n", NewInteger(5), SrcPos{Row: 1, Col: 9})
+	if v, _ := r.Defs.Top("n"); v.String() != "5" || r.Defs.Depth("n") != 1 || r.Defs.Gen("n") == gen {
+		t.Errorf("assigned: %v depth %d gen %d (was %d)", v, r.Defs.Depth("n"), r.Defs.Gen("n"), gen)
+	}
+	if e, _ := r.Defs.TopEntry("n"); !e.Var {
+		t.Errorf("the mark survives the assignment: %+v", e)
+	}
+	// Within the frame: the module scope with no frame open, a block of
+	// it; a frame's own scope and its blocks; not the module from a frame.
+	if !r.Defs.InCurrentFrame(0) {
+		t.Error("the module scope is the current frame at the top level")
+	}
+	block := r.Defs.EnterScope(ScopeBlock)
+	if !r.Defs.InCurrentFrame(block) || !r.Defs.InCurrentFrame(0) {
+		t.Error("a module block and the module are within the top-level frame")
+	}
+	r.PushFnBaseline(nil)
+	frame := r.Defs.ScopeID()
+	inner := r.Defs.EnterScope(ScopeBlock)
+	if !r.Defs.InCurrentFrame(inner) || !r.Defs.InCurrentFrame(frame) {
+		t.Error("a frame and its block are the current frame")
+	}
+	if r.Defs.InCurrentFrame(0) || r.Defs.InCurrentFrame(block) {
+		t.Error("the module scope and its block are not the frame's")
+	}
+	r.Defs.LeaveScope()
+	r.PopFnBaseline()
+	r.Defs.LeaveScope()
+	var nilTable *DefTable
+	if !nilTable.InCurrentFrame(0) || nilTable.InCurrentFrame(3) {
+		t.Error("a nil table is the module scope")
+	}
+	nilTable.MarkTopVar("x", nil)
+	r.Defs.MarkTopVar("nobody", nil) // no such name: nothing
+	if _, ok := r.Defs.TopEntry("nobody"); ok {
+		t.Error("marking binds nothing")
+	}
+}
+
+// The check model of a var cell: an assignment the body under analysis
+// makes is recorded (CheckState.VarAssigned) so the body runner counts it
+// among the body's bindings — a cell replaced in place moves no depth — and
+// a rolled-back body's cell is restored to its pre-body value where a kept
+// body's assignment stands; a join over a var replaces the cell.
+func TestVarCellCheckModel(t *testing.T) {
+	r := newTestRegistry(t)
+	// A scratch word that assigns the var `n` to 7 when run.
+	r.RegisterNativeFunc(NativeFunc{
+		Name: "assign-n",
+		Signatures: []Signature{{
+			Args: []*Type{},
+			Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+				AssignVar(reg, "n", NewInteger(7), SrcPos{Row: 1, Col: 9})
+				return nil, nil
+			}, RunInCheck()),
+			Returns: []*Type{}, BarrierPos: -1,
+		}},
+	})
+	InstallVar(r, "n", NewInteger(0), nil)
+	// Outside a body run nothing is recorded (VarAssigned is nil).
+	AssignVar(r, "n", NewInteger(1), SrcPos{})
+	if r.Check.VarAssigned != nil {
+		t.Fatalf("no body run: %v", r.Check.VarAssigned)
+	}
+	done := r.Check.Begin()
+	defer done()
+	// A rolled-back body (an arm): the assignment is a binding of the body,
+	// and the cell is restored after it.
+	body := NewList([]Value{NewWord("assign-n")})
+	_, adds := RunCarrierBodyWithDefs(r, body)
+	if v, ok := adds["n"]; !ok || v.String() != "7" {
+		t.Errorf("the arm's assignment is among its bindings: %v", adds)
+	}
+	if v, _ := r.Defs.Top("n"); v.String() != "1" || r.Defs.Depth("n") != 1 {
+		t.Errorf("the rolled-back cell is restored: %v depth %d", v, r.Defs.Depth("n"))
+	}
+	if r.Check.VarAssigned != nil {
+		t.Errorf("the record is the body run's own: %v", r.Check.VarAssigned)
+	}
+	// A kept body (do): the assignment stands.
+	RunCarrierBodyKeepDefs(r, body)
+	if v, _ := r.Defs.Top("n"); v.String() != "7" {
+		t.Errorf("a kept body's assignment stands: %v", v)
+	}
+	// A nested body's assignment is the enclosing body's too, with the
+	// enclosing body's pre value where it assigned first.
+	r.Check.VarAssigned = map[string]Value{}
+	AssignVar(r, "n", NewInteger(2), SrcPos{}) // the outer body assigns: pre 7
+	AssignVar(r, "n", NewInteger(3), SrcPos{}) // again: pre stays 7
+	RunCarrierBodyWithDefs(r, body)            // the inner body assigns 7, restores to 3
+	if pre := r.Check.VarAssigned["n"]; pre.String() != "7" {
+		t.Errorf("the outer record keeps its own pre: %v", r.Check.VarAssigned)
+	}
+	if v, _ := r.Defs.Top("n"); v.String() != "3" {
+		t.Errorf("the inner body restored to the value it found: %v", v)
+	}
+	r.Check.VarAssigned = map[string]Value{}
+	RunCarrierBodyWithDefs(r, body) // the outer body had not assigned n: the inner's pre is merged
+	if pre := r.Check.VarAssigned["n"]; pre.String() != "3" {
+		t.Errorf("the inner pre is merged into the outer record: %v", r.Check.VarAssigned)
+	}
+	r.Check.VarAssigned = nil
+	// A join over a var replaces the cell; over a def it pushes.
+	InstallDef(r, "d", NewInteger(1))
+	pushJoinedBinding(r, "n", NewInteger(9))
+	pushJoinedBinding(r, "d", NewInteger(9))
+	if r.Defs.Depth("n") != 1 || r.Defs.Depth("d") != 2 {
+		t.Errorf("joins: n depth %d (cell), d depth %d (pushed)", r.Defs.Depth("n"), r.Defs.Depth("d"))
+	}
+	if e, isVar := IsVarBinding(r, "n"); !isVar || e.Body.String() != "9" {
+		t.Errorf("the cell holds the join and stays a var: %+v", e)
+	}
+	if _, isVar := IsVarBinding(r, "d"); isVar {
+		t.Error("a def is no var")
+	}
+	if _, isVar := IsVarBinding(r, "nobody"); isVar {
+		t.Error("an unbound name is no var")
+	}
+	// The resident assign arm: replaces a var's cell; installs when the
+	// name is no var (a cell torn down with its frame).
+	ApplyResidentAssign(r, "n", NewInteger(11))
+	if v, _ := r.Defs.Top("n"); v.String() != "11" || r.Defs.Depth("n") != 1 {
+		t.Errorf("resident assign replaces: %v depth %d", v, r.Defs.Depth("n"))
+	}
+	ApplyResidentAssign(r, "fresh", NewInteger(12))
+	if e, isVar := IsVarBinding(r, "fresh"); !isVar || e.Body.String() != "12" {
+		t.Errorf("resident assign of an unbound name declares: %+v", e)
+	}
+	ApplyResidentAssign(nil, "n", NewInteger(0)) // nil-safe
+}
+
+// A fn baseline opens a frame scope — or, for the one push the compiler
+// marks (a token body's closure compile), a block of the enclosing frame,
+// so a var the body assigns is the frame's own. The mark is consumed by
+// that push alone.
+func TestFnBaselineBlockMode(t *testing.T) {
+	r := newTestRegistry(t)
+	InstallVar(r, "n", NewInteger(0), nil)
+	r.Check.NextBaselineIsBlock = true
+	r.PushFnBaseline(nil)
+	if r.Defs.ScopeKindNow() != ScopeBlock || r.Check.NextBaselineIsBlock {
+		t.Fatalf("the marked push opens a block and consumes the mark: %v %v", r.Defs.ScopeKindNow(), r.Check.NextBaselineIsBlock)
+	}
+	if !r.Defs.InCurrentFrame(0) {
+		t.Error("the module var is the frame's own inside a token body")
+	}
+	r.PushFnBaseline(nil) // the next push is a frame again
+	if r.Defs.ScopeKindNow() != ScopeFrame || r.Defs.InCurrentFrame(0) {
+		t.Errorf("an unmarked push is a frame: %v", r.Defs.ScopeKindNow())
+	}
+	r.PopFnBaseline()
+	r.PopFnBaseline()
+}
+
+// A replace twin over a var (AssignVar's ledger note) replaces the cell with
+// the captured concrete value when it is not written back; a written-back
+// or computed one does nothing — the unit's own assign op or the root's
+// write-back at depth holds the runtime value — and pops nothing, since a
+// var's assignment pushed nothing. A fn's overlap replace keeps its
+// drop-then-push.
+func TestApplyBindTwinVarReplace(t *testing.T) {
+	r := newTestRegistry(t)
+	InstallVar(r, "n", NewInteger(0), nil)
+	entry, _ := r.Defs.TopEntry("n")
+	entry.Body = NewInteger(5)
+	tr := BindTransition{Kind: BindDefReplace, Name: "n", Depth: 1}
+	if err := ApplyBindTwin(r, tr, entry); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := r.Defs.Top("n"); v.String() != "5" || r.Defs.Depth("n") != 1 {
+		t.Errorf("the twin replaced the cell: %v depth %d", v, r.Defs.Depth("n"))
+	}
+	tr.WrittenBack = true
+	entry.Body = NewInteger(9)
+	if err := ApplyBindTwin(r, tr, entry); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := r.Defs.Top("n"); v.String() != "5" || r.Defs.Depth("n") != 1 {
+		t.Errorf("a written-back twin does nothing: %v depth %d", v, r.Defs.Depth("n"))
+	}
+	tr.WrittenBack = false
+	entry.Body = NewCarrier(TInteger)
+	if err := ApplyBindTwin(r, tr, entry); err != nil {
+		t.Fatal(err)
+	}
+	if v, _ := r.Defs.Top("n"); v.String() != "5" || r.Defs.Depth("n") != 1 {
+		t.Errorf("a computed value's twin does nothing: %v depth %d", v, r.Defs.Depth("n"))
+	}
+}

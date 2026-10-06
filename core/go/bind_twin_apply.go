@@ -71,6 +71,18 @@ func ApplyBindTwin(r *Registry, tr BindTransition, entry DefEntry) error {
 	case BindSigUndef:
 		applyTwinSigUndef(r, tr.Name, entry.Body)
 	case BindDefReplace:
+		if entry.Var {
+			// A var's assignment (AssignVar): the cell was replaced in
+			// place, so the twin replaces it with the captured value — a
+			// concrete one; a computed value's cell is written back by the
+			// unit's own OpAssignDynScope or the root's OpBindGlobal at
+			// depth, which the WrittenBack mark records, and the twin then
+			// does nothing (no pop: nothing was pushed).
+			if !tr.WrittenBack && IsConcrete(entry.Body) {
+				r.Defs.Replace(tr.Name, entry.Body)
+			}
+			return nil
+		}
 		// InstallDef's same-scope overlap filter: drop the standing entry,
 		// then install the replacement — net zero, exactly the delta the
 		// ledger records for this kind. The push half pairs with the def's

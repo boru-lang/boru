@@ -202,6 +202,10 @@ type EmitRecorder interface {
 	// bridging cannot see them; the recorder pairs them by name and
 	// order instead). Inactive: no-op.
 	RecordDynUndef(name string, pos SrcPos)
+	// NoteVarAssign marks the next RecordDynBind of name as a var
+	// ASSIGNMENT (core.AssignVar, the var word): inside a unit the bind
+	// lowers to a replace of the name's cell, not a push of a binding.
+	NoteVarAssign(name string)
 	// RecordTypeInstall notes a TYPE binding's push at its stream position
 	// — like RecordDynUndef, today only inside a multi-run body's compiled
 	// unit, where the arm-residency bridge needs a def-site event to pair
@@ -777,6 +781,7 @@ func (inactiveEmit) CondBodyGuard() func()                                  { re
 func (inactiveEmit) KeepDefsBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) MultiRunBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) RecordDynUndef(string, SrcPos)                          {}
+func (inactiveEmit) NoteVarAssign(string)                                   {}
 func (inactiveEmit) RecordTypeInstall(string, DefEntry, SrcPos)             {}
 func (inactiveEmit) FnBodyGuard() func()                                    { return func() {} }
 

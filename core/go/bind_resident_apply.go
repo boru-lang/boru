@@ -30,6 +30,25 @@ func ApplyResidentBind(r *Registry, name string, undef bool, v Value) {
 	InstallDef(r, name, v)
 }
 
+// ApplyResidentAssign is the var ASSIGNMENT arm of the same op (a
+// BindDefReplace twin, the var word's `var NAME v` inside the body): the
+// name's cell is replaced in place with the per-element runtime value, as
+// the interpreter's AssignVar replaces it — the depth is unchanged, and
+// the table's generation bump invalidates every read's cached plan. A
+// missing binding (the cell was torn down by a frame the body ran in)
+// installs instead, as the interpreter's var would declare.
+func ApplyResidentAssign(r *Registry, name string, v Value) {
+	if r == nil {
+		return
+	}
+	if _, isVar := IsVarBinding(r, name); !isVar {
+		InstallVar(r, name, v, nil)
+		return
+	}
+	r.Defs.Replace(name, v)
+	noteRebind(r, name)
+}
+
 // ApplyResidentTypeBind is the TYPE arm of the same op. A type binding has
 // no runtime value to install — the node was minted by the check pass — so
 // the obvious move is to REPLAY the captured entry the way a top-level

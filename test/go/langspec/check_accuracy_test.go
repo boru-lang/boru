@@ -322,6 +322,9 @@ var unflaggedPins = map[string]int{
 	"storage.tsv":           1,
 	"usurp.tsv":             1,
 	"user-types.tsv":        5,
+	// var.tsv: a lambda body's cross-frame assignment (L43) raises per call
+	// at run time; the pass suppresses callback-body errors.
+	"var.tsv": 1,
 	// valof.tsv (was ref.tsv, pinned at 1): 1 → 2 with the /v totality
 	// rows, then 2 → 0 with NUR073's BROAD park (2026-08-24). §2's
 	// paren rows were rewritten from "the paren re-steps and fires" to

@@ -92,11 +92,14 @@ checker's call-graph rescue for dynamically visible names keeps working).
   assignable (#4): `var n …` inside a fn body where the only visible `n`
   is a module var is **`var_error`** ("cannot assign a var of an enclosing
   frame"); so is a block of a fn assigning the module's var.
-- NAME is a lowercase name (capitalised names are types). `var NAME fn …`,
-  `var NAME (fn …)`, `var NAME x:Integer => […]` and `var NAME <Type>` are
-  refused by the check pass (`var_error`, "a var holds a value: use def
-  for a function or a type"); a fn value computed at run time is stored and
-  dispatches when read, as any fn value does (#8).
+- NAME is a lowercase name (capitalised names are types). The constructor
+  keyword forms — `var NAME fn …`, `var NAME class …`, every form `def`
+  mirrors — and a type literal (`var NAME Integer`) are refused
+  (`var_error`, "a var holds a value: use def for a fn / a type"); a
+  function value that reaches the statement as a VALUE — `var f (mk 10)`,
+  and so `var f (x:Integer => […])`, since `=>` folds to a paren group — is
+  stored and dispatches when read, as any fn value does (#8; the refusal is
+  syntactic, #9, and a paren is a value).
 - Reading a var pushes its current value. A fn value created while a
   fn-local var is live captures the var's **value at creation** (#6), as
   `ComputeCaptures` snapshots every enclosing-fn local today; the closure
@@ -355,6 +358,7 @@ same series.
 |---|---|---|---|
 | **0 — census and the code** (done 2026-10-06) | scope ids on the def table (module / frame / block, lexical enclosure); the census classes in the check pass (report-only, §4.1); `boru check --def-census` and `CheckResult.DefCensus`; `TestDefCensusCorpus`, a downward ratchet on the corpus rows the rule will fail. `var_error`/`export_error` exist; `redefinition` and `shadow_rebind` are minted with their first raising sites in phase 3 — the code gate (`TestEveryRegisteredCodeIsMinted`) refuses a registered code no site raises | the census over lang/spec, kg, utils, examples agrees with §4 within the counted shapes (it does: §4.1); coverage 100 % | 2–3 days |
 | **1 — constructs** | untyped lambda params; the `var` word on both lanes (interpreter cell + compiler slot/live cell, typed and untyped, captures, export refusal); kg's 69 sites and the 9 corpus rows rewritten; the `var [[…]]` construct, `__varundef` and `VarHandler` deleted | kg's suites and `make -C kg graph` byte-identical before and after; the var rows of §2.9 pinned both lanes | 4–6 days |
+| **1, shipped 2026-10-06** | untyped lambda params (`[e acc] => […]`, a bare lowercase word is a param of type `Any`; a capitalised one still names a type); the `var` word in its quoted-name form (`var n 0`) on both lanes — declaration, in-place assignment, the frame rule, closures, typed checks on concrete values, `export` refusal, the keyword-form refusal, loop-carried and branch-joined cells (the check model treats a var as one cell: `CheckState.VarAssigned`, the joins replace), the compiler's `ASSIGN_DYN_SCOPE` op and the replace-kind resident bind; `lang/spec/var.tsv`. **Deferred to the construct's removal**: the typed-name and string-name forms (`var n:Integer 0`, `var "n" 0`) — registered beside the construct's one-list signature they make `var [[a b] …]`'s forward/stack split depend on gradual operands (ten kg programs declined), so they wait with it; the kg rewrite itself waits on the `filter` protocol decision (its Function form hands a lambda a `{key value}` pair over a list and a KeyVal over a map, the quotation form the element — §4.1's 43 `filter` sites are not a mechanical rewrite). | the var rows of var.tsv on both lanes; core at 100 % | — |
 | **2 — block scopes** | scope records; `InvokeBody` and arm/loop block entry/exit on the interpreter; arm/body locals as scoped unit locals on the compiler; the TCO probe through `BlockEnd`; NUR204 generalised | the 2 leak rows and the arm/loop examples of §2.9 pinned; TCO counters equal on the recursion rows; differential green | 5–8 days (the compiler half is most of it) |
 | **3 — immutability** | `installDef` refuses same-scope rebinding and inner-scope extension; additive overloads with overlap → error; types; idempotent import; `undef` removed, `__ud`; the REPL notice; the corpus rewrite of §4 with the late-binding and replacement rows as negative tests; the bench fixtures | `boru check` reports the errors; every census class has a pinned negative row; all gates green | 3–5 days |
 | **4 — retire and document** | the speculative-fn-family machinery, the arm-leak twins and the fn-redefinition refusals deleted; the freeze discipline REPL-only; NUR097, NUR149, NUR204, NUR367 resolved and the records deleted; REFERENCE/LANGREF/TUTORIAL/CLI rewritten; the kg bundle rebuilt | coverage 100 % after the deletions; `make ci-local` | 2–4 days |

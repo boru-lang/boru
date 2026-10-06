@@ -4,6 +4,7 @@ import (
 	"encoding/json"
 	"errors"
 	"fmt"
+	core "github.com/boru-lang/boru/core/go"
 	"io"
 	"path/filepath"
 	"sort"
@@ -340,12 +341,15 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 		Signatures: []Signature{
 			{
 				Args: []*Type{TAtom, TMap},
-				Impl: Go(func(eargs []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+				Impl: Go(func(eargs []Value, _ map[string]Value, _ []Value, er *Registry) ([]Value, error) {
 					if !IsConcrete(eargs[1]) {
 						return nil, parent.BoruError("export_error", "export: value must be a concrete map, got type literal", "export")
 					}
 					_as1, _ := eargs[0].AsConcreteAtom()
 					_m, _ := AsMap(eargs[1])
+					if err := refuseVarExport(er, _m); err != nil {
+						return nil, err
+					}
 					exportHandler(_as1, _m)
 					return nil, nil
 				}),
@@ -353,12 +357,15 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 			},
 			{
 				Args: []*Type{TString, TMap},
-				Impl: Go(func(eargs []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) {
+				Impl: Go(func(eargs []Value, _ map[string]Value, _ []Value, er *Registry) ([]Value, error) {
 					if !IsConcrete(eargs[1]) {
 						return nil, parent.BoruError("export_error", "export: value must be a concrete map, got type literal", "export")
 					}
 					_as2, _ := eargs[0].AsConcreteString()
 					_m, _ := AsMap(eargs[1])
+					if err := refuseVarExport(er, _m); err != nil {
+						return nil, err
+					}
 					exportHandler(_as2, _m)
 					return nil, nil
 				}),
@@ -1060,4 +1067,23 @@ func valToAtomOrString(v Value) string {
 		return _as6
 	}
 	return v.String()
+}
+
+// refuseVarExport is the var rule's export half (design/IMMUTABLE-DEF.1.md
+// §2.3, #7): a module exports no var. An export map's KEY names the module
+// binding it exports (`export "M" {n: n}` — the canonical spelling), so a
+// key that is a var of the module's registry is refused with export_error;
+// the exported VALUE of a var under another key is the value, a snapshot,
+// as any exported value is.
+func refuseVarExport(r *Registry, m ReadMap) error {
+	if r == nil || m == nil {
+		return nil
+	}
+	for _, key := range m.Keys() {
+		if _, isVar := core.IsVarBinding(r, key); isVar {
+			return r.BoruError("export_error",
+				fmt.Sprintf("export: %s is a var — a module exports no var; export a def, or the value under another name", key), "export")
+		}
+	}
+	return nil
 }

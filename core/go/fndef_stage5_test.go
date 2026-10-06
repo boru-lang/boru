@@ -90,9 +90,10 @@ func TestFnDefStage5ParseFnDefTriples(t *testing.T) {
 		t.Errorf("sig2 return pattern 1 = %v (%v)", *s2.ReturnPatterns[1], aerr)
 	}
 
-	// A parameter that names no type is a ParseFnParams error.
+	// A capitalised parameter word that names no type is a ParseFnParams
+	// error (a lowercase one is an untyped param).
 	_, perr = ParseFnDef(r, []Value{
-		fndefStage5List(NewWord("zz-not-a-type")), NewWord("Integer"), fndefStage5List(),
+		fndefStage5List(NewWord("ZzNotAType")), NewWord("Integer"), fndefStage5List(),
 	})
 	if perr == nil || !strings.Contains(perr.Error(), "invalid type") {
 		t.Errorf("bad param type must error, got %v", perr)
@@ -140,9 +141,10 @@ func TestFnDefStage5ParseFnUndefSpec(t *testing.T) {
 		t.Error("an unresolvable output type must error")
 	}
 
-	// The ParseFnParams error arm.
+	// The ParseFnParams error arm: a capitalised name that is no type (a
+	// lowercase bare word is an untyped param, design/IMMUTABLE-DEF.1.md §2.3).
 	_, uerr = ParseFnUndefSpec(r, []Value{
-		fndefStage5List(NewWord("zz-not-a-type")), NewWord("Integer"),
+		fndefStage5List(NewWord("ZzNotAType")), NewWord("Integer"),
 	})
 	if uerr == nil {
 		t.Error("an unresolvable input type must error")

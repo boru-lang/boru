@@ -246,6 +246,15 @@ func ParseFnParams(r *Registry, inputSig Value) ([]FnParam, int, error) {
 			// Bare type-name Word: unnamed positional param.
 			paramType, err := lookupTypeNameInRegistry(r, name)
 			if err != nil {
+				// A bare LOWERCASE word that names no type is an untyped
+				// NAMED param of type Any — `[e acc] => […]` binds `e` and
+				// `acc` (design/IMMUTABLE-DEF.1.md §2.3, the binder the var
+				// construct's `[[e acc] …]` list was). Types are
+				// capitalised, so no type name is ever read as a param.
+				if !IsCapitalisedName(name) && ValidateWordName(name) == nil {
+					params = append(params, FnParam{Name: name, Type: TAny})
+					continue
+				}
 				return nil, 0, fmt.Errorf("function spec: invalid type %q: %w", name, err)
 			}
 			params = append(params, FnParam{Type: paramType})

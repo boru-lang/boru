@@ -335,8 +335,9 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 			}
 			j := BranchJoin{Name: k, Joined: joinBranchDef(tv, ev), ThenBinds: true, ElseBinds: true, Taken: taken}
 			j.Pre, j.HasPre = r.Defs.Top(k)
+			kind := BindDef
 			if j.HasPre {
-				r.Defs.Push(k, j.Joined)
+				kind = pushJoinedBinding(r, k, j.Joined)
 			} else {
 				// Both arms bound a name the enclosing scope did not: the
 				// post-branch binding models today's leak (def_census.go).
@@ -347,19 +348,21 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 			// joins below — this note was MISSING (the doc above claimed
 			// every push noted; a both-arms `def op` left a live binding
 			// with no ledger entry, which the ledgered-names-only oracle
-			// could not see).
-			r.NoteBindTransition(BindDef, k, tv.Pos())
+			// could not see). A join over a var replaced its cell and is
+			// noted as the replace it is (depth unchanged).
+			r.NoteBindTransition(kind, k, tv.Pos())
 			continue
 		}
 		// then-only: join with the pre-branch top-of-stack if any.
 		j := BranchJoin{Name: k, ThenBinds: true, Taken: taken}
+		kind := BindDef
 		if pre, ok := r.Defs.Top(k); ok {
 			if narrowedSameBinding(r, k, tv) {
 				continue
 			}
 			j.Pre, j.HasPre = pre, true
 			j.Joined = joinBranchDef(tv, pre)
-			r.Defs.Push(k, j.Joined)
+			kind = pushJoinedBinding(r, k, j.Joined)
 		} else {
 			j.Joined = condBoundCarrier(r, k, tv, taken)
 			r.Defs.PushLeaked(k, j.Joined, tv.Pos())
@@ -368,7 +371,7 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 			}
 		}
 		joins = append(joins, j)
-		r.NoteBindTransition(BindDef, k, tv.Pos())
+		r.NoteBindTransition(kind, k, tv.Pos())
 	}
 	for k, ev := range else_ {
 		if seen[k] {
@@ -376,13 +379,14 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 		}
 		// else-only: join with pre-branch top-of-stack.
 		j := BranchJoin{Name: k, ElseBinds: true, Taken: taken}
+		kind := BindDef
 		if pre, ok := r.Defs.Top(k); ok {
 			if narrowedSameBinding(r, k, ev) {
 				continue
 			}
 			j.Pre, j.HasPre = pre, true
 			j.Joined = joinBranchDef(ev, pre)
-			r.Defs.Push(k, j.Joined)
+			kind = pushJoinedBinding(r, k, j.Joined)
 		} else {
 			j.Joined = condBoundCarrier(r, k, ev, taken)
 			r.Defs.PushLeaked(k, j.Joined, ev.Pos())
@@ -391,9 +395,23 @@ func installJoinedDefs(r *Registry, then, else_ map[string]Value, taken bool, ru
 			}
 		}
 		joins = append(joins, j)
-		r.NoteBindTransition(BindDef, k, ev.Pos())
+		r.NoteBindTransition(kind, k, ev.Pos())
 	}
 	return joins
+}
+
+// pushJoinedBinding installs a join over a PRE-EXISTING binding: a push over
+// a def, as ever; a REPLACE of the cell when the binding is a var (the var
+// word's one mutable binding), so the model keeps the var where the run
+// keeps it — one entry, assigned in place, still marked Var for the next
+// `var NAME v` to find.
+func pushJoinedBinding(r *Registry, name string, joined Value) BindKind {
+	if _, isVar := IsVarBinding(r, name); isVar {
+		r.Defs.Replace(name, joined)
+		return BindDefReplace
+	}
+	r.Defs.Push(name, joined)
+	return BindDef
 }
 
 // condBoundCarrier is the binding InstallJoinedDefs pushes for a name bound

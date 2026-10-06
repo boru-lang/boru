@@ -965,7 +965,14 @@ func (r *Registry) PushFnBaseline(snap map[string]int) {
 	// A fn call is a binding scope (deftable.go ScopeFrame): the entries it
 	// installs carry this scope's id, which is how a body def over a module
 	// name reads as a shadow and a second body def of one name as a rebind.
-	r.Defs.EnterScope(ScopeFrame)
+	// A token body's closure compile is a BLOCK of the enclosing frame
+	// (CheckState.NextBaselineIsBlock, consumed here).
+	kind := ScopeFrame
+	if r.Check != nil && r.Check.NextBaselineIsBlock {
+		r.Check.NextBaselineIsBlock = false
+		kind = ScopeBlock
+	}
+	r.Defs.EnterScope(kind)
 }
 
 // PopFnBaseline removes the innermost fn-body baseline. Safe to call on

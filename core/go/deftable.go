@@ -31,6 +31,12 @@ type DefEntry struct {
 	// Frame marks a per-call frame binding (InstallFrameBinding): a param or
 	// a capture, which a body def over it rebinds.
 	Frame bool
+	// Var marks a `var` binding (design/IMMUTABLE-DEF.1.md §2.3): the one
+	// binding kind whose value changes in place, by `var NAME v` within the
+	// frame that declared it (InCurrentFrame). VarType is a typed var's
+	// declared type, nil for an untyped one.
+	Var     bool
+	VarType *Type
 }
 
 // ScopeKind names what opened a binding scope (DefTable.EnterScope).
@@ -290,6 +296,41 @@ func (dt *DefTable) MarkTopFrame(name string) {
 		return
 	}
 	ds[len(ds)-1].Frame = true
+}
+
+// MarkTopVar marks name's top entry as a var binding declared with type t
+// (nil: untyped).
+func (dt *DefTable) MarkTopVar(name string, t *Type) {
+	if dt == nil {
+		return
+	}
+	ds := dt.stacks[name]
+	if len(ds) == 0 {
+		return
+	}
+	ds[len(ds)-1].Var = true
+	ds[len(ds)-1].VarType = t
+}
+
+// InCurrentFrame reports whether the scope with the given id belongs to the
+// innermost frame: the innermost scope, a block enclosing it within that
+// frame, or the frame itself — or, with no frame open, the module scope and
+// its blocks. A var bound in such a scope is the one `var NAME v` assigns;
+// a var of any other scope (an enclosing frame's, the module's from inside
+// a fn) is readable but never assignable (§2.3).
+func (dt *DefTable) InCurrentFrame(id int32) bool {
+	if dt == nil {
+		return id == 0
+	}
+	for i := len(dt.scopes) - 1; i >= 0; i-- {
+		if dt.scopes[i].id == id {
+			return true
+		}
+		if dt.scopes[i].kind == ScopeFrame {
+			return false
+		}
+	}
+	return id == 0
 }
 
 // MarkScopeLeaked marks every entry the scope with the given id bound as

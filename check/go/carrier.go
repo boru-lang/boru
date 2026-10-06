@@ -2532,6 +2532,13 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 	}
 	var stk []core.Value
 	var installed []string
+	// varPre is a var cell's PRE-LOOP value, kept across rounds: a def's
+	// joined binding is pushed and popped per round so its pre is always
+	// the original, but a var is one cell the join REPLACES, so later
+	// rounds would otherwise join against — and init the carried slot
+	// from — the previous round's join, a check-time placeholder with no
+	// runtime producer.
+	varPre := map[string]core.Value{}
 	diagBase := len(r.Check.Diagnostics)
 	prev := map[string]core.Value{}
 	// The last two rounds' joined bindings: a module the body binds is
@@ -2608,6 +2615,13 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 				continue
 			}
 			if pre, ok := r.Defs.Top(k); ok {
+				if _, isVar := core.IsVarBinding(r, k); isVar {
+					if orig, seen := varPre[k]; seen {
+						pre = orig
+					} else {
+						varPre[k] = pre
+					}
+				}
 				// An add that is only a NARROWING of the enclosing binding —
 				// narrowDynamicUses preserves the value's ID, so same ID as
 				// the pre binding means the same runtime value under a
@@ -2645,6 +2659,13 @@ func AnalyseLoopBody(r *core.Registry, body core.Value, bindNames []string, bind
 			jv, ok := joined[k]
 			if !ok {
 				// A narrowing-only add was skipped above — nothing to install.
+				continue
+			}
+			if _, isVar := core.IsVarBinding(r, k); isVar {
+				// A var the body assigns is ONE cell: the round's joined value
+				// replaces it (the next round and the post-loop code read
+				// the join), and nothing is pushed to pop.
+				r.Defs.Replace(k, jv)
 				continue
 			}
 			if fresh[k] {

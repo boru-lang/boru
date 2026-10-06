@@ -63,8 +63,8 @@ const (
 var compileFailureDispositions = map[string]compileFailureDisposition{
 	// basic/go — the definition and control words.
 	"basic/go/native_control.go:ifTakenArmReturns#1":                    {dispGeneric, 5, "a taken arm leaving a fn value is the Apply kernel's placed-versus-applied decision at run time (the site moved out of if3ReturnsFn on 2026-09-26, when the clause-list `if` began lowering its decided clauses through it; a 0-netting arm records a 0-value statement since NUR243)"},
-	"basic/go/native_definition.go:InstallAndRecordDef#1":               {dispGeneric, 4, "computed fn shadowing a live binding: the binder half makes Defs and the carrier table one store"},
-	"basic/go/native_definition.go:InstallAndRecordDef#2":               {dispGeneric, 3, "a dropped apply in a curried chain: the Apply kernel models the apply the analysis returned unchanged"},
+	"basic/go/native_definition.go:installAndRecord#1":                  {dispGeneric, 4, "computed fn shadowing a live binding: the binder half makes Defs and the carrier table one store"},
+	"basic/go/native_definition.go:installAndRecord#2":                  {dispGeneric, 3, "a dropped apply in a curried chain: the Apply kernel models the apply the analysis returned unchanged"},
 	"basic/go/native_definition.go:MarkTypedContainerDefUncompilable#1": {dispGeneric, 6, "typed-def over a flex body: a runtime validate-and-tag op, the typed-def construction family"},
 	"basic/go/native_definition.go:markRefineDefUncompilable#1":         {dispGeneric, 6, "a compiled store-with-reparent for the dynamic refinement"},
 	"basic/go/native_definition.go:MarkFnPredicateBindUncompilable#1":   {dispGeneric, 6, "a predicate unit run at the bind, section 6.3"},

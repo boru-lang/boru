@@ -106,14 +106,14 @@ func TestSpecfixGuardProbes(t *testing.T) {
 		{input: "def Foo word 42", wantErr: `word "Foo" must begin with`},
 		{input: "def Foo fn [1 2 3]", wantErr: `word "Foo" must begin with`},
 		{input: "def f fn [1 2]", wantErr: "list length must be a non-zero multiple of 3"},
-		{input: "def f fn [x Integer [1]]", wantErr: `invalid type "x"`},
+		{input: "def f fn [Xq Integer [1]]", wantErr: `invalid type "Xq"`},
 		{input: "def f fn [1 2 3] inspect f",
 			want: "{name:'f' kind:defined signatures:[{args:['Integer']} {args:[]}]}"},
 
 		// word / fn — bare forms.
 		{input: "word 5", want: "5"},
 		{input: "fn [1 2]", wantErr: "list length must be a non-zero multiple of 3"},
-		{input: "fn [x Integer [1]]", wantErr: `invalid type "x"`},
+		{input: "fn [Xq Integer [1]]", wantErr: `invalid type "Xq"`},
 
 		// get — the kernel-container fixture arms the corpus only inspects.
 		{input: "[10 20 30] get 1", want: "20"},
@@ -171,7 +171,9 @@ func TestSpecfixGuardProbes(t *testing.T) {
 		{input: "bakefnq nosig/v", wantErr: "bakefnq: argument must be a fn"},
 
 		// fnsig / do — the remaining reachable guard arms.
-		{input: "fnsig [x y]", wantErr: `invalid type "x"`},
+		// A CAPITALISED name that is no type errors; a bare lowercase word is
+		// an untyped param since design/IMMUTABLE-DEF.1.md §2.3.
+		{input: "fnsig [Xq y]", wantErr: `invalid type "Xq"`},
 		{input: "do [notaword_xyz]", want: "error(undefined word: notaword_xyz)"},
 		// The embedded code list errors during dispatch's map auto-eval
 		// and the error must surface (the walk's own error arms are

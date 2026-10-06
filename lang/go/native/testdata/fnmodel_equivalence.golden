@@ -914,6 +914,51 @@ WORD valof
 WORD vals
   [Node/Map] barrier=1 returns=[Node/List] +returnsfn
 WORD var
+  [Scalar/String Scalar/Atom Node/List Scalar/Atom Any Any Node/List] barrier=7 runcheck noeval={2,4,5,6} noevalmap={4,5,6} quote={1,3}
+  [Scalar/Atom Scalar/Atom Node/List Scalar/Atom Any Any Node/List] barrier=7 runcheck noeval={2,4,5,6} noevalmap={4,5,6} quote={0,1,3}
+  [Scalar/String Scalar/Atom Node/List Scalar/Atom Any Node] barrier=6 runcheck noeval={2,4,5} noevalmap={4,5} quote={1,3}
+  [Scalar/String Scalar/Atom Node/List Scalar/Atom Any Any] barrier=6 runcheck noeval={2,4,5} noevalmap={4,5} quote={1,3}
+  [Scalar/Atom Scalar/Atom Node/List Scalar/Atom Any Node] barrier=6 runcheck noeval={2,4,5} noevalmap={4,5} quote={0,1,3}
+  [Scalar/Atom Scalar/Atom Node/List Scalar/Atom Any Any] barrier=6 runcheck noeval={2,4,5} noevalmap={4,5} quote={0,1,3}
+  [Scalar/String Scalar/Atom Node/List Scalar/Atom Any] barrier=5 runcheck noeval={2,4} noevalmap={4} quote={1,3}
+  [Scalar/String Scalar/Atom Node/List Scalar/Atom Node/List] barrier=5 runcheck noeval={2,4} noevalmap={4} quote={1,3}
+  [Scalar/String Scalar/Atom Node/List Scalar/Atom Node/List] barrier=5 runcheck noeval={2,4} noevalmap={4} quote={1,3}
+  [Scalar/String Scalar/Atom Node/List Scalar/Atom Node/Map] barrier=5 runcheck noeval={2,4} noevalmap={4} quote={1,3}
+  [Scalar/String Scalar/Atom Any Any Node/List] barrier=5 runcheck noeval={2,3,4} noevalmap={2} quote={1}
+  [Scalar/Atom Scalar/Atom Node/List Scalar/Atom Any] barrier=5 runcheck noeval={2,4} noevalmap={4} quote={0,1,3}
+  [Scalar/Atom Scalar/Atom Node/List Scalar/Atom Node/List] barrier=5 runcheck noeval={2,4} noevalmap={4} quote={0,1,3}
+  [Scalar/Atom Scalar/Atom Node/List Scalar/Atom Node/List] barrier=5 runcheck noeval={2,4} noevalmap={4} quote={0,1,3}
+  [Scalar/Atom Scalar/Atom Node/List Scalar/Atom Node/Map] barrier=5 runcheck noeval={2,4} noevalmap={4} quote={0,1,3}
+  [Scalar/Atom Scalar/Atom Any Any Node/List] barrier=5 runcheck noeval={2,3,4} noevalmap={2} quote={0,1}
+  [Scalar/String Scalar/Atom Any Node] barrier=4 runcheck quote={1}
+  [Scalar/String Scalar/Atom Node/List Scalar/Atom] barrier=4 runcheck noeval={2} quote={1,3}
+  [Scalar/String Scalar/Atom Any Any] barrier=4 runcheck noeval={2,3} noevalmap={2} quote={1}
+  [Scalar/String Scalar/Atom Any Any] barrier=4 runcheck noeval={2,3} noevalmap={2} quote={1}
+  [Scalar/Atom Scalar/Atom Any Node] barrier=4 runcheck quote={0,1}
+  [Scalar/Atom Scalar/Atom Node/List Scalar/Atom] barrier=4 runcheck noeval={2} quote={0,1,3}
+  [Scalar/Atom Scalar/Atom Any Any] barrier=4 runcheck noeval={2,3} noevalmap={2} quote={0,1}
+  [Scalar/Atom Scalar/Atom Any Any] barrier=4 runcheck noeval={2,3} noevalmap={2} quote={0,1}
+  [Scalar/String Scalar/Atom Any] barrier=3 runcheck noeval={2} quote={1}
+  [Scalar/String Scalar/Atom Node/Map] barrier=3 runcheck quote={1}
+  [Scalar/String Scalar/Atom Any] barrier=3 runcheck quote={1}
+  [Scalar/String Scalar/Atom Any] barrier=3 runcheck noeval={2} quote={1}
+  [Scalar/String Scalar/Atom Node/List] barrier=3 runcheck noeval={2} quote={1}
+  [Scalar/String Scalar/Atom Node/List] barrier=3 runcheck noeval={2} quote={1}
+  [Scalar/String Scalar/Atom Node/List] barrier=3 runcheck noeval={2} quote={1}
+  [Scalar/String Scalar/Atom Node/List] barrier=3 runcheck noeval={2} quote={1}
+  [Scalar/String Scalar/Atom Node/Map] barrier=3 runcheck quote={1}
+  [Scalar/Atom Scalar/Atom Any] barrier=3 runcheck noeval={2} quote={0,1}
+  [Scalar/Atom Scalar/Atom Node/Map] barrier=3 runcheck quote={0,1}
+  [Scalar/Atom Scalar/Atom Any] barrier=3 runcheck quote={0,1}
+  [Scalar/Atom Scalar/Atom Any] barrier=3 runcheck noeval={2} quote={0,1}
+  [Scalar/Atom Scalar/Atom Node/List] barrier=3 runcheck noeval={2} quote={0,1}
+  [Scalar/Atom Scalar/Atom Node/List] barrier=3 runcheck noeval={2} quote={0,1}
+  [Scalar/Atom Scalar/Atom Node/List] barrier=3 runcheck noeval={2} quote={0,1}
+  [Scalar/Atom Scalar/Atom Node/List] barrier=3 runcheck noeval={2} quote={0,1}
+  [Scalar/Atom Scalar/Atom Node/Map] barrier=3 runcheck quote={0,1}
+  [Scalar/String Scalar/Atom] barrier=2 runcheck quote={1}
+  [Scalar/Atom Scalar/Atom] barrier=2 runcheck quote={0,1}
+  [Scalar/Atom Any] barrier=2 runcheck quote={0}
   [Node/List] barrier=1 runcheck noeval={0} returns=[Any]
 WORD walk
   [Node/Map Any Any Any] barrier=4 noeval={2,3} +returnsfn

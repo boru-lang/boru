@@ -39,6 +39,43 @@ func InstallFrameBinding(r *Registry, name string, body Value) {
 	r.Defs.MarkTopFrame(name)
 }
 
+// InstallVar declares name as a var in the current scope — `var NAME v`
+// where no var NAME is visible within the frame (§2.3): installDef's push,
+// with the entry marked Var (varType for the typed form, nil untyped). A
+// declaration is a binding like a def's, so the def census and the bind
+// ledger see it as one.
+func InstallVar(r *Registry, name string, v Value, varType *Type) {
+	installDef(r, name, v, false)
+	r.Defs.MarkTopVar(name, varType)
+}
+
+// AssignVar replaces the value of name's top binding — a var of the current
+// frame; the caller checked (DefTable.InCurrentFrame) — in place. The
+// depth is unchanged, so the bind ledger notes a REPLACE, the kind whose
+// twin replaces rather than pushes; the table's generation bump invalidates
+// the dispatch cache and every plan a read of name baked, as any mutator's
+// does, and a reader sees the new value at its next lookup.
+func AssignVar(r *Registry, name string, v Value, pos SrcPos) {
+	if r.Check.IsActive() && r.Check.VarAssigned != nil {
+		// The body under analysis assigns this var: record the cell's
+		// value before its first assignment (CheckState.VarAssigned).
+		if _, seen := r.Check.VarAssigned[name]; !seen {
+			pre, _ := r.Defs.Top(name)
+			r.Check.VarAssigned[name] = pre
+		}
+	}
+	r.Defs.Replace(name, v)
+	noteRebind(r, name)
+	r.NoteBindTransition(BindDefReplace, name, pos)
+}
+
+// IsVarBinding reports whether name's top binding is a var (the var word's
+// cell), with its entry.
+func IsVarBinding(r *Registry, name string) (DefEntry, bool) {
+	e, ok := r.Defs.TopEntry(name)
+	return e, ok && e.Var
+}
+
 // UninstallFrameBinding pops a binding InstallFrameBinding pushed — a
 // param or a capture at a frame's teardown. The push was a SHADOWING
 // install that noted no bind transition (a frame binding is scoped to one

@@ -1,0 +1,72 @@
+# boru Language Specification: the var word
+# Format: input<TAB>expected<TAB>description
+#
+# `var NAME value` / `var NAME:Type value` (design/IMMUTABLE-DEF.1.md §2.3):
+# the one binding whose value changes in place. A var visible within the
+# current frame is ASSIGNED; otherwise one is DECLARED in the current scope.
+# A var of another frame is readable, never assignable. A var holds a value,
+# never a function constructor or a type. Rows run on both lanes.
+#
+# ─────────────────────────────────────────────────────────────────────
+# §1  declare and assign
+var n 0 n	0	a declaration binds the value
+var n 0 var n 5 n	5	an assignment replaces it
+var n 0 var n 5 var n 6 n	6	assignments repeat
+var s "a" var s "b" s	'b'	a string var
+var xs [1 2] var xs (push 3 xs) xs	[1 2 3]	a list var reassigned from its own value
+var m {a:1} var m (m set b/q 2) m	{a:1 b:2}	a map var
+# ─────────────────────────────────────────────────────────────────────
+# §2  loop state — the counter and accumulator idioms
+var n 0 for 3 [var n (n add 1)] n	3	the loop counter
+var t 0 for 5 [var t (t add i)] t	10	the accumulator over the index
+var n 0 while [n lt 3] [var n (n add 1)] n	3	a while counter
+var n 0 var m 10 while [n lt 3] [var n (n add 1) var m (m sub 1)] [n m]	[3 7]	two vars carried by one loop
+var t 0 each [var t (t add 1) t] [1 2 3]	[1 2 3]	an each body assigns the enclosing var and yields it
+var t 0 each [var t (t add 1) t] [1 2 3] t	[1 2 3] 3	the var holds the last assignment after the each
+var acc [] each [var acc (push 1 acc)] [7 8] acc	[7 8] [1 1]	an accumulator through each (the each yields its elements, the body having left nothing)
+var n 0 while [n lt 3] [if (n eq 1) [var n 5] [var n (n add 1)]] n	5	an assignment inside a branch inside a loop
+var n 0 if true [var n 1] [var n 2] n	1	a branch arm assigns
+def c (1 lt 2) var n 0 if c [var n 1] [var n 2] n	1	a branch arm assigns under a computed condition
+var n 0 do [var n 4] n	4	do is transparent: the body assigns the enclosing var
+# ─────────────────────────────────────────────────────────────────────
+# §3  frames — a fn body's own vars, a module var read but not assigned
+def f fn [[] [Integer] [var n 0 var n (n add 1) n]] (f)	1	a fn-local var
+def f fn [[k:Integer] [Integer] [var n 0 for k [var n (n add i)] n]] f 4	6	a fn-local var carried by a loop
+def f fn [[k:Integer] [Integer] [var n 0 while [n lt k] [var n (n add 1)] n]] f 4	4	a fn-local var carried by a while
+def f fn [[xs:List] [Integer] [var s 0 def _ (each [var s (s add 1)] xs) s]] f [1 2 3]	3	a fn-local var assigned by an each body (the each's own result bound aside)
+def g fn [[c:Boolean] [Integer] [var n 0 if c [var n 1] [var n 2] n]] g true	1	a fn-local var assigned by a branch arm
+var n 0 def peek fn [[] [Integer] [n]] var n 5 (peek)	5	a module var is read live by a fn body
+var n 0 def inc fn [[] [Integer] [var n (n add 1)]] (inc)	ERROR:var_error	a fn body cannot assign a module var
+var n 0 def inc fn [[] [Integer] [var n 7 n]] (inc)	ERROR:var_error	nor assign it a fresh value: the module's n is visible, so this is an assignment
+def f fn [[] [Integer] [var n 1 def g ([] => [n]) var n 2 (g)]] (f)	1	a closure captures the var's value at creation
+var n 0 def mk fn [[] [Function] [([] => [n])]] def g (mk) var n 7 (g)	7	a module var read by a closure stays live (the module is no frame of the closure)
+var acc [] each ([x] => [var acc (push x acc)]) [1 2]	ERROR:var_error	a lambda is a frame: it cannot assign the enclosing var
+each ([x] => [var y x y]) [1 2]	[1 2]	a var declared inside a lambda is the lambda's own
+# ─────────────────────────────────────────────────────────────────────
+# §4  typed vars — the typed-name form (`var n:Integer 1`) is registered when
+# the `var [[…]]` construct is deleted (basic/go/native_var.go's registration
+# note); until then these rows are a comment, and VarTypedHandler is pinned
+# by basic/go/native_var_test.go.
+# var n:Integer 1 var n 2 n	2	a typed var assigned a conforming value
+# var s:String "a" var s "b" s	'b'	a typed string var
+# var n:Integer 1 var n "x"	ERROR:type_error	an assignment checks the declared type
+# var s:String 1	ERROR:type_error	the declaration checks it too
+# var x 1 var x:Integer 2	ERROR:var_error	a typed re-declaration of a live var is refused
+# def Pos refine Integer var p:Pos 3 var p 4 p	4	a user type names a var's type
+# ─────────────────────────────────────────────────────────────────────
+# §5  a var holds a value
+var T 1	ERROR:var_error	a capitalised name is a type
+var t Integer	ERROR:var_error	a type literal is no var value
+var f fn [[] [Integer] [1]]	ERROR:var_error	the fn constructor form is refused
+var C class {a:Integer}	ERROR:var_error	the class constructor form is refused
+var f ([x:Integer] => [x add 1]) f 2	3	a function VALUE computed at run time is stored and dispatches when read
+def mk fn [[k:Integer] [Function] [([x:Integer] => [x add k])]] var f (mk 10) f 2	12	a fn value from a factory likewise
+var add 1	ERROR:reserved_word	a core word's name is reserved
+# ─────────────────────────────────────────────────────────────────────
+# §6  var and def side by side (phase 3 makes a same-scope collision redefinition)
+var x 1 def x 2 x	2	today a def over a var shadows it
+def x 1 var x 2 x	2	today a var over a def declares over it
+# ─────────────────────────────────────────────────────────────────────
+# §7  export — a module exports no var
+import module [var n 5 export "M" {n: n}] M.n	ERROR:export_error	exporting a var is refused
+import module [var n 5 def m n export "M" {m: m}] M.m	5	its value under a def exports

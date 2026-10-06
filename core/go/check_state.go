@@ -533,6 +533,22 @@ type CheckState struct {
 	DefCensus []DefCensusEntry
 	// DefCensusSeen dedupes DefCensus by class, name and site (defCensusKey).
 	DefCensusSeen map[string]bool
+	// VarAssigned is the check pass's record of the vars the body under
+	// analysis ASSIGNED (AssignVar, the var word): name → the value the var
+	// held before the body's first assignment. A var is one cell, replaced
+	// in place, so the body runner's depth diff cannot see the rebind: the
+	// runner adds these names to the body's bindings (a loop carries them,
+	// a branch joins them), restores a rolled-back body's cells, and
+	// merges the record into the enclosing body's. Nil outside a body run.
+	VarAssigned map[string]Value
+	// NextBaselineIsBlock makes the next PushFnBaseline open a BLOCK scope
+	// rather than a frame: the compiler's closure compile of a TOKEN body
+	// (an each / fold / do body, which runs in the enclosing frame) analyses
+	// it through the fn-body analysis, and the body's bindings are the
+	// enclosing frame's — a `var` the body assigns is that frame's var, not
+	// an enclosing frame's. Set by the compiler for that one push, consumed
+	// by it, cleared after the analysis however it returned.
+	NextBaselineIsBlock bool
 	// FnReads maps a named fn under analysis to every name its body reads
 	// (recordUse while FnNameStack is non-empty) — the late-binding hint's
 	// other half (NUR097): a read of a name that RootDefSites shows rebound
@@ -1197,6 +1213,7 @@ func (c *CheckState) Clone() *CheckState {
 	cp.PassEndCleanups = append([]func(){}, c.PassEndCleanups...)
 	cp.DefCensus = append([]DefCensusEntry(nil), c.DefCensus...)
 	cp.DefCensusSeen = cloneMap(c.DefCensusSeen)
+	cp.VarAssigned = cloneMap(c.VarAssigned)
 	cp.ParenPlacedFnIDs = cloneMap(c.ParenPlacedFnIDs)
 	cp.ReachSurvivorFnIDs = cloneMap(c.ReachSurvivorFnIDs)
 	if c.RaiseWatches != nil {
@@ -1363,6 +1380,8 @@ func (c *CheckState) Begin() func() {
 	c.RootDefSites = nil
 	c.DefCensus = nil
 	c.DefCensusSeen = nil
+	c.VarAssigned = nil
+	c.NextBaselineIsBlock = false
 	c.FnReads = nil
 	c.ParenReSteppedFnIDs = nil
 	c.WordReadFnIDs = nil

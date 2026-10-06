@@ -988,6 +988,11 @@ type emitDynBind struct {
 	// drops the standing overload as installDef's filter does.
 	specFn  bool
 	replace bool
+	// assign marks a var ASSIGNMENT (core.AssignVar, noted by NoteVarAssign
+	// ahead of the bind's record): inside a unit it lowers to
+	// OpAssignDynScope — the cell replaced in place — where a def's bind
+	// pushes a binding the frame's RET unwinds.
+	assign bool
 	// armCarried marks a BRANCH-CARRIED def (branch_carried.go): the bound
 	// value is stored into frame slot armSlot at the def's own site, so a
 	// read after the branch's merge loads whichever arm ran. The zero value
@@ -1292,8 +1297,10 @@ type EmitState struct {
 	// `def h fn [[][Integer][def a 9 end a]]` answered the stub's 1). The
 	// reads seat live through keepLeakNames only while they have no
 	// compiled home, which a real def's read always has.
-	runtimeStub  map[string]bool
-	runtimeTwins map[int]bool
+	runtimeStub map[string]bool
+	// pendingVarAssign is NoteVarAssign's latch per name (consumed by RecordDynBind).
+	pendingVarAssign map[string]bool
+	runtimeTwins     map[int]bool
 	// pendingRuntimeBindCall latches between a binder handler's
 	// NoteRuntimeBind and the dispatch's RecordRuntimeDispatch.
 	pendingRuntimeBindCall bool
@@ -6901,10 +6908,15 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 		}
 		tr := es.bindTwins[i]
 		switch tr.Kind {
-		case core.BindDef, core.BindUndef:
+		case core.BindDef, core.BindUndef, core.BindDefReplace:
 			// A VALUE def's install carries a runtime value; a captured type
 			// node under those kinds is a shape this bridge does not carry.
-			if es.bindTwinEntries[i].TypeDef != nil {
+			// A REPLACE is carried only as a var's assignment (core.AssignVar,
+			// the entry marked Var): the resident op replaces the cell per
+			// element where a def's pushes. A fn overload's replace inside a
+			// multi-run body stays the shape left to the standing decline.
+			if es.bindTwinEntries[i].TypeDef != nil ||
+				(tr.Kind == core.BindDefReplace && !es.bindTwinEntries[i].Var) {
 				return
 			}
 		case core.BindTypeInstall:
@@ -12856,6 +12868,29 @@ func (es *EmitState) recordsFilteredDynBind() bool {
 	return root || es.armResidentDepth > 0
 }
 
+// NoteVarAssign latches name's next RecordDynBind as a var assignment
+// (core.EmitRecorder). The latch is consumed by that record and by nothing
+// else: an assignment the pass declines before its record leaves it set
+// only until the name's next record, which is then that assignment's own.
+func (es *EmitState) NoteVarAssign(name string) {
+	if es == nil {
+		return
+	}
+	if es.pendingVarAssign == nil {
+		es.pendingVarAssign = map[string]bool{}
+	}
+	es.pendingVarAssign[name] = true
+}
+
+// takeVarAssign consumes name's assignment latch (NoteVarAssign).
+func (es *EmitState) takeVarAssign(name string) bool {
+	if !es.pendingVarAssign[name] {
+		return false
+	}
+	delete(es.pendingVarAssign, name)
+	return true
+}
+
 func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 	if !es.Active() || name == "" || core.IsCapitalisedName(name) {
 		return
@@ -13029,6 +13064,7 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,
 		root: root, depth: depth, spliceDepth: spliceDepth,
 		residentTwin: -1, carried: carried, specFn: specFn, replace: replace,
+		assign:   es.takeVarAssign(name),
 		keepSkip: cur.keepsDefs && !es.keepInstallable(src, srcSeq, v),
 	}})
 	if cur.keepsDefs && es.inStampCompile && !es.keepInstallable(src, srcSeq, v) {

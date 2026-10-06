@@ -143,6 +143,11 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 
 	// Snapshot def-stack depths (all known names).
 	snapshot := r.Defs.Snapshot()
+	// The vars this body assigns, recorded by AssignVar: a cell replaced in
+	// place moves no depth, so the diff below cannot see it. Each body run
+	// records its own and merges into the enclosing body's record after.
+	outerAssigned := r.Check.VarAssigned
+	r.Check.VarAssigned = map[string]Value{}
 
 	tokens := make([]Value, elems.Len())
 	copy(tokens, elems.Slice())
@@ -210,6 +215,25 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	// Collect the top of each def stack whose depth grew, then
 	// restore depths back to snapshot.
 	adds = map[string]Value{}
+	assigned := r.Check.VarAssigned
+	r.Check.VarAssigned = outerAssigned
+	for k, pre := range assigned {
+		// An assigned var is a binding the body made: its post-body value
+		// joins (a branch) or carries (a loop) as a def's would. A
+		// rolled-back body's cell is restored to its pre-body value — the
+		// other arm, and the join, must see the value the body started
+		// from — where a kept body's (`do`) assignment stands.
+		top, _ := r.Defs.Top(k)
+		adds[k] = top
+		if !keep {
+			r.Defs.Replace(k, pre)
+		}
+		if outerAssigned != nil {
+			if _, seen := outerAssigned[k]; !seen {
+				outerAssigned[k] = pre
+			}
+		}
+	}
 	for _, k := range r.Defs.Names() {
 		before := snapshot[k] // zero for names not present before
 		depth := r.Defs.Depth(k)

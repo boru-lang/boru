@@ -5733,6 +5733,18 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if fired {
 				pc = spec.RetPC - 1
 			}
+		case compiler.OpAssignDynScope:
+			// A var assignment inside a unit: replace the name's cell with
+			// the runtime value (core.ApplyResidentAssign) — no binding is
+			// pushed, so nothing joins the unwind trail.
+			va := &p.VarAssigns[in.Arg]
+			if len(stack) == 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+				return nil, vmErrAt(curDebug, pc, "ASSIGN_DYN_SCOPE underflow")
+			}
+			core.ApplyResidentAssign(curReg, va.Name, core.StripAscribed(stack[len(stack)-1]))
+			if va.Pop {
+				stack = stack[:len(stack)-1]
+			}
 		case compiler.OpBindDynScope, compiler.OpBindDynScopePeek:
 			if in.Op == compiler.OpBindDynScope && pc > 0 && curCode[pc-1].Op == compiler.OpPushLocal {
 				// The bind's own re-push of its source local (lowerDynBind):
@@ -5831,8 +5843,13 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			}
 			// Peek by default (a live computed value stays for its downstream
 			// readers); pop when the lowering pushed a copy (rb.Pop) —
-			// GlobalBindSpec's mode split, same reason.
-			core.ApplyResidentBind(curReg, rb.Name, false, core.StripAscribed(stack[len(stack)-1]))
+			// GlobalBindSpec's mode split, same reason. A var's assignment
+			// (rb.Replace) replaces the cell instead of pushing.
+			if rb.Replace {
+				core.ApplyResidentAssign(curReg, rb.Name, core.StripAscribed(stack[len(stack)-1]))
+			} else {
+				core.ApplyResidentBind(curReg, rb.Name, false, core.StripAscribed(stack[len(stack)-1]))
+			}
 			if rb.Pop {
 				stack = stack[:len(stack)-1]
 			}

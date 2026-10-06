@@ -129,7 +129,13 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 	// bodyInFrame = !fd.Anonymous — the interpreter's predicate, verbatim.
 	// `fd.Name != ""` is NOT it: the second row above has a name and still
 	// defers, and keying on the name compiled it to [[1] [2]] (measured).
+	// A token body runs in the enclosing frame (bodyInFrame): its analysis
+	// opens a block scope, so a var it assigns is the frame's own
+	// (core.CheckState.NextBaselineIsBlock; cleared after whatever path the
+	// analysis took, an early return having pushed nothing).
+	r.Check.NextBaselineIsBlock = bodyInFrame
 	stk := check.AnalyseFnBody(r, name, paramNames, bodyToks, inputs, captures, declared, !bodyInFrame)
+	r.Check.NextBaselineIsBlock = false
 	if len(bodyToks) == 0 && len(stk) == 0 {
 		// An EMPTY body's residual is its pushed inputs, verbatim: the runtime
 		// InvokeBody pushes the per-call inputs and runs no tokens, so the frame
@@ -199,6 +205,16 @@ func moduleScopeMutableCaptures(r *core.Registry, bodyToks []core.Value, existin
 		seen[name] = true
 		v, ok := r.Defs.Top(name)
 		if !ok {
+			return
+		}
+		// A VAR is never captured: it is the one module-scope binding a
+		// body CAN change (the var word's assignment, design/IMMUTABLE-DEF.1.md
+		// §2.3), so the premise above — the value at OpPushClosure equals every
+		// per-run lookup — does not hold for it. The body reads it live
+		// (OpLookupDynScope) and assigns it in place (OpAssignDynScope, or the
+		// resident replace), as the interpreter does; the check pass's cell
+		// value here is the analysis's join, not an instance to thread.
+		if _, isVar := core.IsVarBinding(r, name); isVar {
 			return
 		}
 		if !mutableInstanceRef(v) && !moduleScopeInstanceCarrier(v) {

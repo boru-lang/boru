@@ -159,10 +159,27 @@ func TestS6b2ParseFnParamsColonFormErrors(t *testing.T) {
 
 func TestS6b2ParseFnParamsBareWordUnknownType(t *testing.T) {
 	r := newTestRegistry(t)
-	sig := NewList([]Value{NewWord("s6b2notatype")})
+	// A bare CAPITALISED word that names no type is an error: types are
+	// capitalised, and this one does not exist.
+	sig := NewList([]Value{NewWord("S6b2Notatype")})
 	if _, _, err := ParseFnParams(r, sig); err == nil ||
 		!strings.Contains(err.Error(), "invalid type") {
 		t.Errorf("bare unknown type-name word must error, got %v", err)
+	}
+	// A bare lowercase word is an untyped NAMED param of type Any — the
+	// lambda binder `[e acc] => […]` (design/IMMUTABLE-DEF.1.md §2.3).
+	sig = NewList([]Value{NewWord("e"), NewWord("acc"), NewWord("Integer")})
+	params, barrier, err := ParseFnParams(r, sig)
+	if err != nil || len(params) != 3 || barrier != -1 {
+		t.Fatalf("untyped params: %v %+v %d", err, params, barrier)
+	}
+	if params[0].Name != "e" || params[0].Type != TAny || params[1].Name != "acc" || params[1].Type != TAny || params[2].Name != "" || params[2].Type != TInteger {
+		t.Errorf("untyped params bind by name as Any beside a bare type: %+v", params)
+	}
+	// A lowercase word that is no valid word name stays an error.
+	sig = NewList([]Value{NewWord("3x")})
+	if _, _, err := ParseFnParams(r, sig); err == nil {
+		t.Error("an invalid word name is no param")
 	}
 }
 

@@ -578,6 +578,12 @@ const (
 	// either; the bridge proves the type expression element-independent
 	// before stamping the site (typeInstallElementIndependent).
 	OpBindResident
+	// OpAssignDynScope is a var ASSIGNMENT inside a unit (emitDynBind.assign,
+	// the var word's `var NAME v` over a var of the enclosing frame): arg
+	// indexes VarAssigns; the name's cell is replaced in place with the stack
+	// top (core.ApplyResidentAssign), peeked or popped per the spec — never
+	// a binding the frame's RET unwinds, since nothing was pushed.
+	OpAssignDynScope
 	// OpUndefDynScope is the PLACED transition of a SPECULATIVE undef (the
 	// sixty-eighth increment): an `undef` of an enclosing binding inside a
 	// region the runtime may never execute — a branch arm, a loop body, a
@@ -785,6 +791,7 @@ var opcodeNames = [...]string{
 	OpPushLocalBound:       "PUSH_LOCAL_BOUND",
 	OpBindFnType:           "BIND_FN_TYPE",
 	OpBindResident:         "BIND_RESIDENT",
+	OpAssignDynScope:       "ASSIGN_DYN_SCOPE",
 	OpUndefDynScope:        "UNDEF_DYN_SCOPE",
 	OpReStepLanding:        "RESTEP_LANDING",
 	OpBindDynScopePeek:     "BIND_DYN_SCOPE_PEEK",
@@ -1481,6 +1488,11 @@ type ResidentBindSpec struct {
 	Twin  int
 	Undef bool
 	Pop   bool
+	// Replace selects the var ASSIGNMENT arm: the twin is a BindDefReplace
+	// (core.AssignVar, the var word), so the op replaces the name's cell in
+	// place with the runtime value (core.ApplyResidentAssign) where the
+	// install arm pushes a binding.
+	Replace bool
 	// TypeInstall selects the TYPE arm: the binding has no runtime value,
 	// so the op re-installs BindTwinEntries[Twin].Body per element, minting
 	// that element's own node (a top-level OpBindTwin replays the captured
@@ -1489,6 +1501,13 @@ type ResidentBindSpec struct {
 	// until AdoptResidentTwins has proved the type expression
 	// element-independent.
 	TypeInstall bool
+}
+
+// VarAssignSpec is one OpAssignDynScope: the var's name and whether the op
+// consumes the value (Pop) or peeks it for its downstream readers.
+type VarAssignSpec struct {
+	Name string
+	Pop  bool
 }
 
 type GlobalBindSpec struct {
@@ -1820,6 +1839,9 @@ type Program struct {
 	// replayed (the op carries the runtime value instead, which is the
 	// whole point). Only a twin-regime program carries entries.
 	ResidentBinds []ResidentBindSpec
+	// VarAssigns are OpAssignDynScope's specs (the var word's assignments
+	// inside units).
+	VarAssigns []VarAssignSpec
 	// SpecUndefNames is every name a PLACED speculative undef may pop
 	// (OpUndefDynScope — the sixty-eighth increment). A dynamic-scope read
 	// of one of these that MISSES is the interpreter's own undefined_word
@@ -2832,6 +2854,8 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 				arm = "undef"
 			case rb.TypeInstall:
 				arm = "type"
+			case rb.Replace:
+				arm = "assign"
 			}
 			fmt.Fprintf(sb, " a%-3d ; resident bind %s (%s, twin %d)", in.Arg, rb.Name, arm, rb.Twin)
 		case OpCallDynMethod:
