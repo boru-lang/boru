@@ -32,6 +32,14 @@ reference) while hot code runs on the existing, differential-tested VM.
 > the tier, a body the VM cannot take is a body the tier failed to
 > promote — a performance defect to close, not a resting place.
 
+> **See also (2026-10-06).** `IN-PLACE-COMPILATION.0.md` designs a
+> finer-grained mechanism on a different axis of the same interpreter: it
+> keeps the tree-walker and makes each matched call write a compiled call
+> cell into the tape in place of moving, removing and splicing the
+> arguments. The two compose — in-place speeds every dispatch the
+> tree-walker still performs, including the top-level statement stream the
+> tier leaves tree-walked.
+
 ## Architecture: fn-level tiering inside interpreter mode
 
 Tier boundary: the NAMED FN BODY — the same unit the emitter already

@@ -7,7 +7,7 @@ lessons live in [FULL-COMPILATION-HANDOFF.0.md](FULL-COMPILATION-HANDOFF.0.md),
 which is an append-only log and the wrong place to look for "what is true
 today". Update this file at the end of every increment.
 
-Last updated: **2026-10-05** (the baseline block below; the rest of the page is the 2026-09-25 state and its history).
+Last updated: **2026-10-06** (the baseline block below, with the in-place compilation design note; the rest of the page is the 2026-09-25 state and its history).
 
 > **2026-09-30:** the NUR rounds (#520–#526) are handed over in
 > [NUR-ROUND6-HANDOVER.0.md](NUR-ROUND6-HANDOVER.0.md): the state at stop,
@@ -25,7 +25,8 @@ Last updated: **2026-10-05** (the baseline block below; the rest of the page is 
 > full-compilation project's state as of 2026-09-25 and the history behind
 > it; this block is what changed since.
 >
-> - **Main** is at 64c5ab2f3 (NUR round 5, #526). CI is green on every push
+> - **Main** is at ed8a805ed (this baseline, #529, merged 2026-10-05; before it
+>   64c5ab2f3, NUR round 5, #526). CI is green on every push
 >   to it, and the merged ADR-008 coverage gate (`cover-gate.yml`, nightly)
 >   is green on 10-02, 10-04 and 10-05; its 10-03 run failed on
 >   `TestServeStepShutdownDrains` (cmd/go's debugcmd package, a ten-second
@@ -63,8 +64,8 @@ Last updated: **2026-10-05** (the baseline block below; the rest of the page is 
 >   A landed in this baseline and NUR334 is narrowed a fifth time; B, C and D build and pass the module suites, saved for the next round), and the voxgig pass's trie rewrite and sort
 >   prototype in `handover/voxgig-interp-wip/`, with the instrumented trace
 >   build, the two-lane probe and the census probe beside them.
-> - **Open PRs.** #527 and #528 are superseded by this baseline; close them
->   once it merges. #452 (wire-format compatibility and portability,
+> - **Open PRs.** #527 and #528 were superseded by this baseline and closed
+>   when it merged. #452 (wire-format compatibility and portability,
 >   2026-09-14) is 249 commits behind main and conflicts in eight files:
 >   `.github/workflows/ci.yml` (163 conflict lines against the restructured
 >   CI), the Makefile, cmd/go's build and fmt packages (15–32 lines each) and
@@ -72,6 +73,15 @@ Last updated: **2026-10-05** (the baseline block below; the rest of the page is 
 >   records never existed in its tree, and main gave those numbers to other
 >   records on 2026-09-15. It needs a rebase by someone whose token can push
 >   workflow files; a cloud session's cannot.
+> - **A design note in flight (2026-10-06):**
+> [IN-PLACE-COMPILATION.0.md](IN-PLACE-COMPILATION.0.md) — a prototype
+>   mechanism for the interpreter's dispatch path, asked for by the
+>   maintainer: a fully matched call overwrites its cells in place (a call
+>   cell holding the matched dispatch, nop cells everywhere else it claimed)
+>   instead of moving, removing and splicing them, with no rearrangement of
+>   the arguments into Forth order. Design only, not built; off by default
+>   when built; interpreter-mode performance, orthogonal to T1–T4. Its §11
+>   lists the questions still open for the maintainer.
 > - **Next.** A round, as the round-6 page describes: split the open records
 >   by mechanism, one agent per track, integrate, record, gate, merge. The
 >   maintainer's verdicts are owed on NUR364 and on NUR366–NUR383 before
