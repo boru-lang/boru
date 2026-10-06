@@ -184,6 +184,18 @@ func invokeCallback(r *Registry, sig *Signature, args []Value, captures []Captur
 	// interpreter ISLAND, not a fallback from a failure, and it stays
 	// visible as one.
 	defer bailReplayAttribution(r, err)()
+	// A Go-IMPLEMENTED signature — a self-contained fn-util wrapper (compose,
+	// partial, memoize), a parked native word — has no boru body for CallBoru
+	// to splice, so CallBoru ran the frame over nothing and handed the inputs
+	// back: `filter h/v xs` over a composed predicate "answered" each element
+	// with itself (a non-Boolean filter used to drop silently, which hid it).
+	// The handler IS the implementation: dispatch it over the matched args,
+	// as the VM's tryNativeFnApply does for the same values.
+	if _, isGo := sig.Impl.(*GoImpl); isGo {
+		if h := sig.DispatchHandler(); h != nil {
+			return h(args, r.Contexts.TopData(), nil, r)
+		}
+	}
 	// Observability seam (interp_entry.go): the callback seam's interpreter
 	// fallback — its own name so the C4 decline tag can attach later without
 	// conflating it with a direct CallBoru.

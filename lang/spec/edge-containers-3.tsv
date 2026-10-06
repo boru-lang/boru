@@ -86,7 +86,7 @@ fold [add] {a:7}	7	…map form
 {a:1 b:2} fold [add]	3	no-init map fold from the first value
 filter [0 gt] []	[]	filter over empty list
 filter [0 gt] {}	{}	filter over empty map
-filter ([p:Any] => [p.value gt 0]) []	[]	lambda filter over empty list
+filter ([p:Integer] => [p gt 0]) []	[]	lambda filter over empty list
 filter [9 gt] [1 2]	[]	a filter may empty the list entirely
 scan [add] {}	{}	scan over the empty map
 scan [add] [5]	[5]	scan over a singleton is its seed

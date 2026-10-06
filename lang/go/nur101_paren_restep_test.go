@@ -125,7 +125,7 @@ func TestParenReStepPlacedLayoutCompiles(t *testing.T) {
 // a silent wrong answer. A value-only assertion would pass the day someone
 // re-islands this, so the island check is the point.
 func TestForeignClosureCompilesInItsOwnRegistry(t *testing.T) {
-	const src = `import module [def lim fn [[n:Integer] [Integer] [2]] def big fn [[e:Map] [Boolean] [(e dot value) gt (lim 0)]] export "A" {big: big/v}] end def lim fn [[n:Integer] [Integer] [100]] filter A.big [1 2 3 4]`
+	const src = `import module [def lim fn [[n:Integer] [Integer] [2]] def big fn [[e:Integer] [Boolean] [e gt (lim 0)]] export "A" {big: big/v}] end def lim fn [[n:Integer] [Integer] [100]] filter A.big [1 2 3 4]`
 	prog, reason, _, cerr := mustNew(t).CompileCheck(src)
 	if cerr != nil || prog == nil {
 		t.Fatalf("foreign closure did not compile: reason=%q err=%v", reason, cerr)
@@ -178,7 +178,7 @@ func TestForeignClosureCompilesInItsOwnRegistry(t *testing.T) {
 // registry-tagged operand for a foreign module-scope instance (the follow-up
 // the frontier ledger names); the fence here is parity, which holds either way.
 func TestForeignClosureCaptureResolvesInItsOwnRegistry(t *testing.T) {
-	const src = `import module [def acc (flex [1 2 3]) def big fn [[e:Map] [Boolean] [(size acc) lt (e dot value)]] export "A" {big: big/v}] end def acc (flex []) filter A.big [1 2 3 4]`
+	const src = `import module [def acc (flex [1 2 3]) def big fn [[e:Integer] [Boolean] [(size acc) lt e]] export "A" {big: big/v}] end def acc (flex []) filter A.big [1 2 3 4]`
 	gotC, compiled, errC := mustNew(t).RunCompiled(src)
 	gotI, errI := mustNew(t).RunInterp(src)
 	if noteCompileDefect(t, src, gotC, errC) {

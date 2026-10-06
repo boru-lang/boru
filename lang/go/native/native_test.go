@@ -666,13 +666,15 @@ func TestRemoveRecordHandler(t *testing.T) {
 
 // --- helpers for callback-based tests ---
 
-// makeTrueFilterFn creates a boru function that takes one map arg and returns true.
+// makeTrueFilterFn creates a boru function that takes one arg of any type
+// (filter's Function form hands it the element, or a map entry's value) and
+// returns true.
 func makeTrueFilterFn() Value {
 	return NewFunction(FnDefInfo{
 		Signatures: []FnSig{
 			{
 				Params: []FnParam{
-					{Name: "item", Type: TMap},
+					{Name: "item", Type: TAny},
 				},
 				Impl: Boru([]Value{NewBoolean(true)}), BarrierPos: -1,
 			},
@@ -703,19 +705,11 @@ func TestFilterHandler(t *testing.T) {
 	if len(result) != 1 {
 		t.Fatalf("expected 1 result, got %d", len(result))
 	}
-	// All items should pass the filter (fn always returns true).
-	// voxgigstruct.Filter on a map may return a map or list; just check non-nil.
-	if result[0].Parent.Equal(TList) {
-		_lst, _ := AsList(result[0])
-		list := _lst.Slice()
-		if len(list) != 2 {
-			t.Errorf("expected 2 entries, got %d", len(list))
-		}
-	} else {
-		m, _ := AsMap(result[0])
-		if m.Len() != 2 {
-			t.Errorf("expected 2 keys, got %d", m.Len())
-		}
+	// All entries pass the filter (fn always returns true), and the Function
+	// form over a map keeps the map shape.
+	m, _ := AsMap(result[0])
+	if m == nil || m.Len() != 2 {
+		t.Errorf("expected a 2-key map, got %v", result[0])
 	}
 }
 

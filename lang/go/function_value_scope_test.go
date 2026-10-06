@@ -54,7 +54,7 @@ func fnScopeCases() []fnScopeCase {
 			name: "filter Function form",
 			word: "filter",
 			mod: "def limit fn [[n:Integer] [Integer] [ 2 ]]\n" +
-				"def big fn [[e:Map] [Boolean] [ (e dot value) gt (limit 0) ]]\n" +
+				"def big fn [[e:Integer] [Boolean] [ e gt (limit 0) ]]\n" +
 				"export \"P\" { big: big/v }\n",
 			caller: "import \"%s\" end\n" +
 				"def limit fn [[n:Integer] [Integer] [ 100 ]]\n" +
@@ -64,11 +64,12 @@ func fnScopeCases() []fnScopeCase {
 		},
 		{
 			// each over a MAP with a Function body — native_map_iter.go's
-			// mapBody.callLambda.
+			// mapBody.callLambda (a KeyVal-typed param: the fn is handed the
+			// whole entry).
 			name: "each over a map",
 			word: "each",
 			mod: "def tag fn [[n:Integer] [String] [ \"P\" ]]\n" +
-				"def show fn [[kv:Map] [String] [ (tag 0) add (convert String (kv dot v)) ]]\n" +
+				"def show fn [[kv:KeyVal] [String] [ (tag 0) add (convert String (kv dot v)) ]]\n" +
 				"export \"Q\" { show: show/v }\n",
 			caller: "import \"%s\" end\n" +
 				"def tag fn [[n:Integer] [String] [ \"CALLER\" ]]\n" +

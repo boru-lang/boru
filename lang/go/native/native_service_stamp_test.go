@@ -210,7 +210,7 @@ func TestServiceAddStampsFilterLambdaHandler(t *testing.T) {
 def svc (service {kv: {}})
 add {cmd:"KEYS"} ([req:Map state:Any] => [
   def kv state.kv
-  filter ([e:Any] => [ ((kv get e.value) eq None) not ]) (keys kv)
+  filter ([e:String] => [ ((kv get e) eq None) not ]) (keys kv)
 ]) svc
 (state-of svc).kv set "a" 1;
 `

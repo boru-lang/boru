@@ -90,8 +90,14 @@ var unflaggedPins = map[string]int{
 	// failures of a callback the checker cannot resolve statically — the
 	// same fn-value-crossing-a-boundary family behind that file's
 	// false positives. They are pinned here because the checker genuinely
-	// cannot decide them today, not because the rows are wrong.
-	"fold-map-filter.tsv": 2,
+	// cannot decide them today, not because the rows are wrong. 2 -> 6 on
+	// 2026-10-06 with the callback protocol's negative rows (a Function form
+	// hands the element, or a map entry's value unless the entry param is
+	// typed KeyVal — design/IMMUTABLE-DEF.1.md §5 phase 1): a KeyVal-typed
+	// predicate over a list, a value-rejecting lambda at the map arm, a
+	// non-Boolean predicate result and a scalar receiver all raise at run
+	// time, per element or per entry, which the static pass does not see.
+	"fold-map-filter.tsv": 6,
 	// each-variants.tsv: 1 ERROR row, added 2026-09-18 with NUR153's ruling —
 	// the pin that an anonymous `=>` whose body is a single BARE container
 	// defers, so its param is unbound and the row raises `undefined_word` at

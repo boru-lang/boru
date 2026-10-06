@@ -61,7 +61,7 @@ do {a:1,b:2}	{a:1 b:2}	do
 enum [a/q b/q c/q]	a tor b tor c	enum
 eq 2 3	false	eq
 false guard 42	None	guard
-filter ([p:Any] => [p.value gt 3]) [1 2 3 4 5]	[4 5]	filter
+filter ([p:Integer] => [p gt 3]) [1 2 3 4 5]	[4 5]	filter
 filter [2 gt] [1 2 3 4]	[3 4]	filter
 flatten 1 [[1 [2]] [3]]	[1 [2] 3]	flatten
 flatten [[1 2] [3]]	[1 2 3]	flatten

@@ -36,8 +36,12 @@ var fnUtilValueSeamRows = []struct {
 	// around its handler — the seam's native apply declines it (open).
 	{"flip under fold (open)", fuSeam + `def fs (FnUtil.flip sub2/v) end 100 fold fs/v [1 2 3]`, "[94]", false},
 	// filter's predicate seam runs a Go-implemented value through the
-	// callback path, which has no native arm yet (open).
-	{"compose under filter (open)", fuSeam + `def h (FnUtil.compose inc/v dbl/v) end filter h/v [1 2 3]`, "[[]]", false},
+	// callback path: the seam dispatches the value's own Go handler over the
+	// matched element (core/go/invoke.go — CallBoru, a body splicer, used to
+	// run the frame over nothing and hand the element back, which filter's
+	// silent non-Boolean drop then hid as `[]`). The composed predicate is
+	// handed the element and answers a Boolean.
+	{"compose under filter", fuSeam + `def big x:Integer => [x gt 2] end def h (FnUtil.compose big/v dbl/v) end filter h/v [1 2 3]`, "[[2 3]]", true},
 }
 
 func TestFnUtilValueSeamParityAndNoEntry(t *testing.T) {

@@ -108,30 +108,19 @@ func TestB3AnyToValueNestedError(t *testing.T) {
 	}
 }
 
-func TestB3FilterConvertBackFails(t *testing.T) {
-	r := seam5Reg(t)
-	b3FailConvert(t)
-	// filterHandler over a LIST: per-element key/value convert-back fallbacks
-	// (both fail -> string fallbacks) and the final convert-back error.
-	_, err := seam5Run(r, `filter ([p:Any] => [true]) [1 2 3]`)
-	if err == nil || !strings.Contains(err.Error(), "filter:") {
-		t.Fatalf("filter: expected final convert-back error, got %v", err)
-	}
-}
-
+// TestB3FilterCallbackNonBoolean: filter's Function form reads the predicate's
+// verdict strictly — a non-Boolean result is the word's loud filter_error,
+// never a silent drop (the quotation form's rule, voxgig DX report T9.2).
 func TestB3FilterCallbackNonBoolean(t *testing.T) {
 	r := seam5Reg(t)
-	// filterHandler: callback returns a non-boolean -> keep=false path.
-	out, err := seam5Run(r, `filter ([p:Any] => [p]) [1 2 3]`)
-	if err != nil {
-		t.Fatalf("filter non-boolean callback: unexpected error %v", err)
+	_, err := seam5Run(r, `filter ([p:Any] => [p]) [1 2 3]`)
+	if err == nil || !strings.Contains(err.Error(), "element 0: predicate must produce a Boolean, got Integer") {
+		t.Fatalf("filter non-boolean callback: expected the loud filter_error, got %v", err)
 	}
-	if len(out) != 1 {
-		t.Fatalf("expected one residual, got %v", out)
-	}
-	lst, aerr := AsList(out[0])
-	if aerr != nil || lst.Len() != 0 {
-		t.Fatalf("expected empty list (all dropped), got %v", out[0])
+	// Positive pair: a Boolean verdict keeps the elements it admits.
+	out, err := seam5Run(r, `filter ([p:Integer] => [p gt 1]) [1 2 3]`)
+	if err != nil || len(out) != 1 || out[0].String() != "[2 3]" {
+		t.Fatalf("filter Boolean callback: got %v / %v, want [2 3]", out, err)
 	}
 }
 

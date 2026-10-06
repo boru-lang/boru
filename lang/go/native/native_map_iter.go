@@ -14,9 +14,13 @@ import (
 //
 //   - quotation `[body]` — the entry's VALUE is pushed on the stack; the result
 //     keeps the map shape (same keys). e.g. `{a:1 b:2} each [mul 10]`.
-//   - lambda `(kv => …)` — the body is handed a KeyVal {k v i n} so it can use
-//     the key/index/total; the result still keeps the map shape.
-//     e.g. `{a:1 b:2} each (kv => [kv.v mul 10])`.
+//   - a Function `(v => …)` — the body is handed the entry's VALUE too, bound
+//     to its param: `{a:1 b:2} each ([v:Integer] => [v mul 10])`. A callback
+//     that types its ENTRY param KeyVal is handed the whole entry as a KeyVal
+//     {k v i n} so it can use the key/index/total: `{a:1 b:2} each
+//     ([kv:KeyVal] => [kv.k])` (core.CallbackWantsKeyVal — the entry param is
+//     the last one, so fold's and scan's `[acc kv]` follow the same rule). The
+//     result still keeps the map shape.
 //
 // each → Map (values transformed, keys kept); for-each → nothing;
 // fold → the accumulator; filter → Map (entries kept by a Boolean predicate).
@@ -31,38 +35,44 @@ type mapBody struct {
 	body    Value      // when closure: the closure value (run via InvokeBody)
 	fnDef   *FnDefInfo // when lambda: its definition (captures + defining registry)
 	tokens  []Value    // when quotation: the body tokens
-	// sigFn is set for a fn-VALUE closure (ClosureIsFnValue): the bridged
-	// FnDefInfo the closure's declared signature is matched under, so the
-	// arm hands it the KeyVal the lambda convention hands and raises the
+	// sigFn is set for a compiled closure with a param contract of its own —
+	// a fn VALUE, or a lambda compiled at the call site (ClosureAsFnDef): the
+	// bridged FnDefInfo the closure's declared signature is matched under, so
+	// the arm hands it the entry that signature asks for and raises the
 	// lambda no-match where the interpreter does (S1b-2). body then carries
 	// the SigMatched mark: the invoker applies the unit positionally.
 	sigFn Value
+	// keyVal says the callback asked for the whole entry as a KeyVal {k v i
+	// n} by typing its entry param KeyVal (core.CallbackWantsKeyVal); off, it
+	// is handed the entry's VALUE, as a quotation is.
+	keyVal bool
 }
 
 // newMapBody classifies the body arg: a compiled CLOSURE (the bytecode VM
-// driving each/fold over a map) runs per VALUE via the InvokeBody seam, like a
-// quotation — unless it is a fn VALUE (a capturing `fn` / `=>` literal minted
-// at run time: a factory's result, a def-bound one read back), which is a
-// LAMBDA to this arm exactly as it is to the interpreter: handed the KeyVal
-// and matched against its own signature first; a (lambda) Function is handed
-// a KeyVal; anything else must be a concrete quotation list (handed the
-// value). Measured before the fn-value arm (2026-09-19, the S1a head): a
-// factory's `[n:Integer]` closure over `{a:1 b:2}` answered `{a:2 b:3}` for
-// the interpreter's signature_error, and a `[kv:KeyVal]` one raised an
-// internal `dot` no-match over the bare value it was handed.
+// driving each/fold over a map) with a param contract of its own — a fn VALUE
+// (a capturing `fn` / `=>` literal minted at run time: a factory's result, a
+// def-bound one read back) or a lambda compiled at the call site — is a
+// LAMBDA to this arm exactly as it is to the interpreter: matched against its
+// own bridged signature first (ClosureAsFnDef) and handed the entry that
+// signature asks for; a contract-less closure (a token body) runs per VALUE
+// via the InvokeBody seam, like a quotation; a (lambda) Function is matched
+// and handed the same way; anything else must be a concrete quotation list
+// (handed the value). Measured before the fn-value arm (2026-09-19, the S1a
+// head): a factory's `[n:Integer]` closure over `{a:1 b:2}` answered `{a:2
+// b:3}` for the interpreter's signature_error, and a `[kv:KeyVal]` one raised
+// an internal `dot` no-match over the bare value it was handed.
 func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 	if IsCompiledClosure(body) {
 		mb := mapBody{closure: true, body: body}
-		if ClosureIsFnValue(body) {
-			if fnv, ok := ClosureAsFnDef(reg, body); ok {
-				mb.sigFn = fnv
-				mb.body = ClosureSigMatched(body)
-			}
+		if fnv, ok := ClosureAsFnDef(reg, body); ok {
+			mb.sigFn = fnv
+			mb.body = ClosureSigMatched(body)
+			mb.keyVal = CallbackWantsKeyVal(fnv)
 		}
 		return mb, nil
 	}
 	if body.Parent.ConformsTo(TFunction) {
-		mb := mapBody{lambda: true, fn: body}
+		mb := mapBody{lambda: true, fn: body, keyVal: CallbackWantsKeyVal(body)}
 		if fd, ok := body.Data.(FnDefInfo); ok {
 			mb.fnDef = &fd
 		}
@@ -75,29 +85,36 @@ func newMapBody(reg *Registry, body Value, word string) (mapBody, error) {
 	return mapBody{tokens: bl.Slice()}, nil
 }
 
+// entry is what a Function callback is handed for one map entry: the entry's
+// VALUE, or the whole entry as a KeyVal {k v i n} when the callback's entry
+// param is typed KeyVal (mapBody.keyVal) — the one rule the compiler's
+// carriers follow too (compiler/go/callable_words.go entryCarrier).
+func (mb mapBody) entry(k string, v Value, i, n int64) Value {
+	if mb.keyVal {
+		return NewKeyVal(k, v, i, n)
+	}
+	return v
+}
+
 // value runs the body for one entry with no accumulator. ok=false when the body
 // left the stack empty.
 func (mb mapBody) value(reg *Registry, k string, v Value, i, n int64) (Value, bool, error) {
 	if mb.lambda {
-		return mb.callLambda(reg, []Value{NewKeyVal(k, v, i, n)})
+		return mb.callLambda(reg, []Value{mb.entry(k, v, i, n)})
 	}
 	if mb.closure {
-		// A fn-VALUE closure: the lambda convention — the KeyVal, matched
-		// against the value's own signature (sigFn) before the unit runs.
+		// A closure with a contract: the lambda convention — the entry its
+		// signature asks for, matched against that signature (sigFn) before
+		// the unit runs.
 		if mb.sigFn.Data != nil {
-			args := []Value{NewKeyVal(k, v, i, n)}
+			args := []Value{mb.entry(k, v, i, n)}
 			if MatchFnSig(mb.sigFn, args) == nil {
 				return Value{}, false, noLambdaMatch(reg, args)
 			}
 			return invokeBodyTop(reg, mb.body, args)
 		}
-		// A closure compiled from a LAMBDA body expects a KeyVal (its named
-		// param destructures `kv.v`/`kv.i`); one compiled from a token body
-		// sees the bare value, like a quotation. The unit's recorded shape says
-		// which (ClosureWantsKeyVal).
-		if ClosureWantsKeyVal(mb.body) {
-			return invokeBodyTop(reg, mb.body, []Value{NewKeyVal(k, v, i, n)})
-		}
+		// A contract-less closure (a token body) sees the bare value, like a
+		// quotation.
 		return invokeBodyTop(reg, mb.body, []Value{v})
 	}
 	return runQuotationBody(reg, mb.tokens, []Value{v})
@@ -114,26 +131,22 @@ func noLambdaMatch(reg *Registry, args []Value) error {
 
 // fold runs the body for one entry with an accumulator. The quotation form
 // pushes the accumulator first and the value on top (same stack order as list
-// fold: a 2-arg word sees value=top, acc=deeper); the lambda receives
-// (accumulator, KeyVal).
+// fold: a 2-arg word sees value=top, acc=deeper); a Function receives
+// (accumulator, entry) — the entry its signature asks for.
 func (mb mapBody) fold(reg *Registry, acc Value, k string, v Value, i, n int64) (Value, bool, error) {
 	if mb.lambda {
-		return mb.callLambda(reg, []Value{acc, NewKeyVal(k, v, i, n)})
+		return mb.callLambda(reg, []Value{acc, mb.entry(k, v, i, n)})
 	}
 	if mb.closure {
-		// A fn-VALUE closure: (accumulator, KeyVal), matched first.
+		// A closure with a contract: (accumulator, entry), matched first.
 		if mb.sigFn.Data != nil {
-			args := []Value{acc, NewKeyVal(k, v, i, n)}
+			args := []Value{acc, mb.entry(k, v, i, n)}
 			if MatchFnSig(mb.sigFn, args) == nil {
 				return Value{}, false, noLambdaMatch(reg, args)
 			}
 			return invokeBodyTop(reg, mb.body, args)
 		}
-		// (accumulator, entry): a lambda-derived closure takes the entry as a
-		// KeyVal, a token-derived one as the bare value.
-		if ClosureWantsKeyVal(mb.body) {
-			return invokeBodyTop(reg, mb.body, []Value{acc, NewKeyVal(k, v, i, n)})
-		}
+		// A contract-less closure (a token body): (accumulator, value).
 		return invokeBodyTop(reg, mb.body, []Value{acc, v})
 	}
 	return runQuotationBody(reg, mb.tokens, []Value{acc, v})

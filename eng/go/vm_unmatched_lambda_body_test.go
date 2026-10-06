@@ -1,7 +1,6 @@
 package eng
 
 import (
-	"errors"
 	"testing"
 
 	compiler "github.com/boru-lang/boru/compiler/go"
@@ -13,8 +12,9 @@ import (
 // the closure cannot name, a unit with no contract of its own and a
 // matching window all stand aside (the ordinary invoke follows); a list
 // body's no-match hands the inputs back with the closure on top, rendered
-// as the interpreter renders the lambda; a map body's no-match raises the
-// map arm's signature_error.
+// as the interpreter renders the lambda. (A map arm's closure never reaches
+// the seam unmatched: the handler bridges it to its signature and matches it
+// first — native_map_iter.go.)
 func TestUnmatchedLambdaBody(t *testing.T) {
 	r, err := core.NewRegistry()
 	if err != nil {
@@ -24,7 +24,6 @@ func TestUnmatchedLambdaBody(t *testing.T) {
 		{Name: "each$body", NParams: 1, NArgs: 1, NLocals: 1, Params: []*core.Type{core.TInteger}, Code: []compiler.Instr{{Op: compiler.OpRet}}, Debug: []core.SrcPos{{}}},
 		{Name: "tok$body", NParams: 1, NArgs: 1, NLocals: 1, Code: []compiler.Instr{{Op: compiler.OpRet}}, Debug: []core.SrcPos{{}}},
 		{Name: "fold$body", NParams: 2, NArgs: 2, NLocals: 2, Params: []*core.Type{core.TInteger, core.TInteger}, InShape: compiler.ClosureInStackPair, Code: []compiler.Instr{{Op: compiler.OpRet}}, Debug: []core.SrcPos{{}}},
-		{Name: "map$body", NParams: 2, NArgs: 2, NLocals: 2, Params: []*core.Type{core.TInteger, core.TAny}, InShape: compiler.ClosureInKeyVal, Code: []compiler.Instr{{Op: compiler.OpRet}}, Debug: []core.SrcPos{{}}},
 	}}
 	vc := &vmContext{p: p, r: r, ceiling: 1 << 20, stepLimit: 1 << 20}
 	closure := func(unit int, shape core.ClosureInShape) (core.Value, core.ClosurePayload) {
@@ -63,12 +62,5 @@ func TestUnmatchedLambdaBody(t *testing.T) {
 	res, err, ran = vc.unmatchedLambdaBody(r, pairBody, pairCl, []core.Value{core.NewInteger(1), core.NewString("s")})
 	if !ran || err != nil || len(res) != 3 || res[2].String() != "fn (Integer, Integer)" {
 		t.Errorf("stack-pair no-match = %v (ran=%v err=%v), want the pair with the closure on top", res, ran, err)
-	}
-	// A map body's no-match raises the map arm's error.
-	mapBody, mapCl := closure(3, compiler.ClosureInKeyVal)
-	_, err, ran = vc.unmatchedLambdaBody(r, mapBody, mapCl, []core.Value{core.NewString("s"), core.NewKeyVal("a", core.NewInteger(1), 0, 1)})
-	var be *core.BoruError
-	if !ran || !errors.As(err, &be) || be.Code != "signature_error" {
-		t.Errorf("map no-match: ran=%v err=%v, want the map arm's signature_error", ran, err)
 	}
 }

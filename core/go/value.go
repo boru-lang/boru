@@ -858,7 +858,7 @@ type CallableSpec struct {
 	BodyResultTop bool
 	// CrossCollectionTokenShape marks a word whose TOKEN-quotation body is
 	// SHAPE-GENERIC across the word's List-vs-Map overloads: both present the
-	// closure the bare element/value (ClosureInValue), never a KeyVal. So a
+	// closure the bare element/value (ClosureInValue). So a
 	// gradual-Any (Dynamic) collection — statically ambiguous between the List and
 	// Map overload — can still compile: the recorder commits the first reachable
 	// (List) overload and lowers the token body to ONE closure, and the committed
@@ -888,8 +888,8 @@ type CallableSpec struct {
 	// map, handed to a quotation on the stack and to a lambda as its one named
 	// param). The recorder then compiles a lambda body against Inputs(args)
 	// directly (ClosureInValue), instead of consulting the per-word
-	// lambdaCallbackInputs table whose shapes (pair maps, KeyVals) only fit the
-	// words that present DIFFERENT views to lambdas vs quotations.
+	// lambdaCallbackInputs table (an element, an entry's value or KeyVal, an
+	// accumulator) that fits the collection words.
 	LambdaSharesTokenShape bool
 }
 

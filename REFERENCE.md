@@ -1583,7 +1583,7 @@ fn bindings lexically:
 5 (x:Integer => [x mul 2]) apply             # returns 10 — a paren PLACES the
                                               # lambda (see Grouping), so the
                                               # application is explicit
-filter p:Any => [p.value gt 3] [1 2 3 4 5]    # returns [4 5]
+filter p:Integer => [p gt 3] [1 2 3 4 5]      # returns [4 5]
 def double x:Integer => [x mul 2]
 double 7                                      # returns 14
 
@@ -2308,9 +2308,9 @@ into the signature: `fold` takes `body data init`, `scan` takes
 > ```
 
 > **A `Function` value works over either container.** `each`,
-> `for-each`, `fold` and `scan` each take a `Function` callback over a
-> list as well as a map, and the LIST form hands the callback the
-> **element**:
+> `for-each`, `fold`, `scan` and `filter` each take a `Function` callback
+> over a list as well as a map, and hand it the container's natural unit
+> — exactly what the quotation form pushes:
 >
 > ```
 > def dbl x:Integer => [mul 2 x]
@@ -2319,13 +2319,14 @@ into the signature: `fold` takes `body data init`, `scan` takes
 > fold add2/v [1 2 3] 0                              # (accumulator, element)
 > ```
 >
-> **The family rule:** a *per-container* `Function` form hands the
-> container's natural unit — the **element** for a list, a **KeyVal** for
-> a map. `filter` is the documented exception: it has ONE signature
-> serving both shapes, so it hands a **position descriptor** either way
-> (a `{key value}` pair over a list, a `KeyVal` over a map). That is
-> `filter`'s contract, not an oversight — the descriptor carries the
-> index, which a predicate over a position often needs.
+> **The family rule:** over a **list** the callback receives the
+> **element**; over a **map** it receives the entry's **value** — or the
+> whole entry as a `KeyVal` `{k v i n}` when it declares its entry param
+> `KeyVal` (`([kv:KeyVal] => […])`; for `fold` and `scan` the entry param
+> is the second one, after the accumulator). The callback's own signature
+> decides, so a lambda, a named fn passed with `/v` and a stored fn value
+> all behave alike, and a param that rejects the unit is a
+> `signature_error`, never a silent skip.
 >
 > `for-each` discards every result, but a `Function` callback must still
 > satisfy its OWN declared return arity: a `=>` lambda declares one
@@ -2337,15 +2338,16 @@ into the signature: `fold` takes `body data init`, `scan` takes
 > `each`/`fold` — and keeps the elements whose result is Boolean
 > `true` (a non-Boolean result is an **error**, not a silent drop). A
 > receiverless Reach lens keeps elements whose field is true. A
-> Function callback over a **list** receives a `{key value}` pair map
-> (read the element via `.value`); over a **map** it receives a `KeyVal`
-> (read the value via `.v`) and the result keeps the map shape:
+> Function callback receives the element too — over a **map** the value,
+> or the `KeyVal` entry a `KeyVal`-typed param asks for — and the result
+> keeps the container's shape:
 >
 > ```
 > filter [2 gt] [1 2 3 4]                            # returns [3 4]
 > filter [2 gt] {a:1 b:5 c:3}                        # returns {b:5 c:3} — maps filter by value
-> filter ([p:Any] => [p.value gt 3]) [1 2 3 4 5]     # returns [4 5]      (list: {key value} pair)
-> filter ([kv:KeyVal] => [kv.v gt 2]) {a:1 b:5 c:3}  # returns {b:5 c:3}  (map: KeyVal)
+> filter ([p:Integer] => [p gt 3]) [1 2 3 4 5]       # returns [4 5]      (list: the element)
+> filter ([v:Integer] => [v gt 2]) {a:1 b:5 c:3}     # returns {b:5 c:3}  (map: the value)
+> filter ([kv:KeyVal] => [kv.k neq 'a']) {a:1 b:5}   # returns {b:5}      (map: the KeyVal, by request)
 > ```
 >
 > The lens form reads a field: `filter $.active accounts` keeps the
@@ -2353,15 +2355,17 @@ into the signature: `fold` takes `body data init`, `scan` takes
 
 > **Map iteration.** `each`, `for-each`, `fold`, `scan`, and `filter`
 > also take a map, iterating its entries in insertion order. The
-> quotation form gets each entry's **value** (the key is preserved); a
-> lambda gets a `KeyVal` `{k v i n}` — `k` key, `v` value, `i` 0-based
-> index, `n` total — so it can use the key/index/total. `each`, `scan`,
-> and `filter` keep the map shape, `fold` reduces to one value,
-> `for-each` produces nothing. To leave the map and get a list, use
-> `keys` / `vals`:
+> quotation form gets each entry's **value** (the key is preserved), and
+> so does a `Function` callback — unless its entry param is typed
+> `KeyVal`, when it gets the whole entry `{k v i n}` — `k` key, `v`
+> value, `i` 0-based index, `n` total — so it can use the
+> key/index/total. `each`, `scan`, and `filter` keep the map shape,
+> `fold` reduces to one value, `for-each` produces nothing. To leave the
+> map and get a list, use `keys` / `vals`:
 >
 > ```
 > {a:1 b:2 c:3} each [mul 10]                       # returns {a:10 b:20 c:30}
+> {a:1 b:2 c:3} each ([v:Integer] => [v mul 10])    # the same, with a lambda
 > {a:1 b:2} each ([kv:KeyVal] => [kv.v add kv.i])   # returns {a:1 b:3}
 > fold [add] {a:1 b:2 c:3} 0                        # returns 6
 > {a:1 b:2 c:3} scan [add]                          # returns {a:1 b:3 c:6}  (running fold)

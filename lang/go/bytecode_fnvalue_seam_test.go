@@ -47,7 +47,7 @@ var fnValueSeamRows = []fnValueSeamRow{
 	{"a lambda over a gradual collection that is a List (S1a)", `def f fn [[c:Any][Any][each ([x:Integer] => [x add 1]) c]] end f [1 2]`, true},
 	{"a KeyVal lambda at the map arm", `each ([kv:KeyVal] => [kv.v add 1]) {a:1 b:2}`, true},
 	{"a named fn at the map arm", `def inc fn [[kv:KeyVal][Integer][kv.v add 1]] end each inc/v {a:1 b:2}`, true},
-	{"a lambda at filter", `filter ([p:Any] => [p.value gt 1]) [1 2 3]`, true},
+	{"a lambda at filter", `filter ([p:Integer] => [p gt 1]) [1 2 3]`, true},
 	// The token seam's return discipline is __RC's: the count is enforced
 	// over the residual, with the value's name in the error ("" for a lambda).
 	{"a lambda's count contract", `each ([x:Integer] => [x 1]) [1 2]`, true},
@@ -74,7 +74,7 @@ var fnValueSeamRows = []fnValueSeamRow{
 	// fold-map-filter.tsv:73, :227, :229, module-composition.tsv:95).
 	{"a factory-built value at each, /v", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def a5 (mk 5) end each a5/v [1 2 3]`, true},
 	{"a factory-built value at fold", `def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a add e add k])]] end def f (mk 10) end 0 fold f/v [1 2]`, true},
-	{"a factory-built value at filter", `def mk fn [[k:Integer][Function][([p:Map] => [p.value gt k])]] end def f (mk 1) end filter f/v [1 2 3]`, true},
+	{"a factory-built value at filter", `def mk fn [[k:Integer][Function][([p:Integer] => [p gt k])]] end def f (mk 1) end filter f/v [1 2 3]`, true},
 	{"a branch-chosen value at each", `def choose fn [[b:Boolean][Function][if b [(fn [[n:Integer][Integer][n add 1]])] [(fn [[n:Integer][Integer][n sub 1]])]]] end def f (choose false) end each f/v [1 2 3]`, true},
 	{"a module factory's value at each", `import module [def mk fn k:Integer Function [([n:Integer] => [n add k])] export "M" {mk: mk/v}] end def a5 (M.mk 5) end each a5/v [1 2 3]`, true},
 	// FnUtil.compose's result is a fn-util wrapper whose body applies its
@@ -96,13 +96,14 @@ var fnValueSeamRows = []fnValueSeamRow{
 	// literal minted at run time is a compiled closure (PUSH_CLOSURE), and
 	// every callback seam matches it against its own signature the way the
 	// interpreter matches the value — the token seam top down, the map arm
-	// over the KeyVal, filter over its entry — instead of running the unit
+	// over the entry its signature asks for, filter over its element — instead of running the unit
 	// blind over whatever the handler pushed. Every row here was a compile failure
 	// on `main` ("function-valued operand at <word>"), released by S1a and
 	// miscomputed on the S1a/S1b-1 head; measured on the interpreter.
 	{"a capturing closure that matches no element stays data", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end each (mk 1) ['a' 2]`, false},
 	{"a capturing closure at the map arm is handed the KeyVal", `def mk fn [[k:Integer][Function][([kv:KeyVal] => [kv.v add k])]] end each (mk 1) {a:1 b:2}`, true},
-	{"a capturing closure the map arm cannot match raises", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end each (mk 1) {a:1 b:2}`, true},
+	{"a capturing closure at the map arm is handed the value", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end each (mk 1) {a:1 b:2}`, true},
+	{"a capturing closure the map arm cannot match raises", `def mk fn [[k:Integer][Function][([n:String] => [n])]] end each (mk 1) {a:1 b:2}`, true},
 	{"a capturing closure fold's map arm cannot match raises", `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end fold (mk 1) {a:1 b:2} 0`, true},
 	{"a capturing closure at fold's map arm", `def mk fn [[k:Integer][Function][([a:Integer e:KeyVal] => [a add e.v add k])]] end fold (mk 1) {a:1 b:2} 0`, true},
 	{"a capturing closure at fold's list arm binds top-down", `def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a sub e add k])]] end fold (mk 0) [1 2 3] 10`, true},

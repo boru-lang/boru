@@ -502,7 +502,6 @@ var (
 	ConvertIdealToMap        = core.ConvertIdealToMap
 	ConvertIdealToList       = core.ConvertIdealToList
 	IsCompiledClosure        = compiler.IsCompiledClosure
-	ClosureWantsKeyVal       = compiler.ClosureWantsKeyVal
 	ClosureIsFnValue         = compiler.ClosureIsFnValue
 	ClosureAsFnDef           = core.ClosureAsFnDef
 	ClosureSigMatched        = core.ClosureSigMatched
@@ -554,15 +553,16 @@ var (
 	NewImplicitMap = core.NewImplicitMap
 	ModuleNSOf     = core.ModuleNSOf
 	// NewInstant moved to lang/go/engine/native_temporal.go (Step 8).
-	NewInteger        = core.NewInteger
-	NewKeyVal         = core.NewKeyVal
-	NewModuleInstance = core.NewModuleInstance
-	AsModuleDesc      = core.AsModuleDesc
-	NewBigInteger     = core.NewBigInteger
-	NewBigDecimal     = core.NewBigDecimal
-	FormatBigInteger  = core.FormatBigInteger
-	FormatBigDecimal  = core.FormatBigDecimal
-	NewInterpString   = core.NewInterpString
+	NewInteger          = core.NewInteger
+	NewKeyVal           = core.NewKeyVal
+	CallbackWantsKeyVal = core.CallbackWantsKeyVal
+	NewModuleInstance   = core.NewModuleInstance
+	AsModuleDesc        = core.AsModuleDesc
+	NewBigInteger       = core.NewBigInteger
+	NewBigDecimal       = core.NewBigDecimal
+	FormatBigInteger    = core.FormatBigInteger
+	FormatBigDecimal    = core.FormatBigDecimal
+	NewInterpString     = core.NewInterpString
 	// NewInterval moved to lang/go/engine/native_misc.go (Step 8).
 	NewList               = core.NewList
 	NewFlexList           = core.NewFlexList

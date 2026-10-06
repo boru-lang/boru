@@ -71,9 +71,8 @@ def s3-make-store fn [[] [Any] [
           def plen (size prefix)
           def matching
             (filter
-                ([e:Any] =>
-                    [def kk e.value
-                      if ((objects get kk) eq None) [false]
+                ([kk:String] =>
+                    [if ((objects get kk) eq None) [false]
                         [if ((size kk) lt plen) [false]
                             [(convert String
                                     (slice 0 plen (convert Bytes kk))

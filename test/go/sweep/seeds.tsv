@@ -108,11 +108,11 @@ error	container	def m {h: ([e:Error] => [e dot code])} end do [raise bad_input '
 error	module-export	import module [def h fn [[e:Error][Any][e dot code]] export "M" {h: h/v}] end do [raise bad_input 'boom'] error M.h	n/a
 error	computed	def b (quote [dot code]) end do [raise bad_input 'boom'] error b
 filter	literal	filter [gt 1] [1 2 3]
-filter	lambda	filter ([p:Any] => [p.value gt 1]) [1 2 3]
-filter	named-fn	def big fn [[p:Any][Boolean][p.value gt 1]] end filter big/v [1 2 3]
-filter	factory	def mk fn [[][Function][([p:Any] => [p.value gt 1])]] end filter (mk) [1 2 3]
-filter	container	def m {f: ([p:Any] => [p.value gt 1])} end filter m.f [1 2 3]
-filter	module-export	import module [def big fn [[p:Any][Boolean][p.value gt 1]] export "M" {big: big/v}] end filter M.big/v [1 2 3]
+filter	lambda	filter ([p:Integer] => [p gt 1]) [1 2 3]
+filter	named-fn	def big fn [[p:Integer][Boolean][p gt 1]] end filter big/v [1 2 3]
+filter	factory	def mk fn [[][Function][([p:Integer] => [p gt 1])]] end filter (mk) [1 2 3]
+filter	container	def m {f: ([p:Integer] => [p gt 1])} end filter m.f [1 2 3]
+filter	module-export	import module [def big fn [[p:Integer][Boolean][p gt 1]] export "M" {big: big/v}] end filter M.big/v [1 2 3]
 filter	computed	def b (quote [gt 1]) end filter b [1 2 3]
 fn	literal	def f (fn [[n:Integer][Integer][n add 1]]) end f 5
 fn	lambda	def f (fn [[n:Integer][Integer] ([n:Integer] => [n add 1])]) end f 5	n/a

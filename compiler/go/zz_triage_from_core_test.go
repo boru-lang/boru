@@ -263,9 +263,6 @@ func TestDisassembleOpcodeArms(t *testing.T) {
 	if p.StoredRefCount() != 0 || p.StoredRefStampedCount() != 0 {
 		t.Error("stored-ref counters must be zero on a synthetic program")
 	}
-	if ClosureWantsKeyVal(core.NewInteger(1)) {
-		t.Error("plain integer is not a keyval-hungry closure")
-	}
 	if IsCompiledClosure(core.NewInteger(1)) {
 		t.Error("plain integer is not a compiled closure")
 	}

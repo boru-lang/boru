@@ -918,9 +918,12 @@ func (vc *vmContext) closureSourceStep(reg *core.Registry, cl core.ClosurePayloa
 // value to InvokeBody, which STEPS the value over the inputs, and a step no
 // signature admits leaves the value as DATA on top of them — `each
 // ([x:Integer] => [typeof x]) [1 'a']` is `[Integer fn (Integer)]`, the
-// element's result the fn itself — while the map arm's lambda no-match
-// raises its own signature_error (native_map_iter.go's callLambda). The
-// unit ran on every element regardless: `[Integer ProperString]`.
+// element's result the fn itself. (The map arm never reaches this seam
+// unmatched: it bridges a contract-bearing closure to its signature and
+// matches it before the invoke — native_map_iter.go's newMapBody — raising
+// its own signature_error on a no-match, as it does for an interpreter
+// lambda.) The unit ran on every element regardless: `[Integer
+// ProperString]`.
 //
 // A unit with no contract of its own (a quotation body: Params empty) and
 // a fn VALUE unit (invokeFnValueClosure's, above) are not this arm's; the
@@ -936,10 +939,6 @@ func (vc *vmContext) unmatchedLambdaBody(reg *core.Registry, body core.Value, cl
 	}
 	if closureMatchesArgs(fn, shapeInputs(cl, inputs)) {
 		return nil, nil, false
-	}
-	if cl.InShape == compiler.ClosureInKeyVal {
-		return nil, reg.BoruError("signature_error",
-			fmt.Sprintf("no matching lambda signature for %d argument(s)", len(inputs)), ""), true
 	}
 	// A NAMED value's no-match is the word's raise, not a park: the
 	// interpreter steps `h/v` under its name and raises uncalled_function

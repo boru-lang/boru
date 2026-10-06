@@ -128,7 +128,7 @@ def ifc-line fn [[line:String acc:Map] [Map] [
 # Param order [strict block]: a quotation body `[ifc-block strict]` is the
 # infix form — the forward token binds sig[0], the stack element sig[1].
 def ifc-block fn [[strict:String block:String] [Map] [
-  def lines (filter ([p:Any] => [(size p.value) gt 0])
+  def lines (filter ([p:String] => [(size p) gt 0])
                     (each [StringUtil.trim] (StringUtil.split '\n' block)))
   def hdr (Sift.parse ifc-hdr-spec (lines get 0))
   def base {name: hdr.name  flagbits: hdr.flagbits  mtu: hdr.mtu
@@ -136,7 +136,7 @@ def ifc-block fn [[strict:String block:String] [Map] [
             inet: []  inet6: []}
   def body (slice 1 (size lines) lines)
   def body2 (if (strict eq 'skip')
-               [ filter ([p:Any] => [((ifc-entry p.value) is None) not]) body ]
+               [ filter ([p:String] => [((ifc-entry p) is None) not]) body ]
                [ body ])
   fold [ifc-line] body2 base
 ]]

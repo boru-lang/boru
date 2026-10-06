@@ -71,7 +71,8 @@ def step fn [[a:Integer e:Integer][Integer][a add e]]  0 fold step/v [1 2 3]	6	t
 0 fold ([a:Integer e:Integer] => [if (e gt a) [e] [a]]) [3 1 4 1 5]	5	running maximum — a lambda body with a branch
 def k 10 end 0 fold ([a:Integer e:Integer] => [a add e add k]) [1 2]	23	a CLOSURE: the lambda reads an enclosing def
 def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a add e add k])]]  def f (mk 10)  0 fold f/v [1 2]	23	a closure MADE BY A FACTORY, bound, then folded with — DOES NOT COMPILE: "unmatched dispatch recovered at fold"
-0 fold ([a:Integer kv:Any] => [a add kv.v]) {a:1 b:2 c:3}	6	over a MAP a lambda is handed a KeyVal — read `.v`
+0 fold ([a:Integer v:Integer] => [a add v]) {a:1 b:2 c:3}	6	over a MAP a lambda is handed each VALUE, as the quotation form is
+0 fold ([a:Integer kv:KeyVal] => [a add kv.v]) {a:1 b:2 c:3}	6	…or the whole entry as a KeyVal {k v i n} when its entry param is typed KeyVal — read `.v`
 def Reducer class {step: Function} end def r (make Reducer {step: (fn [[a:Integer e:Integer][Integer][a add e]])}) end 0 fold r.step [1 2 3]	6	the reducer lives in a Function-typed CLASS FIELD — DOES NOT COMPILE: "higher-order `fold` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
 #
 # §4  fold's argument order, spelled out. `a add e` inside a lambda is NOT
@@ -90,9 +91,9 @@ each [([n:Integer] => [n mul 2])] [1 2 3]	[fn [[n:Integer][Any][n mul 2]] fn [[n
 #
 # §6  each as MAP — the transform half of the pipeline
 0 fold [add] (each [size] ['a' 'bb' 'ccc'])	6	map-then-reduce over Strings
-each ([kv:Any] => [kv.v mul 10]) {a:1 b:2}	{a:10 b:20}	over a MAP: values transform, keys stay
-each ([kv:Any] => [kv.i]) {a:1 b:2}	{a:0 b:1}	the KeyVal carries the INDEX too
-each ([kv:Any] => [kv.k]) {a:1 b:2}	{a:'a' b:'b'}	…and the key
+each ([v:Integer] => [v mul 10]) {a:1 b:2}	{a:10 b:20}	over a MAP: the lambda sees each value; values transform, keys stay
+each ([kv:KeyVal] => [kv.i]) {a:1 b:2}	{a:0 b:1}	a KeyVal-typed param gets the whole entry — the INDEX too
+each ([kv:KeyVal] => [kv.k]) {a:1 b:2}	{a:'a' b:'b'}	…and the key
 each $.n [{n:1} {n:2} {n:3}]	[1 2 3]	a REACH LENS as the body: project one field out of every record
 def rows [{n:1} {n:2} {n:3}] end each [get 'n'] rows	[1 2 3]	the same projection spelled with get
 def sel (quote $.n) end each sel [{n:1} {n:2}]	[1 2]	the lens parked in a binding first (quote keeps it from evaluating)
@@ -106,15 +107,20 @@ filter [2 gt] [1 2 3 4]	[3 4]	the same predicate written the other way round —
 filter [gt 2] (iota 6)	[3 4 5]	over a computed collection
 filter [gt 9] [1 2 3]	[]	nothing matches — an empty LIST, not none
 {a:1 b:5 c:3} filter [gt 2]	{b:5 c:3}	over a MAP the quotation filters BY VALUE and keeps the shape
-filter ([p:Any] => [p.value mod 2 eq 0]) [1 2 3 4 5 6]	[2 4 6]	Function form over a list: the callback gets a {key value} pair
-{a:1 b:5} filter ([kv:Any] => [kv.v gt 2])	{b:5}	Function form over a map: the callback gets a KeyVal
+filter ([p:Integer] => [p mod 2 eq 0]) [1 2 3 4 5 6]	[2 4 6]	Function form over a list: the callback gets the element
+{a:1 b:5} filter ([v:Integer] => [v gt 2])	{b:5}	Function form over a map: the callback gets the value
+{a:1 b:5} filter ([kv:KeyVal] => [kv.v gt 2])	{b:5}	…or the KeyVal {k v i n} its KeyVal-typed param asks for
+filter ([kv:KeyVal] => [true]) [1 2]	ERROR:signature_error	a KeyVal-typed predicate over a LIST matches no element — a list has no entries
+each ([v:String] => [v]) {a:1}	ERROR:signature_error	a lambda whose param rejects the value: the map arm's no-match is an error, not a silent skip
+filter ([p:Any] => [1]) [1 2]	ERROR:filter_error	a non-Boolean predicate result is an error, not a silent drop — the quotation form's rule
+filter ([p:Any] => [true]) 5	ERROR:filter_error	the Function form wants a concrete list or map
 filter $.active [{active:true n:1} {active:false n:2} {active:true n:3}]	[{active:true n:1} {active:true n:3}]	Reach-lens form — the everyday record filter
 def lens $.n end filter lens [{n:true} {n:false}]	[{n:true}]	the lens bound to a name first
 def big fn [[n:Integer][Boolean][n gt 2]]  filter [big] [1 2 3 4]	[3 4]	a def-bound predicate WORD named inside a quotation body
-def big fn [[p:Map][Boolean][p.value gt 2]]  filter big/v [1 2 3 4]	[3 4]	the same predicate as a fn VALUE — note it must take the {key value} PAIR
-def limit 2 end filter ([p:Map] => [p.value gt limit]) [1 2 3 4]	[3 4]	a predicate lambda closing over an enclosing threshold
-filter ([p:Any] => [(p.value size) gt 1]) ['a' 'bb' 'ccc']	['bb' 'ccc']	a predicate that computes over the element instead of comparing it
-def Pred class {ok: Function} end def p (make Pred {ok: (fn [[kv:Map][Boolean][kv.value gt 2]])}) end filter p.ok [1 2 3 4]	[3 4]	the predicate read out of a Function-typed class field — DOES NOT COMPILE: "higher-order `filter` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def big fn [[p:Integer][Boolean][p gt 2]]  filter big/v [1 2 3 4]	[3 4]	the same predicate as a fn VALUE — it takes the element, exactly as the lambda does
+def limit 2 end filter ([p:Integer] => [p gt limit]) [1 2 3 4]	[3 4]	a predicate lambda closing over an enclosing threshold
+filter ([p:String] => [(p size) gt 1]) ['a' 'bb' 'ccc']	['bb' 'ccc']	a predicate that computes over the element instead of comparing it
+def Pred class {ok: Function} end def p (make Pred {ok: (fn [[v:Integer][Boolean][v gt 2]])}) end filter p.ok [1 2 3 4]	[3 4]	the predicate read out of a Function-typed class field — DOES NOT COMPILE: "higher-order `filter` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
 filter [add 1] [1 2 3]	ERROR:filter_error	a non-Boolean body is an ERROR, not a silent drop
 filter [gt 1] 7	ERROR:filter_error	the quotation form needs a concrete list or map
 #
@@ -159,13 +165,13 @@ scan [mul] [1 2 3 4]	[1 2 6 24]	running products
 0 fold [add] (each [mul 2] (filter [gt 1] (iota 5)))	18	filter before map — the other ordering
 sort (filter [gt 1] (each [mod 4] [5 6 7 8]))	[2 3]	map, filter, sort
 0 fold [add] (take 3 (sort [5 1 4 2 3]))	6	sort, take, fold — sum of the three smallest
-def xs [1 2 3 4 5] end def evens (filter ([p:Map] => [p.value mod 2 eq 0]) xs) end def doubled (each [mul 2] evens) end 0 fold [add] doubled	12	the same pipeline written as four named statements, the way real files spell it
+def xs [1 2 3 4 5] end def evens (filter ([p:Integer] => [p mod 2 eq 0]) xs) end def doubled (each [mul 2] evens) end 0 fold [add] doubled	12	the same pipeline written as four named statements, the way real files spell it
 def xs [5 3 8 1] end def sorted (sort xs) end def top (take 2 (reverse sorted)) end 0 fold [add] top	13	sum of the top two, one stage per statement
 0 fold [add] (each ([s:String] => [convert Integer s]) ['1' '2' '3'])	6	parse-then-sum: the string-to-number pipeline
 import "boru:string-util" end 0 fold [add] (each [size] (StringUtil.split ',' 'a,bb,ccc'))	6	split, measure, total
 import "boru:string-util" end join '-' (sort (StringUtil.split ',' 'c,a,b'))	'a-b-c'	split, sort, re-join
 import "boru:string-util" end each ([s:String] => [StringUtil.upper s]) ['ab' 'cd']	['AB' 'CD']	a module word called from inside the map body
-def rows [{k:'a' v:1} {k:'b' v:2} {k:'a' v:3}] end import "boru:array-util" end each ([g:Any] => [0 fold [add] g.v]) (ArrayUtil.group (each ([r:Map] => [r.k]) rows) (each ([r:Map] => [r.v]) rows))	{a:4 b:2}	GROUP-BY then fold each bucket — map-reduce in one statement
+def rows [{k:'a' v:1} {k:'b' v:2} {k:'a' v:3}] end import "boru:array-util" end each ([g:List] => [0 fold [add] g]) (ArrayUtil.group (each ([r:Map] => [r.k]) rows) (each ([r:Map] => [r.v]) rows))	{a:4 b:2}	GROUP-BY then fold each bucket — map-reduce in one statement (the lambda over the grouped map sees each bucket)
 def rows [{n:1 ok:true} {n:2 ok:false} {n:3 ok:true}] end 0 fold [add] (each [get 'n'] (filter $.ok rows))	4	filter records by a flag, project a field, total it
 #
 # §12 the pipeline INSIDE a fn, over records, classes, flex and recursion
@@ -180,10 +186,10 @@ def scaled fn [[xs:List][Integer][def k 10 0 fold [add] (each [mul k] xs)]]  sca
 def sq fn [[n:Integer][Integer][n mul n]]  def sumsq fn [[xs:List][Integer][0 fold [add] (each [sq] xs)]]  sumsq [1 2 3]	14	one user word composed into another's pipeline
 def classify fn [[n:Integer][String][if (n gt 2) ['big'] ['small']]]  each [classify] [1 2 3 4]	['small' 'small' 'big' 'big']	a branching user word as the map body
 def classify fn [[n:Integer][String][if (n gt 2) ['big'] ['small']]]  import "boru:array-util" end ArrayUtil.group (each [classify] [1 2 3 4]) [1 2 3 4]	{small:[1 2] big:[3 4]}	…its output used as the grouping key
-def fib fn [[n:Integer][Integer][if (n lte 1) [n] [(fib (n sub 1)) add (fib (n sub 2))]]]  0 fold [add] (filter ([p:Map] => [p.value mod 2 eq 0]) (each [fib] (iota 10)))	44	a RECURSIVE word mapped, filtered and folded in one statement
+def fib fn [[n:Integer][Integer][if (n lte 1) [n] [(fib (n sub 1)) add (fib (n sub 2))]]]  0 fold [add] (filter ([p:Integer] => [p mod 2 eq 0]) (each [fib] (iota 10)))	44	a RECURSIVE word mapped, filtered and folded in one statement
 def sum fn [[xs:List][Integer][0 fold [add] xs]]  def go fn [[n:Integer][Integer][if (n lte 0) [0] [(sum (iota n)) add (go (n sub 1))]]]  go 4	10	a fold called from inside a recursive word
 def Item class {name:String qty:Integer} end def items [(make Item {name:'a' qty:2}) (make Item {name:'b' qty:5})] end 0 fold [add] (each ([i:Item] => [i.qty]) items)	7	project a field off CLASS INSTANCES and total it
-def Item class {name:String qty:Integer} end def items [(make Item {name:'a' qty:2}) (make Item {name:'b' qty:5})] end filter ([p:Map] => [p.value.qty gt 3]) items	[{name:'b' qty:5}]	filter class instances on a field reached two levels down
+def Item class {name:String qty:Integer} end def items [(make Item {name:'a' qty:2}) (make Item {name:'b' qty:5})] end filter ([p:Item] => [p.qty gt 3]) items	[Class/Item{name:'b' qty:5}]	filter class instances on a field — the predicate is handed the instance itself, and the result keeps it (no map copy)
 def Item class {name:String qty:Integer} end def items [(make Item {name:'a' qty:2}) (make Item {name:'b' qty:5})] end sort (each ([i:Item] => [i.qty]) items)	[2 5]	project a field off class instances, then sort the projection
 # NOTE: composing those two stages — `each (…) (filter (…) items)` over class
 # instances — DIVERGES: the compiler answers 5 and the interpreter raises
@@ -208,7 +214,7 @@ def fs [(fn [[n:Integer][Integer][n add 1]]) (fn [[n:Integer][Integer][n mul 2]]
 #      field, /v binding) and the higher-order word cannot commit to an
 #      overload
 def Handler class {cb: Function} def h (make Handler {cb: (fn [[a:Integer e:Integer][Integer][a add e]])}) 0 fold h.cb [1 2 3]	6	the reducer in a Function-typed class field, written WITHOUT `end` between statements — DOES NOT COMPILE: "higher-order `fold` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
-def Handler class {cb: Function} def h (make Handler {cb: (fn [[p:Map][Boolean][p.value gt 1]])}) filter h.cb [1 2 3]	[2 3]	the same field used as filter's predicate — DOES NOT COMPILE: "higher-order `filter` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
+def Handler class {cb: Function} def h (make Handler {cb: (fn [[p:Integer][Boolean][p gt 1]])}) filter h.cb [1 2 3]	[2 3]	the same field used as filter's predicate — DOES NOT COMPILE: "higher-order `filter` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
 def Handler class {cb: Function} def h (make Handler {cb: (fn [[n:Integer][Integer][n add 1]])}) each h.cb [1 2 3]	[2 3 4]	…as each's body — DOES NOT COMPILE: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
 def Handler class {cb: Function} def h (make Handler {cb: (fn [[a:Integer e:Integer][Integer][a add e]])}) scan h.cb [1 2 3]	[1 3 6]	…and as scan's — DOES NOT COMPILE: "higher-order `scan` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
 def ops {inc: (fn [[n:Integer][Integer][n add 1]])} end each ops.inc [1 2 3]	[2 3 4]	the callback read out of a plain MAP field — DOES NOT COMPILE: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
@@ -219,12 +225,12 @@ def fs {sum: (fn [[a:Integer e:Integer][Integer][a add e]])} def use fn [[k:Stri
 # §13b a Function-typed PARAMETER or a computed closure reaching the word's
 #      argument slot
 def reduce fn [[f:Function xs:List][Integer][0 fold f/v xs]]  reduce (fn [[a:Integer e:Integer][Integer][a add e]]) [1 2 3]	6	the reusable reduce helper every codebase writes — DOES NOT COMPILE: "function-valued operand at fold (Stage 3)"
-def keep fn [[f:Function xs:List][List][filter f/v xs]]  keep (fn [[kv:Map][Boolean][kv.value gt 1]]) [1 2 3]	[2 3]	its filter twin — DOES NOT COMPILE: "function-valued operand at filter (Stage 3)"
+def keep fn [[f:Function xs:List][List][filter f/v xs]]  keep (fn [[v:Integer][Boolean][v gt 1]]) [1 2 3]	[2 3]	its filter twin — DOES NOT COMPILE: "function-valued operand at filter (Stage 3)"
 def apply2 fn [[f:Function xs:List][List][each f/v xs]]  apply2 (fn [[n:Integer][Integer][n mul 2]]) [1 2 3]	[2 4 6]	and its map twin — DOES NOT COMPILE: "function-valued operand at each (Stage 3)"
 def apply-cb fn [[f:Function][Integer][0 fold f/v [1 2 3]]]  def cb (fn [[a:Integer e:Integer][Integer][a add e]])  apply-cb cb/v	6	the callback bound first, then handed to the helper — DOES NOT COMPILE: "function-valued operand at fold (Stage 3)"
 def mk fn [[k:Integer][Function][([a:Integer e:Integer] => [a add e add k])]]  0 fold (mk 10) [1 2]	23	a closure BUILT AT THE ARGUMENT SLOT of fold — DOES NOT COMPILE: "function-valued operand at fold (Stage 3)"
-def mk fn [[k:Integer][Function][([p:Map] => [p.value gt k])]]  filter (mk 1) [1 2 3]	[2 3]	a predicate closure built at filter's argument slot — DOES NOT COMPILE: "function-valued operand at filter (Stage 3)"
-def mk fn [[k:Integer][Function][([p:Map] => [p.value gt k])]]  def f (mk 1)  filter f/v [1 2 3]	[2 3]	the same closure bound first — a DIFFERENT compile failure — DOES NOT COMPILE: "unmatched dispatch recovered at filter"
+def mk fn [[k:Integer][Function][([p:Integer] => [p gt k])]]  filter (mk 1) [1 2 3]	[2 3]	a predicate closure built at filter's argument slot — DOES NOT COMPILE: "function-valued operand at filter (Stage 3)"
+def mk fn [[k:Integer][Function][([p:Integer] => [p gt k])]]  def f (mk 1)  filter f/v [1 2 3]	[2 3]	the same closure bound first — a DIFFERENT compile failure — DOES NOT COMPILE: "unmatched dispatch recovered at filter"
 def choose fn [[b:Boolean][Function][if b [(fn [[n:Integer][Integer][n add 1]])] [(fn [[n:Integer][Integer][n sub 1]])]]]  each (choose true) [1 2 3]	[2 3 4]	the map body chosen by a BRANCH — DOES NOT COMPILE: "function-valued operand at each (Stage 3)"
 def choose fn [[b:Boolean][Function][if b [(fn [[n:Integer][Integer][n add 1]])] [(fn [[n:Integer][Integer][n sub 1]])]]]  def f (choose false)  each f/v [1 2 3]	[0 1 2]	…the same branch result bound first — DOES NOT COMPILE: "unmatched dispatch recovered at each"
 def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  each (mk 10) [1 2 3]	[11 12 13]	a closure factory feeding each directly — DOES NOT COMPILE: "function-valued operand at each (Stage 3)"
@@ -232,7 +238,7 @@ def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  each (mk 10) [1 2
 # §13c a fn VALUE written into a mutable store, then used as the callback —
 #      the plugin-registry idiom
 def reg (flex {}) end def step fn [[a:Integer e:Integer][Integer][a add e]] end reg set 'f' step/v drop end 0 fold reg.f [1 2 3]	6	register a reducer in a flex map, fold with it — DOES NOT COMPILE: "function value reaches set (Stage 3)"
-def reg (flex {}) end def p fn [[kv:Map][Boolean][kv.value gt 1]] end reg set 'f' p/v drop end filter reg.f [1 2 3]	[2 3]	register a predicate, filter with it — DOES NOT COMPILE: "function value reaches set (Stage 3)"
+def reg (flex {}) end def p fn [[v:Integer][Boolean][v gt 1]] end reg set 'f' p/v drop end filter reg.f [1 2 3]	[2 3]	register a predicate, filter with it — DOES NOT COMPILE: "function value reaches set (Stage 3)"
 #
 # §13d a code body that names a binding the compiled context holds as a
 #      frame local

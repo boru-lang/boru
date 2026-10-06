@@ -446,14 +446,15 @@ func tryRecordClosure(r *core.Registry, word string, sig *core.Signature, args, 
 
 // tryRecordLambdaClosure compiles a higher-order word's LAMBDA argument
 // (`([p] => …)`, an anonymous FnDefInfo) to a closure unit. The lambda's body
-// is compiled with the word's per-callback input shape (lambdaCallbackInputs)
-// bound to the lambda's NAMED params, so a body that destructures the entry
-// (`p.value`, `kv.v`, `acc`+`kv.v`) typechecks. Returns false — leaving the
+// is compiled with the word's per-callback inputs (lambdaCallbackInputs: the
+// element, the entry's value, or the KeyVal a KeyVal-typed param asks for)
+// bound to the lambda's NAMED params, so a body that reads the entry (`p gt
+// 3`, `kv.v`, `acc`+`kv.v`) typechecks. Returns false — leaving the
 // compile failure to stand — for a shape the word has no lambda convention for, an
 // arity mismatch, or a body that does not compile.
 func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpec, sig *core.Signature, args []core.Value, body core.Value, fd *core.FnDefInfo, extraLamSlots []int, outs []core.Value, pos core.SrcPos) bool {
 	fnPos := body.Pos()
-	inputs, shape, ok := lambdaCallbackInputs(r, word, spec, args)
+	inputs, shape, ok := lambdaCallbackInputs(r, word, spec, args, core.CallbackWantsKeyVal(body))
 	if !ok {
 		return false
 	}
@@ -464,7 +465,7 @@ func tryRecordLambdaClosure(r *core.Registry, word string, spec core.CallableSpe
 	// cleanly), rides the stack at OpPushClosure, and binds a trailing unit
 	// slot in invokeClosureOn — value-identical to the interpreter's
 	// construction-time snapshot, taken at the same program point per dispatch.
-	lam, ok := lambdaHookCompatible(r, fd, inputs, shape, true, true)
+	lam, ok := lambdaHookCompatible(r, fd, inputs, true, true)
 	if !ok {
 		return false
 	}
@@ -636,14 +637,14 @@ func foreignFnHome(r *core.Registry, fd *core.FnDefInfo) bool {
 //   - no flow-control sentinel in the body;
 //   - param count matches the callback inputs, and every declared param TYPE
 //     accepts its input — the same membership the runtime MatchFnSig checks
-//     at dispatch. A param whose type rejects the shape (`[p:String]` against
-//     filter's {key,value} pair, or `[kv:KeyVal]` against a list's plain
-//     pair) makes the interpreter raise a callback error; compiling the body
-//     anyway would silently keep the element. A map-iteration ENTRY input is
-//     a KeyVal (a Map subtype) the carrier conservatively under-types as a
-//     plain Map, so any Map-family param is accepted there and only a
-//     provably-incompatible param (a scalar, a sibling container) declines.
-func lambdaHookCompatible(r *core.Registry, fd *core.FnDefInfo, inputs []core.Value, shape core.ClosureInShape, allowCaptures, foreignOK bool) (*core.Signature, bool) {
+//     at dispatch. A param whose type rejects the shape (`[p:String]` over a
+//     list of Integers, or `[kv:KeyVal]` over a list, whose unit is the
+//     plain element) makes the interpreter raise a callback error; compiling
+//     the body anyway would silently keep the element. A map-iteration ENTRY
+//     input is whatever the callback's own signature asked for
+//     (lambdaCallbackInputs: a KeyVal carrier for a KeyVal-typed param, the
+//     value carrier otherwise), so it is matched like any other input.
+func lambdaHookCompatible(r *core.Registry, fd *core.FnDefInfo, inputs []core.Value, allowCaptures, foreignOK bool) (*core.Signature, bool) {
 	// A fn value DEFINED in another module resolves its free words THERE, so a
 	// caller that cannot compile the body in that home must decline it here
 	// rather than lower it against r (foreignFnHome's header has the split).
@@ -697,12 +698,6 @@ func lambdaHookCompatible(r *core.Registry, fd *core.FnDefInfo, inputs []core.Va
 		// the compile failure → compile failure → parity.
 		if lam.QuoteArgs[i] || pt.ConformsTo(core.TAtom) {
 			return nil, false
-		}
-		if shape == ClosureInKeyVal && inputs[i].Parent.ConformsTo(core.TMap) {
-			if !pt.ConformsTo(core.TMap) && !core.TMap.ConformsTo(pt) {
-				return nil, false
-			}
-			continue
 		}
 		if !core.SigTypeMatches(inputs[i], pt) {
 			return nil, false
@@ -839,11 +834,11 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 		if !isFn { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			return false
 		}
-		hookIns, hookShape, insOK := lambdaCallbackInputs(r, word, spec, args)
+		hookIns, _, insOK := lambdaCallbackInputs(r, word, spec, args, core.CallbackWantsKeyVal(args[slot]))
 		if !insOK { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 			return false
 		}
-		lam, lamOK := lambdaHookCompatible(r, &fd, hookIns, hookShape, false, false)
+		lam, lamOK := lambdaHookCompatible(r, &fd, hookIns, false, false)
 		if !lamOK {
 			return false
 		}
@@ -1198,20 +1193,19 @@ func stripResidualShapeOK(es *EmitState, unit, want int) bool {
 }
 
 // lambdaCallbackInputs returns the representative input carriers a higher-order
-// word presents to a LAMBDA callback — the word's callback shape, which differs
-// from the token-quotation form (spec.Inputs) — plus the runtime ClosureInShape
-// the driving handler reads to present each entry:
+// word presents to a LAMBDA callback, plus the ClosureInShape the VM binds them
+// under. A Function form hands the container's natural unit — the ELEMENT of a
+// list, the VALUE of a map entry — and over a map the whole entry as a KeyVal
+// {k v i n} when the callback asks for it by typing its entry param KeyVal
+// (keyVal, core.CallbackWantsKeyVal): one rule for filter, each, for-each,
+// fold and scan, the same the runtime handlers apply (native/filter.go,
+// native_map_iter.go). The accumulator forms carry (accumulator, entry).
 //
-//   - filter over a LIST: one {key, value} pair Map (the element via `.value`).
-//   - filter/each over a MAP: one KeyVal {k v i n} (the value via `.v`).
-//   - fold (init form) / scan over a MAP: (accumulator, KeyVal).
-//
-// The carriers are GENERALISED (field types, not one call's values) so the body
-// is compiled once for every entry. ok is false for a shape with no lambda
-// convention (the caller then leaves the compile failure to stand): a list each/fold,
-// a no-init map fold, and for-each (whose check-mode output count does not match
-// its 0-result runtime) all stay on the compile failure path.
-func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec, args []core.Value) ([]core.Value, core.ClosureInShape, bool) {
+// The carriers are GENERALISED (the element type, the KeyVal's field types —
+// not one call's values) so the body is compiled once for every entry. ok is
+// false for a shape with no lambda convention (the caller then leaves the
+// compile failure to stand): a no-init map fold, and any word not named here.
+func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec, args []core.Value, keyVal bool) ([]core.Value, core.ClosureInShape, bool) {
 	// A word whose lambda callback sees the SAME inputs as its token form
 	// (walk's payload map) declares LambdaSharesTokenShape: Inputs(args) IS the
 	// lambda convention, no per-word shape below — and no data-follows-body
@@ -1235,9 +1229,10 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// its element type reads off the carrier exactly as off a concrete
 		// value (DataListElemTypeFromValue), and the closure compiles once
 		// against it. A Dynamic (gradual) carrier still declines — the
-		// collection's family is unknown, so the InShape (pair vs KeyVal),
-		// and with it the runtime callback convention, is ambiguous. Bare
-		// type literals and non-container carriers decline as before.
+		// collection's family is unknown, so neither the element type nor
+		// whether a KeyVal-typed param can be served (only a map has
+		// entries) is settled. Bare type literals and non-container carriers
+		// decline as before.
 		if data.Dynamic || !data.Carrier || data.Parent == nil ||
 			!(data.Parent.ConformsTo(core.TList) || data.Parent.ConformsTo(core.TMap)) {
 			return nil, ClosureInValue, false
@@ -1247,34 +1242,19 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 	isMap := data.Parent.ConformsTo(core.TMap)
 	isList := data.Parent.ConformsTo(core.TList)
 	switch word {
-	case "filter":
-		switch {
-		case isMap:
-			return []core.Value{keyValCarrier(r, elem)}, ClosureInKeyVal, true
-		case isList:
-			return []core.Value{pairCarrier(elem)}, ClosureInValue, true
-		}
-	case "each", "for-each":
-		// for-each shares each's convention exactly — same handler shape,
-		// same per-container unit — and only the RESULT differs (for-each
-		// discards it). Measured on the interpreter rather than inferred
-		// from the shared handler family: `for-each ([e:Any] => [typeof e
-		// print]) [1 2 3]` prints Integer, and the same lambda over
-		// `{a:1 b:2}` prints KeyVal — the two branches below.
-		if isMap {
-			return []core.Value{keyValCarrier(r, elem)}, ClosureInKeyVal, true
-		}
-		// A LIST each hands the callback the bare ELEMENT (NUR086's list
-		// Function form: "a per-container form hands the container's natural
-		// unit"). Measured against the interpreter, not inferred from the map
-		// twin: `def show fn [[e:Any][Any][typeof e]] each show/v [1 2 3]`
-		// answers [Integer Integer Integer], so one input, passed through
-		// unchanged. filter is the documented exception in the other
-		// direction — its single cross-container form hands a {key,value}
-		// position descriptor even over a list, which is why the two cases
-		// here differ rather than sharing a branch.
-		if isList {
-			return []core.Value{check.ElementCarrierOf(data)}, ClosureInValue, true
+	case "filter", "each", "for-each":
+		// One input, the container's natural unit (NUR086's rule, now
+		// filter's too): the ELEMENT of a list, the entry of a map — its
+		// value, or the KeyVal a KeyVal-typed param asks for. for-each
+		// shares each's convention exactly — same handler shape, same
+		// per-container unit — and only the RESULT differs (for-each
+		// discards it); filter's Function form hands what its quotation form
+		// pushes. Measured on the interpreter: `def show fn [[e:Any][Any]
+		// [typeof e]] each show/v [1 2 3]` answers [Integer Integer Integer],
+		// `for-each ([e:Any] => [typeof e print]) {a:1 b:2}` prints Integer
+		// twice, and `([e:KeyVal] => …)` over the same map prints KeyVal.
+		if isMap || isList {
+			return []core.Value{entryCarrier(r, data, keyVal)}, ClosureInValue, true
 		}
 	case "fold":
 		// NOT an arity rule. `fold` declares TWO signatures — one taking a seed
@@ -1285,14 +1265,15 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// declares.
 		//
 		// Seeded map form (`init fold (lambda) {m}` → args [lambda, map, init]):
-		// the accumulator carries the seed's type, the entry rides as a KeyVal.
+		// the accumulator carries the seed's type, the entry rides as its
+		// value or as the KeyVal the callback asked for.
 		if isMap && len(args) > spec.BodyPos+2 {
 			acc := args[spec.BodyPos+2]
 			accC := core.NewCarrier(acc.Parent)
 			if core.IsTypeLiteral(acc) {
 				accC = core.ValueCarrier(acc) // a type VALUE seed (NUR323)
 			}
-			return []core.Value{accC, keyValCarrier(r, elem)}, ClosureInKeyVal, true
+			return []core.Value{accC, entryCarrier(r, data, keyVal)}, ClosureInValue, true
 		}
 		// A LIST fold's lambda declares (element, accumulator) — the
 		// interpreter's top-down assignment over the stack InvokeBody hands it
@@ -1312,9 +1293,10 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		}
 	case "scan":
 		// scan seeds the accumulator from the first value (no init operand): the
-		// accumulator carries the value type, the entry rides as a KeyVal.
+		// accumulator carries the value type, the entry rides as its value or
+		// as the KeyVal the callback asked for.
 		if isMap {
-			return []core.Value{core.NewCarrier(elem), keyValCarrier(r, elem)}, ClosureInKeyVal, true
+			return []core.Value{core.NewCarrier(elem), entryCarrier(r, data, keyVal)}, ClosureInValue, true
 		}
 		// A LIST scan seeds the accumulator from the first ELEMENT, so both
 		// slots carry the element type; the order and the permutation are the
@@ -1386,23 +1368,26 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 // NOT permute anything. Carriers only TYPE the body; the unit's param slots
 // come from the LAMBDA's own declared order, and what lands in each is the
 // handler's push order. Both carrier spellings produced 60.
-//
-// pairCarrier builds a representative {key, value} pair Map carrier — the shape
-// filter's list Function form hands its callback (key = the index, value = the
-// element). Field VALUES are carriers (Integer key, elem value) so the compiled
-// body reads field TYPES, never one call's concrete values.
-func pairCarrier(elem *core.Type) core.Value {
-	om := core.NewOrderedMap()
-	om.Set("key", core.NewCarrier(core.TInteger))
-	om.Set("value", core.NewCarrier(elem))
-	return core.NewValueRaw(core.TMap, core.MapPayload{M: om})
+
+// entryCarrier is the carrier for the one per-entry input a Function form hands
+// its callback: the ELEMENT of a list, the VALUE of a map entry — or, over a
+// map whose callback typed its entry param KeyVal (keyVal), the whole entry as
+// a KeyVal carrier. A KeyVal-typed param over a LIST gets the element carrier
+// all the same (a list has no entries): lambdaHookCompatible then declines the
+// compile, and the runtime raises the no-match the interpreter raises.
+func entryCarrier(r *core.Registry, data core.Value, keyVal bool) core.Value {
+	if keyVal && data.Parent.ConformsTo(core.TMap) {
+		return keyValCarrier(r, check.DataListElemTypeFromValue(data))
+	}
+	return check.ElementCarrierOf(data)
 }
 
 // keyValCarrier builds a representative KeyVal {k v i n} carrier — the shape the
-// map Function forms (filter/each/fold/scan over a map) hand their callback. The
-// value field carries the map's common value type; k/i/n carry String/Integer/
-// Integer. Tagged Node/Map/KeyVal directly — the type is kernel-declared
-// (keyval.go), so the former registered-or-plain-Map fallback probe is gone.
+// map Function forms (filter/each/for-each/fold/scan over a map) hand a callback
+// whose entry param is typed KeyVal (entryCarrier). The value field carries the
+// map's common value type; k/i/n carry String/Integer/Integer. Tagged
+// Node/Map/KeyVal directly — the type is kernel-declared (keyval.go), so the
+// former registered-or-plain-Map fallback probe is gone.
 func keyValCarrier(_ *core.Registry, elem *core.Type) core.Value {
 	om := core.NewOrderedMap()
 	om.Set(core.KeyValK, core.NewCarrier(core.TString))

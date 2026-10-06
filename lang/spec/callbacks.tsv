@@ -94,9 +94,9 @@ def sum2 fn [[a:Integer b:Integer][Integer][a add b]]  0 fold sum2/v [1 2 3 4]	1
 def sum2 fn [[a:Integer b:Integer][Integer][a add b]]  fold sum2/v [1 2 3 4] 0	10	…and the forward spelling of the same fold
 def kvsum fn [[acc:Integer kv:KeyVal][Integer][acc add kv.v]]  0 fold kvsum/v {a:1 b:2 c:3}	6	a fold callback over a MAP receives (accumulator, KeyVal)
 def kvdbl fn [[kv:KeyVal][Integer][kv.v mul 2]]  each kvdbl/v {a:1 b:2}	{a:2 b:4}	an each callback over a map receives the KeyVal and the shape is kept
-def ev fn [[p:Any][Boolean][(p.value mod 2) eq 0]]  filter ev/v [1 2 3 4 5 6]	[2 4 6]	a named predicate as filter's Function form (list: {key value} pair)
+def ev fn [[p:Integer][Boolean][(p mod 2) eq 0]]  filter ev/v [1 2 3 4 5 6]	[2 4 6]	a named predicate as filter's Function form (list: the element)
 def kvf fn [[kv:KeyVal][Boolean][kv.v gt 2]]  filter kvf/v {a:1 b:5 c:3}	{b:5 c:3}	…and over a map, where the predicate gets a KeyVal
-def pred fn [[p:Any][Boolean][p.value gt 2]]  fold [add] (filter pred/v [1 2 3 4]) 0	7	filter's callback result feeding a fold — two higher-order words in one statement
+def pred fn [[p:Integer][Boolean][p gt 2]]  fold [add] (filter pred/v [1 2 3 4]) 0	7	filter's callback result feeding a fold — two higher-order words in one statement
 def acc (flex []) end def stp fn [[e:Integer][Any][acc push (e mul 2)]] end for-each stp/v [1 2 3] end acc	(flex [2 4 6])	a side-effecting callback accumulating into a flex list
 def acc (flex {}) end def stp fn [[kv:KeyVal][Any][acc set (kv.k) (kv.v mul 2)]] end for-each stp/v {a:1 b:2} end acc	(flex {a:2 b:4})	…and the map twin, keyed by the KeyVal's own key
 def inc fn [[n:Integer][Integer][n add 1]]  each [inc/v apply] [1 2 3]	[2 3 4]	apply INSIDE an each body, against the element on the stack

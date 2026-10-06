@@ -1036,15 +1036,13 @@ func render(n *gnode, scope []string) string {
 	case "scan":
 		return "(" + render(n.kids[0], scope) + " scan [" + n.cmp + "])"
 	case "filter":
-		// keys==["L"] selects the Function (lambda) form; the per-element field is
-		// `.value` over a list and `.v` over a map.
+		// keys==["L"] selects the Function (lambda) form; the lambda is handed
+		// the element over a list and the entry's value over a map — the same
+		// unit the quotation form pushes (a KeyVal-typed param would get the
+		// whole entry; the sweep stays on the default).
 		pred := "[" + n.cmp + " " + fmt.Sprint(n.n) + "]"
 		if len(n.keys) > 0 {
-			field := "value"
-			if n.cat == cMap {
-				field = "v"
-			}
-			pred = "([p:Any] => [p." + field + " " + n.cmp + " " + fmt.Sprint(n.n) + "])"
+			pred = "([p:Any] => [p " + n.cmp + " " + fmt.Sprint(n.n) + "])"
 		}
 		if n.cat == cMap {
 			return "(" + render(n.kids[0], scope) + " filter " + pred + ")"

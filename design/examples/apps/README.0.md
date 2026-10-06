@@ -43,7 +43,8 @@ during development):
 - **Store expiries (and any cross-dispatch bookkeeping) as scalars**
   (epoch-ms Integers), and remember `a div b` / `a sub b` are the infix
   form and compute `a / b` / `a - b` (`100000 div 1000` = 100).
-- **`filter` predicates receive `{key value}` entry maps**, not bare
-  elements; the result carries the original elements.
+- **`filter` predicates receive the element itself** (over a map the
+  value, or the `KeyVal` entry when the param is typed `KeyVal`); the
+  result carries the original elements.
 - Avoid shadowing built-ins in fn locals (`all`, `base`, `min`,
   `take`, `state`, …) — params/locals cannot shadow registered words.

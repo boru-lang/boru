@@ -40,7 +40,7 @@ func TestClosureIsFnValue(t *testing.T) {
 	}
 	shaped := NewClosure(prog, 0, nil)
 	cl := shaped.Data.(core.ClosurePayload)
-	cl.InShape = ClosureInKeyVal
+	cl.InShape = ClosureInStackPair
 	shaped.Data = cl
 	if ClosureIsFnValue(shaped) {
 		t.Error("a closure in a word's callback shape is that word's body, not a fn value")

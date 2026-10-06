@@ -575,7 +575,7 @@ type ClosurePayload struct {
 	// (a bridged FnDefInfo's handler — closureAsWord, ClosureAsFnDef — runs
 	// after the interpreter's dispatch matched), and a native seam that
 	// matched the value's contract over the lambda-shaped args it hands (the
-	// map arm's KeyVal, filter's entry, walk's payload). Off, the closure
+	// map arm's entry, filter's element, walk's payload). Off, the closure
 	// reached the TOKEN seam (InvokeBody: each over a list, a paren call)
 	// with its inputs in STACK order, and a fn-VALUE closure — one minted
 	// from a `fn` / `=>` literal, a factory's capturing result — is matched
@@ -610,12 +610,13 @@ func NewStoreShapeCarrier(t *Type, scope int) Value {
 	return v
 }
 
-// ClosureInShape tags HOW a higher-order word must present each per-invocation
-// input to a compiled closure — the divergence the per-word callback
-// conventions create. A map-iteration handler (each/fold/scan over a map) runs
-// BOTH a token-quotation body (sees the bare value) and a lambda body (sees a
-// KeyVal {k v i n}); the closure value alone cannot say which, so the compile
-// records the shape on the unit and the handler reads it back here. The
-// unambiguous handlers (filter list/map) build their own fixed shape and ignore
-// it.
+// ClosureInShape tags HOW a compiled closure binds the per-invocation inputs
+// its driving handler hands it: positionally (the handler's order is the
+// param order — every callback convention but one), or reversed (the list
+// fold/scan lambda, whose params the interpreter assigns top-down off the
+// stack the handler pushed). The compile records the shape on the unit and
+// the VM applies it at the bind. WHAT a handler hands is not the shape's
+// business: a map-iteration word hands a closure the entry's value, or the
+// KeyVal its bridged signature asks for (CallbackWantsKeyVal), exactly as it
+// hands an interpreter lambda.
 type ClosureInShape uint8

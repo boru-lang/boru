@@ -47,3 +47,32 @@ func NewKeyVal(k string, v Value, i, n int64) Value {
 	om.Set(KeyValN, NewInteger(n))
 	return NewValueRaw(TKeyVal, MapPayload{M: om})
 }
+
+// CallbackWantsKeyVal reports whether fn — a Function value handed to a
+// map-iteration word (each / for-each / fold / scan / filter over a Map) —
+// declares its ENTRY param as a KeyVal. The entry is the LAST param in every
+// map callback convention (`[kv]` for each and filter, `[acc kv]` for fold
+// and scan), and a Function form hands the entry's VALUE unless the callback
+// asks for the whole entry this way: `each ([v:Integer] => [v mul 2]) m` sees
+// 1, 2, …; `each ([kv:KeyVal] => [kv.k]) m` sees {k v i n}. The decision is
+// the SIGNATURE's, so a lambda, a named fn value and a compiled closure's
+// bridged signature (ClosureAsFnDef) all answer alike; a fn with several
+// signatures wants the entry when any of them declares it. A value that is no
+// FnDefInfo (a token quotation, a closure met outside a VM run) wants the
+// value.
+func CallbackWantsKeyVal(fn Value) bool {
+	fd, ok := fn.Data.(FnDefInfo)
+	if !ok {
+		return false
+	}
+	for _, sig := range fd.OwnSigs() {
+		n := len(sig.Params)
+		if n == 0 {
+			continue
+		}
+		if t := sig.Params[n-1].Type; t != nil && t.ConformsTo(TKeyVal) {
+			return true
+		}
+	}
+	return false
+}

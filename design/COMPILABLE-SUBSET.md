@@ -217,7 +217,7 @@ user still gets an answer while the case is open:
   (2026-09-19, [FULL-COMPILATION-REPLAN.0.md](FULL-COMPILATION-REPLAN.0.md)
   §5) `each`/`fold`/`scan`/`filter` declare `CompileDynBody`, so a
   gradual-Any operand — the COLLECTION (`c:Any` at run time a List or a
-  Map, where the pair-vs-KeyVal convention is ambiguous) or the CALLBACK (a
+  Map, whose element type the pass cannot settle) or the CALLBACK (a
   class field, a map field, a dynamic key, a factory result, a code body
   read from a flex) — no longer refuses at the ambiguous-overload gate: the
   site lowers to a CALL_NATIVE poly re-match over the word's own overloads

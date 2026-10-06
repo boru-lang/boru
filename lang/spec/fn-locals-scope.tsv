@@ -112,8 +112,8 @@ def f fn [[x:Integer] [Integer] [def helper fn [[k:Integer] [Integer] [k mul 2]]
 def f fn [[n:Integer] [List] [def helper fn [[k:Integer] [Integer] [k mul 2]] each helper/v (iota n)]]  f 4	[0 2 4 6]	the body-local fn travels to `each` as a /v value
 def f fn [[xs:List] [List] [def bump fn [[n:Integer] [Integer] [n add 1]] each bump/v xs]]  f [1 2 3]	[2 3 4]	…over the param list rather than a computed one
 def f fn [[xs:List] [Integer] [def sum2 fn [[a:Integer b:Integer] [Integer] [a add b]] def n (0 fold sum2/v xs) end n]]  f [1 2 3]	6	a local fn as a fold callback, its result bound to another local
-def f fn [[xs:List] [Integer] [def keep fn [[p:Any] [Boolean] [p.value gt 2]] size (filter keep/v xs)]]  f [1 2 3 4]	2	a local fn as a filter predicate (the Function form sees {key value})
-def f fn [[xs:List] [List] [def dbl fn [[n:Integer] [Integer] [n mul 2]] def odd fn [[p:Any] [Boolean] [p.value mod 2 eq 1]] each dbl/v (filter odd/v xs)]]  f [1 2 3 4 5]	[2 6 10]	TWO body-local fns, one filtering and one mapping — the real pipeline shape
+def f fn [[xs:List] [Integer] [def keep fn [[p:Integer] [Boolean] [p gt 2]] size (filter keep/v xs)]]  f [1 2 3 4]	2	a local fn as a filter predicate (the Function form sees the element)
+def f fn [[xs:List] [List] [def dbl fn [[n:Integer] [Integer] [n mul 2]] def odd fn [[p:Integer] [Boolean] [p mod 2 eq 1]] each dbl/v (filter odd/v xs)]]  f [1 2 3 4 5]	[2 6 10]	TWO body-local fns, one filtering and one mapping — the real pipeline shape
 def f fn [[] [Integer] [def g fn [[] [Integer] [7]] def h fn [[] [Integer] [g mul 2]] h]]  f	14	one body-local fn calls another defined beside it
 def f fn [[] [Integer] [def h fn [[] [Integer] [k]] def k 3 end h]]  f	3	a local fn defined BEFORE the local it reads — a forward ref resolved at call time
 def f fn [[] [Integer] [def ev fn [[n:Integer] [Boolean] [if (n eq 0) [true] [od (n sub 1)]]] def od fn [[n:Integer] [Boolean] [if (n eq 0) [false] [ev (n sub 1)]]] if (ev 4) [1] [0]]]  f	1	MUTUALLY recursive body-local fns

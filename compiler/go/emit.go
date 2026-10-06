@@ -2403,8 +2403,9 @@ type fnUnitRec struct {
 	calledOpen       bool
 	openCallObserver string
 	// inShape is the closure input convention recorded for a closure body unit
-	// (ClosureInValue by default; ClosureInKeyVal for a map-iteration lambda).
-	// Copied into CompiledFn.InShape at lowering. Zero (value) for user fns.
+	// (ClosureInValue by default; ClosureInStackPair for a list fold/scan
+	// lambda). Copied into CompiledFn.InShape at lowering. Zero (value) for
+	// user fns.
 	inShape core.ClosureInShape
 	// closure marks a higher-order body unit (each/scan/…$body) compiled via
 	// compileClosureBody, as opposed to a genuine user fn. A return-count

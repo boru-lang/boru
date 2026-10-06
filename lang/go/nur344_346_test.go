@@ -208,8 +208,9 @@ func TestNUR346RealArgsFramesStayReal(t *testing.T) {
 		{mk + `each ([x:Integer] => [do (mk)]) [1 2]`, `[[[1] [2]]]`},
 		{`def m word [args] end def w fn [[x:Integer][Any][m]] end w 3`, `[[3]]`},
 		{mk + `def m word [args] end def w fn [[x:Integer][Any][[(each (mk) [x]) m]]] end w 3`, `[[[[3]] [3]]]`},
-		{mk + `each ([kv:Any] => [each (mk) [1]]) {a:1 b:2}`, `[{a:[[{k:'a' v:1 i:0 n:2}]] b:[[{k:'b' v:2 i:1 n:2}]]}]`},
-		{mk + `def w fn [[kv:Any][Any][each (mk) [1]]] end each w/v {a:1}`, `[{a:[[{k:'a' v:1 i:0 n:1}]]}]`},
+		{mk + `each ([kv:Any] => [each (mk) [1]]) {a:1 b:2}`, `[{a:[[1]] b:[[2]]}]`},
+		{mk + `each ([kv:KeyVal] => [each (mk) [1]]) {a:1 b:2}`, `[{a:[[{k:'a' v:1 i:0 n:2}]] b:[[{k:'b' v:2 i:1 n:2}]]}]`},
+		{mk + `def w fn [[kv:Any][Any][each (mk) [1]]] end each w/v {a:1}`, `[{a:[[1]]}]`},
 		{mk + `def w fn [[x:Any][Any][each (mk) [x] drop true]] end filter w/v [1 2]`, `[[1 2]]`},
 		// a later-bound macro's args read in a fn that returns too much
 		// raises the same count error on both lanes
@@ -256,8 +257,9 @@ func TestNUR346ForeignCallKeepsRealArgs(t *testing.T) {
 		{`def w fn [[x:Integer][Any][m]] end def m word [args] end def v fn [[y:Integer][Any][w y]] end v 7`, `[[7]]`},
 		{`def w fn [[x:Integer][Any][m]] end def m word [args] end 7 w/v apply`, `[[7]]`},
 		{`def w fn [[x:Integer][Any][m]] end def m word [args] end each w/v [1 2]`, `[[[1] [2]]]`},
-		{`def w fn [[acc:Any kv:Any][Any][m]] end def m word [args] end fold w/v {a:1} 0`, `[[0 {k:'a' v:1 i:0 n:1}]]`},
-		{`def w fn [[kv:Any][Any][m]] end def m word [args] end each w/v {a:1}`, `[{a:[{k:'a' v:1 i:0 n:1}]}]`},
+		{`def w fn [[acc:Any kv:Any][Any][m]] end def m word [args] end fold w/v {a:1} 0`, `[[0 1]]`},
+		{`def w fn [[acc:Any kv:KeyVal][Any][m]] end def m word [args] end fold w/v {a:1} 0`, `[[0 {k:'a' v:1 i:0 n:1}]]`},
+		{`def w fn [[kv:Any][Any][m]] end def m word [args] end each w/v {a:1}`, `[{a:[1]}]`},
 	} {
 		requireCompiledParity(t, tc.src)
 		got, err := mustNew(t).RunInterp(tc.src)

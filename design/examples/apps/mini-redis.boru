@@ -127,7 +127,7 @@ def redis-serve fn opts:Map Any [
         [def kv state.kv
           def live
             (filter
-                ([e:Any] => [def kk e.value ((kv get kk) eq None) not])
+                ([kk:String] => [((kv get kk) eq None) not])
                 (keys kv)
             )
           if ((size live) eq 0) ["(empty)"] [live]

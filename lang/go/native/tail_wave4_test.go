@@ -50,15 +50,16 @@ func TestW4FilterLensForm(t *testing.T) {
 }
 
 func TestW4FilterFunctionForm(t *testing.T) {
-	w3MiscWant(t, `filter ([p:Any] => [p.value gt 3]) [1 2 3 4 5]`, `[4 5]`)
-	w3MiscWant(t, `filter ([p:Any] => [p.value gt 0]) []`, `[]`)
+	w3MiscWant(t, `filter ([p:Integer] => [p gt 3]) [1 2 3 4 5]`, `[4 5]`)
+	w3MiscWant(t, `filter ([p:Integer] => [p gt 0]) []`, `[]`)
+	w3MiscWant(t, `filter ([v:Integer] => [v gt 2]) {a:1 b:5 c:3}`, `{b:5 c:3}`)
 	w3MiscWant(t, `filter ([kv:KeyVal] => [kv.v gt 2]) {a:1 b:5 c:3}`, `{b:5 c:3}`)
 	// A non-Boolean map predicate is a loud error; an arity-mismatched
 	// callback has no matching signature.
 	w3MiscErr(t, `{a:1 b:5} filter ([kv:KeyVal] => [kv.v])`, "must produce a Boolean")
 	w3MiscErr(t, `{a:1} filter ([kv:KeyVal] => [kv.v drop])`, "produced no result")
 	w3MiscErr(t, `filter ([a:Integer b:Integer] => [true]) [1]`, "no matching callback signature")
-	w3MiscErr(t, `filter ([p:Any] => [w4-no-such-word]) [1]`, "callback error")
+	w3MiscErr(t, `filter ([p:Any] => [w4-no-such-word]) [1]`, "element 0: ")
 }
 
 func TestW4FilterReturnsFn(t *testing.T) {

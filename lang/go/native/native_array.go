@@ -329,13 +329,15 @@ var allArrayNatives = []NativeFunc{
 			// callback exactly where a quotation body would, so
 			// `each dbl/v [1 2 3]` is `each [dbl] [1 2 3]` without the
 			// wrapper. The callback receives the ELEMENT: a per-container
-			// form hands the container's natural unit (element for a list,
-			// KeyVal for a map). `filter`'s single cross-container form is
-			// the documented exception — it hands a position descriptor.
+			// form hands the container's natural unit — the element of a
+			// list, the value of a map entry (or the KeyVal {k v i n} a
+			// KeyVal-typed entry param asks for; `filter`'s Function form
+			// follows the same rule).
 			{Args: []*Type{TFunction, TList}, Impl: Go(eachHandler), ReturnsFn: eachReturnsFn, BarrierPos: -1},
 			// Map forms — iterate entries in key order, keeping the map shape
-			// (mapValues). Quotation pushes the value; a lambda receives a
-			// KeyVal {k v i n}. See native_map_iter.go.
+			// (mapValues). Quotation pushes the value; a Function receives the
+			// value too, or the KeyVal {k v i n} its KeyVal-typed entry param
+			// asks for. See native_map_iter.go.
 			{Args: []*Type{TList, TMap}, NoEvalArgs: map[int]bool{0: true}, Impl: Go(eachMapHandler), Returns: []*Type{TMap}, BarrierPos: -1},
 			{Args: []*Type{TFunction, TMap}, Impl: Go(eachMapHandler), Returns: []*Type{TMap}, BarrierPos: -1},
 		},
@@ -384,9 +386,10 @@ var allArrayNatives = []NativeFunc{
 			// callback exactly where a quotation body would, so
 			// `each dbl/v [1 2 3]` is `each [dbl] [1 2 3]` without the
 			// wrapper. The callback receives the ELEMENT: a per-container
-			// form hands the container's natural unit (element for a list,
-			// KeyVal for a map). `filter`'s single cross-container form is
-			// the documented exception — it hands a position descriptor.
+			// form hands the container's natural unit — the element of a
+			// list, the value of a map entry (or the KeyVal {k v i n} a
+			// KeyVal-typed entry param asks for; `filter`'s Function form
+			// follows the same rule).
 			{Args: []*Type{TFunction, TList}, Impl: Go(forEachHandler), ReturnsFn: forEachReturnsFn, BarrierPos: -1},
 			// Map forms — iterate entries for side effects, produce nothing.
 			{Args: []*Type{TList, TMap}, NoEvalArgs: map[int]bool{0: true}, Impl: Go(forEachMapHandler), Returns: []*Type{}, BarrierPos: -1},
@@ -436,13 +439,15 @@ var allArrayNatives = []NativeFunc{
 			// callback exactly where a quotation body would, so
 			// `each dbl/v [1 2 3]` is `each [dbl] [1 2 3]` without the
 			// wrapper. The callback receives the ELEMENT: a per-container
-			// form hands the container's natural unit (element for a list,
-			// KeyVal for a map). `filter`'s single cross-container form is
-			// the documented exception — it hands a position descriptor.
+			// form hands the container's natural unit — the element of a
+			// list, the value of a map entry (or the KeyVal {k v i n} a
+			// KeyVal-typed entry param asks for; `filter`'s Function form
+			// follows the same rule).
 			{Args: []*Type{TFunction, TList, TAny}, Impl: Go(foldWithInitHandler), ReturnsFn: foldWithInitReturnsFn, BarrierPos: -1},
 			{Args: []*Type{TFunction, TList}, Impl: Go(foldNoInitHandler), ReturnsFn: foldNoInitReturnsFn, BarrierPos: -1},
 			// Map forms — reduce entries (quotation: acc beneath, value on top;
-			// lambda: (acc, KeyVal)). Seeded explicitly, or by the first value.
+			// lambda: (acc, entry) — the value, or a KeyVal for a KeyVal-typed
+			// param). Seeded explicitly, or by the first value.
 			// The accumulator-type inference is collection-agnostic
 			// (DataListElemTypeFromValue reads a map's common value type), so the
 			// list ReturnsFns narrow the map forms too — `fold [add] {map} 0`
@@ -479,13 +484,14 @@ var allArrayNatives = []NativeFunc{
 			// callback exactly where a quotation body would, so
 			// `each dbl/v [1 2 3]` is `each [dbl] [1 2 3]` without the
 			// wrapper. The callback receives the ELEMENT: a per-container
-			// form hands the container's natural unit (element for a list,
-			// KeyVal for a map). `filter`'s single cross-container form is
-			// the documented exception — it hands a position descriptor.
+			// form hands the container's natural unit — the element of a
+			// list, the value of a map entry (or the KeyVal {k v i n} a
+			// KeyVal-typed entry param asks for; `filter`'s Function form
+			// follows the same rule).
 			{Args: []*Type{TFunction, TList}, Impl: Go(scanHandler), ReturnsFn: scanReturnsFn, BarrierPos: -1},
 			// Map forms — running fold over a map's values (the first value
 			// seeds), keeping the map shape. Quotation: acc beneath, value on
-			// top; lambda: (acc, KeyVal).
+			// top; lambda: (acc, entry).
 			{Args: []*Type{TList, TMap}, NoEvalArgs: map[int]bool{0: true}, Impl: Go(scanMapHandler), Returns: []*Type{TMap}, BarrierPos: -1},
 			{Args: []*Type{TFunction, TMap}, Impl: Go(scanMapHandler), Returns: []*Type{TMap}, BarrierPos: -1},
 		},

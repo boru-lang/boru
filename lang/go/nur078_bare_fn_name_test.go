@@ -25,7 +25,7 @@ func TestNUR078BareFnNameCalls(t *testing.T) {
 	const zh = `def zero fn [[][Integer][7]] end def h fn [[f:Function][Integer][42]] end `
 	const inc = `def inc fn [[n:Integer][Integer][n add 1]] end `
 	const modInc = `import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end `
-	const modBig = `import module [def big fn [[p:Any][Boolean][p.value gt 1]] export "M" {big: big/v}] end `
+	const modBig = `import module [def big fn [[p:Any][Boolean][p gt 1]] export "M" {big: big/v}] end `
 	const mkF = `def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]] end def f (mk 10) end `
 	for _, c := range []struct{ src, want string }{
 		{zh + `h zero/v`, "[42]"},

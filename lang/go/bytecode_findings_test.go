@@ -673,18 +673,21 @@ func TestMapIterationCompilesNative(t *testing.T) {
 
 // Roadmap item 5 part B (filter lambda args) — a `filter ([p] => …) data`
 // lambda compiles its afn body to a closure with the word's callback input
-// shape ({key,value} pair over a list, KeyVal over a map), driven natively
-// through InvokeBody rather than islanding or declining. Verifies the closure
-// path is value- and taxonomy-identical to the interpreter.
+// (the element over a list; over a map the value, or the KeyVal a KeyVal-typed
+// param asks for), driven natively through InvokeBody rather than islanding or
+// declining. Verifies the closure path is value- and taxonomy-identical to the
+// interpreter.
 func TestFilterLambdaCompilesNative(t *testing.T) {
 	for _, c := range []struct {
 		src  string
 		want string
 	}{
-		// list filter: the lambda reads the element via the {key,value} pair.
-		{`filter ([p:Any] => [(p.value mod 2) eq 0]) [1 2 3 4 5 6]`, "[[2 4 6]]"},
-		{`filter ([p:Any] => [p.value gt 3]) [1 2 3 4 5]`, "[[4 5]]"},
-		// map filter: the lambda reads the value via a KeyVal, shape preserved.
+		// list filter: the lambda is handed the element.
+		{`filter ([p:Integer] => [(p mod 2) eq 0]) [1 2 3 4 5 6]`, "[[2 4 6]]"},
+		{`filter ([p:Integer] => [p gt 3]) [1 2 3 4 5]`, "[[4 5]]"},
+		// map filter: the lambda is handed the value, shape preserved — or the
+		// KeyVal a KeyVal-typed param asks for.
+		{`{a:1 b:5 c:3} filter ([v:Integer] => [v gt 2])`, "[{b:5 c:3}]"},
 		{`filter ([kv:KeyVal] => [(kv.v mod 2) eq 0]) {a:1 b:2 c:3 d:4}`, "[{b:2 d:4}]"},
 		{`{a:1 b:5 c:3} filter ([kv:KeyVal] => [kv.v gt 2])`, "[{b:5 c:3}]"},
 	} {
@@ -1160,11 +1163,12 @@ func TestWithDecimalCompilesNative(t *testing.T) {
 }
 
 // Roadmap item 5 part B (each/fold/scan map lambda args) — the map-iteration
-// words run a KeyVal-shaped lambda closure natively. These share the same
-// handler as their token-quotation form, which sees the bare VALUE; the unit's
-// recorded ClosureInShape (ClosureWantsKeyVal) keeps the two apart, so a
-// KeyVal-destructuring lambda and a value-consuming quotation both compile and
-// both stay correct.
+// words run a lambda closure natively, handed the entry its signature asks
+// for: a KeyVal-typed entry param the KeyVal, any other the bare VALUE the
+// token-quotation form sees (the handler matches the closure's bridged
+// signature — core.CallbackWantsKeyVal), so a KeyVal-destructuring lambda, a
+// value lambda and a value-consuming quotation all compile and all stay
+// correct.
 func TestMapLambdaCompilesNative(t *testing.T) {
 	for _, c := range []struct {
 		src  string
@@ -1174,8 +1178,12 @@ func TestMapLambdaCompilesNative(t *testing.T) {
 		{`{a:1 b:2} each ([kv:KeyVal] => [kv.v add kv.i])`, "[{a:1 b:3}]"},
 		{`0 fold ([acc:Integer kv:KeyVal] => [acc add kv.v]) {a:1 b:2 c:3}`, "[6]"},
 		{`{a:1 b:2 c:3} scan ([acc:Integer kv:KeyVal] => [acc add kv.v])`, "[{a:1 b:3 c:6}]"},
-		// Token-quotation map closures share the handler but take the bare value
-		// — the ClosureInShape flag must NOT wrap these in a KeyVal.
+		// Value lambda closures: the entry's value, bound to the param.
+		{`{a:1 b:2} each ([v:Integer] => [v add 1])`, "[{a:2 b:3}]"},
+		{`0 fold ([acc:Integer v:Integer] => [acc add v]) {a:1 b:2 c:3}`, "[6]"},
+		{`{a:1 b:2 c:3} scan ([acc:Integer v:Integer] => [acc add v])`, "[{a:1 b:3 c:6}]"},
+		// Token-quotation map closures share the handler and take the bare
+		// value — nothing wraps these in a KeyVal.
 		{`each [mul 10] {a:1 b:2}`, "[{a:10 b:20}]"},
 		{`fold [add] {a:1 b:2 c:3} 0`, "[6]"},
 		{`{a:1 b:2 c:3} scan [add]`, "[{a:1 b:3 c:6}]"},
@@ -1665,10 +1673,10 @@ func TestPRReviewFindings(t *testing.T) {
 	// closure lowering now matches the param type (and declines overloaded fn
 	// values) so these fall back faithfully; Any / KeyVal callbacks still compile.
 	neg := []string{
-		`filter ([p:String] => [true]) [1 2]`,     // String param vs {key,value} pair (list)
-		`filter ([p:String] => [true]) {a:1 b:2}`, // String param vs KeyVal (map)
-		`filter ([p:Integer] => [true]) {a:1 b:2}`,
-		`filter ([kv:KeyVal] => [true]) [1 2]`, // KeyVal param vs a list's plain pair
+		`filter ([p:String] => [true]) [1 2]`,        // String param vs the list's Integer elements
+		`filter ([p:String] => [true]) {a:1 b:2}`,    // String param vs the map's Integer values
+		`filter ([p:Integer] => [true]) {a:1 b:'x'}`, // Integer param vs a mixed map's String value
+		`filter ([kv:KeyVal] => [true]) [1 2]`,       // KeyVal param vs a list's plain elements
 	}
 	for _, src := range neg {
 		a, _ := New()
@@ -1683,7 +1691,8 @@ func TestPRReviewFindings(t *testing.T) {
 		}
 	}
 	pos := []struct{ src, want string }{
-		{`filter ([p:Any] => [(p.value mod 2) eq 0]) [1 2 3 4]`, "[[2 4]]"},
+		{`filter ([p:Integer] => [(p mod 2) eq 0]) [1 2 3 4]`, "[[2 4]]"},
+		{`filter ([v:Integer] => [(v mod 2) eq 0]) {a:1 b:2 c:3 d:4}`, "[{b:2 d:4}]"},
 		{`filter ([kv:KeyVal] => [(kv.v mod 2) eq 0]) {a:1 b:2 c:3 d:4}`, "[{b:2 d:4}]"},
 		{`0 fold ([acc:Integer kv:KeyVal] => [acc add kv.v]) {a:1 b:2 c:3}`, "[6]"},
 	}
@@ -4113,7 +4122,7 @@ func TestWalkHookClosureCompiles(t *testing.T) {
 			`def acc (flex [])  walk {mode: "depth"} {a:{x:1}} (m:Any => [acc (m.path) append]) (m:Any => [acc (m.path) append])  acc`,
 			"[{a:{x:1}} ['' 'a' 'a.x' 'a.x' 'a' '']]"},
 		{"each map-lambda with a module-scope flex capture (shared admission)",
-			`def acc (flex [])  each ([kv:Any] => [acc (kv.v) append]) {a:1 b:2}  drop  acc`,
+			`def acc (flex [])  each ([kv:KeyVal] => [acc (kv.v) append]) {a:1 b:2}  drop  acc`,
 			"[[1 2]]"},
 	}
 	for _, c := range parity {
@@ -4747,17 +4756,20 @@ func TestPR225P1CompileFailures(t *testing.T) {
 func TestFilterLambdaCaptureCompiles(t *testing.T) {
 	// Legacy compile failure+fallback-parity contract: pins the one-release
 	parity := []struct{ name, src, want string }{
-		{"enclosing-fn param capture (list pair shape)",
-			`def f (fn [[y:Integer] [List] [ filter ([e:Any] => [ e.value gte y ]) [3 7 9] ]]) f 5`,
+		{"enclosing-fn param capture (list element shape)",
+			`def f (fn [[y:Integer] [List] [ filter ([e:Integer] => [ e gte y ]) [3 7 9] ]]) f 5`,
 			"[[7 9]]"},
 		{"computed collection (keys result carrier)",
-			`def f (fn [[m:Map] [List] [ filter ([e:Any] => [ (e.value eq "b") not ]) (keys m) ]]) f {a:1 b:2}`,
+			`def f (fn [[m:Map] [List] [ filter ([e:String] => [ (e eq "b") not ]) (keys m) ]]) f {a:1 b:2}`,
 			"[[a]]"},
 		{"body-local capture over a computed collection (the mini-redis KEYS shape)",
-			`def g (fn [[m:Map] [List] [ def kv m  filter ([e:Any] => [ ((kv get e.value) eq None) not ]) (keys kv) ]]) g {x:1}`,
+			`def g (fn [[m:Map] [List] [ def kv m  filter ([e:String] => [ ((kv get e) eq None) not ]) (keys kv) ]]) g {x:1}`,
 			"[[x]]"},
+		{"map value shape with a param capture",
+			`def f (fn [[y:Integer] [Map] [ filter ([v:Integer] => [ v gte y ]) {a:3 b:7} ]]) f 5`,
+			"[map[b:7]]"},
 		{"map KeyVal shape with a param capture",
-			`def f (fn [[y:Integer] [Map] [ filter ([kv:Any] => [ kv.v gte y ]) {a:3 b:7} ]]) f 5`,
+			`def f (fn [[y:Integer] [Map] [ filter ([kv:KeyVal] => [ kv.v gte y ]) {a:3 b:7} ]]) f 5`,
 			"[map[b:7]]"},
 	}
 	for _, c := range parity {
@@ -4815,10 +4827,10 @@ def f (fn [[] [List] [ filter two [1 2 3] ]]) f`
 	}
 
 	// A DYNAMIC (gradual) collection still declines the lambda path — the
-	// callback convention (pair vs KeyVal) is ambiguous. The program falls
-	// back and values agree.
+	// element type is unknown, and only a map could serve a KeyVal-typed
+	// param. The program falls back and values agree.
 	{
-		src := `def f (fn [[x:Any] [Any] [ filter ([e:Any] => [ e.value ]) x.items ]]) f {items: [1 2]}`
+		src := `def f (fn [[x:Any] [Any] [ filter ([e:Any] => [ e gt 1 ]) x.items ]]) f {items: [1 2]}`
 		gotC, _, errC := mustNew(t).RunCompiled(src)
 		gotI, errI := mustNew(t).RunInterp(src)
 		if noteCompileDefect(t, src, gotC, errC) {

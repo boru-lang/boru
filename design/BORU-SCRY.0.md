@@ -157,10 +157,10 @@ Scry.modules                      # ~> [{id:'boru:io' namespace:'IO' imported:tr
 Viz.graph (Scry.module-graph) {}  # ~> paste into the PR
 
 # architectural assertion: my pipeline never touches the vault words
-# (filter's Function form: callback first, and over a list the
-#  callback receives a {key value} pair — read the node via .value)
+# (filter's Function form: callback first; the callback receives the
+#  element — here a node map)
 def pg (Scry.word-graph {roots:['main-pipeline']})
-filter ([n:Any] => [eq 0 (StringUtil.indexof "Vault." n.value.id)]) pg.nodes
+filter ([n:Map] => [eq 0 (StringUtil.indexof "Vault." n.id)]) pg.nodes
 # ~> []   — assert empty in a boru:test case
 
 # which defined words are unreferenced? (census + graph, no new words)

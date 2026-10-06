@@ -115,8 +115,10 @@ def P class {a: 0} make P {a: "x"}	ERROR:expected Integer	make enforces the fiel
 # (threaded at OpPushClosure, bound to trailing unit slots) and a typed
 # non-dynamic carrier collection. Each positive row runs compiled ==
 # interpreted through the differential gates.
-def f (fn [[y:Integer] [List] [ filter ([e:Any] => [ e.value gte y ]) [3 7 9] ]]) f 5	[7 9]	filter lambda captures an enclosing-fn param (list pair shape)
-def f (fn [[m:Map] [List] [ filter ([e:Any] => [ (e.value eq "b") not ]) (keys m) ]]) f {a:1 b:2 c:3}	['a' 'c']	filter lambda over a COMPUTED collection (keys result carrier)
-def f (fn [[y:Integer] [Map] [ filter ([kv:Any] => [ kv.v gte y ]) {a:3 b:7} ]]) f 5	{b:7}	filter lambda captures over a MAP (KeyVal shape)
-def f (fn [[y:Integer] [Integer] [ 0 fold ([acc:Any kv:Any] => [ acc add (kv.v mul y) ]) {a:2 b:3} ]]) f 10	50	fold lambda captures an enclosing-fn param (KeyVal shape)
-def g (fn [[m:Map k:String] [List] [ def kv m  filter ([e:Any] => [ ((kv get e.value) eq None) not ]) (keys kv) ]]) g {x:1} "x"	['x']	the mini-redis KEYS shape: body-local capture + computed keys
+def f (fn [[y:Integer] [List] [ filter ([e:Integer] => [ e gte y ]) [3 7 9] ]]) f 5	[7 9]	filter lambda captures an enclosing-fn param (list element shape)
+def f (fn [[m:Map] [List] [ filter ([e:String] => [ (e eq "b") not ]) (keys m) ]]) f {a:1 b:2 c:3}	['a' 'c']	filter lambda over a COMPUTED collection (keys result carrier)
+def f (fn [[y:Integer] [Map] [ filter ([kv:KeyVal] => [ kv.v gte y ]) {a:3 b:7} ]]) f 5	{b:7}	filter lambda captures over a MAP (KeyVal shape: the KeyVal-typed param asks for the entry)
+def f (fn [[y:Integer] [Map] [ filter ([v:Integer] => [ v gte y ]) {a:3 b:7} ]]) f 5	{b:7}	filter lambda captures over a MAP (value shape: the default)
+def f (fn [[y:Integer] [Integer] [ 0 fold ([acc:Integer kv:KeyVal] => [ acc add (kv.v mul y) ]) {a:2 b:3} ]]) f 10	50	fold lambda captures an enclosing-fn param (KeyVal shape)
+def f (fn [[y:Integer] [Integer] [ 0 fold ([acc:Integer v:Integer] => [ acc add (v mul y) ]) {a:2 b:3} ]]) f 10	50	fold lambda captures an enclosing-fn param (value shape)
+def g (fn [[m:Map k:String] [List] [ def kv m  filter ([e:String] => [ ((kv get e) eq None) not ]) (keys kv) ]]) g {x:1} "x"	['x']	the mini-redis KEYS shape: body-local capture + computed keys

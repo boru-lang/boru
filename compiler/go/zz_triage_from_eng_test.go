@@ -766,7 +766,7 @@ func TestLambdaHookQuoteScreen(t *testing.T) {
 	atomFd := &core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Name: "k", Type: core.TAtom}}, Impl: body,
 	}}}
-	if _, ok := lambdaHookCompatible(r, atomFd, []core.Value{core.NewCarrier(core.TAtom)}, ClosureInValue, true, false); ok {
+	if _, ok := lambdaHookCompatible(r, atomFd, []core.Value{core.NewCarrier(core.TAtom)}, true, false); ok {
 		t.Error("an Atom-typed lambda param must decline the callback admission")
 	}
 	// The explicit Quote flag declines identically, whatever the type.
@@ -774,14 +774,14 @@ func TestLambdaHookQuoteScreen(t *testing.T) {
 		Params: []core.FnParam{{Name: "k", Type: core.TInteger, Quote: true}}, Impl: body,
 	}}}
 	core.NormalizeSig(&quoteFd.Signatures[0])
-	if _, ok := lambdaHookCompatible(r, quoteFd, []core.Value{core.NewCarrier(core.TInteger)}, ClosureInValue, true, false); ok {
+	if _, ok := lambdaHookCompatible(r, quoteFd, []core.Value{core.NewCarrier(core.TInteger)}, true, false); ok {
 		t.Error("a /q lambda param must decline the callback admission")
 	}
 	// Control: a plain Integer param keeps admitting.
 	intFd := &core.FnDefInfo{Signatures: []core.Signature{{
 		Params: []core.FnParam{{Name: "n", Type: core.TInteger}}, Impl: body,
 	}}}
-	if _, ok := lambdaHookCompatible(r, intFd, []core.Value{core.NewCarrier(core.TInteger)}, ClosureInValue, true, false); !ok {
+	if _, ok := lambdaHookCompatible(r, intFd, []core.Value{core.NewCarrier(core.TInteger)}, true, false); !ok {
 		t.Error("a value-typed lambda param must keep admitting")
 	}
 }

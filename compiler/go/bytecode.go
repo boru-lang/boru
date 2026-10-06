@@ -1000,11 +1000,9 @@ type UserPolyRef struct {
 
 const (
 	// ClosureInValue passes the per-invocation inputs through unchanged — the
-	// token-quotation form (list element / map value, plus fold's accumulator).
+	// positional convention: a list element, a map entry (its value, or the
+	// KeyVal a KeyVal-typed callback asked for), plus fold's accumulator.
 	ClosureInValue core.ClosureInShape = iota
-	// ClosureInKeyVal wraps a map entry as a KeyVal {k v i n} before the (last)
-	// input — the map-iteration LAMBDA convention (`each (kv => …) {m}`).
-	ClosureInKeyVal
 	// ClosureInStackPair says the handler hands its inputs in STACK order
 	// (deeper first) while the body's params were declared in the order the
 	// interpreter's top-down assignment produces, so the bind REVERSES them.
@@ -1041,14 +1039,6 @@ const (
 // value that is inspected rather than invoked.
 func NewClosure(prog *Program, unit int, captures []core.Value) core.Value {
 	return core.Value{Parent: core.TFunction, Data: core.ClosurePayload{Prog: prog, Unit: unit, Captures: captures, Ident: core.NewFnIdentity()}}
-}
-
-// ClosureWantsKeyVal reports whether v is a compiled closure whose body expects
-// a map entry presented as a KeyVal (the map-iteration lambda convention), so a
-// map-iteration handler wraps the entry rather than passing the bare value.
-func ClosureWantsKeyVal(v core.Value) bool {
-	cl, ok := v.Data.(core.ClosurePayload)
-	return ok && cl.InShape == ClosureInKeyVal
 }
 
 // UnitIsFnValue reports whether a closure unit is a fn VALUE's — compiled
@@ -1101,7 +1091,7 @@ func ClosureTakesArgs(v core.Value) bool {
 // VALUE — a capturing `fn` / `=>` literal pushed at run time (a factory's
 // result, a def-bound one read back), in the plain value shape — which every
 // callback seam must treat as the interpreter treats a fn value: matched
-// against its own signature over the args the seam hands (a KeyVal at the
+// against its own signature over the args the seam hands (the entry at the
 // map arm, the stack's top-down order at the token seam), never run blind
 // like a callback body unit (S1b-2). A closure minted by a program the
 // running one cannot name reads as data here, as it does to the bridge.
@@ -1120,8 +1110,9 @@ func ClosureIsFnValue(v core.Value) bool {
 // IsCompiledClosure reports whether v is a compiled-closure VALUE (a body unit
 // the VM runs via InvokeBody), as opposed to an interpreter FnDefInfo lambda.
 // Both are Parent=TFunction, so a higher-order handler that treats a lambda
-// differently from a plain code body (e.g. map iteration hands a lambda a
-// KeyVal but a body the value) must discriminate on this.
+// differently from a plain code body (e.g. map iteration bridges a closure to
+// its signature and matches it before the invoke, where a quotation body is
+// handed the value) must discriminate on this.
 func IsCompiledClosure(v core.Value) bool {
 	_, ok := v.Data.(core.ClosurePayload)
 	return ok
@@ -2298,11 +2289,11 @@ type CompiledFn struct {
 	// sub-registry object the check pass created on the shared registry
 	// (like PolyRef.Reg), so it stays valid for the compiled run.
 	Reg *core.Registry
-	// InShape is the input convention a closure over this unit presents to its
-	// driving handler (ClosureInValue for an ordinary fn / token body, or
-	// ClosureInKeyVal for a map-iteration lambda body). Copied onto the
-	// ClosurePayload at OpPushClosure. The VM never branches on it; the native
-	// map-iteration handler reads it via ClosureWantsKeyVal.
+	// InShape is the convention a closure over this unit binds its inputs
+	// under (ClosureInValue for an ordinary fn / token body, or
+	// ClosureInStackPair for a list fold/scan lambda body). Copied onto the
+	// ClosurePayload at OpPushClosure; the VM's shapeInputs reads it at the
+	// bind.
 	InShape core.ClosureInShape
 	Code    []Instr
 	Debug   []core.SrcPos

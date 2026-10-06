@@ -113,11 +113,13 @@ func TestForEachBodyIsAClosureUnit(t *testing.T) {
 // TestForEachLambdaConventionMatchesTheInterpreter is the measurement the
 // spec rests on, kept as a test rather than a comment: the convention was
 // taken off the interpreter, not inherited from each because the two share a
-// handler family. A LIST hands the bare element; a MAP hands the KeyVal.
+// handler family. A LIST hands the bare element; a MAP hands the entry's
+// value — or the KeyVal a KeyVal-typed param asks for.
 func TestForEachLambdaConventionMatchesTheInterpreter(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
 		{`def acc (flex []) end for-each ([e:Any] => [acc (typeof e) append]) [1 2] end acc`, "[[Integer Integer]]"},
-		{`def acc (flex []) end for-each ([e:Any] => [acc (typeof e) append]) {a:1 b:2} end acc`, "[[KeyVal KeyVal]]"},
+		{`def acc (flex []) end for-each ([e:Any] => [acc (typeof e) append]) {a:1 b:2} end acc`, "[[Integer Integer]]"},
+		{`def acc (flex []) end for-each ([e:KeyVal] => [acc (typeof e) append]) {a:1 b:2} end acc`, "[[KeyVal KeyVal]]"},
 	} {
 		t.Run(tc.src, func(t *testing.T) {
 			c, err := New()

@@ -268,8 +268,8 @@ var Natives = []NativeFunc{
 		Signatures: []Signature{
 			{Args: []*Type{TFunction, TAny}, Impl: Go(filterHandler), ReturnsFn: filterReturnsFn, BarrierPos: -1},
 			// Lens form: `filter $.active xs` keeps the elements whose reach
-			// applies to a truthy value (the reach reads the ELEMENT, not the
-			// {key,value} wrapper the Function form receives).
+			// applies to a truthy value (the reach reads the ELEMENT, as the
+			// Function form's predicate does).
 			{Args: []*Type{TReach, TAny}, Impl: Go(filterReachHandler), ReturnsFn: filterReturnsFn, BarrierPos: -1},
 			// Quotation form: `filter [body] xs` runs the quoted body once
 			// per element (element pushed first, like each/fold) and keeps
