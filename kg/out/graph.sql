@@ -14,7 +14,7 @@ CREATE TABLE schema_proposals (id TEXT PRIMARY KEY, term_kind TEXT NOT NULL, ter
 INSERT INTO bundle_meta VALUES ('schema_version', 'boru-kg/1');
 INSERT INTO bundle_meta VALUES ('generated_at', '2026-08-07T00:00:00Z');
 INSERT INTO bundle_meta VALUES ('input_digest_algorithm', 'fnv64');
-INSERT INTO bundle_meta VALUES ('input_digest_combined', '4903859203691314529');
+INSERT INTO bundle_meta VALUES ('input_digest_combined', '233509952325655546');
 INSERT INTO input_files VALUES ('../AGENTS.md', '6665130395557295718', 15330);
 INSERT INTO input_files VALUES ('../CLI.md', '1936818953179421473', 83450);
 INSERT INTO input_files VALUES ('../README.md', '6312173284019959426', 13333);
@@ -46,6 +46,7 @@ INSERT INTO input_files VALUES ('../design/GO-TS-PARITY.0.md', '2988869481171446
 INSERT INTO input_files VALUES ('../design/HANDLER-MIGRATION-LINE.0.md', '5774651396100651588', 18879);
 INSERT INTO input_files VALUES ('../design/HOT-CODE-LOADING.0.md', '4181002289371161566', 19083);
 INSERT INTO input_files VALUES ('../design/IMMUTABLE-DEF.0.md', '5800558334443536280', 24765);
+INSERT INTO input_files VALUES ('../design/IMMUTABLE-DEF.1.md', '605754494094040363', 23743);
 INSERT INTO input_files VALUES ('../design/IN-PLACE-COMPILATION.0.md', '703563202442894238', 55404);
 INSERT INTO input_files VALUES ('../design/MODULE-VIEWS.0.md', '570466612363092696', 22324);
 INSERT INTO input_files VALUES ('../design/NUR-ARCHIVE.0.md', '2574920545089865532', 183827);
@@ -80,7 +81,7 @@ INSERT INTO input_files VALUES ('../test/specfix/go.mod', '7601104241745438425',
 INSERT INTO input_files VALUES ('../tools/piecetool/go.mod', '4566725813820157164', 550);
 INSERT INTO input_files VALUES ('../wpg/go.mod', '6010678691882061351', 2627);
 INSERT INTO input_files VALUES ('<go tree: modules + packages>', '509860570392406449', 630);
-INSERT INTO input_files VALUES ('project/boru-project.jsonic', '7645769616221386878', 101904);
+INSERT INTO input_files VALUES ('project/boru-project.jsonic', '8544782488829289530', 104635);
 INSERT INTO sources VALUES ('src:adr-004-refinement', 'text', 'design/ADR-004-REFINEMENT.0.md', 'ADR-004 refinement — argument-handling categories', NULL, 'adr-004-refinement-2026-08-15', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -242,6 +243,9 @@ INSERT INTO sources VALUES ('src:hot-code-loading', 'text', 'design/HOT-CODE-LOA
 INSERT INTO sources VALUES ('src:immutable-def', 'text', 'design/IMMUTABLE-DEF.0.md', 'immutable def: what breaks, and how to resolve it (investigation, measured)', NULL, 'immutable-def-2026-10-06', 'primary', '{
   "repository": "boru-lang/boru"
 }');
+INSERT INTO sources VALUES ('src:immutable-def-plan', 'text', 'design/IMMUTABLE-DEF.1.md', 'immutable def, block scopes and var: the plan (decided)', NULL, 'immutable-def-plan-2026-10-06', 'primary', '{
+  "repository": "boru-lang/boru"
+}');
 INSERT INTO sources VALUES ('src:in-place-compilation', 'text', 'design/IN-PLACE-COMPILATION.0.md', 'in-place compilation: the interpreter writes compiled call cells into its own tape (prototype design)', NULL, 'in-place-compilation-2026-10-06', 'primary', '{
   "repository": "boru-lang/boru"
 }');
@@ -390,6 +394,8 @@ INSERT INTO entity_attributes VALUES ('ent:Document:7594380001231677524', 'role'
 INSERT INTO entities VALUES ('ent:Document:7656991804093821644', 'Document', 'design/FN-VALUE-OPEN-WORK.0.md', 'design/fn-value-open-work.0.md', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:7656991804093821644', 'role', 'the open-work inventory for the function-value line after PRs #366/#375/#378: four remaining items, all unblocked since the 2026-08-17 maintainer rulings (§1.1) — clause 3 (parens do not re-step) ruled BROAD, clause 2 (passing a function requires /r) enabled by the ADR-011 amendment with all four engine sites retiring together (re-opening the NUR038 call-head question, registered as NUR078), break 2 (the compiler refuses a 0-arg fn read from a plain container — an open defect, not a sanctioned outcome), and the StackForm apply — ruled a new dedicated Apply Op — every figure re-measured against 8732662, correcting three that the earlier notes carry: the clause-3 row count is 30 not 31, the clause-2 bare-name count is 3 not 9, and narrow-vs-broad ARE separable, by FnDefInfo.Name rather than by a rejected value-borne marker; plus the finding that break 2 is an arity-0 extension of tryMemberFnArrivalDispatch rather than Phase 3 work, that its refusal masks a confirmed miscompile and is untracked by any frontier row, and that the apply Op''s sketched target has two holes — a 0-arg anonymous fn is silently not applied, and `apply` itself double-records so a replay applies twice');
 INSERT INTO entities VALUES ('ent:Document:7770110494347118706', 'Document', 'lang/go/CLAUDE.md', 'lang/go/claude.md', 'accepted');
+INSERT INTO entities VALUES ('ent:Document:8413518511770048793', 'Document', 'design/IMMUTABLE-DEF.1.md', 'design/immutable-def.1.md', 'accepted');
+INSERT INTO entity_attributes VALUES ('ent:Document:8413518511770048793', 'role', 'the plan (2026-10-06) that closes IMMUTABLE-DEF.0''s open questions with the maintainer''s rulings and schedules the change: a name binds once per scope, where scopes are the module, each fn or lambda call and every code body a word runs (if/case arms, loop and callback bodies) except do, which stays transparent; shadowing of value names is legal everywhere, a fn def over an enclosing scope''s fn is an error while a value def may shadow a word; def f fn adds overloads and an overlapping overload is an error; var NAME value declares when no var is visible within the frame and assigns otherwise, is never assignable across a fn boundary, is read live from fn bodies, holds values only by spelling, is captured by snapshot and cannot be exported; untyped lambda parameters replace the var [[names] body] construct; undef is removed with an internal __ud for frame tails; same-module import is idempotent; the REPL allows redefinition with a notice. Gives the rule with worked examples, the error codes (redefinition, var_error, export_error), the mechanism per module (scope records on the def table, InvokeBody and arm/loop block entry, the TCO probe through a block marker, var as a mutable cell and a live compiled read, the compiler''s arm locals as slots), the migration counts by idiom, five phases with gates and sizes (census, constructs, block scopes, immutability, retirement), the risks with their checks, and the NUR records the rule resolves or keeps');
 INSERT INTO entities VALUES ('ent:Document:8507898865095625255', 'Document', 'design/legacy/FN-OUTPUT-SIG.0.ignore', 'design/legacy/fn-output-sig.0.ignore', 'accepted');
 INSERT INTO entity_attributes VALUES ('ent:Document:8507898865095625255', 'role', 'why an fn triple''s output slot is always the types the returns must match, never values to splice: the return-by-value sugar classified the slot before parsing it, so the implicit map a `name:Type` pair lowers to was read as a concrete return and appended to the body — a spurious return-count error, or a silently wrong answer with a clean `check --pedantic` when the body''s net stack effect was zero; why patching IsSigTypeValue a fourth time was the wrong fix (three prior arms record the identical symptom, and the predicate fails OPEN into a semantic change); the rule that a literal in the output slot is a literal TYPE admitting exactly itself (ADR-010); the String/Atom literal fallback gated on type-name SHAPE so a misspelled `Integr` stays a loud error; the one behaviour lost (the bodiless base case); the declaration-span fix that makes both spellings diagnose alike; the describe/inspect under-report; and the open interpreter-vs-VM divergence on an empty body''s frame residual that deleting the sugar made reachable');
 INSERT INTO entities VALUES ('ent:Document:8514639994279285633', 'Document', 'design/legacy/ROOT-MODULE-FEASIBILITY.0.ignore', 'design/legacy/root-module-feasibility.0.ignore', 'accepted');
@@ -633,6 +639,8 @@ INSERT INTO assertions VALUES ('ast:1029885292363430004', 'ent:Document:16614326
 INSERT INTO assertion_evidence VALUES ('ast:1029885292363430004', 'src:ts-parity-audit', 'title', 'TS-PARITY-AUDIT.0 — the parser battery does not agree with parser/go', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:1048763594130214961', 'ent:SoftwareModule:591370078981669488', 'part_of', 'entity', 'ent:SoftwareModule:5138375578915662736', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:1048763594130214961', 'src:go-tree', 'test/go/engspec', NULL, 'rule', 'kg-gomod');
+INSERT INTO assertions VALUES ('ast:1123983219927604111', 'ent:Document:8413518511770048793', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:1123983219927604111', 'src:immutable-def-plan', 'title', 'Immutable `def`, block scopes and `var` — the plan', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:1126534628156470241', 'ent:SoftwareModule:5138375578915662736', 'depends_on', 'entity', 'ent:SoftwareModule:6706536563979604982', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:1126534628156470241', 'src:gomod:test-go', 'require block', 'github.com/boru-lang/boru/parser/go v0.0.0', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:1147348943755751326', 'ent:SoftwareModule:5138375578915662736', 'depends_on', 'entity', 'ent:SoftwareModule:4386785925506277682', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
@@ -861,6 +869,8 @@ INSERT INTO assertions VALUES ('ast:569417614246256590', 'ent:SoftwareModule:517
 INSERT INTO assertion_evidence VALUES ('ast:569417614246256590', 'src:go-tree', 'test/go/vary', NULL, 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:5752370331192826008', 'ent:SoftwareModule:559301050642427014', 'part_of', 'entity', 'ent:Product:4032424380612892464', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:5752370331192826008', 'src:go-work', 'use block', './check/go', 'rule', 'kg-gomod');
+INSERT INTO assertions VALUES ('ast:5759203836592719132', 'ent:Document:8413518511770048793', 'supports', 'entity', 'ent:SoftwareModule:2013670336276694550', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:5759203836592719132', 'src:immutable-def-plan', '3.1 Interpreter', 'The registry gets a scope stack', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:5778588895625917877', 'ent:SoftwareModule:425341189454841366', 'depends_on', 'entity', 'ent:SoftwareModule:559301050642427014', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:5778588895625917877', 'src:gomod:eng-go', 'require block', 'github.com/boru-lang/boru/check/go v0.0.0', 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:5796304702191188158', 'ent:Document:4618181878588391523', 'supports', 'entity', 'ent:SoftwareModule:2013670336276694550', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
@@ -985,6 +995,8 @@ INSERT INTO assertions VALUES ('ast:8686166953339451140', 'ent:SoftwareModule:82
 INSERT INTO assertion_evidence VALUES ('ast:8686166953339451140', 'src:go-tree', 'lang/go/policy', NULL, 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:8731733153397530894', 'ent:SoftwareModule:4598127138166596702', 'part_of', 'entity', 'ent:Product:4032424380612892464', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:8731733153397530894', 'src:go-work', 'use block', './test/solardemo', 'rule', 'kg-gomod');
+INSERT INTO assertions VALUES ('ast:8741831011387066696', 'ent:Document:8413518511770048793', 'related_to', 'entity', 'ent:Document:268210795961119346', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
+INSERT INTO assertion_evidence VALUES ('ast:8741831011387066696', 'src:immutable-def-plan', 'Status', 'whose §5–§8 this note closes', 'direct_record', 'kg-ingest');
 INSERT INTO assertions VALUES ('ast:8753776083565122130', 'ent:SoftwareModule:4517151722362921484', 'part_of', 'entity', 'ent:SoftwareModule:5138375578915662736', NULL, NULL, NULL, NULL, 1, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
 INSERT INTO assertion_evidence VALUES ('ast:8753776083565122130', 'src:go-tree', 'test/go/fissiongate', NULL, 'rule', 'kg-gomod');
 INSERT INTO assertions VALUES ('ast:875728536337980974', 'ent:Document:6405878246381134420', 'part_of', 'entity', 'ent:Document:520435226487613788', NULL, NULL, NULL, NULL, 0.95, 'asserted', NULL, NULL, '2026-08-07T00:00:00Z', NULL);
