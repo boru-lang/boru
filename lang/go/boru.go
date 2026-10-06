@@ -154,7 +154,30 @@ type Options struct {
 	// a legitimately long computation trips the default ceiling, or
 	// downward to bound an untrusted program.
 	Steps int
+	// InPlace selects the interpreter's call-completion mechanism — the
+	// in-place compilation PROTOTYPE (core/go/inplace.go,
+	// design/IN-PLACE-COMPILATION.0.md). The zero value keeps the process
+	// default (BORU_INPLACE, off when unset); InPlaceOn and InPlaceVerify
+	// select the mechanism and its verify lane, InPlaceForceOff the legacy
+	// completion regardless of the environment. Set via the CLI's
+	// `--options inplace:on|verify|off`.
+	InPlace InPlaceOption
 }
+
+// InPlaceOption is Options.InPlace: the zero value keeps the process default.
+type InPlaceOption int
+
+const (
+	// InPlaceDefault keeps the process default (BORU_INPLACE).
+	InPlaceDefault InPlaceOption = iota
+	// InPlaceOn compiles fully matched calls in place.
+	InPlaceOn
+	// InPlaceVerify runs the legacy completion and counts plan/re-plan
+	// disagreements.
+	InPlaceVerify
+	// InPlaceForceOff selects the legacy completion.
+	InPlaceForceOff
+)
 
 // TapeOptions configures the execution tape's bounded growth — see
 // eng/go/tape.go. InitialSize 0 derives from the program; MaxGrows 0 and
@@ -205,6 +228,14 @@ func New(opts ...Options) (*Boru, error) {
 	}
 	reg.TapeConfig = o.Tape
 	reg.StepLimit = o.Steps
+	switch o.InPlace {
+	case InPlaceOn:
+		reg.InPlace = core.InPlaceOn
+	case InPlaceVerify:
+		reg.InPlace = core.InPlaceVerify
+	case InPlaceForceOff:
+		reg.InPlace = core.InPlaceOff
+	}
 	if o.Env != nil {
 		native.SetHostEnvOps(reg, o.Env)
 	}

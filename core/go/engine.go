@@ -80,6 +80,17 @@ type Engine struct {
 	// word twin's /s retry.
 	sealFnValue    bool
 	sealFnValueIdx int
+	// In-place compilation state (inplace.go, a prototype off by default):
+	// nopPending counts nops written since the last compaction attempt;
+	// sawNop latches once this engine wrote any, so the legacy lane never
+	// pays for a nop pass; verifySig/verifyIdx/verifyCommit carry verify
+	// mode's armed plan to the re-step that re-plans it.
+	nopPending   int
+	sawNop       bool
+	verifySig    *Signature
+	verifyIdx    int
+	verifyCommit bool
+	verifyHeld   bool
 	// fnValueRecovery is set while a module NATIVE reached as a fn VALUE runs
 	// the check pass's no-signature recovery (execFnDefLiteral →
 	// fnValueNoMatchRecovers). The interpreter's fn-value no-match PARKS the
@@ -534,7 +545,7 @@ func (e *Engine) effectiveSource() string {
 // no patterns), 2–4 args, first matching signature wins. Returns ""
 // when no reorder explains the failure.
 func (e *Engine) reorderHint(name string, fn *FnDefInfo) string {
-	return ReorderHintFor(name, fn, ReorderCandidates(e.Tape.Prefix(e.Pointer)))
+	return ReorderHintFor(name, fn, ReorderCandidates(e.diagPrefix()))
 }
 
 // reorderCandidates and reorderForwardCandidates moved to region_diag.go as
@@ -597,7 +608,7 @@ func (e *Engine) rematchWrittenSplit(fn *FnDefInfo) ([]Value, int) {
 // "x" f` — "the arguments were 'x' and None"). Off a recording pass the
 // recorder marks nothing and the prefix is the tape's.
 func (e *Engine) runPrefix() []Value {
-	prefix := ReorderCandidates(e.Tape.Prefix(e.Pointer))
+	prefix := ReorderCandidates(e.diagPrefix())
 	es := e.Registry.analysisRecorder()
 	for i, v := range prefix {
 		if es.ZeroOutProduced(v.ID) {
@@ -1202,6 +1213,12 @@ func (e *Engine) IsFnShapeTypedBindingContext() bool {
 			return false
 		}
 		mapIdx := fwd.FuncIndex - fwd.CollectedArgs
+		if fwd.InPlace {
+			mapIdx = -1
+			if ops := e.inPlaceOperands(i, e.Pointer, 1); len(ops) == 1 {
+				mapIdx = ops[0]
+			}
+		}
 		if mapIdx < 0 || mapIdx >= e.Tape.Len() {
 			return false
 		}
@@ -1775,6 +1792,12 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 			break
 		}
 
+		// In-place compilation (inplace.go): drop the nops a statement
+		// stream has left below the pointer once enough have accumulated —
+		// never while a value callee's one-shot seal holds an index.
+		if e.nopPending > nopCompactEvery && !e.sealFnValue {
+			e.compactNops()
+		}
 		e.noteDefStack(step == 0)
 		val := e.Tape.At(e.Pointer)
 
@@ -2055,6 +2078,7 @@ func (e *Engine) resolveOrphanedForwards() error {
 			return nil
 		}
 
+		fwdIdx = e.normalizeInPlaceForward(fwdIdx, NormInputEnd)
 		fwd, _ := AsForward(e.Tape.At(fwdIdx))
 		funcIdx := fwd.FuncIndex
 		collectedCount := fwd.CollectedArgs
@@ -3217,6 +3241,11 @@ func (e *Engine) stepWord(val Value) error {
 	}
 
 	fn := e.Registry.Lookup(w.Name)
+	// The binding generation the plan below is made against: the forward
+	// walk can evaluate a group that re-defs the word, and an in-place
+	// completion runs this plan only while the word still names this
+	// binding (ForwardInfo.Gen, inplace.go).
+	planGen := e.planGen(w.Name)
 	if fn != nil {
 		// User-code dispatch — record the name as "used" for
 		// unused-def analysis in check mode.
@@ -3383,6 +3412,7 @@ func (e *Engine) stepWord(val Value) error {
 	if abandon {
 		return err
 	}
+	e.checkVerify(w.Name, sig)
 	// The word-dispatch commit, as planned (dispatch_probe.go): the
 	// admission-agreement census reads it here, before the check-mode
 	// Fallback recovery below, which analysis alone reaches.
@@ -3482,7 +3512,7 @@ func (e *Engine) stepWord(val Value) error {
 		if e.trace != nil {
 			e.traceNote = "forward→ " + traceSigStr(w.Name, sig)
 		}
-		return e.insertForward(w, sig, fwdCount, stkCount, specAt)
+		return e.insertForward(w, sig, fwdCount, stkCount, specAt, e.inPlaceWord(sig), planGen)
 	}
 
 	// Compile-mode forward-collection drift guard
@@ -3506,18 +3536,9 @@ func (e *Engine) stepWord(val Value) error {
 	}
 	e.declineForwardStackDrift(fn, w, sig, positions)
 
-	// Immediate execution: read args from recorded positions.
-	match := &MatchResult{Sig: sig, Positions: positions, Name: w.Name}
-	if stkCount > 0 {
-		match.Args = make([]Value, stkCount)
-		for i, pos := range positions {
-			match.Args[i] = e.Tape.At(pos)
-		}
-	}
-	if e.trace != nil {
-		e.traceNote = "stack " + traceSigStr(w.Name, sig)
-	}
-	return e.execMatch(match)
+	// Immediate execution over the recorded positions — compiled in place
+	// when the engine compiles calls in place (dispatchStack, inplace.go).
+	return e.dispatchStack(w, sig, positions, stkCount)
 }
 
 // mixedFormStackSlotAny reports whether the deepest stack-bound sig slot of a
@@ -3680,11 +3701,9 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	}
 	n := match.Sig.TotalArgs()
 
-	// Use recorded positions if available, otherwise derive from stack.
-	indices := match.Positions
-	if len(indices) == 0 && n > 0 {
-		indices = e.ResolvedIndicesBefore(n)
-	}
+	// Use recorded positions if available, otherwise derive from stack
+	// (none for an in-place call cell — matchIndices, inplace.go).
+	indices := e.matchIndices(match, n)
 	// Sort indices ascending for splice operations.
 	sortedIndices := sortedPositions(indices)
 	if outer := e.optimisticOuter(match, indices); outer != nil {
@@ -4005,7 +4024,7 @@ func (e *Engine) execMatch(match *MatchResult) error {
 	// correctness never depends on firing.
 	var fullReplace *frameTailScan
 	if match.Sig.FnFrame() != nil {
-		if scan, ok := e.probeTailCall(sortedIndices, n); ok {
+		if scan, ok := e.probeTailCallFor(match, sortedIndices, n); ok {
 			e.Registry.TCO.Detected++
 			if e.tcoEligible(scan, match.Sig, defMutsBefore) {
 				if scan.ValuesBelow || !e.returnsConform(scan, match.Sig) {
@@ -4384,6 +4403,10 @@ func stampCallResultPositions(results []Value, pos SrcPos) {
 }
 
 func (e *Engine) spliceMatchResults(match *MatchResult, sortedIndices []int, n int, results []Value) error {
+	if match != nil && match.InPlace {
+		e.placeResults(results)
+		return nil
+	}
 	if len(sortedIndices) == n && n > 0 {
 		firstArgIdx := sortedIndices[0]
 
@@ -4505,7 +4528,7 @@ func resolvedIndicesBeforeInto(win *Tape, pointer int, buf []int, n int) []int {
 		if IsOpenParen(win.At(i)) {
 			break
 		}
-		if IsForward(win.At(i)) || IsMark(win.At(i)) || IsMove(win.At(i)) {
+		if v := win.At(i); IsForward(v) || IsMark(v) || IsMove(v) || IsNop(v) {
 			continue
 		}
 		indices = append(indices, i)
@@ -4527,7 +4550,7 @@ func (e *Engine) resolvedStackBeforeFrom(from int, excludeIndices []int) []Value
 	}
 	var stack []Value
 	for i := from; i < e.Pointer; i++ {
-		if exclude[i] || IsForward(e.Tape.At(i)) || IsOpenParen(e.Tape.At(i)) || IsMark(e.Tape.At(i)) || IsMove(e.Tape.At(i)) {
+		if v := e.Tape.At(i); exclude[i] || IsForward(v) || IsOpenParen(v) || IsMark(v) || IsMove(v) || IsNop(v) {
 			continue
 		}
 		stack = append(stack, e.Tape.At(i))
@@ -4551,7 +4574,7 @@ func (e *Engine) forceStackWord(idx int, w WordInfo) {
 	e.Tape.Set(idx, nw)
 }
 
-func (e *Engine) insertForward(w WordInfo, sig *Signature, forwardNeeded, stackArgs, specAt int) error {
+func (e *Engine) insertForward(w WordInfo, sig *Signature, forwardNeeded, stackArgs, specAt int, inPlace bool, gen int64) error {
 	var pos SrcPos
 	if e.Pointer >= 0 && e.Pointer < e.Tape.Len() {
 		pos = e.Tape.At(e.Pointer).Pos()
@@ -4572,6 +4595,11 @@ func (e *Engine) insertForward(w WordInfo, sig *Signature, forwardNeeded, stackA
 		// on the tape and no name capture at the first slot is exactly
 		// the case PlanMatch defers every candidate for.
 		WordLed: e.Pointer+1 < e.Tape.Len() && IsWord(e.Tape.At(e.Pointer+1)) && (sig.QuoteArgs == nil || !sig.QuoteArgs[0]),
+		// In-place compilation (inplace.go): the arrivals stay where they
+		// arrive, and the completion runs this plan's signature while the
+		// word still names the binding it was planned against.
+		InPlace: inPlace,
+		Gen:     gen,
 	})
 
 	e.Tape.Insert(e.Pointer+1, fwd)
@@ -4732,6 +4760,13 @@ func (e *Engine) pendingForwardIdx() int {
 
 func (e *Engine) stepLiteral() error {
 	valIdx := e.Pointer
+
+	// In-place compilation's cells (inplace.go): a nop is skipped, a call
+	// cell executes. Every step loop's literal arm reaches this, so none of
+	// them needs a case of its own.
+	if ok, err := e.stepInPlaceCell(e.Tape.At(valIdx)); ok {
+		return err
+	}
 
 	// A ParenExpr reaching stepLiteral (nested inside a collapsing paren
 	// span, where the in-place collapse loops in preEvalParens and
@@ -4945,6 +4980,9 @@ func (e *Engine) stepLiteral() error {
 	if fwd.WordLed {
 		e.noteWordLedArrival(&fwd, valIdx, funcIdx)
 	}
+	if fwd.InPlace {
+		return e.arriveInPlace(fwd, fwdIdx, valIdx)
+	}
 
 	// Remove the value from its current position.
 	val := e.Tape.At(valIdx)
@@ -4995,6 +5033,7 @@ func (e *Engine) stepLiteral() error {
 			if IsWord(e.Tape.At(funcIdx)) {
 				w, _ := AsWord(e.Tape.At(funcIdx))
 				e.forceStackWord(funcIdx, w)
+				e.armVerify(fwd.Sig, funcIdx, fwd.CollectedArgs+fwd.StackArgs, false)
 			} else if fv, _, isFn := e.fnDefAtPointer(e.Tape.At(funcIdx)); isFn &&
 				!e.fnValueWouldWiden(fv, fwd.CollectedArgs+fwd.StackArgs, funcIdx+1) {
 				// A VALUE-called function (a dot-read export, a stored
@@ -6220,8 +6259,12 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// paren (`m.z/v`, `m.z/q`) states data intent, and dispatching here
 	// would consume the fn before the post-collapse marker peek could
 	// see it — so a marked 0-arg read defers like any other fn.
-	if valIdx > 0 && valIdx+1 < e.Tape.Len() &&
-		e.Tape.At(valIdx-1).ReachGroup && IsOpenParen(e.Tape.At(valIdx-1)) &&
+	// The left neighbour reads past in-place compilation's nops (a group's
+	// own call leaves them there, inplace.go), as it reads past nothing on
+	// the legacy layout.
+	left := e.prevNonNop(valIdx)
+	if left >= 0 && valIdx+1 < e.Tape.Len() &&
+		e.Tape.At(left).ReachGroup && IsOpenParen(e.Tape.At(left)) &&
 		IsCloseParen(e.Tape.At(valIdx+1)) &&
 		(!FnValueOnlyZeroArgSigs(fnDef) || e.dispatchModAt(valIdx+2)) {
 		e.Pointer++
@@ -6417,7 +6460,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	// the body / handler runs.
 	if fwdCount > 0 {
 		stkCount := len(positions) - fwdCount
-		return e.insertForward(w, sig, fwdCount, stkCount, specAt)
+		return e.insertForward(w, sig, fwdCount, stkCount, specAt, false, 0)
 	}
 
 	// The fn-value dispatch COMMIT (dispatch_probe.go): past every
@@ -8337,6 +8380,7 @@ func FnValueOnlyZeroArgSigs(fd FnDefInfo) bool {
 
 // implicitEnd resolves a forward early when a type mismatch occurs.
 func (e *Engine) implicitEnd(fwdIdx int) error {
+	fwdIdx = e.normalizeInPlaceForward(fwdIdx, NormImplicit)
 	fwd, _ := AsForward(e.Tape.At(fwdIdx))
 	funcIdx := fwd.FuncIndex
 	collectedCount := fwd.CollectedArgs
@@ -8421,6 +8465,7 @@ func (e *Engine) commitBarrierForward() bool {
 		return false
 	}
 
+	fwdIdx = e.normalizeInPlaceForward(fwdIdx, NormCommit)
 	fwd, _ := AsForward(e.Tape.At(fwdIdx))
 	funcIdx := fwd.FuncIndex
 	claimed := fwd.CollectedArgs + fwd.StackArgs
@@ -8500,6 +8545,7 @@ func (e *Engine) commitBarrierForward() bool {
 	}
 	e.Pointer = funcIdx
 	e.rearrangeForForward(fwd.StackArgs, fwd.CollectedArgs)
+	e.armVerify(m.Sig, funcIdx, fwd.CollectedArgs+fwd.StackArgs, true)
 	return true
 }
 
@@ -8607,6 +8653,7 @@ func (e *Engine) stepEnd() error {
 		return nil
 	}
 
+	fwdIdx = e.normalizeInPlaceForward(fwdIdx, NormStmtEnd)
 	fwd, _ := AsForward(e.Tape.At(fwdIdx))
 	funcIdx := fwd.FuncIndex
 
@@ -8996,8 +9043,12 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 // continues it as it would for a signal the body raised itself.
 func (e *Engine) collectLoopRegion(cont *ForCont, markIdx, moveIdx int) (escaped bool, err error) {
 	base := len(cont.Results)
+	e.normalizeForwardsIn(markIdx+1, moveIdx)
 	for j := markIdx + 1; j < moveIdx; j++ {
 		v := e.Tape.At(j)
+		if IsNop(v) {
+			continue
+		}
 		if isPendingResidualContainer(v) {
 			ev, err := e.autoEvalResidual(v)
 			if err != nil {
@@ -9037,7 +9088,9 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 
 	var condResult Value
 	for j := markIdx + 1; j < moveIdx; j++ {
-		condResult = e.Tape.At(j)
+		if v := e.Tape.At(j); !IsNop(v) {
+			condResult = v
+		}
 	}
 	if condResult.Parent == nil {
 		delete(e.marks, info.To)
@@ -9101,7 +9154,9 @@ func (e *Engine) stepMoveIf(markIdx, moveIdx int, info MoveInfo) error {
 	// Collect condition results between mark and move.
 	var condResult Value
 	for j := markIdx + 1; j < moveIdx; j++ {
-		condResult = e.Tape.At(j)
+		if v := e.Tape.At(j); !IsNop(v) {
+			condResult = v
+		}
 	}
 
 	// Remove mark from hash table.
@@ -9195,6 +9250,7 @@ func (e *Engine) exitWithFlowCtrl() ([]Value, error) {
 		e.Tape.TakeAll()
 		return nil, nil
 	}
+	e.dropAllNops()
 	return e.Tape.TakeAll(), nil
 }
 
@@ -9284,7 +9340,9 @@ func (e *Engine) handleLoopContinue() bool {
 	return false
 }
 
-// cleanMarks removes any leftover mark and move entries from the stack.
+// cleanMarks removes any leftover mark and move entries from the stack —
+// and the nops in-place compilation left (inplace.go), so a run's residual
+// never carries one.
 func (e *Engine) cleanMarks() {
 	i := 0
 	for i < e.Tape.Len() {
@@ -9295,6 +9353,7 @@ func (e *Engine) cleanMarks() {
 		}
 	}
 	e.marks = nil
+	e.dropAllNops()
 }
 
 // stepOpenParen replaces the "(" word with an open-paren marker.
@@ -9962,6 +10021,7 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 		for i := openIdx + 1; i < closeIdx; i++ {
 			if IsForward(e.Tape.At(i)) {
 				hasFwd = true
+				i = e.normalizeInPlaceForward(i, NormParenClose)
 				fwd, _ := AsForward(e.Tape.At(i))
 				funcIdx := fwd.FuncIndex
 				collectedCount := fwd.CollectedArgs
@@ -10059,6 +10119,10 @@ func (e *Engine) stepCloseParen(reStepped, feedsForward bool) error {
 			return e.insufficientArgsError(fwd.FuncName, fwd.ExpectedArgs, fwd.Pos) //covergate:allow interpreter step/dispatch defensive index+error arm; unreachable via eng harness (design/COVERAGE-ALLOWLIST.10.md §engine)
 		}
 	}
+
+	// In-place compilation's nops leave the group before anything reads its
+	// scope (compactGroup, inplace.go).
+	closeIdx = e.compactGroup(openIdx, closeIdx)
 
 	// A group that resolved to ZERO values is recorded together with
 	// its candidate consumers — the pending words below it on the
@@ -10483,6 +10547,12 @@ func (e *Engine) EffectiveResolved() []Value {
 				clear(excludeIndices)
 			}
 			hasExclude = true
+			if fwd.InPlace {
+				// An in-place forward's operands stay after its marker
+				// (inplace.go): exclude what it actually claimed.
+				e.excludeInPlaceClaims(i, e.Pointer, fwd, excludeIndices)
+				continue
+			}
 			// Exclude the function word itself.
 			excludeIndices[fwd.FuncIndex] = true
 			// Exclude collected forward args (positioned before function word).
@@ -10508,7 +10578,7 @@ func (e *Engine) EffectiveResolved() []Value {
 	resolved := e.resolvedScratch[:0]
 	for i := start; i < e.Pointer; i++ {
 		v := e.Tape.At(i)
-		if IsForward(v) || IsOpenParen(v) || IsMark(v) || IsMove(v) || (hasExclude && excludeIndices[i]) {
+		if IsForward(v) || IsOpenParen(v) || IsMark(v) || IsMove(v) || IsNop(v) || (hasExclude && excludeIndices[i]) {
 			continue
 		}
 		resolved = append(resolved, v)
@@ -10571,6 +10641,10 @@ func (e *Engine) curryOrStack(funcIdx int, collectedCount int, stackArgCount ...
 			}
 			if IsForward(e.Tape.At(i)) {
 				fwd, _ := AsForward(e.Tape.At(i))
+				if fwd.InPlace {
+					e.excludeInPlaceClaims(i, funcIdx, fwd, excludeIndices)
+					continue
+				}
 				// Exclude the function word itself.
 				excludeIndices[fwd.FuncIndex] = true
 				// Exclude collected forward args (before function word).
@@ -10592,7 +10666,7 @@ func (e *Engine) curryOrStack(funcIdx int, collectedCount int, stackArgCount ...
 		var resolved []Value
 		for i := start; i < funcIdx; i++ {
 			v := e.Tape.At(i)
-			if IsForward(v) || IsOpenParen(v) || excludeIndices[i] {
+			if IsForward(v) || IsOpenParen(v) || IsNop(v) || excludeIndices[i] {
 				continue
 			}
 			resolved = append(resolved, v)

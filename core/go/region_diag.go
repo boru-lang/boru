@@ -25,6 +25,9 @@ func ReorderCandidates(stack []Value) []Value {
 	var vals []Value
 	for i := len(stack) - 1; i >= 0 && len(vals) < 4; i-- {
 		v := stack[i]
+		if IsNop(v) {
+			continue // an in-place call's claimed cell (inplace.go): no operand
+		}
 		if IsOpenParen(v) || IsForward(v) || IsWord(v) || IsEnd(v) ||
 			v.Parent.ConformsTo(TMark) || v.Parent.ConformsTo(TMove) ||
 			v.Parent.ConformsTo(TInternal) {

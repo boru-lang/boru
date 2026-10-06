@@ -1767,6 +1767,17 @@ type ForwardInfo struct {
 	// to a narrower window when the value misses its slot, which the compile
 	// pass cannot see; its arrival asks (noteWordLedArrival, NUR241).
 	WordLed bool
+	// InPlace marks a forward whose arrivals STAY where they arrive (in-place
+	// compilation, inplace.go): its collected operands follow the marker in
+	// arrival order with only nop cells between them, instead of being moved
+	// before the word. Every reader of a pending forward's layout branches
+	// on it; normalizeInPlaceForward rewrites it to the legacy layout for
+	// the cold paths.
+	InPlace bool
+	// Gen is the word's binding generation (DefTable.Gen) when the forward
+	// parked: an in-place completion executes the planned signature only
+	// while the word still names that binding.
+	Gen int64
 }
 
 // Value is the single node type of the boru kernel: it is at once a
@@ -4166,6 +4177,14 @@ func kernelFormatDefault(v Value) string {
 	case IsForward(v):
 		f, _ := AsForward(v)
 		return fmt.Sprintf("forward(%s,%d/%d)", f.FuncName, f.CollectedArgs, f.ExpectedArgs)
+	case IsNop(v):
+		// In-place compilation's claimed cell (inplace.go).
+		return "nop"
+	case IsCall(v):
+		// In-place compilation's call cell: the matched dispatch over its
+		// operands in signature order.
+		ci, _ := AsCall(v)
+		return fmt.Sprintf("call(%s %v)", ci.Name(), ci.Args())
 	case IsOpenParen(v):
 		return "("
 	case IsCloseParen(v):

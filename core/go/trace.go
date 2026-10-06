@@ -24,6 +24,19 @@ const (
 // TraceColorize returns a colored string representation of a Value for trace output.
 func TraceColorize(v Value) string {
 	switch {
+	case IsNop(v):
+		// In-place compilation's claimed cell (inplace.go).
+		return cDim + "·" + cReset
+	case IsCall(v):
+		// In-place compilation's call cell: the matched dispatch over its
+		// operands in signature order.
+		ci, _ := AsCall(v)
+		parts := make([]string, 0, len(ci.Args())+1)
+		parts = append(parts, ci.Name())
+		for _, a := range ci.Args() {
+			parts = append(parts, TraceColorize(a))
+		}
+		return cMagenta + "⟨" + cReset + strings.Join(parts, " ") + cMagenta + "⟩" + cReset
 	case IsWord(v):
 		w, _ := AsWord(v)
 		if w.ForceStack {

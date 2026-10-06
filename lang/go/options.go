@@ -26,6 +26,8 @@ func ParseOptions(s string) (map[string]any, error) {
 //
 //	tape  : { initial : <int>, grows : <int>, factor : <number> }
 //	steps : <int>   evaluation step budget (>= 1); unset = engine default
+//	inplace : on | verify | off   the in-place compilation prototype
+//	          (core/go/inplace.go); unset = the BORU_INPLACE default
 //
 // New option sections are added here as they are introduced.
 func ApplyOptions(o *Options, m map[string]any) error {
@@ -51,8 +53,14 @@ func ApplyOptions(o *Options, m map[string]any) error {
 				return fmt.Errorf("option %q must be at least 1, got %d", key, n)
 			}
 			o.Steps = n
+		case "inplace":
+			mode, ok := map[string]InPlaceOption{"on": InPlaceOn, "verify": InPlaceVerify, "off": InPlaceForceOff}[fmt.Sprint(val)]
+			if !ok {
+				return fmt.Errorf("option %q must be on, verify or off, got %v", key, val)
+			}
+			o.InPlace = mode
 		default:
-			return fmt.Errorf("unknown option %q (known: tape, steps)", key)
+			return fmt.Errorf("unknown option %q (known: tape, steps, inplace)", key)
 		}
 	}
 	return nil

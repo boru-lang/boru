@@ -139,7 +139,7 @@ func TestNUR241WordLedPlanIsMarked(t *testing.T) {
 	e := NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("cadd"), NewWord("x"), NewInteger(3)}, StackHeadroom)
 	sig := &Signature{Args: []*Type{TInteger, TInteger}, BarrierPos: -1}
-	if err := e.insertForward(WordInfo{Name: "cadd"}, sig, 2, 0, -1); err != nil {
+	if err := e.insertForward(WordInfo{Name: "cadd"}, sig, 2, 0, -1, false, 0); err != nil {
 		t.Fatal(err)
 	}
 	fwd, _ := AsForward(e.Tape.At(1))
@@ -148,7 +148,7 @@ func TestNUR241WordLedPlanIsMarked(t *testing.T) {
 	}
 	e = NewTop(r)
 	e.Tape = NewTape([]Value{NewWord("cadd"), NewInteger(1), NewInteger(3)}, StackHeadroom)
-	if err := e.insertForward(WordInfo{Name: "cadd"}, sig, 2, 0, -1); err != nil {
+	if err := e.insertForward(WordInfo{Name: "cadd"}, sig, 2, 0, -1, false, 0); err != nil {
 		t.Fatal(err)
 	}
 	if fwd, _ = AsForward(e.Tape.At(1)); fwd.WordLed {

@@ -332,3 +332,19 @@ scan), `design/FORWARD-COLLECTION-TRAPS.0.md` (zero-value arrivals and
 bare-word keys — other costs of the same architecture),
 `design/FORWARD-STRAND-ADVISORY.10.md` (the check-mode advisory for
 mixed-form stranding).
+
+## Amendment 2026-10-06 — in-place arrival (a prototype, off by default)
+
+With in-place compilation on (`BORU_INPLACE=1`, `--options inplace:on`;
+[IN-PLACE-COMPILATION.0.md](IN-PLACE-COMPILATION.0.md)), phase 2's arrival
+no longer moves the value before the word: it stays after the marker, and
+the last arrival compiles the planned signature into a call cell — no `/s`
+re-step, no second plan — while the word still names the binding it was
+planned against and the planned signature still matches the arrived values
+the way the re-plan tests them. Otherwise, and at every other phase-2 stop
+(an implicit end, `end`, `)`, the end of input, the statement-boundary
+commit, a loop region's collection), the forward is first normalised to the
+layout this note describes and the code above runs unchanged. The
+invariants hold as written; the third is met by normalising before the
+commit's re-dispatch. Off by default, the arrival loop is exactly the one
+described here.

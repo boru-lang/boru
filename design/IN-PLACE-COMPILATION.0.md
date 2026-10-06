@@ -1,12 +1,14 @@
 # In-place compilation — the interpreter writes compiled call cells into its own tape
 
-**Status:** prototype design, 2026-10-06. Not built. Interpreter mode only,
-off by default behind an option. The maintainer asked for this design and
-answered its first question — *no rearrangement of the arguments into
-canonical Forth order before the compiled cell is written; forward matching
-is sufficient* — and the remaining questions were answered with the
-defaults recorded in §2, which stay open for the maintainer to overrule
-(§11).
+**Status:** prototype **built**, 2026-10-06. Interpreter mode only, off by
+default: `BORU_INPLACE=1` (or `verify`) in the environment,
+`--options inplace:on|verify|off` on the CLI, `lang.Options.InPlace` for a
+host. §1–§11 are the design as written before the build; **§12 records
+where the build departs from it, how it was verified, and what it
+measured.** The maintainer answered the first question — *no rearrangement
+of the arguments into canonical Forth order before the compiled cell is
+written; forward matching is sufficient* — and the build follows it; the
+other defaults (§2) stay open for the maintainer to overrule (§11).
 
 > **Scope note.** This is a performance mechanism *inside the tree-walking
 > interpreter*: how a matched call is executed on the tape. It is a
@@ -576,3 +578,222 @@ realised on the tape. It needs the maintainer's answer to question 1.
    dispatch at plan time) and the engine's internal `forceStackWord`
    rewrite disappears from the hot path. Is `ForceStack` as an *internal*
    mechanism something to retire once P2 lands?
+
+## 12 The prototype as built (2026-10-06)
+
+### 12.1 Where the build departs from §3–§10
+
+| planned | built | why |
+|---|---|---|
+| `TNop`, `TCall` lattice nodes under `Word/__IN` (§3.2) | both cells are plain `Word/__IN` (`TInternal`) values told apart by payload: `NopInfo{}` (zero-size — writing one never allocates) and `*CallInfo` | every predicate that treats `TInternal` as a marker already classifies them; no lattice change |
+| `CallInfo{Name, Sig, Reg, Args, Stack, Lo, argv[4]}` | `CallInfo{match MatchResult}`, embedded in a record sized to the call (`callInfo1`/`2`/`3` carry the operand storage; four or more allocate the slice): the cell carries the very `MatchResult` `execMatch` runs | one allocation per call, of the bytes the legacy lane spends on a match and its argument slice in two; a fixed three-slot record cost +15 % bytes on `fib` |
+| `MatchResult.Cell` | `MatchResult.InPlace`, `MatchResult.SpanLo` | the zero value stays legacy |
+| one `claimedCells` helper (§3.4) | `inPlaceOperands` (the non-nop cells after the marker), `claimedStack` (the resolved cells below the word), `excludeInPlaceClaims` (the readers' exclusion set) | each reader needs a different slice of the claim |
+| nops persist until a region's drain, `Tape.DropWhere(IsNop)` (§4, R5) | **a call cell drops its own nops when it executes** (`dropCallSpan`: the span `[SpanLo, cell)` is all nops in the common case, and one `Splice` beside the gap removes it), so a nop lives one step. What a mark interrupts — a value-stack operand claimed from below a loop's mark — goes with the loop region the iteration's collection replaces, or `Tape.DropNopsIn` drops it at a group's collapse (`compactGroup`), the run's end (`cleanMarks`, `exitWithFlowCtrl`), or every 64 nops in a statement (`compactNops`: between the innermost `(` and the pointer, declined while a call cell stands at the pointer, a forward is pending there or the value-callee seal is armed) | measured (§12.6): every dispatch's backward scans (`EffectiveResolved`, the pending-forward probes, the commit probe) walk the nops below the pointer, so a periodic pass alone cost more than it saved — at a 64-nop period `arith_chain64` ran 22 % slower than the legacy lane, at an 8-nop period 12 % faster, and with the eager drop 20 % faster |
+| the barrier commit compiled in place (§3.3 G, §3.6) | **normalised and left on the legacy path**, like the other cold sites | the verify lane found the commit is exactly where the plan and the re-plan differ by design (§12.3) |
+| R1 by assumption; verify mode executing in place (§5, §6) | the completion executes the plan's signature only while (a) the word still names the binding it was planned against — `ForwardInfo.Gen`, read before the plan walk, against `Defs.Gen` — and (b) the signature still matches the arrived operands the way the re-plan tests them — `planHolds`: slot types, type literals, `/q` names, and every pattern judged as a *stack* operand, NUR235's pending-container evaluation included. Otherwise `completeLegacy` normalises the forward and replays the last arrival through the legacy completion. Verify mode runs the legacy lane and compares each re-plan with its plan | (b) is not optional: the plan skips structural map patterns and non-concrete patterns at forward slots (`patternsOk`'s forward leniency), and the re-plan enforces them |
+| `Registry.InPlaceStats` (§5) | `core.InPlaceStats`, process-wide atomics | a module sub-registry runs on other goroutines |
+| a `boru-interp-inplace` column in `bench/interp/run.sh` (§7) | `BenchmarkInterpFixtures` (`lang/go`) | the CLI has had no interpreter-only lane since 2026-09-19, so `run.sh`'s interpreter column times the compiled lane (noted in `bench/interp/README.md`) |
+| zero results: `Set(cell, nop)`, the nop arm advances (§3.1) | the cell is removed (`Splice` of the one cell, which sits at the gap once its span is dropped); the pointer stands on the cell after it, as after the legacy splice | a `break` outside any loop reports at the cell the pointer stands on, and a nop has no position: the first build left the pointer on one, and the full lang suite run with the switch on caught it (`TestNUR355FlowOutsideLoop`, `TestNUR358ListLiteralIsNoLoop`, `TestNUR365ParenIsNoLoop`, `TestNUR355FileModuleFlowSource`); `TestInPlaceZeroResultPosition` pins it in core |
+
+As planned: value callees and `FullStack` signatures keep the legacy path;
+the switch is never honoured under an analysis pass or a stack-form
+recorder; a module sub-registry inherits its parent's switch. §3.7's step
+cost is finer than stated: a forward call costs the same steps as before
+(the call cell's step replaces the `/s` re-step), a value-stack or nullary
+call one more.
+
+### 12.2 Verification
+
+| what | size | result |
+|---|---|---|
+| core/spec `run` rows with the switch on and in verify mode (`TestCoreSpecInPlace`) | 425 rows | identical renderings |
+| lang/spec, each row interpreted three times (`TestInPlaceDifferential`, `BORU_INPLACE_DIFF=1`) | 8,684 rows; 8,672 compared — 12 nondeterministic (time, randomness, minted ids) excluded when two legacy runs disagreed | 0 divergent; 3 rows differ only in a printed step trace (`module-debug.tsv:51,54,57`, decision 7) |
+| the repository's real programs, interpreted from their own directories (`TestInPlaceRealPrograms`, same switch) | kg/tests and utils/tests: 20 programs, 1,213 boru:test cases | identical result, output, error stream, error and report |
+| every lang/go and basic/go package with `BORU_INPLACE=1` | the whole suites | green |
+| the langspec gate corpus, all nine shards, with `BORU_INPLACE=1` | every shard test | green and every gate at its regression ceiling, except one census the switch changes the subject of (below) |
+| TCO counters (R3) | `s 200`, `s2 1000 0`, `fib 15`, mutual `ev 501` | `Detected`/`Elided`/`Replaced` equal on both lanes |
+| core's own suite (`make cover-gate-core`) | 18,612 statements | 100 % |
+
+The one langspec test the switch turns red is
+`TestDispatchAdmissionAgreementCensus`, and only its staleness check: the
+census probes every dispatch the run commits, and on the legacy lane each
+forward call commits twice — at its plan and again at its `/s` re-step.
+In place there is no re-step, so 360,499 probed dispatches become 190,193,
+and the ledgered `kernel-no-match/def` window (`fn-triple.tsv:134`, `def f
+fn T Any [3]`), which only the re-step ever presented, is no longer seen.
+The answers are identical; the census is an instrument of the legacy
+completion and would be re-ledgered if the switch ever became the default.
+
+What the oracles found while building — none of it ever reached a lane.
+The first full differential flagged 24 rows: the plan's forward-slot
+pattern leniency (15 rows; fixed by `planHolds`), `execFnDefLiteral`'s
+"alone inside a reach-lowered group" neighbour test reading a nop (6 rows
+of `fn-value.tsv`; fixed by `prevNonNop`), and the three `module-debug.tsv`
+rows that print a step trace, which differ by design (decision 7) once the
+trace renders the new cells rather than their raw payloads
+(`kernelFormatDefault`'s nop and call arms). Review found a word re-bound
+during its own plan walk (the generation is now read before the walk), and
+the full suites the zero-result pointer above. The measurements found the
+first compaction policy's cost (§12.1, §12.6).
+
+### 12.3 R1, measured
+
+The verify lane over lang/spec compared 71,657 re-plans with their plans:
+71,635 chose the plan's signature and 22 did not.
+
+- **15 — the plan no longer held.** Structural map patterns and `tnot
+  List` inputs the plan skips at forward slots (`corpus-core.tsv`'s
+  create/load/remove/update, `edge-dispatch-3.tsv:63,65,68`,
+  `fn-triple.tsv:72–74`, `record.tsv:155`). `planHolds` hands exactly these
+  to the legacy completion — they are the 15 re-plan fallbacks of §12.4 —
+  so the lanes agree.
+- **7 — barrier commits where the plan held and the re-step chose a longer
+  overload**, claiming a value-stack operand the plan had left alone:
+  `5 if (1 eq 1) [99] def x 1` plans `if(Any, Any)` and re-plans
+  `if(Any, Any, Any)` with `5` as the else (`forward-barrier.tsv:41,42,88`,
+  `edge-forward-2.tsv:79`, `each-variants.tsv:86` ×3). The rows pin the
+  re-plan's answer ("a stack value claimed as the else is consumed"), so a
+  commit cannot execute its plan: it stays on the legacy path.
+
+§11's question 2 therefore has a measured answer for the prototype: away
+from a commit, the guarded plan *is* the dispatch; at a commit the
+re-plan is, as the corpus pins it. Whether the commit should keep that
+second choice is still the maintainer's question.
+
+### 12.4 What the mechanism did over lang/spec
+
+77,293 call cells executed: 71,556 forward completions and 5,737
+value-stack or nullary calls. 74 forwards were normalised — 58 at a
+barrier commit, 1 at an implicit end (`usurp.tsv:78`), 15 handed back by
+`planHolds` — and none at a statement end, a paren close, the end of input
+or a loop's collection: under the strict forward barrier the plan refuses
+before such a forward can park, so core's own tests drive those sites
+(`TestInPlaceNormalizeForwardsIn` and the rest). No rebinding fallback
+fired in the corpus; core and lang tests construct one. 219,388 nops were
+written and dropped, nearly all by the executing call that wrote them; the
+statement compaction never had to run (`TestInPlaceLoopLeftoverNops` is the
+shape that needs it).
+
+### 12.5 Tape edits per call
+
+`TestInPlaceTapeEdits` (core fixture; `Tape.Stats`, whole run):
+
+| program | legacy: Insert / Remove / Splice, cells moved | in place |
+|---|---|---|
+| `addq 1 2` | 3 / 3 / 1, 12 | 1 / 0 / 1, 5 |
+| `fourq 1 2 3 4` | 5 / 5 / 1, 24 | 1 / 0 / 1, 7 |
+| `5 flexq 1` (one value-stack operand) | 2 / 2 / 1, 7 | 1 / 0 / 1, 5 |
+| `addq ( addq 1 2 ) 3` | 6 / 8 / 2, 26 | 2 / 2 / 2, 12 |
+| `1 2 sumq` (a value-stack call) | 0 / 0 / 1, 3 | 0 / 0 / 1, 4 |
+
+The in-place Splice is the executing cell's drop of its own nops; the
+nested row's Inserts and Removes are its paren markers'. §7's structural
+targets hold for forward calls: one Insert, no Remove, no second plan. A
+value-stack call gains nothing in tape work — the legacy lane already runs
+it with one splice and no plan of its own at completion — and pays a step
+and a few Sets for its cell; it is compiled in place only because the
+rule (§3.1) is uniform.
+
+### 12.6 Performance
+
+Measured 2026-10-06 in this container (4-core Xeon, 2.1 GHz): three
+interleaved rounds of each configuration — the base commit's test binary
+(`3060f7553`), this build with the switch off, and with it on — two
+samples a round, benchstat over the six (p ≤ 0.05 shown; `~` is no
+significant change).
+
+**`BenchmarkStage6`, interpreter rows** (`lang/go`), base → switch on:
+
+| row | time/op | allocs/op | B/op |
+|---|---:|---:|---:|
+| `arith_chain64` | 593.9 µs → 454.6 µs, **−23.5 %** | 841 → 519, −38.3 % | −2.2 % |
+| `compare_loop` | 2.127 ms → 1.767 ms, **−16.9 %** | 4,642 → 3,633, −21.7 % | −3.0 % |
+| `if_scalar` | 3.964 ms → 3.307 ms, **−16.6 %** | 7,649 → 5,637, −26.3 % | −1.9 % |
+| `if_listcond` | 4.046 ms → 3.482 ms, **−13.9 %** | 8,647 → 6,835, −21.0 % | −1.8 % |
+| `for_tight` | 4.063 ms → 3.414 ms, **−16.0 %** | 6,876 → 5,267, −23.4 % | +1.8 % |
+| `each_list` | 1.146 ms → 1.051 ms, ~ | 1,625 → 1,316, −19.0 % | +0.6 % |
+| `fold_int` | 888.9 µs → 901.8 µs, ~ | 1,104 → 992, −10.1 % | +3.2 % |
+| `map_get` | 5.851 ms → 4.867 ms, **−16.8 %** | 6,041 → 4,834, −20.0 % | +1.3 % |
+| `string_join` | 2.734 ms → 2.551 ms, ~ | 16,350 → 16,140, −1.3 % | ~ |
+| `recursion_nontail` | 10.30 ms → 8.52 ms, **−17.3 %** | 15,460 → 11,440, −26.0 % | +0.7 % |
+| `recursion_tail` | 44.60 ms → 35.44 ms, **−20.5 %** | 73,850 → 54,830, −25.8 % | −0.2 % |
+| `do_body` | 1.432 ms → 1.150 ms, **−19.7 %** | 2,140 → 1,831, −14.4 % | +0.9 % |
+| **geomean** | **−14.8 %** | **−21.1 %** | −0.1 % |
+
+**`BenchmarkInterpFixtures`** (`bench/interp/fixtures`, parse amortised,
+no check pass), base → switch on:
+
+| fixture | time/op | allocs/op | B/op |
+|---|---:|---:|---:|
+| `fib` (recursive `fib 24`) | 6.462 s → 5.301 s, **−18.0 %** | 10.36 M → 7.58 M, −26.8 % | +1.1 % |
+| `loopsum` (`for` over 100,000) | 3.928 s → 3.501 s, **−10.9 %** | 3.50 M → 2.80 M, −20.0 % | ~ |
+| `nestloop` (300 × 300) | 3.472 s → 2.969 s, **−14.5 %** | 2.72 M → 2.09 M, −23.2 % | +0.0 % |
+| **geomean** | **−14.5 %** | **−23.4 %** | +0.4 % |
+
+**Switch off** against the base: no row of either benchmark moves
+significantly (geomean −1.2 % and −1.3 % time, allocations identical, bytes
++1.0 % and +1.5 % — the engine's new fields and the two `ForwardInfo`
+fields every parked forward boxes).
+
+**The real programs** (`TestInPlaceRealPrograms`, one run per lane, two
+runs): 156.9 s → 140.7 s (−10.3 %) and 158.0 s → 146.3 s (−7.4 %) for the
+twenty; kg's `codegraph_test.boru`, which builds the project graph
+interpreted, 121.3 s → 106.4 s and 119.5 s → 109.8 s (−8 to −12 %). The
+sub-second programs move within run-to-run noise either way.
+
+**`TestInterpAllocCeilings`** with the switch on: every shape under its
+ceiling, allocations down on all eight (e.g. `for_tight` 6,877 → 5,267,
+`arith_chain64` 841 → 519).
+
+**The nop policy** (§12.1), the same harness, three policies against the
+legacy lane — time/op geomean:
+
+| policy | Stage6 interp | fixtures | `arith_chain64` |
+|---|---:|---:|---:|
+| compact every 64 nops written | −4.2 % | −10.3 % | **+22.4 %** |
+| compact every 8 | −8.3 % | −10.0 % | −11.7 % |
+| **drop a call's own nops when it executes** (built) | **−11.1 %** | **−13.8 %** | **−20.4 %** |
+
+(The final numbers above add the sized call records, which took `fib`'s
+bytes from +14.6 % to +1.1 %.)
+
+**Where the time goes now.** `loopsum`'s CPU profile with the switch on:
+the planner (`PlanMatch` → `CollectCandidateScan` / `CollectForward`) is
+45 % of the run — called once per call now, where the baseline profile
+spent 55 % on it called twice — and 104-byte `Value` copies
+(`runtime.duffcopy`) 26 % (29 % before). The in-place machinery itself —
+arrival and completion, most of it the call record's allocation and
+`planHolds`' re-check, and the call cell's span drop — is 4 % of `loopsum`
+and 12 % of `fib`.
+
+### 12.7 Reading
+
+The mechanism does what §3 set out: a forward call is planned once, its
+operands never move, its completion is one call cell and its cleanup one
+`Splice` beside the gap; allocations fall by a fifth to a quarter and the
+interpreter by about 15 % on the benchmark shapes, 7–12 % on the real
+programs. It falls short of §7's −25 % target because phase 1 removes the
+*second* plan, not the first: the planner is still the largest cost, and
+§9's P3 (a call-site plan cache keyed by the word token, guarded by
+`Defs.Gen`) is the step aimed at it. P1b (the marker folded into the word's
+cell) would remove the last `Insert` per call; it is worth less than P3 now
+that the profile is measured. A value-stack call gains nothing (§12.5) and
+could keep the legacy immediate execution without loss.
+
+The prototype stays off by default. Before it could be the default: the
+maintainer's ruling on §11's question 2 for barrier commits (§12.3), the
+admission census re-ledgered for a lane without re-steps (§12.2), and a
+step-budget note — a value-stack call costs one more step than before
+(§12.1).
+
+### 12.8 Found on the way
+
+- `design/LANGREF.10.md`'s "Partial application via `def ... end`" examples
+  (`def add5 add 5 end`, `def greet add "hello " end`, and the composition
+  that uses them) raise `signature_error` on both lanes: the strict forward
+  barrier makes `add` begin its own dispatch while `def` waits. The section
+  documents behaviour the language no longer has.
+- `bench/interp/run.sh`'s `boru-interp` column times the compiled lane:
+  `BORU_NO_COMPILE` is gone (CLI.md). The README now says so and points at
+  `BenchmarkInterpFixtures`.

@@ -62,6 +62,10 @@ type Tape struct {
 	// pins it against a recount.
 	forwards int
 
+	// stats counts the tape's structural work (TapeStats) — plain fields:
+	// a tape belongs to one engine, which runs on one goroutine.
+	stats TapeStats
+
 	maxCap    int          // hard ceiling on len(buf) (entries)
 	maxGrows  int          // remaining reallocations allowed
 	grows0    int          // original maxGrows, restored by Reload
@@ -70,6 +74,17 @@ type Tape struct {
 	warned    [3]bool      // 90% / 95% / 99% warnings emitted
 	warn      func(string) // sink for capacity warnings (nil = silent)
 }
+
+// TapeStats counts a tape's structural work: its edits by kind, and the
+// cells MoveGap copied across the gap (the cost a gap move adds to an edit
+// away from the cursor). Read by the interpreter measurements
+// (design/IN-PLACE-COMPILATION.0.md §7).
+type TapeStats struct {
+	Sets, Inserts, Removes, Splices, Moved int64
+}
+
+// Stats returns the tape's structural-work counters.
+func (t *Tape) Stats() TapeStats { return t.stats }
 
 // Bounded-growth defaults.
 const (
@@ -263,6 +278,7 @@ func (t *Tape) Set(i int, v Value) {
 	if i < 0 || i >= t.Len() {
 		return
 	}
+	t.stats.Sets++
 	p := t.phys(i)
 	if IsForward(t.buf[p]) {
 		t.forwards--
@@ -286,11 +302,13 @@ func (t *Tape) MoveGap(i int) {
 	switch {
 	case i < t.gapStart:
 		n := t.gapStart - i
+		t.stats.Moved += int64(n)
 		copy(t.buf[t.gapEnd-n:t.gapEnd], t.buf[i:t.gapStart])
 		zero(t.buf[i : i+min(n, t.gapEnd-t.gapStart)])
 		t.gapStart, t.gapEnd = i, t.gapEnd-n
 	case i > t.gapStart:
 		n := i - t.gapStart
+		t.stats.Moved += int64(n)
 		copy(t.buf[t.gapStart:t.gapStart+n], t.buf[t.gapEnd:t.gapEnd+n])
 		zero(t.buf[max(t.gapEnd, t.gapStart+n) : t.gapEnd+n])
 		t.gapStart, t.gapEnd = i, t.gapEnd+n
@@ -359,6 +377,7 @@ func (t *Tape) Insert(i int, v Value) {
 	if max := t.Len(); i > max {
 		i = max
 	}
+	t.stats.Inserts++
 	t.MoveGap(i)
 	if !t.grow(1) {
 		return // ceiling hit; engine aborts loudly on the next step
@@ -375,6 +394,7 @@ func (t *Tape) Remove(i int) {
 	if i < 0 || i >= t.Len() {
 		return
 	}
+	t.stats.Removes++
 	t.MoveGap(i)
 	// The element at logical i sits just after the gap; widen over it.
 	if IsForward(t.buf[t.gapEnd]) {
@@ -399,6 +419,7 @@ func (t *Tape) Splice(i, count int, repl ...Value) {
 	if avail := t.Len() - i; count > avail {
 		count = avail
 	}
+	t.stats.Splices++
 	t.MoveGap(i)
 	// Consume count elements after the gap.
 	for k := 0; k < count; k++ {
@@ -414,6 +435,54 @@ func (t *Tape) Splice(i, count int, repl ...Value) {
 	copy(t.buf[t.gapStart:], repl)
 	t.gapStart += len(repl)
 	t.forwards += countForwards(repl)
+}
+
+// DropNopsIn removes every nop cell (in-place compilation's claimed-cell
+// marker, inplace.go) from logical [lo, hi), keeping the other cells in
+// order, and reports how many it removed. One pass: the survivors are
+// compacted down over the nops through the physical buffer, then the stale
+// tail is deleted with a single Splice — whose own Forward accounting sees
+// only cleared cells, so the running count is untouched (the multiset of
+// Forwards does not change; only nops leave).
+func (t *Tape) DropNopsIn(lo, hi int) int {
+	if lo < 0 {
+		lo = 0
+	}
+	if n := t.Len(); hi > n {
+		hi = n
+	}
+	w := lo
+	for r := lo; r < hi; r++ {
+		c := &t.buf[t.phys(r)]
+		if isNopCell(c) {
+			continue
+		}
+		if w != r {
+			t.buf[t.phys(w)] = *c
+		}
+		w++
+	}
+	removed := hi - w
+	if removed > 0 {
+		for r := w; r < hi; r++ {
+			t.buf[t.phys(r)] = Value{}
+		}
+		t.Splice(w, removed)
+	}
+	return removed
+}
+
+// nopAt reports whether the cell at logical i (in range) is a nop, reading
+// it in place rather than copying it out as At does.
+func (t *Tape) nopAt(i int) bool { return isNopCell(&t.buf[t.phys(i)]) }
+
+// isNopCell is IsNop over a cell in place.
+func isNopCell(c *Value) bool {
+	if c.Parent != TInternal {
+		return false
+	}
+	_, ok := c.Data.(NopInfo)
+	return ok
 }
 
 // Prefix returns the contiguous region below logical index end, when end

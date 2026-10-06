@@ -104,6 +104,31 @@ func (e *Engine) probeTailCall(sortedIndices []int, n int) (frameTailScan, bool)
 	if start < 0 {
 		return scan, false
 	}
+	return e.probeTailFrom(start)
+}
+
+// probeTailCallFor is probeTailCall for the match execMatch is running. An
+// in-place call cell's region (inplace.go) is its span [SpanLo, pointer]:
+// every cell the call claimed below its cell is a nop by construction, so
+// the legacy contiguity rule reads as "nothing but nops below the cell down
+// to SpanLo" — an interleaved survivor (a forward, a mark) declines exactly
+// as it does there.
+func (e *Engine) probeTailCallFor(match *MatchResult, sortedIndices []int, n int) (frameTailScan, bool) {
+	if !match.InPlace {
+		return e.probeTailCall(sortedIndices, n)
+	}
+	for j := match.SpanLo; j < e.Pointer; j++ {
+		if !e.Tape.nopAt(j) {
+			return frameTailScan{RCIdx: -1}, false
+		}
+	}
+	return e.probeTailFrom(match.SpanLo)
+}
+
+// probeTailFrom is the probe's scan around a call region starting at start
+// and ending at the pointer.
+func (e *Engine) probeTailFrom(start int) (frameTailScan, bool) {
+	scan := frameTailScan{RCIdx: -1}
 
 	// Forward half: )* __DC __pa (undef name)* [__RC] ) — anything
 	// else, at any point, is not a tail.
@@ -167,6 +192,9 @@ func (e *Engine) probeTailCall(sortedIndices []int, n int) (frameTailScan, bool)
 			return scan, true
 		case IsOpenParen(v):
 			opensBelow++
+		case IsNop(v):
+			// An in-place call's claimed cell (inplace.go): transparent,
+			// exactly as the cells the legacy splice removed.
 		case IsForward(v), IsWord(v), IsMark(v), IsMove(v),
 			IsCloseParen(v), IsEnd(v), IsDefCleanup(v),
 			IsReturnCheck(v), IsSplice(v):

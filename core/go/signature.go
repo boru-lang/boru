@@ -160,6 +160,12 @@ type MatchResult struct {
 	Positions []int     // absolute stack indices of each arg (nil for 0-arg)
 	Name      string    // word name being dispatched (for tracing/recording)
 	Reg       *Registry // sub-registry owning Sig for a module delegation dispatch (nil = main)
+	// InPlace marks the match of an executing CALL cell (in-place
+	// compilation, inplace.go): Args are complete, Positions are empty, the
+	// call's claimed cells are nops in [SpanLo, pointer), and the results
+	// replace the cell at the pointer.
+	InPlace bool
+	SpanLo  int
 }
 
 // DispatchRegistry is the registry that owns the matched signature: the

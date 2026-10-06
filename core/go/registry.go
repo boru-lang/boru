@@ -113,6 +113,12 @@ type Registry struct {
 	// the two meanings cannot collide. Hosts set it via lang.Options.Steps
 	// or the CLI's `--options steps:N`.
 	StepLimit int
+	// InPlace selects the interpreter's call-completion mechanism: the
+	// in-place compilation PROTOTYPE (inplace.go) when InPlaceOn, its
+	// verify lane when InPlaceVerify, the legacy completion otherwise. Every
+	// new registry starts at the process default (BORU_INPLACE); a module
+	// sub-registry inherits its parent's.
+	InPlace InPlaceMode
 	// Modules owns module-loading state: the load set, the
 	// module-ID counter, the host's init callback, and the native-
 	// module resolver. See modules.go.
@@ -713,7 +719,7 @@ func (r *Registry) CurrentStack() ([]Value, bool) {
 	out := make([]Value, 0, end)
 	for _, v := range snap[:end] {
 		if IsOpenParen(v) || IsCloseParen(v) || IsForward(v) ||
-			IsMark(v) || IsMove(v) || IsEnd(v) || IsWord(v) {
+			IsMark(v) || IsMove(v) || IsEnd(v) || IsWord(v) || IsNop(v) || IsCall(v) {
 			continue
 		}
 		out = append(out, v)
@@ -874,6 +880,8 @@ func NewRegistry() (*Registry, error) {
 		// registries constructed without NewRegistry).
 		Check: NewCheckState(),
 		Procs: NewProcessRuntime(),
+		// The in-place compilation prototype's switch (inplace.go).
+		InPlace: defaultInPlaceMode,
 		// The dispatch cache is allocated here and never reassigned, so
 		// a registry shared across goroutines (a module sub-registry
 		// reached through wrapper dispatch) always sees one stable,

@@ -213,6 +213,9 @@ func runModuleBodyCover(parent *Registry, elems []Value, coverID, coverSrc strin
 	// a host that disables elision on the parent expects module frames
 	// to nest too. Counters stay per-registry.
 	modReg.TCO.Disable = parent.TCO.Disable
+	// The in-place compilation switch follows module code for the same
+	// reason (core/go/inplace.go): module fns run on this registry.
+	modReg.InPlace = parent.InPlace
 	// The module's own source text, for error excerpts from fns that
 	// run later via CallBoru on this sub-registry (file imports set it
 	// to the module file; inline modules inherit the entry source).

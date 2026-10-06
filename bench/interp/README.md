@@ -1,5 +1,20 @@
 # Interpreter-speed measurement fixtures
 
+> **2026-10-06: `run.sh`'s `boru-interp` column no longer times the
+> interpreter.** The CLI has had no interpreter-only lane since 2026-09-19
+> (`BORU_NO_COMPILE` is gone, CLI.md), so the column runs the compiled lane
+> like `boru-compiled`. The interpreter's own number on these fixtures is
+> `BenchmarkInterpFixtures` (`lang/go/interp_fixtures_bench_test.go`: the
+> parse amortised out, no check pass, a fresh instance per iteration):
+>
+> ```bash
+> cd lang/go && go test -run '^$' -bench BenchmarkInterpFixtures -benchmem -count 6
+> ```
+>
+> `BORU_INPLACE=1` in its environment times the in-place compilation
+> prototype (design/IN-PLACE-COMPILATION.0.md). The snapshots below predate
+> the change and were taken with the old lane.
+
 Cross-language fixtures that quantify how slow the **boru interpreter**
 (`BORU_NO_COMPILE=1`) is relative to the **bytecode VM** (default) and to
 other dynamic-language interpreters (CPython, Ruby, Node). They exist to
