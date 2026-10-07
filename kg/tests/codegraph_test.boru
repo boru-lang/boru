@@ -1,7 +1,7 @@
 # codegraph_test.boru — the code half of the graph, end to end: the
 # code-unit queries, the Markdown projection, and the validation rule
 # that keeps the code and prose bundles from silently splitting apart.
-# Run from kg/:  ../cmd/go/bin/boru tests/codegraph_test.boru
+# Run from kg/:  ../cmd/go/bin/boru test tests/codegraph_test.boru
 
 import "boru:io"
 import "boru:test"
@@ -81,15 +81,13 @@ Test.test end
 def names fn ids:List List [
   sort
     (each
-        [var
-            [[i]
+        ([i] => [
               def e (KgQuery.entity-by-id graph i)
               if (e is None) [i]
                 [KgUtil.get-or (KgUtil.get-or e "attributes" {})
                     "path" i
                 ]
-            ]
-        ]
+            ])
         ids
     )
 ]
@@ -118,11 +116,9 @@ Test.test end
 
 def eng-deps
 (filter
-      [var
-          [[a] (a.subject_id eq eng.id) and
+      ([a] => [ (a.subject_id eq eng.id) and
               (a.predicate eq "depends_on")
-          ]
-      ]
+          ])
       (KgUtil.list-at graph "assertions")
   )
 
@@ -224,11 +220,9 @@ end
 
 # A Document is unaffected by the rule — it has no code to be evidenced by.
 [((filter
-              [var
-                  [[i] (i.rule eq "kg_module_without_code_evidence")
+              ([i] => [ (i.rule eq "kg_module_without_code_evidence")
                       and (StringUtil.contains "Document" i.message)
-                  ]
-              ]
+                  ])
               (KgUtil.list-at orphan-graph "validation_issues")
           )
           size

@@ -90,8 +90,7 @@ def strip-comment fn s:String String [
 def parse-work-uses fn text:String List [
   def st
     (fold
-        [var
-            [[l acc]
+        ([l acc] => [
               def t (strip-comment (StringUtil.trim l))
               def inb (KgUtil.get-or acc "in" false)
               def out (KgUtil.list-at acc "out")
@@ -114,8 +113,7 @@ def parse-work-uses fn text:String List [
                         ]
                     ]
                 ]
-            ]
-        ]
+            ])
         (lines-of text) {in:false out:[]}
     )
     sort (KgUtil.list-at st "out")
@@ -126,7 +124,7 @@ def parse-work-uses fn text:String List [
 def parse-module-path fn text:String String [
   def hits
     (filter
-        [var [[l] KgUtil.starts-with "module " (StringUtil.trim l)]]
+        ([l] => [KgUtil.starts-with "module " (StringUtil.trim l)])
         (lines-of text)
     )
   if ((hits size) eq 0) [""]
@@ -154,8 +152,7 @@ def require-entry fn t:String Map [
 def parse-requires fn text:String List [
   def st
     (fold
-        [var
-            [[l acc]
+        ([l acc] => [
                 # `t` keeps its comment because require-entry needs to see
               # `// indirect`; `d` is the comment-free form, used only
               # for the block delimiters (a `) // done` terminator must
@@ -186,8 +183,7 @@ def parse-requires fn text:String List [
                         ]
                     ]
                 ]
-            ]
-        ]
+            ])
         (lines-of text) {in:false out:[]}
     )
     KgUtil.list-at st "out"
@@ -196,11 +192,9 @@ def parse-requires fn text:String List [
 # Direct requires on a sibling module of this repository.
 def sibling-deps fn text:String List [
   filter
-    [var
-        [[r] (KgUtil.starts-with boru-prefix r.path) and
+    ([r] => [ (KgUtil.starts-with boru-prefix r.path) and
             (not r.indirect)
-        ]
-    ]
+        ])
     (parse-requires text)
 ]
 
@@ -210,7 +204,7 @@ def subdirs fn dir:String List [
   def entries (IO.list (make Pathon dir) {detail:true})
   def names
     (each [dot name]
-        (filter [var [[e] (convert String (e get "type")) eq "dir"]]
+        (filter ([e] => [(convert String (e get "type")) eq "dir"])
             entries
         )
     )
@@ -225,7 +219,7 @@ def has-go-files fn dir:String Boolean [
 # of scope on purpose: the point is to name the units people ask about
 # (eng/go/parser, lang/go/native), not to mirror the whole tree.
 def packages-of fn member:String List [
-  filter [var [[d] has-go-files `../${member}/${d}`]]
+  filter ([d] => [has-go-files `../${member}/${d}`])
     (subdirs `../${member}`)
 ]
 
@@ -266,8 +260,7 @@ def mk-sources fn members:List List [
             )
         ]
         (each
-            [var
-                [[m] KgUtil.as-map
+            ([m] => [ KgUtil.as-map
                     {id:(gomod-source-id m)
                       kind:"text"
                       locator:`${m}/go.mod`
@@ -277,8 +270,7 @@ def mk-sources fn members:List List [
                       authority:"primary"
                       metadata:{repository:"boru-lang/boru" derived_from:"code"}
                     }
-                ]
-            ]
+                ])
             members
         )
     ]
@@ -335,8 +327,7 @@ def member-entity fn m:Map Map [
 
 def package-entities fn m:Map List [
   each
-    [var
-        [[p] KgUtil.as-map
+    ([p] => [ KgUtil.as-map
             {key:(key-of `${m.path}/${p}`)
               type:"SoftwareModule"
               label:(package-label `${m.path}/${p}`)
@@ -346,8 +337,7 @@ def package-entities fn m:Map List [
                 parent_module:m.path
               }
             }
-        ]
-    ]
+        ])
     (KgUtil.list-at m "packages")
 ]
 
@@ -400,23 +390,19 @@ def member-assertions fn m:Map List [
     ]
   def deps
     (each
-        [var
-            [[d] ast m.key "depends_on"
+        ([d] => [ ast m.key "depends_on"
                 (entity-obj (key-of (strip-prefix boru-prefix d.path)))
                 [(ev (gomod-source-id m.path) "require block" d.line)]
                 1.0
-            ]
-        ]
+            ])
         (KgUtil.list-at m "deps")
     )
   def pkgs
     (each
-        [var
-            [[p] ast (key-of `${m.path}/${p}`) "part_of"
+        ([p] => [ ast (key-of `${m.path}/${p}`) "part_of"
                 (entity-obj m.key)
                 [(ev gotree-source-id `${m.path}/${p}` none)] 1.0
-            ]
-        ]
+            ])
         (KgUtil.list-at m "packages")
     )
     flatten [membership modpath deps pkgs]
@@ -430,19 +416,19 @@ def candidate-bundle fn [[work-path:String extra-modules:List] [Map] [
   def members (parse-work-uses (read-text work-path))
   def read-all
     (flatten
-        [(each [var [[m] read-member m true]] members)
-            (each [var [[m] read-member m false]] extra-modules)
+        [(each ([m] => [read-member m true]) members)
+            (each ([m] => [read-member m false]) extra-modules)
         ]
     )
   def sorted (read-all ArrayUtil.sortby (each [dot path] read-all))
   def entities
     (flatten
-        [[repo-entity] (each [var [[m] member-entity m]] sorted)
-            (flatten (each [var [[m] package-entities m]] sorted))
+        [[repo-entity] (each ([m] => [member-entity m]) sorted)
+            (flatten (each ([m] => [package-entities m]) sorted))
         ]
     )
   def assertions
-    (flatten (each [var [[m] member-assertions m]] sorted))
+    (flatten (each ([m] => [member-assertions m]) sorted))
     KgUtil.as-map
     {sources:(mk-sources (sort (each [dot path] sorted)))
       entities:entities
@@ -473,7 +459,7 @@ def tree-manifest-text fn [[work-path:String extra-modules:List]
     (sort
         (flatten
             (each
-                [var [[m] each [var [[p] `${m}/${p}`]] (packages-of m)]]
+                ([m] => [each ([p] => [`${m}/${p}`]) (packages-of m)])
                 mods
             )
         )
@@ -495,7 +481,7 @@ def input-paths fn [[work-path:String extra-modules:List] [List] [
   def members (parse-work-uses (read-text work-path)) sort
     (flatten
         [[work-path]
-            (each [var [[m] `../${m}/go.mod`]]
+            (each ([m] => [`../${m}/go.mod`])
                 (flatten [members extra-modules])
             )
         ]

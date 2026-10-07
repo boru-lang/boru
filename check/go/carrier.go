@@ -1689,42 +1689,74 @@ func DynamicReachableOverloadCount(r *core.Registry, word string, args []core.Va
 	}
 	n := 0
 	for i := range fn.Signatures {
-		s := &fn.Signatures[i]
-		if s.TotalArgs() != len(args) {
-			continue
-		}
-		reach := true
-		for j := range args {
-			// A strict OR gradual Any carrier could hold a value of any type at
-			// run time, so it reaches EVERY same-arity arm — the dispatch is
-			// genuinely runtime-dynamic and must poly re-match, not commit
-			// statically to the Any-slot arm. Without this a strict Any (an Any
-			// param's generalised arg — core_helpers.go) reached only the Any
-			// overload, so a wrapper forwarding a Map through an Any param baked
-			// the Any arm and diverged from the interpreter's Map dispatch (the
-			// each/fold-body multi-sig degradation).
-			if isAnyCarrier(args[j]) {
-				continue
-			}
-			// A GENERIC placeholder slot ((T extends Comparable)) admits by
-			// per-call instantiation over the runtime value, which a gradual
-			// arg's bound-disjointness probe cannot see (tand(Integer, T-node)
-			// is Never even though a runtime Integer instantiates T) — count
-			// the arm reachable so the ambiguous dispatch stays a runtime
-			// re-matched user poly instead of a wrong static commit.
-			if args[j].Dynamic && core.IsTypeParamNode(core.SigArgType(s, j)) {
-				continue
-			}
-			if !core.SigTypeMatches(args[j], core.SigArgType(s, j)) {
-				reach = false
-				break
-			}
-		}
-		if reach {
+		if dynamicOverloadReachable(&fn.Signatures[i], args) {
 			n++
 		}
 	}
 	return n
+}
+
+// dynamicOverloadReachable reports whether a runtime value the args stand for
+// could dispatch to s — the per-arm test DynamicReachableOverloadCount and
+// PolyNOutAmbiguous share.
+func dynamicOverloadReachable(s *core.Signature, args []core.Value) bool {
+	if s.TotalArgs() != len(args) {
+		return false
+	}
+	for j := range args {
+		// A strict OR gradual Any carrier could hold a value of any type at
+		// run time, so it reaches EVERY same-arity arm — the dispatch is
+		// genuinely runtime-dynamic and must poly re-match, not commit
+		// statically to the Any-slot arm. Without this a strict Any (an Any
+		// param's generalised arg — core_helpers.go) reached only the Any
+		// overload, so a wrapper forwarding a Map through an Any param baked
+		// the Any arm and diverged from the interpreter's Map dispatch (the
+		// each/fold-body multi-sig degradation).
+		if isAnyCarrier(args[j]) {
+			continue
+		}
+		// A GENERIC placeholder slot ((T extends Comparable)) admits by
+		// per-call instantiation over the runtime value, which a gradual
+		// arg's bound-disjointness probe cannot see (tand(Integer, T-node)
+		// is Never even though a runtime Integer instantiates T) — count
+		// the arm reachable so the ambiguous dispatch stays a runtime
+		// re-matched user poly instead of a wrong static commit.
+		if args[j].Dynamic && core.IsTypeParamNode(core.SigArgType(s, j)) {
+			continue
+		}
+		if !core.SigTypeMatches(args[j], core.SigArgType(s, j)) {
+			return false
+		}
+	}
+	return true
+}
+
+// PolyNOutAmbiguous reports whether the overloads of word a runtime value the
+// args stand for could dispatch to DISAGREE on their declared result count —
+// `set` over a gradual receiver: a Store writes in place and returns nothing,
+// a Map returns the container. A poly re-match that lands on an arm whose
+// count differs from the one the pass committed would shift every downstream
+// operand, so the recorder marks such a dispatch's result runtime-variable
+// (RecordPolyCall) instead of claiming one count the VM then has to defer on
+// (vm:poly-nout-drift — a fold's lambda `acc set (k) v` over a gradual
+// accumulator, kg's `sindex`, surfaced it as an internal error on the strict
+// lane). Only a DECLARED Returns tuple counts: an arm typed by a ReturnsFn
+// alone is taken to agree with the committed arm, as every poly did before.
+func PolyNOutAmbiguous(r *core.Registry, word string, args []core.Value, nout int) bool {
+	fn := r.Lookup(word)
+	if fn == nil {
+		return false
+	}
+	for i := range fn.Signatures {
+		s := &fn.Signatures[i]
+		if s.Returns == nil || !dynamicOverloadReachable(s, args) {
+			continue
+		}
+		if len(s.Returns) != nout {
+			return true
+		}
+	}
+	return false
 }
 
 func dynamicReachableValueReturns(r *core.Registry, word string, args []core.Value) []*core.Type {

@@ -5,7 +5,7 @@
 # turn a parser test red. The end-to-end section then checks the real
 # tree, but only for invariants that must hold whatever the workspace
 # contains (core depends on nothing; every module reaches the repo).
-# Run from kg/:  ../cmd/go/bin/boru tests/gomod_test.boru
+# Run from kg/:  ../cmd/go/bin/boru test tests/gomod_test.boru
 
 import "boru:test"
 import "boru:string-util"
@@ -117,11 +117,9 @@ def mod-block
 # The replace block also parenthesizes; only a `require (` opener may arm
 # the block scanner, or the replace entries would be read as requires.
 [((filter
-              [var
-                  [[r] KgUtil.starts-with "github.com/a/aa"
+              ([r] => [ KgUtil.starts-with "github.com/a/aa"
                       (r get "path")
-                  ]
-              ]
+                  ])
               (KgGoMod.parse-requires mod-block)
           )
           size
@@ -160,12 +158,10 @@ def mod-siblings
 # this module was written against; conflating them makes everything look
 # like it depends on everything.
 [((filter
-              [var
-                  [[r] KgUtil.starts-with
+              ([r] => [ KgUtil.starts-with
                       "github.com/boru-lang/boru/basic/go"
                       (r get "path")
-                  ]
-              ]
+                  ])
               (KgGoMod.sibling-deps mod-siblings)
           )
           size
@@ -181,19 +177,17 @@ def ents (KgUtil.list-at bundle "entities")
 def asts (KgUtil.list-at bundle "assertions")
 
 def by-key fn k:String Any [
-  def hits (filter [var [[e] (KgUtil.get-or e "key" "") eq k]] ents)
+  def hits (filter ([e] => [(KgUtil.get-or e "key" "") eq k]) ents)
   if ((hits size) eq 0) [none] [hits get 0]
 ]
 
 def deps-of fn k:String List [
   sort
-    (each [var [[a] KgUtil.get-or (a get "object") "entity" ""]]
+    (each ([a] => [KgUtil.get-or (a get "object") "entity" ""])
         (filter
-            [var
-                [[a] ((a get "subject") eq k) and
+            ([a] => [ ((a get "subject") eq k) and
                     ((a get "predicate") eq "depends_on")
-                ]
-            ]
+                ])
             asts
         )
     )
@@ -252,11 +246,9 @@ Test.test end
   ]
 "core/go is a module" Test.test end
 [((filter
-              [var
-                  [[a] ((a get "subject") eq "lang-go-modules") and
+              ([a] => [ ((a get "subject") eq "lang-go-modules") and
                       ((a get "predicate") eq "part_of")
-                  ]
-              ]
+                  ])
               asts
           )
           size
@@ -268,7 +260,7 @@ Test.test end
 # -- every assertion is evidenced ----------------------------------------
 
 [((filter
-              [var [[a] ((KgUtil.list-at a "evidence") size) eq 0]]
+              ([a] => [((KgUtil.list-at a "evidence") size) eq 0])
               asts
           )
           size
@@ -278,12 +270,10 @@ Test.test end
 "no code assertion is emitted without evidence" Test.test end
 
 [((filter
-              [var
-                  [[a]
+              ([a] => [
                     def e ((KgUtil.list-at a "evidence") get 0) not
                       ((KgUtil.get-or e "extractor" "") eq "kg-gomod")
-                  ]
-              ]
+                  ])
               asts
           )
           size

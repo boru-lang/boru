@@ -1,6 +1,6 @@
 # roundtrip_test.boru — serialization round-trips, file write/read-back,
 # build determinism, re-ingest idempotence, and SQL emission.
-# Run from kg/:  ../cmd/go/bin/boru tests/roundtrip_test.boru
+# Run from kg/:  ../cmd/go/bin/boru test tests/roundtrip_test.boru
 
 import "boru:io"
 import "boru:test"

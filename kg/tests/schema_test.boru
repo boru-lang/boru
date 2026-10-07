@@ -1,5 +1,5 @@
 # schema_test.boru — constructors and vocabulary checks.
-# Run from kg/:  ../cmd/go/bin/boru tests/schema_test.boru
+# Run from kg/:  ../cmd/go/bin/boru test tests/schema_test.boru
 
 import "boru:test"
 import "./schema.boru"
@@ -55,7 +55,7 @@ def label-missing
             status:"accepted"
           }
       ]
-      error [var [[e] "refused"]]
+      error [([e] => ["refused"]) apply]
   )
 [label-missing "refused" Assert.equal]
 "entity without a label is refused" Test.test end
@@ -73,7 +73,7 @@ def alias-mistyped
             status:"accepted"
           }
       ]
-      error [var [[e] "refused"]]
+      error [([e] => ["refused"]) apply]
   )
 [alias-mistyped "refused" Assert.equal]
 "non-string alias is refused" Test.test end
@@ -92,7 +92,7 @@ def unknown-field
             surprise:1
           }
       ]
-      error [var [[e] "refused"]]
+      error [([e] => ["refused"]) apply]
   )
 [unknown-field "refused" Assert.equal]
 "unknown source field is refused" Test.test end

@@ -53,7 +53,7 @@ def added (KgUtil.list-at result "added")
 
 def bullets fn [[title:String xs:List] [String] [
   if ((xs size) eq 0) [""]
-    [`\n${title}:\n${StringUtil.concat (each [var [[x] `  - ${x}`]] xs) {sep:"\n"}}`
+    [`\n${title}:\n${StringUtil.concat (each ([x] => [`  - ${x}`]) xs) {sep:"\n"}}`
     ]
 ]]
 

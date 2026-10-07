@@ -76,3 +76,18 @@ func CallbackWantsKeyVal(fn Value) bool {
 	}
 	return false
 }
+
+// KeyValCarrier is the representative KeyVal {k v i n} the check pass and the
+// compiler hand a callback whose entry param is typed KeyVal (CallbackWantsKeyVal)
+// when they analyse its body: the v field carries the map's common value type
+// (elem), k/i/n carry String/Integer/Integer, every field a carrier so the body
+// reads field TYPES, never one entry's values. Tagged Node/Map/KeyVal directly
+// — the type is kernel-declared above.
+func KeyValCarrier(elem *Type) Value {
+	om := NewOrderedMap()
+	om.Set(KeyValK, NewCarrier(TString))
+	om.Set(KeyValV, NewCarrier(elem))
+	om.Set(KeyValI, NewCarrier(TInteger))
+	om.Set(KeyValN, NewCarrier(TInteger))
+	return NewValueRaw(TKeyVal, MapPayload{M: om})
+}

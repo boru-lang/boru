@@ -4409,6 +4409,25 @@ func fnValueInputs(params []core.FnParam) (inputs []core.Value, names []string) 
 }
 
 func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOperand, bool) {
+	return es.tryReturnedClosureAs(v, pos, false)
+}
+
+// tryReturnedClosureAs is tryReturnedClosure with the unit's count discipline
+// chosen by the slot the value fills. A RETURNED value (callback false) keeps
+// the single declared return on its unit — the fn-value seam that applies it
+// (a paren call, `apply`) enforces the lambda's count there as the
+// interpreter's __RC does. A value compiled for a dyn-body CALLBACK slot
+// (callback true — recordDynBodyCall's backstop) is count-AGNOSTIC at the
+// unit, exactly as the Callable path compiles a lambda for each/fold: the
+// contract rides on the push alone (ClosurePayload.RetTypes), where the
+// HANDLER's seam decides — the token seam enforces the count (`each (x =>
+// [x 1]) [1 2]` raises on both lanes), the fn-value seam (InvokeCallbackBody,
+// RetTrim) checks types only, as CallBoru does for the interpreter's run of
+// the same value. A unit-level claim ignored that difference: walk's ascend
+// hook `(m:Any => [p drop])`, a capturing lambda the backstop compiled, raised
+// `fnval$body: expected 1 return value(s), got 0` where the interpreter ran
+// it clean (TestWalkHookClosureCompiles).
+func (es *EmitState) tryReturnedClosureAs(v core.Value, pos core.SrcPos, callback bool) (EmitOperand, bool) {
 	if es == nil || es.reg == nil || v.Carrier || v.Dynamic || v.Quoted {
 		// A QUOTED fn value is DATA the interpreter keeps unapplied; lowering
 		// it to an opClosure drops the Quoted flag, so the VM would
@@ -4486,7 +4505,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 	r.Check.Emit = probe
 	// bodyOut 1: a fn VALUE body keeps the single declared return (it is not a
 	// 0-output side-effect body like a test case).
-	_, probeOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
+	_, probeOK := compileClosureBody(r, "fnval", 1, callback, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	r.Check.Emit = es
 	if !probeOK {
 		return EmitOperand{}, false
@@ -4505,7 +4524,7 @@ func (es *EmitState) tryReturnedClosure(v core.Value, pos core.SrcPos) (EmitOper
 		es.dynEnv = true
 	}
 	// REAL: compile into this program (deterministic success after a clean probe).
-	unit, realOK := compileClosureBody(r, "fnval", 1, false, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
+	unit, realOK := compileClosureBody(r, "fnval", 1, callback, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return EmitOperand{}, false
 	}
@@ -11510,6 +11529,25 @@ func (es *EmitState) RecordPolyCall(word string, args, outs []core.Value, pos co
 	}
 	seq := es.appendEvent(EmitEvent{kind: evCall, call: call})
 	es.noteArgSites(seq, args)
+	// A COUNT-AMBIGUOUS poly (check.PolyNOutAmbiguous: `set` over a gradual
+	// receiver, a Store's 0 against a Map's 1) delivers a runtime-variable
+	// number of REAL stack values: its event takes the fallible-call marks,
+	// so a fixed-arity consumer declines the compile and a frame's declared
+	// return tuple pins the count at RET (the VM raising the interpreter's
+	// own "expected N return value(s)"), and its lowering commits no count
+	// claim (PolyNOutRegion). Before this the claim was the committed arm's
+	// and the VM deferred on the drift (vm:poly-nout-drift), an internal
+	// error on the strict lane.
+	polyReg := ownerReg
+	if polyReg == nil {
+		polyReg = es.reg
+	}
+	if polyReg != nil && check.PolyNOutAmbiguous(polyReg, word, args, len(outs)) {
+		vf := es.eventInfo[seq]
+		vf.variadicResult = true
+		vf.callVariadic = true
+		es.eventInfo[seq] = vf
+	}
 	switch len(outs) {
 	case 0:
 		// A 0-output poly (a side-effect word like the test framework's

@@ -30,12 +30,12 @@ func TestEntryCarrierAndCallbackInputs(t *testing.T) {
 	} {
 		// The KeyVal is a representative VALUE whose fields are carriers
 		// (keyValCarrier); every other entry is a carrier itself.
-		got := entryCarrier(r, c.data, c.keyVal)
+		got := entryCarrier(c.data, c.keyVal)
 		if !got.Parent.Equal(c.want) || (got.Carrier == c.want.Equal(core.TKeyVal)) {
 			t.Errorf("%s: entryCarrier = %v, want a %s carrier", c.name, got, c.want.Name())
 		}
 	}
-	kv := entryCarrier(r, m, true)
+	kv := entryCarrier(m, true)
 	fields, _ := core.AsMap(kv)
 	if v, ok := fields.Get(core.KeyValV); !ok || !v.Parent.Equal(core.TInteger) || !v.Carrier {
 		t.Errorf("the KeyVal carrier's v field = %v, want an Integer carrier", v)

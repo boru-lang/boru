@@ -61,7 +61,7 @@ def sql-lit fn v:Any String [
 ]
 
 def sql-row fn [[table:String cells:List] [String] [
-  `INSERT INTO ${table} VALUES (${StringUtil.concat (each [var [[v] sql-lit v]] cells) {sep: ", "}});`
+  `INSERT INTO ${table} VALUES (${StringUtil.concat (each ([v] => [sql-lit v]) cells) {sep: ", "}});`
 ]]
 
 def sql-ddl [
@@ -106,7 +106,7 @@ def meta-rows fn bundle:Map List [
             )
         ]
         (each
-            [var [[f] sql-row "input_files" [f.path f.digest f.chars]]]
+            ([f] => [sql-row "input_files" [f.path f.digest f.chars]])
             (KgUtil.list-at dig "files")
         )
     ]
@@ -114,21 +114,18 @@ def meta-rows fn bundle:Map List [
 
 def source-rows fn sources:List List [
   each
-    [var
-        [[s] sql-row "sources"
+    ([s] => [ sql-row "sources"
             [s.id s.kind s.locator s.title s.retrieved_at
                 s.content_hash s.authority s.metadata
             ]
-        ]
-    ]
+        ])
     sources
 ]
 
 def entity-rows fn entities:List List [
   flatten
     (each
-        [var
-            [[e]
+        ([e] => [
               def head-row
                 [(sql-row "entities"
                         [e.id e.type e.label e.normalized_label
@@ -137,30 +134,25 @@ def entity-rows fn entities:List List [
                     )
                 ]
               def aliases
-                (each [var [[al] sql-row "entity_aliases" [e.id al]]]
+                (each ([al] => [sql-row "entity_aliases" [e.id al]])
                     (KgUtil.list-at e "aliases")
                 )
               def eids
                 (each
-                    [var
-                        [[kv] sql-row "entity_external_ids"
+                    ([kv] => [ sql-row "entity_external_ids"
                             [e.id (kv get 0) (kv get 1)]
-                        ]
-                    ]
+                        ])
                     (StructUtil.items e.external_ids)
                 )
               def attrs
                 (each
-                    [var
-                        [[kv] sql-row "entity_attributes"
+                    ([kv] => [ sql-row "entity_attributes"
                             [e.id (kv get 0) (kv get 1)]
-                        ]
-                    ]
+                        ])
                     (StructUtil.items e.attributes)
                 )
                 flatten [head-row aliases eids attrs]
-            ]
-        ]
+            ])
         entities
     )
 ]
@@ -168,8 +160,7 @@ def entity-rows fn entities:List List [
 def assertion-rows fn assertions:List List [
   flatten
     (each
-        [var
-            [[a]
+        ([a] => [
               def obj a.object
               def is-ref ((KgUtil.get-or obj "kind" "") eq "entity")
               def head-row
@@ -192,57 +183,48 @@ def assertion-rows fn assertions:List List [
                 ]
               def evrows
                 (each
-                    [var
-                        [[ev] sql-row "assertion_evidence"
+                    ([ev] => [ sql-row "assertion_evidence"
                             [a.id ev.source_id ev.locator ev.quote
                                 ev.extraction_method ev.extractor
                             ]
-                        ]
-                    ]
+                        ])
                     (KgUtil.list-at a "evidence")
                 )
                 flatten [head-row evrows]
-            ]
-        ]
+            ])
         assertions
     )
 ]
 
 def decision-rows fn decisions:List List [
   each
-    [var
-        [[d] sql-row "identity_decisions"
+    ([d] => [ sql-row "identity_decisions"
             [d.id d.left_entity_id d.right_entity_id d.decision
                 d.confidence d.review_required d.supporting_evidence
                 d.conflicting_evidence
             ]
-        ]
-    ]
+        ])
     decisions
 ]
 
 def issue-rows fn issues:List List [
   each
-    [var
-        [[i] sql-row "validation_issues"
+    ([i] => [ sql-row "validation_issues"
             [i.id i.severity i.rule i.target_kind i.target_id
                 i.message i.suggested_correction
                 i.automatic_correction_safe
             ]
-        ]
-    ]
+        ])
     issues
 ]
 
 def proposal-rows fn proposals:List List [
   each
-    [var
-        [[p] sql-row "schema_proposals"
+    ([p] => [ sql-row "schema_proposals"
             [p.id p.term_kind p.term p.definition p.reason p.status
                 p.domain p.range p.examples p.possible_equivalents
             ]
-        ]
-    ]
+        ])
     proposals
 ]
 
@@ -299,8 +281,7 @@ def join-or-none fn xs:List String [
 def md-modules fn [[bundle:Map index:Map] [List] [
   def pkgs (KgQuery.packages bundle) flatten
     (each
-        [var
-            [[m]
+        ([m] => [
               def path (attr-of m "path")
               def gomod (attr-of m "go_module")
               def outside
@@ -310,13 +291,11 @@ def md-modules fn [[bundle:Map index:Map] [List] [
               def own
                 (join-or-none
                     (sort
-                        (each [var [[p] attr-of p "path"]]
+                        (each ([p] => [attr-of p "path"])
                             (filter
-                                [var
-                                    [[p] (attr-of p "parent_module")
+                                ([p] => [ (attr-of p "parent_module")
                                         eq path
-                                    ]
-                                ]
+                                    ])
                                 pkgs
                             )
                         )
@@ -325,7 +304,7 @@ def md-modules fn [[bundle:Map index:Map] [List] [
               def deps
                 (join-or-none
                     (sort
-                        (each [var [[d] name-of index d]]
+                        (each ([d] => [name-of index d])
                             (KgQuery.dependencies-of bundle m.id)
                         )
                     )
@@ -333,7 +312,7 @@ def md-modules fn [[bundle:Map index:Map] [List] [
               def rdeps
                 (join-or-none
                     (sort
-                        (each [var [[d] name-of index d]]
+                        (each ([d] => [name-of index d])
                             (KgQuery.dependents-of bundle m.id)
                         )
                     )
@@ -342,8 +321,7 @@ def md-modules fn [[bundle:Map index:Map] [List] [
                     `  - depends on: ${deps}`
                     `  - required by: ${rdeps}` `  - packages: ${own}`
                 ]
-            ]
-        ]
+            ])
         (KgQuery.modules bundle)
     )
 ]]
@@ -352,27 +330,23 @@ def md-modules fn [[bundle:Map index:Map] [List] [
 def md-entities fn bundle:Map List [
   def rest
     (filter
-        [var
-            [[e] (not (e.type eq "SoftwareModule")) and
+        ([e] => [ (not (e.type eq "SoftwareModule")) and
                 (not (e.status eq "merged"))
-            ]
-        ]
+            ])
         (KgUtil.list-at bundle "entities")
     )
   def types (KgEnt.distinct-sorted (each [dot type] rest)) flatten
     (each
-        [var
-            [[t] flatten
+        ([t] => [ flatten
                 [[`### ${t}`]
                     (sort
-                        (each [var [[e] `- ${e.label}`]]
+                        (each ([e] => [`- ${e.label}`])
                             (filter [dot type eq t] rest)
                         )
                     )
                     [""]
                 ]
-            ]
-        ]
+            ])
         types
     )
 ]
@@ -388,8 +362,7 @@ def is-entity-object fn object:Map Boolean [
 def md-assertions fn [[bundle:Map index:Map] [List] [
   sort
     (each
-        [var
-            [[a]
+        ([a] => [
               def lit (KgUtil.get-or a.object "value" "")
               def obj
                 (if (is-entity-object a.object)
@@ -412,8 +385,7 @@ def md-assertions fn [[bundle:Map index:Map] [List] [
                     {sep:","}
                 )
                 `- ${subj} -[${pred}]-> ${obj}  · ${srcs}`
-            ]
-        ]
+            ])
         (KgUtil.list-at bundle "assertions")
     )
 ]]
@@ -461,15 +433,13 @@ def emit-markdown fn bundle:Map String [
                     [["" "## Validation issues" ""]
                         (sort
                             (each
-                                [var
-                                    [[i]
+                                ([i] => [
                                       def sev i.severity
                                       def rule i.rule
                                       def tgt i.target_id
                                       def msg i.message
                                         `- **${sev}** \`${rule}\` ${tgt} — ${msg}`
-                                    ]
-                                ]
+                                    ])
                                 issues
                             )
                         )
@@ -481,15 +451,13 @@ def emit-markdown fn bundle:Map String [
                     [["" "## Schema proposals (require approval)" ""]
                         (sort
                             (each
-                                [var
-                                    [[p]
+                                ([p] => [
                                       def kind p.term_kind
                                       def term p.term
                                       def defn p.definition
                                       def why p.reason
                                         `- \`${kind}\` **${term}** — ${defn} (${why})`
-                                    ]
-                                ]
+                                    ])
                                 proposals
                             )
                         )

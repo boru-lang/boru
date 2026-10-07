@@ -35,15 +35,13 @@ def iss fn
 def dup-ids fn xs:List List [
   def counts
     (fold
-        [var
-            [[x acc]
+        ([x acc] => [
               def c (acc get x) acc set (x)
                 (if (c is None) [1] [c add 1])
-            ]
-        ]
+            ])
         xs {}
     )
-    filter [var [[k] (counts get k) gt 1]] (sort (keys counts))
+    filter ([k] => [(counts get k) gt 1]) (sort (keys counts))
 ]
 
 def in-range fn c:Number Boolean [(c gte 0.0) and (c lte 1.0)]
@@ -53,18 +51,15 @@ def in-range fn c:Number Boolean [(c gte 0.0) and (c lte 1.0)]
 def check-sources fn sources:List List [
   def dups
     (each
-        [var
-            [[id] iss "error" "kg_duplicate_source_id" "source" id
+        ([id] => [ iss "error" "kg_duplicate_source_id" "source" id
                 `duplicate source id ${id}`
-            ]
-        ]
+            ])
         (dup-ids (each [dot id] sources))
     )
   def per
     (flatten
         (each
-            [var
-                [[s] flatten
+            ([s] => [ flatten
                     [(if (s.id eq "")
                             [[(iss "error"
                                         "kg_source_id_missing" "source"
@@ -109,8 +104,7 @@ def check-sources fn sources:List List [
                             ]
                         )
                     ]
-                ]
-            ]
+                ])
             sources
         )
     )
@@ -123,18 +117,15 @@ def check-entities fn entities:List List [
   def index (KgEnt.index-by-id entities)
   def dups
     (each
-        [var
-            [[id] iss "error" "kg_duplicate_entity_id" "entity" id
+        ([id] => [ iss "error" "kg_duplicate_entity_id" "entity" id
                 `duplicate entity id ${id}`
-            ]
-        ]
+            ])
         (dup-ids (each [dot id] entities))
     )
   def per
     (flatten
         (each
-            [var
-                [[e]
+            ([e] => [
                   def id-vals (vals e.external_ids)
                   def merged-tgt (e.attributes get "merged_into")
                     flatten
@@ -243,8 +234,7 @@ def check-entities fn entities:List List [
                             [[]]
                         )
                     ]
-                ]
-            ]
+                ])
             entities
         )
     )
@@ -256,32 +246,27 @@ def check-entities fn entities:List List [
 def check-assertions fn [[assertions:List entities:List sources:List]
   [List] [
   def eindex (KgEnt.index-by-id entities)
-  def sindex (fold [var [[s acc] acc set (s.id) s]] sources {})
+  def sindex (fold ([s acc] => [acc set (s.id) s]) sources {})
   def dups
     (each
-        [var
-            [[id] iss "error" "kg_duplicate_assertion_id" "assertion"
+        ([id] => [ iss "error" "kg_duplicate_assertion_id" "assertion"
                 id `duplicate assertion id ${id}`
-            ]
-        ]
+            ])
         (dup-ids (each [dot id] assertions))
     )
   def claim-groups
     (fold
-        [var
-            [[a acc]
+        ([a acc] => [
               def k `${a.subject_id}|${a.predicate}`
               def cur (acc get k) acc set (k)
                 (if (cur is None) [1] [cur add 1])
-            ]
-        ]
+            ])
         assertions {}
     )
   def per
     (flatten
         (each
-            [var
-                [[a]
+            ([a] => [
                   def obj a.object
                   def evs (KgUtil.list-at a "evidence")
                   def is-ref (KgSchema.is-entity-ref obj)
@@ -367,8 +352,7 @@ def check-assertions fn [[assertions:List entities:List sources:List]
                         )
                         (flatten
                             (each
-                                [var
-                                    [[ev]
+                                ([ev] => [
                                       def src (sindex get ev.source_id)
                                       def src-is-text
                                         (if (src is None) [false]
@@ -418,8 +402,7 @@ def check-assertions fn [[assertions:List entities:List sources:List]
                                                 [[]]
                                             )
                                         ]
-                                    ]
-                                ]
+                                    ])
                                 evs
                             )
                         )
@@ -488,8 +471,7 @@ def check-assertions fn [[assertions:List entities:List sources:List]
                             [[]]
                         )
                     ]
-                ]
-            ]
+                ])
             assertions
         )
     )
@@ -502,19 +484,16 @@ def check-identities fn [[decisions:List entities:List] [List] [
   def eindex (KgEnt.index-by-id entities)
   def dups
     (each
-        [var
-            [[id] iss "error" "kg_duplicate_identity_id"
+        ([id] => [ iss "error" "kg_duplicate_identity_id"
                 "identity_decision" id
                 `duplicate identity-decision id ${id}`
-            ]
-        ]
+            ])
         (dup-ids (each [dot id] decisions))
     )
   def per
     (flatten
         (each
-            [var
-                [[d]
+            ([d] => [
                   def l (eindex get d.left_entity_id)
                   def r (eindex get d.right_entity_id)
                   def l-merged-into
@@ -626,8 +605,7 @@ def check-identities fn [[decisions:List entities:List] [List] [
                             [[]]
                         )
                     ]
-                ]
-            ]
+                ])
             decisions
         )
     )
@@ -639,8 +617,7 @@ def check-identities fn [[decisions:List entities:List] [List] [
 def check-proposals fn proposals:List List [
   flatten
     (each
-        [var
-            [[p] flatten
+        ([p] => [ flatten
                 [(if (p.status eq "requires_approval") [[]]
                         [[(iss "error" "kg_proposal_status"
                                     "schema_proposal" p.id
@@ -662,8 +639,7 @@ def check-proposals fn proposals:List List [
                         ]
                     )
                 ]
-            ]
-        ]
+            ])
         proposals
     )
 ]
@@ -673,26 +649,21 @@ def check-collisions fn bundle:Map List [
   def claims
     (flatten
         [(each
-                [var
-                    [[s] KgUtil.as-map
+                ([s] => [ KgUtil.as-map
                         {id:s.id canon:`${s.locator}|${s.content_hash}`}
-                    ]
-                ]
+                    ])
                 (KgUtil.list-at bundle "sources")
             )
             (each
-                [var
-                    [[e] KgUtil.as-map
+                ([e] => [ KgUtil.as-map
                         {id:e.id
                           canon:`${e.type}|${e.normalized_label}`
                         }
-                    ]
-                ]
+                    ])
                 (KgUtil.list-at bundle "entities")
             )
             (each
-                [var
-                    [[a] KgUtil.as-map
+                ([a] => [ KgUtil.as-map
                         {id:a.id
                           canon:(KgId.canon-of
                               {s:a.subject_id
@@ -704,19 +675,16 @@ def check-collisions fn bundle:Map List [
                               }
                           )
                         }
-                    ]
-                ]
+                    ])
                 (KgUtil.list-at bundle "assertions")
             )
         ]
     )
     each
-    [var
-        [[c] iss "error" "kg_id_collision" "bundle"
+    ([c] => [ iss "error" "kg_id_collision" "bundle"
             (KgUtil.get-or c "id" "")
             `fingerprint collision: id claimed by ${(KgUtil.list-at c "canons") size} distinct canonical inputs`
-        ]
-    ]
+        ])
     (KgId.collisions claims)
 ]
 
@@ -742,31 +710,26 @@ def check-code-units fn bundle:Map List [
   def code-source-ids
     (each [dot id]
         (filter
-            [var
-                [[s]
+            ([s] => [
                     (KgUtil.get-or s "metadata" {} get "derived_from")
                     eq "code"
-                ]
-            ]
+                ])
             sources
         )
     )
   def evidenced
     (fold
-        [var
-            [[a acc]
+        ([a acc] => [
               def hit
                 (((filter
-                            [var
-                                [[ev]
+                            ([ev] => [
                                     ((filter [eq ev.source_id]
                                             code-source-ids
                                         )
                                         size
                                     )
                                     gt 0
-                                ]
-                            ]
+                                ])
                             (KgUtil.list-at a "evidence")
                         )
                         size
@@ -774,24 +737,19 @@ def check-code-units fn bundle:Map List [
                     gt 0
                 )
               if hit [acc set (a.subject_id) true] [acc]
-            ]
-        ]
+            ])
         (KgUtil.list-at bundle "assertions") {}
     )
     each
-    [var
-        [[e] iss "error" "kg_module_without_code_evidence" "entity"
+    ([e] => [ iss "error" "kg_module_without_code_evidence" "entity"
             e.id
             `SoftwareModule ${e.label} carries no assertion evidenced by go.work or go.mod; either it is not a real code unit, or its key/type/label no longer match kg/gomod.boru and the entity has split in two`
-        ]
-    ]
+        ])
     (filter
-        [var
-            [[e] (e.type eq "SoftwareModule") and
+        ([e] => [ (e.type eq "SoftwareModule") and
                 ((evidenced get e.id) is None)
-            ]
-        ]
-        (filter [var [[e] not (e.status eq "merged")]]
+            ])
+        (filter ([e] => [not (e.status eq "merged")])
             (KgUtil.list-at bundle "entities")
         )
     )

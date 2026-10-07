@@ -77,7 +77,7 @@ def ingest-source fn raw:Map Map [
 # "matching identifier" during resolution (that would auto-merge
 # unrelated entities at 0.98 confidence).
 def prune-external-ids fn eids:Map Map [
-  filter [var [[v] not ((convert String v) eq "")]] eids
+  filter ([v] => [not ((convert String v) eq "")]) eids
 ]
 
 # One candidate entity -> KgEntity with a deterministic id. A key that
@@ -95,7 +95,7 @@ def ingest-entity fn raw:Map Map [
       label:label
       normalized_label:nlabel
       aliases:(KgEnt.distinct-sorted
-          (each [var [[a] KgNorm.norm-display a]]
+          (each ([a] => [KgNorm.norm-display a])
               (get-or raw "aliases" [])
           )
       )
@@ -149,12 +149,11 @@ def ingest-evidence fn raw:Map Map [
 # emitted as dangling or unsupported claims.
 def ingest-bundle fn [[raw:Map recorded_at:String] [Map] [
   def sources
-    (each [var [[s] ingest-source s]] (get-or raw "sources" []))
+    (each ([s] => [ingest-source s]) (get-or raw "sources" []))
   def raw-entities (get-or raw "entities" [])
   def folded
     (fold
-        [var
-            [[cand acc]
+        ([cand acc] => [
               def e (ingest-entity cand)
               def key (get-or cand "key" e.id)
               def keymap (get-or acc "keymap" {})
@@ -188,12 +187,10 @@ def ingest-bundle fn [[raw:Map recorded_at:String] [Map] [
                       def unified (KgEnt.merge-pair first e)
                       def kept
                         (each
-                            [var
-                                [[x]
+                            ([x] => [
                                   if (x.id eq e.id)
                                     [unified get "winner"] [x]
-                                ]
-                            ]
+                                ])
                             ents
                         )
                         KgUtil.as-map
@@ -209,15 +206,13 @@ def ingest-bundle fn [[raw:Map recorded_at:String] [Map] [
                         }
                     ]
                 ]
-            ]
-        ]
+            ])
         raw-entities {keymap:{} entities:[] issues:[]}
     )
   def keymap (folded get "keymap")
   def ast-folded
     (fold
-        [var
-            [[cand acc]
+        ([cand acc] => [
               def asts (list-at acc "assertions")
               def issues (list-at acc "issues")
               def subj-key (get-or cand "subject" "")
@@ -247,7 +242,7 @@ def ingest-bundle fn [[raw:Map recorded_at:String] [Map] [
                 [def object
                     (ingest-object (get-or cand "object" {}) keymap)
                   def evidence
-                    (each [var [[ev] ingest-evidence ev]]
+                    (each ([ev] => [ingest-evidence ev])
                         (get-or cand "evidence" [])
                     )
                   if ((evidence size) eq 0)
@@ -286,8 +281,7 @@ def ingest-bundle fn [[raw:Map recorded_at:String] [Map] [
                         {assertions:(push built asts) issues:issues}
                     ]
                 ]
-            ]
-        ]
+            ])
         (get-or raw "assertions" []) {assertions:[] issues:[]}
     )
     KgUtil.as-map
@@ -324,8 +318,7 @@ def rows-to-candidates fn [[rows:List spec:Map] [Map] [
   def label-col (get-or espec "label_col" "")
   def per-row
     (each
-        [var
-            [[i]
+        ([i] => [
               def row (rows get i)
               def label (convert String (get-or row label-col ""))
               def key `${src-id}:row-${convert String i}`
@@ -343,31 +336,28 @@ def rows-to-candidates fn [[rows:List spec:Map] [Map] [
                 {key:key
                   type:etype
                   label:label
-                  aliases:(each [var [[c] convert String (get-or row c "")]]
+                  aliases:(each ([c] => [convert String (get-or row c "")])
                       (get-or espec "alias_cols" [])
                   )
                   external_ids:(fold
-                      [var
-                          [[kv acc] acc set (kv get 0)
+                      ([kv acc] => [ acc set (kv get 0)
                               (convert String
                                   (get-or row (kv get 1) "")
                               )
-                          ]
-                      ]
+                          ])
                       (StructUtil.items
                           (get-or espec "external_id_cols" {})
                       )
                       {}
                   )
                   attributes:(fold
-                      [var [[c acc] acc set (c) (get-or row c none)]]
+                      ([c acc] => [acc set (c) (get-or row c none)])
                       (get-or espec "attribute_cols" []) {}
                   )
                 }
               def extra
                 (fold
-                    [var
-                        [[aspec acc]
+                    ([aspec acc] => [
                           if
                             ((get-or aspec "object_kind" "") eq
                                 "entity"
@@ -391,14 +381,12 @@ def rows-to-candidates fn [[rows:List spec:Map] [Map] [
                                 ]
                             ]
                             [acc]
-                        ]
-                    ]
+                        ])
                     aspecs []
                 )
               def asts
                 (fold
-                    [var
-                        [[aspec acc]
+                    ([aspec acc] => [
                           if
                             ((get-or aspec "object_kind" "") eq
                                 "entity"
@@ -445,14 +433,12 @@ def rows-to-candidates fn [[rows:List spec:Map] [Map] [
                                     acc
                                 ]
                             ]
-                        ]
-                    ]
+                        ])
                     aspecs []
                 )
                 KgUtil.as-map
                 {entities:(push main extra) assertions:asts}
-            ]
-        ]
+            ])
         (iota (rows size))
     )
     KgUtil.as-map
@@ -468,8 +454,7 @@ def bundle-to-candidates fn bundle:Map Map [
   KgUtil.as-map
     {sources:(get-or bundle "sources" [])
       entities:(each
-          [var
-              [[e] KgUtil.as-map
+          ([e] => [ KgUtil.as-map
                   {key:e.id
                     type:e.type
                     label:e.label
@@ -478,13 +463,11 @@ def bundle-to-candidates fn bundle:Map Map [
                     attributes:e.attributes
                     status:e.status
                   }
-              ]
-          ]
+              ])
           (get-or bundle "entities" [])
       )
       assertions:(each
-          [var
-              [[a] KgUtil.as-map
+          ([a] => [ KgUtil.as-map
                   {subject:a.subject_id
                     predicate:a.predicate
                     object:(if (KgSchema.is-entity-ref a.object)
@@ -497,16 +480,14 @@ def bundle-to-candidates fn bundle:Map Map [
                         [a.object]
                     )
                     evidence:(each
-                        [var
-                            [[ev] KgUtil.as-map
+                        ([ev] => [ KgUtil.as-map
                                 {source:ev.source_id
                                   locator:ev.locator
                                   quote:ev.quote
                                   extraction_method:ev.extraction_method
                                   extractor:ev.extractor
                                 }
-                            ]
-                        ]
+                            ])
                         a.evidence
                     )
                     confidence:a.confidence
@@ -516,8 +497,7 @@ def bundle-to-candidates fn bundle:Map Map [
                     rule:a.rule
                     recorded_at:a.recorded_at
                   }
-              ]
-          ]
+              ])
           (get-or bundle "assertions" [])
       )
     }

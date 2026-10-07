@@ -200,6 +200,14 @@ type vmContext struct {
 	polyCache map[*compiler.PolyRef]*polyCacheEntry
 	p         *compiler.Program
 	r         *core.Registry
+	// hostReg is the registry an OWNERLESS unit (CompiledFn.Reg nil) of this
+	// context dispatches on in place of r — set only by hostForeignOn for a
+	// run-time-stamped TOKEN body, whose unit has no owner (the synthetic fn it
+	// compiled as has no home) and whose home is the CALLING registry: the one
+	// RunResolved steps the tokens on, where the enclosing unit installed the
+	// names the body reads (vm_token_body.go). Nil everywhere else: an
+	// ownerless unit runs on the program's registry, as it always did.
+	hostReg   *core.Registry
 	ceiling   int
 	stepLimit int
 	steps     int
@@ -4702,15 +4710,22 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 	// registry-visible handler effects (Net.listen's per-connection forks,
 	// dynamic-scope binds) land in module scope on both engines. Ordinary
 	// units (Reg nil) run on the program's registry.
-	curReg := r
+	// baseReg is what an ownerless unit dispatches on: the program's
+	// registry, or the calling registry a hosted token body was stamped
+	// for (vmContext.hostReg).
+	baseReg := r
+	if vc.hostReg != nil {
+		baseReg = vc.hostReg
+	}
+	curReg := baseReg
 	enterUnit := func(u int) {
 		curUnit = u
-		curReg = r
+		curReg = baseReg
 		if u < 0 {
 			curCode, curDebug = p.Code, p.Debug
 		} else {
 			curCode, curDebug = p.Fns[u].Code, p.Fns[u].Debug
-			curReg = dispatchRegistry(p.Fns[u].Reg, r)
+			curReg = dispatchRegistry(p.Fns[u].Reg, baseReg)
 		}
 	}
 	enterUnit(startUnit)

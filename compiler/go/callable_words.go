@@ -1254,7 +1254,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// `for-each ([e:Any] => [typeof e print]) {a:1 b:2}` prints Integer
 		// twice, and `([e:KeyVal] => …)` over the same map prints KeyVal.
 		if isMap || isList {
-			return []core.Value{entryCarrier(r, data, keyVal)}, ClosureInValue, true
+			return []core.Value{entryCarrier(data, keyVal)}, ClosureInValue, true
 		}
 	case "fold":
 		// NOT an arity rule. `fold` declares TWO signatures — one taking a seed
@@ -1273,7 +1273,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 			if core.IsTypeLiteral(acc) {
 				accC = core.ValueCarrier(acc) // a type VALUE seed (NUR323)
 			}
-			return []core.Value{accC, entryCarrier(r, data, keyVal)}, ClosureInValue, true
+			return []core.Value{accC, entryCarrier(data, keyVal)}, ClosureInValue, true
 		}
 		// A LIST fold's lambda declares (element, accumulator) — the
 		// interpreter's top-down assignment over the stack InvokeBody hands it
@@ -1296,7 +1296,7 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 		// accumulator carries the value type, the entry rides as its value or
 		// as the KeyVal the callback asked for.
 		if isMap {
-			return []core.Value{core.NewCarrier(elem), entryCarrier(r, data, keyVal)}, ClosureInValue, true
+			return []core.Value{core.NewCarrier(elem), entryCarrier(data, keyVal)}, ClosureInValue, true
 		}
 		// A LIST scan seeds the accumulator from the first ELEMENT, so both
 		// slots carry the element type; the order and the permutation are the
@@ -1375,26 +1375,11 @@ func lambdaCallbackInputs(r *core.Registry, word string, spec core.CallableSpec,
 // a KeyVal carrier. A KeyVal-typed param over a LIST gets the element carrier
 // all the same (a list has no entries): lambdaHookCompatible then declines the
 // compile, and the runtime raises the no-match the interpreter raises.
-func entryCarrier(r *core.Registry, data core.Value, keyVal bool) core.Value {
+func entryCarrier(data core.Value, keyVal bool) core.Value {
 	if keyVal && data.Parent.ConformsTo(core.TMap) {
-		return keyValCarrier(r, check.DataListElemTypeFromValue(data))
+		return core.KeyValCarrier(check.DataListElemTypeFromValue(data))
 	}
 	return check.ElementCarrierOf(data)
-}
-
-// keyValCarrier builds a representative KeyVal {k v i n} carrier — the shape the
-// map Function forms (filter/each/for-each/fold/scan over a map) hand a callback
-// whose entry param is typed KeyVal (entryCarrier). The value field carries the
-// map's common value type; k/i/n carry String/Integer/Integer. Tagged
-// Node/Map/KeyVal directly — the type is kernel-declared (keyval.go), so the
-// former registered-or-plain-Map fallback probe is gone.
-func keyValCarrier(_ *core.Registry, elem *core.Type) core.Value {
-	om := core.NewOrderedMap()
-	om.Set(core.KeyValK, core.NewCarrier(core.TString))
-	om.Set(core.KeyValV, core.NewCarrier(elem))
-	om.Set(core.KeyValI, core.NewCarrier(core.TInteger))
-	om.Set(core.KeyValN, core.NewCarrier(core.TInteger))
-	return core.NewValueRaw(core.TKeyVal, core.MapPayload{M: om})
 }
 
 // extraNoEvalHookSlots classifies every NON-body NoEvalArgs operand of a

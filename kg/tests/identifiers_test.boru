@@ -1,6 +1,6 @@
 # identifiers_test.boru — deterministic ids, collision handling, and the
 # normalization/id property tests.
-# Run from kg/:  ../cmd/go/bin/boru tests/identifiers_test.boru
+# Run from kg/:  ../cmd/go/bin/boru test tests/identifiers_test.boru
 
 import "boru:test"
 import "./identifiers.boru"
@@ -84,22 +84,18 @@ def clash (KgId.collisions [{id:"x" canon:"a"} {id:"x" canon:"b"}])
 # Idempotence: normalizing a normalized label changes nothing.
 Test.check-prop "norm-label is idempotent"
 [r.string "aB c\td  E" 24]
-[var
-      [[s] (KgNorm.norm-label (KgNorm.norm-label s)) eq
+[([s] => [ (KgNorm.norm-label (KgNorm.norm-label s)) eq
           (KgNorm.norm-label s)
-      ]
-  ]
+      ]) apply]
 60 1 0
 end drop
 
 # Identical canonical inputs generate identical ids.
 Test.check-prop "entity ids are a function of their canonical input"
 [r.string "abcdefgh " 16]
-[var
-      [[s] (KgId.entity-id "Concept" (KgNorm.norm-label s) "k") eq
+[([s] => [ (KgId.entity-id "Concept" (KgNorm.norm-label s) "k") eq
           (KgId.entity-id "Concept" (KgNorm.norm-label s) "k")
-      ]
-  ]
+      ]) apply]
 60 1 0
 end drop
 

@@ -1010,7 +1010,25 @@ func recordDynBodyCall(r *core.Registry, es *EmitState, word string, sig *core.S
 	for i := range args {
 		op, ok := es.resolveOperand(args[i])
 		if !ok {
-			return false
+			// A CAPTURING lambda literal in the callback slot has no compiled
+			// home of its own (a captureless one is an inert const): compile
+			// it as the fn VALUE it is — tryReturnedClosure, the closure unit
+			// a factory's result takes — so the dyn-body dispatch hands the
+			// handler a closure the fn-value seam matches and applies, exactly
+			// as `def g ([c] => …)  each g/v xs` lowers. Measured: `def row 5
+			// each ([c] => [c add row]) (ga raw)` over a gradual collection
+			// declined "dynamic input at each" where its quotation twin took
+			// this backstop (the var construct's bodies, rewritten to lambdas
+			// — design/IMMUTABLE-DEF.1.md §5 phase 1). The unit is count-
+			// agnostic (callback true): the handler's seam owns the count, as
+			// it does for every callback closure. A body that declines leaves
+			// es untouched and the decline stands.
+			if _, isFn := args[i].Data.(core.FnDefInfo); isFn {
+				op, ok = es.tryReturnedClosureAs(args[i], pos, true)
+			}
+			if !ok {
+				return false
+			}
 		}
 		ops[i] = op
 	}

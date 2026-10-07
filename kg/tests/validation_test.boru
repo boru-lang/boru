@@ -1,6 +1,6 @@
 # validation_test.boru — every planted defect in fixtures/invalid.jsonic
 # surfaces as an issue; the clean fixture stays clean.
-# Run from kg/:  ../cmd/go/bin/boru tests/validation_test.boru
+# Run from kg/:  ../cmd/go/bin/boru test tests/validation_test.boru
 
 import "boru:io"
 import "boru:test"
@@ -80,9 +80,7 @@ Test.test end
 # even in a broken bundle).
 def all-supported
 (fold
-      [var
-          [[a acc] acc and (((KgUtil.list-at a "evidence") size) gt 0)]
-      ]
+      ([a acc] => [acc and (((KgUtil.list-at a "evidence") size) gt 0)])
       (broken get "assertions") true
   )
 [all-supported true Assert.equal]

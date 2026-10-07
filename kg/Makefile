@@ -49,7 +49,7 @@ fmt:
 test:
 	@for f in tests/*_test.boru; do \
 	  echo "== $$f"; \
-	  $(BORU) $$f || exit 1; \
+	  $(BORU) test $$f || exit 1; \
 	done
 
 # Rebuild the committed project knowledge graph

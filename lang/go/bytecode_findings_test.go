@@ -4186,36 +4186,15 @@ func TestWalkHookClosureCompiles(t *testing.T) {
 	} {
 		requireEngineParity(t, src, true)
 	}
-	// NEGATIVES — the ascend shape that still DECLINES (the compile
-	// failure), and the fallback must agree with the interpreter.
-	failures := []struct{ name, src, want string }{
-		// (The two-lambda ascend shape moved to the PARITY table above at
-		// Stage M2d: the ascend lambda now compiles to its own closure unit,
-		// per design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore M2d.)
-		{"capturing ascend lambda (lexical capture — stays declined)",
-			`def f fn [[p:String] [Map] [walk {mode: "depth"} {a:1} (m:Any => [m.path drop]) (m:Any => [p drop])]] f "s"`,
-			"code-body word walk"},
-	}
-	for _, c := range failures {
-		prog, reason, _, _ := mustNew(t).CompileCheck(c.src)
-		if prog != nil {
-			t.Fatalf("%s: compiled; want compile failure", c.name)
-		}
-		if !strings.Contains(reason, c.want) {
-			t.Errorf("%s: compile failure reason %q; want substring %q", c.name, reason, c.want)
-		}
-		gotC, _, errC := mustNew(t).RunCompiled(c.src)
-		gotI, errI := mustNew(t).RunInterp(c.src)
-		if noteCompileDefect(t, c.src, gotC, errC) {
-			continue
-		}
-		if (errC == nil) != (errI == nil) || codeOf(errC) != codeOf(errI) {
-			t.Fatalf("%s: fallback err=[%s] interp err=[%s] (should agree)", c.name, codeOf(errC), codeOf(errI))
-		}
-		if fmt.Sprint(gotC) != fmt.Sprint(gotI) {
-			t.Errorf("%s: fallback=%v interp=%v", c.name, gotC, gotI)
-		}
-	}
+	// (The two-lambda ascend shape moved to the PARITY table above at Stage
+	// M2d: the ascend lambda now compiles to its own closure unit, per
+	// design/legacy/STAGE3-INLINING-DESIGN-ROUND.0.ignore M2d.) The CAPTURING
+	// ascend lambda — `(m:Any => [p drop])` reading the enclosing fn's param —
+	// declined the whole program ("code-body word walk") until the dyn-body
+	// backstop learned to resolve a capturing lambda literal as the fn VALUE it
+	// is (recordDynBodyCall → tryReturnedClosure, design/IMMUTABLE-DEF.1.md §5
+	// phase 1): it compiles and agrees too.
+	requireEngineParity(t, `def f fn [[p:String] [Map] [walk {mode: "depth"} {a:1} (m:Any => [m.path drop]) (m:Any => [p drop])]] f "s"`, true)
 }
 
 // Error-row trap programs (finish-line cluster 1, the 83-row burn-down): a

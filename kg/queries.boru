@@ -35,11 +35,10 @@ def entities-by-type fn [[bundle:Map etype:String] [List] [
 # string is normalized the same way entity labels were).
 def entities-by-label fn [[bundle:Map label:String] [List] [
   def probe (KgNorm.norm-label label) filter
-    [var
-        [[e]
+    ([e] => [
           def alias-hit
             (((filter
-                        [var [[al] (KgNorm.norm-label al) eq probe]]
+                        ([al] => [(KgNorm.norm-label al) eq probe])
                         (KgUtil.list-at e "aliases")
                     )
                     size
@@ -47,8 +46,7 @@ def entities-by-label fn [[bundle:Map label:String] [List] [
                 gt 0
             )
             (e.normalized_label eq probe) or alias-hit
-        ]
-    ]
+        ])
     (KgUtil.list-at bundle "entities")
 ]]
 
@@ -57,20 +55,18 @@ def entities-by-label fn [[bundle:Map label:String] [List] [
 def assertions-for-subject fn [[bundle:Map id:String] [List] [
   def index (eindex bundle)
   def cid (KgEnt.canonical-id index id) filter
-    [var [[a] (KgEnt.canonical-id index a.subject_id) eq cid]]
+    ([a] => [(KgEnt.canonical-id index a.subject_id) eq cid])
     (KgUtil.list-at bundle "assertions")
 ]]
 
 def assertions-for-object fn [[bundle:Map id:String] [List] [
   def index (eindex bundle)
   def cid (KgEnt.canonical-id index id) filter
-    [var
-        [[a]
+    ([a] => [
           if (KgSchema.is-entity-ref a.object)
             [(KgEnt.canonical-id index a.object.entity_id) eq cid]
             [false]
-        ]
-    ]
+        ])
     (KgUtil.list-at bundle "assertions")
 ]]
 
@@ -81,23 +77,21 @@ def assertions-by-predicate fn [[bundle:Map predicate:String] [List] [
 
 def assertions-by-source fn [[bundle:Map source_id:String] [List] [
   filter
-    [var
-        [[a]
+    ([a] => [
             ((filter [dot source_id eq source_id]
                     (KgUtil.list-at a "evidence")
                 )
                 size
             )
             gt 0
-        ]
-    ]
+        ])
     (KgUtil.list-at bundle "assertions")
 ]]
 
 # Assertions recorded inside [lo, hi] (RFC3339 strings compare
 # lexicographically, so plain string ordering is the time ordering).
 def assertions-in-range fn [[bundle:Map lo:String hi:String] [List] [
-  filter [var [[a] (a.recorded_at gte lo) and (a.recorded_at lte hi)]]
+  filter ([a] => [(a.recorded_at gte lo) and (a.recorded_at lte hi)])
     (KgUtil.list-at bundle "assertions")
 ]]
 
@@ -116,8 +110,7 @@ def evidence-for-assertion fn [[bundle:Map assertion_id:String] [List] [
 # superseded assertions do not contribute edges.
 def edge-list fn bundle:Map List [
   def index (eindex bundle) fold
-    [var
-        [[a acc]
+    ([a acc] => [
           if
             ((KgSchema.is-entity-ref a.object) and
                 (not (a.status eq "superseded"))
@@ -134,8 +127,7 @@ def edge-list fn bundle:Map List [
                 acc
             ]
             [acc]
-        ]
-    ]
+        ])
     (KgUtil.list-at bundle "assertions") []
 ]
 
@@ -145,14 +137,12 @@ def neighbors fn [[bundle:Map id:String] [List] [
   def hits
     (flatten
         (each
-            [var
-                [[e]
+            ([e] => [
                   def efrom (e get "from")
                   def eto (e get "to")
                   if (efrom eq cid) [[eto]]
                     [if (eto eq cid) [[efrom]] [[]]]
-                ]
-            ]
+                ])
             (edge-list bundle)
         )
     )
@@ -164,11 +154,9 @@ def one-hop-paths fn [[bundle:Map a:String b:String] [List] [
   def index (eindex bundle)
   def ca (KgEnt.canonical-id index a)
   def cb (KgEnt.canonical-id index b) filter
-    [var
-        [[e] ((e.from eq ca) and (e.to eq cb)) or
+    ([e] => [ ((e.from eq ca) and (e.to eq cb)) or
             ((e.from eq cb) and (e.to eq ca))
-        ]
-    ]
+        ])
     (edge-list bundle)
 ]]
 
@@ -179,30 +167,24 @@ def two-hop-paths fn [[bundle:Map a:String b:String] [List] [
   def ca (KgEnt.canonical-id index a)
   def cb (KgEnt.canonical-id index b)
   def es (edge-list bundle)
-  def firsts (filter [var [[e] (e.from eq ca) or (e.to eq ca)]] es)
+  def firsts (filter ([e] => [(e.from eq ca) or (e.to eq ca)]) es)
     flatten
     (each
-        [var
-            [[e1]
+        ([e1] => [
               def mid (if (e1.from eq ca) [e1.to] [e1.from])
               if ((mid eq ca) or (mid eq cb)) [[]]
                 [each
-                    [var
-                        [[e2] KgUtil.as-map
+                    ([e2] => [ KgUtil.as-map
                             {via:mid first:e1 second:e2}
-                        ]
-                    ]
+                        ])
                     (filter
-                        [var
-                            [[e2] ((e2.from eq mid) and (e2.to eq cb))
+                        ([e2] => [ ((e2.from eq mid) and (e2.to eq cb))
                                 or ((e2.from eq cb) and (e2.to eq mid))
-                            ]
-                        ]
+                            ])
                         es
                     )
                 ]
-            ]
-        ]
+            ])
         firsts
     )
 ]]
@@ -226,14 +208,12 @@ def code-units fn bundle:Map List [
 # Every Go module, sorted by repository path.
 def modules fn bundle:Map List [
   def hits
-    (filter [var [[e] (unit-of e) eq "go-module"]] (code-units bundle))
+    (filter ([e] => [(unit-of e) eq "go-module"]) (code-units bundle))
     hits ArrayUtil.sortby
     (each
-        [var
-            [[e] KgUtil.get-or (KgUtil.get-or e "attributes" {})
+        ([e] => [ KgUtil.get-or (KgUtil.get-or e "attributes" {})
                 "path" ""
-            ]
-        ]
+            ])
         hits
     )
 ]
@@ -241,14 +221,12 @@ def modules fn bundle:Map List [
 # Every discovered Go package, sorted by repository path.
 def packages fn bundle:Map List [
   def hits
-    (filter [var [[e] (unit-of e) eq "go-package"]] (code-units bundle))
+    (filter ([e] => [(unit-of e) eq "go-package"]) (code-units bundle))
     hits ArrayUtil.sortby
     (each
-        [var
-            [[e] KgUtil.get-or (KgUtil.get-or e "attributes" {})
+        ([e] => [ KgUtil.get-or (KgUtil.get-or e "attributes" {})
                 "path" ""
-            ]
-        ]
+            ])
         hits
     )
 ]
@@ -259,14 +237,12 @@ def packages fn bundle:Map List [
 def code-unit-by-path fn [[bundle:Map path:String] [Any] [
   def hits
     (filter
-        [var
-            [[e]
+        ([e] => [
                 (KgUtil.get-or (KgUtil.get-or e "attributes" {})
                     "path" ""
                 )
                 eq path
-            ]
-        ]
+            ])
         (code-units bundle)
     )
   if ((hits size) eq 0) [none] [hits get 0]
@@ -275,13 +251,11 @@ def code-unit-by-path fn [[bundle:Map path:String] [Any] [
 # Ids this entity directly depends on (subject -> object).
 def dependencies-of fn [[bundle:Map id:String] [List] [
   def cid (KgEnt.canonical-id (eindex bundle) id) KgEnt.distinct-sorted
-    (each [var [[e] e get "to"]]
+    (each ([e] => [e get "to"])
         (filter
-            [var
-                [[e] ((e get "from") eq cid) and
+            ([e] => [ ((e get "from") eq cid) and
                     ((e get "predicate") eq "depends_on")
-                ]
-            ]
+                ])
             (edge-list bundle)
         )
     )
@@ -290,13 +264,11 @@ def dependencies-of fn [[bundle:Map id:String] [List] [
 # Ids that directly depend on this entity — the blast radius of a change.
 def dependents-of fn [[bundle:Map id:String] [List] [
   def cid (KgEnt.canonical-id (eindex bundle) id) KgEnt.distinct-sorted
-    (each [var [[e] e get "from"]]
+    (each ([e] => [e get "from"])
         (filter
-            [var
-                [[e] ((e get "to") eq cid) and
+            ([e] => [ ((e get "to") eq cid) and
                     ((e get "predicate") eq "depends_on")
-                ]
-            ]
+                ])
             (edge-list bundle)
         )
     )
@@ -306,11 +278,9 @@ def dependents-of fn [[bundle:Map id:String] [List] [
 
 def unresolved-identities fn bundle:Map List [
   filter
-    [var
-        [[d] (d.decision eq "possible_match") or
+    ([d] => [ (d.decision eq "possible_match") or
             (d.decision eq "insufficient_evidence")
-        ]
-    ]
+        ])
     (KgUtil.list-at bundle "identity_decisions")
 ]
 
@@ -329,70 +299,58 @@ def validation-errors fn bundle:Map List [
 def human-review-items fn bundle:Map List [
   def from-decisions
     (each
-        [var
-            [[d] KgUtil.as-map
+        ([d] => [ KgUtil.as-map
                 {kind:"identity_decision"
                   target_id:d.id
                   reason:`${d.decision} between ${d.left_entity_id} and ${d.right_entity_id} (confidence ${d.confidence})`
                 }
-            ]
-        ]
+            ])
         (filter [dot review_required eq true]
             (KgUtil.list-at bundle "identity_decisions")
         )
     )
   def from-status
     (each
-        [var
-            [[a] KgUtil.as-map
+        ([a] => [ KgUtil.as-map
                 {kind:"assertion"
                   target_id:a.id
                   reason:`assertion is ${a.status}`
                 }
-            ]
-        ]
+            ])
         (filter
-            [var
-                [[a] (a.status eq "disputed") or
+            ([a] => [ (a.status eq "disputed") or
                     (a.status eq "unresolved")
-                ]
-            ]
+                ])
             (KgUtil.list-at bundle "assertions")
         )
     )
   def from-confidence
     (each
-        [var
-            [[a] KgUtil.as-map
+        ([a] => [ KgUtil.as-map
                 {kind:"assertion"
                   target_id:a.id
                   reason:`confidence ${a.confidence} below 0.80`
                 }
-            ]
-        ]
+            ])
         (filter
-            [var
-                [[a] (a.confidence lt 0.8) and
+            ([a] => [ (a.confidence lt 0.8) and
                     (not
                         ((a.status eq "disputed") or
                             (a.status eq "unresolved")
                         )
                     )
-                ]
-            ]
+                ])
             (KgUtil.list-at bundle "assertions")
         )
     )
   def from-issues
     (each
-        [var
-            [[i] KgUtil.as-map
+        ([i] => [ KgUtil.as-map
                 {kind:"validation_issue"
                   target_id:i.id
                   reason:i.message
                 }
-            ]
-        ]
+            ])
         (filter [dot severity eq "error"]
             (KgUtil.list-at bundle "validation_issues")
         )
@@ -401,11 +359,9 @@ def human-review-items fn bundle:Map List [
     (flatten [from-decisions from-status from-confidence from-issues])
     items ArrayUtil.sortby
     (each
-        [var
-            [[x]
+        ([x] => [
                 `${KgUtil.get-or x "kind" ""}|${KgUtil.get-or x "target_id" ""}|${KgUtil.get-or x "reason" ""}`
-            ]
-        ]
+            ])
         items
     )
 ]

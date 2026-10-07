@@ -73,8 +73,7 @@ def same-object fn [[a:Map b:Map] [Boolean] [
 def mark-conflicts fn assertions:List Map [
   def contested
     (filter
-        [var
-            [[a]
+        ([a] => [
                 ((KgSchema.term-approved a.predicate
                         KgSchema.single-valued-predicates
                     )
@@ -85,66 +84,57 @@ def mark-conflicts fn assertions:List Map [
                         )
                     )
                 )
-            ]
-        ]
+            ])
         assertions
     )
   def groups
     (fold
-        [var
-            [[a acc]
+        ([a acc] => [
               def k (claim-key a)
               def cur (acc get k)
               def lst (if (cur is None) [[]] [cur]) acc set (k)
                 (push a lst)
-            ]
-        ]
+            ])
         contested {}
     )
   def conflict-keys
     (filter
-        [var
-            [[k]
+        ([k] => [
               def grp (groups get k)
               def canons
                 (KgEnt.distinct-sorted
-                    (each [var [[a] KgId.canon-of a.object]] grp)
+                    (each ([a] => [KgId.canon-of a.object]) grp)
                 )
                 (canons size) gt 1
-            ]
-        ]
+            ])
         (sort (keys groups))
     )
   def conflicted-ids
     (flatten
-        (each [var [[k] each [dot id] (groups get k)]] conflict-keys)
+        (each ([k] => [each [dot id] (groups get k)]) conflict-keys)
     )
   def conflicts
     (each
-        [var
-            [[k]
+        ([k] => [
               def grp (groups get k)
               def head (grp get 0) KgUtil.as-map
                 {subject_id:head.subject_id
                   predicate:head.predicate
                   assertion_ids:(sort (each [dot id] grp))
                 }
-            ]
-        ]
+            ])
         conflict-keys
     )
   def marked
     (each
-        [var
-            [[a]
+        ([a] => [
               def hit (((filter [eq a.id] conflicted-ids) size) gt 0)
               if
                 ((hit and (not (a.status eq "superseded"))) and
                     (not (a.status eq "unresolved"))
                 )
                 [StructUtil.setpath "status" "disputed" a] [a]
-            ]
-        ]
+            ])
         assertions
     )
     KgUtil.as-map {assertions:marked conflicts:conflicts}

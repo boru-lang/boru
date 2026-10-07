@@ -4,7 +4,7 @@
 # documents, so an ordinary edit to README.md cannot turn them red; the
 # comparison tests build their stored/current blocks by hand, so they
 # assert the DIFFING logic without depending on any file at all.
-# Run from kg/:  ../cmd/go/bin/boru tests/digest_test.boru
+# Run from kg/:  ../cmd/go/bin/boru test tests/digest_test.boru
 
 import "boru:test"
 import "./util.boru"

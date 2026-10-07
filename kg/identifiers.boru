@@ -91,23 +91,19 @@ def proposal-id fn [[term_kind:String term:String] [String] [
 def collisions fn claims:List List [
   def by-id
     (fold
-        [var
-            [[c acc]
+        ([c acc] => [
               def prev (acc get c.id)
               def cur (if (prev eq none) [[]] [prev])
               def hit (((filter [eq c.canon] cur) size) gt 0)
               if hit [acc] [acc set (c.id) (push c.canon cur)]
-            ]
-        ]
+            ])
         claims {}
     )
     fold
-    [var
-        [[id acc]
+    ([id acc] => [
           def canons (by-id get id)
           if ((canons size) gt 1) [push {id:id canons:canons} acc] [acc]
-        ]
-    ]
+        ])
     (sort (keys by-id)) []
 ]
 

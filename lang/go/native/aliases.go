@@ -556,6 +556,7 @@ var (
 	NewInteger          = core.NewInteger
 	NewKeyVal           = core.NewKeyVal
 	CallbackWantsKeyVal = core.CallbackWantsKeyVal
+	KeyValCarrier       = core.KeyValCarrier
 	NewModuleInstance   = core.NewModuleInstance
 	AsModuleDesc        = core.AsModuleDesc
 	NewBigInteger       = core.NewBigInteger

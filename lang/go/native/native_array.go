@@ -1799,7 +1799,12 @@ func analyseHigherOrderBodyVals(r *Registry, body Value, vals ...Value) []Value 
 // Bounded by the same round count as AnalyseLoopBody; only the final
 // round's diagnostics are kept. Returns the stabilised accumulator
 // carrier, or ok=false when the body is not analysable.
-func foldAccumFixedPoint(r *Registry, body Value, initAcc Value, elemCarrier Value) (Value, bool) {
+//
+// positional says how a FUNCTION body takes its two inputs: a map arm hands a
+// lambda (accumulator, entry) in signature order, a list arm hands them as a
+// stack the lambda's signature matches top-down — (element, accumulator), the
+// interpreter's rule (compiler/go/callable_words.go ClosureInStackPair).
+func foldAccumFixedPoint(r *Registry, body Value, initAcc Value, elemCarrier Value, positional bool) (Value, bool) {
 	// Normalise the seed to a container-faithful carrier. A List/Map SUBTYPE seed
 	// (`[]` / `[9]`) reaches here either concrete or already stripped to a carrier
 	// whose Data==nil — both drop the load-bearing ChildTypeInfo, so a body word
@@ -1814,7 +1819,12 @@ func foldAccumFixedPoint(r *Registry, body Value, initAcc Value, elemCarrier Val
 	diagBase := len(r.Check.Diagnostics)
 	for round := 0; ; round++ {
 		r.Check.TruncateDiagnostics(diagBase)
-		stk := analyseHigherOrderBodyVals(r, body, acc, elemCarrier)
+		var stk []Value
+		if fd, isFn := body.Data.(FnDefInfo); isFn {
+			stk = analyseCallbackFn(r, body, fd, []Value{acc, elemCarrier}, positional)
+		} else {
+			stk = analyseHigherOrderBodyVals(r, body, acc, elemCarrier)
+		}
 		if len(stk) == 0 {
 			return Value{}, false
 		}
@@ -1824,6 +1834,60 @@ func foldAccumFixedPoint(r *Registry, body Value, initAcc Value, elemCarrier Val
 		}
 		acc = joined
 	}
+}
+
+// analyseCallbackFn is the FUNCTION-body arm of the fold/scan fixed point: a
+// lambda or fn VALUE handed to the word is matched against its own signature
+// over the inputs — in signature order when the arm hands them positionally
+// (a map arm's (accumulator, entry)), else top-down off the stack the list arm
+// pushes, (element, accumulator) — and its body analysed as a fn body
+// (AnalyseFnBody), so the accumulator the body produces types the word's
+// result exactly as a quotation body's residual does. Before this arm the
+// fixed point had no answer for a Function body and the word's result was a
+// strict Any, which failed every later read of it (`groups get k` over a
+// `fold (lambda) … {}` — kg's shape once its `var [[…]]` bodies became
+// lambdas, design/IMMUTABLE-DEF.1.md §5 phase 1). nil when no signature
+// admits the inputs (the callers answer a gradual Any).
+func analyseCallbackFn(r *Registry, fn Value, fd FnDefInfo, vals []Value, positional bool) []Value {
+	// A fn-valued input is read by DISPATCH at run time — a bare read of a
+	// param holding a fn is the word (NUR268): `fold ([a:Any kv:Any] => [a])
+	// {x:1} ([] => [5])` answers 5 — a shape the body analysis types as the
+	// VALUE, so the fixed point would answer the Function carrier, which no
+	// residual may hold ("unconsumed fn-value carrier"). Such an input leaves
+	// the result unknown (the callers' gradual Any).
+	for _, v := range vals {
+		if v.Parent != nil && v.Parent.ConformsTo(TFunction) {
+			return nil
+		}
+	}
+	args := vals
+	if !positional {
+		args = make([]Value, len(vals))
+		for i, v := range vals {
+			args[len(vals)-1-i] = v
+		}
+	}
+	sig := MatchFnSig(fn, args)
+	if sig == nil {
+		return nil
+	}
+	names := make([]string, len(sig.Params))
+	for i, p := range sig.Params {
+		names[i] = p.Name
+	}
+	return AnalyseFnBody(r, fd.Name, names, sig.Body(), args, fd.Captured, sig.Returns, fd.Anonymous)
+}
+
+// foldEntryCarrier is the per-entry input a fold/scan body sees in check
+// mode: the collection's element carrier (a map's common value type), or —
+// over a map, for a Function whose entry param is typed KeyVal — the KeyVal
+// {k v i n} carrier (core.CallbackWantsKeyVal, the entry rule).
+func foldEntryCarrier(body, coll Value) (Value, bool) {
+	isMap := coll.Parent.ConformsTo(TMap)
+	if isMap && CallbackWantsKeyVal(body) {
+		return KeyValCarrier(DataListElemTypeFromValue(coll)), isMap
+	}
+	return ElementCarrierFromValue(coll), isMap
 }
 
 // ---- fold ----
@@ -1887,9 +1951,14 @@ func foldWithInitReturnsFn(args []Value, r *Registry) []Value {
 	if len(args) < 3 {
 		return []Value{NewDynamicCarrier(TAny)}
 	}
-	acc, ok := foldAccumFixedPoint(r, args[0], args[2], ElementCarrierFromValue(args[1]))
+	elemC, isMap := foldEntryCarrier(args[0], args[1])
+	acc, ok := foldAccumFixedPoint(r, args[0], args[2], elemC, isMap)
 	if !ok {
-		return []Value{NewCarrier(TAny)}
+		// A body the pass cannot analyse (a fn-typed carrier, a signature
+		// no input admits) leaves the result's type UNKNOWN — a gradual
+		// Any, which a later read matches optimistically — never a strict
+		// Any, which failed every read of a valid program's result.
+		return []Value{NewDynamicCarrier(TAny)}
 	}
 	return []Value{acc}
 }
@@ -1939,10 +2008,12 @@ func foldNoInitReturnsFn(args []Value, r *Registry) []Value {
 		core.CheckAddUniqueDiagnostic(r, "fold_error", emptyDetail, "fold", args[1].Pos())
 		return []Value{NewCarrier(TAny)}
 	}
-	elemC := ElementCarrierFromValue(args[1])
-	acc, ok := foldAccumFixedPoint(r, args[0], elemC, elemC)
+	// The seed is the first VALUE; the entry is the value, or the KeyVal a
+	// KeyVal-typed param asks for.
+	entryC, isMap := foldEntryCarrier(args[0], args[1])
+	acc, ok := foldAccumFixedPoint(r, args[0], ElementCarrierFromValue(args[1]), entryC, isMap)
 	if !ok {
-		return []Value{NewCarrier(TAny)}
+		return []Value{NewDynamicCarrier(TAny)} // unknown, never strict (see foldWithInitReturnsFn)
 	}
 	return []Value{acc}
 }
@@ -2035,7 +2106,7 @@ func foldaxisReturnsFn(args []Value, r *Registry) []Value {
 		return []Value{NewCarrier(TList)}
 	}
 	elemC := rank2ElemCarrier(args[2])
-	acc, ok := foldAccumFixedPoint(r, args[1], elemC, elemC)
+	acc, ok := foldAccumFixedPoint(r, args[1], elemC, elemC, false)
 	if !ok {
 		return []Value{NewCarrier(TList)}
 	}
@@ -2133,7 +2204,7 @@ func scanReturnsFn(args []Value, r *Registry) []Value {
 		return []Value{NewCarrier(TList)}
 	}
 	elemC := ElementCarrierFromValue(args[1])
-	acc, ok := foldAccumFixedPoint(r, args[0], elemC, elemC)
+	acc, ok := foldAccumFixedPoint(r, args[0], elemC, elemC, false)
 	if !ok {
 		return []Value{NewCarrier(TList)}
 	}

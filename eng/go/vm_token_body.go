@@ -164,7 +164,11 @@ func (vc *vmContext) invokeTokenBody(reg *core.Registry, body core.Value, inputs
 	// seam's inputs here, as a fn value's root frame does, answered `[7]`
 	// then `[5]` for `each b [x 5]` over `b` = `[do [args]]` inside
 	// `w 7`, against the interpreter's `[7]` twice.)
-	res, err := vc.hostForeign(ref.Prog, reg, ref.Unit, inputs, nil, true)
+	// The unit is ownerless (the synthetic fn it compiled as has no home),
+	// and its home is reg — the registry RunResolved would have stepped the
+	// tokens on, where the enclosing unit installed the names it reads — so
+	// it is hosted FOR reg (hostForeignOn), not on the running registry.
+	res, err := vc.hostForeignOn(ref.Prog, reg, ref.Unit, inputs, nil, true, reg)
 	if fe, escaped := err.(*flowEscape); escaped {
 		reg.FlowCtrl = flowCtrlOf(fe.op)
 		return fe.residual, nil, true

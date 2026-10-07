@@ -42,11 +42,9 @@ def read-text fn path:String String [
 # sources is still one input file.
 def distinct fn xs:List List [
   fold
-    [var
-        [[x acc]
+    ([x acc] => [
           if (((filter [eq x] acc) size) gt 0) [acc] [push x acc]
-        ]
-    ]
+        ])
     xs []
 ]
 
@@ -55,12 +53,10 @@ def distinct fn xs:List List [
 def file-digests fn paths:List List [
   def rows
     (each
-        [var
-            [[p]
+        ([p] => [
               def text (read-text p) KgUtil.as-map
                 {path:p digest:(digest-text text) chars:(text size)}
-            ]
-        ]
+            ])
         (distinct paths)
     )
     rows ArrayUtil.sortby (each [dot path] rows)
@@ -72,7 +68,7 @@ def file-digests fn paths:List List [
 def combine fn entries:List String [
   digest-text
     (StringUtil.concat
-        (sort (each [var [[e] `${e.path}|${e.digest}`]] entries))
+        (sort (each ([e] => [`${e.path}|${e.digest}`]) entries))
         {sep:"\n"}
     )
 ]
@@ -90,14 +86,12 @@ def combine fn entries:List String [
 # one direction of error a freshness check must not make.
 def synthetic-rows fn items:List List [
   each
-    [var
-        [[i] KgUtil.as-map
+    ([i] => [ KgUtil.as-map
             {path:i.path
               digest:(digest-text i.text)
               chars:(i.text size)
             }
-        ]
-    ]
+        ])
     items
 ]
 
@@ -126,7 +120,7 @@ def mk-input-digest fn [[paths:List synthetic:List] [Map] [
 def project-inputs fn [[project:String code-paths:List] [List] [
   def raw (IO.read (make Pathon project))
   def locators
-    (each [var [[s] `../${KgUtil.get-or s "locator" ""}`]]
+    (each ([s] => [`../${KgUtil.get-or s "locator" ""}`])
         (KgUtil.list-at raw "sources")
     )
     sort (distinct (flatten [[project] locators code-paths]))
@@ -144,31 +138,29 @@ def compare fn [[stored:Map current:Map] [Map] [
   def old-paths (each [dot path] old-files)
   def new-paths (each [dot path] new-files)
   def digest-of
-    (fold [var [[f acc] acc set (f.path) f.digest]] old-files {})
+    (fold ([f acc] => [acc set (f.path) f.digest]) old-files {})
   def changed
     (sort
         (each [dot path]
             (filter
-                [var
-                    [[f]
+                ([f] => [
                       def prev (digest-of get f.path)
                         (not (prev is None)) and
                         (not (prev eq f.digest))
-                    ]
-                ]
+                    ])
                 new-files
             )
         )
     )
   def missing
     (sort
-        (filter [var [[p] ((filter [eq p] new-paths) size) eq 0]]
+        (filter ([p] => [((filter [eq p] new-paths) size) eq 0])
             old-paths
         )
     )
   def added
     (sort
-        (filter [var [[p] ((filter [eq p] old-paths) size) eq 0]]
+        (filter ([p] => [((filter [eq p] old-paths) size) eq 0])
             new-paths
         )
     )

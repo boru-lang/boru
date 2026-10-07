@@ -3955,6 +3955,17 @@ func (lw *lowerer) callDeclineReason(c *emitCall) string {
 	return lw.bodyMapReason(c)
 }
 
+// polyCommitsNoCount reports whether a poly call's op commits no result-count
+// claim (PolyNOutRegion). A variadic region's run (a computed `do` body over a
+// gradual operand): the region's own seat rules own its count, as they do for
+// the CALL_NATIVE twin. A count-ambiguous poly (RecordPolyCall's callVariadic
+// mark — the re-match may land on an arm of either count, `set` over a
+// gradual accumulator: a Store's 0 results against a Map's 1): its seat, or
+// the frame's RET, owns the count.
+func (lw *lowerer) polyCommitsNoCount(seq int) bool {
+	return lw.seatsAsRegion(seq) || (lw.es != nil && lw.es.eventInfo[seq].callVariadic)
+}
+
 func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 	c := &ev.call
 	if c.live {
@@ -4193,10 +4204,7 @@ func (lw *lowerer) lowerCall(ev *EmitEvent) string {
 		// word's signatures against the n stack values.
 		pi := len(lw.p.PolyRefs)
 		nout := c.nout
-		if lw.seatsAsRegion(ev.seq) {
-			// A variadic region's run (a computed `do` body over a gradual
-			// operand): the region's own seat rules own its count, as they
-			// do for the CALL_NATIVE twin, so the op commits no claim.
+		if lw.polyCommitsNoCount(ev.seq) {
 			nout = PolyNOutRegion
 		}
 		pref := PolyRef{Word: c.word, Arity: n, NOut: nout, Reg: c.polyReg, NoMatch: c.polyNoMatch, Split: lw.splitWords(lw.seatSplitLive(c.polySplit, c.polySplitLive), c.pos, c.polySplitFwdPos), DynBodyOne: dynOne, DynBodyPlain: plainChk, Raw: lw.polyRawOperands(n), QuietGuard: c.quietGuard}

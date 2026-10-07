@@ -30,20 +30,18 @@ import "./entities.boru"
 # {matching conflicting} scheme-name lists for two entities.
 def shared-schemes fn [[a:Map b:Map] [Map] [
   def common
-    (filter [var [[k] not ((b.external_ids get k) is None)]]
+    (filter ([k] => [not ((b.external_ids get k) is None)])
         (keys a.external_ids)
     )
     KgUtil.as-map
     {matching:(filter
-          [var [[k] (a.external_ids get k) eq (b.external_ids get k)]]
+          ([k] => [(a.external_ids get k) eq (b.external_ids get k)])
           common
       )
       conflicting:(filter
-          [var
-              [[k] not
+          ([k] => [ not
                   ((a.external_ids get k) eq (b.external_ids get k))
-              ]
-          ]
+              ])
           common
       )
     }
@@ -53,18 +51,16 @@ def shared-schemes fn [[a:Map b:Map] [Map] [
 # list/map attribute values corroborate too).
 def shared-attributes fn [[a:Map b:Map] [Map] [
   def common
-    (filter [var [[k] not ((b.attributes get k) is None)]]
+    (filter ([k] => [not ((b.attributes get k) is None)])
         (keys a.attributes)
     )
     KgUtil.as-map
     {matching:(filter
-          [var [[k] (a.attributes get k) deq (b.attributes get k)]]
+          ([k] => [(a.attributes get k) deq (b.attributes get k)])
           common
       )
       conflicting:(filter
-          [var
-              [[k] not ((a.attributes get k) deq (b.attributes get k))]
-          ]
+          ([k] => [not ((a.attributes get k) deq (b.attributes get k))])
           common
       )
     }
@@ -72,21 +68,17 @@ def shared-attributes fn [[a:Map b:Map] [Map] [
 
 def id-evidence fn [[a:Map schemes:List] [List] [
   each
-    [var
-        [[k] KgUtil.as-map
+    ([k] => [ KgUtil.as-map
             {kind:"external_id" scheme:k value:(a.external_ids get k)}
-        ]
-    ]
+        ])
     schemes
 ]]
 
 def attr-evidence fn [[a:Map ks:List] [List] [
   each
-    [var
-        [[k] KgUtil.as-map
+    ([k] => [ KgUtil.as-map
             {kind:"attribute" key:k value:(a.attributes get k)}
-        ]
-    ]
+        ])
     ks
 ]]
 
@@ -196,8 +188,7 @@ def decide-pair fn [[a:Map b:Map same-as-conf:Any] [Any] [
 # Explicit same_as links: "<lo>|<hi>" -> confidence.
 def same-as-links fn assertions:List Map [
   fold
-    [var
-        [[a acc]
+    ([a acc] => [
           if
             ((a.predicate eq "same_as") and
                 (KgSchema.is-entity-ref a.object)
@@ -213,8 +204,7 @@ def same-as-links fn assertions:List Map [
                 acc set (`${lo}|${hi}`) a.confidence
             ]
             [acc]
-        ]
-    ]
+        ])
     assertions {}
 ]
 
@@ -225,20 +215,16 @@ def resolve-entities fn [[entities:List assertions:List] [Map] [
   def links (same-as-links assertions)
   def active
     (filter
-        [var
-            [[e] (e.status eq "accepted") or (e.status eq "candidate")]
-        ]
+        ([e] => [(e.status eq "accepted") or (e.status eq "candidate")])
         entities
     )
   def n (active size)
   def raw-decisions
     (flatten
         (each
-            [var
-                [[i]
+            ([i] => [
                   def a (active get i) fold
-                    [var
-                        [[j acc]
+                    ([j acc] => [
                           def b (active get j)
                           def lo (if (a.id lt b.id) [a.id] [b.id])
                           def hi (if (a.id lt b.id) [b.id] [a.id])
@@ -282,25 +268,22 @@ def resolve-entities fn [[entities:List assertions:List] [Map] [
                                     acc
                                 )
                             ]
-                        ]
-                    ]
+                        ])
                     (range (i add 1) n) []
-                ]
-            ]
+                ])
             (iota n)
         )
     )
-  def decisions (filter [var [[d] not (d has 'merge')]] raw-decisions)
-  def merge-plans (filter [var [[d] d has 'merge']] raw-decisions)
-  def to-merge (filter [var [[p] p get "merge"]] merge-plans)
+  def decisions (filter ([d] => [not (d has 'merge')]) raw-decisions)
+  def merge-plans (filter ([d] => [d has 'merge']) raw-decisions)
+  def to-merge (filter ([p] => [p get "merge"]) merge-plans)
     # Each plan's endpoints are resolved through the CURRENT canonical
   # representative first, so a chain (A=B by one identifier, B=C by
   # another) merges transitively: after B folds into A, the B-C plan
   # becomes an A-C merge instead of being skipped.
   def merged-map
     (fold
-        [var
-            [[p emap]
+        ([p emap] => [
               def ca (KgEnt.canonical-id emap (p get "lo"))
               def cb (KgEnt.canonical-id emap (p get "hi"))
               def wid (if (ca lt cb) [ca] [cb])
@@ -326,12 +309,11 @@ def resolve-entities fn [[entities:List assertions:List] [Map] [
                     (pair.loser.id) pair.loser
                 ]
                 [emap]
-            ]
-        ]
+            ])
         to-merge (KgEnt.index-by-id entities)
     )
     KgUtil.as-map
-    {entities:(each [var [[id] merged-map get id]] (sort (keys merged-map)))
+    {entities:(each ([id] => [merged-map get id]) (sort (keys merged-map)))
       decisions:decisions
     }
 ]]

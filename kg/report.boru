@@ -29,11 +29,9 @@ def mk-summary fn bundle:Map Map [
       entity_count:((KgUtil.list-at bundle "entities") size)
       assertion_count:(assertions size)
       accepted_assertion_count:((filter
-              [var
-                  [[a] (a.status eq "asserted") or
+              ([a] => [ (a.status eq "asserted") or
                       (a.status eq "inferred")
-                  ]
-              ]
+                  ])
               assertions
           )
           size
@@ -80,7 +78,7 @@ def competency-report fn bundle:Map List [
   def entities (KgUtil.list-at bundle "entities")
   def assertions (KgUtil.list-at bundle "assertions")
   def sources (KgUtil.list-at bundle "sources")
-  def canonical (filter [var [[e] not (e.status eq "merged")]] entities)
+  def canonical (filter ([e] => [not (e.status eq "merged")]) entities)
   def index (KgEnt.index-by-id entities)
   def has-entities ((entities size) gt 0)
   def has-assertions ((assertions size) gt 0)
@@ -102,14 +100,12 @@ def competency-report fn bundle:Map List [
             "Which aliases and external identifiers refer to each entity?"
             (coverage-when has-entities)
             (each
-                [var
-                    [[e] KgUtil.as-map
+                ([e] => [ KgUtil.as-map
                         {id:e.id
                           aliases:e.aliases
                           external_ids:e.external_ids
                         }
-                    ]
-                ]
+                    ])
                 canonical
             )
             "entity-by-id" (if has-entities [[]] [["entities"]])
@@ -120,11 +116,9 @@ def competency-report fn bundle:Map List [
             (KgUtil.as-map
                 {edges:(sort
                       (each
-                          [var
-                              [[e]
+                          ([e] => [
                                   `${e.from} -[${e.predicate}]-> ${e.to}`
-                              ]
-                          ]
+                              ])
                           entity-pairs
                       )
                   )
@@ -140,12 +134,10 @@ def competency-report fn bundle:Map List [
             (coverage-when has-assertions)
             (sort
                 (each
-                    [var
-                        [[a]
+                    ([a] => [
                             `${a.subject_id} ${a.predicate} = ${KgId.canon-of (KgUtil.get-or a.object "value" none)}`
-                        ]
-                    ]
-                    (filter [var [[a] KgSchema.is-literal a.object]]
+                        ])
+                    (filter ([a] => [KgSchema.is-literal a.object])
                         assertions
                     )
                 )
@@ -157,13 +149,11 @@ def competency-report fn bundle:Map List [
         (cq "Which source passage or record supports each assertion?"
             (coverage-when has-assertions)
             (each
-                [var
-                    [[a] KgUtil.as-map
+                ([a] => [ KgUtil.as-map
                         {assertion_id:a.id
                           evidence:(KgQuery.evidence-for-assertion bundle a.id)
                         }
-                    ]
-                ]
+                    ])
                 assertions
             )
             "evidence-for-assertion"
@@ -282,23 +272,21 @@ def competency-report fn bundle:Map List [
             (coverage-when (((KgQuery.modules bundle) size) gt 0))
             (KgUtil.as-map
                 {modules:(each
-                      [var
-                          [[m] KgUtil.as-map
+                      ([m] => [ KgUtil.as-map
                               {path:(path-of index m.id)
-                                depends_on:(each [var [[d] path-of index d]]
+                                depends_on:(each ([d] => [path-of index d])
                                     (KgQuery.dependencies-of bundle
                                         m.id
                                     )
                                 )
-                                depended_on_by:(each [var [[d] path-of index d]]
+                                depended_on_by:(each ([d] => [path-of index d])
                                     (KgQuery.dependents-of bundle m.id)
                                 )
                               }
-                          ]
-                      ]
+                          ])
                       (KgQuery.modules bundle)
                   )
-                  packages:(each [var [[p] path-of index p.id]]
+                  packages:(each ([p] => [path-of index p.id])
                       (KgQuery.packages bundle)
                   )
                 }
@@ -329,29 +317,29 @@ def build-graph fn [[candidates:List opts:Map] [Map] [
     (KgUtil.get-or opts "recorded_at" "1970-01-01T00:00:00Z")
   def generated_at (KgUtil.get-or opts "generated_at" recorded_at)
   def ingested
-    (each [var [[c] KgIngest.ingest-bundle c recorded_at]] candidates)
+    (each ([c] => [KgIngest.ingest-bundle c recorded_at]) candidates)
   def sources
     (KgStore.sort-by-id
         (KgEnt.dedupe-identical
             (flatten
-                (each [var [[g] KgUtil.list-at g "sources"]] ingested)
+                (each ([g] => [KgUtil.list-at g "sources"]) ingested)
             )
         )
     )
   def entities0
     (KgEnt.unify-by-id
         (flatten
-            (each [var [[g] KgUtil.list-at g "entities"]] ingested)
+            (each ([g] => [KgUtil.list-at g "entities"]) ingested)
         )
     )
   def assertions0
     (KgEnt.dedupe-identical
         (flatten
-            (each [var [[g] KgUtil.list-at g "assertions"]] ingested)
+            (each ([g] => [KgUtil.list-at g "assertions"]) ingested)
         )
     )
   def ingest-issues
-    (flatten (each [var [[g] KgUtil.list-at g "issues"]] ingested))
+    (flatten (each ([g] => [KgUtil.list-at g "issues"]) ingested))
   def resolved (KgResolve.resolve-entities entities0 assertions0)
   def entities (KgStore.sort-by-id (KgUtil.list-at resolved "entities"))
   def decisions

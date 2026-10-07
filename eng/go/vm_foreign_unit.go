@@ -104,12 +104,30 @@ func (vc *vmContext) runForeignUnit(ref *compiler.CompiledFnRef, args []core.Val
 // reg is the registry the body runs against — vc.r for a detached ref, the
 // CALLING registry for a closure (invokeClosureOn's contract: a module
 // sub-registry or a per-connection fork resolves names as its own dispatch
-// would).
+// would). The hosted units dispatch on their own owner (CompiledFn.Reg) or,
+// ownerless, on the running registry; hostForeignOn names the registry an
+// ownerless unit dispatches on instead.
 func (vc *vmContext) hostForeign(p *compiler.Program, reg *core.Registry, unit int, inputs, captures []core.Value, flowEscapes bool) ([]core.Value, error) {
+	return vc.hostForeignOn(p, reg, unit, inputs, captures, flowEscapes, nil)
+}
+
+// hostForeignOn is hostForeign with the registry an OWNERLESS hosted unit
+// dispatches on (vmContext.hostReg; nil keeps the running registry). The
+// token seam passes the calling registry: a run-time-stamped token body's
+// unit has no owner — the synthetic fn it compiled as has no home — and its
+// home is the registry RunResolved would have stepped the tokens on, where
+// the enclosing unit installed the names the body reads. Hosted on the
+// running registry, `filter [eq ev.source_id] code-source-ids` inside a
+// `[ev]` lambda of a MODULE fn read `ev` on the root registry where the
+// lambda's unit had installed it on the module's, and raised `undefined
+// word: ev` compiled where the interpreter answered (kg/validate.boru
+// check-code-units, 2026-10-07).
+func (vc *vmContext) hostForeignOn(p *compiler.Program, reg *core.Registry, unit int, inputs, captures []core.Value, flowEscapes bool, hostReg *core.Registry) ([]core.Value, error) {
 	r := vc.r
 	sub := &vmContext{
 		p:           p,
 		r:           r,
+		hostReg:     hostReg,
 		flowEscapes: flowEscapes,
 		ceiling:     vc.ceiling,
 		// The seam the host was entered through decides the hosted root RET's
@@ -125,6 +143,21 @@ func (vc *vmContext) hostForeign(p *compiler.Program, reg *core.Registry, unit i
 	// Registered first so it runs last of this function's defers: the budget is
 	// handed back on every path, a bailed body included.
 	defer func() { vc.steps = sub.steps }()
+	// A body hosted FOR another registry reads `args` live through the native
+	// on THAT registry (compiler.EmitState.ArgsReadLive), while the VM keeps
+	// every frame's list on the running one: the enclosing call's list is
+	// bridged onto hostReg's stack for the duration — what the interpreter's
+	// sub-engine sees, since CallBoru pushed the module fn's list on the
+	// module registry it ran the body in — and truncated back on the way out
+	// (`each (mk) [x 5]` with `mk` = `quote [args]` inside a module fn holds
+	// the call's real list on both lanes, NUR346/NUR350).
+	if hostReg != nil && hostReg != r {
+		if top, ok, err := r.Args.Top(); err == nil && ok {
+			floor := hostReg.Args.Depth()
+			_ = hostReg.Args.Push(top)
+			defer hostReg.Args.Truncate(floor)
+		}
+	}
 	if p.DynEnv {
 		// The DynEnv args bracket, per runVMEntry: an error unwind returns
 		// straight out of sub.run, so rebalance to the entry depth on every

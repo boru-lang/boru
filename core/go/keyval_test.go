@@ -39,3 +39,26 @@ func TestCallbackWantsKeyVal(t *testing.T) {
 		}
 	}
 }
+
+// KeyValCarrier is the representative entry the check pass and the compiler
+// hand a KeyVal-typed callback param: tagged Node/Map/KeyVal, every field a
+// carrier, v carrying the map's value type.
+func TestKeyValCarrier(t *testing.T) {
+	out := KeyValCarrier(TInteger)
+	if !out.Parent.Equal(TKeyVal) || out.Carrier {
+		t.Fatalf("KeyValCarrier = %v, want a Node/Map/KeyVal value whose fields are carriers", out)
+	}
+	m, err := AsMap(out)
+	if err != nil {
+		t.Fatalf("the carrier's payload is a readable map: %v", err)
+	}
+	for _, c := range []struct {
+		key  string
+		want *Type
+	}{{KeyValK, TString}, {KeyValV, TInteger}, {KeyValI, TInteger}, {KeyValN, TInteger}} {
+		v, ok := m.Get(c.key)
+		if !ok || !v.Carrier || !v.Parent.Equal(c.want) {
+			t.Errorf("field %s = %v, want a %s carrier", c.key, v, c.want.Name())
+		}
+	}
+}

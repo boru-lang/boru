@@ -14,7 +14,7 @@ def KgEntity KgSchema.KgEntity
 
 # id -> entity index.
 def index-by-id fn entities:List Map [
-  fold [var [[e acc] acc set (e.id) e]] entities {}
+  fold ([e acc] => [acc set (e.id) e]) entities {}
 ]
 
 def find-by-id fn [[entities:List id:String] [Any] [
@@ -27,15 +27,13 @@ def find-by-id fn [[entities:List id:String] [Any] [
 # merge), so the chase is BOUNDED at 8 hops — never an unbounded walk.
 def canonical-id fn [[index:Map id:String] [String] [
   fold
-    [var
-        [[step cur]
+    ([step cur] => [
           def e (index get cur)
           if (e is None) [cur]
             [def tgt (e.attributes get "merged_into")
               if (tgt is None) [cur] [tgt]
             ]
-        ]
-    ]
+        ])
     (iota 8) id
 ]]
 
@@ -43,11 +41,9 @@ def canonical-id fn [[index:Map id:String] [String] [
 def distinct-sorted fn xs:List List [
   sort
     (fold
-        [var
-            [[x acc]
+        ([x acc] => [
               if (((filter [eq x] acc) size) gt 0) [acc] [push x acc]
-            ]
-        ]
+            ])
         xs []
     )
 ]
@@ -99,17 +95,15 @@ def merge-pair fn [[winner:Map loser:Map] [Map] [
 # external ids, and attributes survive on the winner).
 def unify-by-id fn entities:List List [
   fold
-    [var
-        [[e acc]
+    ([e acc] => [
           def existing (filter [dot id eq e.id] acc)
           if ((existing size) gt 0)
             [def unified (merge-pair (existing get 0) e) each
-                [var [[x] if (x.id eq e.id) [unified get "winner"] [x]]]
+                ([x] => [if (x.id eq e.id) [unified get "winner"] [x]])
                 acc
             ]
             [push e acc]
-        ]
-    ]
+        ])
     entities []
 ]
 
@@ -121,10 +115,9 @@ def unify-by-id fn entities:List List [
 # duplicate-id inconsistency instead of silently picking a winner.
 def dedupe-identical fn xs:List List [
   fold
-    [var
-        [[x acc]
+    ([x acc] => [
           def seen
-            (((filter [var [[y] (y.id eq x.id) and (y deq x)]]
+            (((filter ([y] => [(y.id eq x.id) and (y deq x)])
                         acc
                     )
                     size
@@ -132,8 +125,7 @@ def dedupe-identical fn xs:List List [
                 gt 0
             )
           if seen [acc] [push x acc]
-        ]
-    ]
+        ])
     xs []
 ]
 

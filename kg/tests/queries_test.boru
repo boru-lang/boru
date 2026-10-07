@@ -1,7 +1,7 @@
 # queries_test.boru — every query function, exercised over a graph built
 # from all three well-formed fixtures (clean data + claim conflicts +
 # ambiguous identities).
-# Run from kg/:  ../cmd/go/bin/boru tests/queries_test.boru
+# Run from kg/:  ../cmd/go/bin/boru test tests/queries_test.boru
 
 import "boru:io"
 import "boru:test"

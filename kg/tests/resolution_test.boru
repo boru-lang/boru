@@ -1,6 +1,6 @@
 # resolution_test.boru — identity-resolution policy: what merges, what
 # stays apart, and what lands in review.
-# Run from kg/:  ../cmd/go/bin/boru tests/resolution_test.boru
+# Run from kg/:  ../cmd/go/bin/boru test tests/resolution_test.boru
 
 import "boru:test"
 import "./schema.boru"

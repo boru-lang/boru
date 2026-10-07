@@ -155,25 +155,6 @@ func TestW9BodyToksHaveSentinel(t *testing.T) {
 	}
 }
 
-func TestW9KeyValCarrierRegistered(t *testing.T) {
-	// The KeyVal type is kernel-declared (keyval.go), so keyValCarrier tags
-	// the carrier with TKeyVal directly — the former registered-or-plain-Map
-	// fallback probe is gone (ADR-012 stage 2). The v field carries the
-	// element type; a nil registry is fine (the parameter is unused).
-	out := keyValCarrier(nil, core.TInteger)
-	if !out.Parent.Equal(core.TKeyVal) {
-		t.Errorf("keyValCarrier should tag with TKeyVal, got %v", out.Parent)
-	}
-	m, err := core.AsMap(out)
-	if err != nil {
-		t.Fatalf("keyValCarrier payload should be a readable map, got err=%v", err)
-	}
-	v, ok := m.Get(core.KeyValV)
-	if !ok || !v.Parent.Equal(core.TInteger) {
-		t.Errorf("the v field should carry the element type, got ok=%v %v", ok, v.Parent)
-	}
-}
-
 func TestW9EmptyFlexHookOperand(t *testing.T) {
 	newES := func() (*EmitState, core.Value) {
 		es := NewEmitState()
