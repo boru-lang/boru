@@ -170,6 +170,20 @@ func varyBucket(detail string) string {
 		// The rollback-and-replay regime's placement gate (Finalize): a bind
 		// transition the check pass performed that no op replays or installs.
 		return "twin regime (unplaced bind transition)"
+	case strings.HasPrefix(detail, "block-local type def"):
+		// Phase 2 of design/IMMUTABLE-DEF.1.md (landing 1): every code body a
+		// word runs is a block, and until the compiler's own block scopes
+		// land a type bound inside one, a block-local def shadowing an
+		// enclosing binding, a run-time read of a module an import bound in
+		// a block, and a body unit assigning an enclosing frame's var each
+		// DECLINE. The details carry the name; the buckets do not.
+		return "block-local type def (phase 2 block gate)"
+	case strings.HasPrefix(detail, "block-local def"):
+		return "block-local def shadows an enclosing binding (phase 2 block gate)"
+	case strings.HasPrefix(detail, "block-local import"):
+		return "block-local import read at run time (phase 2 block gate)"
+	case strings.Contains(detail, "assigns the enclosing frame's var"):
+		return "body unit assigns an enclosing frame's var (phase 2 block gate)"
 	default:
 		return normaliseReason(detail)
 	}
@@ -187,9 +201,9 @@ const defaultVarySeeds = 32
 // which seeds are sampled and legitimately graduate a bucket. Bootstrap
 // census (2026-07-13, 32 seeds): pass=384 declined=42 islanded=0.
 var varyCompileFailureLedger = map[string]string{
+	"block-local type def (phase 2 block gate)":          "ENTERED 2026-10-07 (phase 2 of design/IMMUTABLE-DEF.1.md, landing 1): a seed that binds a TYPE at the top level (`def A (refine Integer) …`) re-embedded in a block — the if-then / if-else / for-body / each-body transforms — binds it inside the block, and a type bound in a block declines (core blockTypeGate) until the compiler's block scopes land (landing 2): a loop body and an arm are not scopes on the compiled lane yet, so the second iteration's mint would find the first's name standing where the interpreter retired it with the block. A decline, never a wrong answer; retires with landing 2. The `conditional fn shadow (branch/loop)` entry left the same day: a fn redefined inside a branch or loop body is a block-local shadow now (`block-local def … shadows an enclosing binding`, the core noteBindCensus gate, which fires before the conditional-redefinition failure), so the class is unobservable at any breadth — its bucket would have sent every run through the full-corpus recheck (NUR092), which is what made this test take seventeen minutes and leak the abandoned goroutines of the rows it hung on.",
 	"check diagnostics (wrapped-context false positive)": "checker emits model-undermining diagnostics for a program the interpreter runs clean once re-embedded (for/fn wrapping of typed defs) — sound-but-lossy compile failure",
 	"code-body word (NoEvalArgs)":                        "RE-ENTERED 2026-07-30 (project rename resampled the corpus): a NoEvalArgs code-body word (do/each) wrapping a mount-handler seed still declines at Stage 2 — the 2026-07-14 graduation held only for the do-def replay shapes then in the default sample, not for this one",
-	"conditional fn shadow (branch/loop)":                "a user fn REDEFINED inside a conditionally-reached body (if/case arm, for/each loop) overlap-removes the enclosing overload in place, so the branch/loop def rollback cannot restore it and compiled resolution bakes the shadow while the interpreter keeps the outer fn when the branch is not taken (or the loop runs zero times) — compile failure (design/frontier: frontier-conditional-fn-shadow.tsv)",
 	"for: body nets multiple values per iteration":       "NARROWED (net drivers landed): only Function-bearing multi-value loop regions keep this compile failure — the parked-fn cross-iteration auto-apply hazard; const/computed regions compile",
 	"operand provenance":                                 "residual operand loses provenance across a wrapped context (plan Phase 4/5 accounting classes)",
 	"residual lowering (Stage 1 limit)":                  "scheduling — the wrapped residual shape exceeds Stage 1's lowering (prefix-stack transform)",
