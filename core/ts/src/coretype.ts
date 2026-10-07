@@ -173,6 +173,11 @@ export function isTypeBody(v: Value): boolean {
  * types and equal payloads.
  */
 export function unifiesValue(a: Value, b: Value): boolean {
+  // A named type's node unifies as its declared content does (Stage 2).
+  const ac = nodeContent(a);
+  if (ac !== undefined) return unifiesValue(ac, b);
+  const bc = nodeContent(b);
+  if (bc !== undefined) return unifiesValue(a, bc);
   if (a.data === null || b.data === null) {
     return a.vType.matches(b.vType) || b.vType.matches(a.vType);
   }
@@ -223,6 +228,16 @@ function listElements(v: Value): Value[] | null {
 }
 
 export function isValueOfType(v: Value, t: Value): boolean {
+  // A NAMED type's node denotes its declared content (mintNamedType —
+  // Stage 2 of design/legacy/TYPE-REPRESENTATION.1.ignore): membership is
+  // the content's, `red/q is Color` reading through to the enum, except
+  // that the node is a member of itself and of `Type` (the bare-node arm
+  // below, reached with a content-free t only).
+  const tContent = nodeContent(t);
+  if (tContent !== undefined) {
+    if (v.data === null && !v.carrier && v.vType.equal(t.vType)) return true;
+    return isValueOfType(v, tContent);
+  }
   // Typed list `[:T]`: v must be a CONCRETE list whose every element
   // satisfies T. A plain list (even empty) is concrete; a typed list is
   // concrete only when it carries retained elements — a bare typed-list
@@ -304,4 +319,54 @@ export function isValueOfType(v: Value, t: Value): boolean {
   // Go's terminal `Unify(v, t)`: `5 is 5` → true, `Integer is 5` →
   // true, `[3 2] is [Integer 2]` → true.
   return unifiesValue(v, t);
+}
+
+// ── Named types: the Stage-2 representation ─────────────────────────────
+//
+// A capitalised `def` MINTS a type node (design/legacy/TYPE-REPRESENTATION.1.ignore
+// §3, §9, landed on the Go kernel 2026-08-20): the name denotes its node,
+// the node renders as the name (canonValue's bare-literal arm prints the
+// leaf) and `is Type`, and the node CARRIES the declared content, which
+// membership (isValueOfType / unifiesValue), inspection and the other
+// structure consumers read through to. The node's lattice parts are the
+// content's own type with the name appended, so `typeof` — one parent hop
+// — answers the content's type (`def One 1 typeof One` is Integer, `def R
+// { x:Integer } typeof R` is Map), and `pathof` runs through it. A bare
+// type literal body is an ALIAS and never mints (Go's InstallType adopts
+// the node itself: `def Pi Number` is Number) — the def word decides that.
+// The content rides beside the node rather than on it so BoruType stays a
+// path value; a node minted twice under one name is two nodes.
+const NODE_CONTENT = new WeakMap<BoruType, Value>();
+
+/**
+ * mintNamedType mints the node a capitalised `def name body` binds: parts
+ * are the body's own type followed by name (a check-mode carrier's type is
+ * the carrier's, never hopped), and the body is the node's content.
+ */
+export function mintNamedType(name: string, body: Value): BoruType {
+  const parent = body.carrier ? body.vType : typeOf(body).vType;
+  const node = new BoruType([...parent.parts, name]);
+  NODE_CONTENT.set(node, body);
+  return node;
+}
+
+/** typeContent is the declared content a minted node carries, if any. */
+export function typeContent(t: BoruType): Value | undefined {
+  return NODE_CONTENT.get(t);
+}
+
+/**
+ * typeContentOf is a value's STRUCTURE: a minted node's declared content,
+ * any other value itself. Call it where a word reads a type's shape — an
+ * inspection, a membership test, a make target — so a name and an inline
+ * body are one case (Go's TypeContentOf).
+ */
+export function typeContentOf(v: Value): Value {
+  return nodeContent(v) ?? v;
+}
+
+/** nodeContent is typeContent for a bare literal of a minted node. */
+function nodeContent(v: Value): Value | undefined {
+  if (v.data !== null || v.carrier) return undefined;
+  return NODE_CONTENT.get(v.vType);
 }

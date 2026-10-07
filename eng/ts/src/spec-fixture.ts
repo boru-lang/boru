@@ -10,7 +10,7 @@ import { fileURLToPath } from 'node:url'
 
 import { canon } from '@boru-lang/core'
 import { parse } from '@boru-lang/parser'
-import { resolveWordsDeep } from '@boru-lang/core'
+import { mintNamedType, resolveWordsDeep, typeContentOf } from '@boru-lang/core'
 import {
   coerceBoolean,
   isRecordShape,
@@ -875,7 +875,7 @@ function registerSpecWords(r: Registry): void {
               }
               if (concrete !== null) {
                 emit.recordTokenIsland(
-                  [buildDefinedInspection(name, resolveWordsDeep(concrete, registry))],
+                  [buildDefinedInspection(name, resolveWordsDeep(typeContentOf(concrete), registry))],
                   out,
                   'inspect',
                 )
@@ -891,7 +891,9 @@ function registerSpecWords(r: Registry): void {
           const fn = registry.lookup(name)
           if (fn) return [buildWordInspection(name, fn)]
           const top = registry.topOfDefStack(name)
-          if (top !== undefined) return [buildDefinedInspection(name, resolveWordsDeep(top, registry))]
+          // A named type's inspection is its content's (Stage 2: the def
+          // binds the node, which carries the declared shape).
+          if (top !== undefined) return [buildDefinedInspection(name, resolveWordsDeep(typeContentOf(top), registry))]
           // Post-opacity a captured type NAME arrives as this Atom —
           // resolve through the builtin arm of the cascade so
           // `inspect Any` reports the type literal, not "unknown".
@@ -1091,7 +1093,40 @@ function registerSpecWords(r: Registry): void {
           if (value.data instanceof ClassTypeInfo && value.data.name === '') {
             value.data.name = name
           }
-          registry.pushDef(name, value)
+          // Stage 2 (design/legacy/TYPE-REPRESENTATION.1.ignore §3, §9): a
+          // CAPITALISED name mints a type node that denotes the binding and
+          // carries the declared content — `def Color (enum […])` binds the
+          // node Color, which renders as its name and `is Type`, while
+          // membership, inspection and typeof read through to the content
+          // (core typeContentOf). A bare type literal body is an ALIAS and
+          // adopts that node, as Go's InstallType does (`def Pi Number` is
+          // Number itself); a class value keeps its own payload (the stamp
+          // above); a fn value is bound by the `def NAME fn` sig.
+          let bound = value
+          if (/^[A-Z]/.test(name) && !value.isTypeLiteral() && !value.isNone() && !(value.data instanceof ClassTypeInfo) && !value.isFnDef()) {
+            // The content is the body with its type-name words resolved
+            // (the parser is type-name-opaque: `[ :Integer ]` arrives with
+            // word(Integer) as its child), as Go's install resolves it —
+            // membership and inspection then read a finished shape. Under
+            // the compile pass the body is a CARRIER whose literal the
+            // recorder can usually recover (a stripped literal, a const
+            // fold); the content is that value, so the compiled `2 is One`
+            // is the interpreter's false and not a carrier's lenient yes.
+            // A computed body the recorder cannot recover declines the
+            // program: its node would carry no content the run can trust.
+            let content = resolveWordsDeep(value, registry)
+            if (content.carrier) {
+              const emit = registry.check.emit as EmitState | undefined
+              const concrete = emit === undefined ? null : emit.constValueOf(emit.classify(content))
+              if (concrete !== null) {
+                content = resolveWordsDeep(concrete, registry)
+              } else if (emit !== undefined) {
+                emit.markUncompilable(`def ${name}: a type name over a computed value (the node's content is the run's)`)
+              }
+            }
+            bound = newTypeLiteral(mintNamedType(name, content))
+          }
+          registry.pushDef(name, bound)
           return []
         },
       },

@@ -379,6 +379,22 @@ Three things from it are worth carrying even if the tables are never read:
   `do [ … ] error [ ]` are both absent from `basic/spec` because Go's
   `InvokeBody` and the TS sub-engine disagree about an empty body under
   the fixture registry. One open question, two rows waiting on it.
+- **The Stage-2 type representation — CLOSED 2026-10-07.** The kernel's
+  flip (design/legacy/TYPE-REPRESENTATION.1.ignore §3, §9: a capitalised
+  `def` mints a node that denotes the binding, renders as its name, `is
+  Type`, and carries the declared content) had never reached `eng/ts`,
+  and eight shared-corpus rows diverged — structure.tsv L89–L92, L155,
+  L161 (`{ c:Color }` rendered the enum's alternatives), types.tsv L235
+  (`def R { x:Integer } R` rendered the shape) and L525 (`def N 5 N is
+  Type` was false). The differential is what caught it, and only where
+  node and the TS deps are installed (CI has neither, so it skipped
+  there; `make ci-local` on a developer's machine did not). Ported with
+  `core/ts`'s `mintNamedType` / `typeContent` / `typeContentOf` and the
+  eng fixture's `def` (design/IMMUTABLE-DEF.1.md #19 and its §5 row):
+  1808 agree / 0 divergences again, the TS spec suite 1765/1765. Two
+  `fixture-probe.test.ts` rows (`def x:f/r 1`, `def x:go/rq 1`) fail on
+  the tree before and after — a modifier rendering the parser no longer
+  produces, test-only, and the TS suite is not a CI step.
 - NUR059: canon still renders sugar tags, `/r` and `/N` word modifiers,
   and paren groups in debug spelling. Both engines agree, so it is render
   quality rather than parity — pinned by corpus rows so a one-sided fix

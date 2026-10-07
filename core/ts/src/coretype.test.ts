@@ -16,9 +16,13 @@ import {
   isRecordShape,
   isTypeBody,
   isValueOfType,
+  mintNamedType,
   parentType,
   pathOf,
+  typeContent,
+  typeContentOf,
   typeOf,
+  unifiesValue,
 } from "./coretype.ts";
 import { BoruType, TAny, TInteger, TNone, TString, TType } from "./type.ts";
 import {
@@ -35,6 +39,7 @@ import {
   newTypeLiteral,
   newTypedList,
   newTypedMap,
+  Value,
 } from "./value.ts";
 
 function mapOf(entries: Array<[string, ReturnType<typeof newInteger>]>) {
@@ -292,5 +297,46 @@ describe("coretype arms measured against core/go", () => {
       ),
       false,
     );
+  });
+});
+
+describe("mintNamedType (the Stage-2 node)", () => {
+  it("mints a node under the body's type that carries the body", () => {
+    const one = mintNamedType("One", newInteger(1));
+    assert.equal(one.toString(), "Scalar/Number/Integer/One");
+    assert.equal(one.leaf(), "One");
+    assert.equal(typeContent(one)?.asInteger(), 1n);
+    const lit = newTypeLiteral(one);
+    assert.equal(typeContentOf(lit).asInteger(), 1n, "the node's literal reads through to its content");
+    assert.equal(typeContentOf(newInteger(7)).asInteger(), 7n, "any other value is its own structure");
+    assert.equal(typeContent(TInteger), undefined, "a builtin node carries no content");
+    // typeof is one parent hop: the content's type.
+    assert.equal(typeOf(lit).vType.toString(), TInteger.toString());
+  });
+  it("is a member of Type and of itself; membership is the content's", () => {
+    const one = newTypeLiteral(mintNamedType("One", newInteger(1)));
+    assert.equal(isValueOfType(one, newTypeLiteral(TType)), true);
+    assert.equal(isValueOfType(one, one), true);
+    assert.equal(isValueOfType(newInteger(1), one), true);
+    assert.equal(isValueOfType(newInteger(2), one), false);
+    assert.equal(isValueOfType(newInteger(1), newTypeLiteral(TInteger)), true, "the value keeps its own type");
+    const color = newTypeLiteral(mintNamedType("Color", newDisjunct([newAtom("red"), newAtom("green")])));
+    assert.equal(isValueOfType(newAtom("red"), color), true);
+    assert.equal(isValueOfType(newAtom("blue"), color), false);
+    assert.equal(isValueOfType(newString("red"), color), false);
+  });
+  it("unifies as its content on either side", () => {
+    const one = newTypeLiteral(mintNamedType("One", newInteger(1)));
+    assert.equal(unifiesValue(one, newInteger(1)), true);
+    assert.equal(unifiesValue(newInteger(1), one), true);
+    assert.equal(unifiesValue(one, newInteger(2)), false);
+    assert.equal(unifiesValue(one, one), true);
+  });
+  it("mints a check-mode carrier body under the carrier's own type", () => {
+    const c = new Value(TInteger, null, { carrier: true });
+    const n = mintNamedType("N", c);
+    assert.equal(n.toString(), "Scalar/Number/Integer/N", "the carrier's type is not hopped");
+    assert.equal(typeContent(n), c);
+    assert.equal(typeContentOf(c), c, "a carrier is its own structure");
   });
 });
