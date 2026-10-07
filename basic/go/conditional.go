@@ -1,5 +1,7 @@
 package basic
 
+import core "github.com/boru-lang/boru/core/go"
+
 // spliceArg returns tokens for a branch value. If the value is a list,
 // its elements are returned wrapped in parens so the main engine evaluates
 // them as a sub-expression. Scalars are returned as-is.
@@ -19,6 +21,22 @@ func spliceArg(v Value) []Value {
 		return result
 	}
 	return []Value{v}
+}
+
+// armBlock returns the tokens of a branch arm DECIDED at dispatch (a
+// constant condition: the handler splices the arm in place of the `if`) as
+// a block when the arm binds a name of its own: its scope opens now — the
+// arm's tokens step next — and the BlockEnd marker appended after them
+// closes it (core block.go; the mark/move path does the same in
+// stepMoveIf). An arm that binds nothing returns as it is.
+func armBlock(r *Registry, arm []Value) []Value {
+	if len(arm) == 0 || !core.BodyBindsLocals(arm) {
+		return arm
+	}
+	id := core.EnterBlock(r)
+	out := make([]Value, 0, len(arm)+1)
+	out = append(out, arm...)
+	return append(out, NewDefCleanup(DefCleanupInfo{Registry: r, BlockID: id}))
 }
 
 // isCodeBody reports whether v is a plain (non-typed, non-table) concrete
@@ -42,17 +60,17 @@ func isCodeBody(v Value) bool {
 // Empty slice → no tokens. One element → just that element's tokens (a
 // lone else). The else branch of clause k is, recursively, ifClause of
 // elems[2k+2:].
-func ifClause(elems []Value, pos SrcPos) []Value {
+func ifClause(r *Registry, elems []Value, pos SrcPos) []Value {
 	switch len(elems) {
 	case 0:
 		return nil
 	case 1:
-		return spliceArg(elems[0])
+		return armBlock(r, spliceArg(elems[0]))
 	}
 
 	cond := elems[0]
 	thenBranch := spliceArg(elems[1])
-	elseBranch := ifClause(elems[2:], pos)
+	elseBranch := ifClause(r, elems[2:], pos)
 
 	if isCodeBody(cond) {
 		_lst, _ := AsList(cond)
@@ -61,12 +79,21 @@ func ifClause(elems []Value, pos SrcPos) []Value {
 		tokens := make([]Value, 0, len(condSlice)+2)
 		tokens = append(tokens, NewMark(id, condSlice...))
 		tokens = append(tokens, condSlice...)
-		tokens = append(tokens, WithPosAt(NewMoveIf(id, "if", &IfCont{Then: thenBranch, Else: elseBranch}), pos))
+		cont := &IfCont{
+			Then: thenBranch, Else: elseBranch,
+			ThenBlock: core.BodyBindsLocals(thenBranch), ElseBlock: core.BodyBindsLocals(elseBranch),
+		}
+		// A condition that binds a name runs as a block too (core
+		// block.go): opened here, closed by stepMoveIf.
+		if core.BodyBindsLocals(condSlice) {
+			cont.CondBlockID = core.EnterBlock(r)
+		}
+		tokens = append(tokens, WithPosAt(NewMoveIf(id, "if", cont), pos))
 		return tokens
 	}
 
 	if CoerceBoolean(cond) {
-		return thenBranch
+		return armBlock(r, thenBranch)
 	}
 	return elseBranch
 }
@@ -272,11 +299,11 @@ func CaseReturnsFn(args []Value, r *Registry) []Value {
 		//     scrutinee seating and is sound for ANY body (no recompute). Any other
 		//     shape (multi-clause, code-body blocks, no default) keeps the island.
 		// Plain check (no emit) keeps the prior dynAny; a compile pass's
-		// SUSPENDED run keeps the scrutinee's bindings (keepScrutineeBindings).
+		// SUSPENDED run models the scrutinee's run (runScrutineeForModel).
 		if es := r.Check.Recorder(); es.Active() {
 			return caseCodeBodyRecord(r, es, v, clauses, dynAny, casePos)
 		}
-		keepScrutineeBindings(r, v)
+		runScrutineeForModel(r, v)
 		return dynAny
 	}
 	if !isCodeBody(clauses) {
@@ -789,27 +816,27 @@ func caseCodeBodyRecord(r *Registry, es EmitRecorder, v, clauses Value, dynAny [
 	return dynAny
 }
 
-// keepScrutineeBindings is the NON-recording twin of the scrutinee's kept
-// condition (NUR212). A SUSPENDED run inside a compile pass — a `do` body's
+// runScrutineeForModel is the NON-recording twin of the scrutinee's
+// condition run. A SUSPENDED run inside a compile pass — a `do` body's
 // model run (DoListReturnsFn's RunCarrierBodyKeepDefs), a fn body's
 // construction-time check — records nothing for the `case`, but the
 // interpreter still runs its scrutinee exactly once, unconditionally, and
-// every binding it makes stands after the construct. The model has to hold
-// them too, exactly as analyseCondFragment holds an `if` condition's in the
-// same runs (it gates on Armed, not Active). Skipping the run left them
-// out: `def x 1 end do [case [def x 5] [5 "five" "other"]] end x` islanded
-// the do over a model that still held x = 1, baked the 1, and compiled
-// `[error(…) 1]` where the interpreter answers `[error(…) 5]`. Kept, the
-// install reaches the bind ledger, whose twin regime places it or declines
-// the program. The run's diagnostics are dropped — it exists for the
-// model, and before it the pass reported nothing here. Plain check (no
-// recorder armed) is unchanged, as it is for `if` conditions.
-func keepScrutineeBindings(r *Registry, v Value) {
+// the model has to see what that run leaves: the scrutinee is a BLOCK
+// (design/IMMUTABLE-DEF.1.md §2.1), so a def it makes ends with it, but a
+// var it ASSIGNS is the enclosing scope's cell and stands after the
+// construct (`var x 1 end do [case [var x 5] [5 "five" "other"]] end x` is
+// `[error(…) 5]`), exactly as analyseCondFragment holds an `if` condition's
+// assignment in the same runs (it gates on Armed, not Active). The run's
+// diagnostics are dropped — it exists for the model, and before it the
+// pass reported nothing here. Plain check (no recorder armed) is unchanged,
+// as it is for `if` conditions. (Before phase 2 the run KEPT the
+// scrutinee's defs too — NUR212's leak, gone with the rule.)
+func runScrutineeForModel(r *Registry, v Value) {
 	if !r.Check.Recorder().Armed() || !IsConcrete(v) {
 		return
 	}
 	nDiag := len(r.Check.Diagnostics)
-	RunCarrierCondBodyKeepDefs(r, v)
+	RunCarrierCondBodyValues(r, v)
 	r.Check.TruncateDiagnostics(nDiag)
 }
 
@@ -907,8 +934,8 @@ func runCaseBody(r *Registry, v Value, body Value) ([]Value, error) {
 	if !isCodeBody(body) {
 		return []Value{body}, nil
 	}
-	lst, _ := AsList(body)
 	// The captured value is a resolved input: it enters as stack data the
 	// block consumes, never re-stepped (arguments are inert; RunResolved).
-	return RunResolved(r, []Value{v}, lst.Slice())
+	// The arm is a BLOCK: a name it binds ends with it (core block.go).
+	return core.RunBodyResolved(r, body, []Value{v})
 }

@@ -1653,6 +1653,18 @@ type ForCont struct {
 	// that produced no value is reported, on both lanes (the compiled
 	// terminal trap anchors there; NUR130).
 	CondPos SrcPos
+	// Block marks a body that binds a name of its own (BodyBindsLocals,
+	// judged once when the loop is built): every iteration's body region
+	// runs as a BLOCK scope — opened before the region and closed, its
+	// locals popped, when the region's values are collected or a break
+	// abandons it (block.go). BlockID is the open iteration's scope, 0
+	// between iterations.
+	Block   bool
+	BlockID int32
+	// CondBlock marks a while CONDITION that binds a name of its own: each
+	// condition round runs as a block too (enterWhileCondBlock), open in
+	// BlockID between the round's splice and its value collection.
+	CondBlock bool
 }
 
 // IfCont holds the continuation state for a mark/move-driven if statement.
@@ -1661,6 +1673,19 @@ type ForCont struct {
 type IfCont struct {
 	Then []Value // tokens to splice if condition is truthy
 	Else []Value // tokens to splice if condition is falsy (nil for 2-arg if)
+	// ThenBlock / ElseBlock mark an arm that binds a name of its own
+	// (BodyBindsLocals, judged once when the `if` is built): the arm runs
+	// as a BLOCK — stepMoveIf opens a scope and splices a BlockEnd marker
+	// after the arm's tokens, which closes it (block.go). An arm that binds
+	// nothing splices bare, as before.
+	ThenBlock bool
+	ElseBlock bool
+	// CondBlockID is the open block of a CONDITION body that binds a name
+	// (ifMarkMoveTokens / ifClause open it before splicing the condition
+	// region; stepMoveIf closes it, the condition's value collected, before
+	// the arm runs): a condition is a code body the word runs, a block
+	// (design/IMMUTABLE-DEF.1.md §2.1). 0 when the condition binds nothing.
+	CondBlockID int32
 }
 
 // ModuleDesc describes a module: its generated ID and named exports.
@@ -3165,6 +3190,21 @@ type DefCleanupInfo struct {
 	// container resolves names in the CONSUMER's scope
 	// (lang/spec/def-node-binding.tsv §3).
 	EvalResidual bool
+	// BlockID marks a BLOCK END marker — the end of an inline branch arm
+	// that binds a name of its own (stepMoveIf): stepping it closes the
+	// block scope and pops its locals (LeaveBlock); the marker then comes
+	// off the tape. Snapshot is unused. 0 for a frame's marker.
+	BlockID int32
+}
+
+// IsBlockEnd reports whether v is a BLOCK END marker (DefCleanupInfo.BlockID
+// set): the end of an inline branch arm that binds a local (stepMoveIf).
+func IsBlockEnd(v Value) bool {
+	if !IsDefCleanup(v) {
+		return false
+	}
+	info, _ := AsDefCleanup(v)
+	return info.BlockID != 0
 }
 
 // NewDefCleanup creates a def-cleanup marker for fn body local def cleanup.

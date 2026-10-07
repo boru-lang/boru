@@ -33,7 +33,7 @@ func TestNestedBodyFnCarrierParity(t *testing.T) {
 		{nbfMk + `if true [def q (f 2) q] [0]`, "3 — an arm-local def of the result"},
 		{nbfMk + `for 2 [(f 2)]`, "3 3 — a loop body"},
 		{nbfMk + `for 2 [def q (f 2) q]`, "3 3 — a body-local def of the result"},
-		{nbfMk + `def n 0 end while [n lt 2] [def n (n add 1) (f 3)] end 'z'`, "4 4 z — a while body"},
+		{nbfMk + `var n 0 end while [n lt 2] [var n (n add 1) (f 3)] end 'z'`, "4 4 z — a while body"},
 		{nbfMk + `def g fn [[y:Integer][Any][do [(f y) args drop]]] end g 7`, "8 — an args-bearing do body inside a fn (the dyn-body backstop)"},
 		{nbfMk + `do [[1 2] each [(f 1)]]`, "[2 2] — a data-list read inside a do body"},
 		// Since S1a (2026-09-19) each declares CompileDynBody, so the read

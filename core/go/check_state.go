@@ -421,11 +421,12 @@ type CheckState struct {
 	// whose def growth is TRUNCATED on the way out — every `keep=false` run
 	// of runCarrierBodyDefsAdds, which is the branch arms and loop bodies
 	// CondBodyDepth covers PLUS the rolled-back scrutinee run it exempts
-	// (RunCarrierCondBody — a `case` scrutinee's count run). A KEPT `if`
-	// condition (RunCarrierCondBodyKeepDefs, NUR212) is not truncated, so
-	// it does not raise this and its installs ledger like any straight-line
-	// one. The bind ledger consults it, and needs the wider set: what makes
-	// an install unrecordable is the truncation, not the conditionality.
+	// (RunCarrierCondBody — a `case` scrutinee's count run) and the `if`
+	// condition's run (RunCarrierCondBodyValues): a condition is a block
+	// under the rule, its installs truncated with it (NUR212's kept binding
+	// is gone). The bind ledger consults it, and needs the wider set: what
+	// makes an install unrecordable is the truncation, not the
+	// conditionality.
 	//
 	// An install inside such a body is SPECULATIVE. Either the construct
 	// re-installs it afterwards through InstallJoinedDefs — in which case
@@ -533,6 +534,15 @@ type CheckState struct {
 	DefCensus []DefCensusEntry
 	// DefCensusSeen dedupes DefCensus by class, name and site (defCensusKey).
 	DefCensusSeen map[string]bool
+	// BlockImportNames is every namespace an `import` bound INSIDE A BLOCK
+	// during this pass (NoteBlockImport). An import is a compile-time word:
+	// the compiled program reads the binding the pass installed and never
+	// re-imports, and a block's binding ends with the body's check run — so
+	// a RUN-TIME read of one of these names (a dynamic-scope lookup) has
+	// nothing to find, and the lowerer declines it (phase 2 of
+	// design/IMMUTABLE-DEF.1.md; the compiler's block scopes retire the
+	// set). A read the pass folds needs no run-time binding.
+	BlockImportNames map[string]bool
 	// VarAssigned is the check pass's record of the vars the body under
 	// analysis ASSIGNED (AssignVar, the var word): name → the value the var
 	// held before the body's first assignment. A var is one cell, replaced
@@ -549,6 +559,13 @@ type CheckState struct {
 	// an enclosing frame's. Set by the compiler for that one push, consumed
 	// by it, cleared after the analysis however it returned.
 	NextBaselineIsBlock bool
+	// NextBaselineTransparent makes the next PushFnBaseline open NO scope:
+	// the compiler's closure compile of a `do` body, which is not a scope
+	// (design/IMMUTABLE-DEF.1.md #11) — its installs carry the enclosing
+	// scope's id, so a def over an enclosing name reads as the rebind it is
+	// on the run lane, never as a block's shadow. Set and consumed as
+	// NextBaselineIsBlock is.
+	NextBaselineTransparent bool
 	// FnReads maps a named fn under analysis to every name its body reads
 	// (recordUse while FnNameStack is non-empty) — the late-binding hint's
 	// other half (NUR097): a read of a name that RootDefSites shows rebound
@@ -893,6 +910,7 @@ var checkCodeSeverity = map[string]CheckSeverity{
 	"uncalled_function":     SeverityError,
 	"unreachable_signature": SeverityWarning,
 	"partial_dispatch":      SeverityWarning,
+	"shadow_rebind":         SeverityWarning,
 	"analysis_truncated":    SeverityInfo,
 	// Every emit site (CheckListIndex / CheckAtIndices / the module
 	// insert-at/remove-at mirrors) fires only on a PROVABLY out-of-range
@@ -1213,6 +1231,7 @@ func (c *CheckState) Clone() *CheckState {
 	cp.PassEndCleanups = append([]func(){}, c.PassEndCleanups...)
 	cp.DefCensus = append([]DefCensusEntry(nil), c.DefCensus...)
 	cp.DefCensusSeen = cloneMap(c.DefCensusSeen)
+	cp.BlockImportNames = cloneMap(c.BlockImportNames)
 	cp.VarAssigned = cloneMap(c.VarAssigned)
 	cp.ParenPlacedFnIDs = cloneMap(c.ParenPlacedFnIDs)
 	cp.ReachSurvivorFnIDs = cloneMap(c.ReachSurvivorFnIDs)
@@ -1380,8 +1399,10 @@ func (c *CheckState) Begin() func() {
 	c.RootDefSites = nil
 	c.DefCensus = nil
 	c.DefCensusSeen = nil
+	c.BlockImportNames = nil
 	c.VarAssigned = nil
 	c.NextBaselineIsBlock = false
+	c.NextBaselineTransparent = false
 	c.FnReads = nil
 	c.ParenReSteppedFnIDs = nil
 	c.WordReadFnIDs = nil

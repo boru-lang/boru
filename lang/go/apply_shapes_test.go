@@ -21,7 +21,7 @@ func TestApplyShapesParity(t *testing.T) {
 		`def app fn [[f:Function x:Integer b:Boolean] [Integer] [if b [(f x)] [0]]] end app ([n:Integer] => [n add 1]) 4 true`,
 		`def app fn [[f:Function x:Integer b:Boolean] [Integer] [if b [(f x)] [0]]] end app ([n:Integer] => [n add 1]) 4 false`,
 		// inside a loop body, accumulating through a loop-carried def
-		`def app fn [[f:Function x:Integer] [Integer] [def r 0 end for [0 3] [def r (r add (f x))] end r]] end app ([n:Integer] => [n add 1]) 4`,
+		`def app fn [[f:Function x:Integer] [Integer] [var r 0 end for [0 3] [var r (r add (f x))] end r]] end app ([n:Integer] => [n add 1]) 4`,
 		// the island-era witness: a factory's captured param applied inside a do body
 		`def mkg fn [[g:Function] [Function] [([v:Integer] => [(g v)])]] end def h (mkg ([n:Integer] => [n mul 8])) end do [(h 1)]`,
 		// a callback lambda's typed param over an untyped collection

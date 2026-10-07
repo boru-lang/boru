@@ -1,10 +1,6 @@
 package lang
 
-import (
-	"fmt"
-	"strings"
-	"testing"
-)
+import "testing"
 
 // TestModuleBindInLoopOrArmDeclines pins NUR205's close. An `import` is a
 // compile-time word: the check pass runs it, and the compiled program
@@ -22,42 +18,53 @@ import (
 //     leave the name UNBOUND on the interpreter (`undefined_word`), where
 //     the replay bound it anyway.
 func TestModuleBindInLoopOrArmDeclines(t *testing.T) {
-	for _, tc := range []struct{ src, interp string }{
-		{`for 2 [import module [def acc (flex []) export "M" {acc: acc}] end M.acc push 1 end size M.acc]`, "[[1] 1 [1] 1]"},
-		{`for 2 [import module [def a 1 export "M" {a: a}] end M.a]`, "[1 1]"},
-		{`def n (0 add 0) end for n [import module [def a 1 export "M" {a: a}] end] M.a`, "undefined_word"},
-		{`while [false] [import module [def a 1 export "M" {a: a}] end] M.a`, "undefined_word"},
-		{`def c (1 gt 2) end if c [import module [def a 1 export "M" {a: a}] end] [] M.a`, "undefined_word"},
-		{`def c (1 gt 2) end if c [import "boru:math-util" end] [] MathUtil.$name`, "undefined_word"},
+	// Since phase 2 (design/IMMUTABLE-DEF.1.md §2.1) the loop body and the
+	// arm are BLOCKS: the module an inline `import` binds inside them ends
+	// with the body's run, so a read after a loop that ran zero times or an
+	// arm that did not run is the interpreter's undefined_word, and the
+	// compiled lane stops at the check. A RUN-TIME read of the module inside
+	// the body — a flex export the body mutates is read live — declines at
+	// the lowerer (core.NoteBlockImport → blockImportRead): the check pass's
+	// install is the only one the compiled program has, and the block retired
+	// it, where the lookup bailed `dynamic-scope read miss` before. The
+	// compiler's block scopes land with phase 2's second step.
+	requireBlockRule(t, `for 2 [import module [def acc (flex []) export "M" {acc: acc}] end M.acc push 1 end size M.acc]`, "[[1] 1 [1] 1]", "block-local import `M` read at run time")
+	requireBlockRule(t, `if true [import module [def acc (flex []) export "M" {acc: acc}] end size M.acc] [0]`, "[0]", "block-local import `M` read at run time")
+	for _, tc := range []struct{ src, name string }{
+		{`def n (0 add 0) end for n [import module [def a 1 export "M" {a: a}] end] M.a`, "M"},
+		{`while [false] [import module [def a 1 export "M" {a: a}] end] M.a`, "M"},
+		{`def c (1 gt 2) end if c [import module [def a 1 export "M" {a: a}] end] [] M.a`, "M"},
+		{`def c (1 gt 2) end if c [import "boru:math-util" end] [] MathUtil.$name`, "MathUtil"},
 	} {
-		gotC, compiled, errC := mustNew(t).RunCompiled(tc.src)
-		// The one twin the replay cannot stand for keeps no placement, so
-		// the program declines at the twin regime's full-placement gate.
-		if !noteCompileDefect(t, tc.src, gotC, errC) || compiled || !strings.Contains(fmt.Sprint(errC), "twin regime") {
-			t.Errorf("%q: want the twin regime's decline, got %v compiled=%v err=%v", tc.src, gotC, compiled, errC)
-		}
-		gotI, errI := mustNew(t).RunInterp(tc.src)
-		if got := fmt.Sprint(gotI); errI != nil {
-			got = codeOf(errI)
-			if got != tc.interp {
-				t.Errorf("%q: interp raised %v, want %s", tc.src, errI, tc.interp)
-			}
-		} else if got != tc.interp {
-			t.Errorf("%q: interp %s, want %s", tc.src, got, tc.interp)
-		}
+		requireBlockRule(t, tc.src, "ERROR:undefined word: "+tc.name, "check diagnostics")
 	}
 }
 
 // TestModuleBindReplayStandsWhereItIsTheBind pins NUR205's edges: where
-// the one replay IS the interpreter's bind, the program still compiles and
-// agrees — a module the loader caches (a `boru:` import answers the same
-// instance every time) inside a loop that provably runs, and the arm a
-// decided condition takes.
+// the check pass's read of the module FOLDS — a cached `boru:` import's
+// constant, a constant export — the program needs no run-time binding and
+// compiles with parity inside a loop body or an arm too.
 func TestModuleBindReplayStandsWhereItIsTheBind(t *testing.T) {
 	for _, src := range []string{
 		`for 2 [import "boru:math-util" end MathUtil.$name]`,
 		`if true [import "boru:math-util" end MathUtil.$name] [0]`,
 		`if false [0] [import module [def a 1 export "M" {a: a}] end M.a]`,
+		`if true [import module [def a 1 export "M" {a: a}] end M.a add 1] [0]`,
+	} {
+		requireEngineParity(t, src, true)
+	}
+	ruleOrDecline(t, `for 2 [import module [def a 1 export "M" {a: a}] end M.a]`, "[1 1]")
+}
+
+// TestModuleBindOutsideABlockCompiles pins the note's edge: an import at
+// module level or inside a FN body (a frame, not a block) is untouched —
+// the check pass's install stands for the program's read, mutable module
+// state included.
+func TestModuleBindOutsideABlockCompiles(t *testing.T) {
+	for _, src := range []string{
+		`import module [def acc (flex []) export "M" {acc: acc}] end M.acc push 1 end size M.acc`,
+		`import "boru:math-util" end MathUtil.$name`,
+		`def f fn [[][Any][import module [def a 1 export "M" {a: a}] end M.a]] end f`,
 	} {
 		requireEngineParity(t, src, true)
 	}

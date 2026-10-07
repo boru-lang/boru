@@ -28,7 +28,8 @@ func TestS9LoopCarriedVariadicStore(t *testing.T) { // §9.2a — LANDED
 	mustCompileWithParity(t, `for 2 [ def acc (for 3 [7]) acc ]`, "[7 7 7 7 7 7]")
 	mustCompileWithParity(t, `for 2 [ def acc (for 2 [5]) 9 ]`, "[5 9 5 9]")
 	mustCompileWithParity(t, `for 2 [ def acc (for 1 [7 "x"]) acc ]`, "[x 7 x 7]")
-	mustCompileWithParity(t, `for 2 [ def acc (for 2 [5]) ] acc`, "[5 5 5]")
+	// `for 2 [ def acc (for 2 [5]) ] acc`: the body's def ends with the
+	// iteration since phase 2 (design §2.1) — block_scope_rule_test.go.
 
 	// Decline fences, each parity-faithful: a DYNAMIC inner count (no static
 	// region), a BRANCH between the loop and the def (conditionally-reached
@@ -37,8 +38,10 @@ func TestS9LoopCarriedVariadicStore(t *testing.T) { // §9.2a — LANDED
 		`def m {n: 2} for 2 [ def acc (for (m get "n") [5]) acc ]`, "")
 	mustFailToCompileWithParity(t,
 		`for 2 [ if true [ def acc (for 2 [5]) acc ] [0] ]`, "")
-	mustFailToCompileWithParity(t,
-		`for 2 [ for 2 [ def acc (for 2 [5]) acc ] ]`, "")
+	// The nested pair compiles since phase 2's block rollback: the inner
+	// body's def is the iteration's own and no leak fence stands between.
+	mustCompileWithParity(t,
+		`for 2 [ for 2 [ def acc (for 2 [5]) acc ] ]`, "[5 5 5 5 5 5 5 5]")
 
 	// PR #280 review reachability fences: the depth equality proves the BODY
 	// runs per iteration, not that the SPLIT SITE is reached with its
@@ -49,17 +52,20 @@ func TestS9LoopCarriedVariadicStore(t *testing.T) { // §9.2a — LANDED
 	// upstream `continue` (the bind is bypassed: compiled 0 vs undefined_word)
 	// and a downstream `break` (a discarded iteration's spill survived:
 	// compiled [5 5] vs interp [5]). Since NUR214 a loop that is not
-	// proven to run CARRIES its fresh `acc` in a bound-checked cell, so the
-	// four decline where the carried store meets the inner loop's variadic
-	// result, before the consumer's own fence.
+	// proven to run CARRIES its `acc` in a bound-checked cell, so the four
+	// decline where the carried store meets the inner loop's variadic
+	// result, before the consumer's own fence. The carried binding is a
+	// `var` cell since phase 2 (design/IMMUTABLE-DEF.1.md §2.1): a `def` in
+	// the body would end with the iteration, and the post-loop read would
+	// be the leak block_scope_rule_test.go pins.
 	mustFailToCompileWithParity(t,
-		`def m {n:0} for (m get "n") [ def acc (for 2 [5]) ] acc`, "loop-carried store of a variadic result")
+		`var acc 0 def m {n:0} for (m get "n") [ var acc (for 2 [5]) ] acc`, "loop-carried store of a variadic result")
 	mustFailToCompileWithParity(t,
-		`def m {n:1} for (m get "n") [ def acc (for 2 [5]) ] acc`, "loop-carried store of a variadic result")
+		`var acc 0 def m {n:1} for (m get "n") [ var acc (for 2 [5]) ] acc`, "loop-carried store of a variadic result")
 	mustFailToCompileWithParity(t,
-		`for 1 [if true [continue] [] def acc (for 2 [5])] acc`, "loop-carried store of a variadic result")
+		`var acc 0 for 1 [if true [continue] [] var acc (for 2 [5])] acc`, "loop-carried store of a variadic result")
 	mustFailToCompileWithParity(t,
-		`for 3 [def acc (for 2 [5]) break] acc`, "loop-carried store of a variadic result")
+		`var acc 0 for 3 [var acc (for 2 [5]) break] acc`, "loop-carried store of a variadic result")
 }
 
 func TestS9SpliceComputedPayload(t *testing.T) { // §9.2b

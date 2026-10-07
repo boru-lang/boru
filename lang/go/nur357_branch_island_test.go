@@ -26,8 +26,8 @@ func TestNUR357IslandPastDefMakingBranch(t *testing.T) {
 		{`def f fn [[][Any][0]] end def g fn [[][Any][def y (f) if true [def q 3] [def q 4] {b:2} keys y]] end g`, "ERROR:[['b'] 0]"},
 		{`def g fn [[m:Map][Any][if true [def q 3] [def q 4] {b:2} keys m.a]] end [g {a:0}]`, "ERROR:[['b'] 0]"},
 		{mk + `if true [def q 3] [def q 4] {b:2} keys m.a`, "[['b'] 0]"},
-		{mk + `if true [def q 3] [def q 4] {b:2} keys m.a q`, "[['b'] 0 3]"},
-		{mk + `def c false end if c [def q 3] [def q 4] {b:2} keys m.a q`, "[['b'] 0 4]"},
+		{mk + `def q (if true [3] [4]) {b:2} keys m.a q`, "[['b'] 0 3]"},
+		{mk + `def c false end def q (if c [3] [4]) {b:2} keys m.a q`, "[['b'] 0 4]"},
 		{mk + `if true [def q 3] [def q 4] if true [def r 1] [def r 2] {b:2} keys m.a`, "[['b'] 0]"},
 		// The run's value fits: the compiled collection stands.
 		{`def g fn [[m:Map][Any][if true [def q 3] [def q 4] {b:2} keys m.a]] end g {a:{c:1}}`, "ERROR:[{b:2} ['c']]"},
@@ -49,11 +49,14 @@ func TestNUR357IslandPastDefMakingBranch(t *testing.T) {
 // arm span the island cannot tell, no island is seated past the branch and
 // the program still declines "(NUR357)".
 func TestNUR357DefMakingBranchUnservedDeclines(t *testing.T) {
-	for _, tc := range []struct{ src, want string }{
-		{`def g fn [[m:Map][Any][if true [def q 3] [def q 4] {b:2} keys m.a end q]] end g {a:0}`, "ERROR:[['b'] 0 3]"},
-		{`def g fn [[m:Map][Any][if true [def q 3] [def q 4] {b:2} keys m.a q]] end g {a:0}`, "ERROR:[['b'] 0 3]"},
-		{`def mk fn [[][Any][{a:0}]] end def m (mk) end if true [def q 3] {b:2} keys m.a`, "ERROR:cannot call `keys`"},
+	// Since phase 2 the arms' q is the arms' own: the read after them is
+	// the interpreter's undefined_word, and the compiled lane stops at the
+	// check (the island's NUR357 decline no longer reached).
+	for _, src := range []string{
+		`def g fn [[m:Map][Any][if true [def q 3] [def q 4] {b:2} keys m.a end q]] end g {a:0}`,
+		`def g fn [[m:Map][Any][if true [def q 3] [def q 4] {b:2} keys m.a q]] end g {a:0}`,
 	} {
-		declinesWithInterpAnswer(t, tc.src, "(NUR357)", tc.want)
+		requireBlockRule(t, src, "ERROR:undefined word: q", "check diagnostics")
 	}
+	declinesWithInterpAnswer(t, `def mk fn [[][Any][{a:0}]] end def m (mk) end if true [def q 3] {b:2} keys m.a`, "(NUR357)", "ERROR:cannot call `keys`")
 }

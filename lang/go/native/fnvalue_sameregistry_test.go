@@ -110,10 +110,12 @@ func TestFnValueSameRegistryBreakInLoopBody(t *testing.T) {
 	brk := sameRegistryAnonFnValue(t, r, "brksr", typedFnBody("x", "Integer", "Any",
 		NewWord("break")))
 
+	// The accumulator is a var cell: the loop body's `def` would be the
+	// iteration's own since phase 2 (design/IMMUTABLE-DEF.1.md §2.1).
 	res := runBoru(t, r, []Value{
-		NewWord("def"), NewWord("accsr"), NewInteger(0), NewEnd(),
+		NewWord("var"), NewWord("accsr"), NewInteger(0), NewEnd(),
 		NewWord("for"), NewInteger(5), NewList([]Value{
-			NewWord("def"), NewWord("accsr"), NewOpenParen(), NewWord("accsr"), NewWord("add"), NewInteger(1), NewCloseParen(),
+			NewWord("var"), NewWord("accsr"), NewOpenParen(), NewWord("accsr"), NewWord("add"), NewInteger(1), NewCloseParen(),
 			brk, NewInteger(1),
 		}), NewEnd(),
 		NewWord("accsr"), NewEnd(),

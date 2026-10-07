@@ -110,7 +110,10 @@ func TestParseFnDispatchMissParity(t *testing.T) {
 	// apart: the twin whose branch RUNS declines the same way and the
 	// interpreter dispatches the def-scoped parser value — one verdict per
 	// program under Run.
-	bound := strings.Replace(src, "def c false", "def c true", 1)
+	// The parser is the branch VALUE (an arm's def ends with the arm since
+	// phase 2 of design/IMMUTABLE-DEF.1.md; block_scope_rule_test.go keeps
+	// the arm-bound shape).
+	bound := strings.NewReplacer("def c false", "def c true", "if c [def op (Parse.parser g)] [0]  end  parse op 'inc'", "def op (Parse.parser g)  parse op 'inc'").Replace(src)
 	requireEngineParity(t, bound, false)
 	if got, err := mustNew(t).RunInterp(bound); err != nil || fmt.Sprint(got) != "[7]" {
 		t.Errorf("bound parser: got %v err=%v, want [7]", got, err)
@@ -119,7 +122,7 @@ func TestParseFnDispatchMissParity(t *testing.T) {
 	// the dispatch runs, so the value form compiles (the variation sweep's
 	// if-then / if-else wraps of module-parse.tsv L41 declined before).
 	sameArm := `if c [def op (Parse.parser g) end parse op 'inc'] [0]`
-	armed := strings.Replace(bound, "if c [def op (Parse.parser g)] [0]  end  parse op 'inc'", sameArm, 1)
+	armed := strings.Replace(bound, "def op (Parse.parser g)  parse op 'inc'", sameArm, 1)
 	gotA, compiledA, errA := mustNew(t).RunCompiled(armed)
 	if errA != nil || !compiledA || fmt.Sprint(gotA) != "[7]" {
 		t.Errorf("same-arm parser: got %v compiled=%v err=%v, want [7] compiled", gotA, compiledA, errA)

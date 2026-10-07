@@ -89,6 +89,16 @@ func UninstallType(r *Registry, name string) bool {
 	if entry.TypeDef != nil && entry.Minted && !r.Defs.HoldsType(entry.TypeDef) {
 		r.Types.Retire(entry.TypeDef)
 	}
+	// The NAME comes free with the binding: a block or a frame that defs a
+	// type per run (`each [def e end def ZB (Integer gt e) 7] …`, a fn body's
+	// `def T (class {})`) leaves no reservation behind for the next run's
+	// mint to conflict with — a type binding ends with its scope as every
+	// binding does (design/IMMUTABLE-DEF.1.md §2.1, phase 2). Before this a
+	// frame's first call reserved the part for the registry's lifetime and
+	// the second call raised (NUR167's rule).
+	if !r.Defs.IsType(name) {
+		r.forgetTypeParts(name)
+	}
 	// A capitalised undef pops through PopEntry, not UninstallDef, so it needs
 	// its own ledger note (§6.5). The RETIREMENT above is already covered by
 	// BindingSandbox's partition — this records the BINDING removal, which is

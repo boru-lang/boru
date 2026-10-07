@@ -259,11 +259,13 @@ func TestEdgeFindingComputedElseBody(t *testing.T) {
 	mustCompileWithParity(t, `def n 5 if (n eq 0) [99] (add 1 2)`, "[3]")
 	mustCompileWithParity(t, `def n 0 if (n eq 0) [99] [88]`, "[99]")
 
-	// The synthesized do-arm keeps splice semantics under FLOW and DEF axes
-	// compiled: a break inside the computed arm escapes the enclosing loop,
-	// and a def inside it leaks to the enclosing scope.
+	// The synthesized do-arm keeps splice semantics under the FLOW axis
+	// compiled: a break inside the computed arm escapes the enclosing loop.
+	// A def inside it is the arm's own block local (design/IMMUTABLE-DEF.1.md
+	// §2.1, phase 2): the read after it is an undefined word that stops the
+	// check pass — block_scope_rule_test.go pins the interpreter's answer.
 	mustCompileWithParity(t, `def body (quote [break]) for 3 [ if (i eq 1) body [] i ]`, "[0]")
-	mustCompileWithParity(t, `def body (quote [def zz 7 zz]) def n 5 (if (n eq 0) [99] body) zz add 1`, "[7 8]")
+	mustFailToCompileWithParity(t, `def body (quote [def zz 7 zz]) def n 5 (if (n eq 0) [99] body) zz add 1`, "check diagnostics")
 }
 
 // §5 (divergence fix) — a `do` body arriving as a QUOTED VALUE (via
@@ -332,32 +334,36 @@ func TestEdgeFindingArgsOverUnnamedParams(t *testing.T) {
 		`def f fn [[n:Integer] [Integer] [if (n lte 0) [args.0] [f (n sub 1)]]] f 3`, "[0]")
 }
 
-// Conditional fn-shadow divergence — a user fn REDEFINED inside a branch/loop
-// body clobbers the enclosing overload in place (installDef's overlap-removal
-// drops the outer entry without growing the def depth, so the branch/loop
-// rollback cannot restore it). Compiled resolution then statically bakes the
-// conditional shadow while the interpreter keeps the outer fn when the branch
-// is not taken (or the loop runs zero times), so `if false [def g …] g 1`
-// returned the shadow's value compiled but the ORIGINAL interpreted. The fix
-// fails to compile the redefinition (CondBodyDepth-gated), and the program
-// is silently re-run on the interpreter — contained, not fixed, and the shape
-// is still owed a lowering.
+// Conditional fn shadow — a user fn REDEFINED inside a branch/loop body is
+// the body's BLOCK-LOCAL shadow since phase 2 (design/IMMUTABLE-DEF.1.md
+// §2.1): pushed above the enclosing overload for the body and popped with
+// it, so `g 1` after the construct dispatches the outer fn on the
+// interpreter whether or not the arm ran (before phase 2 installDef's
+// overlap-removal dropped the outer entry in place, and `if false [def g …]
+// g 1` returned the shadow's value compiled but the ORIGINAL interpreted).
+// The compiled lane declines every block shadow until its own block scopes
+// land, and the program is re-run on the interpreter — contained, not yet
+// lowered.
 func TestEdgeFindingConditionalFnShadowFailsToCompile(t *testing.T) {
 	fnA := `fn [[x:Any] [Integer] [x add 100]]`
 	fnB := `fn [[x:Any] [Integer] [x add 1]]`
-	want := "redefined inside a conditional body"
+	want := "block-local def `g` shadows an enclosing binding"
 
-	// DECLINE: a conditionally-reached redefinition of an outer fn the
-	// compiled program cannot place.
-	mustFailToCompileWithParity(t, `def g `+fnA+` if true [def g `+fnB+`] g 1`, want) // taken, still unsound-at-shape
-	mustFailToCompileWithParity(t, `def g `+fnA+` for 2 [def g `+fnB+`] g 1`, want)   // loop body
+	// DECLINE: a block-local redefinition of an outer fn, taken or not.
+	mustFailToCompileWithParity(t, `def g `+fnA+` if true [def g `+fnB+`] g 1`, want)
+	mustFailToCompileWithParity(t, `def g `+fnA+` for 2 [def g `+fnB+`] g 1`, want)
 	mustFailToCompileWithParity(t, `def g `+fnA+` ([1 2] each [def g `+fnB+`]) g 1`, want)
-
-	// COMPILE (NUR244): the arm a DECIDED condition skips is bracketed as
-	// speculative, so its redefinition is placed at its site and the call
-	// routes live — the outer fn answers, on both lanes.
-	mustCompileWithParity(t, `def g `+fnA+` if false [def g `+fnB+`] g 1`, "[101]") // branch not taken
-	mustCompileWithParity(t, `def c false def g `+fnA+` if c [def g `+fnB+`] g 1`, "[101]")
+	mustFailToCompileWithParity(t, `def g `+fnA+` if false [def g `+fnB+`] g 1`, want)
+	mustFailToCompileWithParity(t, `def c false def g `+fnA+` if c [def g `+fnB+`] g 1`, want)
+	for _, src := range []string{
+		`def g ` + fnA + ` if true [def g ` + fnB + `] g 1`,
+		`def g ` + fnA + ` if false [def g ` + fnB + `] g 1`,
+		`def g ` + fnA + ` for 2 [def g ` + fnB + `] g 1`,
+	} {
+		if got, err := mustNew(t).RunInterp(src); err != nil || fmt.Sprint(got) != "[101]" {
+			t.Errorf("%s: the shadow ends with its block, the outer fn answers: %v / %v", src, got, err)
+		}
+	}
 
 	// COMPILE (must NOT over-decline): the redefinition is UNCONDITIONAL.
 	mustCompileWithParity(t, `def g `+fnA+` def g `+fnB+` g 1`, "[2]")      // top-level shadow
@@ -524,24 +530,35 @@ func TestEdgeFindingSentinelInInterpolatedParts(t *testing.T) {
 // decision: a same-sig redefinition there is not path-dependent, and the
 // equivalent paren-`do` condition already compiled with parity. The fix routes
 // analyseCondFragment through a CondBodyDepth-exempt condition run (since
-// NUR212's follow-up the KEPT RunCarrierCondBodyKeepDefs);
+// NUR212's follow-up the KEPT RunCarrierCondBodyValues);
 // branch arms and loop bodies keep the raise (TestEdgeFindingConditionalFnShadowFailsToCompile).
 func TestEdgeFindingCondFragmentRedefCompiles(t *testing.T) {
 	fnA := `fn [[x:Any] [Integer] [x add 100]]`
 	fnB := `fn [[x:Any] [Integer] [x add 1]]`
 
-	// The reported fixture: redefinition inside the list-form if condition.
-	mustCompileWithParity(t,
-		`def g `+fnA+` if [def g `+fnB+` true] [0] [9] g 1`, "[0 2]")
-	// Its paren-`do` twin (the semantic reference) keeps compiling.
+	// The reported fixture: a redefinition inside the list-form if
+	// condition is the condition's BLOCK-LOCAL shadow since phase 2 (design
+	// §2.1): the outer fn answers after the construct, and the compiled
+	// lane declines the shadow until its block scopes land.
+	mustFailToCompileWithParity(t,
+		`def g `+fnA+` if [def g `+fnB+` true] [0] [9] g 1`, "block-local def `g`")
+	// Its paren-`do` twin is a paren GROUP, not a scope, and `do` is
+	// transparent: the module fn is redefined and the program compiles.
 	mustCompileWithParity(t,
 		`def g `+fnA+` if (do [def g `+fnB+` true]) [0] [9] g 1`, "[0 2]")
-	// 2-arg if condition rides the same fragment path.
-	mustCompileWithParity(t,
-		`def g `+fnA+` if [def g `+fnB+` true] [0] g 1`, "[0 2]")
-	// `case` code-body scrutinee: runs once before dispatch — also exempt.
-	mustCompileWithParity(t,
-		`def g `+fnA+` case [def g `+fnB+` 5] [5 88 99] g 1`, "[88 2]")
+	// 2-arg if condition and the `case` scrutinee: blocks too.
+	mustFailToCompileWithParity(t,
+		`def g `+fnA+` if [def g `+fnB+` true] [0] g 1`, "block-local def `g`")
+	mustFailToCompileWithParity(t,
+		`def g `+fnA+` case [def g `+fnB+` 5] [5 88 99] g 1`, "block-local def `g`")
+	for _, src := range []string{
+		`def g ` + fnA + ` if [def g ` + fnB + ` true] [0] [9] g 1`,
+		`def g ` + fnA + ` case [def g ` + fnB + ` 5] [5 88 99] g 1`,
+	} {
+		if got, err := mustNew(t).RunInterp(src); err != nil || !strings.HasSuffix(fmt.Sprint(got), " 101]") {
+			t.Errorf("%s: the condition's shadow ends with the condition: %v / %v", src, got, err)
+		}
+	}
 
 	// A redefinition in an ARM under a condition the model cannot decide
 	// (a code-body condition) is PLACED since the seventieth increment:
@@ -549,8 +566,11 @@ func TestEdgeFindingCondFragmentRedefCompiles(t *testing.T) {
 	// installer, the dispatch routed on the live lead — parity on the
 	// taken path here, and on the not-taken path in
 	// TestConditionalFnDefIsSpeculative.
-	mustCompileWithParity(t,
-		`def p 5 def g `+fnA+` if [p gt 3] [def g `+fnB+` 0] [9] g 1`, "[0 2]")
+	mustFailToCompileWithParity(t,
+		`def p 5 def g `+fnA+` if [p gt 3] [def g `+fnB+` 0] [9] g 1`, "block-local def `g`")
+	if got, err := mustNew(t).RunInterp(`def p 5 def g ` + fnA + ` if [p gt 3] [def g ` + fnB + ` 0] [9] g 1`); err != nil || fmt.Sprint(got) != "[0 101]" {
+		t.Errorf("the arm's redefinition ends with the arm: %v / %v, want [0 101]", got, err)
+	}
 }
 
 // §5 (COMPILE FAILURE-CLOSURE, landed 2026-07-17) — a def of a STATICALLY-COUNTED
@@ -568,7 +588,7 @@ func TestEdgeFindingLoopCollectDefCompiles(t *testing.T) {
 	mustCompileWithParity(t, `def xs (for 3 [1]) xs`, "[1 1 1]")
 	mustCompileWithParity(t, `def xs (for 3 [1])`, "[1 1]")
 	// Distinct per-iteration values: xs = the FIRST value, spill order kept.
-	mustCompileWithParity(t, `def i0 0 def xs (for 3 [def i0 (add i0 1) i0]) xs`, "[2 3 1]")
+	mustCompileWithParity(t, `var i0 0 def xs (for 3 [var i0 (add i0 1) i0]) xs`, "[2 3 1]")
 	// Multi-value body: region = trips x body-net; xs = the deepest value.
 	mustCompileWithParity(t, `def xs (for 2 [7 8]) xs`, "[8 7 8 7]")
 	// The read feeds a typed downstream dispatch (element typing, not the

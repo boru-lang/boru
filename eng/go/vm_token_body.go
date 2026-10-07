@@ -117,6 +117,14 @@ func (vc *vmContext) invokeTokenBody(reg *core.Registry, body core.Value, inputs
 	if !named {
 		return nil, nil, false
 	}
+	// The seam's kind is part of the unit: a body `do` runs is transparent
+	// (its defs reach the caller's scope), any other seam's is a block of
+	// the caller's frame (core InvokeBody / InvokeBodyKeepDefs), and the
+	// stamp models each its own way (compiler.StampTokenBody).
+	transparent := reg.InvokeKeepsDefs()
+	if transparent {
+		key += "/do"
+	}
 	var ref *compiler.CompiledFnRef
 	if slot, seen := reg.TokenBodyStamp(key); seen {
 		r, isRef := slot.(*compiler.CompiledFnRef)
@@ -129,7 +137,7 @@ func (vc *vmContext) invokeTokenBody(reg *core.Registry, body core.Value, inputs
 		for i, in := range inputs {
 			types[i] = core.TokenBodyInputType(in)
 		}
-		r, ok := compiler.StampTokenBody(reg, tokens, types, body.Pos())
+		r, ok := compiler.StampTokenBody(reg, tokens, types, body.Pos(), transparent)
 		if !ok {
 			reg.SetTokenBodyStamp(key, tokenBodyDeclined{})
 			return nil, nil, false
@@ -168,7 +176,19 @@ func (vc *vmContext) invokeTokenBody(reg *core.Registry, body core.Value, inputs
 	// and its home is reg — the registry RunResolved would have stepped the
 	// tokens on, where the enclosing unit installed the names it reads — so
 	// it is hosted FOR reg (hostForeignOn), not on the running registry.
+	// The body is a BLOCK unless the seam is `do`'s (InvokeBodyKeepDefs —
+	// reg.InvokeKeepsDefs): a def it makes ends with this run of it (core
+	// block.go), as the interpreter's RunBodyResolved ends it. The stamped
+	// unit installs its defs as kept bindings (the leak the lane delivered
+	// before phase 2), which the block pops on the way out.
+	var blockID int32
+	if !reg.InvokeKeepsDefs() && core.BodyBindsLocals(tokens) {
+		blockID = core.EnterBlock(reg)
+	}
 	res, err := vc.hostForeignOn(ref.Prog, reg, ref.Unit, inputs, nil, true, reg)
+	if blockID != 0 {
+		core.LeaveBlock(reg, blockID)
+	}
 	if fe, escaped := err.(*flowEscape); escaped {
 		reg.FlowCtrl = flowCtrlOf(fe.op)
 		return fe.residual, nil, true

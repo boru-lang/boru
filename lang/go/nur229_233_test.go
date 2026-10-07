@@ -12,9 +12,9 @@ import "testing"
 // signature_error (NUR231).
 func TestNUR229To231OnTheMergedTree(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
-		{`def x 1 end do [case [1] [1 [def x 5 "one"] "other"]] end x`, "[1 one 5]"},
-		{`def x 1 end do [case 2 [1 [def x 5 "one"] "other"]] end x`, "[other 1]"},
-		{`def x 1 end case 1 [1 [def x 5 "one"] "other"] end x`, "[1 one 5]"},
+		{`var x 1 end do [case [1] [1 [var x 5 "one"] "other"]] end x`, "[1 one 5]"},
+		{`var x 1 end do [case 2 [1 [var x 5 "one"] "other"]] end x`, "[other 1]"},
+		{`var x 1 end case 1 [1 [var x 5 "one"] "other"] end x`, "[1 one 5]"},
 		{`do [case [1 drop] [5 "five" "other"] 9]`, "[error(case: value expression produced no value to dispatch on)]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
@@ -40,7 +40,7 @@ func TestNUR233PromotedSplitBind(t *testing.T) {
 		{`def x (1 2 3 dup) x add 10`, "[2 3 3 11]"},
 		{`def x (5 dup) 7 x`, "[5 7 5]"},
 		{`def x (5 dup) drop x`, "[5]"},
-		{g + `def x (5 dup)  if (g 9) [def x 9] [] end x add 1`, "[5 10]"},
+		{g + `var x (5 dup)  if (g 9) [var x 9] [] end x add 1`, "[5 10]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 		interp, compiled, ok := bcsLanes(t, c.src)

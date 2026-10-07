@@ -76,9 +76,13 @@ func TestLoopRebindOfBranchBoundNameCompiles(t *testing.T) {
 // rebind is no live read (the kept-defs latch); the store is still recorded
 // on the way.
 func TestDynamicKeepDefsBodyRefreshesTheCarriedSlot(t *testing.T) {
-	requireLoudDecline(t,
-		`def f fn [[b:List xs:List][Integer][def t 0 for 2 [def t (t add 1) each b xs drop] t]] end f (quote [def t (t add 1) t]) [1 2 3]`,
-		"and the read of `b` after it", "[8]")
+	// The loop body and the dynamic each body ASSIGN the fn's var (a def
+	// there is each body's own block local since phase 2).
+	src := `def f fn [[b:List xs:List][Integer][var t 0 for 2 [var t (t add 1) each b xs drop] t]] end f (quote [var t (t add 1) t]) [1 2 3]`
+	if got, err := mustNew(t).RunInterp(src); err != nil || fmt.Sprint(got) != "[8]" {
+		t.Errorf("%s: interpreter %v / %v, want [8]", src, got, err)
+	}
+	requireEngineParity(t, src, false)
 }
 
 // TestLoopRoundRollbackDropsArgsProjection pins Rollback's trim of the `args`
@@ -87,7 +91,7 @@ func TestDynamicKeepDefsBodyRefreshesTheCarriedSlot(t *testing.T) {
 // checkpoint) is dropped with its events, so the surviving round's own
 // projection is the one the unit lowers.
 func TestLoopRoundRollbackDropsArgsProjection(t *testing.T) {
-	agreeOnBothLanes(t, `def f fn [[a:Integer b:Integer][Any][def acc 0 for 2 [def acc (acc add (args size))] acc]] end f 1 2`, "[4]")
+	agreeOnBothLanes(t, `def f fn [[a:Integer b:Integer][Any][var acc 0 for 2 [var acc (acc add (args size))] acc]] end f 1 2`, "[4]")
 }
 
 // TestStoredFnBodyLocalReadIsTheWord pins NUR279's non-param arm: a stored fn's

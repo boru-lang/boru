@@ -88,7 +88,7 @@ func TestValReadAliasSoundCompileFailures(t *testing.T) {
 		// a read in another unit: the alias is the binding unit's
 		{vraK + `def p (kk 7) end def g fn [[][Integer][3 p/v apply]] end g`, "unreachable at a call site", "[10]"},
 		// a conditional rebind
-		{vraK + `def p (kk 7) end if true [def p (kk 8)] 3 p/v apply`, "redefined inside a conditional body", "[fn p(Integer)]"},
+		{vraK + `def p (kk 7) end if true [def p (kk 8)] 3 p/v apply`, "block-local def `p` shadows an enclosing binding", "[fn p(Integer)]"},
 		// the pre-existing miscompile, now declined: a fn body's def of a
 		// capturing fn value over an outer overloading def outlives the call
 		{vraK + `def p (kk 7) end def g fn [[][Integer][def p (kk 9) 1]] end g (p 3)`, "redefined inside a fn body", "[1 12]"},

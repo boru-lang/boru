@@ -663,8 +663,8 @@ var (
 	// `get`/`set` helper, ported with those words to eng/go/core_storage.go.
 
 	// The kept `if` condition run (NUR212's follow-up).
-	RunCarrierCondBodyKeepDefs = core.RunCarrierCondBodyKeepDefs
-	GeneraliseSpecUndef        = core.GeneraliseSpecUndef
+	RunCarrierCondBodyValues = core.RunCarrierCondBodyValues
+	GeneraliseSpecUndef      = core.GeneraliseSpecUndef
 )
 
 // Sugar roles (eng/go/sugar.go — ADR-012 rule 3, 2026-08-04

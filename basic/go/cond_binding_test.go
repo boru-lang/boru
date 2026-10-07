@@ -3,6 +3,7 @@ package basic
 import (
 	"testing"
 
+	core "github.com/boru-lang/boru/core/go"
 	"github.com/boru-lang/boru/parser/go"
 )
 
@@ -56,28 +57,33 @@ func TestBindingShapeChanged(t *testing.T) {
 	}
 }
 
-// keepScrutineeBindings keeps a `case` scrutinee's bindings in the model of a
-// compile pass's SUSPENDED run (lang's case_scrutinee_model_test.go pins the
-// compile end). With no recorder armed — plain check, or a kernel-only
+// runScrutineeForModel models a `case` scrutinee's run in a compile pass's
+// SUSPENDED run (lang's case_scrutinee_model_test.go pins the compile end):
+// the scrutinee is a block, so a var it ASSIGNS stands and a def it makes
+// ends with it. With no recorder armed — plain check, or a kernel-only
 // registry like this one — there is no such model, and the scrutinee must
-// not run at all: the kept-condition runner itself binds (the control), the
-// helper leaves the table untouched.
-func TestKeepScrutineeBindingsNeedsArmedRecorder(t *testing.T) {
+// not run at all: the condition runner itself assigns (the control), the
+// helper leaves the cell untouched.
+func TestRunScrutineeForModelNeedsArmedRecorder(t *testing.T) {
 	r := newTestRegistry(t)
 	if err := Register(r); err != nil {
 		t.Fatalf("Register: %v", err)
 	}
-	vals, err := parser.Parse("[def x 5]")
+	core.InstallVar(r, "x", NewInteger(1), nil)
+	vals, err := parser.Parse("[var x 5 def y 7]")
 	if err != nil || len(vals) != 1 {
 		t.Fatalf("parse: %v %v", vals, err)
 	}
 	body := vals[0]
-	keepScrutineeBindings(r, body)
-	if r.Defs.Has("x") {
-		t.Fatal("with no recorder armed the scrutinee must not run")
+	runScrutineeForModel(r, body)
+	if v, _ := r.Defs.Top("x"); core.Canon([]Value{v}) != "1" {
+		t.Fatalf("with no recorder armed the scrutinee must not run: x = %s", core.Canon([]Value{v}))
 	}
-	RunCarrierCondBodyKeepDefs(r, body)
-	if !r.Defs.Has("x") {
-		t.Error("control: the kept-condition runner binds the scrutinee's name")
+	RunCarrierCondBodyValues(r, body)
+	if v, _ := r.Defs.Top("x"); core.Canon([]Value{v}) != "5" {
+		t.Errorf("control: the condition runner assigns the scrutinee's var: x = %s", core.Canon([]Value{v}))
+	}
+	if r.Defs.Has("y") {
+		t.Error("a def the scrutinee makes ends with it: the scrutinee is a block")
 	}
 }

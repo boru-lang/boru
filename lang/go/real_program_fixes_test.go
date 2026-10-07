@@ -102,7 +102,7 @@ func TestNestedBodyStepBudget(t *testing.T) {
 			t.Errorf("steps %d: compiled %v [%v] (compiled=%v), interp [%v]", n, gotC, errC, compiled, errI)
 		}
 	}
-	runaway := `def n 0  for 1000 [def n (n add 1)]  n`
+	runaway := `var n 0  for 1000 [var n (n add 1)]  n`
 	_, _, errC := mustNewOpts(t, Options{Steps: 100}).RunCompiled(runaway)
 	_, errI := mustNewOpts(t, Options{Steps: 100}).RunInterp(runaway)
 	for lane, err := range map[string]error{"compiled": errC, "interp": errI} {

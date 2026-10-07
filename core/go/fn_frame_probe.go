@@ -131,11 +131,16 @@ func (e *Engine) probeTailFrom(start int) (frameTailScan, bool) {
 	scan := frameTailScan{RCIdx: -1}
 
 	// Forward half: )* __DC __pa (undef name)* [__RC] ) — anything
-	// else, at any point, is not a tail.
+	// else, at any point, is not a tail. A BLOCK END marker among the
+	// closers (an `if` arm that bound a local before this call, block.go)
+	// is stepped over: the frame's own teardown pops the arm's locals with
+	// the frame's, and the marker finds its scope closed when it runs.
 	i := e.Pointer + 1
 	closersAhead := 0
-	for i < e.Tape.Len() && IsCloseParen(e.Tape.At(i)) {
-		closersAhead++
+	for i < e.Tape.Len() && (IsCloseParen(e.Tape.At(i)) || IsBlockEnd(e.Tape.At(i))) {
+		if IsCloseParen(e.Tape.At(i)) {
+			closersAhead++
+		}
 		i++
 	}
 	if i >= e.Tape.Len() || !IsDefCleanup(e.Tape.At(i)) {

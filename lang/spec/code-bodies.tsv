@@ -103,7 +103,7 @@ def body (quote [add]) end fold body [1 2 3 4] 0	10	a def-bound body as a fold s
 def b (quote [add]) end scan b [1 2 3]	[1 3 6]	…and as a scan step
 def b (quote [gt 1]) end filter b [1 2 3]	[2 3]	…and as a filter predicate
 def b (quote [i mul 2]) end for 3 b	0 2 4	…and as a `for` body, reading the loop word `i`
-def b (quote [i lt 3]) end def i 0 end while b [def i (i add 1)] end i	3	…and as a `while` CONDITION body
+def b (quote [i lt 3]) end var i 0 end while b [var i (i add 1)] end i	3	…and as a `while` CONDITION body
 def b (quote ['caught']) end do [raise oops 'x'] error b	'caught'	…and as an `error` handler body
 def th (quote [1 add 2]) end if true th [0]	3	a def-bound `if` THEN branch
 def th (quote [1 add 2]) end def el (quote [9]) end if false th el	9	both branches def-bound
@@ -174,19 +174,19 @@ def f fn [[d:Map][Integer][unpack [a b] d end a add b]] end f {a:1 b:2}	3	`unpac
 def f fn [[a:Integer b:Integer][List][args]] end f 1 2	[1 2]	`args` — the frame's own argument list as a body result — DOES NOT COMPILE: "fn f: body result of unknown provenance"
 #
 # §9  bodies that mutate an enclosing binding (accumulator loops)
-def t 0 end for 3 [def t (t add 1)] end t	3	the plainest accumulator loop
-def t 0 end for 2 [for 2 [def t (t add 1)]] end t	4	a nested accumulator loop
-def t 0 end for 3 [def t (t add (do [i mul 2]))] end t	6	the accumulated value computed by an inner body
-def t 0 end for 3 [do [def t (t add 1)]] end t	3	the `def` moved inside a `do` body — DOES NOT COMPILE: "fn do$body: dynamic-scope def `t` of unpromoted computed value"
-def t 0 end for 2 [if true [def t (t add 1)] [0]] end t	2	the `def` inside an `if` arm inside the loop — DOES NOT COMPILE: "loop results as a branch/body result (Stage 2)"
-def t 0 end for 2 [case 1 [1 [drop def t (t add 1)] 0]] end t	2	…inside a `case` block instead — DOES NOT COMPILE: "loop results as a branch/body result (Stage 2)"
-def t 0 end each [def t (t add 1) t] [1 2 3] drop end t	3	an each body accumulating into an enclosing binding — DOES NOT COMPILE: "residual value of unknown provenance"
-def t 0 end fold [drop def t (t add 1) t] [1 2 3] 0	3	a fold body doing the same
-def i 0 end while [i lt 3] [def i (i add 1)] end i	3	a while body advancing its own condition
-def i 0 end while [i lt 3] [do [def i (i add 1)]] end i	3	…with the `def` wrapped in a `do` body — DOES NOT COMPILE: "fn do$body: dynamic-scope def `i` of unpromoted computed value"
-def i 0 end while [i lt 3] [def i (i add 1) each [add i] [0] drop] end i	3	…with an each body inside the loop body
-def f fn [[xs:List][Integer][def t 0 for 3 [def t (t add 1)] t]] end f [1]	3	the accumulator loop moved inside a fn
-def f fn [[xs:List][Integer][def t 0 each [def t (t add 1) t] xs drop t]] end f [1 2 3]	3	…driven by an each over a parameter — DOES NOT COMPILE: "code-body word each (Stage 2)"
+var t 0 end for 3 [var t (t add 1)] end t	3	the plainest accumulator loop
+var t 0 end for 2 [for 2 [var t (t add 1)]] end t	4	a nested accumulator loop
+var t 0 end for 3 [var t (t add (do [i mul 2]))] end t	6	the accumulated value computed by an inner body
+var t 0 end for 3 [do [var t (t add 1)]] end t	3	the assignment moved inside a `do` body — `do` is transparent, the var is the enclosing cell
+var t 0 end for 2 [if true [var t (t add 1)] [0]] end t	2	the assignment inside an `if` arm inside the loop
+var t 0 end for 2 [case 1 [1 [drop var t (t add 1)] 0]] end t	2	…inside a `case` block instead
+var t 0 end each [var t (t add 1) t] [1 2 3] drop end t	3	an each body accumulating into an enclosing var
+var t 0 end fold [drop var t (t add 1) t] [1 2 3] 0	3	a fold body doing the same
+var i 0 end while [i lt 3] [var i (i add 1)] end i	3	a while body advancing its own condition
+var i 0 end while [i lt 3] [do [var i (i add 1)]] end i	3	…with the assignment wrapped in a `do` body
+var i 0 end while [i lt 3] [var i (i add 1) each [add i] [0] drop] end i	3	…with an each body inside the loop body
+def f fn [[xs:List][Integer][var t 0 for 3 [var t (t add 1)] t]] end f [1]	3	the accumulator loop moved inside a fn
+def f fn [[xs:List][Integer][var t 0 each [var t (t add 1) t] xs drop t]] end f [1 2 3]	3	…driven by an each over a parameter
 def acc (flex []) end for-each [acc swap append drop] [1 2 3] end acc	(flex [1 2 3])	`for-each` accumulating into a FLEX list — DOES NOT COMPILE: "residual value of unknown provenance"
 #
 # §10  `var` bodies — declarations plus body in one list

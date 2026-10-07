@@ -1,5 +1,7 @@
 package basic
 
+import core "github.com/boru-lang/boru/core/go"
+
 // RunWhileLoop builds the mark + condition + move tokens for a while
 // loop — the condition region runs first, and the move's while-mode
 // ForCont (core engine.go stepMoveWhile) alternates condition and body
@@ -34,6 +36,17 @@ func RunWhileLoop(r *Registry, cond, body Value) ([]Value, error) {
 		Body:      bodyCopy,
 		WhileCond: condCopy,
 		CondPos:   cond.Pos(),
+		// A body that binds a name of its own runs each round as a block
+		// (core block.go), and so does a condition that binds one: every
+		// code body the word runs is a block (design/IMMUTABLE-DEF.1.md
+		// §2.1).
+		Block:     core.BodyBindsLocals(bodySlice),
+		CondBlock: core.BodyBindsLocals(condSlice),
+	}
+	// The first condition region is spliced below: its block opens here;
+	// the engine opens every later round's (core enterWhileCondBlock).
+	if cont.CondBlock {
+		cont.BlockID = core.EnterBlock(r)
 	}
 
 	// First region: the condition. Its move fires stepMoveWhile with

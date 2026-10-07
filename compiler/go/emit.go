@@ -993,6 +993,17 @@ type emitDynBind struct {
 	// OpAssignDynScope — the cell replaced in place — where a def's bind
 	// pushes a binding the frame's RET unwinds.
 	assign bool
+	// varDecl marks a var DECLARATION (core.InstallVar: the var word's
+	// `var NAME v` over a name no visible var holds), varType its declared
+	// type (nil untyped). Its registry install is a var cell — the dyn-scope
+	// install lowers to OpBindDynScopeVar and the resident install carries
+	// ResidentBindSpec.Var — so a body's later assignment replaces the cell
+	// where a plain def's install had it declare a second cell beside the
+	// first: `def f fn [[xs:List][Integer][var t 0 each [var t (t add 1)]
+	// xs drop t]] f [1 2 3]` compiled 0 for 3 once the body's block retired
+	// that second cell (2026-10-07).
+	varDecl bool
+	varType *core.Type
 	// armCarried marks a BRANCH-CARRIED def (branch_carried.go): the bound
 	// value is stored into frame slot armSlot at the def's own site, so a
 	// read after the branch's merge loads whichever arm ran. The zero value
@@ -1458,6 +1469,17 @@ type EmitState struct {
 	// fn or closure the body's analysis opens) keeps the decline: its frame
 	// is the program's, not the seam's (see ArgsReadLive).
 	liveArgsUnitDepth int
+	// tokenBodyBlock / tokenBodyTransparent mark a run-time TOKEN body stamp
+	// (StampTokenBody): the body runs at the InvokeBody seam as a BLOCK of
+	// the caller's frame — or, for `do`'s seam, transparently (design/
+	// IMMUTABLE-DEF.1.md #11) — never as a frame of its own, so its
+	// analysis opens a block (or no scope) and a `var` it assigns is the
+	// caller's cell under the one frame rule (core.CheckState
+	// .NextBaselineIsBlock). Measured before: a hosted `[var t (t add 1)]`
+	// over the frame's `var t 0` compiled a var_error trap ("cannot assign
+	// a var of an enclosing frame") where the interpreter assigns.
+	tokenBodyBlock       bool
+	tokenBodyTransparent bool
 
 	// stampDeclined memoises the sig impls whose stamp already declined, keyed
 	// by the impl pointer the stamp would write to. The succeeding case
@@ -3346,8 +3368,8 @@ func (es *EmitState) BodyAnalysisGuard() func() {
 	}
 }
 
-// CondBodyGuard is BodyAnalysisGuard for a KEPT CONDITION body run
-// (core RunCarrierCondBodyKeepDefs, NUR212): the condition fragment the
+// CondBodyGuard is BodyAnalysisGuard for a CONDITION body run (core
+// RunCarrierCondBody / RunCarrierCondBodyValues): the condition fragment the
 // branch hook armed is opened and marked unconditional (fragUncond), so a
 // `do` inside it adopts its body's twins where it stands (AdoptBodyTwins'
 // root fence, rootLikeStream). With no capture armed it is the plain guard.
@@ -4487,7 +4509,7 @@ func (es *EmitState) tryReturnedClosureAs(v core.Value, pos core.SrcPos, callbac
 	r.Check.Emit = probe
 	// bodyOut 1: a fn VALUE body keeps the single declared return (it is not a
 	// 0-output side-effect body like a test case).
-	_, probeOK := compileClosureBody(r, "fnval", 1, callback, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
+	_, probeOK := compileClosureBody(r, "fnval", 1, callback, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, false, pos)
 	r.Check.Emit = es
 	if !probeOK {
 		return EmitOperand{}, false
@@ -4506,7 +4528,7 @@ func (es *EmitState) tryReturnedClosureAs(v core.Value, pos core.SrcPos, callbac
 		es.dynEnv = true
 	}
 	// REAL: compile into this program (deterministic success after a clean probe).
-	unit, realOK := compileClosureBody(r, "fnval", 1, callback, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
+	unit, realOK := compileClosureBody(r, "fnval", 1, callback, lam.Body(), inputs, paramNames, ps.Patterns, fd.Captured, ClosureInValue, !fd.Anonymous, false, pos)
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return EmitOperand{}, false
 	}
@@ -4641,8 +4663,14 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	if es.liveArgsUnitDepth > 0 {
 		probe.liveArgsUnitDepth = len(probe.units) + es.liveArgsUnitDepth - len(es.units)
 	}
+	// A token body's scope kind rides into the probe: both passes must
+	// model the body the same way.
+	probe.tokenBodyBlock, probe.tokenBodyTransparent = es.tokenBodyBlock, es.tokenBodyTransparent
+	// A TOKEN body runs in the caller's frame (bodyInFrame): a block, or
+	// `do`'s transparent body — compileClosureBody's scope rule.
+	bodyInFrame := !fd.Anonymous || es.tokenBodyBlock || es.tokenBodyTransparent
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
+	_, probeOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, bodyInFrame, es.tokenBodyTransparent, pos)
 	r.Check.Emit = es
 	if !probeOK {
 		// Surface the probe's failure for the -compile-report attribution
@@ -4657,7 +4685,7 @@ func (es *EmitState) compileStoredFnUnit(fd core.FnDefInfo, sigIdx int, pos core
 	if probe.dynEnv {
 		es.dynEnv = true
 	}
-	unit, realOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, !fd.Anonymous, pos)
+	unit, realOK := compileClosureBody(r, "storedfn", 0, true, lam.Body(), inputs, paramNames, nil, fd.Captured, ClosureInValue, bodyInFrame, es.tokenBodyTransparent, pos)
 	if !realOK || unit < 0 {
 		// Reachable: a body the probe pass accepted can still decline in the
 		// real pass (the variation sweep produces such shapes — a splice-
@@ -4727,7 +4755,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, bodyList.Pos())
+	_, probeOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, false, bodyList.Pos())
 	r.Check.Emit = es
 	if !probeOK {
 		return core.Value{}, false
@@ -4736,7 +4764,7 @@ func (es *EmitState) compileStoredBody(bodyList core.Value) (core.Value, bool) {
 	if probe.dynEnv {
 		es.dynEnv = true
 	}
-	unit, realOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, bodyList.Pos())
+	unit, realOK := compileClosureBody(r, "spawnbody", 0, true, tokens, nil, nil, nil, nil, ClosureInValue, false, false, bodyList.Pos())
 	if !realOK || unit < 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
 		return core.Value{}, false
 	}
@@ -4823,14 +4851,14 @@ func (es *EmitState) compileStoredParamBody(bodyList core.Value, params []core.F
 	probe.storedGradualDepth = es.storedGradualDepth
 	probe.dynEnv = es.dynEnv
 	r.Check.Emit = probe
-	_, probeOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, bodyList.Pos())
+	_, probeOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, false, bodyList.Pos())
 	r.Check.Emit = es
 	if !probeOK {
 		return core.Value{}, false
 	}
 	// Probe-terminal environment mode → real pass (see tryReturnedClosure).
 	es.dynEnv = es.dynEnv || probe.dynEnv
-	unit, realOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, bodyList.Pos())
+	unit, realOK := compileClosureBody(r, "storedfn", core.BodyOutResidual, true, tokens, inputs, names, nil, nil, ClosureInValue, false, false, bodyList.Pos())
 	if !realOK || unit < 0 {
 		// Unlike compileStoredBody's spawn shape, the real pass CAN decline
 		// after a clean probe here: it records into the LIVE mid-recording
@@ -13081,11 +13109,21 @@ func (es *EmitState) RecordDynBind(name string, v core.Value, pos core.SrcPos) {
 		specFn, replace = true, p.replace
 		es.pendingSpecFn = nil
 	}
+	assign := es.takeVarAssign(name)
+	// The binding this def just installed is on top of the name's stack:
+	// a var DECLARATION's is marked Var (core InstallVar marks before it
+	// records), an assignment's cell is marked too but is no declaration.
+	varDecl, varType := false, (*core.Type)(nil)
+	if !assign && es.reg != nil {
+		if e, ok := es.reg.Defs.TopEntry(name); ok && e.Var {
+			varDecl, varType = true, e.VarType
+		}
+	}
 	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
 		name: name, src: src, srcSeq: srcSeq, val: v, pos: pos,
 		root: root, depth: depth, spliceDepth: spliceDepth,
 		residentTwin: -1, carried: carried, specFn: specFn, replace: replace,
-		assign:   es.takeVarAssign(name),
+		assign: assign, varDecl: varDecl, varType: varType,
 		keepSkip: cur.keepsDefs && !es.keepInstallable(src, srcSeq, v),
 	}})
 	if cur.keepsDefs && es.inStampCompile && !es.keepInstallable(src, srcSeq, v) {

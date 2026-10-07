@@ -16,7 +16,9 @@ import (
 // fold stands aside; the read is then seated live (NUR282) and the map is
 // assembled from the lookup, the interpreter's answer.
 func TestNUR281RootMapLiteralReadAgrees(t *testing.T) {
-	const mk = `def x 99 end def mk fn [[][List][quote [def x 5 1]]] end `
+	// The body ASSIGNS the var (a body def is the element's own since phase 2,
+	// design/IMMUTABLE-DEF.1.md §2.1).
+	const mk = `var x 99 end def mk fn [[][List][quote [var x 5 1]]] end `
 	for _, c := range []struct{ src, want string }{
 		{mk + `[1 2] each (mk) end {a: x}`, "[[1 1] {a:5}]"},
 		{mk + `def b (mk) end [1 2] each b end {a: x}`, "[[1 1] {a:5}]"},

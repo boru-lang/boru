@@ -363,7 +363,8 @@ func TestInstallJoinedDefsMarksLeaked(t *testing.T) {
 }
 
 // A rolled-back body run is a block scope; the scope is closed afterwards
-// whatever the body did.
+// whatever the body did. A condition fragment is a block too (design
+// §2.1: every code body the word runs); a kept body (`do`) is not.
 func TestRunCarrierArmBodyIsABlockScope(t *testing.T) {
 	r := newTestRegistry(t)
 	done := r.Check.Begin()
@@ -373,11 +374,14 @@ func TestRunCarrierArmBodyIsABlockScope(t *testing.T) {
 	if r.Defs.nextScope != before+1 || r.Defs.ScopeID() != 0 {
 		t.Errorf("one block scope opened and closed: next %d (was %d), current %d", r.Defs.nextScope, before, r.Defs.ScopeID())
 	}
-	// A kept body (do) and a condition fragment open none.
-	RunCarrierBodyKeepDefs(r, NewList([]Value{NewInteger(1)}))
 	RunCarrierCondBody(r, NewList([]Value{NewInteger(1)}))
-	if r.Defs.nextScope != before+1 {
-		t.Error("a kept or condition body is not a block")
+	RunCarrierCondBodyValues(r, NewList([]Value{NewInteger(1)}))
+	if r.Defs.nextScope != before+3 || r.Defs.ScopeID() != 0 {
+		t.Errorf("a condition body is a block: next %d (was %d), current %d", r.Defs.nextScope, before, r.Defs.ScopeID())
+	}
+	RunCarrierBodyKeepDefs(r, NewList([]Value{NewInteger(1)}))
+	if r.Defs.nextScope != before+3 {
+		t.Error("a kept body (do) is not a block")
 	}
 }
 
@@ -728,5 +732,35 @@ func TestApplyBindTwinVarReplace(t *testing.T) {
 	}
 	if v, _ := r.Defs.Top("n"); v.String() != "5" || r.Defs.Depth("n") != 1 {
 		t.Errorf("a computed value's twin does nothing: %v depth %d", v, r.Defs.Depth("n"))
+	}
+}
+
+// TestNoteBlockImport pins the import installers' note: a namespace bound
+// inside a block under an active check pass joins CheckState.BlockImportNames
+// (the lowerer declines a run-time read of it); outside a block — module
+// level, a fn frame — and without an active check pass nothing is noted.
+func TestNoteBlockImport(t *testing.T) {
+	r, done := censusReg(t)
+	defer done()
+	NoteBlockImport(r, "M") // module scope: nothing noted
+	r.PushFnBaseline(nil)
+	NoteBlockImport(r, "M") // a frame: nothing noted
+	r.PopFnBaseline()
+	if r.Check.BlockImportNames != nil {
+		t.Fatalf("an import outside a block is not noted: %v", r.Check.BlockImportNames)
+	}
+	blk := EnterBlock(r)
+	NoteBlockImport(r, "MathUtil")
+	NoteBlockImport(r, "M")
+	LeaveBlock(r, blk)
+	if !r.Check.BlockImportNames["MathUtil"] || !r.Check.BlockImportNames["M"] || len(r.Check.BlockImportNames) != 2 {
+		t.Errorf("an import inside a block is noted: %v", r.Check.BlockImportNames)
+	}
+	NoteBlockImport(nil, "M") // a nil registry is a no-op
+	inactive := newTestRegistry(t)
+	inactive.Defs.EnterScope(ScopeBlock)
+	NoteBlockImport(inactive, "M") // no active check pass: nothing to note
+	if inactive.Check.BlockImportNames != nil {
+		t.Errorf("noted outside an active check pass: %v", inactive.Check.BlockImportNames)
 	}
 }

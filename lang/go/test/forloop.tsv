@@ -161,8 +161,11 @@ for 2 [10] add	20
 # Iterator does not leak after loop — errors
 for 3 [i] i	ERROR:undefined_word
 
-# def inside loop body persists (runs on main engine stack)
-for 1 [(def loopvar 99 loopvar)] loopvar	99 99
+# A def inside the loop body is block-local — it ends with the body
+# (design/IMMUTABLE-DEF.1.md §2.1; the rule is pinned in
+# lang/spec/block-scopes.tsv). A var assigned in the body is the way to
+# carry a value out of the loop.
+var loopvar 0 for 1 [(var loopvar 99 loopvar)] loopvar	99 99
 
 # === For + parenthesized expressions ===
 for 3 [(i add 1)]	1 2 3

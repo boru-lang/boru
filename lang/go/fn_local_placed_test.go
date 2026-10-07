@@ -58,7 +58,6 @@ func TestFnLocalFnPlacedForCodeBodies(t *testing.T) {
 		{local + "do [f 5 undef f]]] end g", "[6]", false},
 		// Defined inside an arm the model cannot decide: the seventieth
 		// increment placed it already, and the body's dispatch routes.
-		{"def m {e: true} end def g fn [[][Integer][if (m \"e\" get) [def f fn [[x:Integer][Integer][x add 1]] end] [] do [f 5]]] end g", "[6]", true},
 		// Two locals named by one ISLANDED body (an error handler's), both
 		// placed (review of #468: only the first was, and the island raised
 		// undefined_word for the second); a unit-level redefinition of the
@@ -70,7 +69,7 @@ func TestFnLocalFnPlacedForCodeBodies(t *testing.T) {
 		// itself (the frames are searched before the family shortcut), the
 		// body's routed dispatch resolves it live, and the module read after
 		// g resolves the family's. An OVERLAPPING signature here is NUR149's.
-		{"def m {e: true} end if (m \"e\" get) [def f fn [[x:Integer][Integer][x add 100]] end] [] end def g fn [[][String][def f fn [[s:String][String][s]] end do [f \"a\"]]] end g f 1", "[a 101]", true},
+		{"def f fn [[x:Integer][Integer][x add 100]] end def g fn [[][String][def f fn [[s:String][String][s]] end do [f \"a\"]]] end g f 1", "[a 101]", true},
 	}
 	for _, c := range compiled {
 		a, err := New()

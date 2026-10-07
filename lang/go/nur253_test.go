@@ -32,10 +32,12 @@ func TestNUR253ZeroOutPhantomIsOnNoRunsStack(t *testing.T) {
 		{void + `5 6 0 roll`, "[5 6]"},
 		// The recorded no-match reports the run's arguments.
 		{void + `def f fn [[a:Integer] [Any] [7]] end "x" f`, "ERROR:cannot call `f`"},
-		{`if false [def f fn [[a:Integer] [Any] [7]]] [def f fn [[a:Integer] [Any] [8]]] end "x" f`, "ERROR:cannot call `f`"},
 	} {
 		agreeOnBothLanes(t, r.src, r.want)
 	}
+	// Both arms' fns are the arms' own since phase 2: the call past them is
+	// the interpreter's undefined_word, and the compiled lane declines.
+	ruleOrDecline(t, `if false [def f fn [[a:Integer] [Any] [7]]] [def f fn [[a:Integer] [Any] [8]]] end "x" f`, "ERROR:undefined word: f")
 	// The report names the one argument the run holds.
 	src := void + `def f fn [[a:Integer] [Any] [7]] end "x" f`
 	if _, _, errC := mustNew(t).RunCompiled(src); !strings.Contains(fmt.Sprint(errC), "the argument was 'x' (a ProperString)") {

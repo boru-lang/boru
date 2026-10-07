@@ -76,8 +76,8 @@ func TestNUR358ListLiteralIsNoLoop(t *testing.T) {
 // in any value; the frame's per-call state is popped).
 func TestNUR358WhileAndMarkers(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
-		{`def n 0 while [n lt 3] [def n (n add 1) [n (if (n eq 2) [break] [n])]] n`, "[[1 1] 2]"},
-		{`def n 0 while [n lt 3] [def n (n add 1) [n (if (n eq 2) [continue] [n])]] n`, "[[1 1] [3 3] 3]"},
+		{`var n 0 while [n lt 3] [var n (n add 1) [n (if (n eq 2) [break] [n])]] n`, "[[1 1] 2]"},
+		{`var n 0 while [n lt 3] [var n (n add 1) [n (if (n eq 2) [continue] [n])]] n`, "[[1 1] [3 3] 3]"},
 		// f's frame, spliced inside the literal, is torn down: g's args
 		// list is the one `args` reads after the loop
 		{`def f fn [[x:Integer] [Any] [break]] end def g fn [[y:Integer][Any][for 2 [[(f 1)]] args]] end g 9`, "[[9]]"},

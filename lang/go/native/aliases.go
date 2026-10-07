@@ -491,6 +491,7 @@ var (
 	RunPooled                = core.RunPooled
 	RunPooledTop             = core.RunPooledTop
 	RunResolved              = core.RunResolved
+	RunBlockResolved         = core.RunBlockResolved
 	InvokeBody               = core.InvokeBody
 	BodyEscaped              = core.BodyEscaped
 	InvokeCallbackBody       = core.InvokeCallbackBody

@@ -847,7 +847,26 @@ func (vc *vmContext) invokeClosureOn(reg *core.Registry, body core.Value, inputs
 		case noMatchRaise:
 			return nil, uncalledAt(reg, body, fd, inputs)
 		}
-		return core.RunResolved(reg, inputs, core.BodyTokens(body))
+		// The interpreter's own seam: a block, unless `do`'s body
+		// (InvokeBodyKeepDefs) — core InvokeBody's rule.
+		if reg.InvokeKeepsDefs() {
+			return core.RunResolved(reg, inputs, core.BodyTokens(body))
+		}
+		return core.RunBodyResolved(reg, body, inputs)
+	}
+	// The body is a BLOCK unless the seam is `do`'s (InvokeBodyKeepDefs —
+	// reg.InvokeKeepsDefs): a binding its unit installs through the
+	// interpreter's own installers (OpBindResident per element, a
+	// dynamic-scope bind) ends with this run of it, as the interpreter's
+	// RunBodyResolved ends it (design/IMMUTABLE-DEF.1.md §2.1, phase 2).
+	// Measured before the bracket: `[1 2 3] each [def x 5]` left x bound
+	// three deep on the compiled lane where the interpreter leaves nothing
+	// (the cross-request bind oracle, test/go/langspec). The block closes
+	// on every exit — a value, an error, an escaping break — as the
+	// interpreter's fault and loop unwinders close theirs.
+	if !reg.InvokeKeepsDefs() {
+		blockID := core.EnterBlock(reg)
+		defer core.LeaveBlock(reg, blockID)
 	}
 	// A nameless value answers its contract at its OWN position, which a
 	// word that handed it back gave it (stampFnResultPos: `m.f` over a
@@ -4097,6 +4116,26 @@ func (vc *vmContext) gateNamedCall(curReg *core.Registry, word string, have, nee
 	return vc.gateWord(curReg, word)
 }
 
+// bindDynVar executes one OpBindDynScopeVar (a var DECLARATION's dyn-scope
+// install, Program.DynVarBinds): the top value installed under the name
+// through the interpreter's own var installer (core.InstallVar — the cell
+// marked a var, so a later assignment replaces it in place), on the dyn-bind
+// trail exactly as bindDynScopeMode's install is; the value consumed or
+// left for its readers per the spec.
+func (vc *vmContext) bindDynVar(curReg *core.Registry, p *compiler.Program, arg int, stack []core.Value, curDebug []core.SrcPos, pc int) ([]core.Value, error) {
+	if len(stack) == 0 { //covergate:allow compiler/VM defensive arm; unreachable without a bytecode-level fault (§compiler)
+		return nil, vmErrAt(curDebug, pc, "BIND_DYN_SCOPE_VAR underflow")
+	}
+	spec := &p.DynVarBinds[arg]
+	v := core.StripAscribed(stack[len(stack)-1])
+	vc.dynBinds = append(vc.dynBinds, dynBindEntry{reg: curReg, name: spec.Name, depth: curReg.Defs.Depth(spec.Name)})
+	core.InstallVar(curReg, spec.Name, v, spec.VarType)
+	if !spec.Pop {
+		return stack, nil
+	}
+	return stack[:len(stack)-1], nil
+}
+
 // bindDynScopeMode executes one OpBindDynScope / OpBindDynScopePeek: install
 // the top value under the name for dynamic-scope readers (OpLookupDynScope),
 // through the same installer the interpreter's `def` runs; record the prior
@@ -4514,11 +4553,27 @@ func (vc *vmContext) bindGlobal(curReg *core.Registry, gb *compiler.GlobalBindSp
 	// carrier-class skip guarantees exactly one of {this push, the def's
 	// twin} installs (§6.5's rollback-and-replay, the only regime since the
 	// flip).
+	// A `var` DECLARATION's write-back (GlobalBindSpec.Var) marks the cell
+	// it pushes — or adopts — a var, as the interpreter's InstallVar marks
+	// its binding: the mark is what a unit's assignment replaces in place.
+	mark := func() {
+		if gb.Var {
+			curReg.Defs.MarkTopVar(gb.Name, gb.VarType)
+		}
+	}
 	write := func(v core.Value) {
+		if gb.Assign {
+			// A var ASSIGNMENT's write-back replaces the cell in place
+			// (the interpreter's AssignVar) — idempotent after the
+			// OpAssignDynScope the same site may have emitted.
+			core.ApplyResidentAssign(curReg, gb.Name, core.StripAscribed(v))
+			return
+		}
 		curReg.Defs.Push(gb.Name, core.StripAscribed(v))
+		mark()
 	}
 	if gb.AfterDynScope && vc.adoptDynBind(curReg, gb.Name) {
-		write = func(core.Value) {}
+		write = func(core.Value) { mark() }
 	}
 	if gb.Splice {
 		// The S5 first-value loop bind: the region's first value sits at a
@@ -4612,6 +4667,15 @@ func polyHasArity(sigs []core.Signature, k int) bool {
 func (vc *vmContext) unwindDynBinds(base int) {
 	for i := len(vc.dynBinds) - 1; i >= base; i-- {
 		e := vc.dynBinds[i]
+		// A TYPE binding the frame made (bindFnType) comes off through
+		// UninstallType, which releases its name-part reservation with it:
+		// a type binding ends with its scope (core block.go), so the next
+		// call's bind finds the name free — the interpreter's frame
+		// teardown does the same (core truncateFrameDefs). The adopted
+		// check-time node is not minted by the binding, so it stands.
+		for e.reg.Defs.Depth(e.name) > e.depth && e.reg.Defs.IsType(e.name) {
+			core.UninstallType(e.reg, e.name)
+		}
 		e.reg.Defs.Truncate(e.name, e.depth)
 	}
 	vc.dynBinds = vc.dynBinds[:base]
@@ -5759,6 +5823,12 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			if va.Pop {
 				stack = stack[:len(stack)-1]
 			}
+		case compiler.OpBindDynScopeVar:
+			ns, err := vc.bindDynVar(curReg, p, int(in.Arg), stack, curDebug, pc)
+			if err != nil {
+				return nil, err
+			}
+			stack = ns
 		case compiler.OpBindDynScope, compiler.OpBindDynScopePeek:
 			if in.Op == compiler.OpBindDynScope && pc > 0 && curCode[pc-1].Op == compiler.OpPushLocal {
 				// The bind's own re-push of its source local (lowerDynBind):
@@ -5859,9 +5929,12 @@ func (vc *vmContext) run(startUnit int, locals []core.Value, stack []core.Value)
 			// readers); pop when the lowering pushed a copy (rb.Pop) —
 			// GlobalBindSpec's mode split, same reason. A var's assignment
 			// (rb.Replace) replaces the cell instead of pushing.
-			if rb.Replace {
+			switch {
+			case rb.Replace:
 				core.ApplyResidentAssign(curReg, rb.Name, core.StripAscribed(stack[len(stack)-1]))
-			} else {
+			case rb.Var:
+				core.ApplyResidentVar(curReg, rb.Name, core.StripAscribed(stack[len(stack)-1]), rb.VarType)
+			default:
 				core.ApplyResidentBind(curReg, rb.Name, false, core.StripAscribed(stack[len(stack)-1]))
 			}
 			if rb.Pop {

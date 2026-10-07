@@ -65,6 +65,9 @@ func (r *Registry) ForkConcurrent() *Registry {
 	fork.Contexts.Push(r.Contexts.Top())
 	fork.Args = NewArgsStack()
 	fork.FnBaselines = nil
+	fork.frameScopes = nil
+	fork.blockBinds = nil
+	fork.invokeKeepDefs = false
 	// The token-body unit cache is per registry (registry.go's field): a
 	// fork stamps its own, against its own bindings.
 	fork.tokenBodyStamps = nil

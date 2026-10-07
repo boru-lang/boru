@@ -150,111 +150,103 @@ func TestClauseListIfDeclinesLoudly(t *testing.T) {
 		{`def g fn [[][Integer][5]] end if [true] [g/v] [1]`, "if: the taken arm leaves a fn value", "[fn g]"},
 		{`def g fn [[x:Integer][Integer][x add 5]] end 10 if [true] [g/v] [1]`, "if: the taken arm leaves a fn value", "[10 fn g(Integer)]"},
 		{`def h fn [[f:Function][Any][if [[true] [f/v] [1]]]] end def g fn [[][Integer][5]] end h g/v`, "if: the taken arm leaves a fn value", "[fn f]"},
-		// A condition that BINDS a name compiles now (NUR212's follow-up,
-		// TestConditionBindingCompilesWithParity). What still declines is a
-		// binding condition over a residual the lowering does not share —
-		// a value-less `do` inside it (modelled as a raise's Error, NUR222)
-		// or more than its one decision value — and a binding `case`
-		// scrutinee on a shape that does not desugar to the kept condition.
-		{`def x 1 end if [do [def x 5] true] [2] [3] end x`, "the condition binds a name over a residual the lowering does not share", "[2 5]"},
-		{`def x 1 end 7 if [do [def x 5] drop true] [2] [3] end x`, "the condition binds a name over a residual the lowering does not share", "[2 5]"},
-		{`def x 1 end if [5 def x 2 true] [2] [3] end x`, "the condition binds a name over a residual the lowering does not share", "[2 2]"},
-		{`def x 1 end case [def x 5 1 2] [2 "two" "other"] end x`, "the condition binds a name over a residual the lowering does not share", "[two 5]"},
-		{`def x 1 end case [def x 5 x] [5 "five" 6 "six" "other"] end x`, "the scrutinee binds a name the interpreter keeps past it", "[five 5]"},
-		{`def x 1 end case [def x 5 x] [5 [x] [0]] end x`, "the scrutinee binds a name the interpreter keeps past it", "[5 5 5]"},
-		// A binding condition inside a `do` body: the do's closure unit
-		// cannot place the condition's twin, so the regime declines.
-		{`def x 1 end do [if [def x 5 true] [2] [3]] end x`, "twin regime: a bind transition has no stream placement", "[2 5]"},
+		// A condition or scrutinee that binds a name with `def` is a block's
+		// shadow since phase 2 (design/IMMUTABLE-DEF.1.md §2.1): the
+		// binding ends with the condition, the interpreter answers over the
+		// enclosing binding, and the compiled lane declines the shadow until
+		// its own block scopes land (the `var` spellings compile:
+		// TestConditionBindingCompilesWithParity).
+		{`def x 1 end if [do [def x 5] true] [2] [3] end x`, "block-local def `x` shadows an enclosing binding", "[2 1]"},
+		{`def x 1 end 7 if [do [def x 5] drop true] [2] [3] end x`, "block-local def `x` shadows an enclosing binding", "[2 1]"},
+		{`def x 1 end if [5 def x 2 true] [2] [3] end x`, "block-local def `x` shadows an enclosing binding", "[2 1]"},
+		{`def x 1 end case [def x 5 1 2] [2 "two" "other"] end x`, "block-local def `x` shadows an enclosing binding", "[two 1]"},
+		{`def x 1 end case [def x 5 x] [5 "five" 6 "six" "other"] end x`, "block-local def `x` shadows an enclosing binding", "[five 1]"},
+		{`def x 1 end case [def x 5 x] [5 [x] [0]] end x`, "block-local def `x` shadows an enclosing binding", "[5 1 1]"},
+		{`def x 1 end do [if [def x 5 true] [2] [3]] end x`, "block-local def `x` shadows an enclosing binding", "[2 1]"},
 	} {
 		requireLoudDecline(t, c.src, c.reason, c.want)
 	}
 }
 
 // TestConditionBindingCompilesWithParity: a code-body `if` / `case`
-// condition that BINDS a name (NUR212's follow-up). The condition runs
-// unconditionally, exactly once, before the branch decision — the
-// interpreter runs it inline — so its binding stands for the arms and for
-// everything after the construct. The recording pass used to roll it back
-// like an arm's (compiled `[2 1]` for `[2 5]`), then declined; the kept
-// condition now compiles on every form — if2, if3, the clause-list `if`,
-// `case`'s code-body scrutinee — at the top level, in fn and loop bodies and
-// nested, with results identical to the interpreter's. Every compiled row
-// also replays its bind twins in the pass's order (the condition's own twin
-// sits inside the condition fragment; the branch join's comes after the
-// branch — TestBindTwinOpsArePlacedOrderedSubset's invariant).
+// condition that ASSIGNS a var. The condition runs unconditionally, exactly
+// once, before the branch decision — the interpreter runs it inline — and
+// it is a BLOCK (design/IMMUTABLE-DEF.1.md §2.1, phase 2): a `def` inside
+// it ends with the condition (block_scope_rule_test.go keeps those shapes;
+// NUR212's kept binding is retired), where a `var` assignment reaches the
+// enclosing cell for the arms and for everything after the construct. The
+// assigning condition compiles on every form — if2, if3, the clause-list
+// `if`, `case`'s code-body scrutinee — at the top level, in fn and loop
+// bodies and nested, with results identical to the interpreter's. Every
+// compiled row also replays its bind twins in the pass's order
+// (TestBindTwinOpsArePlacedOrderedSubset's invariant).
 func TestConditionBindingCompilesWithParity(t *testing.T) {
 	for _, src := range []string{
 		// read after the if — if3, if2, the clause-list if, case
-		`def x 1 end if [def x 5 true] [2] [3] end x`,
-		`def x 1 end if [def x 5 false] [2] [3] end x`,
-		`def x 1 end if [def x 5 true] [2] end x`,
-		`def x 1 end if [def x 5 false] [2] end x`,
-		`def x 1 end if [[def x 5 true] [2] [3]] end x`,
-		`def x 1 end if [[def x 2 false] [10] [def x (x add 3) true] [20] [30]] end x`,
-		`def x 1 end if [[def x 2 true] [10] [def x (x add 3) true] [20] [30]] end x`,
-		`def x 1 end if [[def x 2 false] [10] [def x (x add 3) false] [20] [30]] end x`,
-		`def x 1 end if [[def x 2 false] [10] [def x (x add 3) false] [20]] end x`,
-		`def x 1 end case [def x 5 1] [1 "one" "other"] end x`,
-		`def x 1 end case [def x 5 x] [5 "five" "other"] end x`,
-		`def x 1 end case [def x 5 x] [6 "six" "other"] end x`,
+		`var x 1 end if [var x 5 true] [2] [3] end x`,
+		`var x 1 end if [var x 5 false] [2] [3] end x`,
+		`var x 1 end if [var x 5 true] [2] end x`,
+		`var x 1 end if [var x 5 false] [2] end x`,
+		`var x 1 end if [[var x 5 true] [2] [3]] end x`,
+		`var x 1 end if [[var x 2 false] [10] [var x (x add 3) true] [20] [30]] end x`,
+		`var x 1 end if [[var x 2 true] [10] [var x (x add 3) true] [20] [30]] end x`,
+		`var x 1 end if [[var x 2 false] [10] [var x (x add 3) false] [20] [30]] end x`,
+		`var x 1 end if [[var x 2 false] [10] [var x (x add 3) false] [20]] end x`,
+		`var x 1 end case [var x 5 1] [1 "one" "other"] end x`,
+		`var x 1 end case [var x 5 x] [5 "five" "other"] end x`,
+		`var x 1 end case [var x 5 x] [6 "six" "other"] end x`,
 		// read in the taken arm, and in the else arm
-		`def x 1 end if [def x 5 true] [x] [3]`,
-		`def x 1 end if [def x 5 false] [2] [x]`,
-		`def x 1 end if [[def x 2 false] [x] [def x (x add 3) true] [x] [30]]`,
-		// a new name, a computed value, a condition reading its own binding
-		`if [def y 5 true] [y] [3] end y`,
-		`if [def y 5 false] [y] [y add 1] end y`,
-		`def a 3 end if [def y (a add 4) true] [y] [3] end y`,
-		`def a 3 end if [def y (a add 4) (y gt 5)] [y mul 2] [y] end y`,
-		`def x 1 end if [def x (x add 1) (x gt 1)] [x] [0] end x`,
-		`def x [1 2] end if [def x (x push 3) true] [x] [0] end x`,
-		`if [def m {a:1} true] [m.a] [0] end m`,
-		`case [def y 7 y] [7 "seven" "other"] end y`,
-		// an arm rebinding the condition's binding: the carried slot is
-		// seeded AFTER the condition (its pre binding is the condition's)
-		`def a 3 end if [def y (a add 4) (y gt 5)] [def y 0] [] end y`,
-		`def a 3 end if [def y (a add 4) (y gt 9)] [def y 0] [] end y`,
-		`def a 3 end if [def y (a add 4) (y gt 9)] [def y 0] end y`,
-		// a fn def, a type, and a redefinition a later call reads
-		`if [def f fn [[][Integer][7]] end true] [f] [3] end f`,
-		`if [def f fn [[][Integer][7]] end (f eq 7)] [f] [3] end f`,
-		`def f fn [[][Integer][1]] end if [def f fn [[][Integer][7]] end true] [f] [3] end f`,
-		`def f fn [[x:Integer][Integer][x]] end if [def f fn [[x:String][String][x]] end true] [f 1] [3] end f "a"`,
-		`if [def Foo Integer end true] [5 is Foo] [3] end 6 is Foo`,
-		`def x 1 def g fn [[][Integer][x]] end if [def x 5 (g eq 5)] [g] [0] end g`,
-		`def x 1 end if [def x 5 true] [2] [3] end def g fn [[][Integer][x]] end g`,
-		// a `do` that nets a value inside the condition adopts its twin there
-		`def x 1 end if [do [def x 5 true]] [x] [3] end x`,
-		`def x 1 end if [do [def x 5 6] drop true] [2] [3] end x`,
-		// inside a fn body
-		`def f fn [[x:Integer][Integer][if [def y (x add 1) (y gt 3)] [y] [0 sub y]]] end f 1 f 5`,
-		`def f fn [[x:Integer][Integer][if [def y (x add 1) (y gt 3)] [y] [0] drop y]] end f 1 f 5`,
-		`def f fn [[x:Integer][Integer][if [def y (x add 1) (y gt 3)] [def y 0] [] end y]] end f 1 f 5`,
-		`def x 1 end def f fn [[][Integer][if [def x 9 true] [x] [0]]] end f x`,
+		`var x 1 end if [var x 5 true] [x] [3]`,
+		`var x 1 end if [var x 5 false] [2] [x]`,
+		`var x 1 end if [[var x 2 false] [x] [var x (x add 3) true] [x] [30]]`,
+		// a declared var, a computed value, a condition reading its own assignment
+		`var y 0 end if [var y 5 true] [y] [3] end y`,
+		`var y 0 end if [var y 5 false] [y] [y add 1] end y`,
+		`def a 3 end var y 0 end if [var y (a add 4) true] [y] [3] end y`,
+		`def a 3 end var y 0 end if [var y (a add 4) (y gt 5)] [y mul 2] [y] end y`,
+		`var x 1 end if [var x (x add 1) (x gt 1)] [x] [0] end x`,
+		`var x [1 2] end if [var x (x push 3) true] [x] [0] end x`,
+		`var m {} end if [var m {a:1} true] [m.a] [0] end m`,
+		`var y 0 end case [var y 7 y] [7 "seven" "other"] end y`,
+		// an arm assigning the condition's var again
+		`def a 3 end var y 0 end if [var y (a add 4) (y gt 5)] [var y 0] [] end y`,
+		`def a 3 end var y 0 end if [var y (a add 4) (y gt 9)] [var y 0] [] end y`,
+		`def a 3 end var y 0 end if [var y (a add 4) (y gt 9)] [var y 0] end y`,
+		// the condition's assignment read by a fn called from the arm, and after
+		`var x 1 def g fn [[][Integer][x]] end if [var x 5 (g eq 5)] [g] [0] end g`,
+		`var x 1 end if [var x 5 true] [2] [3] end def g fn [[][Integer][x]] end g`,
+		// a `do` inside the condition assigns the var there
+		`var x 1 end if [do [var x 5 true]] [x] [3] end x`,
+		`var x 1 end if [do [var x 5 6] drop true] [2] [3] end x`,
+		// inside a fn body (a frame-local var; a module var is not a fn body's to assign)
+		`def f fn [[x:Integer][Integer][var y 0 if [var y (x add 1) (y gt 3)] [y] [0 sub y]]] end f 1 f 5`,
+		`def f fn [[x:Integer][Integer][var y 0 if [var y (x add 1) (y gt 3)] [y] [0] drop y]] end f 1 f 5`,
+		`def f fn [[x:Integer][Integer][var y 0 if [var y (x add 1) (y gt 3)] [var y 0] [] end y]] end f 1 f 5`,
+		`def x 1 end def f fn [[][Integer][var z 1 if [var z 9 true] [z] [0]]] end f x`,
 		// inside a loop body
-		`for 3 [if [def y (i mul 2) (y gt 1)] [y] [0]]`,
-		`for 3 [if [def y (i mul 2) (y gt 1)] [y] [0]] end y`,
-		`for 3 [if [def y (i mul 2) (y gt 1)] [y] [0] drop y]`,
-		`def t 0 end for 3 [if [def t (t add 1) (t gt 1)] [t] [0]] end t`,
-		`def t 0 end for 3 [if [def t (t add 1) true] [1] [2]] end t`,
-		`def t 0 end for 3 [if [[def t (t add 1) (t gt 2)] [t] [0]]] end t`,
-		`def t 0 end for 3 [if [def t (t add 1) true] [break] [2]] end t`,
-		`def t 0 end for 3 [if [def t (t add 1) (t gt 1)] [continue] [t]] end t`,
-		// nested: a binding condition inside an arm is that arm's own def
-		`def x 1 end if [def x 5 true] [if [def x (x add 1) true] [x] [0]] [3] end x`,
-		`def x 1 end if [def x 5 false] [2] [if [def x (x add 1) (x gt 5)] [x] [0]] end x`,
-		`def x 1 end if [def x 5 true] [2] [3] end if [def x (x add 1) true] [x] [0] end x`,
-		`def c true end def x 0 end if c [def x 1 if [def x 2 true] [5] [6]] [7] end x`,
-		`def c true end def x 0 end if c [def x 1 if [def x (x add 5) true] [5] [6]] [7] end x`,
-		`def c false end def x 0 end if c [def x 1 if [def x 2 true] [5] [6]] [7] end x`,
-		`def c true end if c [def x 1 if [def x 2 true] [5] [6]] [def x 3 7] end x`,
-		`def c true end def x 0 end if c [if [def x 2 true] [5] [6]] [7] end x`,
-		`def c false end def x 0 end if c [if [def x 2 true] [5] [6]] [7] end x`,
-		`def c true end def x 0 end if c [if [def x 2 true] [def x 9 5] [6]] [7] end x`,
-		`def c true end def x 0 end if c [if [def x 2 false] [def x 9 5] [6]] [7] end x`,
-		`def c true end def x 0 end if c [if [def x 2 true] [if [def x 4 true] [1] [2]] [6]] [7] end x`,
-		`def f fn [[c:Boolean][Integer][def x 0 if c [def x 1 if [def x 2 true] [5] [6]] [7] drop x]] end f true f false`,
-		`def f fn [[c:Boolean][Integer][def x 0 if c [if [def x (x add 2) true] [5] [6]] [7] drop x]] end f true f false`,
+		`var y 0 end for 3 [if [var y (i mul 2) (y gt 1)] [y] [0]]`,
+		`var y 0 end for 3 [if [var y (i mul 2) (y gt 1)] [y] [0]] end y`,
+		`var y 0 end for 3 [if [var y (i mul 2) (y gt 1)] [y] [0] drop y]`,
+		`var t 0 end for 3 [if [var t (t add 1) (t gt 1)] [t] [0]] end t`,
+		`var t 0 end for 3 [if [var t (t add 1) true] [1] [2]] end t`,
+		`var t 0 end for 3 [if [[var t (t add 1) (t gt 2)] [t] [0]]] end t`,
+		`var t 0 end for 3 [if [var t (t add 1) true] [break] [2]] end t`,
+		`var t 0 end for 3 [if [var t (t add 1) (t gt 1)] [continue] [t]] end t`,
+		// nested: an assignment inside an arm reaches the same cell
+		`var x 1 end if [var x 5 true] [if [var x (x add 1) true] [x] [0]] [3] end x`,
+		`var x 1 end if [var x 5 false] [2] [if [var x (x add 1) (x gt 5)] [x] [0]] end x`,
+		`var x 1 end if [var x 5 true] [2] [3] end if [var x (x add 1) true] [x] [0] end x`,
+		`def c true end var x 0 end if c [var x 1 if [var x 2 true] [5] [6]] [7] end x`,
+		`def c true end var x 0 end if c [var x 1 if [var x (x add 5) true] [5] [6]] [7] end x`,
+		`def c false end var x 0 end if c [var x 1 if [var x 2 true] [5] [6]] [7] end x`,
+		`def c true end var x 0 end if c [var x 1 if [var x 2 true] [5] [6]] [var x 3 7] end x`,
+		`def c true end var x 0 end if c [if [var x 2 true] [5] [6]] [7] end x`,
+		`def c false end var x 0 end if c [if [var x 2 true] [5] [6]] [7] end x`,
+		`def c true end var x 0 end if c [if [var x 2 true] [var x 9 5] [6]] [7] end x`,
+		`def c true end var x 0 end if c [if [var x 2 false] [var x 9 5] [6]] [7] end x`,
+		`def c true end var x 0 end if c [if [var x 2 true] [if [var x 4 true] [1] [2]] [6]] [7] end x`,
+		`def f fn [[c:Boolean][Integer][var x 0 if c [var x 1 if [var x 2 true] [5] [6]] [7] drop x]] end f true f false`,
+		`def f fn [[c:Boolean][Integer][var x 0 if c [if [var x (x add 2) true] [5] [6]] [7] drop x]] end f true f false`,
 	} {
 		requireEngineParity(t, src, true)
 		requireTwinsInPassOrder(t, src)

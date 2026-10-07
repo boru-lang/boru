@@ -60,6 +60,11 @@ type Engine struct {
 	// design — see inFnFrame.
 	sawFnFrame bool
 	stepLimit  int // hard cap on the Run loop; always positive, set by the New/NewTop constructors below
+	// scopeFloor is the registry's scope depth at this Run's entry: a block
+	// scope an error leaves open above it (an `if` arm that raised before
+	// its BlockEnd marker ran, block.go) is closed by faultReturn, after the
+	// frames and loops the same error abandons.
+	scopeFloor int
 	// stepsTaken counts every Run-loop step this engine has taken, across
 	// runs (StepsTaken); limitReport, when positive, is the bound an
 	// exhausted run REPORTS in place of stepLimit (StepBudget).
@@ -474,6 +479,13 @@ func (e *Engine) faultReturn(err error) error {
 	}
 	e.unwindLiveLoops()
 	e.unwindLiveFrames(0, e.Tape.Len())
+	// A block the error abandoned before its end marker ran — an `if` arm
+	// raising inside a `do` that traps it — closes with its locals popped,
+	// as a frame's does: the frames above the floor are closed by now, so
+	// what stands above it is this run's own open blocks (block.go).
+	if id, ok := e.Registry.Defs.OutermostBlockAbove(e.scopeFloor); ok {
+		LeaveBlock(e.Registry, id)
+	}
 	return err
 }
 
@@ -497,10 +509,44 @@ func (e *Engine) unwindLiveLoops() {
 			continue
 		}
 		info, _ := AsMove(e.Tape.At(i))
-		if info.Cont == nil || info.Cont.WhileCond != nil || info.Cont.IterName == "" || !e.marks[info.To] {
+		if info.Cont == nil || !e.marks[info.To] {
+			continue
+		}
+		// The open iteration's block ends with the error, as it ends with a
+		// break (handleLoopBreak).
+		leaveIterationBlock(info.Cont)
+		if info.Cont.WhileCond != nil || info.Cont.IterName == "" {
 			continue
 		}
 		popIterLevels(info.Cont, true)
+	}
+}
+
+// enterIterationBlock opens the block scope of a loop iteration's body
+// region for a loop whose body binds a name of its own (ForCont.Block);
+// leaveIterationBlock closes the open one (a no-op between iterations and
+// for a loop that binds nothing). block.go.
+func enterIterationBlock(cont *ForCont) {
+	if cont.Block {
+		cont.BlockID = EnterBlock(cont.Registry)
+	}
+}
+
+func leaveIterationBlock(cont *ForCont) {
+	if cont.BlockID != 0 {
+		LeaveBlock(cont.Registry, cont.BlockID)
+		cont.BlockID = 0
+	}
+}
+
+// enterWhileCondBlock opens the block of a while CONDITION round for a
+// condition that binds a name of its own (ForCont.CondBlock): a condition
+// is a code body the word runs, a block like the loop body (block.go).
+// stepMoveWhile closes it with the round's value collected; the while
+// handler opens the first round's itself.
+func enterWhileCondBlock(cont *ForCont) {
+	if cont.CondBlock {
+		cont.BlockID = EnterBlock(cont.Registry)
 	}
 }
 
@@ -1295,6 +1341,15 @@ func (e *Engine) undefinedWordHint(name string) string {
 // suggestion for the two known blame-shift shapes (undefinedWordHint),
 // the did-you-mean near-miss over everything nameable in this registry,
 // and the describe pointer when the nearest miss is a builtin word.
+// undefinedWordCheckDiag is the check pass's undefined-word diagnostic
+// (CheckBraid.UndefinedWordCheckDiag) with the def census's leak-read
+// question asked first: a closed block that bound the name is why the read
+// finds nothing (def_census.go noteUnboundReadCensus).
+func (e *Engine) undefinedWordCheckDiag(name string, pos SrcPos) CheckDiagnostic {
+	e.Registry.noteUnboundReadCensus(name, pos)
+	return CheckBraid.UndefinedWordCheckDiag(e, name, pos)
+}
+
 func (e *Engine) undefinedWordError(name string, pos SrcPos) *BoruError {
 	ae := UndefinedWordDiag(e.Registry, e.effectiveSource(), name, pos)
 	if hint := e.undefinedWordHint(name); hint != "" {
@@ -1641,6 +1696,7 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// introspection (Debug.stack). Defer-balanced like EnterInterpRun.
 	e.Registry.pushEngine(e)
 	defer e.Registry.popEngine()
+	e.scopeFloor = e.Registry.Defs.ScopeDepth()
 
 	// Last-resort panic guard at the top-level engine boundary. A bug in
 	// any handler or in the step loop should surface to the user as a
@@ -1920,7 +1976,13 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 			if err := e.stepDefCleanup(val, e.Pointer); err != nil {
 				return nil, e.faultReturn(err)
 			}
-			e.Pointer++
+			if IsBlockEnd(val) {
+				// A block end is not part of a frame's tail: it comes off
+				// the tape once it has run, as a mark does.
+				e.Tape.Remove(e.Pointer)
+			} else {
+				e.Pointer++
+			}
 
 		default:
 			if val.Parent == nil && val.Behavior() == nil {
@@ -2606,7 +2668,11 @@ func (e *Engine) evalParenGroupAt(scanIdx int) error {
 				e.Pointer = savedPointer
 				return err
 			}
-			e.Pointer++
+			if IsBlockEnd(v) {
+				e.Tape.Remove(e.Pointer)
+			} else {
+				e.Pointer++
+			}
 		case IsInterpString(v):
 			// Mirror the main loop: evaluate the template in place and
 			// re-step the resulting string (no pointer advance), so a
@@ -2757,7 +2823,7 @@ func (e *Engine) stepWordUsurp(val Value, w WordInfo) error {
 	v, ok := ResolveUsurp(e.Registry, w.Name)
 	if !ok {
 		if e.Registry != nil && e.Registry.analysisActive() {
-			e.Registry.noteAnalysisDiagnostic(CheckBraid.UndefinedWordCheckDiag(e, w.Name, val.Pos()))
+			e.Registry.noteAnalysisDiagnostic(e.undefinedWordCheckDiag(w.Name, val.Pos()))
 			placeholder := NewAtom(w.Name)
 			placeholder.pos = val.pos
 			placeholder.Undefined = true
@@ -2892,7 +2958,7 @@ func (e *Engine) stepWordVal(val Value, w WordInfo) error {
 				// read inert.
 				return e.deliverValRead(WithPos(cv, val), val)
 			}
-			e.Registry.noteAnalysisDiagnostic(CheckBraid.UndefinedWordCheckDiag(e, w.Name, val.Pos()))
+			e.Registry.noteAnalysisDiagnostic(e.undefinedWordCheckDiag(w.Name, val.Pos()))
 			placeholder := NewAtom(w.Name)
 			placeholder.pos = val.pos
 			placeholder.Undefined = true
@@ -3388,7 +3454,7 @@ func (e *Engine) stepWord(val Value) error {
 			e.Tape.Set(e.Pointer, cv)
 			return e.stepLiteral()
 		}
-		e.Registry.noteAnalysisDiagnostic(CheckBraid.UndefinedWordCheckDiag(e, w.Name, val.Pos()))
+		e.Registry.noteAnalysisDiagnostic(e.undefinedWordCheckDiag(w.Name, val.Pos()))
 		v := NewAtom(w.Name)
 		v.pos = val.pos
 		v.Undefined = true
@@ -8785,6 +8851,22 @@ func isPendingResidualContainer(v Value) bool {
 // the body ran. Any defs added since are popped via UninstallDef.
 func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 	info, _ := AsDefCleanup(val)
+	if info.BlockID != 0 {
+		// A BLOCK END (stepMoveIf): the arm's locals end here — after the
+		// arm's pending residual containers that read them have evaluated
+		// (evalBlockResiduals), as a frame's evaluate before its locals
+		// pop (EvalResidual below).
+		if err := e.evalBlockResiduals(info, markerIdx); err != nil {
+			return err
+		}
+		if e.containerEscaped() {
+			// A break/continue escaped a residual literal (NUR358): the
+			// loop's resolution unwinds the block (unwindLiveLoops).
+			return nil
+		}
+		LeaveBlock(info.Registry, info.BlockID)
+		return nil
+	}
 	if info.EvalResidual {
 		// A COMPUTING body's residual pending containers evaluate
 		// IN-frame — before the body-local defs pop — so the spliced
@@ -8851,6 +8933,114 @@ func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 	return nil
 }
 
+// evalBlockResiduals evaluates, before a BLOCK END pops the block's locals,
+// every pending residual container the arm left that READS one of them
+// (`if true [def h 5 [h]] [0]`, a codec's `{msg: {word: head} rest: tail}`
+// after the arm's `def head …`): a container is evaluated when it is
+// consumed or when its frame ends, which for an arm's residual is after
+// the block closed — and the read then met the name unbound (measured
+// 2026-10-07, the net codec and mini-redis examples). A container that
+// reads none of the block's names keeps its timing: the frame's end or
+// its consumer evaluates it, as before. The scan covers the enclosing
+// region down to its open paren (or the tape's start), bottom-up as the
+// frame's scan does, and a flow signal escaping a literal (NUR358) stops
+// it for the loop's resolution to take.
+func (e *Engine) evalBlockResiduals(info DefCleanupInfo, markerIdx int) error {
+	bound := info.Registry.Defs.ScopeBoundNames(info.BlockID)
+	if len(bound) == 0 {
+		return nil
+	}
+	names := make(map[string]bool, len(bound))
+	for _, n := range bound {
+		names[n] = true
+	}
+	lo := 0
+	for i := markerIdx - 1; i >= 0; i-- {
+		if IsOpenParen(e.Tape.At(i)) {
+			lo = i + 1
+			break
+		}
+	}
+	for i := lo; i < markerIdx; i++ {
+		v := e.Tape.At(i)
+		if !isPendingResidualContainer(v) || !mentionsAnyName(v, names) {
+			continue
+		}
+		var ev Value
+		var err error
+		if v.Parent.Equal(TMap) {
+			ev, err = e.AutoEvalMap(v, false, true)
+		} else {
+			ev, err = e.autoEvalList(v, true)
+		}
+		if err != nil {
+			return err
+		}
+		if e.containerEscaped() {
+			return nil
+		}
+		ev.Eval = false
+		e.Tape.Set(i, ev)
+	}
+	return nil
+}
+
+// mentionsAnyName reports whether the value — a container literal, a paren
+// group, or a word — names one of the given words anywhere in its tokens:
+// the block-end scan's test for a residual that reads a block local.
+func mentionsAnyName(v Value, names map[string]bool) bool {
+	switch d := v.Data.(type) {
+	case WordInfo:
+		return names[d.Name]
+	case ListPayload:
+		for _, el := range d.Elems {
+			if mentionsAnyName(el, names) {
+				return true
+			}
+		}
+	case ParenExprPayload:
+		return anyMentionsName(d.Toks, names)
+	case MapPayload:
+		if d.M == nil {
+			return false
+		}
+		for _, k := range d.M.Keys() {
+			if mv, ok := d.M.Get(k); ok && mentionsAnyName(mv, names) {
+				return true
+			}
+		}
+	case ReachInfo:
+		// A dot access `(r.val)`: the base expression's tokens name the
+		// receiver, and a computed key's expression may read a local too.
+		if anyMentionsName(d.Receiver, names) {
+			return true
+		}
+		for _, seg := range d.Segments {
+			if seg.Computed && anyMentionsName(seg.KeyExpr, names) {
+				return true
+			}
+		}
+	case InterpStringPayload:
+		// A template string's `${…}` parts are deferred expressions.
+		for _, part := range d.Parts {
+			if anyMentionsName(part.Expr, names) {
+				return true
+			}
+		}
+	}
+	return false
+}
+
+// anyMentionsName is mentionsAnyName over a token sequence.
+func anyMentionsName(toks []Value, names map[string]bool) bool {
+	for _, el := range toks {
+		if mentionsAnyName(el, names) {
+			return true
+		}
+	}
+	return false
+}
+
 // TruncateFrameDefs pops every def binding installed in reg since the
 // snapshot (Defs.Snapshot) — the DefCleanup marker's truncation duty, for a
 // caller that ran a body region outside a frame (the VM's deopt island).
@@ -8865,7 +9055,10 @@ func truncateFrameDefs(info DefCleanupInfo) {
 	for _, name := range reg.Defs.Names() {
 		prevLen := info.Snapshot[name] // 0 for names not in snapshot
 		for reg.Defs.Depth(name) > prevLen {
-			UninstallDef(reg, name)
+			// A type the frame minted retires with its binding (block.go),
+			// as a block's does: the next call's `def ZB …` finds no node
+			// of that name left behind.
+			uninstallBinding(reg, name)
 		}
 	}
 }
@@ -8963,6 +9156,8 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 	if escaped, err := e.collectLoopRegion(cont, markIdx, moveIdx); err != nil || escaped {
 		return err
 	}
+	// The iteration's block ends with its values collected (block.go).
+	leaveIterationBlock(cont)
 
 	// Advance iterator.
 	cont.Current += cont.Step
@@ -8979,6 +9174,7 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 		popIterLevels(cont, false)
 		UninstallDef(cont.Registry, cont.IterName)
 		InstallDef(cont.Registry, cont.IterName, NewInteger(cont.Current))
+		enterIterationBlock(cont)
 
 		// Generate new mark ID.
 		id := NextMarkID()
@@ -9012,7 +9208,8 @@ func (e *Engine) stepMoveCont(markIdx, moveIdx int, info MoveInfo) error {
 	}
 
 	// Done — the index level and any body level above it go (NUR204), then
-	// splice in the accumulated results.
+	// splice in the accumulated results. (The last iteration's block was
+	// closed above, with its values collected.)
 	popIterLevels(cont, true)
 	delete(e.marks, info.To)
 	e.Tape.Splice(markIdx, moveIdx-markIdx+1, cont.Results...)
@@ -9081,7 +9278,9 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 		if escaped, err := e.collectLoopRegion(cont, markIdx, moveIdx); err != nil || escaped {
 			return err
 		}
+		leaveIterationBlock(cont)
 		cont.WhileInBody = false
+		enterWhileCondBlock(cont)
 		e.spliceWhileRegion(markIdx, moveIdx, info, cont.WhileCond, "while cond")
 		return nil
 	}
@@ -9092,6 +9291,9 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 			condResult = v
 		}
 	}
+	// The condition round's block (ForCont.CondBlock) ends with its value
+	// collected (block.go).
+	leaveIterationBlock(cont)
 	if condResult.Parent == nil {
 		delete(e.marks, info.To)
 		e.Tape.Splice(markIdx, moveIdx-markIdx+1)
@@ -9108,6 +9310,7 @@ func (e *Engine) stepMoveWhile(markIdx, moveIdx int, info MoveInfo) error {
 	}
 	if CoerceBoolean(condResult) {
 		cont.WhileInBody = true
+		enterIterationBlock(cont)
 		e.spliceWhileRegion(markIdx, moveIdx, info, cont.Body, "while body")
 		return nil
 	}
@@ -9159,6 +9362,13 @@ func (e *Engine) stepMoveIf(markIdx, moveIdx int, info MoveInfo) error {
 		}
 	}
 
+	// A condition body that bound a name ran as a BLOCK: it ends here, its
+	// value collected, before the arm runs (block.go).
+	if ifCont.CondBlockID != 0 {
+		LeaveBlock(e.Registry, ifCont.CondBlockID)
+		ifCont.CondBlockID = 0
+	}
+
 	// Remove mark from hash table.
 	delete(e.marks, info.To)
 
@@ -9176,10 +9386,24 @@ func (e *Engine) stepMoveIf(markIdx, moveIdx int, info MoveInfo) error {
 	cond := CoerceBoolean(condResult)
 
 	var branch []Value
+	block := ifCont.ElseBlock
 	if cond {
 		branch = ifCont.Then
+		block = ifCont.ThenBlock
 	} else {
 		branch = ifCont.Else
+	}
+	// An arm that binds a name of its own runs as a BLOCK (block.go): open
+	// its scope now and splice a BlockEnd marker after its tokens, which
+	// closes it once the arm has run. The tail-call probe steps over the
+	// marker (probeTailFrom), so an arm that binds a local before its tail
+	// call still elides.
+	if block && len(branch) > 0 {
+		id := EnterBlock(e.Registry)
+		spliced := make([]Value, 0, len(branch)+1)
+		spliced = append(spliced, branch...)
+		spliced = append(spliced, NewDefCleanup(DefCleanupInfo{Registry: e.Registry, BlockID: id}))
+		branch = spliced
 	}
 
 	// Splice chosen branch (or nothing) in place of mark+condition+move.
@@ -9283,8 +9507,10 @@ func (e *Engine) handleLoopBreak() bool {
 				// would otherwise leak the per-call stacks (fn_frame.go).
 				e.unwindLiveFrames(markIdx, i)
 
-				// Uninstall the iterator (and any body level above it,
+				// The abandoned iteration's block ends with it; then
+				// uninstall the iterator (and any body level above it,
 				// NUR204), splice in accumulated results.
+				leaveIterationBlock(info.Cont)
 				popIterLevels(info.Cont, true)
 				delete(e.marks, info.To)
 				e.Tape.Splice(markIdx, i-markIdx+1, info.Cont.Results...)

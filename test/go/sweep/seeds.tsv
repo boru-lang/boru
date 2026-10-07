@@ -307,13 +307,13 @@ walk	factory	def acc (flex []) end def mk fn [[][Function][(m:Any => [acc push m
 walk	container	def acc (flex []) end def hs {h: (m:Any => [acc push m.path])} end walk {mode: "depth"} {a:1 b:[2 3]} hs.h end size acc
 walk	module-export	import module [def acc (flex []) def h fn [[m:Any][Any][acc push m.path]] export "M" {h: h/v acc: acc}] end walk {mode: "depth"} {a:1 b:[2 3]} M.h end size M.acc
 walk	computed	def acc (flex []) end def b (quote [dot path acc swap push]) end walk {mode: "depth"} {a:1 b:[2 3]} b end size acc
-while	literal	def i 0 end while [i lt 3] [def i (i add 1)] end i
-while	lambda	def i 0 end while ([] => [i lt 3]) [def i (i add 1)] end i	n/a
-while	named-fn	def i 0 end def c fn [[][Boolean][i lt 3]] end while c/v [def i (i add 1)] end i	n/a
-while	factory	def i 0 end def mk fn [[][Function][([] => [i lt 3])]] end while (mk) [def i (i add 1)] end i	n/a
-while	container	def i 0 end def m {c: ([] => [i lt 3])} end while m.c [def i (i add 1)] end i	n/a
+while	literal	var i 0 end while [i lt 3] [var i (i add 1)] end i
+while	lambda	var i 0 end while ([] => [i lt 3]) [var i (i add 1)] end i	n/a
+while	named-fn	var i 0 end def c fn [[][Boolean][i lt 3]] end while c/v [var i (i add 1)] end i	n/a
+while	factory	var i 0 end def mk fn [[][Function][([] => [i lt 3])]] end while (mk) [var i (i add 1)] end i	n/a
+while	container	var i 0 end def m {c: ([] => [i lt 3])} end while m.c [var i (i add 1)] end i	n/a
 while	module-export	import module [def i (flex {n:0}) def c fn [[][Boolean][i.n lt 3]] def step fn [[][Any][i set n (i.n add 1)]] export "M" {c: c/v step: step/v i: i}] end while M.c [M.step] end M.i.n	n/a
-while	computed	def b (quote [i lt 3]) end def i 0 end while b [def i (i add 1)] end i
+while	computed	def b (quote [i lt 3]) end var i 0 end while b [var i (i add 1)] end i
 with-decimal	literal	with-decimal {precision: 5} [0d1.0 div 0d3.0]
 with-decimal	lambda	with-decimal {precision: 5} ([] => [0d1.0 div 0d3.0])	n/a
 with-decimal	named-fn	def b fn [[][Any][0d1.0 div 0d3.0]] end with-decimal {precision: 5} b/v	n/a

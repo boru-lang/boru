@@ -95,7 +95,7 @@ def P (refine Integer) undef P 7 is P	ERROR:undefined word	after undef the name 
 def P (refine Integer) undef P make P 1	ERROR:undefined word	…and from construction
 def P (refine Integer) def x:P 1 undef P x typeof	P	a live value keeps its type identity after undef
 def P (refine Integer) def x:P 1 undef P x	1	…and its value
-def P (refine Integer) undef P def P (refine Integer) 1	ERROR:conflicts with an existing type name	re-defining the SAME name after undef is a loud conflict (the retired node keeps the name)
+def P (refine Integer) undef P def P (refine Integer) 1	1	re-defining the SAME name after undef mints afresh: the name comes free with the binding (design/IMMUTABLE-DEF.1.md §2.1, phase 2; before, the retired node kept the name and this was a loud conflict)
 def P (refine Integer) undef P def P2 (refine Integer) def y:P2 1 y is P2	true	a FRESH name mints fine after the undef
 def Big (Integer gt 10) undef Big 50 is Big	ERROR:undefined word	predicate refinements undef the same way
 def Big (Integer gt 10) def b:Big 50 undef Big b	50	a bound subset value survives its type's undef

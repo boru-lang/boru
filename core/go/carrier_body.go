@@ -78,19 +78,19 @@ func RunCarrierCondBody(r *Registry, body Value) ([]Value, map[string]Value) {
 	return stk, adds
 }
 
-// RunCarrierCondBodyKeepDefs is RunCarrierCondBody WITHOUT the def rollback
-// (NUR212): an `if` condition or a `case` code-body scrutinee runs
-// unconditionally, exactly once, BEFORE the branch decision — the
-// interpreter runs it inline (a Mark/Move over the tape) — so every binding
-// it makes is REAL on both engines and stands for the arms and for
-// everything after the construct. The run therefore keeps its defs like
-// `do`'s (RunCarrierBodyKeepDefs), and its installs are ledgered like any
-// straight-line install, but it takes the branch-capture guard, not the
-// keep-defs one: the body records into the condition FRAGMENT the lowering
-// runs inline, so each install's bind twin is placed inside that fragment at
-// its own site rather than adopted after a closure call.
-func RunCarrierCondBodyKeepDefs(r *Registry, body Value) []Value {
-	stk, _ := runCarrierBodyDefsAdds(r, body, true, true)
+// RunCarrierCondBodyValues is RunCarrierCondBody returning the fragment's
+// values alone — the `if` condition's analysis (basic analyseCondFragment).
+// A condition is a code body the word runs, a BLOCK under the rule
+// (design/IMMUTABLE-DEF.1.md §2.1): a def it makes ends with it — `def x 1
+// end if [def x 5 true] [2] [3] end x` is [2 1] on both lanes, the
+// condition's `def x` a block-local shadow — so the run rolls its defs back
+// as an arm's run does, and only its var ASSIGNMENTS stand (the cell is the
+// enclosing scope's). It takes the branch-capture guard: the body records
+// into the condition FRAGMENT the lowering runs inline before the branch
+// decision. (NUR212's kept binding, the leak the interpreter delivered
+// before phase 2, is gone with the rule.)
+func RunCarrierCondBodyValues(r *Registry, body Value) []Value {
+	stk, _ := runCarrierBodyDefsAdds(r, body, false, true)
 	return stk
 }
 
@@ -128,12 +128,12 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	// recorder can bracket the run's bind twins for do-body adoption; every
 	// other body (branch / loop / quotation — conditional or multi-run)
 	// takes the plain guard, which inside a keep run marks its twins as a
-	// tainted sub-range no adoption may place. A kept CONDITION run (condFrag
-	// — RunCarrierCondBodyKeepDefs) records into the branch's condition
-	// fragment instead: its guard consumes the capture arm and marks that
-	// fragment unconditional.
+	// tainted sub-range no adoption may place. A CONDITION run (condFrag —
+	// RunCarrierCondBody, RunCarrierCondBodyValues) records into the
+	// branch's condition fragment instead: its guard consumes the capture
+	// arm and marks that fragment unconditional.
 	switch {
-	case keep && condFrag:
+	case condFrag:
 		defer r.Check.Recorder().CondBodyGuard()()
 	case keep:
 		defer r.Check.Recorder().KeepDefsBodyGuard(r, body.ID)()
@@ -171,20 +171,23 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	// binding the pass actually leaves is whatever InstallJoinedDefs puts
 	// back, or nothing. Wider than raiseCond on purpose: a rolled-back
 	// scrutinee run (RunCarrierCondBody) is truncated too, even though it is
-	// not conditional. A KEPT condition (RunCarrierCondBodyKeepDefs) is not
-	// truncated, so its installs are real and ledgered.
+	// not conditional, and so is an `if` condition's (RunCarrierCondBodyValues):
+	// a block's installs end with it.
 	if !keep {
 		r.Check.RolledBackBodyDepth++
 		defer func() { r.Check.RolledBackBodyDepth-- }()
 	}
+	// Every rolled-back body — a branch arm, a loop or callback body, an
+	// `if` condition, a `case` scrutinee — is a BLOCK scope under the rule
+	// (design/IMMUTABLE-DEF.1.md §2.1): the def census reads the scope its
+	// installs carry, and a read after the body of a name only the body
+	// bound is an undefined word. `do` (keep) is not a block.
+	if !keep {
+		r.Defs.EnterScope(ScopeBlock)
+	}
 	raiseCond := !keep && !condFrag
 	if raiseCond {
 		r.Check.CondBodyDepth++
-		// A branch arm, a loop or a callback body is a BLOCK scope under the
-		// rule (design/IMMUTABLE-DEF.1.md §2.1): the def census reads the
-		// scope its installs carry. `do` (keep) and a condition fragment are
-		// not blocks.
-		r.Defs.EnterScope(ScopeBlock)
 		// A rolled-back CONDITIONAL body is a speculative region: an
 		// `undef` of an enclosing binding inside it must not leak the
 		// deletion into the model (SpecUndefBlocked — the wrapped-undef FP
@@ -194,9 +197,11 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 	}
 	result, err := sub.Run(tokens)
 	if raiseCond {
-		r.Defs.LeaveScope()
 		r.Check.PopSpecBaseline()
 		r.Check.CondBodyDepth--
+	}
+	if !keep {
+		r.Defs.LeaveScope()
 	}
 	r.Check.NestedBodyDepth--
 	if err != nil {
@@ -225,7 +230,10 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 		// from — where a kept body's (`do`) assignment stands.
 		top, _ := r.Defs.Top(k)
 		adds[k] = top
-		if !keep {
+		// A CONDITION's assignment (condFrag) runs unconditionally, once,
+		// and stands: the cell is the enclosing scope's and the block pops
+		// nothing of it.
+		if raiseCond {
 			r.Defs.Replace(k, pre)
 		}
 		if outerAssigned != nil {
@@ -234,12 +242,19 @@ func runCarrierBody(r *Registry, body Value, keep, condFrag bool) (stk []Value, 
 			}
 		}
 	}
+	// A name the body BOUND ends with the body: a branch arm, a loop or a
+	// callback body is a block scope (design/IMMUTABLE-DEF.1.md §2.1, phase
+	// 2), so its def is popped and NOT handed back as an add — the enclosing
+	// binding, or none, is what a read after the body sees, on the run lane
+	// (core block.go) as here. Only the var ASSIGNMENTS above carry: they
+	// replaced an enclosing cell in place.
 	for _, k := range r.Defs.Names() {
-		before := snapshot[k] // zero for names not present before
-		depth := r.Defs.Depth(k)
-		if depth > before {
-			top, _ := r.Defs.Top(k)
-			adds[k] = top
+		if before := snapshot[k]; r.Defs.Depth(k) > before {
+			if top, ok := r.Defs.TopEntry(k); ok {
+				// The census's leak-read question, for a read after the
+				// body (def_census.go noteUnboundReadCensus).
+				r.Defs.NoteBlockBound(k, BlockBoundNote{Site: top.Site, Note: bindingKind(top)})
+			}
 			r.Defs.Truncate(k, before)
 		}
 	}

@@ -47,6 +47,6 @@ def h fn [[n:Integer] [Integer] [def a (n g) (n g) (n g) a mul mul]]
 // the source-on-top block coverage pins the path.
 func TestLoopCarriedUserCallRebindStaysOnStorePath(t *testing.T) {
 	stage1aCompiles(t, `def measure fn [[xs:List] [Integer] [xs size]]
-def treewalk fn [[tree:Map] [Integer] [def nodes quote (tree get "nodes") def acc 0 for 3 [def _i i if (acc 0 eq) [def acc (nodes measure)] []] end acc]]
+def treewalk fn [[tree:Map] [Integer] [def nodes quote (tree get "nodes") var acc 0 for 3 [def _i i if (acc 0 eq) [var acc (nodes measure)] []] end acc]]
 {nodes: [10 20 30]} treewalk end`)
 }

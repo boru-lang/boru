@@ -6,6 +6,7 @@ import (
 	"os"
 	"sort"
 	"strconv"
+	"strings"
 	"sync"
 	"sync/atomic"
 )
@@ -244,6 +245,12 @@ type Registry struct {
 	// global scope and stays dynamic. Nil baseline (empty stack) means
 	// the construction is at top-level and nothing is captured.
 	FnBaselines []map[string]int
+	// frameScopes are the scope ids PushFnBaseline opened, one per
+	// baseline, so PopFnBaseline closes the frame's scope and every block
+	// an unwinding left open inside it (DefTable.LeaveScopeTo).
+	frameScopes []int32
+	// blockBinds memoises BodyBindsLocals per body identity (block.go).
+	blockBinds map[string]bool
 
 	// gensymN is the monotonic counter behind the `gensym` word: each call
 	// mints a fresh, never-colliding atom name `tmp$g<n>`. Used for
@@ -284,6 +291,10 @@ type Registry struct {
 	// token body's sub-engine fallback resolves names in the caller's
 	// scope; forks inherit the field and pass THEMSELVES.
 	Invoker func(reg *Registry, body Value, inputs []Value) ([]Value, error)
+	// invokeKeepDefs tells the Invoker which seam called it: true inside
+	// InvokeBodyKeepDefs (`do`'s body, transparent — #11), false inside
+	// InvokeBody (a block). InvokeKeepsDefs reads it.
+	invokeKeepDefs bool
 
 	// nestedRunner runs a compiled fn UNIT nested within the currently-active
 	// VM run on this registry — the live-run twin of RunUnit (which starts a
@@ -968,11 +979,47 @@ func (r *Registry) PushFnBaseline(snap map[string]int) {
 	// A token body's closure compile is a BLOCK of the enclosing frame
 	// (CheckState.NextBaselineIsBlock, consumed here).
 	kind := ScopeFrame
+	if r.Check != nil && r.Check.NextBaselineTransparent {
+		// A `do` body's closure compile: `do` is not a scope (#11), so the
+		// baseline opens none — the body's installs carry the enclosing
+		// scope's id, as they do on the run lane.
+		r.Check.NextBaselineTransparent = false
+		r.Check.NextBaselineIsBlock = false
+		r.frameScopes = append(r.frameScopes, transparentScope)
+		return
+	}
 	if r.Check != nil && r.Check.NextBaselineIsBlock {
 		r.Check.NextBaselineIsBlock = false
 		kind = ScopeBlock
 	}
-	r.Defs.EnterScope(kind)
+	r.frameScopes = append(r.frameScopes, r.Defs.EnterScope(kind))
+}
+
+// InvokeKeepsDefs reports, to an Invoker, whether the seam that called it
+// is InvokeBodyKeepDefs — `do`'s body, whose defs reach the enclosing
+// scope — rather than InvokeBody, whose body is a BLOCK (block.go): a
+// token body the VM hosts for the latter ends its defs with the run.
+func (r *Registry) InvokeKeepsDefs() bool { return r != nil && r.invokeKeepDefs }
+
+// transparentScope is the frameScopes entry of a baseline that opened no
+// scope (CheckState.NextBaselineTransparent): PopFnBaseline closes nothing
+// for it.
+const transparentScope int32 = -1
+
+// UnitBaselineScope is the scope the innermost fn baseline opened — the
+// frame (or block, for a token body's closure compile) of the UNIT the
+// analysis is inside — skipping the transparent baselines of `do` bodies,
+// which compile into the frame around them. ok=false at the module level.
+func (r *Registry) UnitBaselineScope() (int32, bool) {
+	if r == nil {
+		return 0, false
+	}
+	for i := len(r.frameScopes) - 1; i >= 0; i-- {
+		if r.frameScopes[i] != transparentScope {
+			return r.frameScopes[i], true
+		}
+	}
+	return 0, false
 }
 
 // PopFnBaseline removes the innermost fn-body baseline. Safe to call on
@@ -983,6 +1030,17 @@ func (r *Registry) PopFnBaseline() {
 		return
 	}
 	r.FnBaselines = r.FnBaselines[:n-1]
+	if m := len(r.frameScopes); m > 0 {
+		id := r.frameScopes[m-1]
+		r.frameScopes = r.frameScopes[:m-1]
+		// The frame's own bindings are the DefCleanup marker's to pop (its
+		// entry snapshot); a block the frame left open closes here, and its
+		// entries sit above that snapshot, so the same truncation takes them.
+		if id != transparentScope {
+			r.Defs.LeaveScopeTo(id)
+		}
+		return
+	}
 	r.Defs.LeaveScope()
 }
 
@@ -1622,6 +1680,21 @@ func (r *Registry) TypePartsSnapshot() map[string]bool {
 	return snap
 }
 
+// forgetTypeParts releases the name-part reservations a type binding of
+// name made (RegisterPart), for UninstallType once no binding of the name
+// is live. A builtin part is never a dynamic reservation. ForgetTypePartsSince
+// is the analysis's bulk form over a snapshot.
+func (r *Registry) forgetTypeParts(name string) {
+	if r == nil || r.Types == nil {
+		return
+	}
+	for _, p := range strings.Split(name, "/") {
+		if !r.Defs.IsType(p) && !Builtin.parts[p] {
+			delete(r.Types.parts, p)
+		}
+	}
+}
+
 // ForgetTypePartsSince drops every type-part reservation made since snap
 // whose type binding is no longer live — the parts a fn body's own `def T`
 // reserved under ANALYSIS, whose binding the body's unwind has popped. The
@@ -1929,7 +2002,10 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 		// loop to avoid infinite looping if UninstallDef's rebuild
 		// creates new entries.
 		for attempts := 0; attempts < 100 && r.Defs.Depth(name) > target; attempts++ {
-			UninstallDef(r, name)
+			// A type the body minted retires with the frame and its name
+			// comes free (block.go's rule), as the tape frame's teardown
+			// does: the next call's `def T …` finds no reservation standing.
+			uninstallBinding(r, name)
 		}
 	}
 

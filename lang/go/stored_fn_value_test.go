@@ -28,7 +28,7 @@ func TestStoredFnValueParity(t *testing.T) {
 		// a body-local fn pushed into a list and applied from it
 		`def f fn [[] [Integer] [def g fn [[x:Integer] [Integer] [x add 1]] def lst (push g/v []) end 41 (lst.0)/v apply]]  f`,
 		// a loop building a list of closures
-		`def f fn [[] [Integer] [def fns [] end for [0 2] [def fns (push ([] => [i]) fns)] end size fns]]  f`,
+		`def f fn [[] [Integer] [var fns [] end for [0 2] [var fns (push ([] => [i]) fns)] end size fns]]  f`,
 		// unshift and append, the same rule (the element read back and
 		// introspected — applying it at the top level is the next gate,
 		// "apply over a dynamic lead", not this one's)
@@ -62,7 +62,7 @@ func TestStoredFnValueParity(t *testing.T) {
 // What this test forbids is the state the review found: compiling and
 // answering `[fn g fn g]`. A loud failure on either lane is the bar.
 func TestStoredFnValueNeverSilentlyWrong(t *testing.T) {
-	src := `def fns [] end for [0 2] [def fns (push ([] => [i]) fns)] end each ([g:Function] => [(g)]) fns`
+	src := `var fns [] end for [0 2] [var fns (push ([] => [i]) fns)] end each ([g:Function] => [(g)]) fns`
 	gotI, errI := mustNew(t).RunInterp(src)
 	if codeOf(errI) != "undefined_word" {
 		t.Fatalf("interpreter oracle moved: err=[%s] got=%v, re-derive this pin", codeOf(errI), gotI)

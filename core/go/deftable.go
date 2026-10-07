@@ -73,6 +73,22 @@ type defScope struct {
 	id    int32
 	kind  ScopeKind
 	reads map[string]bool
+	// bound lists the names pushed while this scope was the innermost one
+	// (noteBound), the names LeaveBlock pops when the scope closes.
+	bound []string
+	// blockBound records, by name, the binding a BLOCK that closed inside
+	// this scope made and popped (NoteBlockBound): the census's leak-read
+	// question — a read of an unbound name a block bound names that
+	// binding (BlockBoundSite).
+	blockBound map[string]BlockBoundNote
+}
+
+// BlockBoundNote is the record of a binding a closed BLOCK made and
+// popped: its site and kind, for the census's leak-read finding
+// (def_census.go noteUnboundReadCensus).
+type BlockBoundNote struct {
+	Site SrcPos
+	Note string
 }
 
 // DefTable holds the stacked bindings for every name. Post the
@@ -108,6 +124,8 @@ type DefTable struct {
 	// push for `n` does not invalidate the cached dispatch table for
 	// `add` — the property that makes the cache pay off in hot loops.
 	gen map[string]int64
+	// rootBlockBound is the module scope's blockBound record (defScope).
+	rootBlockBound map[string]BlockBoundNote
 	// scopes is the stack of open scopes above the module scope
 	// (EnterScope / LeaveScope); nextScope mints their ids, so a scope id
 	// is never reused within one table and a dead block's bindings stay
@@ -138,6 +156,143 @@ func (dt *DefTable) LeaveScope() {
 		return
 	}
 	dt.scopes = dt.scopes[:len(dt.scopes)-1]
+}
+
+// ScopeBoundNames returns the names the OPEN scope with the given id has
+// bound so far (noteBound) — the names LeaveBlock will pop — or nil when
+// the scope is not open. A block's end asks it for the locals its residual
+// containers may still read (Engine.evalBlockResiduals).
+func (dt *DefTable) ScopeBoundNames(id int32) []string {
+	if dt == nil {
+		return nil
+	}
+	for i := len(dt.scopes) - 1; i >= 0; i-- {
+		if dt.scopes[i].id == id {
+			return append([]string(nil), dt.scopes[i].bound...)
+		}
+	}
+	return nil
+}
+
+// LeaveScopeTo closes the scope with the given id and every scope opened
+// inside it — the scopes an unwinding (a break discarding a loop region, an
+// error) left open — and returns the names those scopes bound, for
+// LeaveBlock to pop. ok is false, and nothing changes, when id is not open.
+func (dt *DefTable) LeaveScopeTo(id int32) (bound []string, ok bool) {
+	if dt == nil {
+		return nil, false
+	}
+	for i := len(dt.scopes) - 1; i >= 0; i-- {
+		if dt.scopes[i].id != id {
+			continue
+		}
+		for j := i; j < len(dt.scopes); j++ {
+			bound = append(bound, dt.scopes[j].bound...)
+		}
+		dt.scopes = dt.scopes[:i]
+		return bound, true
+	}
+	return nil, false
+}
+
+// ScopeDepth is the number of scopes open above the module scope — 0 when
+// every frame and block has closed (a run's end state).
+func (dt *DefTable) ScopeDepth() int {
+	if dt == nil {
+		return 0
+	}
+	return len(dt.scopes)
+}
+
+// OutermostBlockAbove returns the id of the outermost BLOCK scope open at
+// stack depth >= floor — the handle that closes it and everything above it
+// (LeaveBlock) — and ok=false when no block is open there.
+func (dt *DefTable) OutermostBlockAbove(floor int) (int32, bool) {
+	if dt == nil || floor < 0 {
+		return 0, false
+	}
+	for i := floor; i < len(dt.scopes); i++ {
+		if dt.scopes[i].kind == ScopeBlock {
+			return dt.scopes[i].id, true
+		}
+	}
+	return 0, false
+}
+
+// NoteBlockBound records that a block which just closed inside the
+// innermost open scope — the module scope when none is — bound name: the
+// binding's site and kind, for BlockBoundSite. Recorded under the check
+// pass only (LeaveBlock, runCarrierBody's rollback).
+func (dt *DefTable) NoteBlockBound(name string, note BlockBoundNote) {
+	if dt == nil {
+		return
+	}
+	if n := len(dt.scopes); n > 0 {
+		top := &dt.scopes[n-1]
+		if top.blockBound == nil {
+			top.blockBound = map[string]BlockBoundNote{}
+		}
+		top.blockBound[name] = note
+		return
+	}
+	if dt.rootBlockBound == nil {
+		dt.rootBlockBound = map[string]BlockBoundNote{}
+	}
+	dt.rootBlockBound[name] = note
+}
+
+// BlockBoundSite answers whether a block that closed in the current
+// lexical region — the innermost scope and those enclosing it, up to and
+// including the nearest frame, or the module scope when no frame is open
+// — bound name, and where: the census's leak-read question for a read of
+// an unbound name (noteUnboundReadCensus).
+func (dt *DefTable) BlockBoundSite(name string) (BlockBoundNote, bool) {
+	if dt == nil {
+		return BlockBoundNote{}, false
+	}
+	for i := len(dt.scopes) - 1; i >= 0; i-- {
+		if note, ok := dt.scopes[i].blockBound[name]; ok {
+			return note, true
+		}
+		if dt.scopes[i].kind == ScopeFrame {
+			return BlockBoundNote{}, false
+		}
+	}
+	note, ok := dt.rootBlockBound[name]
+	return note, ok
+}
+
+// ScopeIndex is the position of the open scope with the given id on the
+// scope stack (0 the outermost above the module scope), and ok=false for
+// the module scope or a closed id. Two open scopes compare by it: the one
+// at the lower index encloses the other.
+func (dt *DefTable) ScopeIndex(id int32) (int, bool) {
+	if dt == nil {
+		return 0, false
+	}
+	for i := len(dt.scopes) - 1; i >= 0; i-- {
+		if dt.scopes[i].id == id {
+			return i, true
+		}
+	}
+	return 0, false
+}
+
+// ScopeOpen reports whether the scope with the given id is open: the module
+// scope (0) always is.
+func (dt *DefTable) ScopeOpen(id int32) bool {
+	if id == 0 {
+		return true
+	}
+	if dt == nil {
+		return false
+	}
+	for i := len(dt.scopes) - 1; i >= 0; i-- {
+		if dt.scopes[i].id == id {
+			return true
+		}
+	}
+	return false
 }
 
 // ScopeID is the innermost open scope's id, 0 at the module scope.
@@ -269,7 +424,17 @@ func (dt *DefTable) PushAt(name string, v Value, site SrcPos) {
 	}
 	dt.mutations++
 	dt.touch(name)
+	dt.noteBound(name)
 	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: v, Scope: dt.ScopeID(), Site: site})
+}
+
+// noteBound records name on the innermost open scope's bound list: the
+// names a block pops when it closes (LeaveBlock). Nothing is recorded at
+// the module scope, which never closes.
+func (dt *DefTable) noteBound(name string) {
+	if n := len(dt.scopes); n > 0 {
+		dt.scopes[n-1].bound = append(dt.scopes[n-1].bound, name)
+	}
 }
 
 // SetTopSite records site as the def-name token that bound name's top entry
@@ -357,6 +522,7 @@ func (dt *DefTable) PushLeaked(name string, v Value, site SrcPos) {
 	}
 	dt.mutations++
 	dt.touch(name)
+	dt.noteBound(name)
 	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: v, Scope: dt.ScopeID(), Site: site, Leaked: true})
 }
 
@@ -368,6 +534,7 @@ func (dt *DefTable) PushType(name string, def *Type, body Value) {
 	}
 	dt.mutations++
 	dt.touch(name)
+	dt.noteBound(name)
 	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: body, TypeDef: def, Minted: true, Scope: dt.ScopeID()})
 }
 
@@ -382,6 +549,7 @@ func (dt *DefTable) PushTypeAdopted(name string, def *Type, body Value) {
 	}
 	dt.mutations++
 	dt.touch(name)
+	dt.noteBound(name)
 	dt.stacks[name] = append(dt.stacks[name], DefEntry{Body: body, TypeDef: def, Scope: dt.ScopeID()})
 }
 

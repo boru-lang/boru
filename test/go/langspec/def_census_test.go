@@ -20,17 +20,21 @@ import (
 //
 // `shadow` is excluded from the ceiling: an inner scope binding a name an
 // enclosing scope binds is legal under the rule and stays legal, so it is
-// reported, not counted. Every other class ends at 0 — `rebind`, `overlap`
-// and `extend-inner` become `redefinition`, `leak-read` becomes
-// `undefined_word`, `shadow-rebind` becomes a warning the corpus is rewritten
-// not to raise, and `undef` and `var-construct` are removed.
+// reported, not counted. So is `shadow-rebind` since phase 2 shipped block
+// scopes (2026-10-07): a block-local def that reads the name it shadows is
+// legal, answers as the shadow it is, and raises the `shadow_rebind` check
+// WARNING (#13) — block-scopes.tsv pins the rows that keep it. Every other
+// class ends at its pinned negative rows — `rebind`, `overlap` and
+// `extend-inner` become `redefinition`, `leak-read` is the `undefined_word`
+// a read after a block of the block's own name raises (pinned as such), and
+// `undef` and `var-construct` are removed.
 //
 // BORU_LOG_DEF_CENSUS=1 names every row with a finding and its findings, in
 // file-then-line order — the listing the rewrite works from.
 
 // defCensusRowCeiling is the number of corpus rows with at least one finding
 // of a class other than `shadow`, measured 2026-10-06.
-const defCensusRowCeiling = 144 // 151 -> 144 on 2026-10-07: the `var [[…]]` construct is gone (design/IMMUTABLE-DEF.1.md §5 phase 1), and with it the var-construct class's seven corpus rows; the construct rows rewritten as lambdas or stack-bound-def bodies add no finding of another class.
+const defCensusRowCeiling = 101 // 144 -> 101 on 2026-10-07 (phase 2 of design/IMMUTABLE-DEF.1.md, landing 1): the corpus rows that leaned on a leaking block-local def or a shadow-rebind were rewritten to the rule's spelling (var, the branch value), and the census's leak-read findings over closed blocks name only the rows block-scopes.tsv keeps as negative pins. Before: 151 -> 144 on 2026-10-07: the `var [[…]]` construct is gone (design/IMMUTABLE-DEF.1.md §5 phase 1), and with it the var-construct class's seven corpus rows; the construct rows rewritten as lambdas or stack-bound-def bodies add no finding of another class.
 
 // defCensusClasses is the report's column order: the rule's verdicts from
 // error to removal, then the legal shadow.
@@ -77,7 +81,7 @@ func TestDefCensusCorpus(t *testing.T) {
 				fileClassRows[r.File] = map[string]int{}
 			}
 			fileClassRows[r.File][c]++
-			if c != "shadow" {
+			if c != "shadow" && c != "shadow-rebind" {
 				count = true
 			}
 		}

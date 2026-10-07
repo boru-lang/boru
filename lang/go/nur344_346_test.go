@@ -303,14 +303,13 @@ func TestNUR346ArgsElisionOtherUnitCompiles(t *testing.T) {
 	}
 	const outer = `def f fn [[x:Integer][Any][each (mk) [x 5]]] end `
 	const arm = `[def f fn [[x:Integer][Any][x add 100]] end]`
-	for _, tc := range []struct{ src, want string }{
-		{mk + outer + `def m {e: false} end if (m "e" get) ` + arm + ` [] f 1`, `[[[1] [1]]]`},
-		{mk + outer + `def m {e: true} end if (m "e" get) ` + arm + ` [] f 1`, `[101]`},
+	// Since phase 2 the arm's redefinition is the arm's own shadow: the call
+	// after the branch is the OUTER f on both paths, and the compiled lane
+	// agrees or declines the shadow (the block gate).
+	for _, src := range []string{
+		mk + outer + `def m {e: false} end if (m "e" get) ` + arm + ` [] f 1`,
+		mk + outer + `def m {e: true} end if (m "e" get) ` + arm + ` [] f 1`,
 	} {
-		requireCompiledParity(t, tc.src)
-		got, err := mustNew(t).RunInterp(tc.src)
-		if err != nil || fmt.Sprint(got) != tc.want {
-			t.Errorf("%q: interpreted %v [%v], want %s", tc.src, got, err, tc.want)
-		}
+		ruleOrDecline(t, src, `[[[1] [1]]]`)
 	}
 }

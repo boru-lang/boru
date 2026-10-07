@@ -159,16 +159,16 @@ while [false] ['x'] end 'done'	'done'	a falsy condition runs the body zero times
 while [true] [break] end 'ended'	'ended'	break ends the loop with the values collected so far
 while ['ok'] [break] end 'truthy'	'truthy'	the condition is a truthiness read, not Boolean-only
 def c (flex {n:0}) end while [(c get 'n') lt 3] [ (c get 'n') set 'n' ((c get 'n') add 1) c ]	0 (flex {n:3}) 1 (flex {n:3}) 2 (flex {n:3})	the classic counter loop: three iterations accumulate
-def n 0 end while [n lt 3] [def n (n add 1) n] end 'z'	1 2 3 'z'	a def the body rebinds is read by the condition; body values accumulate
-def n 0 end while [n lt 3] [def n (n add 1)] end n	3	a carried rebind persists after the loop
-def n 5 end while [n lt 3] [def n (n add 1)] end n	5	zero iterations leave the pre-loop value
+var n 0 end while [n lt 3] [var n (n add 1) n] end 'z'	1 2 3 'z'	a var the body assigns is read by the condition; body values accumulate
+var n 0 end while [n lt 3] [var n (n add 1)] end n	3	a carried assignment persists after the loop
+var n 5 end while [n lt 3] [var n (n add 1)] end n	5	zero iterations leave the pre-loop value
 while [true] [1 break] end 'x'	'x'	break discards the current round's values
-def n 0 end while [n lt 3] [def n (n add 1) 1 continue 2] end 'z'	'z'	continue discards the current round's values
-def n 0 end while [n lt 3] [def n (n add 1) if (n eq 2) [continue] end n] end 'z'	1 3 'z'	a continue inside a branch arm skips that round's tail
-def n 0 end while [n lt 3] [def n (n add 1) if (n eq 2) [break] end n] end 'z'	1 'z'	a break inside a branch arm ends the loop
-def f fn [[k:Integer][Integer][def n 0 while [n lt k] [def n (n add 1)] n]] end (f 4)	4	a while inside a fn body counts against a param
-def n 0 end while [n lt 2] [def n (n add 1) while [true] [1 break]] end 'z'	'z'	a nested while's break ends only the inner loop
-def i 0 end while [i lt 2] [[(i add 1)] def i (i add 1)]	[2] [3]	a literal the body leaves evaluates at the round's end, against that round's binding (NUR197)
+var n 0 end while [n lt 3] [var n (n add 1) 1 continue 2] end 'z'	'z'	continue discards the current round's values
+var n 0 end while [n lt 3] [var n (n add 1) if (n eq 2) [continue] end n] end 'z'	1 3 'z'	a continue inside a branch arm skips that round's tail
+var n 0 end while [n lt 3] [var n (n add 1) if (n eq 2) [break] end n] end 'z'	1 'z'	a break inside a branch arm ends the loop
+def f fn [[k:Integer][Integer][var n 0 while [n lt k] [var n (n add 1)] n]] end (f 4)	4	a while inside a fn body counts against a param
+var n 0 end while [n lt 2] [var n (n add 1) while [true] [1 break]] end 'z'	'z'	a nested while's break ends only the inner loop
+var i 0 end while [i lt 2] [[(i add 1)] var i (i add 1)]	[2] [3]	a literal the body leaves evaluates at the round's end, against that round's assignment (NUR197)
 while [] [1]	ERROR:while: condition produced no value	an empty condition region has no tokens, so the first round nets nothing and raises
 # The SIXTH and last frontier-while row (the fifty-first increment,
 # 2026-09-10), and the file lang/spec/frontier/frontier-while.tsv with it.

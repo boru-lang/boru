@@ -566,10 +566,11 @@ const (
 	// OpBindGlobal's Push mode has the lifetime but is a root-stream op).
 	// Arg indexes Program.ResidentBinds. The install arm pops the runtime
 	// value and installs it through core.InstallDef — the interpreter's
-	// own installer, so per-element repeats stack exactly as the
-	// interpreter's leak does — into the CURRENT registry, riding no
-	// unwind trail (leak persistence IS the semantics: a mid-iteration
-	// raise leaves earlier elements' installs, interpreter-identical).
+	// own installer, so the per-element install lands exactly as the
+	// interpreter's body def does — into the CURRENT registry, riding no
+	// unwind trail: the body is a BLOCK since phase 2 (design/IMMUTABLE-
+	// DEF.1.md §2.1), closed by the VM's closure seam after every run, so
+	// the install ends with the element's run as the interpreter's does.
 	// The undef arm (a var param's balanced per-iteration teardown) pops
 	// the name's live top entry instead, consuming no stack. The TYPE arm
 	// re-installs its twin-table entry's BODY per element — a type binding
@@ -650,11 +651,12 @@ const (
 	OpPushLocalBound
 	// OpBindFnType is a FN unit's own type install, per call (Arg indexes
 	// Program.FnTypeBinds): the interpreter's `def T (class {})` inside a fn
-	// body mints a node and reserves its name part for the registry's
-	// lifetime, binds it for the frame (the frame's teardown pops the
-	// binding and keeps the part, so a SECOND call conflicts on it), and
-	// the check pass's single run of the body cannot replay that per call —
-	// the fn-body transition is kept out of the bind ledger, and a unit that
+	// body mints a node and binds it for the frame — the frame's teardown
+	// pops the binding, retires the node and frees its name part (phase 2 of
+	// design/IMMUTABLE-DEF.1.md; before it the part stayed reserved for the
+	// registry's lifetime, so a SECOND call conflicted on it) — and the
+	// check pass's single run of the body cannot replay that per call: the
+	// fn-body transition is kept out of the bind ledger, and a unit that
 	// recorded nothing for it dropped the mint (NUR167). The op re-installs
 	// the entry the check pass pushed: the name checked against the run's
 	// reservations exactly as the front door checks it (core.TypeNameFree —
@@ -683,6 +685,15 @@ const (
 	// a branch merge (`def x (if …)`) or a loop value a frame slot cannot
 	// seat — under the widened environment (dynEnv, a deopt unit).
 	OpBindDynScopePeek
+	// OpBindDynScopeVar is OpBindDynScope / OpBindDynScopePeek for a `var`
+	// DECLARATION (emitDynBind.varDecl): Arg indexes Program.DynVarBinds,
+	// and the install goes through the interpreter's own var installer
+	// (core.InstallVar) — the cell is MARKED a var, so a later assignment
+	// (OpAssignDynScope, a resident assign, a hosted body's `var NAME v`)
+	// replaces it in place where a plain def's install had the assignment
+	// declare a second cell beside it. Pop per the spec; rides the dyn-bind
+	// trail exactly as OpBindDynScope does.
+	OpBindDynScopeVar
 	// OpBindTypeRun is the RUN-TIME type install (NUR308's type half): a
 	// root `def T <body>` whose body holds a refinement over a bound the
 	// analysis pass did not know (`def T (Integer gte (size s))`). It pops
@@ -795,6 +806,7 @@ var opcodeNames = [...]string{
 	OpUndefDynScope:        "UNDEF_DYN_SCOPE",
 	OpReStepLanding:        "RESTEP_LANDING",
 	OpBindDynScopePeek:     "BIND_DYN_SCOPE_PEEK",
+	OpBindDynScopeVar:      "BIND_DYN_SCOPE_VAR",
 	OpBindTypeRun:          "BIND_TYPE_RUN",
 	OpMakeListReStep:       "MAKE_LIST_RESTEP",
 	OpLookupDynScopeRef:    "LOOKUP_DYN_SCOPE_REF",
@@ -1207,10 +1219,13 @@ type RestampBox struct {
 	sigIdx int // which own sig this ref compiled (COMPILE FAILURE-CLOSURE §7b: per-sig refs)
 	pos    core.SrcPos
 	// keepsDefs: a TOKEN body's stamp (StampTokenBody) — the re-stamp opens
-	// the same keep-defs unit the first stamp did (NUR202).
-	keepsDefs bool
-	Tries     int
-	Cur       *CompiledFnRef
+	// the same keep-defs unit the first stamp did (NUR202); transparent
+	// names the seam it was stamped for (`do`'s, else a block of the
+	// caller's frame), so the re-stamp models the body the same way.
+	keepsDefs   bool
+	transparent bool
+	Tries       int
+	Cur         *CompiledFnRef
 }
 
 // DepSnapEntry is one dep's binding state at stamp time (see DepSnap).
@@ -1492,6 +1507,12 @@ type ResidentBindSpec struct {
 	// until AdoptResidentTwins has proved the type expression
 	// element-independent.
 	TypeInstall bool
+	// Var marks the install arm of a var DECLARATION (emitDynBind.varDecl):
+	// the install goes through core.InstallVar, so the per-element cell is
+	// marked a var (VarType its declared type) and the body's later
+	// assignment replaces it in place.
+	Var     bool
+	VarType *core.Type
 }
 
 // VarAssignSpec is one OpAssignDynScope: the var's name and whether the op
@@ -1499,6 +1520,15 @@ type ResidentBindSpec struct {
 type VarAssignSpec struct {
 	Name string
 	Pop  bool
+}
+
+// DynVarBindSpec is one OpBindDynScopeVar: the declared var's name, its
+// declared type (nil untyped) and whether the op consumes the value (Pop)
+// or peeks it for its downstream readers.
+type DynVarBindSpec struct {
+	Name    string
+	VarType *core.Type
+	Pop     bool
 }
 
 type GlobalBindSpec struct {
@@ -1535,6 +1565,21 @@ type GlobalBindSpec struct {
 	// interpreter's `fn j` (NUR285).
 	WriteSlot bool
 	Slot      int
+	// Var marks the write-back of a `var` DECLARATION (the def's twin entry
+	// is marked Var, core InstallVar): the pushed — or adopted — binding is
+	// marked a var cell, VarType its declared type (nil untyped), so a
+	// unit's later assignment (core.ApplyResidentAssign) replaces it in
+	// place where a plain def had it declare a second cell beside the first
+	// (`var x (for [1 4] [i]) if c [var x 9] [] end x` left x two deep).
+	Var     bool
+	VarType *core.Type
+	// Assign marks the write-back of a var ASSIGNMENT (emitDynBind.assign —
+	// the var word's `var NAME v` over a visible var, whose twin is a
+	// BindDefReplace): the runtime value REPLACES the name's cell in place
+	// (core.ApplyResidentAssign), never pushed — a push beside the cell was
+	// the extra level `undef x` exposed after `var x (for [1 4] [i]) if (g
+	// 9) [var x (g 3)] [] end x` (the arm's computed assignment).
+	Assign bool
 }
 
 // ConstLocalRef backs OpPushConstFreshLocal (see the opcode doc): ConstIdx names
@@ -1833,6 +1878,9 @@ type Program struct {
 	// VarAssigns are OpAssignDynScope's specs (the var word's assignments
 	// inside units).
 	VarAssigns []VarAssignSpec
+	// DynVarBinds backs OpBindDynScopeVar (a var declaration's dyn-scope
+	// install).
+	DynVarBinds []DynVarBindSpec
 	// SpecUndefNames is every name a PLACED speculative undef may pop
 	// (OpUndefDynScope — the sixty-eighth increment). A dynamic-scope read
 	// of one of these that MISSES is the interpreter's own undefined_word
@@ -2821,6 +2869,13 @@ func (p *Program) disasmUnit(sb *strings.Builder, code []Instr, deopts []DeoptSp
 		case OpBindTwin:
 			tw := p.BindTwins[in.Arg]
 			fmt.Fprintf(sb, " w%-3d ; bind twin %s %s @depth %d (replay)", in.Arg, tw.Kind, tw.Name, tw.Depth)
+		case OpBindDynScopeVar:
+			dv := p.DynVarBinds[in.Arg]
+			mode := "peek"
+			if dv.Pop {
+				mode = "pop"
+			}
+			fmt.Fprintf(sb, " v%-3d ; var %s (%s)", in.Arg, dv.Name, mode)
 		case OpDeoptIfFn:
 			if int(in.Arg) < len(deopts) && deopts[in.Arg].Bail && deopts[in.Arg].NoMatchOnly {
 				fmt.Fprintf(sb, " d%-3d ; bail if the read holds a fn its window does not match (guard)", in.Arg)

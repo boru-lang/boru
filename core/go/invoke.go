@@ -20,7 +20,13 @@ import "errors"
 // per-call values exactly where the original code placed them.
 func InvokeBody(r *Registry, body Value, inputs []Value) ([]Value, error) {
 	if r.Invoker != nil {
-		return r.Invoker(r, body, inputs)
+		// The seam tells the Invoker the body is a block (InvokeKeepsDefs):
+		// a `do` body enclosing this call set the flag for its own run.
+		prev := r.invokeKeepDefs
+		r.invokeKeepDefs = false
+		res, err := r.Invoker(r, body, inputs)
+		r.invokeKeepDefs = prev
+		return res, err
 	}
 	// Pooled + resolved: the engine and its tape are reused across
 	// invocations (runPooledSub / the registry sub-engine pool), and the
@@ -28,13 +34,33 @@ func InvokeBody(r *Registry, body Value, inputs []Value) ([]Value, error) {
 	// arguments are inert (design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore, via
 	// RunResolved's start offset).
 	//
-	// A code-body word (each/fold/do/…) does NOT strip a dispatch ascription
+	// A code-body word (each/fold/…) does NOT strip a dispatch ascription
 	// from its result: it is inline value-routing (design/OPEN-WORDS.1.md
 	// §9), transparent like a paren group or an if-branch, so the ascription
 	// flows to the consuming dispatch — which matches the compiled path,
 	// where `as` folds at compile time and the ascription rides the static
 	// value flow to that same dispatch. (Only a fn/lambda/module return, an
 	// abstraction boundary with a declared signature, strips.)
+	//
+	// The body is a BLOCK (design/IMMUTABLE-DEF.1.md §2.1): a name it binds
+	// ends with this run of it (block.go). `do`'s body is the one body that
+	// is not — InvokeBodyKeepDefs.
+	return RunBodyResolved(r, body, inputs)
+}
+
+// InvokeBodyKeepDefs is InvokeBody for the one body that is NOT a block:
+// `do`'s, transparent by ruling (design/IMMUTABLE-DEF.1.md #11) — its defs
+// reach the enclosing scope, one `do [def x …]` at module level is a module
+// def — and its compiled-arm twin `__arm`, which the compiled `if` runs as
+// `do` runs a body (BodyOnceKeepsDefs).
+func InvokeBodyKeepDefs(r *Registry, body Value, inputs []Value) ([]Value, error) {
+	if r.Invoker != nil {
+		prev := r.invokeKeepDefs
+		r.invokeKeepDefs = true
+		res, err := r.Invoker(r, body, inputs)
+		r.invokeKeepDefs = prev
+		return res, err
+	}
 	return RunResolved(r, inputs, BodyTokens(body))
 }
 

@@ -90,7 +90,7 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		// A routed slot inside a loop the analysis re-rounds (review of
 		// #465): the discarded round's placeholder mark is pruned with its
 		// events, so the stabilised round's read keeps its lookup.
-		{`def k 5 end if false [undef k] [] (print "x") def a 1 end for 2 [def a (a add 0.5) end k add k 1 drop]`, "[5 5]", true, true},
+		{`def k 5 end if false [undef k] [] (print "x") var a 1 end for 2 [var a (a add 0.5) end k add k 1 drop]`, "[5 5]", true, true},
 	}
 	for _, c := range compiled {
 		a, err := New()
@@ -153,11 +153,14 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 		{`def T Integer end if true [undef T] [] 1`, "undef of the enclosing binding `T`"},
 		{`def f fn [[k:Integer][Integer][if true [undef k] [] k]] end f 1`, "undef of the enclosing binding `k`"},
 		{`def f fn [[][Integer][def j 1 if true [undef j] [] j]] end f`, "undef of the enclosing binding `j`"},
-		{`def k 5 end for 2 [ def k 6 ] undef k k`, "undef of the loop-carried def `k`"},
-		{`def k 5 end for 2 [ def k 6 ] if true [undef k] [] k`, "undef of the enclosing binding `k`"},
-		{`def k 5 end for 2 [ def k 6 for 1 [ undef k ] ] k`, "def of `k` inside the region that undefs it"},
-		{`def k 5 end if true [undef k def k 6] [] k`, "def of `k` inside the region that undefs it"},
-		{`def k 5 end for 2 [ undef k def k 6 ] k`, "def of `k` inside the region that undefs it"},
+		// Since phase 2 a body def over the enclosing k is the body's own shadow:
+		// the block gate declines it, and the undef after the loop pops the
+		// only k, so the read stops the check (the rows below likewise).
+		{`def k 5 end for 2 [ def k 6 ] undef k k`, "check diagnostics"},
+		{`def k 5 end for 2 [ def k 6 ] if true [undef k] [] k`, "block-local def `k` shadows an enclosing binding"},
+		{`def k 5 end for 2 [ def k 6 for 1 [ undef k ] ] k`, "block-local def `k` shadows an enclosing binding"},
+		{`def k 5 end if true [undef k def k 6] [] k`, "block-local def `k` shadows an enclosing binding"},
+		{`def k 5 end for 2 [ undef k def k 6 ] k`, "block-local def `k` shadows an enclosing binding"},
 		{`def k 5 end def f fn [[][Integer][if true [undef k] [] def k 6 end k]] end f k`, "def of `k` inside the region that undefs it"},
 		{`def k 5 end if true [undef k] [] add k (1 add 1)`, "forward-slot read of `k` after a placed undef"},
 		// The same at the user and poly records, and — review round of
@@ -216,13 +219,16 @@ func TestSpeculativeUndefIsPlacedAndReadLive(t *testing.T) {
 	// An undef of a binding made INSIDE the region, and of a name never
 	// bound at all, compile as they did.
 	inRegion := []struct{ src, want string }{
-		{`def k 5 end for 2 [ def k 6 undef k ] 9`, "[9]"},
 		{`def f fn [[][Integer][def j 1 undef j 2]] end f`, "[2]"},
 		{`def k 5 end for 2 [ def j 1 undef j ] 9`, "[9]"},
 		{`def k 5 end undef k end def k 6 end k`, "[6]"},
 		{`def f fn [[][Integer][undef nope 1]] end f`, "[1]"},
 		{`def k 5 end if true [undef nope 1] [2] k`, "[1 5]"},
 	}
+	// A body def that SHADOWS the enclosing k declines until the compiler's
+	// block scopes land (phase 2's second step); the interpreter's answer is
+	// the rule's.
+	ruleOrDecline(t, `def k 5 end for 2 [ def k 6 undef k ] 9`, "[9]")
 	for _, c := range inRegion {
 		gotC, ran, errC, gotI, errI := runBothEngines(t, c.src)
 		if !ran || errC != nil || errI != nil {

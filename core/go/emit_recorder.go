@@ -150,11 +150,12 @@ type EmitRecorder interface {
 	TopFrameOnly() bool
 	SuspendedNow() bool
 	BodyAnalysisGuard() func()
-	// CondBodyGuard is BodyAnalysisGuard for a KEPT CONDITION body run
-	// (RunCarrierCondBodyKeepDefs — an `if` condition or a `case`
-	// scrutinee, which runs unconditionally, exactly once, before the
-	// branch decision, its bindings kept — NUR212): the same capture of the
-	// armed fragment, marked UNCONDITIONAL, so a once-run defs-keeping body
+	// CondBodyGuard is BodyAnalysisGuard for a CONDITION body run
+	// (RunCarrierCondBody / RunCarrierCondBodyValues — an `if` condition
+	// or a `case` scrutinee, which runs unconditionally, exactly once,
+	// before the branch decision; a block under the rule, its defs rolled
+	// back): the same capture of the armed fragment, marked UNCONDITIONAL,
+	// so a once-run defs-keeping body
 	// word inside it (`if [do [def x 5] true] …`) may adopt its body's bind
 	// twins there exactly as it would at the root. Inactive: plain no-op.
 	CondBodyGuard() func()

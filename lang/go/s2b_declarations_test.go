@@ -280,7 +280,7 @@ func TestS2BDeclaredWordsKeepParity(t *testing.T) {
 		`if false [1]`,
 		`for 3 [1]`,
 		`for [0 3] [i]`,
-		`def n 0 end while [n lt 2] [def n (n add 1)] end n`,
+		`var n 0 end while [n lt 2] [var n (n add 1)] end n`,
 		// CompileOwnLowering: the check-mode constructors and binders.
 		`def f fn [[x:Integer] [Integer] [x add 1]] end f 2`,
 		`2 (x:Integer => [x add 1]) apply`,

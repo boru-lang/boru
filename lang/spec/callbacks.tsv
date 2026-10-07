@@ -86,7 +86,7 @@ def mk fn [[k:Integer][Function][([n:Integer] => [n add k])]]  each ([k:Integer]
 def sub2 fn [[a:Integer b:Integer][Integer][a sub b]]  def p ([b:Integer] => [sub2 10 b])  (p 3)	7	partial application written by hand as a capturing lambda
 def sub2 fn [[a:Integer b:Integer][Integer][a sub b]]  each ([b:Integer] => [sub2 10 b]) [1 2 3]	[9 8 7]	…driven over a list
 def sq fn [[n:Integer][Integer][n mul n]]  each ([x:Integer] => [(sq x) add 1]) [1 2 3]	[2 5 10]	a named fn CALLED inside a lambda callback, its result post-processed
-def inc fn [[n:Integer][Integer][n add 1]]  def i 0  while [i lt 3] [def i (i inc/v apply)] end i	3	DOES NOT COMPILE: "dynamic-scope def `i` of unpromoted computed value" — a callback applied in a LOOP body
+def inc fn [[n:Integer][Integer][n add 1]]  var i 0  while [i lt 3] [var i (i inc/v apply)] end i	3	a callback applied in a LOOP body, advancing the loop's var
 #
 # §5  A callback DRIVEN by each / fold / filter / for-each.
 def inc fn [[n:Integer][Integer][n add 1]]  [1 2 3] each inc/v	[2 3 4]	an `fn`-form callback over a list (stack spelling)

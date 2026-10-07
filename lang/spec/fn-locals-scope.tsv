@@ -164,23 +164,23 @@ def f fn [[b:Boolean] [Integer] [if b [def r 1 end r mul 10] [def r 2 end r mul 
 def f fn [[] [Integer] [def a 1 end if (a gt 0) [def b 2 end def c (b mul 3) end c] [0]]]  f	6	two defs inside one branch, the second computed from the first
 def f fn [[] [Integer] [def a 1 end def r (if true [def b 2 end b] [0]) end r add a]]  f	3	a branch-local def escaping as the `if` EXPRESSION's value
 def f fn [[n:Integer] [Integer] [if (n gt 0) [def s 'pos' end s size] [def s 'neg' end s size]]]  f 1	3	a String branch-local measured inside the branch
-def f fn [[n:Integer] [String] [if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 5	'big'	DOES NOT COMPILE: a def in EACH branch, read AFTER the if — force-compile: fn f: body result of unknown provenance
-def f fn [[n:Integer] [String] [if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 0	'small'	DOES NOT COMPILE: …the SAME row on the ELSE path — the pair that a then-arm-always lowering would miscompile
-def f fn [[n:Integer] [String] [def tag 'none' end if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 5	'big'	DOES NOT COMPILE: …even with the name pre-bound before the branch — same reason
-def f fn [[n:Integer] [String] [def tag 'none' end if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 0	'small'	DOES NOT COMPILE: …pre-bound, ELSE path — the join must beat the pre-bind, not fall back to it
-def f fn [[] [Integer] [def x 1 end if true [def x 9] [] end x]]  f	9	DOES NOT COMPILE: a ONE-sided conditional redefinition — same reason
-def f fn [[] [Integer] [def x 1 end if false [def x 9] [] end x]]  f	1	DOES NOT COMPILE: …one-sided on the FALSE path — the EMPTY arm must carry the incoming binding through
-def f fn [[] [Integer] [def a 1 end if true [def a 2 end] [] end a]]  f	2	DOES NOT COMPILE: …and with an explicit `end` closing the branch body
-def f fn [[] [Integer] [def a 1 end if false [def a 2 end] [] end a]]  f	1	DOES NOT COMPILE: …the explicit-`end` spelling on the FALSE path
-def f fn [[b:Boolean] [Integer] [def r 0 end if b [if true [def r 1] [def r 2]] [def r 3] end r]]  f true	1	DOES NOT COMPILE: NESTED conditional defs read after the outer if — same reason
-def f fn [[b:Boolean] [Integer] [def r 0 end if b [if true [def r 1] [def r 2]] [def r 3] end r]]  f false	3	DOES NOT COMPILE: …nested, OUTER else taken — the outer join reads an arm the inner if never entered
-def f fn [[b:Boolean] [Integer] [def r 0 end if b [if false [def r 1] [def r 2]] [def r 3] end r]]  f true	2	DOES NOT COMPILE: …nested, outer then and INNER else — the inner join feeds the outer one
-def f fn [[n:Integer] [Integer] [def r 0 end if (n gt 0) [def r 1] [def r 2] end r add 10]]  f 3	11	DOES NOT COMPILE: the conditionally-def'd local feeding an operator — force-compile: operand of unknown provenance or not statically materialisable at add
-def f fn [[n:Integer] [Integer] [def r 0 end if (n gt 0) [def r 1] [def r 2] end r add 10]]  f 0	12	DOES NOT COMPILE: …the operand spelling on the ELSE path — force-compile: operand of unknown provenance or not statically materialisable at add
-def f fn [[] [Integer] [def a 1 end if true [def a 2] [] end a mul 10]]  f	20	DOES NOT COMPILE: …the one-sided spelling of the same operand compile failure, at mul
-def f fn [[] [Integer] [def a 1 end if false [def a 2] [] end a mul 10]]  f	10	DOES NOT COMPILE: …one-sided operand, FALSE path — the empty arm's carry-through feeding mul
-def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] def q (half n) end if (q gt 1) [def q (half q)] [] end q]]  f 8	2	DOES NOT COMPILE: a local helper plus a conditional REBIND of a local — the combined real-code shape
-def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] def q (half n) end if (q gt 1) [def q (half q)] [] end q]]  f 2	1	DOES NOT COMPILE: …the local-helper rebind with the condition FALSE — q survives the branch unrebound
+def f fn [[n:Integer] [String] [def tag (if (n gt 0) ['big'] ['small']) end tag]]  f 5	'big'	the branch VALUE bound after the if — a def inside an arm ends with the arm (block-scopes.tsv)
+def f fn [[n:Integer] [String] [def tag (if (n gt 0) ['big'] ['small']) end tag]]  f 0	'small'	…the SAME row on the ELSE path
+def f fn [[n:Integer] [String] [var tag 'none' end if (n gt 0) [var tag 'big'] [var tag 'small'] end tag]]  f 5	'big'	…a var declared before the branch and assigned in each arm
+def f fn [[n:Integer] [String] [var tag 'none' end if (n gt 0) [var tag 'big'] [var tag 'small'] end tag]]  f 0	'small'	…the var, ELSE path — the assignment beats the declaration's value
+def f fn [[] [Integer] [var x 1 end if true [var x 9] [] end x]]  f	9	a ONE-sided conditional assignment of a frame var, read after the branch
+def f fn [[] [Integer] [var x 1 end if false [var x 9] [] end x]]  f	1	…one-sided on the FALSE path — the EMPTY arm leaves the declaration's value
+def f fn [[] [Integer] [var a 1 end if true [var a 2 end] [] end a]]  f	2	…and with an explicit `end` closing the branch body
+def f fn [[] [Integer] [var a 1 end if false [var a 2 end] [] end a]]  f	1	…the explicit-`end` spelling on the FALSE path
+def f fn [[b:Boolean] [Integer] [var r 0 end if b [if true [var r 1] [var r 2]] [var r 3] end r]]  f true	1	NESTED conditional assignments read after the outer if
+def f fn [[b:Boolean] [Integer] [var r 0 end if b [if true [var r 1] [var r 2]] [var r 3] end r]]  f false	3	…nested, OUTER else taken
+def f fn [[b:Boolean] [Integer] [var r 0 end if b [if false [var r 1] [var r 2]] [var r 3] end r]]  f true	2	…nested, outer then and INNER else
+def f fn [[n:Integer] [Integer] [var r 0 end if (n gt 0) [var r 1] [var r 2] end r add 10]]  f 3	11	the conditionally-assigned var feeding an operator
+def f fn [[n:Integer] [Integer] [var r 0 end if (n gt 0) [var r 1] [var r 2] end r add 10]]  f 0	12	…the operand spelling on the ELSE path
+def f fn [[] [Integer] [var a 1 end if true [var a 2] [] end a mul 10]]  f	20	…the one-sided spelling of the same operand, at mul
+def f fn [[] [Integer] [var a 1 end if false [var a 2] [] end a mul 10]]  f	10	…one-sided operand, FALSE path — the declaration's value feeding mul
+def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] var q (half n) end if (q gt 1) [var q (half q)] [] end q]]  f 8	2	a local helper plus a conditional ASSIGNMENT of a local var — the combined real-code shape
+def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] var q (half n) end if (q gt 1) [var q (half q)] [] end q]]  f 2	1	…the local-helper assignment with the condition FALSE — q keeps its declared value
 def f fn [[] [Integer] [def a 1 end def pick2 fn [[c:Boolean] [Function] [if c [([] => [a])] [([] => [0])]]] def h (pick2 true) end h]]  f	1	DOES NOT COMPILE: a local fn RETURNING a closure from a branch — force-compile: if: then-branch result of unknown provenance
 # §7  DYNAMIC-SCOPE reads — a callee sees the CALLER frame's bindings
 def f fn [[] [Integer] [def a 5 end g add 1]] def g fn [[] [Integer] [a mul 2]]  f	11	a module-level callee reads the CALLER's body-local (dynamic scope, no capture)
@@ -206,13 +206,13 @@ def f fn [[] [Integer] [def make2 fn [[] [Function] [def secret 42 end ([] => [s
 def f fn [[] [Integer] [def mk fn [[k:Integer] [Function] [([n:Integer] => [n add k])]] def p (mk 10) end p 5]]  f	15	…the classic make-adder, entirely inside one fn body
 #
 # §9  locals driven by LOOPS — for, while, for-each
-def f fn [[n:Integer] [Integer] [def acc 0 end for [1 n] [def acc (acc add i)] end acc]]  f 4	6	a body-local accumulated by redefinition inside a `for` body
-def f fn [[] [Integer] [def t 0 end for [1 4] [def t (t add i) end] end t mul 2]]  f	12	…and consumed by an operator after the loop
-def f fn [[] [Integer] [for [1 3] [def z i end] end z]]  f	2	a local FIRST defined inside the loop body survives the loop
-def f fn [[] [Integer] [def x 1 end while [x lt 5] [def x (x mul 2)] end x]]  f	8	a `while` loop driven entirely by redefinition of a body-local
-def f fn [[] [Integer] [def x 1 end def n 0 end while [x lt 5] [def x (x mul 2) end def n (n add 1)] end n]]  f	3	two locals advanced together in one while body
-def f fn [[] [Integer] [def i 0 end def t 0 end while [i lt 4] [def t (t add i) end def i (i add 1)] end t]]  f	6	the hand-rolled index loop — condition, accumulator and counter all locals
-def f fn [[] [Integer] [def tot 0 end for [1 4] [def tot (tot add i) end] end def avg (tot div 3) end avg]]  f	2	a local computed from a loop-accumulated local after the loop
+def f fn [[n:Integer] [Integer] [var acc 0 end for [1 n] [var acc (acc add i)] end acc]]  f 4	6	a body-local var accumulated by assignment inside a `for` body
+def f fn [[] [Integer] [var t 0 end for [1 4] [var t (t add i) end] end t mul 2]]  f	12	…and consumed by an operator after the loop
+def f fn [[] [Integer] [var z 0 end for [1 3] [var z i end] end z]]  f	2	a var declared before the loop and assigned by the body survives the loop (a def inside the body ends with the iteration: block-scopes.tsv)
+def f fn [[] [Integer] [var x 1 end while [x lt 5] [var x (x mul 2)] end x]]  f	8	a `while` loop driven entirely by assignment of a body-local var
+def f fn [[] [Integer] [var x 1 end var n 0 end while [x lt 5] [var x (x mul 2) end var n (n add 1)] end n]]  f	3	two local vars advanced together in one while body
+def f fn [[] [Integer] [var i 0 end var t 0 end while [i lt 4] [var t (t add i) end var i (i add 1)] end t]]  f	6	the hand-rolled index loop — condition, accumulator and counter all local vars
+def f fn [[] [Integer] [var tot 0 end for [1 4] [var tot (tot add i) end] end def avg (tot div 3) end avg]]  f	2	a local computed from a loop-accumulated var after the loop
 def f fn [[xs:List] [List] [def n 0 end each ([x:Integer] => [def n (n add 1) end x mul n]) xs]]  f [1 2 3]	[1 2 3]	DOES NOT COMPILE: …the each spelling; the check pass cannot see the enclosing local at all
 def f fn [[] [Integer] [def acc (flex []) end def collect fn [[x:Integer] [] [acc push x end]] for-each collect/v [1 2 3] end size acc]]  f	3	a local FLEX list mutated through a local fn driven by for-each (the pointer-backed idiom that DOES work)
 def f fn [[] [Integer] [def m (flex {n:0}) end for-each ([x:Integer] => [m set 'n' x]) [1 2 3] end m.n]]  f	3	…the flex MAP twin, written back per element
@@ -224,7 +224,7 @@ def f fn [[] [Integer] [def ops {inc: ([n:Integer] => [n add 1]) dec: ([n:Intege
 def f fn [[] [Integer] [def g fn [[x:Integer] [Integer] [x add 1]] def m {h: g/v} end 41 (m.h)/v apply]]  f	42	a body-local fn parked in a local map and called back
 def f fn [[cb:Function] [Integer] [def base2 5 end base2 cb/v apply]]  f ([x:Integer] => [x mul 2])	10	a Function PARAM applied to a body-local
 def f fn [[] [Integer] [def g fn [[x:Integer] [Integer] [x add 1]] def lst (push g/v []) end 41 (lst.0)/v apply]]  f	42	DOES NOT COMPILE: a body-local fn pushed into a local LIST — force-compile: function value reaches push (Stage 3)
-def f fn [[] [Integer] [def fns [] end for [0 2] [def fns (push ([] => [i]) fns)] end size fns]]  f	2	DOES NOT COMPILE: a loop building a local list of closures — same Stage 3 compile failure
+def f fn [[] [Integer] [var fns [] end for [0 2] [var fns (push ([] => [i]) fns)] end size fns]]  f	2	a loop building a local list of closures in a var
 def f fn [[] [Integer] [def mk fn [[] [Function] [def n 0 end ([] => [n add 1])]] def c (mk) end (c) add (c)]]  f	2	a local factory's closure is a SNAPSHOT, so two calls agree
 #
 # §11 a body-local that is a TYPE — both spellings decline
@@ -241,17 +241,17 @@ def t 0 end def g fn [[] [Integer] [def t 9 raise 'x']]  do [g] end t	error(x) 0
 def t 0 end def g fn [[t:Integer] [Integer] [raise 'x']]  do [g 9] end t	error(x) 0	…and so is its PARAM of the same name
 def t 0 end def h fn [[] [Integer] [def t 7 g]] def g fn [[] [Integer] [def t 9 raise 'x']]  do [h] end t	error(x) 0	…every frame the error leaves open unwinds, the caller's own local with the callee's
 #
-# §6b  a def in an arm with NO binding before the branch — bound only on the path that ran the arm (NUR110, closed 2026-09-22 by the branch-carried def)
-def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f true	9	a name bound in ONE arm, no prior binding, the arm RAN — the read after the merge loads it
-def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f false	ERROR:undefined_word	…the arm did NOT run: the name was never bound — the read raises exactly as the interpreter does (a def runs when its branch runs)
+# §6b  a def in an arm never reaches a read after the arm (block scoping, design/IMMUTABLE-DEF.1.md §2.1); the branch VALUE spelling `def z (if b [9] [0])` binds what the arm computed
+def f fn [[b:Boolean] [Integer] [def z (if b [9] [0]) end z]]  f true	9	a name bound to the branch VALUE — a def inside the arm would end with the arm (block-scopes.tsv)
+def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f false	ERROR:undefined_word	a def in ONE arm, read after the if, the arm NOT run: unbound — and an arm's def ends with the arm whether it ran or not, so this read raises on both lanes
 def f fn [[b:Boolean] [Integer] [if b [] [def z 9] end z]]  f true	ERROR:undefined_word	…the else-arm twin, then taken: unbound
-def f fn [[b:Boolean] [Integer] [if b [] [def z 9] end z]]  f false	9	…the else-arm twin, else taken: bound
-def g fn [[n:Integer] [Boolean] [n gt 5]]  if (g 9) [def op 1] [0] end op	1	the TOP-LEVEL spelling with a condition the checker cannot fold, arm taken
-def g fn [[n:Integer] [Boolean] [n gt 5]]  if (g 1) [def op 1] [0] end op	ERROR:undefined_word	…arm not taken: unbound, on both lanes (the shape NUR110 measured as a silent wrong answer)
+def f fn [[b:Boolean] [Integer] [def z (if b [0] [9]) end z]]  f false	9	…the else-arm twin as a branch value, else taken
+def g fn [[n:Integer] [Boolean] [n gt 5]]  def op (if (g 9) [1] [0]) end op	1	the TOP-LEVEL spelling with a condition the checker cannot fold: the branch value bound
+def g fn [[n:Integer] [Boolean] [n gt 5]]  if (g 1) [def op 1] [0] end op	ERROR:undefined_word	…the arm's def, arm not taken: unbound on both lanes (and an arm's def ends with the arm when it is taken, too)
 def f fn [[b:Boolean] [Integer] [if b [def z (1 add 8)] [] end z]]  f false	ERROR:undefined_word	…a COMPUTED arm value, arm not taken: still unbound, never a leaked nil
 def f fn [[] [Integer] [def out (if (3 gt 1) [def t2 5 end t2 add 1] [0]) end out]]  f	6	an arm's own local escaping as the arm's RESULT is the branch value, not a read of the name — both lanes 6
-# §6c  the slot means "bound since this frame started": an arm's binding made in one loop iteration is still read in the next
-for 2 [if (i eq 0) [def z 9] [] end z]	9 9	a name bound by an arm in iteration 0 is read in iteration 1, where the arm does not run
-def z 0 end for 2 [if (i eq 0) [def z 9] [] end z]	9 9	…and with a pre-loop binding: the loop-carried and the branch-carried name share one cell
-def acc 0 end for 3 [if (i eq 1) [def acc (acc add 10)] [def acc (acc add 1)]] end acc	12	both arms rebind a loop-carried accumulator, read after the loop
+# §6c  a var assigned in an arm is the enclosing cell: an assignment made in one loop iteration is read in the next
+var z 0 end for 2 [if (i eq 0) [var z 9] [] end z]	9 9	a var assigned by an arm in iteration 0 is read in iteration 1, where the arm does not run
+def f fn [[] [Integer] [var z 0 for 2 [if (i eq 0) [var z 9] []] z]] end f	9	…inside a fn frame: the var is the frame's, read once after the loop
+var acc 0 end for 3 [if (i eq 1) [var acc (acc add 10)] [var acc (acc add 1)]] end acc	12	both arms assign a loop-carried var, read after the loop
 #

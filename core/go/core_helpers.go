@@ -21,7 +21,7 @@ import (
 // SHADOW, not replace, an outer same-named binding — use
 // InstallFrameBinding instead.
 func InstallDef(r *Registry, name string, body Value, stackOnly ...bool) {
-	installDef(r, name, body, false, stackOnly...)
+	installDef(r, name, body, installOpts{stackOnly: len(stackOnly) > 0 && stackOnly[0]})
 }
 
 // InstallFrameBinding installs a per-call fn-frame binding (a named
@@ -35,7 +35,7 @@ func InstallDef(r *Registry, name string, body Value, stackOnly ...bool) {
 // fn-valued arg whose param name collides with a live caller param —
 // design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore).
 func InstallFrameBinding(r *Registry, name string, body Value) {
-	installDef(r, name, body, true)
+	installDef(r, name, body, installOpts{shadow: true})
 	r.Defs.MarkTopFrame(name)
 }
 
@@ -57,10 +57,37 @@ func InstallCapturedBinding(r *Registry, cb CapturedBinding) {
 // where no var NAME is visible within the frame (§2.3): installDef's push,
 // with the entry marked Var (varType for the typed form, nil untyped). A
 // declaration is a binding like a def's, so the def census and the bind
-// ledger see it as one.
+// ledger see it as one. The mark is set BEFORE the bind ledger captures the
+// entry (installOpts.varMark): the twin that replays the declaration on the
+// compiled lane must replay a VAR, or a unit's later assignment finds a
+// plain def and declares a fresh cell beside it — `var x 0 [1 2] each [var
+// x 5] x add 1` answered 1 for the interpreter's 6 once the body's block
+// retired that cell (2026-10-07), and the extra level was the stack the
+// split-bound rows measured one deeper (branch_carried_split_test.go).
 func InstallVar(r *Registry, name string, v Value, varType *Type) {
-	installDef(r, name, v, false)
+	installDef(r, name, v, installOpts{varMark: true, varType: varType})
 	r.Defs.MarkTopVar(name, varType)
+}
+
+// installOpts selects installDef's install discipline.
+type installOpts struct {
+	// shadow is InstallFrameBinding's lexical SHADOW (a param, a capture):
+	// no overlap removal, no census, no bind ledger note.
+	shadow bool
+	// stackOnly is InstallDef's variadic flag, handed to installFnDef.
+	stackOnly bool
+	// varMark marks the pushed entry a var (varType for the typed form)
+	// before the bind ledger captures it — InstallVar's declaration.
+	varMark bool
+	varType *Type
+}
+
+// markInstalled stamps the entry installDef just pushed with the options'
+// marks, ahead of the ledger note that captures it.
+func (o installOpts) markInstalled(r *Registry, name string) {
+	if o.varMark {
+		r.Defs.MarkTopVar(name, o.varType)
+	}
 }
 
 // AssignVar replaces the value of name's top binding — a var of the current
@@ -70,6 +97,9 @@ func InstallVar(r *Registry, name string, v Value, varType *Type) {
 // the dispatch cache and every plan a read of name baked, as any mutator's
 // does, and a reader sees the new value at its next lookup.
 func AssignVar(r *Registry, name string, v Value, pos SrcPos) {
+	if r.Check.IsActive() {
+		r.assignVarUnitGate(name)
+	}
 	if r.Check.IsActive() && r.Check.VarAssigned != nil {
 		// The body under analysis assigns this var: record the cell's
 		// value before its first assignment (CheckState.VarAssigned).
@@ -81,6 +111,38 @@ func AssignVar(r *Registry, name string, v Value, pos SrcPos) {
 	r.Defs.Replace(name, v)
 	noteRebind(r, name)
 	r.NoteBindTransition(BindDefReplace, name, pos)
+}
+
+// assignVarUnitGate keeps a CLOSURE unit from assigning a var of an
+// ENCLOSING FRAME: a callback body compiled as its own unit inside a fn
+// frame assigning the frame's var — `def f fn [[][Integer] [var t 0 each
+// [var t (t add 1)] [1 2] drop t]]`. On the interpreter the body is a block
+// of the frame and assigns the frame's cell; the closure unit's lowering
+// wrote a cell the frame never read and answered 0 for 2 — a wrong answer,
+// so the closure path declines until the compiler's block scopes land
+// (phase 2's second step). The shape itself still compiles: the dyn-body
+// backstop hosts the body at run time as the block it is (eng
+// vm_token_body.go), where its `var t …` assigns the frame's live cell
+// and the frame's later reads seat live. A module var (scope 0) is a live
+// cell on both lanes and assigns from any unit; a var of the unit's own
+// frame, or of a block open inside it, is the unit's own; a `do` body
+// compiles into the frame around it (UnitBaselineScope skips its
+// transparent baseline) and assigns that frame's vars as the frame does.
+func (r *Registry) assignVarUnitGate(name string) {
+	e, ok := r.Defs.TopEntry(name)
+	if !ok || e.Scope == 0 {
+		return
+	}
+	base, has := r.UnitBaselineScope()
+	if !has {
+		return
+	}
+	varIdx, okV := r.Defs.ScopeIndex(e.Scope)
+	baseIdx, okB := r.Defs.ScopeIndex(base)
+	if !okV || !okB || varIdx >= baseIdx {
+		return
+	}
+	r.Check.Recorder().MarkUncompilable("a body unit assigns the enclosing frame's var `" + name + "` (the compiler's block scopes land with phase 2's second step)")
 }
 
 // IsVarBinding reports whether name's top binding is a var (the var word's
@@ -104,7 +166,8 @@ func UninstallFrameBinding(r *Registry, name string) {
 	r.Defs.Pop(name)
 }
 
-func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...bool) {
+func installDef(r *Registry, name string, body Value, o installOpts) {
+	shadow := o.shadow
 	// A root-level def under the check pass — not a frame binding, not a
 	// def inside a fn body's analysis — is a late-binding site for the
 	// hint (NUR097).
@@ -144,7 +207,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 	if !shadow {
 		noteRebind(r, name)
 	}
-	isStackOnly := len(stackOnly) > 0 && stackOnly[0]
+	isStackOnly := o.stackOnly
 
 	// Attribute a body-local def to its enclosing fn for the dynamic-scope
 	// undefined-word rescue (check mode only; no-op at the top level or outside
@@ -185,6 +248,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		if rebound, ok := WrapperUnderName(r, name, fnDef); ok {
 			r.Defs.Push(name, rebound)
 			r.stampDefSite(name)
+			o.markInstalled(r, name)
 			if !shadow {
 				r.NoteBindTransition(BindDef, name, body.Pos())
 			}
@@ -221,9 +285,19 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		if stack := r.Defs.Entries(name); !shadow && len(stack) > 0 {
 			filtered := stack[:0:0]
 			changed := false
+			// Inside a BLOCK, an overlapping entry of an ENCLOSING scope is
+			// not dropped: the block's def SHADOWS it — pushed above it and
+			// popped with the block (block.go), so the enclosing binding
+			// stands once the block ends, where a drop lost it for good (a
+			// loop body's `def h (lambda)` over the frame's `h` left `h`
+			// unbound after the loop). The dispatch union lists the shadow
+			// first (lookupUncachedBridged), so an equal-score tie inside the
+			// block goes to the block's overload. Phase 3 refuses the install
+			// itself (design/IMMUTABLE-DEF.1.md #2).
+			cur, inBlock := r.Defs.ScopeID(), r.Defs.ScopeKindNow() == ScopeBlock
 			for _, entry := range stack {
 				oldFn, ok := entry.Body.Data.(FnDefInfo)
-				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(oldFn, fnDef) {
+				if ok && !hasLockedSig(oldFn.Signatures) && FnDefsOverlap(oldFn, fnDef) && !(inBlock && entry.Scope != cur) {
 					changed = true
 					dropped = entry.Body
 					continue
@@ -308,6 +382,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 		// DefStack entry. The 0-arg fallback and cross-stack overloading
 		// are synthesised on demand by Registry.Lookup → aggregateDispatch.
 		installFnDef(r, name, fnDef, !shadow, isStackOnly)
+		o.markInstalled(r, name)
 		if fresh && r.analysisInSpecArm() && len(fnDef.Captured) == 0 {
 			// A FRESH capture-free def inside a branch arm the model cannot
 			// decide is speculative too (bound at run time only if the arm
@@ -377,6 +452,7 @@ func installDef(r *Registry, name string, body Value, shadow bool, stackOnly ...
 
 	r.Defs.Push(name, body)
 	r.stampDefSite(name)
+	o.markInstalled(r, name)
 	if !shadow {
 		r.NoteBindTransition(BindDef, name, body.Pos())
 	}

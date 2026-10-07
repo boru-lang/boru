@@ -303,18 +303,18 @@ func TestInstallDefDoesNotLowerCapturingRedefinitionInFnBody(t *testing.T) {
 	es := newS5BEmit()
 	r.Check.Emit = es
 	sig := func() Signature { return Signature{Params: []FnParam{{Name: "z", Type: TInteger}}} }
-	installDef(r, "p", NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}), false)
+	installDef(r, "p", NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}), installOpts{})
 	capturing := NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()},
 		Captured: []CapturedBinding{{Name: "k", Value: NewCarrier(TInteger)}}})
 	r.Check.FnBodyDepth = 1
-	installDef(r, "p", capturing, false)
+	installDef(r, "p", capturing, installOpts{})
 	if len(es.uncompilable) != 1 || !strings.Contains(es.uncompilable[0], "redefined inside a fn body by a capturing fn value") {
 		t.Errorf("a capturing redefinition inside a fn body declines: %v", es.uncompilable)
 	}
 	es.uncompilable = nil
-	installDef(r, "p", NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}), false)
+	installDef(r, "p", NewFunction(FnDefInfo{Anonymous: true, Signatures: []Signature{sig()}}), installOpts{})
 	r.Check.FnBodyDepth = 0
-	installDef(r, "p", capturing, false)
+	installDef(r, "p", capturing, installOpts{})
 	if len(es.uncompilable) != 0 {
 		t.Errorf("a capture-free literal in a fn body and a top-level capturing value are not declined: %v", es.uncompilable)
 	}
@@ -340,11 +340,11 @@ func TestInstallDefDoesNotLowerSpecFamilyRedefinitionInFnBody(t *testing.T) {
 	r := compileCheckRegistry(t)
 	es := newS5BEmit()
 	r.Check.Emit = es
-	installDef(r, "p", lit(), false)
+	installDef(r, "p", lit(), installOpts{})
 	r.Check.SpecFnNames = map[string]bool{"p": true}
 	r.PushFnBaseline(r.Defs.Snapshot())
 	r.Check.FnBodyDepth = 1
-	installDef(r, "p", lit(), false)
+	installDef(r, "p", lit(), installOpts{})
 	if len(es.uncompilable) != 1 || !strings.Contains(es.uncompilable[0], "redefined inside a fn body replaces a module-scope speculative-family overload") {
 		t.Errorf("a module-scope spec-family redefinition inside a fn body declines: %v", es.uncompilable)
 	}
@@ -358,8 +358,8 @@ func TestInstallDefDoesNotLowerSpecFamilyRedefinitionInFnBody(t *testing.T) {
 	r2.PushFnBaseline(r2.Defs.Snapshot()) // p absent at the baseline
 	r2.Check.SpecFnNames = map[string]bool{"p": true}
 	r2.Check.FnBodyDepth = 1
-	installDef(r2, "p", lit(), false) // created in-fn
-	installDef(r2, "p", lit(), false) // redefined in-fn
+	installDef(r2, "p", lit(), installOpts{}) // created in-fn
+	installDef(r2, "p", lit(), installOpts{}) // redefined in-fn
 	if len(es2.uncompilable) != 0 {
 		t.Errorf("an in-function spec family is not declined (the baseline gate): %v", es2.uncompilable)
 	}
@@ -368,10 +368,10 @@ func TestInstallDefDoesNotLowerSpecFamilyRedefinitionInFnBody(t *testing.T) {
 	r3 := compileCheckRegistry(t)
 	es3 := newS5BEmit()
 	r3.Check.Emit = es3
-	installDef(r3, "p", lit(), false)
+	installDef(r3, "p", lit(), installOpts{})
 	r3.PushFnBaseline(r3.Defs.Snapshot())
 	r3.Check.FnBodyDepth = 1
-	installDef(r3, "p", lit(), false)
+	installDef(r3, "p", lit(), installOpts{})
 	if len(es3.uncompilable) != 0 {
 		t.Errorf("a non-family capture-free redefinition in a fn body is not declined: %v", es3.uncompilable)
 	}
@@ -379,7 +379,7 @@ func TestInstallDefDoesNotLowerSpecFamilyRedefinitionInFnBody(t *testing.T) {
 	// specFamilyAtFnBaseline: false with no enclosing baseline, true when the
 	// binding sits at/below it, false above it.
 	r4 := compileCheckRegistry(t)
-	installDef(r4, "p", lit(), false)
+	installDef(r4, "p", lit(), installOpts{})
 	if specFamilyAtFnBaseline(r4, "p") {
 		t.Error("no enclosing fn baseline: not baseline-scoped")
 	}
@@ -387,7 +387,7 @@ func TestInstallDefDoesNotLowerSpecFamilyRedefinitionInFnBody(t *testing.T) {
 	if !specFamilyAtFnBaseline(r4, "p") {
 		t.Error("a binding at the baseline is baseline-scoped")
 	}
-	installDef(r4, "q", lit(), false) // q created above the baseline
+	installDef(r4, "q", lit(), installOpts{}) // q created above the baseline
 	if specFamilyAtFnBaseline(r4, "q") {
 		t.Error("a binding above the baseline is not baseline-scoped")
 	}

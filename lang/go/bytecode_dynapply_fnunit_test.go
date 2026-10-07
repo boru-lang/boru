@@ -116,10 +116,10 @@ func TestFnUnitLoopApplyFlowCrossesIsland(t *testing.T) {
 	rows := []struct{ src, want string }{
 		// row 32: apply-LAST hoist; break in the applied body terminates the
 		// enclosing compiled loop (acc stops at 1).
-		{`import module [def looper fn [[Function] [Integer] [def acc 0 for 5 [def acc (acc add 1) (args.0 1)] acc]] export "L" {looper: looper/v, brk: (fn [[x:Integer] [Any] [break]])}] end L.looper L.brk`, "[1]"},
+		{`import module [def looper fn [[Function] [Integer] [var acc 0 for 5 [var acc (acc add 1) (args.0 1)] acc]] export "L" {looper: looper/v, brk: (fn [[x:Integer] [Any] [break]])}] end L.looper L.brk`, "[1]"},
 		// row 33: apply-FIRST source order; continue skips the statements
 		// after the apply on every iteration (acc stays 0).
-		{`import module [def looper fn [[Function] [Integer] [def acc 0 for 5 [(args.0 1) def acc (acc add 1)] acc]] export "L" {looper: looper/v, skp: (fn [[x:Integer] [Any] [continue]])}] end L.looper L.skp`, "[0]"},
+		{`import module [def looper fn [[Function] [Integer] [var acc 0 for 5 [(args.0 1) var acc (acc add 1)] acc]] export "L" {looper: looper/v, skp: (fn [[x:Integer] [Any] [continue]])}] end L.looper L.skp`, "[0]"},
 	}
 	for _, c := range rows {
 		a, err := New()

@@ -10,38 +10,31 @@ import "testing"
 // compiled to a different answer, silently — and each now declines loudly,
 // with the interpreter's answer pinned beside it.
 
-// A scrutinee that BINDS a name and nets NOTHING: the interpreter keeps the
-// binding and raises case_error. No lowering keeps the binding (only the
-// single-clause desugar runs the scrutinee as a kept condition), so the
-// recording pass declines rather than trap over a model that dropped it.
-func TestCaseBindingScrutineeNettingNothingDeclines(t *testing.T) {
-	requireLoudDeclineErr(t, `def x 1 end case [def x 5] [5 "five" "other"] end x`,
-		"the scrutinee binds a name the interpreter keeps past it", "case_error")
+// A scrutinee that BINDS a name and nets NOTHING: the scrutinee is a block
+// (design §2.1, phase 2), so its def ends with it, and the interpreter
+// raises case_error over nothing; the compiled lane traps the same error.
+func TestCaseBindingScrutineeNettingNothingTraps(t *testing.T) {
+	blockRuleOrParity(t, `def x 1 end case [def x 5] [5 "five" "other"] end x`, "ERROR:case: value expression produced no value")
 }
 
-// The same bindings inside a body the compiled program ISLANDS (a `do` whose
-// body declines to a closure) or runs per element. That body's model is a
-// suspended run that recorded nothing for the case and, until
-// keepScrutineeBindings, never ran the scrutinee: the model after the body
-// still held x = 1 and the read after it was baked from it. The first four
-// rows compiled to `[error(…) 1]`, `[one 1]`, `[error(…) 1]` (a desugarable
-// binding case beside a declining one) and `[caught 1]`; the last compiled
-// to the right answer only because its closure re-read x dynamically, over a
-// model just as stale. Kept in the model, the install reaches the bind
-// ledger, whose twin regime has no placement for it and declines — as it
-// already did for the same binding in an `if` condition
-// (`do [if [def x 5 true] [1] [2]]`, `[1 2] each [if [def x 9 true] …]`).
-func TestCaseScrutineeBindingsInIslandedBodyDecline(t *testing.T) {
-	const twin = "twin regime: a bind transition has no stream placement"
+// The same scrutinees inside a body the compiled program ISLANDS (a `do`
+// whose body declines to a closure) or runs per element: the scrutinee's
+// def is its own block local on both lanes, so the read after the body is
+// the root's x — the answer the stale model once baked by accident is the
+// rule's answer now; the compiled lane agrees where it compiles and declines
+// the block shadow where it does not.
+func TestCaseScrutineeBindingsInIslandedBodyAgree(t *testing.T) {
+	// The scrutinee is a block since phase 2 (design §2.1): its def ends
+	// with it, and the read after the body sees the root's x.
 	const noValue = "error(case: value expression produced no value to dispatch on)"
 	for _, c := range []struct{ src, want string }{
-		{`def x 1 end do [case [def x 5] [5 "five" "other"]] end x`, "[" + noValue + " 5]"},
-		{`def x 1 end do [case [def x 5 1] [1 "one" 2 "two" "other"]] end x`, "[one 5]"},
-		{`def x 1 end do [case [def x 5 5] [5 "five" "other"] drop case [def y 5] [5 "a" "b"]] end x`, "[" + noValue + " 5]"},
-		{`def x 1 end do [case [def x 5] [5 "five" "other"]] error [drop "caught"] end x`, "[caught 5]"},
-		{`def x 1 end [1 2] each [case [def x 9 x] [9 "nine" "other"]] end x`, "[['nine' 'nine'] 9]"},
+		{`def x 1 end do [case [def x 5] [5 "five" "other"]] end x`, "[" + noValue + " 1]"},
+		{`def x 1 end do [case [def x 5 1] [1 "one" 2 "two" "other"]] end x`, "[one 1]"},
+		{`def x 1 end do [case [def x 5 5] [5 "five" "other"] drop case [def y 5] [5 "a" "b"]] end x`, "[" + noValue + " 1]"},
+		{`def x 1 end do [case [def x 5] [5 "five" "other"]] error [drop "caught"] end x`, "[caught 1]"},
+		{`def x 1 end [1 2] each [case [def x 9 x] [9 "nine" "other"]] end x`, "[['nine' 'nine'] 1]"},
 	} {
-		requireLoudDecline(t, c.src, twin, c.want)
+		blockRuleOrParity(t, c.src, c.want)
 	}
 }
 

@@ -110,7 +110,7 @@ func TestMerge519RecordTrapUnderAnOptimisticMatch(t *testing.T) {
 	// trap declines (recordGuardedTrap). The program must never answer
 	// differently from the interpreter — today it declines loudly.
 	src := x + `def mk fn [[][Any][[1 2]]] end def b fn [[][Boolean][true]] end ` +
-		`if (b) [def f fn [[a:List b:List][Any][b]]] [def f fn [[a:List b:List][Any][a]]] end f (mk) [x/u]`
+		`def f (if (b) [fn [[a:List b:List][Any][b]]] [fn [[a:List b:List][Any][a]]]) end f (mk) [x/u]`
 	gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
 	if codeOf(errI) != "illegal_ref" {
 		t.Fatalf("%q: the interpreter raises illegal_ref, got %v / %v", src, gotI, errI)
@@ -137,12 +137,19 @@ func TestMerge519TypeValueSeedAndRebind(t *testing.T) {
 		{`fold ([a:Any kv:KeyVal] => [typeof a]) {x: 1} Integer`, "[Number]"},
 		{`fold ([a:Any kv:KeyVal] => [a is Number]) {x: 1} Integer`, "[true]"},
 		{`fold ([a:Any kv:KeyVal] => [a add 1]) {x: 1} Integer`, "ERROR:cannot call `add`"},
-		// A multi-run body rebinds a name whose start binding is a type value.
-		{`def t Integer end [1 2] each [drop typeof t def t 5] t`, "[[Number Integer] 5]"},
-		{`def t Integer end [1 2] each [drop def u (typeof t) def t 5 u] t`, "[[Number Integer] 5]"},
-		{`def t Integer end fold [drop typeof t def t 5] [10 20] 0`, "[Integer]"},
-		{`def t Integer end scan [def t 5] [10 20] t`, "[[10 20] 5]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// A multi-run body's def over a name whose binding is a type value: the
+	// body's own since phase 2 (each element's run shadows and retires it),
+	// so the start binding is what every element and the read after see;
+	// the compiled lane declines the shadow until its block scopes land.
+	for _, c := range []struct{ src, want string }{
+		{`def t Integer end [1 2] each [drop typeof t def t 5] t`, "[[Number Number] Integer]"},
+		{`def t Integer end [1 2] each [drop def u (typeof t) def t 5 u] t`, "[[Number Number] Integer]"},
+		{`def t Integer end fold [drop typeof t def t 5] [10 20] 0`, "[Number]"},
+		{`def t Integer end scan [def t 5] [10 20] t`, "[[10 20] Integer]"},
+	} {
+		ruleOrDecline(t, c.src, c.want)
 	}
 }

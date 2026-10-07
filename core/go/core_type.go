@@ -349,6 +349,7 @@ func installTypeBinding(r *Registry, name string, def *Type, pushed Value) {
 	}
 	standing, has := r.Defs.TopEntry(name)
 	r.noteBindCensus(name, standing, has, false, nil)
+	r.blockTypeGate(name)
 	r.Defs.PushType(name, def, pushed)
 	r.stampDefSite(name)
 	r.NoteTypeInstall(name, pushed.Pos())
@@ -676,6 +677,7 @@ func InstallTypeBody(r *Registry, name string, body Value) error {
 		}
 		standing, has := r.Defs.TopEntry(name)
 		r.noteBindCensus(name, standing, has, false, nil)
+		r.blockTypeGate(name)
 		r.Defs.PushTypeAdopted(name, canon, body)
 		r.stampDefSite(name)
 		r.NoteTypeInstall(name, body.Pos())

@@ -441,12 +441,10 @@ def seq-main-do fn [[argv:List] [Integer] [
 # only; the read/print loop lives in seq-emit and stays compiled.
 def seq-main fn [[argv:List] [Integer] [
   def r (do [
-    def c (seq-main-do argv)
-    c
+    seq-main-do argv
   ] error [
     def e end
-    def c (seq-fail (e.message))
-    c
+    seq-fail (e.message)
   ])
   r
 ]]

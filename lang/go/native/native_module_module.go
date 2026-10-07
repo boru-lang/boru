@@ -698,6 +698,15 @@ func linkModuleDebugParent(r *Registry, desc ModuleDesc) {
 	}
 }
 
+// installNamespace binds a module namespace as name — every import install
+// routes through it so the check pass notes a namespace bound inside a block
+// (core.NoteBlockImport: the compiled lane declines a RUN-TIME read of it,
+// since the block retires the only install the compiled program has).
+func installNamespace(r *Registry, name string, ns Value) {
+	core.NoteBlockImport(r, name)
+	InstallDef(r, name, ns)
+}
+
 func installExports(r *Registry, desc ModuleDesc, names []string) error {
 	linkModuleDebugParent(r, desc)
 	mod := NewModuleInstance(desc)
@@ -710,13 +719,13 @@ func installExports(r *Registry, desc ModuleDesc, names []string) error {
 		// ledgered row exposes it; that is a reason to fix it rather than a
 		// reason it does not matter.
 		for _, name := range sortedExportNames(desc) {
-			InstallDef(r, name, NewModuleNamespace(name, desc.Exports[name], mod))
+			installNamespace(r, name, NewModuleNamespace(name, desc.Exports[name], mod))
 		}
 		return transplantWordExtensions(r, desc)
 	}
 	for _, name := range names {
 		if exportMap, ok := desc.Exports[name]; ok {
-			InstallDef(r, name, NewModuleNamespace(name, exportMap, mod))
+			installNamespace(r, name, NewModuleNamespace(name, exportMap, mod))
 		}
 	}
 	return transplantWordExtensions(r, desc)
@@ -848,7 +857,7 @@ func installRenamedExports(r *Registry, desc ModuleDesc, renameList []Value) err
 			if !ok {
 				return fmt.Errorf("import: export %q not found in module", fromName)
 			}
-			InstallDef(r, toName, NewModuleNamespace(fromName, exportMap, mod))
+			installNamespace(r, toName, NewModuleNamespace(fromName, exportMap, mod))
 		}
 	} else {
 		// Single rename pair: [from to]
@@ -861,7 +870,7 @@ func installRenamedExports(r *Registry, desc ModuleDesc, renameList []Value) err
 		if !ok {
 			return fmt.Errorf("import: export %q not found in module", fromName)
 		}
-		InstallDef(r, toName, NewModuleNamespace(fromName, exportMap, mod))
+		installNamespace(r, toName, NewModuleNamespace(fromName, exportMap, mod))
 	}
 	// Renaming the namespace does not opt out of the module's word
 	// extensions — the extension targets the base word, not the
@@ -881,7 +890,7 @@ func installSingleRename(r *Registry, desc ModuleDesc, newName string) error {
 		return fmt.Errorf("import: rename requires module with exactly one export, got %d", len(desc.Exports))
 	}
 	for name, exportMap := range desc.Exports {
-		InstallDef(r, newName, NewModuleNamespace(name, exportMap, mod))
+		installNamespace(r, newName, NewModuleNamespace(name, exportMap, mod))
 	}
 	return transplantWordExtensions(r, desc)
 }
@@ -1047,7 +1056,7 @@ func ensureExportsBound(r *Registry, desc ModuleDesc) {
 	// must not be reading from a map.
 	for _, name := range sortedExportNames(desc) {
 		if !r.Defs.Has(name) {
-			InstallDef(r, name, NewModuleNamespace(name, desc.Exports[name], mod))
+			installNamespace(r, name, NewModuleNamespace(name, desc.Exports[name], mod))
 		}
 	}
 }

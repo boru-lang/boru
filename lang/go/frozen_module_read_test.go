@@ -111,8 +111,8 @@ func TestModuleReadRebindCompilesWithParity(t *testing.T) {
 		// The MULTI-RUN twin: an each body leaks its LAST iteration's def to
 		// module scope; the rebind re-records the unit (the memo's key), and
 		// the top-level read after the body seats live (NUR200's close).
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1] each [def k 9  k]  f`, "k", "value", "7 [9] 7 for 7 [9] 11"},
-		{`def k 5  def f fn [[] [Integer] [k add 2]]  f  [1 2] each [def k 9  k]  f`, "k", "value", "7 [9 9] 7 for 7 [9 9] 11"},
+		{`var k 5  def f fn [[] [Integer] [k add 2]]  f  [1] each [var k 9  k]  f`, "k", "value", "7 [9] 7 for 7 [9] 11"},
+		{`var k 5  def f fn [[] [Integer] [k add 2]]  f  [1 2] each [var k 9  k]  f`, "k", "value", "7 [9 9] 7 for 7 [9 9] 11"},
 		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  do [def T String]  f`, "T", "type", "true true for true false"},
 		{`def g fn [[][Integer][1]]  def f fn [[] [Integer] [g]]  f  ` +
 			`do [def g fn [[][Integer][2]]]  f`, "g", "call target", "1 1 for 1 2"},
@@ -174,7 +174,7 @@ func TestModuleReadRebindSoundFallbacks(t *testing.T) {
 		// the parity test (NUR200's close): a TYPE the each body installs
 		// per element still declines on the twin regime's placement.
 		{`def T Integer  def f fn [[] [Boolean] [5 is T]]  f  [1] each [def T String  1]  f`,
-			"twin regime: a bind transition has no stream placement", ""},
+			"block-local def `T` shadows an enclosing binding", ""},
 	}
 	for _, c := range cases {
 		src := c.src

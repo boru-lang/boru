@@ -21,10 +21,10 @@ func TestComputedBodyRebindsTheTypeBareRead(t *testing.T) {
 		// Operand order, a paren, a multi-run body, no `end`, a read after.
 		{f + `1 add t]] end f (quote [def t "s" 1])`, "[1s]"},
 		{f + `(t add 1)]] end f (quote [def t "s" 1])`, "[s1]"},
-		{`def f fn [[b:List][Any][def t 0 [1 2] each b drop t add 1]] end f (quote [def t "s"])`, "[s1]"},
+		{`def f fn [[b:List][Any][def t 0 [1 2] each b drop t add 1]] end f (quote [def t "s"])`, "[1]"},
 		{mk + `do (mk) x add 1`, "[s1]"},
 		{mk + `do (mk) end x add 1 end x`, "[s1 s]"},
-		{mk + `[1 2] each (mk) end x add 1`, "[[1 2] s1]"},
+		{mk + `[1 2] each (mk) end x add 1`, "[[1 2] 1]"},
 		{`def x 0 end def mk fn [[][List][quote [def x 2.5]]] end do (mk) end x add 1`, "[3.5]"},
 		{f + `t mul 2]] end f (quote [def t 2.5 1])`, "[5.0]"},
 		// The same type, and no rebinding: unchanged answers.

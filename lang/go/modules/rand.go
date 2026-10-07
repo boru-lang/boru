@@ -399,12 +399,15 @@ func randNativesForState(state *randState) []native.NativeFunc {
 			// RNG draws advance the same module generator either way).
 			//
 			// BodyMultiRunKeepsDefs: the handler runs the body n times on the
-			// shared registry with no def cleanup (InvokeBody compiled,
-			// RunPooled interpreted) — each's leak — so a body `def` rebinds
-			// the name for the next run and for the rest of the program
-			// (NUR330: `def k 5 Rand.list-of [def k 1 k] 1 k` is [[1] 1]).
-			// The ReturnsFn runs the body in the pass's model the way each's
-			// does, so the pass sees the leak too.
+			// shared registry (InvokeBody compiled, RunBlockResolved
+			// interpreted) — each's shape. Since phase 2 (design/IMMUTABLE-
+			// DEF.1.md §2.1) each run is a BLOCK: a body `def` ends with the
+			// run, so `def k 5 Rand.list-of [def k 1 k] 1 k` is [[1] 5] and the
+			// body assigns a `var` to carry a value out (NUR330's leak,
+			// [[1] 1], was the shape before the rule). The flag keeps the
+			// compiler's resident bridge for the body's installs, which the
+			// VM's closure seam retires per run as the interpreter does; the
+			// ReturnsFn runs the body in the pass's model the way each's does.
 			Callable: &native.CallableSpec{BodyPos: 0, BodyOut: 1, BodyResultTop: true, BodyMultiRunKeepsDefs: true, Inputs: func(_ []native.Value) []native.Value {
 				return []native.Value{}
 			}},
@@ -467,7 +470,10 @@ func randNativesForState(state *randState) []native.NativeFunc {
 						return []native.Value{native.NewList(out)}, nil
 					}
 					for i := int64(0); i < n; i++ {
-						res, err := native.RunPooled(r, append([]native.Value(nil), bodyTokens...))
+						// Each run is a BLOCK of the caller's scope: a def the
+						// body makes ends with the run (core RunBlockResolved),
+						// as the compiled closure's run ends it.
+						res, err := native.RunBlockResolved(r, nil, append([]native.Value(nil), bodyTokens...))
 						if err != nil {
 							return nil, fmt.Errorf("evaluating Rand.list-of[%d]: %w", i, err)
 						}

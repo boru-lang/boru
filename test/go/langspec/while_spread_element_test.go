@@ -21,7 +21,7 @@ func TestWhileSpreadElementCoversEveryResidualValue(t *testing.T) {
 	for _, tc := range []struct{ name, src string }{
 		{"mixed residual types", `def zc (flex {n:0}) end while [(zc get 'n') lt 2] [ set 'n' ((zc get 'n') add 1) zc end (zc get 'n') ]`},
 		{"the graduated row", `def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add 1) c end if ((c get 'n') eq 2) [continue] end (c get 'n') ]`},
-		{"single-typed body", `def zn 0 end while [zn lt 2] [def zn (zn add 1) zn zn] end 'z'`},
+		{"single-typed body", `var zn 0 end while [zn lt 2] [var zn (zn add 1) zn zn] end 'z'`},
 	} {
 		t.Run(tc.name, func(t *testing.T) {
 			checked, flagged := checkRow(t, tc.src)

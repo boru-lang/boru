@@ -83,8 +83,10 @@ func TestNUR330CarrierSchemaBodyDefs(t *testing.T) {
 	}
 	for _, c := range []struct{ src, want string }{
 		{rnd + `def k 5 def f fn [[m:Map][Any][Rand.map-from m]] end f {a:[def k 1 k]} k`, "[{a:1} 1]"},
-		{rnd + `def k 5 def f fn [[m:Map][Any][Rand.map-from m]] end f {a:(quote [def k 1 k])} k`, "[{a:1} 1]"},
-		{rnd + `def k 5 def f fn [[m:Map][Any][Rand.map-from m]] end [(f {a:(quote [def k 1 k])}) k]`, "[[{a:1} 1]]"},
+		// A quoted body runs inside map-from as a BLOCK (phase 2): its def is
+		// the body's own, and k after the call is the module's 5.
+		{rnd + `def k 5 def f fn [[m:Map][Any][Rand.map-from m]] end f {a:(quote [def k 1 k])} k`, "[{a:1} 5]"},
+		{rnd + `def k 5 def f fn [[m:Map][Any][Rand.map-from m]] end [(f {a:(quote [def k 1 k])}) k]`, "[[{a:1} 5]]"},
 		{rnd + `def k 5 def f fn [[m:Map][Any][Rand.map-from m k]] end f {a:(quote [def k 1 k])}`, "ERROR"},
 		{rnd + `def k 5 def f fn [[b:List][Any][def s {a: b} Rand.map-from s]] end f (quote [def k 1 k]) k`, "[{a:1} 5]"},
 		// Negative: a body that binds nothing reads the same k on both
@@ -115,8 +117,8 @@ func TestNUR353BodyMapLoopIndexAndEscape(t *testing.T) {
 		{rnd + `def f fn [[m:Map][Any][for 2 [Rand.map-from m]]] end f {a:(quote [i])}`, "ERROR:got 2 — [{a:0} {a:1}]"},
 		{rnd + `for 3 [Rand.map-from {a:[1 break]}] 7`, "[7]"},
 		{rnd + `for 2 [Rand.map-from {a:[1 add 10]}]`, "[{a:11} {a:11}]"},
-		{rnd + `def n 0 for 3 [def n (n add 1) Rand.map-from {a:[n]}] n`, "[{a:1} {a:2} {a:3} 3]"},
-		{rnd + `def n 0 for 3 [def n (n add 1) Rand.map-from {a:[continue] b:[9]}] n`, "[3]"},
+		{rnd + `var n 0 for 3 [var n (n add 1) Rand.map-from {a:[n]}] n`, "[{a:1} {a:2} {a:3} 3]"},
+		{rnd + `var n 0 for 3 [var n (n add 1) Rand.map-from {a:[continue] b:[9]}] n`, "[3]"},
 		{rnd + `def f fn [[] [Any] [break]] end for 3 [Rand.map-from {a:[f]}] 7`, "[7]"},
 		{rnd + `def k 5 Rand.map-from {b:[k add 1]} k`, "[{b:6} 5]"},
 		{rnd + `def i 9 Rand.map-from {a:[i]}`, "[{a:9}]"},

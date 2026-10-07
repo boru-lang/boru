@@ -261,6 +261,7 @@ func (lw *lowerer) lowerResidentBind(d *emitDynBind) string {
 		lw.p.BindTwins[d.residentTwin].Kind == core.BindDefReplace
 	lw.p.ResidentBinds = append(lw.p.ResidentBinds, ResidentBindSpec{
 		Name: d.name, Twin: d.residentTwin, Pop: pop, Replace: replace,
+		Var: d.varDecl && !replace, VarType: d.varType,
 	})
 	lw.emit(OpBindResident, idx, d.pos)
 	if pop {
@@ -371,24 +372,22 @@ func (lw *lowerer) storeIndexBind(d *emitDynBind, twin int) (reason string, done
 // records the prior depth; the frame's RET truncates back — the
 // interpreter's def-cleanup discipline). A def of any other name lowers to
 // nothing here — its value flows by provenance exactly as before.
-func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
-	d := ev.dyn
-	if d.residentTwin >= 0 {
-		return lw.lowerResidentBind(d)
-	}
-	if d.speculative {
+// lowerDynBindSimple lowers the dyn-bind events that bind no runtime value
+// at their site and reports whether it took the event — lowerDynBind's
+// prelude, kept apart for the linter's complexity bound: a placed
+// speculative undef, a spec fn's install, a fn unit's own type install, and
+// an unstamped operand-less event that lowers to nothing.
+func (lw *lowerer) lowerDynBindSimple(d *emitDynBind) bool {
+	switch {
+	case d.speculative:
 		// The PLACED transition of a speculative undef: the pop executes
 		// at its site, in the current registry, and consumes nothing
 		// (OpUndefDynScope). Never left unlowered — the recorder that placed
 		// it is the one lowering it, so the name const is always at hand.
 		lw.emit(OpUndefDynScope, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
-		return ""
-	}
-	if d.specFn {
+	case d.specFn:
 		lw.lowerSpecFnBind(d)
-		return ""
-	}
-	if d.typeInstall && d.fnType != nil && lw.isFnUnit {
+	case d.typeInstall && d.fnType != nil && lw.isFnUnit:
 		// A FN unit's own type install (RecordTypeInstall's fn-unit arm):
 		// re-installed per call by OpBindFnType — the name checked and
 		// reserved, the check-time node bound, popped with the frame — the
@@ -397,14 +396,24 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		lw.p.FnTypeBinds = append(lw.p.FnTypeBinds, FnTypeBindSpec{Name: d.name, Entry: *d.fnType})
 		lw.emit(OpBindFnType, idx, d.pos)
 		lw.note()
-		return ""
-	}
-	if !d.bindsValue() {
+	case !d.bindsValue():
 		// An unstamped operand-less event — a teardown whose var pair the
 		// bridge declined, a type install outside an adopted unit, or either
 		// on the default lane — lowers to nothing: neither binds a runtime
 		// value, so neither the dyn-scope nor the global write-back arms may
 		// fire.
+	default:
+		return false
+	}
+	return true
+}
+
+func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
+	d := ev.dyn
+	if d.residentTwin >= 0 {
+		return lw.lowerResidentBind(d)
+	}
+	if lw.lowerDynBindSimple(d) {
 		return ""
 	}
 	if d.armCarried {
@@ -489,9 +498,9 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			// variadic marker stays: the region minus one is still the
 			// variadic residual only the program end absorbs.
 			gi := len(lw.p.GlobalBinds)
-			lw.p.GlobalBinds = append(lw.p.GlobalBinds, GlobalBindSpec{
+			lw.p.GlobalBinds = append(lw.p.GlobalBinds, lw.varMarked(GlobalBindSpec{
 				Name: d.name, Depth: d.depth, Splice: true, SpliceFromTop: d.spliceDepth,
-			})
+			}, twin))
 			lw.emit(OpBindGlobal, gi, d.pos)
 			lw.markTwinWrittenBack(twin)
 			lw.note()
@@ -505,9 +514,9 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			// the whole region), the static region's results each own a slot
 			// and the spliced value's slot is gone at run time.
 			gi := len(lw.p.GlobalBinds)
-			lw.p.GlobalBinds = append(lw.p.GlobalBinds, GlobalBindSpec{
+			lw.p.GlobalBinds = append(lw.p.GlobalBinds, lw.varMarked(GlobalBindSpec{
 				Name: d.name, Depth: d.depth, Splice: true, SpliceFromTop: d.spliceDepth,
-			})
+			}, twin))
 			lw.emit(OpBindGlobal, gi, d.pos)
 			lw.markTwinWrittenBack(twin)
 			for i := len(lw.vm) - 1; i >= 0; i-- {
@@ -587,14 +596,22 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 			lw.vm = lw.vm[:len(lw.vm)-1]
 		}
 	case needDyn && peekDyn:
-		lw.emit(OpBindDynScopePeek, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
+		if d.varDecl {
+			lw.emitDynVar(d, false)
+		} else {
+			lw.emit(OpBindDynScopePeek, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
+		}
 	case needDyn:
 		// The bind's own re-push of the source is not a READ of the name
 		// (a deopt tests at the consumer's push — deoptAtSlot).
 		lw.binding = true
 		lw.pushOperand(src, d.pos)
 		lw.binding = false
-		lw.emit(OpBindDynScope, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
+		if d.varDecl {
+			lw.emitDynVar(d, true)
+		} else {
+			lw.emit(OpBindDynScope, lw.es.internUnpooled(core.NewString(d.name)), d.pos)
+		}
 		lw.vm = lw.vm[:len(lw.vm)-1]
 	}
 	if needGlobal {
@@ -606,7 +623,7 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		// The dyn-scope bind just emitted installed the binding: the
 		// write-back adopts it (GlobalBindSpec.AfterDynScope) rather than
 		// stacking a second entry.
-		lw.p.GlobalBinds = append(lw.p.GlobalBinds, GlobalBindSpec{Name: d.name, Depth: d.depth, Pop: pop, AfterDynScope: needDyn})
+		lw.p.GlobalBinds = append(lw.p.GlobalBinds, lw.varMarked(GlobalBindSpec{Name: d.name, Depth: d.depth, Pop: pop, AfterDynScope: needDyn, Assign: d.assign}, twin))
 		if !fastGlobal {
 			// Re-push a copy from its resolved home; the bind consumes it
 			// (Pop mode — one op, no separate DROP in the stream). Like the
@@ -626,6 +643,15 @@ func (lw *lowerer) lowerDynBind(ev *EmitEvent) string {
 		}
 	}
 	return ""
+}
+
+// emitDynVar emits a var DECLARATION's dyn-scope install (OpBindDynScopeVar
+// over Program.DynVarBinds): the cell is marked a var, so an assignment
+// replaces it. pop consumes the value; peek leaves it for its readers.
+func (lw *lowerer) emitDynVar(d *emitDynBind, pop bool) {
+	idx := len(lw.p.DynVarBinds)
+	lw.p.DynVarBinds = append(lw.p.DynVarBinds, DynVarBindSpec{Name: d.name, VarType: d.varType, Pop: pop})
+	lw.emit(OpBindDynScopeVar, idx, d.pos)
 }
 
 // isPromoted reports whether the planner promoted event seq's results to
@@ -722,6 +748,19 @@ func (lw *lowerer) twinInstalls(idx int) bool {
 	}
 	e := lw.p.BindTwinEntries[idx]
 	return e.TypeDef == nil && (core.IsConcrete(e.Body) || core.IsBareTypeNode(e.Body))
+}
+
+// varMarked stamps a write-back spec with its def's twin entry's var mark
+// (GlobalBindSpec.Var): a `var` declaration's write-back installs a var
+// cell. A def with no twin, or a plain def's, is left as it is.
+func (lw *lowerer) varMarked(gb GlobalBindSpec, idx int) GlobalBindSpec {
+	if idx < 0 || idx >= len(lw.p.BindTwinEntries) {
+		return gb
+	}
+	if e := lw.p.BindTwinEntries[idx]; e.Var {
+		gb.Var, gb.VarType = true, e.VarType
+	}
+	return gb
 }
 
 // noteTwin records a just-lowered PUSH-kind twin as the pending pair for
@@ -843,10 +882,15 @@ type lowerer struct {
 	// the spread as ONE fn operand by setting that instruction's Arg
 	// (markSpliceApplied).
 	spliceDynPC map[int]int
-	es          *EmitState
-	p           *Program
-	code        *[]Instr       // current emission target (main or one fn unit)
-	debug       *[]core.SrcPos // 1:1 with code
+	// blockImportReason is pushOperand's pending decline for a dynamic-scope
+	// read of a namespace an `import` bound inside a block (blockImportRead):
+	// pushOperand returns nothing, so the event loop reads it after the
+	// event's own lowering.
+	blockImportReason string
+	es                *EmitState
+	p                 *Program
+	code              *[]Instr       // current emission target (main or one fn unit)
+	debug             *[]core.SrcPos // 1:1 with code
 	// closureRet is the emission target's callback-contract table
 	// (Program.ClosureRet for the main code, CompiledFn.ClosureRet for a fn
 	// unit), keyed by the target's own pc — see pushOperand.
@@ -1191,6 +1235,33 @@ func slotIs(slot vmSlot, op EmitOperand) bool {
 }
 
 // pushOperand emits the push for a const, local, or type operand.
+// blockImportRead is the lowerer's decline for a RUN-TIME read of a
+// namespace an `import` bound inside a block (CheckState.BlockImportNames,
+// core.NoteBlockImport): an import is a compile-time word, so the check
+// pass's install is the only one the compiled program has, and the block
+// retired it — the lookup would miss at run time (a loud bail before this
+// decline). idx is the name's const. A read the pass folded never reaches
+// here; empty for every other name. idx indexes the recorder's pool
+// (EmitState.consts): Program.Consts is assigned after lowering.
+func (lw *lowerer) blockImportRead(idx int) string {
+	if lw.es == nil || lw.es.reg == nil || lw.es.reg.Check == nil {
+		return ""
+	}
+	name, _ := lw.es.consts[idx].AsConcreteString()
+	if !lw.es.reg.Check.BlockImportNames[name] {
+		return ""
+	}
+	return "block-local import `" + name + "` read at run time (the check pass's install ends with the block; the compiler's block scopes land with phase 2's second step)"
+}
+
+// noteBlockImportRead records blockImportRead's decline for the event the
+// operand belongs to (lowerer.blockImportReason).
+func (lw *lowerer) noteBlockImportRead(idx int) {
+	if lw.blockImportReason == "" {
+		lw.blockImportReason = lw.blockImportRead(idx)
+	}
+}
+
 func (lw *lowerer) pushOperand(op EmitOperand, pos core.SrcPos) {
 	if op.kind == opClosure {
 		// Push the captures (enclosing-scope operands), then OpPushClosure
@@ -1261,8 +1332,10 @@ func (lw *lowerer) pushOperand(op EmitOperand, pos core.SrcPos) {
 		if op.boundPos.Row != 0 {
 			pos = op.boundPos
 		}
+		lw.noteBlockImportRead(op.idx)
 		lw.emit(OpLookupDynScope, op.idx, pos)
 	case opDataScope:
+		lw.noteBlockImportRead(op.idx)
 		lw.emit(OpLookupDynScopeData, op.idx, pos)
 	default: // opConst
 		lw.emit(OpPushConst, op.idx, pos)
@@ -1942,6 +2015,9 @@ func (lw *lowerer) lowerEvents(events []EmitEvent, scopeFloor int) string {
 			lw.noteTwin(ev.twin.idx)
 		default:
 			reason = "unknown event kind"
+		}
+		if reason == "" {
+			reason = lw.blockImportReason
 		}
 		if reason != "" {
 			return reason
@@ -3931,6 +4007,9 @@ func (lw *lowerer) slotStoredInScope(slot, seq int) bool {
 // declines (liveReadUnserved, NUR351).
 func (lw *lowerer) lowerLiveRead(ev *EmitEvent, c *emitCall) string {
 	if reason := lw.liveReadUnserved(ev.seq); reason != "" {
+		return reason
+	}
+	if reason := lw.blockImportRead(c.liveName); reason != "" {
 		return reason
 	}
 	switch {

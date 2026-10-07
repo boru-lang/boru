@@ -115,6 +115,29 @@ func zcaRegisterPushq(r *core.Registry) {
 	})
 }
 
+// zcaRegisterAssignq installs `assignq`, the var word's assignment arm as a
+// fixture: `assignq NAME v` replaces the visible var NAME's cell in place
+// (core.AssignVar), the one binding kind a loop body carries under the rule.
+func zcaRegisterAssignq(r *core.Registry) {
+	r.RegisterNativeFunc(core.NativeFunc{
+		Name: "assignq",
+		Signatures: []core.Signature{{
+			Args:       []*core.Type{core.TAtom, core.TAny},
+			QuoteArgs:  map[int]bool{0: true},
+			Returns:    []*core.Type{},
+			BarrierPos: -1,
+			Impl: core.Go(func(args []core.Value, _ map[string]core.Value, _ []core.Value, reg *core.Registry) ([]core.Value, error) {
+				name, err := args[0].AsConcreteAtom()
+				if err != nil {
+					return nil, err
+				}
+				core.AssignVar(reg, name, args[1], args[0].Pos())
+				return nil, nil
+			}, core.RunInCheck()),
+		}},
+	})
+}
+
 // zcaRegisterBoomq installs `boomq`, a RunInCheck fixture whose handler
 // always errors — the check-mode body-error trigger for RunFnBodyOnce.
 func zcaRegisterBoomq(r *core.Registry) {
@@ -767,20 +790,20 @@ func TestZcaAnalyseLoopBodyJoinAndCapture(t *testing.T) {
 	if len(stk) != 0 {
 		t.Errorf("the body consumes every value: residual = %d values, want 0", len(stk))
 	}
-	// "The loop may run zero times": the post-loop binding is the JOIN of
-	// the body's rebind with the pre-loop binding (String | Integer).
+	// The body is a BLOCK (design/IMMUTABLE-DEF.1.md §2.1, phase 2): its
+	// def of the enclosing name is a shadow that ends with the iteration,
+	// so the post-loop binding is the enclosing one, unjoined, and a
+	// body-only binding is not installed after the loop. (Before the rule
+	// the join String|Integer and the leaked fresh binding were asserted.)
 	acc, ok := r.Defs.Top("zcaaccq")
 	if !ok {
-		t.Fatal("the joined post-loop binding must be installed")
+		t.Fatal("the enclosing binding must stand after the loop")
 	}
-	if !acc.Parent.Equal(core.TDisjunct) {
-		t.Errorf("post-loop bound = %v, want the String|Integer join", acc.Parent)
+	if !acc.Parent.Equal(core.TInteger) || r.Defs.Depth("zcaaccq") != 1 {
+		t.Errorf("post-loop binding = %v at depth %d, want the enclosing Integer alone", acc.Parent, r.Defs.Depth("zcaaccq"))
 	}
-	// A body-only binding leaks post-loop as itself (no pre to join).
-	if fresh, ok := r.Defs.Top("zcafreshq"); !ok {
-		t.Error("a fresh body binding must be installed post-loop")
-	} else if n, err := core.AsInteger(fresh); err != nil || n != 7 {
-		t.Errorf("fresh binding = %v, want 7", fresh)
+	if r.Defs.Has("zcafreshq") {
+		t.Error("a body-local binding must not be installed after the loop")
 	}
 	// The loop-local binds are popped.
 	if _, ok := r.Defs.Top("iq"); ok {
@@ -788,25 +811,22 @@ func TestZcaAnalyseLoopBodyJoinAndCapture(t *testing.T) {
 	}
 
 	// The armed capture protocol: locals registered for the loop binds,
-	// the loop-carried bracket opened and closed, the rebind noted, one
-	// checkpoint per round, and the non-final round rolled back.
+	// the loop-carried bracket opened and closed, no def noted carried,
+	// and one round — a body that carries nothing stabilises at once.
 	if len(es.locals) != 1 || es.locals[0] != iter.ID {
 		t.Errorf("RegisterLocal calls = %v, want the iterator's ID", es.locals)
 	}
 	if es.beginLC != 1 || es.endLC != 1 {
 		t.Errorf("loop-carried bracket = begin %d / end %d, want 1/1", es.beginLC, es.endLC)
 	}
-	if !es.carried["zcaaccq"] {
-		t.Error("the pre-existing rebind must be noted loop-carried")
+	if es.carried["zcaaccq"] || es.carried["zcafreshq"] {
+		t.Errorf("a block-local def is not loop-carried, got %v", es.carried)
 	}
-	if es.carried["zcafreshq"] {
-		t.Error("a fresh body-local binding is not loop-carried")
+	if es.checkpoints != 1 || es.branchArms != 1 {
+		t.Errorf("rounds ran %d checkpoints / %d arms, want 1/1 (nothing carried, round 1 stabilises)", es.checkpoints, es.branchArms)
 	}
-	if es.checkpoints != 2 || es.branchArms != 2 {
-		t.Errorf("rounds ran %d checkpoints / %d arms, want 2/2 (round 2 stabilises)", es.checkpoints, es.branchArms)
-	}
-	if es.rollbacks != 1 {
-		t.Errorf("non-final rounds rolled back %d times, want 1", es.rollbacks)
+	if es.rollbacks != 0 {
+		t.Errorf("rounds rolled back %d times, want 0", es.rollbacks)
 	}
 }
 
@@ -840,9 +860,13 @@ func TestZcaAnalyseLoopBodyKleeneRounds(t *testing.T) {
 	done := r.Check.Begin()
 	defer done()
 
-	r.Defs.Push("zcagrowq", core.NewCarrier(core.TInteger))
+	// A loop-carried binding is a VAR under the rule (a def inside the body
+	// would be a block-local shadow, carried nowhere): the body ASSIGNS the
+	// var (assignq, core.AssignVar) and the rounds widen its joined value.
+	core.InstallVar(r, "zcagrowq", core.NewCarrier(core.TInteger), nil)
+	zcaRegisterAssignq(r)
 	body := core.NewList([]core.Value{
-		core.NewWord("pushq"), core.NewWord("zcagrowq"),
+		core.NewWord("assignq"), core.NewWord("zcagrowq"),
 		core.NewOpenParen(), core.NewWord("zcastepq"), core.NewWord("zcagrowq"), core.NewCloseParen(),
 	})
 	AnalyseLoopBody(r, body, []string{"iq"}, []core.Value{core.NewCarrier(core.TInteger)}, true)

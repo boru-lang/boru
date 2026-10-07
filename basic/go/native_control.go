@@ -1,5 +1,7 @@
 package basic
 
+import core "github.com/boru-lang/boru/core/go"
+
 // ControlNatives covers the control-flow words: do, if, for, break,
 // continue, error.
 //
@@ -348,8 +350,9 @@ func DoListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 	// `do` runs its body with no per-call inputs and catches a body error,
 	// surfacing it as an Error VALUE rather than propagating (the escape
 	// hatch semantics). Routed through the InvokeBody seam so the VM can run
-	// the body as a compiled closure.
-	result, err := InvokeBody(r, args[0], nil)
+	// the body as a compiled closure. The body is NOT a block: its defs reach
+	// the enclosing scope (design/IMMUTABLE-DEF.1.md #11).
+	result, err := core.InvokeBodyKeepDefs(r, args[0], nil)
 	if err != nil {
 		// An `IO.exit` request crosses a HANDLER-LESS `do` unchanged. The
 		// escape-hatch semantics turn a body error into an Error value, and
@@ -873,7 +876,7 @@ func DoEvalMapValue(r *Registry, v Value) (Value, error) {
 // selects the branch via the IfCont. Returns (nil, false) when cond is not a
 // runnable plain list, so the caller falls back to scalar-condition
 // coercion. Shared by if2Handler (elseBranch=nil) and if3Handler.
-func ifMarkMoveTokens(cond Value, thenBranch, elseBranch []Value, pos SrcPos) ([]Value, bool) {
+func ifMarkMoveTokens(r *Registry, cond Value, thenBranch, elseBranch []Value, pos SrcPos) ([]Value, bool) {
 	if !(cond.Parent.Equal(TList) && cond.Data != nil && !IsTypedList(cond) && !IsTableType(cond)) {
 		return nil, false
 	}
@@ -885,10 +888,18 @@ func ifMarkMoveTokens(cond Value, thenBranch, elseBranch []Value, pos SrcPos) ([
 	tokens = append(tokens, condSlice...)
 	// The move carries the `if`'s position: a condition that nets no value
 	// raises there (stepMoveIf), as the compiled guard does (NUR292).
-	tokens = append(tokens, WithPosAt(NewMoveIf(id, "if", &IfCont{
-		Then: thenBranch,
-		Else: elseBranch,
-	}), pos))
+	cont := &IfCont{
+		Then:      thenBranch,
+		Else:      elseBranch,
+		ThenBlock: core.BodyBindsLocals(thenBranch),
+		ElseBlock: core.BodyBindsLocals(elseBranch),
+	}
+	// A condition that binds a name runs as a block too (core block.go):
+	// opened here, closed by stepMoveIf with the condition's value.
+	if core.BodyBindsLocals(condSlice) {
+		cont.CondBlockID = core.EnterBlock(r)
+	}
+	tokens = append(tokens, WithPosAt(NewMoveIf(id, "if", cont), pos))
 	return tokens, true
 }
 
@@ -897,26 +908,26 @@ func if3Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Val
 	thenBranch := spliceArg(args[1])
 	elseBranch := spliceArg(args[2])
 
-	if tokens, ok := ifMarkMoveTokens(cond, thenBranch, elseBranch, r.Check.CurWordPos); ok {
+	if tokens, ok := ifMarkMoveTokens(r, cond, thenBranch, elseBranch, r.Check.CurWordPos); ok {
 		return tokens, nil
 	}
 
 	if CoerceBoolean(cond) {
-		return thenBranch, nil
+		return armBlock(r, thenBranch), nil
 	}
-	return elseBranch, nil
+	return armBlock(r, elseBranch), nil
 }
 
 func if2Handler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	cond := args[0]
 	thenBranch := spliceArg(args[1])
 
-	if tokens, ok := ifMarkMoveTokens(cond, thenBranch, nil, r.Check.CurWordPos); ok {
+	if tokens, ok := ifMarkMoveTokens(r, cond, thenBranch, nil, r.Check.CurWordPos); ok {
 		return tokens, nil
 	}
 
 	if CoerceBoolean(cond) {
-		return thenBranch, nil
+		return armBlock(r, thenBranch), nil
 	}
 	return nil, nil
 }
@@ -1336,22 +1347,20 @@ func reduceStaticArm(r *Registry, cond, arm Value, isThen bool) []Value {
 // condition a `case` code-body scrutinee desugars to) as an emit fragment
 // (nil when the condition is a pre-evaluated value, or when no bytecode
 // recording is active). The fragment runs unconditionally exactly once
-// before the branch decision, so it rides RunCarrierCondBodyKeepDefs — the
+// before the branch decision, so it rides RunCarrierCondBodyValues — the
 // CondBodyDepth-exempt body run: an in-place fn redefinition in a condition
 // is not path-dependent and stays compilable, exactly like its paren-`do`
 // condition twin.
 //
-// And a binding the condition makes is KEPT (NUR212): the interpreter runs
-// the condition inline, once, so `def x 1 end if [def x 5 true] [2] [3] end
-// x` is [2 5] — the binding stands for the arm and for everything after the
-// `if`. The run used to roll the binding back like an arm's, and the
-// compiled lane read the stale one ([2 1]); it then declined. Kept, the
-// install is a straight-line one: ledgered, its bind twin recorded INSIDE
-// the condition fragment at the def's own site (the lowering runs the
-// fragment inline before the branch), the arms analysed over it, and a
-// later read resolving to it — exactly the model a top-level def gets. A
-// condition inside an arm or a loop body sits in that body's rolled-back
-// run, whose own join carries the binding out, as for any def there.
+// A condition is a BLOCK under the rule (design/IMMUTABLE-DEF.1.md §2.1,
+// phase 2): a def it makes ends with it, on the run lane (core block.go:
+// the if handlers open the condition's block and stepMoveIf closes it with
+// the condition's value) as in this model, where the run rolls its defs
+// back as an arm's run does — `def x 1 end if [def x 5 true] [2] [3] end x`
+// is [2 1] on both lanes, the condition's `def x` a block-local shadow the
+// census reports. Only the condition's var ASSIGNMENTS stand: the cell is
+// the enclosing scope's. (NUR212's kept binding — the leak the interpreter
+// delivered before phase 2 — is gone with the rule.)
 func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
 	es := r.Check.Recorder()
 	if !es.Armed() || !IsConcrete(cond) || !cond.Parent.ConformsTo(TList) {
@@ -1359,7 +1368,7 @@ func analyseCondFragment(r *Registry, cond Value) (EmitFragmentRef, []Value) {
 	}
 	before, valueless := bindingShape(r), r.Check.ValuelessDoBodies
 	es.ArmBranchCapture()
-	stk := RunCarrierCondBodyKeepDefs(r, cond)
+	stk := RunCarrierCondBodyValues(r, cond)
 	frag := es.TakeFragment()
 	if (len(stk) != 1 || r.Check.ValuelessDoBodies != valueless) && bindingShapeChanged(r, before) {
 		// A binding condition must net exactly its one decision value, over
@@ -1586,7 +1595,7 @@ func IfListHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]
 		return nil, r.BoruError("if_error", "if: clause-list argument must be a concrete list, got a type literal", "if")
 	}
 	_lst, _ := AsList(args[0])
-	return ifClause(_lst.Slice(), r.Check.CurWordPos), nil
+	return ifClause(r, _lst.Slice(), r.Check.CurWordPos), nil
 }
 
 // CaseHandler implements both call shapes of `case`:
@@ -1629,7 +1638,8 @@ func caseSubject(r *Registry, v Value) (Value, error) {
 	lst, _ := AsList(v)
 	input := make([]Value, lst.Len())
 	copy(input, lst.Slice())
-	out, err := New(r).Run(input)
+	// The scrutinee body is a BLOCK (core block.go).
+	out, err := core.RunBlockTokens(r, input)
 	if err != nil {
 		return Value{}, err
 	}
@@ -1664,7 +1674,7 @@ func ArmSpliceHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) 
 		}
 		return nil, err
 	}
-	return InvokeBody(r, v, nil)
+	return core.InvokeBodyKeepDefs(r, v, nil)
 }
 
 // armHoldsSteppingLiteral reports whether a computed arm's tokens hold, at

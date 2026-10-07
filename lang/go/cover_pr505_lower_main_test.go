@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -88,18 +89,23 @@ func TestLensBodyIsNoFallbackIsland(t *testing.T) {
 func TestBranchCarriedDefSources(t *testing.T) {
 	const one = `def one fn [[][Integer][1]] end `
 	const two = `def two fn [[][Integer Integer][1 2]] end `
-	soundDecline(t, two+`def c true end if c [def x (two)] [] end x`,
-		"branch-carried def `x` source is not on top of the stack", "[2 1]")
-	agreeOnBothLanes(t, one+`def c true end if c [def x (one)] [] end x`, "[1]")
+	// An arm's def ends with the arm since phase 2 (design §2.1), so the
+	// binding is the branch VALUE's, and a pre-declared var takes an arm's
+	// assignment (block_scope_rule_test.go keeps the arm-bound shapes).
+	if got, err := mustNew(t).RunInterp(two + `def c true end def x (if c [(two) nip] [0]) end x`); err != nil || fmt.Sprint(got) != "[2]" {
+		t.Errorf("a two-result source nipped inside the arm: %v / %v, want [2]", got, err)
+	}
+	requireEngineParity(t, two+`def c true end def x (if c [(two) nip] [0]) end x`, false)
+	agreeOnBothLanes(t, one+`def c true end def x (if c [(one)] [0]) end x`, "[1]")
 
-	agreeOnBothLanes(t, one+`def c true end def v (one) end if c [def x v] [] end x`, "[1]")
-	agreeOnBothLanes(t, `def c true end def v (1 add 2) end if c [def x v] [] end x`, "[3]")
-	agreeOnBothLanes(t, one+`def c false end def v (one) end if c [def x v] [] end x`, "ERROR:undefined word: x")
+	agreeOnBothLanes(t, one+`def c true end def v (one) end def x (if c [v] [0]) end x`, "[1]")
+	agreeOnBothLanes(t, `def c true end def v (1 add 2) end def x (if c [v] [0]) end x`, "[3]")
+	agreeOnBothLanes(t, one+`def c false end def v (one) end def x (if c [v] [0]) end x`, "[0]")
 
-	const seed = `def f fn [[c:Boolean] [Any] [def x (two nip) if c [def x 7] [] x]] end `
-	soundDecline(t, two+seed+`f true`, "if: carried def seed is not a re-pushable value (Stage 2)", "[7]")
-	soundDecline(t, two+seed+`f false`, "if: carried def seed is not a re-pushable value (Stage 2)", "[2]")
-	const seed1 = `def f fn [[c:Boolean] [Any] [def x (one) if c [def x 7] [] x]] end `
+	const seed = `def f fn [[c:Boolean] [Any] [var x (two nip) if c [var x 7] [] x]] end `
+	requireEngineParity(t, two+seed+`f true`, false)
+	requireEngineParity(t, two+seed+`f false`, false)
+	const seed1 = `def f fn [[c:Boolean] [Any] [var x (one) if c [var x 7] [] x]] end `
 	agreeOnBothLanes(t, one+seed1+`f true`, "[7]")
 	agreeOnBothLanes(t, one+seed1+`f false`, "[1]")
 }

@@ -25,7 +25,7 @@ func TestNUR292ComputedIfConditionOrArmThatIsAList(t *testing.T) {
 	mk := func(v string) string { return `def mk fn [[][Any][` + v + `]] end ` }
 	for _, src := range []string{
 		mk(`quote [gt 3]`) + `"a" end print/s 5 if (mk) ["big"] ["small"]`,
-		mk(`quote [gt 3]`) + `def n 0 end while [n lt 1] [def n (n add 1) 5 if (mk) ["t"] ["f"] drop]`,
+		mk(`quote [gt 3]`) + `var n 0 end while [n lt 1] [var n (n add 1) 5 if (mk) ["t"] ["f"] drop]`,
 	} {
 		gotC, compiled, errC, _, errI := runBothEngines(t, src)
 		if !compiled || codeOf(errC) != "internal_error" || !strings.Contains(errC.Error(), "NUR292") || errI != nil || len(gotC) != 0 {

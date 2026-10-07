@@ -1,0 +1,67 @@
+# boru Language Specification: Block scopes (design/IMMUTABLE-DEF.1.md §2.1, phase 2)
+# Format: input<TAB>expected<TAB>description
+#
+# A code body a word runs — an `if` or `case` arm, an `if` or `while`
+# condition, a `case` scrutinee, a `for` or `while` body, a callback body —
+# is a BLOCK scope, live for one execution of the body: a `def` inside it
+# binds a block local that ends with the block, and the enclosing binding,
+# or none, is what a read after the block sees. `var NAME v` over a var
+# visible in the enclosing scope ASSIGNS that cell and binds nothing, which
+# is how a block updates state. `do`'s body is transparent by ruling (#11);
+# paren groups and literals are not scopes. The check pass warns
+# `shadow_rebind` on the counter shape — a block-local def whose value
+# reads the very name it shadows.
+#
+# The compiled lane: a block-local def that shadows an enclosing binding
+# declines compilation until the compiler's own block scopes land (phase
+# 2's second step), so those rows run interpreted there, by the ledger
+# (test/go/langspec/compile_failures.tsv); the var spellings compile.
+#
+# §1  loop bodies
+def n 0 for 3 [def n (n add 1)] n	0	the counter shape: the body's def is a block-local shadow that read the n it shadows; the enclosing n is unchanged
+var n 0 for 3 [var n (n add 1)] n	3	…the intended spelling: the body assigns the enclosing var
+def t 0 each [def t (t add 1) t] [1 2 3] t	[1 1 1] 0	each element's body shadows t afresh and reads the enclosing 0
+var t 0 each [var t (t add 1) t] [1 2 3] t	[1 2 3] 3	…the var spelling accumulates across the elements
+for 2 [def x 9] x	ERROR:undefined_word	a loop body's def ends with the iteration: nothing is bound after the loop
+def i 0 while [i lt 2] [def i (i add 1) i]	ERROR:evaluation_limit	a while body whose def shadows the condition's name never advances it: the loop runs until the step budget ends it
+var i 0 while [i lt 2] [var i (i add 1) i]	1 2	…the var spelling advances the condition's cell
+def s 0 for 3 [def s (s add i)] s	0	a shadow that reads the loop index and the enclosing s: still a block local
+#
+# §2  branch arms and conditions
+if true [def w 1] [def w 2] w	ERROR:undefined_word	the arm's w ended with the arm
+def w (if true [1] [2]) w	1	…the intended spelling binds the branch value
+def z 1 if true [def z 9 z] [0] z	9 1	the arm reads its own shadow; after the arm the enclosing z stands
+var z 1 if true [var z 9 z] [0] z	9 9	…the var spelling assigns the enclosing cell from the arm
+def x 1 if [def x 5 true] [x] [3] x	1 1	a condition is a block too: its def shadows for the condition alone, so the arm and the read after see the enclosing x
+if [def y 5 true] [2] [3] y	ERROR:undefined_word	…a fresh condition def ends with the condition
+var x 1 if [var x 5 true] [x] [3] x	5 5	…a var assignment in the condition stands for the arm and after
+def x 1 case [def x 5 x] [5 'five' 'other'] x	'five' 1	a case scrutinee is a block: it dispatches on its own shadow and leaves the enclosing x
+def x 1 case 5 [5 [def x 7 x] 'other'] x	5 7 1	a case arm is a block (the matched value stays beneath the arm's result, as case leaves it)
+def k 0 while [def j (k add 1) (j lt 3)] [1 break] k	0	a while condition's def ends with the round; the body's break ends the loop and discards the round's value
+if true [def h 5 [h]] [0]	[5]	a container literal the arm leaves is evaluated before the arm's block closes: it reads the arm's own local
+if true [def h 5 {a: h} 1] [0]	{a:5} 1	…a map literal too, with the rest of the arm's residual untouched
+def w (if true [def h 5 [h]] [0]) w	[5]	…and inside a paren group the collected value is the evaluated list
+if true [def r {ok:true v:2} if (r.ok) [{v:(r.v) w:[(r.v)]}] [0]] [0]	{v:2 w:[2]}	…and a nested arm's literal that reaches INTO the enclosing arm's local (a dot access, not a bare word) is evaluated before that arm's block closes
+if true [def h 5 if true [`v=${h}`] [0]] [0]	'v=5'	…a template string's hole over the local likewise
+#
+# §3  do is transparent, frames shadow
+do [def q 5] q	5	do's body is not a block (#11): its def reaches the enclosing scope
+def t 0 for 3 [do [def t 5]] t	0	…but a do inside a loop body binds in the BODY's block, which ends with the iteration
+def r 1 def h fn [[] [Integer] [def r 2 r]] (h) r	2 1	a fn body shadows a module value and the module binding stands after the call
+def g fn [[x:Any] [Integer] [x add 100]] if true [def g fn [[x:Any] [Integer] [x add 1]] (g 1)] [0] g 1	2 101	an arm's fn def shadows an enclosing fn inside the arm and the enclosing fn dispatches after it
+#
+# §4  types end with their scope
+each [def ZB (Integer gt 0) 7] [1 2]	[7 7]	a type minted per element is retired with the element's block, so the next element mints it again
+def f fn [[n:Integer] [Integer] [def T (class {}) n]] f 1 f 2	1 2	a type minted per call is retired with the frame: the second call's mint finds the name free
+each [def ZB (Integer gt 0) 7] [1] def ZB Integer 3 is ZB	[7] true	…and the name is free for a module def after the loop
+#
+# §5  unwinding closes the block
+def t 0 do [for 3 [def t 9 raise 'x']] error [drop 1] t	1 0	a raise inside a loop body: the trapped error leaves the body's block closed and the enclosing t standing
+def t 0 do [if true [def t 9 raise 'x'] []] error [drop 1] t	1 0	…and an arm's block, raised out of before its end
+var s 0 for 5 [def k i if (k eq 2) [break] [] var s (s add k)] s	1	a break abandons the iteration and its block; the var assignments before it stand
+#
+# §6  the check pass
+import "boru:vm" (Vm.check "def n 0 for 3 [def n (n add 1)] n").warnings	1	the counter shape warns shadow_rebind: the block-local def read the name it shadows
+import "boru:vm" (Vm.check "def n 0 for 3 [def n 5 n] n").warnings	0	a plain shadow that reads nothing it shadows is no warning
+import "boru:vm" (Vm.check "var n 0 for 3 [var n (n add 1)] n").warnings	0	the var spelling is what the warning asks for
+import "boru:vm" (Vm.check "if true [def w 1] [] w").errors	1	a read after the arm of the arm's own name is the undefined word it is

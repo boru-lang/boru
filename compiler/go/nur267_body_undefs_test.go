@@ -28,7 +28,7 @@ func TestNUR267BodyUndefs(t *testing.T) {
 		}
 	}
 	r := newTestRegistry(t)
-	if _, ok := StampTokenBody(r, undef, nil, core.SrcPos{}); ok {
+	if _, ok := StampTokenBody(r, undef, nil, core.SrcPos{}, false); ok {
 		t.Error("a body that undefs is not stamped")
 	}
 }

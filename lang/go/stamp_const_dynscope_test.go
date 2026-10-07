@@ -33,17 +33,59 @@ import (
 // stays the mechanism for a read the seat does not own: a lambda VALUE
 // nested inside the handler is its own closure unit, so its read of
 // `files` still takes the rescue, and that stamp is turned down.
-const stampDynScopeSrc = "if true [import \"boru:io\"  def files (flex {})  " +
+//
+// Since phase 2 (design/IMMUTABLE-DEF.1.md §2.1) the `if` arm is a BLOCK, so
+// `def files` and the import moved out of it: a stored handler's unit is
+// compiled at Finalize, after the arm's block has retired its bindings, and
+// its analysis then meets `files` unbound — a check stop, measured below
+// (TestStoredHandlerReadingAnArmLocalDeclines). The handlers themselves
+// still mount inside the arm, which is what the stamp is offered.
+const stampDynScopeSrc = "import \"boru:io\"  def files (flex {})  if true [" +
 	"IO.mount {read: (p:Pathon => [files get `${p}`]) " +
 	"write: ([p:Pathon data:Any] => [files set `${p}` data drop])}  " +
 	"IO.write (make Pathon \"n/a.txt\") \"hello mounted\" drop  " +
 	"IO.read (make Pathon \"n/a.txt\")] [0]"
 
-const stampDynScopeNestedSrc = "if true [import \"boru:io\"  def files (flex {})  " +
+const stampDynScopeNestedSrc = "import \"boru:io\"  def files (flex {})  if true [" +
 	"IO.mount {read: (p:Pathon => [def g (q:Pathon => [files get `${q}`])  g p]) " +
 	"write: ([p:Pathon data:Any] => [files set `${p}` data drop])}  " +
 	"IO.write (make Pathon \"n/a.txt\") \"hello mounted\" drop  " +
 	"IO.read (make Pathon \"n/a.txt\")] [0]"
+
+// stampDynScopeArmLocalSrc is the original spelling, the flex defined INSIDE
+// the arm the handlers are mounted in.
+const stampDynScopeArmLocalSrc = "if true [import \"boru:io\"  def files (flex {})  " +
+	"IO.mount {read: (p:Pathon => [files get `${p}`]) " +
+	"write: ([p:Pathon data:Any] => [files set `${p}` data drop])}  " +
+	"IO.write (make Pathon \"n/a.txt\") \"hello mounted\" drop  " +
+	"IO.read (make Pathon \"n/a.txt\")] [0]"
+
+// TestStoredHandlerReadingAnArmLocalDeclines pins the block rule's effect on
+// the original spelling: the interpreter runs it (the handlers run while
+// the arm is open, where `files` is bound), and the compiled lane DECLINES
+// — the stored handlers' units are compiled after the arm's block has
+// retired `files`, so their analysis stops at the read (undefined_word, a
+// check diagnostic). A decline, never a wrong answer; it lifts when the
+// stored-handler analysis sees the block's bindings (the compiler's block
+// scopes, phase 2's second step).
+func TestStoredHandlerReadingAnArmLocalDeclines(t *testing.T) {
+	a := mustNew(t)
+	prog, reason, _, err := a.CompileCheck(stampDynScopeArmLocalSrc)
+	if err != nil {
+		t.Fatalf("CompileCheck: %v", err)
+	}
+	if prog != nil || reason != "check diagnostics" {
+		t.Errorf("the arm-local spelling compiled (%v) / declined %q — the stored-handler analysis sees the arm's bindings now: move the row to stampDynScopeCase", prog != nil, reason)
+	}
+	gotI, errI := mustNew(t).RunInterp(stampDynScopeArmLocalSrc)
+	if errI != nil || !strings.Contains(fmt.Sprint(gotI), "hello mounted") {
+		t.Errorf("interpreter: %v / %v, want the mount round-trip", gotI, errI)
+	}
+	gotC, errC := mustNew(t).RunCompiledStrict(stampDynScopeArmLocalSrc)
+	if errC == nil || !strings.Contains(errC.Error(), "undefined word: files") {
+		t.Errorf("RunCompiledStrict: %v / %v, want the check stop at the handler's read of files", gotC, errC)
+	}
+}
 
 func TestStampConstDynScopeDeclineKeepsEnclosingCompile(t *testing.T) {
 	for _, c := range []struct {

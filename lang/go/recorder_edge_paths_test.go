@@ -50,15 +50,16 @@ func TestStampOnlyUnitLoweringDeclineStubs(t *testing.T) {
 	}
 }
 
-// TestBranchCarriedUndefDeclines — an `undef` of a name a BRANCH carries in
-// its unit's cell (an arm rebinds it and the merge reads it through the
-// cell) would expose the previous binding while the cell keeps the arm's
-// value: the loop-carried undef hazard, through the same one-cell-per-name
-// slot, so the program declines through the same site.
-func TestBranchCarriedUndefDeclines(t *testing.T) {
+// TestBranchArmDefThenUndef — an arm's def is the arm's own block local
+// (design/IMMUTABLE-DEF.1.md §2.1, phase 2), so the `undef` after the
+// branch pops the frame's binding whichever arm ran, and the read after it
+// is the undefined word it is on both lanes: the check pass stops there,
+// the interpreter raises. (Before phase 2 the arm's def was carried in the
+// unit's cell and the undef declined as the loop-carried undef hazard.)
+func TestBranchArmDefThenUndef(t *testing.T) {
 	const f = `def f fn [[b:Boolean] [Integer] [def z 1 end if b [def z 9] [] end undef z end z]]  `
-	requireLoudDecline(t, f+`f true`, "undef of the loop-carried def `z`", "[1]")
-	requireLoudDeclineErr(t, f+`f false`, "undef of the loop-carried def `z`", "undefined_word")
+	requireBlockRule(t, f+`f true`, "ERROR:undefined word: z", "check diagnostics")
+	requireBlockRule(t, f+`f false`, "ERROR:undefined word: z", "check diagnostics")
 }
 
 // TestTrailingParenApplyOverFnArgDeclines — a paren-bounded trailing apply
@@ -106,7 +107,7 @@ func TestParenApplyMultiReturnCalleeParity(t *testing.T) {
 // re-push, so the program declines, beside the interpreter's 1+2+3.
 func TestForRangeLiveStartDeclines(t *testing.T) {
 	requireLoudDecline(t,
-		`def s (0 add 1)  def f fn [[][Integer][def t 0  for [s 4] [def t (t add i)]  t]]  f`,
+		`def s (0 add 1)  def f fn [[][Integer][var t 0  for [s 4] [var t (t add i)]  t]]  f`,
 		"for: computed range start/step", "[6]")
 }
 

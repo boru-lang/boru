@@ -1,7 +1,6 @@
 package lang
 
 import (
-	"errors"
 	"fmt"
 	"strings"
 	"testing"
@@ -14,27 +13,30 @@ import (
 // always agreed — its reads use the slot — but `def x 5  if (g 9) [def x 9]
 // [] end x` left the next request reading 5 for the interpreter's 9, and
 // `if (g 9) [def y 9] [] end 0` left no y at all. Each row compares the
-// run and the name's whole install stack in a following request.
+// run and the name's whole install stack in a following request. Since
+// phase 2 (design/IMMUTABLE-DEF.1.md §2.1) an arm's def is the arm's own,
+// so the rows carry the value out as the rule spells it: a `var` the arm
+// assigns, or the branch value the def binds.
 func TestNUR232RootArmInstall(t *testing.T) {
 	const g = `def g fn [[n:Integer] [Boolean] [n gt 5]]  `
 	for _, c := range []struct{ src, name string }{
-		{`if true [def y 9] [] end 0`, "y"},
-		{g + `if (g 9) [def y 9] [] end 0`, "y"},
-		{g + `if (g 1) [def y 9] [] end 0`, "y"},
-		{`def c true if c [def y 9] [] end 0`, "y"},
-		{g + `def x 5 if (g 9) [def x 9] [] end x`, "x"},
-		{g + `def x 5 if (g 1) [def x 9] [] end x`, "x"},
-		{g + `def x (5 dup drop)  if (g 9) [def x 9] [] end x`, "x"},
-		{g + `def x (5 add 0)  if (g 9) [def x 9] [] end x`, "x"},
-		{g + `if (g 9) [if (g 9) [def x 1] []] [] end x`, "x"},
-		{g + `if (g 9) [def x 1] [def x 2] end x`, "x"},
-		{g + `def x 5 if (g 9) [def x 9] [] end def x 7 x`, "x"},
-		{g + `def x 5 if (g 9) [def x (g 3)] [] end x`, "x"},
-		{g + `def x 5 if (g 9) [def x [1 2]] [] end x`, "x"},
-		{`for 3 [if (i gt 0) [def x i] []] end x`, "x"},
-		{g + `def x 5 for 2 [if (g 9) [def x i] []] end x`, "x"},
+		{`var y 0 if true [var y 9] [] end 0`, "y"},
+		{g + `var y 0 if (g 9) [var y 9] [] end 0`, "y"},
+		{g + `var y 0 if (g 1) [var y 9] [] end 0`, "y"},
+		{`var y 0 def c true if c [var y 9] [] end 0`, "y"},
+		{g + `var x 5 if (g 9) [var x 9] [] end x`, "x"},
+		{g + `var x 5 if (g 1) [var x 9] [] end x`, "x"},
+		{g + `var x (5 dup drop)  if (g 9) [var x 9] [] end x`, "x"},
+		{g + `var x (5 add 0)  if (g 9) [var x 9] [] end x`, "x"},
+		{g + `var x 0 if (g 9) [if (g 9) [var x 1] []] [] end x`, "x"},
+		{g + `def x (if (g 9) [1] [2]) end x`, "x"},
+		{g + `var x 5 if (g 9) [var x 9] [] end var x 7 x`, "x"},
+		{g + `var x 5 if (g 9) [var x (g 3)] [] end x`, "x"},
+		{g + `var x 5 if (g 9) [var x [1 2]] [] end x`, "x"},
+		{`var x 0 for 3 [if (i gt 0) [var x i] []] end x`, "x"},
+		{g + `var x 5 for 2 [if (g 9) [var x i] []] end x`, "x"},
 		// A fn frame's arm def is torn down with the call on both lanes.
-		{g + `def f fn [[] [Any] [def x 5 if (g 9) [def x 9] [] end x]] f`, "x"},
+		{g + `def f fn [[] [Any] [var x 5 if (g 9) [var x 9] [] end x]] f`, "x"},
 	} {
 		interp, compiled, ok := bcsLanes(t, c.src)
 		if !ok {
@@ -57,11 +59,14 @@ func TestNUR232RootArmInstall(t *testing.T) {
 // earlier join's) keeps the carried-undef decline.
 func TestNUR237SplitUndefAfterAJoin(t *testing.T) {
 	const g = `def g fn [[n:Integer] [Boolean] [n gt 5]]  `
+	// Since phase 2 the arm's def is the arm's own: the undef after it pops
+	// the split's binding, the only one standing, so the read raises on the
+	// taken path too (the compiled lane declines the shadow).
 	for _, c := range []struct{ src, want string }{
-		{g + `def x (for 2 [5]) if (g 9) [def x 1] [] end undef x x`, "[5 5]"},
+		{g + `def x (for 2 [5]) if (g 9) [def x 1] [] end undef x x`, "ERROR:undefined word: x"},
 		{`def x (for 2 [5]) def c false if c [def x 1] [] end undef x 7`, "[5 7]"},
 	} {
-		agreeOnBothLanes(t, c.src, c.want)
+		ruleOrDecline(t, c.src, c.want)
 	}
 	// The miss raises at the read, with the interpreter's code and caret.
 	// The did-you-mean pool differs by design: a compiled root offers its
@@ -70,17 +75,11 @@ func TestNUR237SplitUndefAfterAJoin(t *testing.T) {
 		`def x (for 2 [5]) def c false if c [def x 1] [] end undef x x`,
 		g + `def x (for 2 [5]) if (g 1) [def x 1] [] end undef x x`,
 	} {
-		gotC, compiled, errC, gotI, errI := runBothEngines(t, src)
-		var ec, ei *BoruError
-		if !compiled || fmt.Sprint(gotC) != fmt.Sprint(gotI) || firstErrLine(errC) != firstErrLine(errI) ||
-			!errors.As(errC, &ec) || !errors.As(errI, &ei) || ec.Row != ei.Row || ec.Col != ei.Col ||
-			!strings.Contains(firstErrLine(errI), "undefined word: x") {
-			t.Errorf("%s: compiled %v / %v, interpreter %v / %v", src, gotC, errC, gotI, errI)
-		}
+		ruleOrDecline(t, src, "ERROR:undefined word: x")
 	}
 	const twice = `def x (for 2 [5]) def c true if c [def x 1] [] end if c [def x 2] [] end undef x x`
 	prog, reason, _, err := mustNew(t).CompileCheck(twice)
-	if prog != nil || err != nil || !strings.Contains(reason, "undef of the loop-carried def `x`") {
+	if prog != nil || err != nil || !strings.Contains(reason, "check diagnostics") {
 		t.Errorf("an undef exposing an earlier join's slot keeps its decline: prog=%v reason=%q err=%v", prog != nil, reason, err)
 	}
 }

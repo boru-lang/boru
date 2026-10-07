@@ -109,6 +109,13 @@ func applyTwinPush(r *Registry, tr BindTransition, entry DefEntry) error {
 	switch {
 	case entry.TypeDef == nil:
 		r.Defs.Push(tr.Name, entry.Body)
+		if entry.Var {
+			// A var DECLARATION's twin replays a var: the cell a unit's
+			// assignment (ApplyResidentAssign) replaces in place, where a
+			// plain push had it declare a second cell beside the first
+			// (core_helpers.go InstallVar).
+			r.Defs.MarkTopVar(tr.Name, entry.VarType)
+		}
 		return nil
 	case entry.Minted:
 		if err := TypeNameFree(r, tr.Name); err != nil {

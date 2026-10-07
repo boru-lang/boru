@@ -1,6 +1,10 @@
 package basic
 
-import "fmt"
+import (
+	"fmt"
+
+	core "github.com/boru-lang/boru/core/go"
+)
 
 // RunForLoop builds the mark+body+move tokens for a for loop and returns
 // them. The engine splices these onto the stack and processes them; the
@@ -40,6 +44,13 @@ func RunForLoop(r *Registry, start, end, step int64, iterName string, body Value
 		Step:      step,
 		Body:      bodyCopy,
 		IterDepth: r.Defs.Depth(iterName),
+		// A body that binds a name of its own runs each iteration as a
+		// block (core block.go): the first iteration's scope opens here,
+		// above the iterator's binding, which stays the loop's.
+		Block: core.BodyBindsLocals(bodySlice),
+	}
+	if cont.Block {
+		cont.BlockID = core.EnterBlock(r)
 	}
 
 	// Build the stack segment: mark + body + move.

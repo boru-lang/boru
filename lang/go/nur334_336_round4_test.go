@@ -99,7 +99,7 @@ func TestNUR336LoopContinuationEdges(t *testing.T) {
 	const unit = `def mk fn [[] [Map] [{f: ([x:Integer y:Integer] => [x sub y])}]] end def y fn [[] [Integer] [42]] end `
 	for _, c := range []struct{ src, want string }{
 		{two + `def n (flex [0]) end while [(n.0 lt 2)] [n set 0 (n.0 add 1) drop (m.f y) 9 drop]`, "[]"},
-		{two + `def a 0 end for 2 [def a (a add 1) (m.f y) 9 drop] a`, "[2]"},
+		{two + `var a 0 end for 2 [var a (a add 1) (m.f y) 9 drop] a`, "[2]"},
 		{two + `for 2 [def u 1 (m.f y) 9 drop]`, "[]"},
 		{two + `5 for 2 [(m.f y) 9 drop]`, "[5]"},
 		{two + `for 2 [for 2 [(m.f y) 9 drop]]`, "[]"},

@@ -1622,3 +1622,73 @@ value may be a fn must dispatch (or bail as the dyn-scope read does), the
 container-read fn value included.
 
 ---
+
+## NUR388 — a fn-local def in a self-recursive tail call's arm defeats the interpreter's tail-call elision {#nur388}
+
+**Status:** Pending · **Recorded:** 2026-10-07 (found landing phase 2's block scopes, design/IMMUTABLE-DEF.1.md §2.1; measured on the phase-1 commit too — pre-existing, not the landing's) · interpreter only · LOUD at depth (the frames pile up where the control's are replaced)
+
+```
+def s1 fn [[n:Integer acc:Integer] [Integer] [if (n lte 0) [acc] [s1 (n sub 1) (acc add n)]]]  s1 2000 0
+  TCO detected 2000 / replaced 2000                                           — the control
+
+def s2 fn [[n:Integer acc:Integer] [Integer] [if (n lte 0) [acc] [def k (acc add n)  s2 (n sub 1) k]]]  s2 2000 0
+  TCO detected 2000 / replaced 0                                              — the arm binds a local
+
+def s3 fn [[n:Integer acc:Integer] [Integer] [def k (acc add n)  if (n lte 0) [acc] [s3 (n sub 1) k]]]  s3 2000 0
+  TCO detected 2000 / replaced 0                                              — the local is bound before the if
+```
+
+Both lanes answer the same value, so this is not a divergence; the finding
+is the interpreter's own. The tail-call probe (`Registry.TCO`'s
+detected/replaced counters) recognises every self-call as a tail call, and
+the eligibility gate (`tcoEligible`, core fn_frame_elide.go) then declines
+every one of them when the fn body bound a local on the way — in the
+recursive arm or ahead of the `if` alike — by its teardown-coverage rule:
+an eager teardown may pop only the names the callee rebinds before its body
+runs (its params), because under dynamic resolution a callee may read the
+caller frame's body-local bindings (the recursive-local-fn idiom `def go fn
+[…] go 3`, a loop-carried base-branch read), and `k` is not one of them.
+The call nests instead, so the frames pile up with the depth of the
+recursion: at 300000 the control still replaces every call, and `s2` ends
+in `tape_exhausted` (the 396718-entry ceiling, 33058 calls detected) where
+the control finishes. The compiled lane is unaffected: its
+`OpTailCallUser` elides the call and the unit's locals are slots.
+
+**Proposed verdict:** resolve by fix, once the callee's reads are knowable —
+a self-call whose body never reads the caller's locals by name (a static
+read set the check pass can supply, or the block rule's own guarantee for a
+local the arm's `BlockEnd` would pop before the frame's teardown runs) can
+tear the local down eagerly; the three programs above are the pin
+(replaced 2000 on all three, 300000 completing), with the dynamic-resolution
+idiom the negative half that must keep nesting.
+
+---
+
+## NUR389 — a TYPED var assigned inside a loop or callback body declines compiled {#nur389}
+
+**Status:** Pending · **Recorded:** 2026-10-07 (found pinning phase 2's callback-body block on the lang surface; measured on the phase-1 commit too — pre-existing) · compiled lane · LOUD (a decline)
+
+```
+var n:Integer 0  for 3 [var n (n add 1)]  n              interpreted 3           compiled: declines
+var n:Integer 0  [1 2 3] each [var n (n add 1)]  n       interpreted [1 2 3] 3   compiled: declines
+  "check-mode suppressed a runtime error (uncompilable)"
+
+var n 0  for 3 [var n (n add 1)]  n                      both lanes 3            — the untyped twin compiles
+var n 0  [1 2 3] each [var n (n add 1)]  n               both lanes [1 2 3] 3
+```
+
+The typed declaration form (`var n:Integer 0`, phase 1's `varWordSignatures`)
+assigned inside a loop body or a callback body stops the compile with a
+suppressed runtime error: the body's assignment is checked against the
+cell's declared type over the model's carrier value, and the check pass
+records the refusal it would raise at run time, which the compile gate
+reads as a decline. The untyped form compiles and agrees, and the typed
+form assigned at the top level (`var n:Integer 0  var n (n add 1)  n`)
+compiles too, so the stop is specific to the body's model of the typed
+cell.
+
+**Proposed verdict:** resolve by fix — the typed cell's check inside a body
+should see the assigned value's carrier the way the top-level assignment
+does; the four programs above are the pin.
+
+---

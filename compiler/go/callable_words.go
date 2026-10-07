@@ -35,7 +35,7 @@ import (
 // `([p] => …)`) binds the body's `p` to that input carrier in AnalyseFnBody;
 // an empty name (the token-quotation form, `[body]`) leaves the input on the
 // stack for the body to consume positionally. nil means all-unnamed.
-func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK bool, bodyToks, inputs []core.Value, paramNames []string, paramPatterns []*core.Value, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos) (int, bool) {
+func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK bool, bodyToks, inputs []core.Value, paramNames []string, paramPatterns []*core.Value, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame, transparent bool, pos core.SrcPos) (int, bool) {
 	// Closure compilation is emit-cluster machinery: it writes recording
 	// internals (fnRecs), so it needs the CONCRETE EmitState. A pass without
 	// one (the inactive recorder) declines exactly as the nil field did —
@@ -133,9 +133,23 @@ func compileClosureBody(r *core.Registry, word string, bodyOut int, emptyBodyOK 
 	// opens a block scope, so a var it assigns is the frame's own
 	// (core.CheckState.NextBaselineIsBlock; cleared after whatever path the
 	// analysis took, an early return having pushed nothing).
-	r.Check.NextBaselineIsBlock = bodyInFrame
+	// A `do` body (transparent) opens no scope of its own: `do` is not a
+	// scope (design/IMMUTABLE-DEF.1.md #11), so its defs read as the
+	// enclosing scope's — a rebind over a module name, never a block's
+	// shadow (core PushFnBaseline). A fn VALUE's body (a named fn or a
+	// lambda compiled as a closure — "fnval", a stored fn, a spawned body)
+	// is a FRAME of its own whatever its residual rule says, so it keeps
+	// the frame kind: a def inside it shadows as a frame's does, never as a
+	// block's.
+	// A run-time TOKEN body stamp (EmitState.tokenBodyBlock /
+	// tokenBodyTransparent) compiles through the stored-fn path but is a
+	// block of the caller's frame (or `do`'s transparent body), not a frame.
+	frameBody := word == "fnval" || word == "spawnbody" || (word == "storedfn" && !es.tokenBodyBlock && !es.tokenBodyTransparent)
+	r.Check.NextBaselineIsBlock = bodyInFrame && !transparent && !frameBody
+	r.Check.NextBaselineTransparent = bodyInFrame && transparent
 	stk := check.AnalyseFnBody(r, name, paramNames, bodyToks, inputs, captures, declared, !bodyInFrame)
 	r.Check.NextBaselineIsBlock = false
+	r.Check.NextBaselineTransparent = false
 	if len(bodyToks) == 0 && len(stk) == 0 {
 		// An EMPTY body's residual is its pushed inputs, verbatim: the runtime
 		// InvokeBody pushes the per-call inputs and runs no tokens, so the frame
@@ -884,7 +898,7 @@ func recordClosureDispatch(r *core.Registry, word string, spec core.CallableSpec
 			return -1, false
 		}
 		defer env.exit(r, prev)
-		return compileClosureBody(r, word, spec.BodyOut, countAgnostic, toks, inputs, names, paramSpecPatterns(paramSpec), caps, shape, bodyInFrame, pos)
+		return compileClosureBody(r, word, spec.BodyOut, countAgnostic, toks, inputs, names, paramSpecPatterns(paramSpec), caps, shape, bodyInFrame, spec.BodyOnceKeepsDefs, pos)
 	}
 	probe := real.forkForProbe()
 	r.Check.Emit = probe
@@ -1074,7 +1088,7 @@ func probeResidualRuns(r *core.Registry, real *EmitState, word string, spec core
 func probedResidualRuns(r *core.Registry, real *EmitState, word string, spec core.CallableSpec, bodyToks, inputs []core.Value, paramNames []string, paramSpec *ClosureParamSpec, captures []core.CapturedBinding, shape core.ClosureInShape, bodyInFrame bool, pos core.SrcPos) bool {
 	probe := real.forkForProbe()
 	r.Check.Emit = probe
-	unit, probeOk := compileClosureBody(r, word, spec.BodyOut, spec.EmptyBodyErrors || spec.StripsUnconsumedInput, bodyToks, inputs, paramNames, paramSpecPatterns(paramSpec), captures, shape, bodyInFrame, pos)
+	unit, probeOk := compileClosureBody(r, word, spec.BodyOut, spec.EmptyBodyErrors || spec.StripsUnconsumedInput, bodyToks, inputs, paramNames, paramSpecPatterns(paramSpec), captures, shape, bodyInFrame, spec.BodyOnceKeepsDefs, pos)
 	r.Check.Emit = real
 	probe.undoProbeStamps()
 	return probeOk && closureResidualRuns(probe, unit)

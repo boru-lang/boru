@@ -847,8 +847,10 @@ func TestCheckConditionalDefJoin(t *testing.T) {
 	seedBoru(a)
 	// Use a dynamic condition (1 lt 2) so the checker must analyse
 	// both branches; a literal true would be flagged as
-	// unreachable-branch and select only the then side.
-	res, err := a.Check(`if [1 lt 2] [def x 1] [def x "hi"]  x`)
+	// unreachable-branch and select only the then side. The branch VALUE
+	// is what the def binds: an arm's own def ends with the arm since
+	// phase 2 (design/IMMUTABLE-DEF.1.md §2.1).
+	res, err := a.Check(`def x (if [1 lt 2] [1] ["hi"])  x`)
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}
@@ -869,7 +871,7 @@ func TestCheckConditionalDefSameBranch(t *testing.T) {
 		t.Fatalf("new: %v", err)
 	}
 	seedBoru(a)
-	res, err := a.Check(`if [1 lt 2] [def x 1] [def x 2]  x`)
+	res, err := a.Check(`def x (if [1 lt 2] [1] [2])  x`)
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}

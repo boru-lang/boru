@@ -108,6 +108,6 @@ func TestDynamicSwapTwoNetBodyStaysSound(t *testing.T) {
 // evStore — see bytecode_stage2_loopcarried_test.go for the full battery).
 // Flipped from the sound-fallback pin to a compile+parity pin.
 func TestLoopCarriedDefRebindStaysSound(t *testing.T) {
-	stage1aCompiles(t, `def first-big fn [[xs:List] [Integer] [def found false def result 0 for (xs size) [def idx i def x (xs idx get) if (found not) [if (x 10 gt) [def result x def found true] []] []] end result]]
+	stage1aCompiles(t, `def first-big fn [[xs:List] [Integer] [var found false var result 0 for (xs size) [def idx i def x (xs idx get) if (found not) [if (x 10 gt) [var result x var found true] []] []] end result]]
 (first-big [3 12 40])`)
 }

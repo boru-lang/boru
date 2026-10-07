@@ -20,6 +20,10 @@ func TestNUR321NamedFnValueMemberCalls(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, r.src, r.want)
 	}
+	// The arm ASSIGNS the cell, so the undef after it pops the only level and
+	// the read raises (a pushed shadow had left the first binding); the
+	// compiled lane stops at the check.
+	ruleOrDecline(t, `var x (for 2 [5]) def c true if c [var x 1] [] end undef x x`, "ERROR:undefined word: x")
 }
 
 // TestNUR322SplicedConsumerDeopts pins NUR322's close: a gradual def read
@@ -40,6 +44,10 @@ func TestNUR322SplicedConsumerDeopts(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, r.src, r.want)
 	}
+	// The arm ASSIGNS the cell, so the undef after it pops the only level and
+	// the read raises (a pushed shadow had left the first binding); the
+	// compiled lane stops at the check.
+	ruleOrDecline(t, `var x (for 2 [5]) def c true if c [var x 1] [] end undef x x`, "ERROR:undefined word: x")
 }
 
 // TestNUR237LoopSplitRebindInABranch pins NUR237's close: a root def of a
@@ -49,15 +57,18 @@ func TestNUR322SplicedConsumerDeopts(t *testing.T) {
 // A taken branch arm's rebind is seen after the merge on both lanes.
 func TestNUR237LoopSplitRebindInABranch(t *testing.T) {
 	for _, r := range []struct{ src, want string }{
-		{`def x (for 2 [5]) def c true if c [def x 1] [] end x`, "[5 1]"},
-		{`def x (for 2 [5]) def c true if c [def x 1] [def x 2] end x`, "[5 1]"},
-		{`def x (for 2 [5]) def c false if c [def x 1] [] end x`, "[5 5]"},
-		{`def x (for 2 [5]) def c true if c [def x 1] [] end undef x x`, "[5 5]"},
-		{`def x (for 2 [5]) def f fn [[] [Any] [x]] end def c true if c [def x 1] [] end (f)`, "[5 1]"},
+		{`var x (for 2 [5]) def c true if c [var x 1] [] end x`, "[5 1]"},
+		{`var x (for 2 [5]) def c true if c [var x 1] [var x 2] end x`, "[5 1]"},
+		{`var x (for 2 [5]) def c false if c [var x 1] [] end x`, "[5 5]"},
+		{`var x (for 2 [5]) def f fn [[] [Any] [x]] end def c true if c [var x 1] [] end (f)`, "[5 1]"},
 		{`def x (for 2 [5]) def x 7 x`, "[5 7]"},
-		{`def x (for 2 [5]) for 2 [def x 3] x`, "[5 3]"},
-		{`def x (for 3 [i]) def c true if c [def x 9] [] end x`, "[1 2 9]"},
+		{`var x (for 2 [5]) for 2 [var x 3] x`, "[5 3]"},
+		{`var x (for 3 [i]) def c true if c [var x 9] [] end x`, "[1 2 9]"},
 	} {
 		agreeOnBothLanes(t, r.src, r.want)
 	}
+	// The arm ASSIGNS the cell, so the undef after it pops the only level and
+	// the read raises (a pushed shadow had left the first binding); the
+	// compiled lane stops at the check.
+	ruleOrDecline(t, `var x (for 2 [5]) def c true if c [var x 1] [] end undef x x`, "ERROR:undefined word: x")
 }

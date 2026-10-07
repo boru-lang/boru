@@ -73,15 +73,16 @@ func fixIf3Handler(args []core.Value, _ map[string]core.Value, _ []core.Value, _
 }
 
 // fixCondFragment captures the condition body as its own fragment when
-// emitting, so the lowering runs it inline before JMP_IF_FALSE. The run
-// KEEPS its bindings, as basic's analyseCondFragment does (NUR212).
+// emitting, so the lowering runs it inline before JMP_IF_FALSE. The run is
+// a block's, as basic's analyseCondFragment is: a def the condition makes
+// ends with it (design/IMMUTABLE-DEF.1.md §2.1).
 func fixCondFragment(r *core.Registry, cond core.Value) (core.EmitFragmentRef, []core.Value) {
 	es, _ := r.Check.Recorder().(*compiler.EmitState)
 	if !es.Armed() || !core.IsConcrete(cond) || !cond.Parent.ConformsTo(core.TList) {
 		return nil, nil
 	}
 	es.ArmBranchCapture()
-	stk := core.RunCarrierCondBodyKeepDefs(r, cond)
+	stk := core.RunCarrierCondBodyValues(r, cond)
 	return es.TakeFragment(), stk
 }
 
@@ -317,7 +318,9 @@ func fixDoHandler(args []core.Value, _ map[string]core.Value, _ []core.Value, r 
 	if !core.IsConcrete(args[0]) { //covergate:allow the body is a dispatch-matched List argument and handlers never run on carriers; a bare List literal cannot bind the sig slot
 		return nil, &core.BoruError{Code: "do_error", Detail: "doq: argument must be a concrete list, got type literal"}
 	}
-	result, err := core.InvokeBody(r, args[0], nil)
+	// doq mirrors do: its body is NOT a block (BodyOnceKeepsDefs) — its
+	// defs reach the enclosing scope (core.InvokeBodyKeepDefs).
+	result, err := core.InvokeBodyKeepDefs(r, args[0], nil)
 	if err != nil {
 		return []core.Value{core.NewError(err)}, nil
 	}

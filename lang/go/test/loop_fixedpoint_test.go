@@ -19,7 +19,9 @@ func TestCheckLoopRebindJoins(t *testing.T) {
 	if err != nil {
 		t.Fatalf("new: %v", err)
 	}
-	res, err := a.Check(`def acc 0 for 3 [def acc (acc add 0.5)] acc`)
+	// The accumulator is a var cell the body assigns: a body `def` would
+	// be the iteration's own since phase 2 (design/IMMUTABLE-DEF.1.md §2.1).
+	res, err := a.Check(`var acc 0 for 3 [var acc (acc add 0.5)] acc`)
 	if err != nil {
 		t.Fatalf("check: %v", err)
 	}

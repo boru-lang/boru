@@ -74,8 +74,12 @@ func TestNarrowingPopSkipsBuriedEntry(t *testing.T) {
 	}
 }
 
-// The joined post-loop pushes are ledgered at their live depths — the gap the
-// (previously malformed) synthetic while row could not see.
+// A loop body is a BLOCK (design/IMMUTABLE-DEF.1.md §2.1, phase 2): a def
+// inside it ends with the iteration. Nothing of the body's is installed
+// after the loop — no joined rebind of the enclosing binding, no fresh
+// post-loop binding — and the ledger notes no post-loop install either
+// (before the rule this test asserted the joined pushes at their live
+// depths, 2 and 1).
 func TestAnalyseLoopBodyLedgersJoinedInstalls(t *testing.T) {
 	r := zcaRegistry(t)
 	zcaRegisterPushq(r)
@@ -89,19 +93,19 @@ func TestAnalyseLoopBodyLedgersJoinedInstalls(t *testing.T) {
 	})
 	AnalyseLoopBody(r, body, nil, nil, false)
 
-	found := map[string]int{}
+	if r.Defs.Depth("ljaccq") != 1 {
+		t.Errorf("the enclosing binding must stand alone after the loop: depth %d, want 1", r.Defs.Depth("ljaccq"))
+	}
+	if acc, _ := r.Defs.Top("ljaccq"); !acc.Parent.Equal(core.TInteger) {
+		t.Errorf("post-loop bound = %v, want the enclosing Integer, unjoined", acc.Parent)
+	}
+	if r.Defs.Has("ljfreshq") {
+		t.Error("a body-local binding must not be installed after the loop")
+	}
 	for _, tr := range r.Check.BindLedger {
-		if tr.Kind == core.BindDef {
-			found[tr.Name] = tr.Depth
+		if tr.Kind == core.BindDef && (tr.Name == "ljaccq" || tr.Name == "ljfreshq") {
+			t.Errorf("no post-loop install may be ledgered, got %+v", tr)
 		}
-	}
-	if found["ljaccq"] != r.Defs.Depth("ljaccq") || r.Defs.Depth("ljaccq") != 2 {
-		t.Errorf("the joined rebind must be ledgered at its live depth: ledger %d, live %d, want 2",
-			found["ljaccq"], r.Defs.Depth("ljaccq"))
-	}
-	if found["ljfreshq"] != r.Defs.Depth("ljfreshq") || r.Defs.Depth("ljfreshq") != 1 {
-		t.Errorf("the fresh body binding must be ledgered at its live depth: ledger %d, live %d, want 1",
-			found["ljfreshq"], r.Defs.Depth("ljfreshq"))
 	}
 }
 

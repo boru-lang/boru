@@ -80,20 +80,28 @@ var parityShapes = []parityShape{
 	// arm-resident bridge places a per-element runtime-value install
 	// (OpBindResident) at each def site inside the compiled unit, so
 	// count, values, order, and zero-iteration definedness are measured
-	// interpreter-equal. A root read of an arm-bound name is parity too
-	// (NUR200's close, the keep-defs leak): it seats LIVE at its token, so
-	// the runtime binding — the last element's install, or the miss the
-	// interpreter raises at zero iterations — is what it reads. Still-
-	// declined rows pin the population the bridge declines: the var-param
-	// Pos-0:0 def/undef pair (until the undef seam lands) and nested
-	// multi-run bodies (the latch's bodyID fence).
+	// interpreter-equal. Since phase 2 (design/IMMUTABLE-DEF.1.md §2.1)
+	// the body is a BLOCK: every install ends with the element's run, so
+	// the measured stack after the program is EMPTY on both lanes — the
+	// VM's closure seam closes the block (eng invokeClosureOn) as the
+	// interpreter's RunBodyResolved does — and a read after the body of a
+	// name only the body bound is undefined_word on both lanes (the
+	// read-after rows below carry the value out in a `var` cell). Still-
+	// declined rows pin the population the bridge declines: nested
+	// multi-run bodies (the latch's bodyID fence) and a type bound in the
+	// body (the block gate, until the compiler's block scopes land).
 	{name: "each-literal-def", src: "[1 2 3] each [def x 5]",
 		probes: []string{"x"}},
 	{name: "each-elem-valued-def", src: "[10 20] each [ ([r] => [def x r x]) apply ]",
 		probes: []string{"x", "r"}},
 	{name: "each-zero-iterations", src: "[] each [def x 5]",
 		probes: []string{"x"}},
-	{name: "each-read-after", src: "[1 2] each [def x 5] x add 1",
+	// A read AFTER the body is of a name the body cannot bind for it since
+	// phase 2 (design/IMMUTABLE-DEF.1.md §2.1: the body is a block, its def
+	// ends with the element's run — undefined_word on both lanes, and the
+	// rows above measure the retired stack), so the read-after rows carry
+	// the value out in a `var` cell: ONE install, assigned per element.
+	{name: "each-read-after", src: "var x 0 [1 2] each [var x 5] x add 1",
 		probes: []string{"x"}},
 	{name: "each-underscore-def", src: "[1 2] each [def _u 5]",
 		probes: []string{"_u"}},
@@ -114,10 +122,16 @@ var parityShapes = []parityShape{
 	// placement: the probe measures the DEPTH, which is the only thing a
 	// one-shot replay would get wrong and the only thing observable, since
 	// a root read of an arm-bound name declines inside the same program.
+	// Since phase 2 the body's type binding is the block's own — retired
+	// with the element's run, so the probe measures NOTHING on the
+	// interpreter — and the compiled lane DECLINES a type bound inside a
+	// block until the compiler's block scopes land (core blockTypeGate,
+	// phase 2's second step): the rows pin the decline, and graduate to
+	// parity (an empty stack on both lanes) with that landing.
 	{name: "each-type-def", src: `[10 20] each [drop def Big (Integer gt 5) 7]`,
-		probes: []string{"Big"}},
+		probes: []string{"Big"}, declined: "block-local type def `Big`"},
 	{name: "each-type-def-pair-and-use", src: `[10 20] each [drop def A (Integer gt 10) def B (Integer lt 20) def x:(A tand B) 15 x]`,
-		probes: []string{"A", "B", "x"}},
+		probes: []string{"A", "B", "x"}, declined: "block-local type def `A`"},
 	// The screen's negative: the type expression reads the body's OWN var
 	// param, so each element mints a different node — measured, 15 fails
 	// against the top `ZB` and passes against the one below it (the body
@@ -133,8 +147,10 @@ var parityShapes = []parityShape{
 	// def declines as the compile-time word it is, failing the body's unit,
 	// and the each declines as the code-body word before the bridge is
 	// reached (reclassified in review both times, the parity unchanged).
+	// Since phase 2 the block gate declines first (the type is bound in a
+	// block), the parity unchanged.
 	{name: "each-type-def-element-dependent", src: `[10 20] each [ def e end def ZB (Integer gt e) 7 ]`,
-		probes: []string{"ZB", "e"}, declined: "code-body word each (Stage 2)"},
+		probes: []string{"ZB", "e"}, declined: "block-local type def `ZB`"},
 
 	// --- The sibling multi-run words, graduated on the same mechanism.
 	// `each` was flagged first because its body population is the simplest
@@ -167,16 +183,16 @@ var parityShapes = []parityShape{
 	// leak's live read) and the one compile failure `each` still carries —
 	// a nested multi-run body (the latch's bodyID fence) — so the lane
 	// proves the fence still REJECTS, not merely that the happy path binds.
-	{name: "fold-read-after", src: "fold [ def x 5 ] [10 20] 0  x add 1",
+	{name: "fold-read-after", src: "var x 0 fold [ var x 5 ] [10 20] 0  x add 1",
 		probes: []string{"x"}},
-	{name: "scan-read-after", src: "scan [ def x 5 ] [10 20]  x add 1",
+	{name: "scan-read-after", src: "var x 0 scan [ var x 5 ] [10 20]  x add 1",
 		probes: []string{"x"}},
 	// outer's body must consume BOTH inputs, so its compile failure rows take the
 	// var form: a bare body declines earlier as a Stage-2 code-body word,
 	// which would pin the wrong gate. (Its nested-multi-run shape declines
 	// there too, so the bodyID fence is pinned on fold below rather than
 	// twice-over on a word that never reaches it.)
-	{name: "outer-read-after", src: "outer [ def b end def a end def x 5 (a add b) ] [1 2] [3 4]  x add 1",
+	{name: "outer-read-after", src: "var x 0 outer [ def b end def a end var x 5 (a add b) ] [1 2] [3 4]  x add 1",
 		probes: []string{"x"}},
 	{name: "fold-nested-multirun",
 		src:    "fold [ def b end def a end ([1] each [def x 5]) (a add b) ] [1 2] 0",
@@ -273,7 +289,7 @@ var parityShapes = []parityShape{
 	// The graduation's other half, as for every sibling: the read-after row
 	// is parity, and the fence must still REJECT a nested multi-run body.
 	{name: "foldaxis-read-after",
-		src:    `import "boru:array-util"  ArrayUtil.foldaxis 0 [ def b end def a end def x 5 (a add b) ] [[1 2] [3 4]]  x add 1`,
+		src:    `import "boru:array-util"  var x 0  ArrayUtil.foldaxis 0 [ def b end def a end var x 5 (a add b) ] [[1 2] [3 4]]  x add 1`,
 		probes: []string{"x"}},
 	{name: "foldaxis-nested-multirun",
 		src:    `import "boru:array-util"  ArrayUtil.foldaxis 1 [ def b end def a end ([1] each [def x 5]) (a add b) ] [[1 2] [3 4]]`,

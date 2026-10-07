@@ -126,7 +126,7 @@ func TestNUR314LoopResultsReStep(t *testing.T) {
 		{`for 1 [(mkf)]`, "[7]"},
 		{`for 2 [(mkf)]`, "[7 7]"},
 		{`for 2 [(mkl)]`, "ERROR:call to 'l' matched no signature"},
-		{`def i 0 while [i lt 2] [def i (i add 1) (mkf)]`, "[7 7]"},
+		{`var i 0 while [i lt 2] [var i (i add 1) (mkf)]`, "[7 7]"},
 		{`for 3 [if [i eq 1] [break] [g/v]]`, "[7]"},
 		{`def h fn [[][Any][for 1 [(mkf)]]] end h`, "[7]"},
 		{`for 2 [do [raise oops 'x'] error [drop l/v]]`, "ERROR:call to 'l' matched no signature"},

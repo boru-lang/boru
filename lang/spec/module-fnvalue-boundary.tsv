@@ -29,8 +29,8 @@ import module [def useanon fn [[Function Integer] [Integer] [(args.0 args.1)]] e
 #
 # §3  errors and flow control behave exactly as named dispatch
 import module [def useanon fn [[Function Integer] [Integer] [(args.0 args.1)]] export "L" {useanon: useanon/v, bm: (fn [[x:Integer] [Integer] [raise oops_e "bang"]])}] end L.useanon L.bm 1	ERROR:bang	a raise inside the value-dispatched body propagates out as the same error
-import module [def looper fn [[Function] [Integer] [def acc 0 for 5 [def acc (acc add 1) (args.0 1)] acc]] export "L" {looper: looper/v, brk: (fn [[x:Integer] [Any] [break]])}] end L.looper L.brk	1	a break in a value-dispatched body terminates the enclosing loop — identical to a named call (the escaped frame's cleanup tail is unwound, not leaked)
-import module [def looper fn [[Function] [Integer] [def acc 0 for 5 [(args.0 1) def acc (acc add 1)] acc]] export "L" {looper: looper/v, skp: (fn [[x:Integer] [Any] [continue]])}] end L.looper L.skp	0	a continue in a value-dispatched body skips the rest of the iteration — identical to a named call; the escaped frame's args list is popped, so the caller's args stay its own
+import module [def looper fn [[Function] [Integer] [var acc 0 for 5 [var acc (acc add 1) (args.0 1)] acc]] export "L" {looper: looper/v, brk: (fn [[x:Integer] [Any] [break]])}] end L.looper L.brk	1	a break in a value-dispatched body terminates the enclosing loop — identical to a named call (the escaped frame's cleanup tail is unwound, not leaked)
+import module [def looper fn [[Function] [Integer] [var acc 0 for 5 [(args.0 1) var acc (acc add 1)] acc]] export "L" {looper: looper/v, skp: (fn [[x:Integer] [Any] [continue]])}] end L.looper L.skp	0	a continue in a value-dispatched body skips the rest of the iteration — identical to a named call; the escaped frame's args list is popped, so the caller's args stay its own
 #
 # ──────────────────────────────────────────────────────────────────────
 # §4  a fn VALUE carries its DEFINING module's scope

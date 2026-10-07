@@ -6,12 +6,16 @@ import (
 	"testing"
 )
 
-// Stage-2 loop-carried def rebind pins (voxgig zero-compile failures plan): a
-// pre-loop `def` REBOUND inside a for body (decision.boru eval-table-first's
-// `def found true` inside an arm, read as `found not` the NEXT iteration)
-// used to decline "operand of unknown provenance … at not" — the rebind's
-// per-round JOIN carrier had no operand home across iterations. The fix is
-// loop-persistent frame slots:
+// Stage-2 loop-carried pins (voxgig zero-compile failures plan): a pre-loop
+// cell ASSIGNED inside a for body (decision.boru eval-table-first's `found
+// true` inside an arm, read as `found not` the NEXT iteration) used to
+// decline "operand of unknown provenance … at not" — the rebind's per-round
+// JOIN carrier had no operand home across iterations. The fix is
+// loop-persistent frame slots. Since phase 2 of design/IMMUTABLE-DEF.1.md the
+// cell is a `var` and the body ASSIGNS it (`var found true`): a `def` inside
+// the body is a block-local shadow that ends with the iteration, and the
+// compiled lane declines it until its own block scopes land
+// (TestLoopCarriedFnValueRebindStaysSound keeps that shape).
 //
 //  1. NoteLoopCarried (emit.go, driven from AnalyseLoopBody's per-round join)
 //     allocates a unit frame slot per rebound pre-loop name, aliases each
@@ -51,21 +55,21 @@ func loopCarriedCompilesClean(t *testing.T, src string) {
 // on the NEXT iteration and `result` read after the loop. First-match
 // semantics: later matches must NOT overwrite.
 func TestLoopCarriedRebindReadNextIteration(t *testing.T) {
-	loopCarriedCompilesClean(t, `def first-big fn [[xs:List] [Integer] [def found false def result 0 for (xs size) [def idx i def x (xs idx get) if (found not) [if (x 10 gt) [def result x def found true] []] []] end result]]
+	loopCarriedCompilesClean(t, `def first-big fn [[xs:List] [Integer] [var found false var result 0 for (xs size) [def idx i def x (xs idx get) if (found not) [if (x 10 gt) [var result x var found true] []] []] end result]]
 [(first-big [3 12 40]) (first-big [40 3 12]) (first-big [1 2 3]) (first-big [])]`)
 }
 
 // An UNCONDITIONAL rebind read within the loop on the next iteration
 // (`acc add acc` doubles per pass) and after the loop.
 func TestLoopCarriedRebindUnconditional(t *testing.T) {
-	loopCarriedCompilesClean(t, `def doubler fn [[n:Integer] [Integer] [def acc 1 for n [def acc (acc add acc)] end acc]]
+	loopCarriedCompilesClean(t, `def doubler fn [[n:Integer] [Integer] [var acc 1 for n [var acc (acc add acc)] end acc]]
 [(doubler 3) (doubler 0)]`)
 }
 
 // A conditional rebind in ONE arm only, read ONLY after the loop (the
 // last-match variant — every matching iteration overwrites).
 func TestLoopCarriedRebindConditionalOneArm(t *testing.T) {
-	loopCarriedCompilesClean(t, `def last-big fn [[xs:List] [Integer] [def best 0 for (xs size) [def idx i def x (xs idx get) if (x 10 gt) [def best x] []] end best]]
+	loopCarriedCompilesClean(t, `def last-big fn [[xs:List] [Integer] [var best 0 for (xs size) [def idx i def x (xs idx get) if (x 10 gt) [var best x] []] end best]]
 [(last-big [3 12 40 7]) (last-big [1 2]) (last-big [])]`)
 }
 
@@ -73,35 +77,35 @@ func TestLoopCarriedRebindConditionalOneArm(t *testing.T) {
 // (a fresh inner slot with its own init would reset the accumulation every
 // outer iteration — 3*3 must total 9, not 3).
 func TestLoopCarriedRebindNestedLoop(t *testing.T) {
-	loopCarriedCompilesClean(t, `def grid fn [[n:Integer] [Integer] [def total 0 for n [def oi i for n [def total (total add 1)]] end total]]
+	loopCarriedCompilesClean(t, `def grid fn [[n:Integer] [Integer] [var total 0 for n [def oi i for n [var total (total add 1)]] end total]]
 [(grid 3) (grid 1) (grid 0)]`)
 }
 
 // A MODULE-scope loop rebind: the carried slot lives in frame 0 and the
 // post-loop read is the program residual (the Finalize local-operand branch).
 func TestLoopCarriedRebindModuleScope(t *testing.T) {
-	loopCarriedCompilesClean(t, `def acc 0
-for 3 [def acc (acc add 1)] end acc`)
+	loopCarriedCompilesClean(t, `var acc 0
+for 3 [var acc (acc add 1)] end acc`)
 }
 
 // A PARAM rebound in the loop: the carried cell is a fresh slot seeded from
 // the param local; the param slot itself must stay untouched.
 func TestLoopCarriedParamRebind(t *testing.T) {
-	loopCarriedCompilesClean(t, `def bump fn [[a:Integer n:Integer] [Integer] [for n [def a (a add 2)] end a]]
+	loopCarriedCompilesClean(t, `def bump fn [[a:Integer n:Integer] [Integer] [var acc a for n [var acc (acc add 2)] end acc]]
 [(bump 1 4) (bump 7 0)]`)
 }
 
 // A COMPUTED pre-loop init (`def result (do {…})` — a map event, the
 // decision.boru shape): the init operand rides the promoted value-def local.
 func TestLoopCarriedComputedInit(t *testing.T) {
-	loopCarriedCompilesClean(t, `def tally fn [[xs:List] [Map] [def result (do {ok: false}) def found false for (xs size) [def idx i if (found not) [if ((xs idx get) 10 gt) [def result (do {ok: true}) def found true] []] []] end result]]
+	loopCarriedCompilesClean(t, `def tally fn [[xs:List] [Map] [var result (do {ok: false}) var found false for (xs size) [def idx i if (found not) [if ((xs idx get) 10 gt) [var result (do {ok: true}) var found true] []] []] end result]]
 [(tally [2 15 3]) (tally [1 2])]`)
 }
 
 // Zero iterations leave the pre-loop value (the "loop may run zero times"
 // join): the carried slot's init must land BEFORE the first FOR_NEXT.
 func TestLoopCarriedZeroIterationsKeepInit(t *testing.T) {
-	loopCarriedCompilesClean(t, `def keep fn [[n:Integer] [Integer] [def acc 42 for n [def acc 0] end acc]]
+	loopCarriedCompilesClean(t, `def keep fn [[n:Integer] [Integer] [var acc 42 for n [var acc 0] end acc]]
 (keep 0)`)
 }
 
@@ -131,26 +135,23 @@ func TestLoopCarriedUndefStaysSound(t *testing.T) {
 (flip 2)`)
 }
 
-// NEGATIVE: a rebind to a FUNCTION value inside a loop body DECLINES (fn
-// values do not ride carried slots in Stage 2). The loop-body `def h`
-// overlap-removes the enclosing `h` in place — the def depth is unchanged,
-// so the loop rollback cannot restore it — and compiled resolution statically
-// bakes the loop's `add 2` overload. The interpreter keeps the pre-loop
-// `add 1` when the loop runs ZERO times, so `(pickfn 0)` silently miscompiled
-// to 12 (should be 11) before this compile failure landed; `(pickfn 2)` coincidentally
-// agreed at 12 because the loop runs. Decline — compiled == interpreter at every
-// n — containment, not a fix. See the conditional-fn-shadow divergence fix.
+// NEGATIVE: a fn-valued def inside a loop body is a BLOCK-LOCAL SHADOW of
+// the enclosing `h` (design/IMMUTABLE-DEF.1.md §2.1, phase 2): pushed above
+// it for the iteration and popped with it, so `(h 10)` after the loop
+// dispatches the pre-loop `add 1` at every n — before phase 2 the body's def
+// overlap-removed the enclosing `h` in place, and `(pickfn 0)` miscompiled to
+// 12. The compiled lane declines the shadow until its own block scopes land.
 func TestLoopCarriedFnValueRebindStaysSound(t *testing.T) {
 	base := `def pickfn fn [[n:Integer] [Integer] [def h ([x:Integer] => [x add 1]) for n [def h ([x:Integer] => [x add 2])] end (h 10)]]`
-	// The DEFINITION carries the unsound loop rebind, so every call declines.
-	mustFailToCompileWithParity(t, base+"\n(pickfn 0)", "redefined inside a conditional body")
-	mustFailToCompileWithParity(t, base+"\n(pickfn 2)", "redefined inside a conditional body")
-	// The interpreter is the source of truth the compile failure falls back to: the
-	// zero-iteration case (11) is exactly what the compiled bake got wrong.
+	// The DEFINITION carries the block shadow, so every call declines.
+	mustFailToCompileWithParity(t, base+"\n(pickfn 0)", "block-local def `h` shadows an enclosing binding")
+	mustFailToCompileWithParity(t, base+"\n(pickfn 2)", "block-local def `h` shadows an enclosing binding")
+	// The interpreter is the source of truth the compile failure falls back
+	// to: the shadow ends with each iteration, so every call answers 11.
 	for _, tc := range []struct {
 		n    int
 		want string
-	}{{0, "[11]"}, {1, "[12]"}, {2, "[12]"}} {
+	}{{0, "[11]"}, {1, "[11]"}, {2, "[11]"}} {
 		a, _ := New()
 		got, err := a.RunInterp(fmt.Sprintf("%s\n(pickfn %d)", base, tc.n))
 		if err != nil || fmt.Sprint(got) != tc.want {

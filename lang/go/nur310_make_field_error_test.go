@@ -16,7 +16,7 @@ import (
 // already gave the same refusal over a value it knows.
 func TestNUR310MakeFieldRefusalIsATypeError(t *testing.T) {
 	for _, src := range []string{
-		`def Big (Integer gt 100) def S class {x:Big} def n 0 for 3 [def n (n add 1)] make S {x:n}`,
+		`def Big (Integer gt 100) def S class {x:Big} var n 0 for 3 [var n (n add 1)] make S {x:n}`,
 		`def Big (Integer gt (size "abc")) def S class {x:Big} make S {x:2}`,
 	} {
 		agreeOnBothLanes(t, src, `ERROR:make: field "x": expected Big, got Integer`)

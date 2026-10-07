@@ -39,8 +39,9 @@ func TestNUR354ComputedBodySeesLoopIndex(t *testing.T) {
 		{`def f fn [[b:List][Any][for 1 [for 2 [do b] end] end]] end f (quote [i])`, "ERROR:got 2 — [0 1]"},
 		// A body def of the index is the iteration's own binding, visible to
 		// the computed body and gone at the next iteration.
-		{`def f fn [[b:List][Any][for 1 [def i 9 do b] end]] end f (quote [i])`, "[9]"},
-		{mk + `def i 5 for 2 [def i 9 do (mk)] do (mk)`, "[9 9 5]"},
+		// (The body's own `def i 9` over the loop index — a block-local shadow
+		// the compiled lane declines until its block scopes land — is pinned
+		// below with ruleOrDecline.)
 		// The root, and the loop's exits: the index goes with the loop —
 		// exhausted, broken or continued — and the binding beneath shows.
 		{mk + `for 2 [do (mk)]`, "[0 1]"},
@@ -62,6 +63,9 @@ func TestNUR354ComputedBodySeesLoopIndex(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
+	const mkI = `def mk fn [[][List][quote [i]]] end `
+	ruleOrDecline(t, `def f fn [[b:List][Any][for 1 [def i 9 do b] end]] end f (quote [i])`, "[9]")
+	ruleOrDecline(t, mkI+`def i 5 for 2 [def i 9 do (mk)] do (mk)`, "[9 9 5]")
 }
 
 // TestRuntimeStampReadsThroughCallees: a run-time stamp's dependency
@@ -228,8 +232,8 @@ func TestNUR354PublishedIndexLeavesNoTrail(t *testing.T) {
 	for _, c := range []struct{ first, then, want string }{
 		{mk + `for 1 [do (mk)] end def i 7 end raise 'x'`, `i`, "[7]"},
 		{mk + `for 1 [(do (mk))] end def i 7 end raise 'x'`, `i`, "[7]"},
-		{mk + `for 2 [def i 9 do (mk)] end def i 7 end raise 'x'`, `i`, "[7]"},
-		{mk + `def i 5 end for 2 [def i 9 do (mk)] end def i 7 end def i 8 end raise 'x'`, `i`, "[8]"},
+		{mk + `for 2 [def j 9 do (mk)] end def i 7 end raise 'x'`, `i`, "[7]"},
+		{mk + `def i 5 end for 2 [def j 9 do (mk)] end def i 7 end def i 8 end raise 'x'`, `i`, "[8]"},
 		{mk + `for 2 [for 2 [do (mk)] end] end def i 7 end raise 'x'`, `i`, "[7]"},
 		{mk + `for 3 [do (mk) break] end def i 7 end raise 'x'`, `i`, "[7]"},
 		{mk + `def i 5 end for 2 [for 3 [do (mk) break] end] end def i 7 end raise 'x'`, `i`, "[7]"},

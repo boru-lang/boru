@@ -41,7 +41,7 @@ import (
 // wrongly errors on. A ratchet held at zero: any rise is a checker regression.
 // The historical rationale that used to live here inline moved to
 // design/CHECK-ACCURACY-RATCHET.10.md (§ "False positives").
-const pinnedFalsePositives = 13 // LOWERED 16 -> 13 (2026-09-25, the reverse-order NUR run: the predicate runs for real over a concrete candidate, NUR141, and the do-body raise watch, NUR134, clear three value rows the checker used to flag). Before: RAISED 15 -> 16 (2026-09-17, NUR152's corpus rows): module-composition.tsv:L144 `M.run ([x:Integer] => [x add secret])` — the checker reports `no_signature: cannot call f` for a `=>` lambda passed to a module fn's f:Function param, the exact shape of the already-pinned callbacks.tsv:L147 (`M.apply2 ([n:Integer] => [n mul 4]) 3`); its `fn`-word twin (L143) is clean, and the row compiles and runs with parity on both engines (6). One more instance of family (1) below, not a new family. RAISED 0 -> 15 (2026-09-17) by the corpus expansion. Fifteen new rows that RUN CORRECTLY on the interpreter are wrongly rejected by the checker. They are checker DEFECTS, not bad rows — every row was verified against the interpreter before it was written. Two families dominate: (1) fn VALUES crossing a boundary — a higher-order fn taking a f:Function (callbacks L139), a module-exported callback (L147), FnUtil.compose fed to each (L154), a branch-selected fn returned as Function (fold-map-filter L229); (2) DYNAMIC-SCOPE reads across a fn boundary — a callee reading the caller's local (fn-locals-scope L178-L181, L194), which is how boru scoping works and which the checker rejects outright. This pin matters more than its size suggests: a checker finding makes the emitter decline the WHOLE program through the "check diagnostics" sentinel, and that sentinel blocks 13 of the 27 real programs in TestRealProgramsCompile. Checker accuracy is a gating constraint on compilation, not a separate concern. Lower this by fixing the checker, never by deleting rows.
+const pinnedFalsePositives = 10 // LOWERED 13 -> 10 (2026-10-07, phase 2 of design/IMMUTABLE-DEF.1.md: the rows the block rule rewrote to their intended spelling no longer trip the checker). Before: LOWERED 16 -> 13 (2026-09-25, the reverse-order NUR run: the predicate runs for real over a concrete candidate, NUR141, and the do-body raise watch, NUR134, clear three value rows the checker used to flag). Before: RAISED 15 -> 16 (2026-09-17, NUR152's corpus rows): module-composition.tsv:L144 `M.run ([x:Integer] => [x add secret])` — the checker reports `no_signature: cannot call f` for a `=>` lambda passed to a module fn's f:Function param, the exact shape of the already-pinned callbacks.tsv:L147 (`M.apply2 ([n:Integer] => [n mul 4]) 3`); its `fn`-word twin (L143) is clean, and the row compiles and runs with parity on both engines (6). One more instance of family (1) below, not a new family. RAISED 0 -> 15 (2026-09-17) by the corpus expansion. Fifteen new rows that RUN CORRECTLY on the interpreter are wrongly rejected by the checker. They are checker DEFECTS, not bad rows — every row was verified against the interpreter before it was written. Two families dominate: (1) fn VALUES crossing a boundary — a higher-order fn taking a f:Function (callbacks L139), a module-exported callback (L147), FnUtil.compose fed to each (L154), a branch-selected fn returned as Function (fold-map-filter L229); (2) DYNAMIC-SCOPE reads across a fn boundary — a callee reading the caller's local (fn-locals-scope L178-L181, L194), which is how boru scoping works and which the checker rejects outright. This pin matters more than its size suggests: a checker finding makes the emitter decline the WHOLE program through the "check diagnostics" sentinel, and that sentinel blocks 13 of the 27 real programs in TestRealProgramsCompile. Checker accuracy is a gating constraint on compilation, not a separate concern. Lower this by fixing the checker, never by deleting rows.
 
 // unflaggedPins is the PER-SPEC-FILE count of `ERROR:` rows the checker leaves
 // silent — overwhelmingly runtime-only / value-dependent errors (malformed
@@ -61,6 +61,12 @@ const pinnedFalsePositives = 13 // LOWERED 16 -> 13 (2026-09-25, the reverse-ord
 // Keep entries sorted by filename so new files slot in predictably. The
 // aggregate history is archived in design/CHECK-ACCURACY-RATCHET.10.md.
 var unflaggedPins = map[string]int{
+	// block-scopes.tsv: the while body whose def shadows the condition's
+	// name never advances it (`def i 0 while [i lt 2] [def i (i add 1) i]`),
+	// so the loop runs until the step budget ends it — evaluation_limit is
+	// the run's verdict, nothing the checker flags statically; added
+	// 2026-10-07 with phase 2 of design/IMMUTABLE-DEF.1.md.
+	"block-scopes.tsv": 1,
 	// refine-flex.tsv: the `Sorted` predicate over a map BUILT by `set`
 	// (L29) — the candidate reaches the predicate-typed param as a check
 	// CARRIER, which the predicate unifier admits since NUR102 (only the
@@ -84,7 +90,7 @@ var unflaggedPins = map[string]int{
 	// between bound and unbound (design/SESSION-HANDOVER.0.md, NUR110's
 	// record) — so it cannot flag the read; that is the checker's T4 debt,
 	// not the rows'. Falls when the checker learns a conditional binding.
-	"fn-locals-scope.tsv": 4,
+	"fn-locals-scope.tsv": 0, // 4 -> 0 on 2026-10-07: the phase-2 rewrite (design/IMMUTABLE-DEF.1.md) left no error row the checker misses
 	// fold-map-filter.tsv: 2 ERROR rows the checker cannot statically flag,
 	// added 2026-09-17 with the corpus expansion. Both are RUNTIME-only
 	// failures of a callback the checker cannot resolve statically — the
@@ -144,7 +150,7 @@ var unflaggedPins = map[string]int{
 	// dispatch, so the no-match a 1-arg lambda raises when read with no
 	// argument is the runtime's (both lanes raise it; the interpreter's own
 	// word dispatch under the binding name).
-	"fn-value.tsv": 1,
+	"fn-value.tsv": 0, // 1 -> 0 on 2026-10-07 (phase 2 of design/IMMUTABLE-DEF.1.md): flagged in full now
 	// as.tsv: the weak-payload guard row is a RUNTIME-only compile failure by
 	// design — the ascribed dispatch statically commits the base FlexMap
 	// overload (sound: the interpreter takes the same widened match), and
@@ -158,7 +164,7 @@ var unflaggedPins = map[string]int{
 	"as.tsv":                2,
 	"case.tsv":              2,
 	"class.tsv":             1,
-	"compare-restrict.tsv":  2,
+	"compare-restrict.tsv":  0, // 2 -> 0 on 2026-10-07 (phase 2 of design/IMMUTABLE-DEF.1.md): flagged in full now
 	"control.tsv":           1,
 	"edge-containers-2.tsv": 1,
 	"edge-containers-3.tsv": 5,
@@ -192,8 +198,8 @@ var unflaggedPins = map[string]int{
 	// (NUR103). With that arm fixed the checker types the row `Word`, which
 	// is exactly right; whether the word it stands for dispatches cleanly
 	// depends on WHICH word and is not decidable from the carrier.
-	"edge-quote-1.tsv": 1,
-	"edge-quote-3.tsv": 1,
+	"edge-quote-1.tsv": 0, // 1 -> 0 on 2026-10-07 (phase 2 of design/IMMUTABLE-DEF.1.md): flagged in full now
+	"edge-quote-3.tsv": 0, // 1 -> 0, the same day and reason
 	// edge-scalars-3.tsv: the pad byte-cap PROJECTION row (PR #306
 	// review — a multi-byte fill exceeding maxStringResultBytes) is a
 	// value-dependent resource bound, the runtime's job.
@@ -297,7 +303,7 @@ var unflaggedPins = map[string]int{
 	// handler that actually raises. Three rows, one shape, three lanes — parked
 	// native, trailing apply, usurp — which is the pattern to expect as each
 	// remaining lane graduates off the island.
-	"path-modifier.tsv": 3,
+	"path-modifier.tsv": 0, // 3 -> 0 on 2026-10-07 (phase 2 of design/IMMUTABLE-DEF.1.md): flagged in full now
 	"module-rand.tsv":   1,
 	"module-scry.tsv":   2, // the two unknown-word rows: Scry.sig / Scry.body look the NAME up at run time, as their Debug twins do (NUR063)
 	"module-sift.tsv":   24,
@@ -324,7 +330,7 @@ var unflaggedPins = map[string]int{
 	// 3 -> 2 (2026-09-25, NUR141): the predicate's failing branch is
 	// flagged now that the pure predicate runs over the concrete candidate.
 	"record.tsv":            2,
-	"scalar-micron-ops.tsv": 1,
+	"scalar-micron-ops.tsv": 0, // 1 -> 0 on 2026-10-07 (phase 2 of design/IMMUTABLE-DEF.1.md): flagged in full now
 	"storage.tsv":           1,
 	"usurp.tsv":             1,
 	"user-types.tsv":        5,
@@ -537,7 +543,7 @@ func checkFlagsError(t testing.TB, input string) bool {
 // whose runtime result type is NOT covered by the checked carrier (a wrong-TYPE
 // checker bug the value-pinning ratchet can't see). Held at zero. History:
 // design/CHECK-ACCURACY-RATCHET.10.md (§ "Type-soundness violations").
-const pinnedTypeSoundnessViolations = 6 // the REGRESSION ceiling (lanes_test.go; end state 0): 7 (main) / 3 (#518) -> 6 on 2026-09-28 (the merge of main e8702ac into #518): #518's numeric-result fix (fold-map-filter.tsv:L53, the Number accumulator) carries onto main's seven (measured live 6). #518's history: 4 -> 3 on 2026-09-27 — fold-map-filter.tsv:L53 (`0 fold [add] [1 2.5 3]`) is sound: ReturnsNumericBinary (check/go carrier.go) typed any operand pair that was not BigDecimal / BigInteger / Float as Integer, so a Number accumulator summed as [Integer] while it returns 6.5; the result is now Integer only when both numeric operands are Integers, else Number (dynamic over a gradual operand; a strict non-Number operand, reached only through the no-match recovery, keeps the old Integer model — see the note there). The three left are code-bodies.tsv:L137/L141/L219. Before: 5 -> 4 on 2026-09-22 — NUR156: module-composition.tsv:L102 (`5 M.inc/v apply`) is sound now that the check model of `apply` delivers a `/v`-marked reach group unquoted and the re-step dispatches it on the pass. Before: 5 on 2026-09-17, all five rows of the corpus expansion (checker debt the new fn-value and code-body idioms exposed); 0 before it Main's history: 4 -> 7 on 2026-09-25 (the merge with the reverse-order NUR run): three ROWS THAT RUN ADDED, no existing row moved (measured against main's merge base 00ec530, whose four stand): fn-locals-scope.tsv L240 and L241 (NUR201's pins: `do [g]` over a fn that always raises checks as g's declared [Integer] where the run leaves the caught Error — the do's raise watch sees a raise at its own level, not one inside the callee's body) and edge-modules-2.tsv L101 (`3 M.d1 10 typeof`, the parked module closure: the pass models the returned closure applied over the 3 beneath it, [Type] for the run's [Integer Type]). Checker debt the new pins exposed, each row's value pinned on both lanes. Before: 5 -> 4 on 2026-09-22 — NUR156: module-composition.tsv:L102 (`5 M.inc/v apply`) is sound now that the check model of `apply` delivers a `/v`-marked reach group unquoted and the re-step dispatches it on the pass. Before: 5 on 2026-09-17, all five rows of the corpus expansion (checker debt the new fn-value and code-body idioms exposed); 0 before it
+const pinnedTypeSoundnessViolations = 7 // the REGRESSION ceiling (lanes_test.go; end state 0): 6 -> 7 on 2026-10-07 (phase 2 of design/IMMUTABLE-DEF.1.md): block-scopes.tsv:L39 (`def x 1 case 5 [5 [def x 7 x] 'other'] x`, answering `5 7 1`) exposes a PRE-EXISTING gap of the checker's case model, not the row's or the phase's: a list arm sees the scrutinee on its stack and may leave it (case.tsv:L57's rule — `case 5 [5 [7] 'other']` answers `5 7` on both lanes, measured on the phase-1 commit too), and the model types the case as its arm value alone ([Disjunct] for two values). Falls when the case model carries the scrutinee a list arm leaves. Before: 7 (main) / 3 (#518) -> 6 on 2026-09-28 (the merge of main e8702ac into #518): #518's numeric-result fix (fold-map-filter.tsv:L53, the Number accumulator) carries onto main's seven (measured live 6). #518's history: 4 -> 3 on 2026-09-27 — fold-map-filter.tsv:L53 (`0 fold [add] [1 2.5 3]`) is sound: ReturnsNumericBinary (check/go carrier.go) typed any operand pair that was not BigDecimal / BigInteger / Float as Integer, so a Number accumulator summed as [Integer] while it returns 6.5; the result is now Integer only when both numeric operands are Integers, else Number (dynamic over a gradual operand; a strict non-Number operand, reached only through the no-match recovery, keeps the old Integer model — see the note there). The three left are code-bodies.tsv:L137/L141/L219. Before: 5 -> 4 on 2026-09-22 — NUR156: module-composition.tsv:L102 (`5 M.inc/v apply`) is sound now that the check model of `apply` delivers a `/v`-marked reach group unquoted and the re-step dispatches it on the pass. Before: 5 on 2026-09-17, all five rows of the corpus expansion (checker debt the new fn-value and code-body idioms exposed); 0 before it Main's history: 4 -> 7 on 2026-09-25 (the merge with the reverse-order NUR run): three ROWS THAT RUN ADDED, no existing row moved (measured against main's merge base 00ec530, whose four stand): fn-locals-scope.tsv L240 and L241 (NUR201's pins: `do [g]` over a fn that always raises checks as g's declared [Integer] where the run leaves the caught Error — the do's raise watch sees a raise at its own level, not one inside the callee's body) and edge-modules-2.tsv L101 (`3 M.d1 10 typeof`, the parked module closure: the pass models the returned closure applied over the 3 beneath it, [Type] for the run's [Integer Type]). Checker debt the new pins exposed, each row's value pinned on both lanes. Before: 5 -> 4 on 2026-09-22 — NUR156: module-composition.tsv:L102 (`5 M.inc/v apply`) is sound now that the check model of `apply` delivers a `/v`-marked reach group unquoted and the re-step dispatches it on the pass. Before: 5 on 2026-09-17, all five rows of the corpus expansion (checker debt the new fn-value and code-body idioms exposed); 0 before it
 
 func TestCheckTypeSoundness(t *testing.T) {
 	t.Parallel()

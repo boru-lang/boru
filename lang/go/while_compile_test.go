@@ -25,18 +25,18 @@ func TestWhileCompileParity(t *testing.T) {
 		{`while ['ok'] [break] end 'truthy'`, "truthy — the condition is a truthiness read (ledger row)"},
 		{`def c (flex {n:0}) end while [(c get 'n') lt 3] [ (c get 'n') set 'n' ((c get 'n') add 1) c ]`, "0 {n:3} 1 {n:3} 2 {n:3} — the counter loop over a flex map (ledger row)"},
 		{`def c (flex {n:0}) end while [(c get 'n') lt 3] [ set 'n' ((c get 'n') add 1) c end if ((c get 'n') eq 2) [1] [2] end (c get 'n') ]`, "a two-arm if over the enclosing computation inside the body"},
-		{`def n 0 end while [n lt 3] [def n (n add 1) n] end 'z'`, "1 2 3 z — a carried rebind read by the condition; body values accumulate"},
-		{`def n 0 end while [n lt 3] [def n (n add 1)] end n`, "3 — the carried rebind persists after the loop"},
-		{`def n 5 end while [n lt 3] [def n (n add 1)] end n`, "5 — zero iterations leave the pre-loop value"},
-		{`def n 0 end while [(n add 0) lt 3] [def n (n add 1)] end n`, "3 — a computed condition over the carried slot"},
+		{`var n 0 end while [n lt 3] [var n (n add 1) n] end 'z'`, "1 2 3 z — a carried assignment read by the condition; body values accumulate"},
+		{`var n 0 end while [n lt 3] [var n (n add 1)] end n`, "3 — the carried assignment persists after the loop"},
+		{`var n 5 end while [n lt 3] [var n (n add 1)] end n`, "5 — zero iterations leave the pre-loop value"},
+		{`var n 0 end while [(n add 0) lt 3] [var n (n add 1)] end n`, "3 — a computed condition over the carried cell"},
 		{`while [true] [1 break] end 'x'`, "x — break discards the round's values"},
-		{`def n 0 end while [n lt 3] [def n (n add 1) 1 continue 2] end 'z'`, "z — continue discards the round's values"},
-		{`def n 0 end while [n lt 3] [def n (n add 1) if (n eq 2) [continue] end n] end 'z'`, "1 3 z — a continue inside a branch arm"},
-		{`def n 0 end while [n lt 3] [def n (n add 1) if (n eq 2) [break] end n] end 'z'`, "1 z — a break inside a branch arm"},
-		{`def f fn [[k:Integer][Integer][def n 0 while [n lt k] [def n (n add 1)] n]] end (f 4)`, "4 — inside a fn unit, counting against a param"},
-		{`def n 0 end def f fn [[][Integer][while [n lt 3] [def n (n add 1)] n]] end (f)`, "3 — a fn body rebinding a module def"},
-		{`def n 0 end while [n lt 2] [def n (n add 1) while [true] [1 break]] end 'z'`, "z — a nested while's break ends only the inner loop"},
-		{`def n 3  while [n gt 0] [def acc n  def n (n sub 1)] end 1`, "1 — two carried rebinds"},
+		{`var n 0 end while [n lt 3] [var n (n add 1) 1 continue 2] end 'z'`, "z — continue discards the round's values"},
+		{`var n 0 end while [n lt 3] [var n (n add 1) if (n eq 2) [continue] end n] end 'z'`, "1 3 z — a continue inside a branch arm"},
+		{`var n 0 end while [n lt 3] [var n (n add 1) if (n eq 2) [break] end n] end 'z'`, "1 z — a break inside a branch arm"},
+		{`def f fn [[k:Integer][Integer][var n 0 while [n lt k] [var n (n add 1)] n]] end (f 4)`, "4 — inside a fn unit, counting against a param"},
+		{`def f fn [[][Integer][var n 0 while [n lt 3] [var n (n add 1)] n]] end (f)`, "3 — a fn body counting in its own var (a module var is not a fn body's to assign, var.tsv §3)"},
+		{`var n 0 end while [n lt 2] [var n (n add 1) while [true] [1 break]] end 'z'`, "z — a nested while's break ends only the inner loop"},
+		{`var n 3  while [n gt 0] [def acc n  var n (n sub 1)] end 1`, "1 — a body-local def beside the carried assignment"},
 	}
 	for _, c := range rows {
 		gotC, compiled, islands, errC := runCompiledNative(t, c.src)
@@ -75,7 +75,7 @@ func TestWhileCompileSoundCompileFailures(t *testing.T) {
 		{`def f fn [[][Integer][while [] [1]]] end (f)`, "while: condition nets 0 values, not one", "condition produced no value"},
 		{`if true [while [] [1]] []`, "while: condition nets 0 values, not one", "condition produced no value"},
 		// A pre-existing gate `for` shares: a multi-value body with a rebind.
-		{`def n 0 end while [n lt 3] [def n (n add 1) n n] end 'z'`, "dynamic-scope def `n` of unpromoted computed value", ""},
+		{`var n 0 end while [n lt 3] [var n (n add 1) n n] end 'z'`, "dynamic-scope def `n` of unpromoted computed value", ""},
 	}
 	for _, c := range rows {
 		a, err := New()
@@ -164,7 +164,7 @@ func TestWhileEmptyConditionTraps(t *testing.T) {
 func TestWhileNonEmptyConditionDoesNotTrap(t *testing.T) {
 	for _, src := range []string{
 		`while [false] ['x'] end 'done'`,
-		`def n 0 end while [n lt 3] [def n (n add 1)] end n`,
+		`var n 0 end while [n lt 3] [var n (n add 1)] end n`,
 	} {
 		a, err := New()
 		if err != nil {

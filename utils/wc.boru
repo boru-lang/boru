@@ -112,8 +112,7 @@ def wc-columns fn [[flags:Map] [List] [
   if ((l or w) or c) [
     def a (if l [(push "lines" [])] [[]])
     def b (if w [(push "words" a)] [a])
-    def d (if c [(push "bytes" b)] [b])
-    d
+    if c [(push "bytes" b)] [b]
   ] [wc-all-columns]
 ]]
 

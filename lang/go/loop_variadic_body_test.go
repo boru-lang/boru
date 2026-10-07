@@ -20,16 +20,16 @@ import (
 func TestLoopBodyVariadicBranchCompiles(t *testing.T) {
 	for _, src := range []string{
 		// The corpus rows.
-		`def t 0 end for 2 [if true [def t (t add 1)] [0]] end t`,
-		`def t 0 end for 2 [case 1 [1 [drop def t (t add 1)] 0]] end t`,
+		`var t 0 end for 2 [if true [var t (t add 1)] [0]] end t`,
+		`var t 0 end for 2 [case 1 [1 [drop var t (t add 1)] 0]] end t`,
 		// The region's count varies per iteration, and the residual absorbs it.
 		`for 3 [if (i eq 1) [i] []]`,
 		`for 3 [if (i eq 1) [] [i]]`,
 		`for 3 [if (i eq 1) [i] []] 9`,
 		`for 2 [for 2 [if (i eq 1) [i] []]]`,
-		`def t 0 end for 2 [if true [def t 5] [0]] end t`,
-		// A while body, and a loop-carried rebind in either arm.
-		`def i 0 end while [i lt 3] [if (i eq 1) [def i (i add 1)] [def i (i add 1) i]] end i`,
+		`var t 0 end for 2 [if true [var t 5] [0]] end t`,
+		// A while body, and a loop-carried assignment in either arm.
+		`var i 0 end while [i lt 3] [if (i eq 1) [var i (i add 1)] [var i (i add 1) i]] end i`,
 	} {
 		requireEngineParity(t, src, true)
 	}

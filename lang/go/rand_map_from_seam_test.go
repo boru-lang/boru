@@ -30,7 +30,7 @@ var randMapFromSeamRows = []struct {
 	{"a fn called from a body breaks the enclosing loop", randSeam + `def f fn [[] [Any] [break]] end for 3 [Rand.map-from {a:[f]}] 7`, "[7]", true},
 	// A body carrying a flow sentinel is declined by the token host and
 	// keeps the pooled run (open): the escape still ends the build.
-	{"continue in a body (open)", randSeam + `def n 0 for 3 [def n (n add 1) Rand.map-from {a:[continue] b:[9]}] n`, "[3]", false},
+	{"continue in a body (open)", randSeam + `var n 0 for 3 [var n (n add 1) Rand.map-from {a:[continue] b:[9]}] n`, "[3]", false},
 }
 
 func TestRandMapFromSeamParityAndNoEntry(t *testing.T) {

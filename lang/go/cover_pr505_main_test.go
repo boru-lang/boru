@@ -65,12 +65,13 @@ func TestCoverPR505MainDynBodyRecoverySkipsFallback(t *testing.T) {
 // raises.
 func TestCoverPR505MainConstBranchTakenJoins(t *testing.T) {
 	for _, tc := range []struct{ src, want string }{
-		{`if [true] [def y 1 y] [2] end y`, "[1 1]"},
-		{`def x 0 if [true] [def x 1 x] [3] end x`, "[1 1]"},
-		{`def x 0 if [false] [3] [def x 1 x] end x`, "[1 1]"},
+		{`var x 0 if [true] [var x 1 x] [3] end x`, "[1 1]"},
+		{`var x 0 if [false] [3] [var x 1 x] end x`, "[1 1]"},
 	} {
 		agreeOnBothLanes(t, tc.src, tc.want)
 	}
+	// An arm's own def ends with the arm, taken or not (design §2.1, phase
+	// 2; block_scope_rule_test.go pins the taken side on both lanes).
 	if _, err := mustNew(t).RunInterp(`if [false] [def y 1 y] [2] end y`); err == nil || !strings.Contains(err.Error(), "undefined word: y") {
 		t.Errorf("the untaken arm's def must leave the name unbound, got %v", err)
 	}
@@ -84,11 +85,11 @@ func TestCoverPR505MainConstBranchTakenJoins(t *testing.T) {
 // unseated and its read after the merge takes the path it always did — the
 // program compiles and agrees whichever arm runs.
 func TestCoverPR505MainLoopSplitPreJoin(t *testing.T) {
-	const pre = `def x (for 2 [5]) x drop `
+	const pre = `var x (for 2 [5]) x drop `
 	for _, tc := range []struct{ src, want string }{
-		{`def c true ` + pre + `if c [def x 1] [] end x`, "[5 1]"},
-		{`def c false ` + pre + `if c [def x 1] [] end x`, "[5 5]"},
-		{`def c true ` + pre + `if c [def x 1] [def x 2] end x`, "[5 1]"},
+		{`def c true ` + pre + `if c [var x 1] [] end x`, "[5 1]"},
+		{`def c false ` + pre + `if c [var x 1] [] end x`, "[5 5]"},
+		{`def c true ` + pre + `if c [var x 1] [var x 2] end x`, "[5 1]"},
 	} {
 		agreeOnBothLanes(t, tc.src, tc.want)
 	}

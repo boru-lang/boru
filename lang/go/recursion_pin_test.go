@@ -108,7 +108,7 @@ func TestIterationRunsInConstantTapeSpace(t *testing.T) {
 	// loop: the loop body reuses one tape region. This is the baseline
 	// that makes the non-tail pin meaningful (the ceiling is not
 	// simply "too small for 2000 of anything").
-	res, err := runWithTape(t, tightTape, `def acc 0 for [1 2001] [def acc (acc add i)] acc`)
+	res, err := runWithTape(t, tightTape, `var acc 0 for [1 2001] [var acc (acc add i)] acc`)
 	if err != nil {
 		t.Fatalf("2000-iteration loop under tight tape: %v", err)
 	}

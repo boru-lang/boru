@@ -6,57 +6,57 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | word | literal | lambda | named-fn | factory | container | module-export | computed |
 |---|---|---|---|---|---|---|---|
 | `__arm` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 11/14 | ✓ 12/14 | n/a | ✓ 13/14 |
-| `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 4/14 | ✓ 14/14 | ✓ 12/14 | n/a |
-| `behave` | ✓ 13/14 | n/a | ✓ 13/14 | ✓ 12/14 | ✓ 13/14 | ✓ 12/14 | n/a |
+| `afn` | ✓ 14/14 | ✓ 14/14 | n/a | ✓ 12/14 | ✓ 13/14 | n/a | ✓ 14/14 |
+| `apply` | n/a | ✓ 14/14 | ✓ 14/14 | ✓ 4/14 | ✓ 14/14 | ✓ 13/14 | n/a |
+| `behave` | ✓ 10/14 | n/a | ✓ 10/14 | ✓ 10/14 | ✓ 10/14 | ✓ 13/14 | n/a |
 | `case` | ✓ 14/14 | n/a | n/a | n/a | n/a | F | ✓ 14/14 |
-| `codequote` | ✓ 14/14 | ✓ 14/14 | n/a | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
-| `def` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 10/14 | ✓ 12/14 | ✓ 12/14 | ✓ 13/14 |
+| `codequote` | ✓ 14/14 | ✓ 14/14 | n/a | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
+| `def` | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 11/14 | ✓ 12/14 | ✓ 13/14 | ✓ 14/14 |
 | `del` | ✓ 14/14 | — | — | — | — | — | — |
 | `describe` | ✓ 14/14 | — | — | — | — | — | — |
 | `do` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
 | `dot` | ✓ 14/14 | — | — | — | — | — | — |
 | `dotr` | ✓ 14/14 | — | — | — | — | — | — |
-| `each` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
-| `emit` | ✓ 12/14 | n/a | ✓ 12/14 | ✓ 12/14 | ✓ 13/14 | ✓ 12/14 | n/a |
-| `enum` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
+| `each` | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
+| `emit` | ✓ 12/14 | n/a | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | n/a |
+| `enum` | ✓ 9/14 | n/a | n/a | n/a | n/a | n/a | ✓ 9/14 |
 | `error` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `filter` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
-| `fn` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | n/a |
-| `fnpred` | ✓ 9/14 | ✓ 9/14 | ✓ 10/14 | ✓ 7/14 | ✓ 10/14 | ✓ 10/14 | ✓ 10/14 |
-| `fnsig` | ✓ 13/14 | n/a | n/a | n/a | n/a | ✓ 7/14 | ✓ 13/14 |
-| `fold` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
+| `filter` | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
+| `fn` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | n/a |
+| `fnpred` | ✓ 7/14 | ✓ 7/14 | ✓ 8/14 | ✓ 7/14 | ✓ 8/14 | ✓ 8/14 | ✓ 8/14 |
+| `fnsig` | ✓ 10/14 | n/a | n/a | n/a | n/a | ✓ 8/14 | ✓ 10/14 |
+| `fold` | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
 | `for` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
-| `for-each` | ✓ 14/14 | ✓ 14/14 | ✓ 12/14 | ✓ 7/14 | ✓ 8/14 | ✓ 7/14 | ✓ 14/14 |
-| `force-arity` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 8/14 | ✓ 8/14 | ✓ 12/14 | n/a |
-| `forward-args` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 8/14 | ✓ 8/14 | ✓ 12/14 | n/a |
-| `gen` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
-| `if` | ✓ 14/14 | ✓ 10/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
-| `import` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
+| `for-each` | ✓ 14/14 | ✓ 11/14 | ✓ 13/14 | ✓ 5/14 | ✓ 5/14 | ✓ 5/14 | ✓ 14/14 |
+| `force-arity` | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 8/14 | ✓ 8/14 | ✓ 13/14 | n/a |
+| `forward-args` | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 8/14 | ✓ 8/14 | ✓ 13/14 | n/a |
+| `gen` | ✓ 10/14 | n/a | n/a | n/a | n/a | n/a | ✓ 10/14 |
+| `if` | ✓ 14/14 | ✓ 10/14 | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
+| `import` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
 | `inner` | I | n/a | n/a | n/a | n/a | n/a | I |
 | `inspect` | ✓ 14/14 | — | — | — | — | — | — |
-| `macro` | ✓ 12/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
-| `mini` | ✓ 13/14 | ✓ 13/14 | ✓ 12/14 | ✓ 11/14 | ✓ 12/14 | ✓ 12/14 | n/a |
+| `macro` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
+| `mini` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 12/14 | ✓ 12/14 | ✓ 13/14 | n/a |
 | `module` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
 | `outer` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `parse` | ✓ 13/14 | ✓ 13/14 | ✓ 12/14 | ✓ 12/14 | ✓ 13/14 | ✓ 12/14 | n/a |
-| `quote` | ✓ 14/14 | ✓ 14/14 | n/a | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
+| `parse` | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | ✓ 13/14 | n/a |
+| `quote` | ✓ 14/14 | ✓ 14/14 | n/a | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
 | `raise` | ✓ 14/14 | — | — | — | — | — | — |
 | `reach` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `receive` | ✓ 14/14 | n/a | n/a | n/a | n/a | ✓ 12/14 | ✓ 14/14 |
-| `scan` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 13/14 | ✓ 14/14 | ✓ 12/14 | ✓ 14/14 |
+| `receive` | ✓ 14/14 | n/a | n/a | n/a | n/a | ✓ 13/14 | ✓ 14/14 |
+| `scan` | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 14/14 |
 | `set` | ✓ 14/14 | — | — | — | — | — | — |
 | `spawn` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `stack-args` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 6/14 | ✓ 6/14 | ✓ 12/14 | n/a |
+| `stack-args` | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 6/14 | ✓ 6/14 | ✓ 13/14 | n/a |
 | `undef` | ✓ 13/14 | — | — | — | — | — | — |
 | `unpack` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | n/a |
-| `usurp` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 8/14 | ✓ 8/14 | ✓ 12/14 | n/a |
+| `usurp` | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 8/14 | ✓ 8/14 | ✓ 13/14 | n/a |
 | `valof` | ✓ 14/14 | — | — | — | — | — | — |
-| `var` | ✓ 14/14 | ✓ 12/14 | ✓ 13/14 | ✓ 10/14 | ✓ 10/14 | ✓ 12/14 | ✓ 14/14 |
-| `walk` | ✓ 11/14 | ✓ 11/14 | ✓ 10/14 | ✓ 6/14 | ✓ 6/14 | ✓ 6/14 | ✓ 11/14 |
+| `var` | ✓ 14/14 | ✓ 14/14 | ✓ 14/14 | ✓ 11/14 | ✓ 12/14 | ✓ 13/14 | ✓ 14/14 |
+| `walk` | ✓ 11/14 | ✓ 9/14 | ✓ 10/14 | ✓ 4/14 | ✓ 4/14 | ✓ 4/14 | ✓ 11/14 |
 | `while` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
 | `with-decimal` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `word` | ✓ 13/14 | ✓ 7/14 | ✓ 12/14 | ✓ 5/14 | ✓ 4/14 | ✓ 12/14 | ✓ 13/14 |
+| `word` | ✓ 13/14 | ✓ 7/14 | ✓ 13/14 | ✓ 5/14 | ✓ 4/14 | ✓ 13/14 | ✓ 13/14 |
 | `xml-attr` | ✓ 14/14 | — | — | — | — | — | — |
 
 ## Cells
@@ -81,149 +81,162 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Call-form variants that are not green
 
-- `afn` literal · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `afn` lambda · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `afn` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `afn` factory · each-body — **declined** — fn each$body: arm-resident def `f` of unknown provenance
 - `afn` factory · module-body — **declined** — unconsumed fn-value carrier in residual (closure render)
-- `afn` container · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `afn` container · each-body — **declined** — fn each$body: arm-resident def `f` of unknown provenance
-- `afn` computed · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `apply` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `apply` factory · fn-body — **declined** — fn zzvfn: result above a literal (Stage 3)
 - `apply` factory · lambda-body — **declined** — fn zzvlam: result above a literal (Stage 3)
 - `apply` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `apply` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `apply` factory · if-then — **declined** — stack discipline: result operand of (…fn) is not on top
 - `apply` factory · if-else — **declined** — stack discipline: result operand of (…fn) is not on top
-- `apply` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `apply` factory · for-body — **declined** — for: body nets multiple values per iteration
 - `apply` factory · each-body — **declined** — fn each$body: result above a literal (Stage 3)
 - `apply` factory · module-body — **declined** — fn zzvmod: result above a literal (Stage 3)
 - `apply` factory · suffix-def — **declined** — a call: a fn-typed result is re-stepped into a dispatch the model cannot make (NUR124)
-- `apply` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `apply` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `behave` literal · for-body — **declined** — check diagnostics
-- `behave` named-fn · for-body — **declined** — check diagnostics
-- `behave` factory · for-body — **declined** — check diagnostics
-- `behave` factory · each-body — **declined** — fn each$body: arm-resident def `mk` of unknown provenance
-- `behave` container · for-body — **declined** — check diagnostics
-- `behave` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `behave` literal · if-then — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` literal · if-else — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` literal · for-body — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` literal · each-body — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` named-fn · if-then — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` named-fn · if-else — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` named-fn · for-body — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` named-fn · each-body — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` factory · if-then — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` factory · if-else — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` factory · for-body — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` factory · each-body — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` container · if-then — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` container · if-else — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` container · for-body — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
+- `behave` container · each-body — **declined** — block-local type def `Temp` (the compiler's block scopes land with phase 2's second step)
 - `behave` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `codequote` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `codequote` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `codequote` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` literal · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `def` lambda · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `def` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `def` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` module-export · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `def` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `def` computed · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `each` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `each` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `each` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `each` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `emit` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `emit` literal · prefix-stack — **interp-reject** — [boru/uncalled_function]: call to 'emitlang-host-json' matched no signature   --> 1:1   1 | 7 import "boru:emitlang" end…
-- `emit` named-fn · for-body — **declined** — fn 'up' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `emit` named-fn · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `emit` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `emit` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `emit` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `emit` module-export · for-body — **declined** — fn 'g' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `emit` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `enum` literal · for-body — **declined** — check diagnostics
+- `enum` literal · if-then — **declined** — block-local type def `E` (the compiler's block scopes land with phase 2's second step)
+- `enum` literal · if-else — **declined** — block-local type def `E` (the compiler's block scopes land with phase 2's second step)
+- `enum` literal · for-body — **declined** — block-local type def `E` (the compiler's block scopes land with phase 2's second step)
+- `enum` literal · each-body — **declined** — block-local type def `E` (the compiler's block scopes land with phase 2's second step)
 - `enum` literal · suffix-def — **interp-reject** — [boru/signature_error]: deq is still waiting for 1 argument(s) when `def` begins its own dispatch — a function word is…
-- `enum` computed · for-body — **declined** — check diagnostics
+- `enum` computed · if-then — **declined** — block-local type def `E` (the compiler's block scopes land with phase 2's second step)
+- `enum` computed · if-else — **declined** — block-local type def `E` (the compiler's block scopes land with phase 2's second step)
+- `enum` computed · for-body — **declined** — block-local type def `E` (the compiler's block scopes land with phase 2's second step)
+- `enum` computed · each-body — **declined** — block-local type def `E` (the compiler's block scopes land with phase 2's second step)
 - `enum` computed · suffix-def — **interp-reject** — [boru/signature_error]: deq is still waiting for 1 argument(s) when `def` begins its own dispatch — a function word is…
-- `filter` named-fn · for-body — **declined** — fn 'big' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `filter` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `filter` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `filter` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `fn` literal · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `fnpred` literal · paren-group — **interp-reject** — [boru/syntax_error]: unexpected `]` — nothing valid can appear here   --> 1:43   1 | (def Even fnpred n:Integer [eq 0 …
 - `fnpred` literal · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` literal · do-catch — **declined** — code-body word do (Stage 2)
-- `fnpred` literal · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:8   1 | for 2 [def Even fnpred n:Inte…
-- `fnpred` literal · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:20   1 | [10 20] eac…
+- `fnpred` literal · if-then — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` literal · if-else — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` literal · for-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` literal · each-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
 - `fnpred` lambda · paren-group — **interp-reject** — [boru/syntax_error]: unexpected `(` — nothing valid can appear here   --> 1:28   1 | (def Even fnpred n:Integer ([n:In…
 - `fnpred` lambda · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` lambda · do-catch — **declined** — code-body word do (Stage 2)
-- `fnpred` lambda · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:8   1 | for 2 [def Even fnpred n:Inte…
-- `fnpred` lambda · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:20   1 | [10 20] eac…
+- `fnpred` lambda · if-then — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` lambda · if-else — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` lambda · for-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` lambda · each-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
 - `fnpred` named-fn · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` named-fn · do-catch — **declined** — code-body word do (Stage 2)
-- `fnpred` named-fn · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:61   1 | for 2 [def ev fn [[n:Integer…
-- `fnpred` named-fn · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:73   1 | [10 20] eac…
+- `fnpred` named-fn · if-then — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` named-fn · if-else — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` named-fn · for-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` named-fn · each-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
 - `fnpred` factory · paren-group — **interp-reject** — [boru/syntax_error]: unexpected `(` — nothing valid can appear here   --> 1:92   1 | (def mk fn [[][Function][([n:Inte…
 - `fnpred` factory · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` factory · do-catch — **declined** — code-body word do (Stage 2)
-- `fnpred` factory · if-then — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
-- `fnpred` factory · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
-- `fnpred` factory · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:72   1 | for 2 [def mk fn [[][Functio…
-- `fnpred` factory · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:84   1 | [10 20] eac…
+- `fnpred` factory · if-then — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` factory · if-else — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` factory · for-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` factory · each-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
 - `fnpred` container · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` container · do-catch — **declined** — code-body word do (Stage 2)
-- `fnpred` container · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:57   1 | for 2 [def m {p: ([n:Integer…
-- `fnpred` container · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:69   1 | [10 20] eac…
+- `fnpred` container · if-then — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` container · if-else — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` container · for-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` container · each-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
 - `fnpred` module-export · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` module-export · do-catch — **declined** — code-body word do (Stage 2)
-- `fnpred` module-export · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:99   1 | for 2 [import module [def ev…
-- `fnpred` module-export · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:111   1 | [10 20] ea…
+- `fnpred` module-export · if-then — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` module-export · if-else — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` module-export · for-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` module-export · each-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
 - `fnpred` computed · do-body — **declined** — code-body word do (Stage 2)
 - `fnpred` computed · do-catch — **declined** — code-body word do (Stage 2)
-- `fnpred` computed · for-body — **interp-reject** — [boru/type_error]: type Even: name clash — already a registered function   --> 1:46   1 | for 2 [def body (quote [eq 0…
-- `fnpred` computed · each-body — **interp-reject** — each: element 1: [boru/type_error]: type Even: name clash — already a registered function   --> 1:58   1 | [10 20] eac…
-- `fnsig` literal · for-body — **declined** — check diagnostics
+- `fnpred` computed · if-then — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` computed · if-else — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` computed · for-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnpred` computed · each-body — **declined** — block-local type def `Even` (the compiler's block scopes land with phase 2's second step)
+- `fnsig` literal · if-then — **declined** — block-local type def `T` (the compiler's block scopes land with phase 2's second step)
+- `fnsig` literal · if-else — **declined** — block-local type def `T` (the compiler's block scopes land with phase 2's second step)
+- `fnsig` literal · for-body — **declined** — block-local type def `T` (the compiler's block scopes land with phase 2's second step)
+- `fnsig` literal · each-body — **declined** — block-local type def `T` (the compiler's block scopes land with phase 2's second step)
 - `fnsig` module-export · fn-body — **declined** — compile-time word def
 - `fnsig` module-export · lambda-body — **declined** — compile-time word def
 - `fnsig` module-export · do-body — **declined** — code-body word do (Stage 2)
 - `fnsig` module-export · do-catch — **declined** — code-body word do (Stage 2)
-- `fnsig` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `fnsig` module-export · each-body — **declined** — code-body word each (Stage 2)
 - `fnsig` module-export · module-body — **declined** — compile-time word def
-- `fnsig` computed · for-body — **declined** — check diagnostics
-- `fold` named-fn · for-body — **declined** — fn 'sum2' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `fold` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `fold` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `fnsig` computed · if-then — **declined** — block-local type def `T` (the compiler's block scopes land with phase 2's second step)
+- `fnsig` computed · if-else — **declined** — block-local type def `T` (the compiler's block scopes land with phase 2's second step)
+- `fnsig` computed · for-body — **declined** — block-local type def `T` (the compiler's block scopes land with phase 2's second step)
+- `fnsig` computed · each-body — **declined** — block-local type def `T` (the compiler's block scopes land with phase 2's second step)
 - `fold` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `for` literal · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 3 — [0 2 4]   --> 1:38   1 | def zzvlam ([] => [for 3 [i mu…
 - `for` literal · do-catch — **declined** — do: variadic result promoted to frame slots (runtime count differs from the static seat)
 - `for` computed · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 3 — [0 2 4]   --> 1:58   1 | def zzvlam ([] => [def b (quot…
 - `for` computed · do-catch — **declined** — do: variadic result promoted to frame slots (runtime count differs from the static seat)
-- `for-each` named-fn · for-body — **declined** — fn 'stp' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `for-each` lambda · if-then — **declined** — check diagnostics
+- `for-each` lambda · if-else — **declined** — check diagnostics
+- `for-each` lambda · for-body — **declined** — check diagnostics
 - `for-each` named-fn · each-body — **declined** — fn each$body: arm-resident def `stp` of unknown provenance
 - `for-each` factory · fn-body — **declined** — fn zzvfn: dynamic-scope def `mk` of unknown provenance
 - `for-each` factory · lambda-body — **declined** — fn zzvlam: dynamic-scope def `mk` of unknown provenance
 - `for-each` factory · do-body — **declined** — fn do$body: dynamic-scope def `mk` of unknown provenance
 - `for-each` factory · do-catch — **declined** — fn do$body: dynamic-scope def `mk` of unknown provenance
-- `for-each` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `for-each` factory · if-then — **declined** — check diagnostics
+- `for-each` factory · if-else — **declined** — check diagnostics
+- `for-each` factory · for-body — **declined** — check diagnostics
 - `for-each` factory · each-body — **declined** — fn each$body: arm-resident def `mk` of unknown provenance
 - `for-each` factory · module-body — **declined** — fn zzvmod: dynamic-scope def `mk` of unknown provenance
 - `for-each` container · fn-body — **declined** — unannotated or opaque word dot
 - `for-each` container · lambda-body — **declined** — unannotated or opaque word dot
 - `for-each` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `for-each` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `for-each` container · if-then — **declined** — check diagnostics
+- `for-each` container · if-else — **declined** — check diagnostics
+- `for-each` container · for-body — **declined** — check diagnostics
 - `for-each` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `for-each` container · module-body — **declined** — unannotated or opaque word dot
 - `for-each` module-export · fn-body — **declined** — operand of unknown provenance or not statically materialisable at dot
 - `for-each` module-export · lambda-body — **declined** — operand of unknown provenance or not statically materialisable at dot
 - `for-each` module-export · do-body — **declined** — code-body word do (Stage 2)
 - `for-each` module-export · do-catch — **declined** — code-body word do (Stage 2)
-- `for-each` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `for-each` module-export · if-then — **declined** — block-local import `M` read at run time (the check pass's install ends with the block; the compiler's block scopes land …
+- `for-each` module-export · if-else — **declined** — block-local import `M` read at run time (the check pass's install ends with the block; the compiler's block scopes land …
+- `for-each` module-export · for-body — **declined** — block-local import `M` read at run time (the check pass's install ends with the block; the compiler's block scopes land …
 - `for-each` module-export · each-body — **declined** — code-body word each (Stage 2)
 - `for-each` module-export · module-body — **declined** — operand of unknown provenance or not statically materialisable at dot
-- `force-arity` named-fn · for-body — **declined** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `force-arity` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `force-arity` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `force-arity` factory · if-then — **declined** — if: then-branch result of unknown provenance
 - `force-arity` factory · if-else — **declined** — if: else-branch result of unknown provenance
-- `force-arity` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `force-arity` factory · for-body — **declined** — loop body apply: leading fn value not the sole residual
 - `force-arity` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `force-arity` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `force-arity` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
@@ -231,14 +244,12 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `force-arity` container · if-else — **declined** — if: else-branch result of unknown provenance
 - `force-arity` container · for-body — **declined** — loop body apply: leading fn value not the sole residual
 - `force-arity` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `force-arity` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `force-arity` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `forward-args` named-fn · for-body — **declined** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `forward-args` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` factory · if-then — **declined** — if: then-branch result of unknown provenance
 - `forward-args` factory · if-else — **declined** — if: else-branch result of unknown provenance
-- `forward-args` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `forward-args` factory · for-body — **declined** — loop body apply: leading fn value not the sole residual
 - `forward-args` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
@@ -246,62 +257,47 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `forward-args` container · if-else — **declined** — if: else-branch result of unknown provenance
 - `forward-args` container · for-body — **declined** — loop body apply: leading fn value not the sole residual
 - `forward-args` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `forward-args` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `forward-args` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `gen` literal · for-body — **declined** — check diagnostics
-- `gen` computed · for-body — **declined** — check diagnostics
+- `gen` literal · if-then — **declined** — block-local type def `Box` (the compiler's block scopes land with phase 2's second step)
+- `gen` literal · if-else — **declined** — block-local type def `Box` (the compiler's block scopes land with phase 2's second step)
+- `gen` literal · for-body — **declined** — block-local type def `Box` (the compiler's block scopes land with phase 2's second step)
+- `gen` literal · each-body — **declined** — block-local type def `Box` (the compiler's block scopes land with phase 2's second step)
+- `gen` computed · if-then — **declined** — block-local type def `Box` (the compiler's block scopes land with phase 2's second step)
+- `gen` computed · if-else — **declined** — block-local type def `Box` (the compiler's block scopes land with phase 2's second step)
+- `gen` computed · for-body — **declined** — block-local type def `Box` (the compiler's block scopes land with phase 2's second step)
+- `gen` computed · each-body — **declined** — block-local type def `Box` (the compiler's block scopes land with phase 2's second step)
 - `if` lambda · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `if` lambda · lambda-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `if` lambda · module-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `if` lambda · suffix-def — **declined** — a call: a fn-typed result is re-stepped into a dispatch the model cannot make (NUR124)
-- `if` named-fn · for-body — **declined** — fn 'one' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `if` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `if` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `if` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `import` literal · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `import` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `import` computed · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `import` computed · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `macro` literal · for-body — **declined** — fn 'm' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `macro` literal · each-body — **declined** — fn each$body: arm-resident def `m` of unknown provenance
-- `macro` computed · for-body — **declined** — fn 'm' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `macro` computed · each-body — **declined** — fn each$body: arm-resident def `m` of unknown provenance
 - `mini` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `mini` lambda · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `mini` named-fn · for-body — **declined** — fn 'dbl' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `mini` named-fn · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `mini` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `mini` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `mini` factory · prefix-stack — **declined** — residual shape beyond Stage 1 (call result above a literal)
 - `mini` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `mini` container · prefix-stack — **declined** — residual shape beyond Stage 1 (call result above a literal)
-- `mini` module-export · for-body — **declined** — fn 'g' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `mini` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `parse` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `parse` lambda · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `parse` named-fn · for-body — **declined** — fn 'p' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `parse` named-fn · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `parse` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `parse` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `parse` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `parse` module-export · for-body — **declined** — fn 'g' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `parse` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `quote` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `quote` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `quote` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `receive` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `receive` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `scan` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `scan` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
-- `scan` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `scan` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `stack-args` named-fn · for-body — **declined** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `stack-args` factory · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `stack-args` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `stack-args` factory · do-catch — **declined** — do: variadic result promoted to frame slots (runtime count differs from the static seat)
 - `stack-args` factory · if-then — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `stack-args` factory · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
-- `stack-args` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `stack-args` factory · for-body — **declined** — for: body nets multiple values per iteration
 - `stack-args` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `stack-args` factory · module-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `stack-args` container · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)
@@ -312,15 +308,13 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `stack-args` container · for-body — **declined** — for: body nets multiple values per iteration
 - `stack-args` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `stack-args` container · module-body — **declined** — unconsumed fn-value carrier in residual (closure render)
-- `stack-args` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `stack-args` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `undef` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `usurp` named-fn · for-body — **declined** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `usurp` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` factory · if-then — **declined** — if: then-branch result of unknown provenance
 - `usurp` factory · if-else — **declined** — if: else-branch result of unknown provenance
-- `usurp` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `usurp` factory · for-body — **declined** — loop body apply: leading fn value not the sole residual
 - `usurp` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
@@ -328,36 +322,32 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `usurp` container · if-else — **declined** — if: else-branch result of unknown provenance
 - `usurp` container · for-body — **declined** — loop body apply: leading fn value not the sole residual
 - `usurp` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `usurp` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `var` lambda · for-body — **interp-reject** — [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:45   1 | for 2 [var f ([n:Integer…
-- `var` lambda · each-body — **interp-reject** — each: element 1: [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:57   1 | [10 20]…
-- `var` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `var` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `var` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `var` factory · for-body — **interp-reject** — [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:80   1 | for 2 [def mk fn [[][Fun…
-- `var` factory · each-body — **interp-reject** — each: element 1: [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:92   1 | [10 20]…
+- `var` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `var` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `var` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `var` container · for-body — **interp-reject** — [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:64   1 | for 2 [def m {f: ([n:Int…
-- `var` container · each-body — **interp-reject** — each: element 1: [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:76   1 | [10 20]…
-- `var` module-export · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `var` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `walk` literal · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:117   1 | def zzvlam ([] => […
-- `walk` literal · for-body — **declined** — stack discipline: result operand of size is not on top
+- `walk` literal · for-body — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `walk` literal · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:25   1 | 7 def acc (flex []) end walk {mode: …
 - `walk` lambda · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:121   1 | def zzvlam ([] => […
-- `walk` lambda · for-body — **declined** — stack discipline: result operand of size is not on top
+- `walk` lambda · if-then — **declined** — check diagnostics
+- `walk` lambda · if-else — **declined** — check diagnostics
+- `walk` lambda · for-body — **declined** — check diagnostics
 - `walk` lambda · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:25   1 | 7 def acc (flex []) end walk {mode: …
 - `walk` named-fn · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:141   1 | def zzvlam ([] => […
-- `walk` named-fn · for-body — **declined** — fn 'h' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `walk` named-fn · for-body — **declined** — stack discipline: result operand of size is not on top
 - `walk` named-fn · each-body — **declined** — fn each$body: arm-resident def `h` of unknown provenance
 - `walk` named-fn · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:70   1 | 7 def acc (flex []) end def h fn [[m…
 - `walk` factory · fn-body — **declined** — computed closure at a word's argument slot (its apply did not collapse — Stage 2)
 - `walk` factory · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:156   1 | def zzvlam ([] => […
 - `walk` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `walk` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `walk` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `walk` factory · if-then — **declined** — check diagnostics
+- `walk` factory · if-else — **declined** — check diagnostics
+- `walk` factory · for-body — **declined** — check diagnostics
 - `walk` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `walk` factory · module-body — **declined** — computed closure at a word's argument slot (its apply did not collapse — Stage 2)
 - `walk` factory · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:84   1 | 7 def acc (flex []) end def mk fn [[…
@@ -365,7 +355,9 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `walk` container · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:142   1 | def zzvlam ([] => […
 - `walk` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `walk` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `walk` container · for-body — **declined** — stack discipline: result operand of size is not on top
+- `walk` container · if-then — **declined** — check diagnostics
+- `walk` container · if-else — **declined** — check diagnostics
+- `walk` container · for-body — **declined** — check diagnostics
 - `walk` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `walk` container · module-body — **declined** — unannotated or opaque word dot
 - `walk` container · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:70   1 | 7 def acc (flex []) end def hs {h: (…
@@ -373,15 +365,17 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `walk` module-export · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:184   1 | def zzvlam ([] => […
 - `walk` module-export · do-body — **declined** — code-body word do (Stage 2)
 - `walk` module-export · do-catch — **declined** — code-body word do (Stage 2)
-- `walk` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `walk` module-export · if-then — **declined** — block-local import `M` read at run time (the check pass's install ends with the block; the compiler's block scopes land …
+- `walk` module-export · if-else — **declined** — block-local import `M` read at run time (the check pass's install ends with the block; the compiler's block scopes land …
+- `walk` module-export · for-body — **declined** — block-local import `M` read at run time (the check pass's install ends with the block; the compiler's block scopes land …
 - `walk` module-export · each-body — **declined** — code-body word each (Stage 2)
 - `walk` module-export · module-body — **declined** — operand of unknown provenance or not statically materialisable at dot
 - `walk` module-export · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:111   1 | 7 import module [def acc (flex []) …
 - `walk` computed · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:137   1 | def zzvlam ([] => […
-- `walk` computed · for-body — **declined** — stack discipline: result operand of size is not on top
+- `walk` computed · for-body — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `walk` computed · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:68   1 | 7 def acc (flex []) end def b (quote…
-- `while` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `while` computed · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `while` literal · for-body — **declined** — block-local def `i` shadows an enclosing binding (the compiler's block scopes land with phase 2's second step)
+- `while` computed · for-body — **declined** — block-local def `i` shadows an enclosing binding (the compiler's block scopes land with phase 2's second step)
 - `word` literal · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance
 - `word` lambda · paren-group — **declined** — trailing fn-value apply of a 0-arg callee (the value is data at the tail)
 - `word` lambda · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [5 fn]   --> 1:57   1 | def zzvlam ([] => [def dbl word…
@@ -390,7 +384,6 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `word` lambda · for-body — **declined** — for: body nets multiple values per iteration
 - `word` lambda · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance
 - `word` lambda · module-body — **declined** — trailing fn-value apply of a 0-arg callee (the value is data at the tail)
-- `word` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `word` named-fn · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance
 - `word` factory · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `word` factory · lambda-body — **declined** — fn zzvlam: unapplied fn-value in body residual (dynamic apply not compiled in a fn body)
@@ -398,7 +391,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `word` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` factory · if-then — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `word` factory · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
-- `word` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `word` factory · for-body — **declined** — for: body nets multiple values per iteration
 - `word` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` factory · module-body — **declined** — trailing fn-value apply over a call result (runtime quote state unknown)
 - `word` container · fn-body — **declined** — splice over a computed payload (runtime spread unknown at compile time)
@@ -411,6 +404,5 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `word` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` container · module-body — **declined** — splice over a computed payload (runtime spread unknown at compile time)
 - `word` container · suffix-def — **declined** — member fn value auto-applies mid-expression (fn-value-call boundary, Stage 3)
-- `word` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` computed · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance

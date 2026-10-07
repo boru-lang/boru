@@ -161,17 +161,21 @@ func TestRoutedReadSeesEveryBindOfItsName(t *testing.T) {
 		// A fn body shadows the module binding before the routed call.
 		{`def k 5 end def w fn [[a:Any b:Any][Any][a]] end def go fn [[][Any][w k 1]] end def f fn [[][Any][def k 9 go]] end go f go`, "[5 9 5]"},
 		{`def k 5 end def go fn [[][Integer][add k 1]] end def f fn [[][Integer][def k 9 go]] end go f go`, "[6 10 6]"},
-		// A top-level loop carries the name the unit reads live.
-		{`def w fn [[a:Any b:Any][Any][a]] end def k 5 end def go fn [[][Any][w k 1]] end for 2 [ go  def k 9 ]`, "[5 9]"},
-		{`def k 5 end def go fn [[][Integer][add k 1]] end for 2 [ go  def k 9 ] k`, "[6 10 9]"},
-		{`def k 5 end def go fn [[][Integer][add k 1]] end for 2 [ go  def k (k add 1) ] k`, "[6 7 7]"},
-		{`def w fn [[a:Integer b:Integer][Integer][a]] end def k 5 end def go fn [[][Integer][w k 1]] end for 2 [ go  def k 9 ]`, "[5 9]"},
+		// A top-level loop assigns the var the unit reads live (a body def
+		// would be the iteration's own, design/IMMUTABLE-DEF.1.md §2.1).
+		{`def w fn [[a:Any b:Any][Any][a]] end var k 5 end def go fn [[][Any][w k 1]] end for 2 [ go  var k 9 ]`, "[5 9]"},
+		{`var k 5 end def go fn [[][Integer][add k 1]] end for 2 [ go  var k 9 ] k`, "[6 10 9]"},
+		{`var k 5 end def go fn [[][Integer][add k 1]] end for 2 [ go  var k (k add 1) ] k`, "[6 7 7]"},
+		{`def w fn [[a:Integer b:Integer][Integer][a]] end var k 5 end def go fn [[][Integer][w k 1]] end for 2 [ go  var k 9 ]`, "[5 9]"},
 		// A PARAM of the name shadows it for the callee's routed read.
 		{`def k 5 end def w fn [[a:Any b:Any][Any][a]] end def z fn [[][Any][w k 1]] end def go fn [[k:Integer][Any][z]] end z go 9 z`, "[5 9 5]"},
 	}
 	for _, c := range rows {
 		dis := compileDisasm(t, c.src)
-		if !strings.Contains(dis, "DISPATCH_GENERIC") || !strings.Contains(dis, "BIND_DYN_SCOPE") {
+		// A frame's def routes the read and twins the bind into the registry;
+		// a loop's var ASSIGNMENT (the rows since phase 2) replaces the cell
+		// (ASSIGN_DYN_SCOPE) and the unit reads it live (LOOKUP_DYN_SCOPE).
+		if !(strings.Contains(dis, "DISPATCH_GENERIC") || strings.Contains(dis, "LOOKUP_DYN_SCOPE")) || !(strings.Contains(dis, "BIND_DYN_SCOPE") || strings.Contains(dis, "ASSIGN_DYN_SCOPE")) {
 			t.Errorf("%q: the read routes and the frame's bind is twinned into the registry:\n%s", c.src, dis)
 		}
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)
@@ -190,7 +194,7 @@ func TestRoutedReadSeesEveryBindOfItsName(t *testing.T) {
 	}
 	// The other order: the loop carries k before any unit reads it, and the
 	// read keeps its committed call.
-	src := `def k 5 end for 2 [ def k 9 ] def go fn [[][Any][add k 1]] end go`
+	src := `var k 5 end for 2 [ var k 9 ] def go fn [[][Any][add k 1]] end go`
 	if dis := compileDisasm(t, src); strings.Contains(dis, "DISPATCH_GENERIC") {
 		t.Errorf("a read of a carried name keeps its committed call:\n%s", dis)
 	}

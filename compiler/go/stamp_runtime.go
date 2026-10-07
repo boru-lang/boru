@@ -57,7 +57,7 @@ func StampDetachedFn(r *core.Registry, fd core.FnDefInfo, pos core.SrcPos) (*Com
 // owns r (store words and codec resolution run on the registry executing
 // them, so this holds at every trigger site).
 func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.SrcPos) (*CompiledFnRef, bool) {
-	return stampDetachedSig(r, fd, sigIdx, pos, false)
+	return stampDetachedSig(r, fd, sigIdx, pos, false, false)
 }
 
 // stampDetachedSig is StampDetachedSig with the unit's KEEP-DEFS mode:
@@ -69,8 +69,10 @@ func StampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 // cleanup): `def t 0 each [def t (t add 1) t] xs` over a gradual list read
 // 0 at every element, `[[1 1 1]]` for the interpreter's `[[1 2 3]]`
 // (NUR202). A fn VALUE's stamp keeps its frame-local defs — the
-// interpreter's CallBoru tears them down with the frame.
-func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.SrcPos, keepsDefs bool) (*CompiledFnRef, bool) {
+// interpreter's CallBoru tears them down with the frame. transparent (a
+// token body stamp only) names `do`'s seam; otherwise the token body is a
+// BLOCK of the caller's frame (StampTokenBody).
+func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.SrcPos, keepsDefs, transparent bool) (*CompiledFnRef, bool) {
 	if r == nil || !r.RuntimeStampingEnabled() {
 		return nil, false
 	}
@@ -111,6 +113,9 @@ func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 			// at exactly this count, and only a body whose inputs are all
 			// unnamed — the seam's params).
 			es.keepDefsUnitDepth = len(es.units)
+			// The body's scope kind for the analysis: a block of the
+			// caller's frame, or `do`'s transparent body.
+			es.tokenBodyBlock, es.tokenBodyTransparent = !transparent, transparent
 			// And the live-args arm (liveArgsUnitDepth): the count once that
 			// unit is open, so only the body's own frame reads `args` live.
 			es.liveArgsUnitDepth = len(es.units) + 1
@@ -208,7 +213,7 @@ func stampDetachedSig(r *core.Registry, fd core.FnDefInfo, sigIdx int, pos core.
 	// invoke time (jitRestamp) instead of degrading permanently to CallBoru.
 	// fd here carries the §7a identity-minted capture clone, so a re-stamp
 	// needs no re-clone.
-	ref.Restamp = &RestampBox{fd: fd, sigIdx: sigIdx, pos: pos, keepsDefs: keepsDefs}
+	ref.Restamp = &RestampBox{fd: fd, sigIdx: sigIdx, pos: pos, keepsDefs: keepsDefs, transparent: transparent}
 	r.RecordStampEvent(core.StampEvent{Name: fd.Name, Pos: pos, Stamped: true})
 	return ref, true
 }
@@ -243,7 +248,7 @@ func (ref *CompiledFnRef) JitRestamp(r *core.Registry) *CompiledFnRef {
 		return nil
 	}
 	box.Tries++
-	nr, ok := stampDetachedSig(r, box.fd, box.sigIdx, box.pos, box.keepsDefs)
+	nr, ok := stampDetachedSig(r, box.fd, box.sigIdx, box.pos, box.keepsDefs, box.transparent)
 	if !ok {
 		return nil
 	}
@@ -450,7 +455,14 @@ func LazyStampFnSig(r *core.Registry, fd core.FnDefInfo, sig *core.Signature, po
 // the compile pass RUNS it in check mode) and a flow sentinel (break /
 // continue / return, storedSigEligible's rule). ok=false is the seam's
 // interpreter path, byte-identical to before.
-func StampTokenBody(r *core.Registry, tokens []core.Value, inputTypes []*core.Type, pos core.SrcPos) (*CompiledFnRef, bool) {
+//
+// transparent names the seam: false for InvokeBody's, where the body is a
+// BLOCK of the caller's frame (design/IMMUTABLE-DEF.1.md §2.1), true for
+// InvokeBodyKeepDefs' (`do`'s body, transparent by ruling #11). The
+// analysis models the body accordingly (EmitState.tokenBodyBlock /
+// tokenBodyTransparent): a `var` the body assigns is the caller's cell
+// under the one frame rule, where a frame of its own would trap it.
+func StampTokenBody(r *core.Registry, tokens []core.Value, inputTypes []*core.Type, pos core.SrcPos, transparent bool) (*CompiledFnRef, bool) {
 	if r == nil || !r.RuntimeStampingEnabled() || len(tokens) == 0 || bodyHasReplayHazard(core.NewList(tokens)) || bodyUndefs(tokens) {
 		return nil, false
 	}
@@ -462,7 +474,7 @@ func StampTokenBody(r *core.Registry, tokens []core.Value, inputTypes []*core.Ty
 		params[i] = core.FnParam{Type: t}
 	}
 	fd := core.FnDefInfo{Name: "codebody", Anonymous: true, Signatures: []core.Signature{{Params: params, Impl: &core.BoruImpl{Body: tokens}}}}
-	return stampDetachedSig(r, fd, 0, pos, true)
+	return stampDetachedSig(r, fd, 0, pos, true, transparent)
 }
 
 // bodyUndefs reports whether a token body unbinds a name with `undef`, in a

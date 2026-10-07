@@ -11,14 +11,17 @@ package core
 // top-down where the ledger holds one dynamic carrier).
 //
 // The install arm goes through InstallDef — the interpreter's OWN
-// installer — so per-element repeats stack exactly as the interpreter's
-// leak does (a plain value pushes a fresh level each iteration; a
-// Function-valued body runs the same overlap filter). The undef arm
-// mirrors ApplyBindTwin's BindUndef: pop whatever is live, retire a
-// minted node only when this binding minted it (a var param never does,
-// but the arms must not drift). Neither arm records on any unwind trail
-// — leak persistence is the semantics; a mid-iteration raise leaves
-// earlier elements' installs in place, interpreter-identical.
+// installer — so a per-element install lands exactly as the interpreter's
+// body def does (a plain value pushes a level; a Function-valued body runs
+// the same overlap filter). The undef arm mirrors ApplyBindTwin's
+// BindUndef: pop whatever is live, retire a minted node only when this
+// binding minted it (a var param never does, but the arms must not drift).
+// Neither arm records on any unwind trail: since phase 2 (design/
+// IMMUTABLE-DEF.1.md §2.1) the body is a BLOCK, and the VM's closure seam
+// (eng invokeClosureOn) closes it after every run — the install ends with
+// the element's run, as the interpreter's RunBodyResolved ends it — so the
+// trail has nothing to pop. (Before the block the installs persisted past
+// the body, the leak the interpreter then delivered.)
 func ApplyResidentBind(r *Registry, name string, undef bool, v Value) {
 	if r == nil {
 		return
@@ -28,6 +31,18 @@ func ApplyResidentBind(r *Registry, name string, undef bool, v Value) {
 		return
 	}
 	InstallDef(r, name, v)
+}
+
+// ApplyResidentVar is the install arm for a var DECLARATION
+// (ResidentBindSpec.Var): the per-element install goes through InstallVar,
+// so the cell is marked a var and the body's later `var NAME v` replaces it
+// in place (ApplyResidentAssign) instead of declaring a second cell beside
+// a plain def's install.
+func ApplyResidentVar(r *Registry, name string, v Value, varType *Type) {
+	if r == nil {
+		return
+	}
+	InstallVar(r, name, v, varType)
 }
 
 // ApplyResidentAssign is the var ASSIGNMENT arm of the same op (a

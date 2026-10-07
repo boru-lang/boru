@@ -119,7 +119,7 @@ func TestLoopBodyResidualLiteralResolves(t *testing.T) {
 		`def i 9 for 2 [[(i add 1)] i]`,
 		// A while body's literal reads the iteration's binding, not the
 		// loop's last.
-		`def i 0 while [i lt 2] [[(i add 1)] def i (i add 1)]`,
+		`var i 0 while [i lt 2] [[(i add 1)] var i (i add 1)]`,
 		// Inside a `do` and a fn frame.
 		`do [for 2 [[(i add 1)] i]]`,
 		`def f fn [[][List][for 1 [[(i add 1)]]]] end f`,
@@ -148,7 +148,7 @@ func TestLoopBodyResidualLiteralResolves(t *testing.T) {
 		{`for 2 [[(i add 1)] i]`, "[[1] 0 [2] 1]"},
 		{`for 2 [{a:(flex [i])} i]`, "[{a:[0]} 0 {a:[1]} 1]"},
 		{`def i 9 for 2 [[(i add 1)] i]`, "[[1] 0 [2] 1]"},
-		{`def i 0 while [i lt 2] [[(i add 1)] def i (i add 1)]`, "[[2] [3]]"},
+		{`var i 0 while [i lt 2] [[(i add 1)] var i (i add 1)]`, "[[2] [3]]"},
 		{`for 2 [do [[i]]]`, "[[0] [1]]"},
 	} {
 		d := mustNew(t)
@@ -201,8 +201,8 @@ func TestLoopIteratorTornDownOnTrappedRaise(t *testing.T) {
 		`def i 9 def f fn [[n:Integer][Integer][raise 'x']] end do [for 2 [f i]] end i`,
 		`def i 9 do [for 2 [[1 2] each [raise 'x']]] i`,
 		`do [for 2 [raise 'x']] error [drop 1]`,
-		// A while body's def is the caller's own and leaks by design.
-		`def i 0 do [while [i lt 2] [def i (i add 1) raise 'x']] i`,
+		// A while body's assignment of the enclosing var stands past the raise.
+		`var i 0 do [while [i lt 2] [var i (i add 1) raise 'x']] i`,
 	} {
 		requireEngineParity(t, src, true)
 	}

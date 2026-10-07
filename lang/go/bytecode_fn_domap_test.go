@@ -97,8 +97,8 @@ func TestDoMapValueEvalNoDynEnv(t *testing.T) {
 	// the loop def must not be forced dyn-scope by the do-map.
 	mustCompileWithParity(t, `
 def findn fn [[k:Integer ns:List] [Any] [
-  def found None
-  for (ns size) [ def i2 i def nd (ns i2 get) if ((nd get "id") k eq) [def found nd] [] ] end
+  var found false
+  for (ns size) [ def i2 i def nd (ns i2 get) if ((nd get "id") k eq) [var found nd] [] ] end
   found
 ]]
 def mk fn [[] [Map] [do {ok:[true]}]]

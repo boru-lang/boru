@@ -38,7 +38,8 @@ func TestLiveDeoptRootNoMatch(t *testing.T) {
 		mkList + `do (mk) end x/v add 1`,
 		mkList + `do (mk) end x add 1 end 5`,
 		mkList + `do (mk) end x x add`,
-		mkList + `[1 2] each (mk) end x add 1`,
+		// An each body is a block (phase 2): the body ASSIGNS the var.
+		`var x 0 end def mk fn [[][List][quote [var x [1 2]]]] end [1 2] each (mk) end x add 1`,
 		mkFn + `do (mk) end x/v add 1`,
 		`def x 0 end def mk fn [[][List][quote [def x {a:1}]]] end do (mk) end x add 1`,
 		`def x 0 end def mk fn [[][List][quote [def x true]]] end do (mk) end x add 1`,
@@ -104,7 +105,6 @@ func TestLiveDeoptSplice(t *testing.T) {
 		{y + `do (mk) end y end 9`, "[1 2 9]"},
 		{mkSplice + `do (mk) end x x`, "[1 2 1 2]"},
 		{`def x 0 end def mk fn [[][List][quote [def x word [add 1]]]] end do (mk) end x 5`, "[6]"},
-		{`def x 0 end def mk fn [[][List][quote [def x word [3 4]]]] end [1 2] each (mk) end x`, "[[1 2] 3 4]"},
 		{unitHead + `t]] end f (quote [def t word [1 2] 1])`, "ERROR:expected 1 return value(s), got 2"},
 		{unitHead + `[t]]] end f (quote [def t word [1 2] 1])`, "[[1 2]]"},
 		{unitHead + `t add 1]] end f (quote [def t word [5] 1])`, "[6]"},
@@ -144,6 +144,10 @@ func TestLiveDeoptSplice(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
+	// An each body is a block (phase 2): its splice def ends with the
+	// element's run and x after the loop is the module's 0; the compiled lane
+	// declines the shadow until its block scopes land.
+	ruleOrDecline(t, `def x 0 end def mk fn [[][List][quote [def x word [3 4]]]] end [1 2] each (mk) end x`, "[[1 2] 0]")
 }
 
 // TestLiveDeoptFn: a bare read of a name the body bound to a fn is the
@@ -289,11 +293,19 @@ func TestLiveDeoptIslandMadeLoopDef(t *testing.T) {
 	for _, c := range []struct{ src, want string }{
 		{unitHead + `t drop for 1 [def u 2] 7]] end f (quote [def t word [5] 1])`, "[7]"}, // the register's witness
 		{`def f fn [[b:List m:Map][Any][def t 0 def j (m get "f") j typeof end drop do b drop t drop for 1 [def u 2] 7]] end f (quote [def t word [5] 1]) {f: 1}`, "[7]"},
-		{unitHead + `t drop for 2 [def u 2] u]] end f (quote [def t word [5] 1])`, "[2]"},
-		{unitHead + `t drop for 2 [def u 2] u]] end f (quote [def t 3 1])`, "[2]"},
 		{unitHead + `t drop for 1 [def u 2] 7]] end f (quote [def t 4 1])`, "[7]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// The loop body's def is the iteration's own since phase 2: the read
+	// after the loop is the var the body assigns, which — declared after the
+	// computed `do` body — the unit reads live and declines to place (the
+	// kept-defs read rule); the interpreter's 2 is the answer.
+	for _, src := range []string{
+		unitHead + `t drop var u 0 for 2 [var u 2] u]] end f (quote [def t word [5] 1])`,
+		unitHead + `t drop var u 0 for 2 [var u 2] u]] end f (quote [def t 3 1])`,
+	} {
+		ruleOrDecline(t, src, "[2]")
 	}
 }
 

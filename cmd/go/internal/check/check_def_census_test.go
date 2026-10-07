@@ -12,15 +12,28 @@ import (
 // diagnostics — one line per finding — and leaves the exit code to the
 // check itself (core/go/def_census.go, design/IMMUTABLE-DEF.1.md §5 phase 0).
 func TestRunCLIDefCensus(t *testing.T) {
+	// Since phase 2 (§2.1) an arm is a block: the read of w after the `if`
+	// is an undefined word, so the check FAILS on this program — and the
+	// census still prints after its diagnostics, the leak-read finding
+	// naming the arm's binding the read missed.
 	var stdout, stderr bytes.Buffer
-	if code := RunCLI([]string{"--def-census", "-e", `def a 1 def a 2 if true [def w 1] [def w 2] w`}, &stdout, &stderr); code != 0 {
-		t.Fatalf("exit = %d, want 0 (the census is report-only): %s", code, stderr.String())
+	if code := RunCLI([]string{"--def-census", "-e", `def a 1 def a 2 if true [def w 1] [def w 2] w`}, &stdout, &stderr); code == 0 {
+		t.Fatalf("exit = 0, want the check's failure: w after the arm is undefined under the block rule")
+	}
+	if !strings.Contains(stderr.String(), "undefined_word: undefined word: w") {
+		t.Errorf("stderr lacks the undefined-word diagnostic:\n%s", stderr.String())
 	}
 	out := stdout.String()
-	for _, want := range []string{"1:13  rebind  a  (module)  <- 1:5  value", "1:45  leak-read  w  (module)  <- 1:32  value"} {
+	for _, want := range []string{"1:13  rebind  a  (module)  <- 1:5  value", "1:45  leak-read  w  (module)  <- 1:30  value"} {
 		if !strings.Contains(out, want) {
 			t.Errorf("stdout lacks %q:\n%s", want, out)
 		}
+	}
+	// The census is report-only: a program whose only finding is a rebind
+	// exits 0 with the line printed.
+	stdout.Reset()
+	if code := RunCLI([]string{"--def-census", "-e", `def a 1 def a 2 a`}, &stdout, &stderr); code != 0 || !strings.Contains(stdout.String(), "1:13  rebind  a  (module)  <- 1:5  value") {
+		t.Errorf("a rebind alone is report-only: exit %d, stdout %q", code, stdout.String())
 	}
 	// Without the flag nothing is printed; a clean program prints nothing
 	// with it.

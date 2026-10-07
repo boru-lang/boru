@@ -63,8 +63,8 @@ func TestQuotationBodyDefReadParity(t *testing.T) {
 		// apply (L104 and its local twin): declined "dynamic-scope def `i` of
 		// unpromoted computed value" until the user-call write-back promoted
 		// the call's result for the carried store and the write-back alike
-		{qdModule + `def i 0 end while [i lt 3] [def i (i M.inc/v apply)] end i`, "3", "module-composition L104: the carried root def computed by the export under apply"},
-		{`def inc fn n:Integer Integer [n add 1] end def i 0 end while [i lt 3] [def i (i inc/v apply)] end i`, "3", "its local twin (callbacks L89)"},
+		{qdModule + `var i 0 end while [i lt 3] [var i (i M.inc/v apply)] end i`, "3", "module-composition L104: the carried root var computed by the export under apply"},
+		{`def inc fn n:Integer Integer [n add 1] end var i 0 end while [i lt 3] [var i (i inc/v apply)] end i`, "3", "its local twin (callbacks L89)"},
 	}
 	for _, c := range rows {
 		gotC, compiled, errC, gotI, errI := runBothEngines(t, c.src)

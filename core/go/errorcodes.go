@@ -175,7 +175,7 @@ var kernelErrorCodes = []string{
 	"analysis_truncated", "arity_mismatch", "branch_error", "concurrency_error",
 	"constraint_violation", "def_error", "dynamic_dispatch", "evaluation_limit",
 	"exit", "extend_conflict", "extend_owner", "float_overflow",
-	"flow_error", "fn_body_error",
+	"flow_error", "fn_body_error", "shadow_rebind",
 	"for_error", "forward_strands_operand", "gen_without_constructor", "illegal_key", "illegal_ref",
 	"incomparable", "index_out_of_range", "integer_overflow", "internal_error",
 	"invalid_word_name", "late_binding", "locked_signature", "macro_error", "macroexpand_error",

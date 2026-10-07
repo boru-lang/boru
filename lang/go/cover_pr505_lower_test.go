@@ -52,14 +52,17 @@ func soundDecline(t *testing.T, src, want, interp string) {
 // non-inert literal.
 func TestForIndexDefUnstorableSourceDeclines(t *testing.T) {
 	for _, c := range []struct{ src, reason, interp string }{
+		// Every body def of the index is the body's block-local shadow since
+		// phase 2 (design §2.1), declined under the block gate until the
+		// compiler's own block scopes land.
 		{`def i 0 end for 3 [def i (for 2 [5])] end i`,
-			"the loop's own index `i` binds loop results (Stage 2)", "[5 5 5 0]"},
+			"block-local def `i` shadows an enclosing binding", "[5 5 5 0]"},
 		{`def two fn [[][Integer Integer][1 2]] end def i 0 end for 3 [def i (two)] end i`,
-			"the loop's own index `i` source is not on top of the stack", "[2 2 2 0]"},
+			"block-local def `i` shadows an enclosing binding", "[2 2 2 0]"},
 		{`def two fn [[][Integer Integer][1 2]] end for 3 [def i (two) i]`,
-			"the loop's own index `i` source is not on top of the stack", "[2 1 2 1 2 1]"},
+			"block-local def `i` shadows an enclosing binding", "[2 1 2 1 2 1]"},
 		{`def i 0 end for 3 [def i <a/> i] end i`,
-			"the loop's own index `i` of unknown provenance", "[<a/> <a/> <a/> 0]"},
+			"block-local def `i` shadows an enclosing binding", "[<a/> <a/> <a/> 0]"},
 	} {
 		soundDecline(t, c.src, c.reason, c.interp)
 	}
@@ -72,9 +75,11 @@ func TestForIndexDefUnstorableSourceDeclines(t *testing.T) {
 // interpreter's undefined_word when not.
 func TestFnDispatchBranchBoundSourceAgrees(t *testing.T) {
 	const pre = `import "boru:parselang" def p (fn [[source:String opts:Map] [Any] [7]]) `
-	agreeOnBothLanes(t, pre+`def c true if c [def s 'inc'] [] end parse p s`, "[7]")
-	agreeOnBothLanes(t, pre+`def c false if c [def s 'inc'] [] end parse p s`, "ERROR:undefined_word")
-	agreeOnBothLanes(t, `import "boru:parselang" def c true if c [def s 'inc'] [] end parse (fn [[source:String opts:Map] [Any] [7]]) s`, "[7]")
+	// The source is the branch VALUE (an arm's def ends with the arm since
+	// phase 2; block_scope_rule_test.go keeps the arm-bound shape).
+	agreeOnBothLanes(t, pre+`def c true def s (if c ['inc'] ['dec']) end parse p s`, "[7]")
+	agreeOnBothLanes(t, pre+`def c false def s (if c ['inc'] ['dec']) end parse p s`, "[7]")
+	agreeOnBothLanes(t, `import "boru:parselang" def c true def s (if c ['inc'] ['dec']) end parse (fn [[source:String opts:Map] [Any] [7]]) s`, "[7]")
 }
 
 // TestLandingLayoutsWithoutSkipOrIsland pins the NUR190 landing layouts

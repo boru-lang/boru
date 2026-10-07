@@ -143,6 +143,13 @@ func (r *Registry) noteBindCensus(name string, standing DefEntry, has, isFn bool
 	if r == nil || r.Check == nil || !r.Check.IsActive() || !has {
 		return
 	}
+	// `_` is the discard by convention — bound to drop a value and bound
+	// again freely, in one scope or a block of it — so the census and the
+	// block gate pass it over (phase 3's redefinition rule should make it a
+	// formal discard; design/IMMUTABLE-DEF.1.md #15).
+	if name == "_" {
+		return
+	}
 	site := r.censusSite()
 	cur := r.Defs.ScopeID()
 	kind := r.Defs.ScopeKindNow()
@@ -176,6 +183,29 @@ func (r *Registry) noteBindCensus(name string, standing DefEntry, has, isFn bool
 		e.Class = CensusShadow
 	}
 	r.Check.NoteDefCensus(e)
+	if kind != ScopeBlock {
+		return
+	}
+	// A BLOCK-LOCAL def over a name an enclosing scope binds (phase 2 of
+	// design/IMMUTABLE-DEF.1.md): the enclosing binding is unchanged after
+	// the block. One that READ the name it shadows is the counter shape
+	// (`def n 0 for 3 [def n (n add 1)] n` answers 0): legal, with the
+	// shadow_rebind warning naming the intended spelling. Either shape keeps
+	// the compiled lane from the program for now: the compiler's own block
+	// scopes land in phase 2's second step, and until then its unit would
+	// reproduce the leak the interpreter no longer has — a decline, never a
+	// wrong answer, counted in the compile-defect ledgers.
+	if e.Class == CensusShadowRebind {
+		r.Check.AddDiagnostic(CheckDiagnostic{
+			Code: "shadow_rebind",
+			Detail: "def " + name + ": this block-local def reads the `" + name + "` it shadows; the enclosing binding is unchanged after the block — " +
+				"to update a binding from inside a block, declare it with `var " + name + " …` and assign it as `var " + name + " …`",
+			Word: name,
+			Row:  site.Row,
+			Col:  site.Col,
+		})
+	}
+	r.Check.Recorder().MarkUncompilable("block-local def `" + name + "` shadows an enclosing binding (the compiler's block scopes land with phase 2's second step)")
 }
 
 // censusSite is the site of the binding being installed: the def-name token
@@ -219,6 +249,57 @@ func (r *Registry) noteReadCensus(name string, pos SrcPos) {
 		}
 	}
 	r.Check.NoteDefCensus(DefCensusEntry{Class: CensusLeakRead, Name: name, Site: pos, Standing: e.Site, Scope: r.Defs.ScopeKindNow(), Note: bindingKind(e), Fn: r.censusFn()})
+}
+
+// blockTypeGate keeps the compiled lane from a program that binds a TYPE
+// inside a block — fresh or a shadow, `each [def ZB (Integer gt 0) 7] …`,
+// `for 2 [do [def Big Integer 15 is Big]]` — until the compiler's block
+// scopes land (phase 2's second step): a loop body and an arm are not
+// scopes there yet, so the second iteration's install finds the first's
+// name reservation standing where the interpreter retired it with the
+// block. A decline, never a wrong answer; the type installers call it.
+func (r *Registry) blockTypeGate(name string) {
+	if r == nil || r.Check == nil || !r.Check.IsActive() || r.Defs.ScopeKindNow() != ScopeBlock {
+		return
+	}
+	r.Check.Recorder().MarkUncompilable("block-local type def `" + name + "` (the compiler's block scopes land with phase 2's second step)")
+}
+
+// NoteBlockImport records the namespace an `import` binds INSIDE A BLOCK
+// under an active check pass (CheckState.BlockImportNames) — `if c [import
+// module […] end M.x] [0]`, `for 2 [import "boru:math-util" end …]`. An
+// import is a compile-time word: the check pass runs it and the compiled
+// program reads the binding it installed, never re-importing. Inside a
+// block that binding ends with the body's check run, so a RUN-TIME read of
+// the name (a dynamic-scope lookup) would miss it — the lowerer declines
+// such a read (never a wrong answer; a loud bail before), while a read the
+// pass folds compiles as it did. Outside a block, or outside a check pass,
+// nothing is noted. The language layer's import installers call it.
+func NoteBlockImport(r *Registry, name string) {
+	if r == nil || r.Check == nil || !r.Check.IsActive() || r.Defs.ScopeKindNow() != ScopeBlock {
+		return
+	}
+	if r.Check.BlockImportNames == nil {
+		r.Check.BlockImportNames = map[string]bool{}
+	}
+	r.Check.BlockImportNames[name] = true
+}
+
+// noteUnboundReadCensus records the read of an UNBOUND name under the check
+// pass as a leak-read finding when a block that closed in this lexical
+// region bound it (DefTable.BlockBoundSite): under the rule the binding
+// ended with the block, which is why the read finds nothing — `if b [def z
+// 9] [] end z`, `for 2 [def y 9] y`. The engine's undefined-word error is
+// the read's site.
+func (r *Registry) noteUnboundReadCensus(name string, pos SrcPos) {
+	if r == nil || r.Check == nil || !r.Check.IsActive() {
+		return
+	}
+	note, ok := r.Defs.BlockBoundSite(name)
+	if !ok {
+		return
+	}
+	r.Check.NoteDefCensus(DefCensusEntry{Class: CensusLeakRead, Name: name, Site: pos, Standing: note.Site, Scope: r.Defs.ScopeKindNow(), Note: note.Note, Fn: r.censusFn()})
 }
 
 // NoteDefCensusUse records a use of a construct the rule removes — `undef`

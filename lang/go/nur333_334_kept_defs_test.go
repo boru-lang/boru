@@ -33,7 +33,10 @@ func TestNUR333ComputedBodyBindsAType(t *testing.T) {
 		{`def x 99 end ` + mk + `do (mk) x`, "[Integer]"},
 		{`def x 99 end def mk fn [[][List][quote [def x Integer 1]]] end do (mk) end x`, "[1 Integer]"},
 		{`def x 99 end def mk fn [[][List][quote [def x (Integer) 1]]] end do (mk) end x`, "[1 Integer]"},
-		{`def x 99 end ` + mk + `[1 2] each (mk) end x`, "[[1 2] Integer]"},
+		// An each body is a BLOCK (phase 2): its type def ends with the element's
+		// run, and x after the loop is the module's 99 (the compiled lane
+		// declines the shadow until its block scopes land).
+		{`def x 99 end ` + mk + `[1 2] each (mk) end x`, "[[1 2] 99]"},
 		{`def x 99 end ` + mk + `do (mk) end 5 is x`, "[true]"},
 		{`def x 99 end ` + mk + `do (mk) end x typeof`, "[Number]"},
 		{`def x 99 end def mk fn [[][List][quote [def x None]]] end do (mk) end x`, "[None]"},
@@ -45,7 +48,6 @@ func TestNUR333ComputedBodyBindsAType(t *testing.T) {
 		{`def x 99 end def mk fn [[][List][quote [def x 5 def x Integer]]] end do (mk) end x`, "[Integer]"},
 		{`def x 99 end def mk fn [[][List][quote [def x Integer def x 5]]] end do (mk) end x`, "[5]"},
 		// Inside a loop, and inside a fn unit over a List param.
-		{`def x 99 end for 2 [do (quote [def x Integer])] end x`, "[Integer]"},
 		{`def f fn [[b:List][Any][def t 0 do b drop t]] end f (quote [def t Integer 1])`, "[Integer]"},
 		// The unit's own type def, which declined before (the cover pass's
 		// "dynamic-scope def `t` of unknown provenance").
@@ -89,6 +91,11 @@ func TestNUR333StampKeepsEveryDef(t *testing.T) {
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
 	}
+	// A `do` inside a LOOP body binds in the body's block, which ends with
+	// the iteration (block-scopes.tsv §3): x after the loop is the module's
+	// 99, and the compiled lane declines the shadow until its block scopes
+	// land.
+	ruleOrDecline(t, `def x 99 end for 2 [do (quote [def x Integer])] end x`, "[99]")
 }
 
 // TestNUR334ValReadAfterComputedBody: a `/v` read of a name after a computed
@@ -123,7 +130,7 @@ func TestNUR334ValReadAfterComputedBody(t *testing.T) {
 		// A body that binds nothing leaves the unit's value.
 		{`def f fn [[b:List][Any][def t 0 do b drop t/v]] end f (quote [1])`, "[0]"},
 		// A multi-run body.
-		{`def f fn [[b:List][Any][def t 0 [1 2] each b drop t/v]] end f (quote [def t 5])`, "[5]"},
+		{`def f fn [[b:List][Any][var t 0 [1 2] each b drop t/v]] end f (quote [var t 5])`, "[5]"},
 		// The root: a /v read after a computed body at the program level.
 		{`def x 0 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x/v`, "[5]"},
 		{`def x 0 end def mk fn [[][List][quote [def x 5]]] end do (mk) end [x/v]`, "[[5]]"},
@@ -132,8 +139,8 @@ func TestNUR334ValReadAfterComputedBody(t *testing.T) {
 		{`def x 0 end def mk fn [[][List][quote [def x 5]]] end do (mk) x/v`, "[5]"},
 		{`def x 99 end def mk fn [[][List][quote [def x Integer]]] end do (mk) end x/v`, "[Integer]"},
 		// A literal multi-run body's leak, read by /v.
-		{`[1 2] each [def x 5] end x/v`, "[[1 2] 5]"},
-		{`def x 1 end [] each [def x 5] end x/v`, "[[] 1]"},
+		{`var x 0 end [1 2] each [var x 5] end x/v`, "[[1 2] 5]"},
+		{`var x 1 end [] each [var x 5] end x/v`, "[[] 1]"},
 		// The body rebinds the name to another type: the read is gradual,
 		// so the consumer's dispatch is the run's (computedLeakGradual).
 		{`def x 0 end def mk fn [[][List][quote [def x "s"]]] end do (mk) end x/v add 1`, "[s1]"},

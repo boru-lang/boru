@@ -5,64 +5,55 @@ import (
 	"testing"
 )
 
-// TestBranchCarriedDefParity pins the BRANCH-CARRIED def
-// (compiler/go/branch_carried.go): a name bound inside an `if` arm and read
-// after the merge loads whichever arm ran. Each shape runs on both lanes and
-// must agree — value for value, error code for error code. The false-path
-// twins are deliberate: a lowering that always took the then-arm's value,
-// or that lost the incoming binding through an empty arm, retires the
-// then-path rows and still miscompiles these.
+// TestBranchCarriedDefParity pins the branch-joined VAR (phase 2 of
+// design/IMMUTABLE-DEF.1.md): a var assigned inside an `if` arm and read
+// after the merge holds whichever arm ran, and the branch VALUE spelling
+// `def tag (if c ['big'] ['small'])` binds what an arm computed — a `def`
+// inside an arm is the arm's own block local now (block_scope_rule_test.go
+// keeps those shapes). Each shape runs on both lanes and must agree — value
+// for value, error code for error code. The false-path twins are deliberate:
+// a lowering that always took the then-arm's value, or that lost the
+// incoming cell through an empty arm, retires the then-path rows and still
+// miscompiles these.
 func TestBranchCarriedDefParity(t *testing.T) {
 	for _, src := range []string{
-		// both arms bind, then and else
-		`def f fn [[n:Integer] [String] [if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 5`,
-		`def f fn [[n:Integer] [String] [if (n gt 0) [def tag 'big'] [def tag 'small'] end tag]]  f 0`,
-		// a pre binding rebound in one arm; the EMPTY arm carries it through
-		`def f fn [[] [Integer] [def x 1 end if true [def x 9] [] end x]]  f`,
-		`def f fn [[] [Integer] [def x 1 end if false [def x 9] [] end x]]  f`,
-		`def x 1 end if false [def x 9] [] end x`,
-		`def x 1 end if true [def x 9] [] end x`,
+		// both arms compute the value: the branch VALUE is bound
+		`def f fn [[n:Integer] [String] [def tag (if (n gt 0) ['big'] ['small']) end tag]]  f 5`,
+		`def f fn [[n:Integer] [String] [def tag (if (n gt 0) ['big'] ['small']) end tag]]  f 0`,
+		// a pre-declared var assigned in one arm; the EMPTY arm leaves it
+		`def f fn [[] [Integer] [var x 1 end if true [var x 9] [] end x]]  f`,
+		`def f fn [[] [Integer] [var x 1 end if false [var x 9] [] end x]]  f`,
+		`var x 1 end if false [var x 9] [] end x`,
+		`var x 1 end if true [var x 9] [] end x`,
 		// the read feeding an operator
-		`def f fn [[n:Integer] [Integer] [def r 0 end if (n gt 0) [def r 1] [def r 2] end r add 10]]  f 0`,
+		`def f fn [[n:Integer] [Integer] [var r 0 end if (n gt 0) [var r 1] [var r 2] end r add 10]]  f 0`,
 		// nested branches, every path
-		`def f fn [[b:Boolean] [Integer] [def r 0 end if b [if true [def r 1] [def r 2]] [def r 3] end r]]  f true`,
-		`def f fn [[b:Boolean] [Integer] [def r 0 end if b [if true [def r 1] [def r 2]] [def r 3] end r]]  f false`,
-		`def f fn [[b:Boolean] [Integer] [def r 0 end if b [if false [def r 1] [def r 2]] [def r 3] end r]]  f true`,
-		// a computed pre binding and a computed rebind (the seed is a promoted local)
-		`def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] def q (half n) end if (q gt 1) [def q (half q)] [] end q]]  f 8`,
-		`def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] def q (half n) end if (q gt 1) [def q (half q)] [] end q]]  f 2`,
-		// no pre binding, one arm: bound on the path that ran it (NUR110's taken side)
-		`def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f true`,
-		`def c true  if c [def op 1] [0]  end  op`,
-		// no pre binding, one arm, the arm did NOT run: undefined_word on both lanes (NUR110)
-		`def f fn [[b:Boolean] [Integer] [if b [def z 9] [] end z]]  f false`,
-		`def f fn [[b:Boolean] [Integer] [if b [] [def z 9] end z]]  f true`,
-		`if false [def op 1] [0] end op`,
-		`if false [def z (1 add 8)] [] end z`,
-		// a slot means "bound since this frame started": an arm's binding
-		// from one loop iteration is still read in the next (measured on
-		// the interpreter before the mechanism was built)
-		`for 2 [if (i eq 0) [def z 9] [] end z]`,
-		`def z 0 end for 2 [if (i eq 0) [def z 9] [] end z]`,
-		// a loop-carried and a branch-carried name share one cell
-		`def acc 0 end for 3 [if (i eq 1) [def acc (acc add 10)] [def acc (acc add 1)]] end acc`,
-		// a loop rebinding a name whose PRE-loop binding is itself possibly
-		// unbound (an arm-only def, no pre of its own): the loop may run zero
-		// times, so its joined binding inherits the bound check — the read
-		// after the loop, and the loop body's own read, raise undefined_word
-		// exactly where the interpreter does when no arm and no iteration bound
-		// the name, and read the cell when one did
-		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z (z add 1)] end z]]  f true 2`,
-		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z (z add 1)] end z]]  f true 0`,
-		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z (z add 1)] end z]]  f false 0`,
-		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z (z add 1)] end z]]  f false 2`,
-		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z 7] end z]]  f false 0`,
-		`def f fn [[b:Boolean n:Integer] [Integer] [if b [def z 9] [] end for n [def z 7] end z]]  f false 3`,
-		// the branch result and the carried name are different things
+		`def f fn [[b:Boolean] [Integer] [var r 0 end if b [if true [var r 1] [var r 2]] [var r 3] end r]]  f true`,
+		`def f fn [[b:Boolean] [Integer] [var r 0 end if b [if true [var r 1] [var r 2]] [var r 3] end r]]  f false`,
+		`def f fn [[b:Boolean] [Integer] [var r 0 end if b [if false [var r 1] [var r 2]] [var r 3] end r]]  f true`,
+		// a computed declaration and a computed assignment
+		`def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] var q (half n) end if (q gt 1) [var q (half q)] [] end q]]  f 8`,
+		`def f fn [[n:Integer] [Integer] [def half fn [[k:Integer] [Integer] [k div 2]] var q (half n) end if (q gt 1) [var q (half q)] [] end q]]  f 2`,
+		// a declaration before the branch, assigned on the path that ran the arm
+		`def f fn [[b:Boolean] [Integer] [var z 0 end if b [var z 9] [] end z]]  f true`,
+		`def f fn [[b:Boolean] [Integer] [var z 0 end if b [var z 9] [] end z]]  f false`,
+		`def c true  var op 0  if c [var op 1] [0]  end  op`,
+		// an assignment made in one loop iteration is read in the next
+		`var z 0 end for 2 [if (i eq 0) [var z 9] [] end z]`,
+		// a loop-carried and a branch-assigned name are one cell
+		`var acc 0 end for 3 [if (i eq 1) [var acc (acc add 10)] [var acc (acc add 1)]] end acc`,
+		// a loop assigning a var an arm may have assigned before it
+		`def f fn [[b:Boolean n:Integer] [Integer] [var z 0 end if b [var z 9] [] end for n [var z (z add 1)] end z]]  f true 2`,
+		`def f fn [[b:Boolean n:Integer] [Integer] [var z 0 end if b [var z 9] [] end for n [var z (z add 1)] end z]]  f true 0`,
+		`def f fn [[b:Boolean n:Integer] [Integer] [var z 0 end if b [var z 9] [] end for n [var z (z add 1)] end z]]  f false 0`,
+		`def f fn [[b:Boolean n:Integer] [Integer] [var z 0 end if b [var z 9] [] end for n [var z (z add 1)] end z]]  f false 2`,
+		`def f fn [[b:Boolean n:Integer] [Integer] [var z 0 end if b [var z 9] [] end for n [var z 7] end z]]  f false 0`,
+		`def f fn [[b:Boolean n:Integer] [Integer] [var z 0 end if b [var z 9] [] end for n [var z 7] end z]]  f false 3`,
+		// the branch result and the var are different things
 		`def f fn [[c:Boolean] [Integer] [def out (if c [def t2 5 end t2 add 1] [0]) end out]]  f true`,
 		// a computed condition the checker cannot fold, at the top level
-		`def g fn [[n:Integer] [Boolean] [n gt 5]]  if (g 1) [def op 1] [0] end op`,
-		`def g fn [[n:Integer] [Boolean] [n gt 5]]  if (g 9) [def op 1] [0] end op`,
+		`def g fn [[n:Integer] [Boolean] [n gt 5]]  def op (if (g 1) [1] [0]) end op`,
+		`def g fn [[n:Integer] [Boolean] [n gt 5]]  def op (if (g 9) [1] [0]) end op`,
 	} {
 		gotI, errI := mustNew(t).RunInterp(src)
 		gotC, compiled, errC := mustNew(t).RunCompiled(src)

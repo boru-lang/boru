@@ -60,8 +60,10 @@ func TestCheckStateLifecycleComplete(t *testing.T) {
 		"ArgsFrameUnnamed":         true,
 		"DefCensus":                true,
 		"DefCensusSeen":            true,
+		"BlockImportNames":         true,
 		"VarAssigned":              true,
 		"NextBaselineIsBlock":      true,
+		"NextBaselineTransparent":  true,
 	}
 	// Fields Begin() resets to a canonical NON-zero per-pass value.
 	resetByBeginToCanonical := map[string]string{

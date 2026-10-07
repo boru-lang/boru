@@ -47,7 +47,7 @@ def treewalk fn [[tree:Map] [Integer] [def nodes (tree get "nodes") def a (nodes
 // after the loop. Compiles + parity.
 func TestNarrowedQuoteDefReadInLoopArmCompiles(t *testing.T) {
 	stage1aCompiles(t, `def measure fn [[xs:List] [Integer] [xs size]]
-def treewalk fn [[tree:Map] [Integer] [def nodes quote (tree get "nodes") def acc 0 for 3 [def _i i if (acc 0 eq) [def acc (nodes measure)] []] end (acc add (nodes measure))]]
+def treewalk fn [[tree:Map] [Integer] [def nodes quote (tree get "nodes") var acc 0 for 3 [def _i i if (acc 0 eq) [var acc (nodes measure)] []] end (acc add (nodes measure))]]
 {nodes: [10 20 30], root: "a"} treewalk end`)
 }
 

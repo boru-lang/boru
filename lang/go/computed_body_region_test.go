@@ -356,13 +356,14 @@ func TestComputedDoBodyCheckedOneDefers(t *testing.T) {
 // of the very binding a def made after the run at the run's own depth —
 // nothing the run could have bound under the model's nose.
 func TestKeptDefsFreshReadStaysNarrow(t *testing.T) {
-	for _, c := range []struct{ src, want string }{
-		// A conditional def after the run: the read resolves the join.
-		{`def f fn [[b:List c:Boolean][Any][def ok 1 do b drop if c [def ok 2] [] ok]] end f (quote [def ok 7 0]) false`, "[7]"},
+	for _, c := range []struct{ src, want, reason string }{
 		// A second run between the def and the read.
-		{`def f fn [[b:List][Any][def ok (do b) do b drop ok]] end f (quote [def ok 3 4])`, "[3]"},
+		{`def f fn [[b:List][Any][def ok (do b) do b drop ok]] end f (quote [def ok 3 4])`, "[3]", "(NUR210)"},
+		// A conditional def after the run is the arm's block local (phase
+		// 2): the read resolves the frame's binding, the do body's rebind.
+		{`def f fn [[b:List c:Boolean][Any][def ok 1 do b drop if c [def ok 2] [] ok]] end f (quote [def ok 7 0]) false`, "[7]", "block-local def `ok`"},
 	} {
-		requireLoudDecline(t, c.src, "(NUR210)", c.want)
+		requireLoudDecline(t, c.src, c.reason, c.want)
 	}
 	// A binding made before the run, read bare at the root, is seated live
 	// (TestKeptDefsLiveReadsCompile): it reads what the run left.
@@ -384,12 +385,14 @@ func TestKeptDefsLiveReadsCompile(t *testing.T) {
 	const mk = `def x 99 end def mk fn [[][List][quote [def x 5 1]]] end `
 	for _, c := range []struct{ src, want string }{
 		{`def x 99 end def mk fn [[][List][quote [def x 5]]] end do (mk) end x`, "[5]"},
-		{mk + `[1 2] each (mk) end x`, "[[1 1] 5]"},
-		{mk + `def b (mk) end [1 2] each b end x`, "[[1 1] 5]"},
-		{mk + `[1 2] each (mk) end [x]`, "[[1 1] [5]]"},
-		{mk + `[1 2] each (mk) end {a: x}`, "[[1 1] {a:5}]"},
-		{mk + `[1 2] each (mk) end def y x end y`, "[[1 1] 5]"},
-		{mk + `[1 2] each (mk) end x add 1`, "[[1 1] 6]"},
+		// A multi-run body is a BLOCK (design §2.1, phase 2): its def ends
+		// with each element's run, and the read after it sees the root's.
+		{mk + `[1 2] each (mk) end x`, "[[1 1] 99]"},
+		{mk + `def b (mk) end [1 2] each b end x`, "[[1 1] 99]"},
+		{mk + `[1 2] each (mk) end [x]`, "[[1 1] [99]]"},
+		{mk + `[1 2] each (mk) end {a: x}`, "[[1 1] {a:99}]"},
+		{mk + `[1 2] each (mk) end def y x end y`, "[[1 1] 99]"},
+		{mk + `[1 2] each (mk) end x add 1`, "[[1 1] 100]"},
 		{`def f fn [[b:List][Any][def t 0 do b drop [t]]] end f (quote [def t 5 1])`, "[[5]]"},
 		{`def f fn [[b:List][Any][def t 0 do b drop t add 1]] end f (quote [def t 5 1])`, "[6]"},
 	} {

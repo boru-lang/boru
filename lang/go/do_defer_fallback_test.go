@@ -2,7 +2,6 @@ package lang
 
 import (
 	"fmt"
-	"strings"
 	"testing"
 )
 
@@ -60,54 +59,35 @@ func TestDoDeferFallsBackNotTrapped(t *testing.T) {
 	}
 }
 
-// NUR149's first half (the seventy-third increment): a capture-free fn body
-// redefinition of a SPECULATIVE-FAMILY name (a fn defined in a branch arm
-// the model could not decide — the seventieth increment) is the family-L
-// leak inside a fn body. The drop-then-push leaves the frame's def depth
-// unchanged, so the interpreter keeps the shadow past the call while the
-// compiled def lowers to nothing and the family's live-lead dispatch resolves
-// the arm's binding (whose unit no call site compiled) or an unbound name.
-// No compiled twin reproduces a frame-local shadow the interpreter does not
-// tear down, so InstallDef declines and the program does not compile —
-// not wrong.
-func TestFnBodySpecFamilyRedefFailsToCompile(t *testing.T) {
-	const pre = `def m {e: %s} end  if (m "e" get) [def f fn [[x:Integer][Integer][x add 100]] end] [] end  `
+// NUR149's first half: a capture-free fn body redefinition of a MODULE fn
+// with an overlapping signature. The drop-then-push leaves the frame's def
+// depth unchanged, so the interpreter keeps the shadow past the call (`f 1`
+// is 2 after g) — the leak phase 4 of design/IMMUTABLE-DEF.1.md resolves
+// with NUR149; the lanes agree on it meanwhile. Before phase 2 the module
+// fn here was bound in an arm the model could not decide (a SPECULATIVE
+// family, whose fn-body redefinition declined as family L); an arm's def
+// is the arm's own block local now, so the family shape is gone with the
+// leak that made it, and the module fn is defined outright.
+func TestFnBodyRedefOfModuleFnAgrees(t *testing.T) {
+	const modF = `def f fn [[x:Integer][Integer][x add 100]] end  `
 	const g = `def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end  do [f 5]]] end  `
-	declined := []struct{ src, want string }{
-		// The arm ran (module f = x add 100), g's body redefines f (x add 1):
-		// the interpreter keeps g's f past the call, so `f 1` = 2.
-		{fmt.Sprintf(pre, "true") + g + "g f 1", "[6 2]"},
-		// The arm did not run (f unbound): g's body's f is the only binding.
-		{fmt.Sprintf(pre, "false") + g + "g", "[6]"},
+	for _, c := range []struct{ src, want string }{
+		// g's body redefines the module f (x add 1): the interpreter keeps
+		// g's f past the call, so `f 1` = 2.
+		{modF + g + "g f 1", "[6 2]"},
+		// No module f: g's body's f is the only binding.
+		{g + "g", "[6]"},
+	} {
+		if got, err := mustNew(t).RunInterp(c.src); err != nil || fmt.Sprint(got) != c.want {
+			t.Errorf("%q interpreted = %v / %v, want %s", c.src, got, err, c.want)
+		}
+		requireEngineParity(t, c.src, false)
 	}
-	for _, c := range declined {
-		a, err := New()
-		if err != nil {
-			t.Fatal(err)
-		}
-		prog, reason, _, cerr := a.CompileCheck(c.src)
-		if cerr != nil {
-			t.Fatalf("%q: %v", c.src, cerr)
-		}
-		if prog != nil || !strings.Contains(reason, "redefined inside a fn body replaces a module-scope speculative-family overload") {
-			t.Errorf("%q: want the family-L-in-fn-body compile failure, got compiled=%v reason=%q", c.src, prog != nil, reason)
-		}
-		gotC, _, errC, _, _ := runBothEngines(t, c.src)
-		requireCompileDefect(t, c.src, gotC, errC)
-		// The ANSWER is still pinned, on the reference engine: the program is
-		// valid, which is what makes the compile failure a defect and not a
-		// verdict.
-		b := mustNew(t)
-		gotI2, errI2 := b.RunInterp(c.src)
-		if got := fmt.Sprint(gotI2); errI2 != nil || got != c.want {
-			t.Errorf("%q interpreted = %s / %v, want %s", c.src, got, errI2, c.want)
-		}
-	}
-	// A DISJOINT signature is a fresh push above the family (placed for the
-	// frame, the seventy-second increment), and a NON-family overlap takes
-	// the compiled replace twin: both must keep compiling.
+	// A DISJOINT signature is a fresh push above the module fn (placed for
+	// the frame, the seventy-second increment), and a NON-family overlap
+	// takes the compiled replace twin: both must keep compiling.
 	compiled := []struct{ src, want string }{
-		{fmt.Sprintf(pre, "true") + `def g fn [[][String][def f fn [[s:String][String][s]] end  do [f "a"]]] end  g f 1`, "[a 101]"},
+		{modF + `def g fn [[][String][def f fn [[s:String][String][s]] end  do [f "a"]]] end  g f 1`, "[a 101]"},
 		{`def g fn [[][Integer][def f fn [[x:Integer][Integer][x add 1]] end  do [def f fn [[x:Integer][Integer][x add 50]] end  f 5]]] end  def f fn [[x:Integer][Integer][x add 100]] end  f 1 g f 1`, "[101 55 51]"},
 	}
 	for _, c := range compiled {
@@ -123,32 +103,10 @@ func TestFnBodySpecFamilyRedefFailsToCompile(t *testing.T) {
 		gotC, compiledFlag, errC, gotI, errI := runBothEngines(t, c.src)
 		requireParity(t, c.src, gotC, errC, gotI, errI)
 		if !compiledFlag {
-			t.Errorf("%q: must stay compiled", c.src)
+			t.Errorf("%q: must run compiled, got %v", c.src, errC)
 		}
 		if got := fmt.Sprint(gotC); got != c.want {
 			t.Errorf("%q = %s, want %s", c.src, got, c.want)
-		}
-	}
-	// An IN-FUNCTION speculative family (f absent at fn entry, created in an
-	// undecidable in-fn branch) redefined later in the SAME fn is NOT the
-	// module-family leak: the baseline gate keeps it off the compile failure (Codex
-	// P2 on #469). It COMPILES (no compile failure); its routed live-lead dispatch
-	// may still defer to the interpreter at run time, which falls back with
-	// the same answer — contained, not fixed.
-	{
-		src := `def m {e: true} end  def g fn [[][Integer][if (m "e" get) [def f fn [[x:Integer][Integer][x add 1]] end] [] def f fn [[x:Integer][Integer][x add 2]] end  f 5]] end  g`
-		a, err := New()
-		if err != nil {
-			t.Fatal(err)
-		}
-		prog, reason, _, cerr := a.CompileCheck(src)
-		if cerr != nil || prog == nil {
-			t.Errorf("the in-function family must NOT be declined: reason=%q err=%v", reason, cerr)
-		}
-		gotC, _, errC, gotI, errI := runBothEngines(t, src)
-		requireParity(t, src, gotC, errC, gotI, errI)
-		if got := fmt.Sprint(gotI); got != "[7]" {
-			t.Errorf("in-function family = %s, want [7]", got)
 		}
 	}
 }

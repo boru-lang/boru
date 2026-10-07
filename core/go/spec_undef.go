@@ -84,10 +84,11 @@ func GeneraliseSpecUndef(r *Registry, name string) bool {
 // no-op, as the interpreter's `undef` of an unbound name is (a loop's
 // second iteration over an already-popped name).
 func PopLiveBinding(r *Registry, name string) {
-	if r == nil {
-		return
-	}
-	if e, ok := r.Defs.PopEntry(name); ok && e.TypeDef != nil && e.Minted && !r.Defs.HoldsType(e.TypeDef) {
-		r.Types.Retire(e.TypeDef) // the last pop retires the node (NUR135)
-	}
+	// UninstallType is the interpreter's undef: the pop, the last pop's
+	// retirement of a minted node (NUR135), and — since phase 2 of
+	// design/IMMUTABLE-DEF.1.md — the NAME coming free with the binding, so
+	// `def P (refine Integer) undef P def P (refine Integer)` mints again on
+	// both lanes (the compiled lane raised the name conflict the interpreter
+	// no longer does). A value binding has nothing to retire or free.
+	UninstallType(r, name)
 }

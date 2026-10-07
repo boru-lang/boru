@@ -96,3 +96,36 @@ func TestApplyResidentTypeBind(t *testing.T) {
 		t.Fatal("a body the installer declines must return its error, not install nothing silently")
 	}
 }
+
+// ApplyResidentVar is the install arm of a var DECLARATION inside a resident
+// body: the per-element cell is MARKED a var (its declared type kept), so
+// the body's later assignment replaces it in place — one level — where the
+// plain install arm had the assignment declare a second cell beside it. A
+// nil registry is a no-op.
+func TestApplyResidentVar(t *testing.T) {
+	ApplyResidentVar(nil, "x", NewInteger(1), nil) // must not panic
+
+	r, err := NewRegistry()
+	if err != nil {
+		t.Fatal(err)
+	}
+	ApplyResidentVar(r, "x", NewInteger(10), TInteger)
+	e, ok := IsVarBinding(r, "x")
+	if !ok || e.VarType != TInteger {
+		t.Fatalf("the resident var install is not a typed var binding: %+v / %v", e, ok)
+	}
+	ApplyResidentAssign(r, "x", NewInteger(11))
+	if d := r.Defs.Depth("x"); d != 1 {
+		t.Errorf("x is %d deep after assigning the resident var, want 1 (replaced in place)", d)
+	}
+	if v, _ := r.Defs.Top("x"); v.String() != "11" {
+		t.Errorf("x reads %v after the assignment, want 11", v)
+	}
+	// The negative half: the plain install arm's cell is not a var, so the
+	// same assignment declares beside it.
+	ApplyResidentBind(r, "y", false, NewInteger(10))
+	ApplyResidentAssign(r, "y", NewInteger(11))
+	if d := r.Defs.Depth("y"); d != 2 {
+		t.Errorf("y is %d deep after assigning over a plain resident install, want 2", d)
+	}
+}

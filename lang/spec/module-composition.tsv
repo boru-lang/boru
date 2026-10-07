@@ -101,7 +101,7 @@ import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] e
 import module [def Handler class {cb: Function} export "M" {Handler: Handler}] end def h (make M.Handler {cb: (fn n:Integer Integer [n add 1])}) end each h.cb [1 2 3]	[2 3 4]	DOES NOT COMPILE: "higher-order `each` over a gradual-Any collection: ambiguous overload (List vs Map), no static commit and no poly re-match"
 import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end 5 M.inc/v apply	6	DIVERGES (no compile failure): the interpreter applies the export and yields 6; the compiled lane leaves 5 and the unapplied fn
 import module [def h1 fn n:Integer Integer [n add 1] def tbl {inc: h1/v} export "M" {tbl: tbl}] end def f M.tbl.inc end each [f] [1 2 3]	[2 3 4]	DIVERGES (no compile failure): the compiled lane returns three fn VALUES instead of [2 3 4]
-import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def i 0 end while [i lt 3] [def i (i M.inc/v apply)] end i	3	DIVERGES (no compile failure): compiled, this while loop never terminates and aborts with boru/tape_exhausted
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end var i 0 end while [i lt 3] [var i (i M.inc/v apply)] end i	3	a while loop assigning its var through an export's fn value
 import module [def big fn n:Integer Boolean [n gt 1] export "M" {big: big/v}] end fold [add] (filter [M.big] [1 2 3]) 0	5	the quotation form of filter over an export COMPILES — contrast the fn-value form, which declines
 #
 # §7  SEVERAL MODULES in one program — what a real file's preamble looks like.
@@ -119,7 +119,7 @@ import module [def name fn n:Integer String [case n [[eq 1] 'one' [eq 2] 'two' '
 import "boru:string-util" end import module [def tag fn n:Integer String [case n [[lt 0] 'neg' [eq 0] 'zero' 'pos']] export "M" {tag: tag/v}] end join ',' (each [StringUtil.upper] (each [M.tag] [-1 0 1]))	'NEG,ZERO,POS'	case in a module fn, each, a native module word in a second each, then join
 import module [def f fn n:Integer Integer [if (n lte 1) [1] [n mul (f (n sub 1))]] export "M" {fact: f/v}] end fold [add] (each [M.fact] [1 2 3 4]) 0	33	RECURSION inside the module body, exported and driven by each + fold
 import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def loop fn n:Integer List [if (n lte 0) [[]] [(loop (n sub 1)) push (M.inc n)]] end fold [add] (loop 3) 0	9	an IMPORTER-side recursive fn that calls the export at every level, then folds
-import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end def i 0 end def out [] end while [i lt 3] [def out (out push (M.inc i)) def i (i add 1)] end out	[1 2 3]	a while loop rebinding two locals, calling the export each turn
+import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end var i 0 end var out [] end while [i lt 3] [var out (out push (M.inc i)) var i (i add 1)] end out	[1 2 3]	a while loop assigning two vars, calling the export each turn
 import module [def safe fn n:Integer Integer [if (n eq 0) [raise zero_div 'no'] [100 div n]] export "M" {safe: safe/v}] end fold [add] (each [M.safe] [1 2 4]) 0	175	a guarded export that raises on the bad branch, each-ed over good input and folded
 #
 # §9  NESTING and UNPACK — modules inside modules, re-exported namespaces, and
