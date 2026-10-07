@@ -31,7 +31,7 @@ func TestCapturedUserCallValueDefPromote(t *testing.T) {
     if (n lte 1) [ xs ] [
       def arr (flex xs)
       def mx (arr hmax)
-      def _ (iota 3 each [ var [[i] if (i lt mx) [ arr set i mx end 0 ] [0] ] ])
+      def _ (iota 3 each ([i] => [if (i lt mx) [ arr set i mx drop 0 ] [0]]))
       (node arr)
     ]
   ]]
@@ -45,7 +45,7 @@ func TestCapturedUserCallValueDefPromote(t *testing.T) {
   def srt fn [[xs:List] [List] [
     def arr (flex xs)
     def mx (arr hmax)
-    def _ (iota 3 each [ var [[i] if (i lt mx) [ arr set i (mx add mx) end 0 ] [0] ] ])
+    def _ (iota 3 each ([i] => [if (i lt mx) [ arr set i (mx add mx) drop 0 ] [0]]))
     (node arr)
   ]]
   export "M" {srt: srt/v}

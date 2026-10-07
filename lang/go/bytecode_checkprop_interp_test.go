@@ -18,7 +18,7 @@ func bt(s string) string { return "`" + s + "`" }
 // test-check-prop (Stage 2)".
 func TestCheckPropInterpStringModuleScope(t *testing.T) {
 	src := `import "boru:test" end
-def res (Test.check-prop "x" [r.int 1 9] [ var [[k] (` + bt("v${k}") + `) eq ` + bt("v${k}") + ` ] ] 5 1 0)
+def res (Test.check-prop "x" [r.int 1 9] [ ([k] => [(` + bt("v${k}") + `) eq ` + bt("v${k}") + `]) apply ] 5 1 0)
 res get "ok"`
 	a, _ := New()
 	got, err := a.RunCompiledStrict(src)
@@ -49,7 +49,7 @@ func TestCheckPropInterpStringFnScopeFailsToCompile(t *testing.T) {
 	// Legacy compile failure+fallback-parity contract: pins the one-release
 	src := `import "boru:test" end
 def run-props fn [[pfx:Integer] [Boolean] [
-  def res (Test.check-prop "x" [r.int 1 9] [ var [[k] (` + bt("${pfx}-${k}") + `) eq ` + bt("${pfx}-${k}") + ` ] ] 5 1 0)
+  def res (Test.check-prop "x" [r.int 1 9] [ ([k] => [(` + bt("${pfx}-${k}") + `) eq ` + bt("${pfx}-${k}") + `]) apply ] 5 1 0)
   res get "ok"
 ]]
 (run-props 100)`

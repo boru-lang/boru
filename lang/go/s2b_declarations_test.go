@@ -48,7 +48,6 @@ func TestS2BDeclarationsByWordAndShape(t *testing.T) {
 		// module forms run their body on the check engine.
 		"import": {"(List Module)": key, "(List String)": key, "(Atom List)": own, "(List Atom List)": own, "(Atom Atom List)": own},
 		// Splices the tape re-steps.
-		"var":  {"(List)": resteps},
 		"word": {"(Any)": resteps},
 		// A NoEvalArgs list of names / keys / literal data.
 		"unpack": {"(List Map)": key},
@@ -106,9 +105,6 @@ func TestS2BDeclarationsByWordAndShape(t *testing.T) {
 			if len(sig.NoEvalArgs) == 0 {
 				continue
 			}
-			if word == "var" && len(sig.Args) == 1 {
-				continue // the `var [[…]]` construct's one-list signature, pinned above
-			}
 			forms++
 			wantForm := inert | own
 			if len(sig.Args) > 0 && sig.Args[0] != nil && sig.Args[0].Equal(core.TAtom) {
@@ -131,9 +127,10 @@ func TestS2BDeclarationsByWordAndShape(t *testing.T) {
 	if varForms != 34 {
 		t.Errorf("var: %d code-body keyword forms, want 34 (def's, mirrored to refuse)", varForms)
 	}
-	// 26 named above + def's 34 + var's 34 = the 94 signatures S2b declares.
-	if seen+defForms+varForms != 94 {
-		t.Errorf("pinned %d code-body signatures, want 94", seen+defForms+varForms)
+	// 25 named above + def's 34 + var's 34 = the 93 signatures S2b declares
+	// (the var construct's one-list signature is gone).
+	if seen+defForms+varForms != 93 {
+		t.Errorf("pinned %d code-body signatures, want 93", seen+defForms+varForms)
 	}
 }
 
@@ -291,9 +288,10 @@ func TestS2BDeclaredWordsKeepParity(t *testing.T) {
 		`def G gen [T] class {v: T} end G deq G`,
 		`def m (macro [[e] [ quote [ unquote e add 1 ] ]]) end m 5`,
 		`import module [export "M" {x: 1}] end M has x/q`,
-		// CompileResteps: the splices.
-		`var [[[a 1] [b 2]] a add b]`,
+		// CompileResteps: the splice.
 		`def dbl word [dup add] end 5 dbl`,
+		// CompileQuoteKey: the var word's quoted name.
+		`var a 1 end var a (a add 1) end a`,
 		// CompileQuoteKey / CompileQuoteInert over a NoEvalArgs list.
 		`unpack [a b] {a:1 b:2} a add b`,
 		`def f fn [[n:Integer][Any][reach n ['a']]] end f 7`,

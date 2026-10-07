@@ -37,12 +37,10 @@ def _ (bcount set bi ((bcount get bi) add 1)) end
   def srt fn [[xs:List] [List] [
     def bcount (flex (iota 3 each [drop 0]))
     def n 3
-    def _bc (iota 4 each [ var [[i]
-      def raw (i add 1)
+    def _bc (iota 4 each [ ([i] => [def raw (i add 1)
       def bi (if (raw gte n) [(n sub 1)] [raw])
       def _ (bcount set bi ((bcount get bi) add 1)) end
-      0
-    ] ])
+      0]) apply ])
     (node bcount)
   ]]
   export "M" {srt: srt/v}

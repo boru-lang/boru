@@ -56,8 +56,8 @@ var DefinitionNatives = []NativeFunc{
 				// the quoted-operand gates (it runs in check mode and is
 				// lowered by the binder hooks: RecordDef / RecordDefRebind /
 				// the promoted value-def locals), so the flag is the census's
-				// answer, not a lowering; the same holds for undef,
-				// __varundef and the synthesized keyword forms below.
+				// answer, not a lowering; the same holds for undef and
+				// the synthesized keyword forms below.
 				CompileEffect: CompileQuoteKey,
 			},
 		},
@@ -99,58 +99,13 @@ var DefinitionNatives = []NativeFunc{
 		},
 	},
 	{
-		// __varundef is the cleanup unbind the `var` splice emits — semantically
-		// ALWAYS the single-name form (`undef name`). It exists separately from
-		// `undef` precisely because `undef` is OVERLOADED with a 2-arg fn-overload
-		// form (`undef name fnUndefSpec`): the var splice runs the cleanup with the
-		// body's RESIDUAL still on the stack, and in check mode that residual is a
-		// dynamic-Any carrier which gradually matches the 2-arg form's TFnUndef
-		// slot — so `undef name` mis-dispatched to UndefFnHandler and errored
-		// ("expected fn undef spec"), leaking the loop binding and declining the
-		// closure. A dedicated 1-arg-only word can never mis-match the residual, so
-		// it dispatches identically (1-arg unbind) in check mode and at runtime —
-		// the property the compiled `each`/`fold`/… var-body closure needs. Reuses
-		// undefHandler so the unbind behaviour is byte-identical to `undef name`.
-		Name: "__varundef",
-		Signatures: []Signature{
-			{
-				Args:       []*Type{TString},
-				Impl:       Go(varUndefHandler, RunInCheck()),
-				Returns:    []*Type{},
-				BarrierPos: -1,
-			},
-			{
-				Args:       []*Type{TAtom},
-				QuoteArgs:  map[int]bool{0: true},
-				Impl:       Go(varUndefHandler, RunInCheck()),
-				Returns:    []*Type{},
-				BarrierPos: -1,
-				// The var splice's cleanup unbind names its key exactly as
-				// `undef name` does (see def's Atom form).
-				CompileEffect: CompileQuoteKey,
-			},
-		},
-	},
-	{
 		Name: "var",
 
-		// var SPLICES its body (def/body/undef tokens) onto the tape for the
-		// engine to re-step. RunInCheckMode lets the recorder follow that splice
-		// so the inline let lowers as the body's events with the bound names as
-		// promoted value-def locals (the def/body/undef tokens record exactly as a
-		// hand-written `def NAME val end … undef NAME` would). A body word the
-		// recorder cannot lower marks the program uncompilable through the same
-		// path it does anywhere else, so a declining body DECLINES rather than
-		// producing a silent empty unit.
-		Signatures: append([]Signature{{
-			Args:       []*Type{TList},
-			NoEvalArgs: map[int]bool{0: true},
-			Impl:       Go(VarHandler, RunInCheck()),
-			Returns:    []*Type{TAny}, BarrierPos: -1,
-			// The splice above is the S2a rule's re-stepped result (S2b's
-			// declaration): CompileResteps, the handler contract written down.
-			CompileEffect: CompileResteps,
-		}}, varWordSignatures...),
+		// `var NAME value`, `var NAME:Type value`, `var "NAME" value`: the one
+		// binding whose value changes in place (native_var.go,
+		// design/IMMUTABLE-DEF.1.md §2.3). The constructor keyword forms are
+		// registered below only to refuse (varFormRefuse).
+		Signatures: varWordSignatures,
 	},
 	{
 		Name: "fn",
@@ -1729,21 +1684,9 @@ func carrierMayHoldFn(v Value) bool {
 
 // ---- undef ----
 
-// varUndefHandler is __varundef's own thin front over undefHandler: it
-// notes the teardown on the recorder (RecordDynUndef — the event seat
-// the twin regime's arm-residency bridge pairs with a var param's
-// BindUndef twin; a no-op everywhere the recorder has no arm-resident
-// bracket open) and then unbinds byte-identically to `undef name`.
-func varUndefHandler(args []Value, named map[string]Value, future []Value, r *Registry) ([]Value, error) {
-	if name := DefName(args[0]); name != "" {
-		r.Check.Recorder().RecordDynUndef(name, args[0].Pos())
-	}
-	return undefByName(args, named, future, r)
-}
-
 // undefHandler is the user-written `undef NAME`: the def census notes it
 // (core/go/def_census.go — the scope rule removes the word), then the
-// unbind the var splice's own cleanup shares (undefByName) runs.
+// unbind (undefByName) runs.
 func undefHandler(args []Value, named map[string]Value, future []Value, r *Registry) ([]Value, error) {
 	core.NoteDefCensusUse(r, core.CensusUndef, DefName(args[0]), args[0].Pos())
 	return undefByName(args, named, future, r)
@@ -1837,100 +1780,6 @@ func UndefFnHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([
 	}
 	UninstallFnSigs(r, name, undefInfo)
 	return nil, nil
-}
-
-// ---- var ----
-
-func VarHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
-	list := args[0]
-	if !list.Parent.Equal(TList) {
-		return nil, r.BoruError("var_error", "var: argument must be a list", "var")
-	}
-	if !IsConcrete(list) {
-		return nil, r.BoruError("var_error", "var: argument must be a concrete list, got type literal", "var")
-	}
-	elems, _ := AsList(list)
-	if elems.Len() == 0 {
-		return nil, r.BoruError("var_error", "var: empty list", "var")
-	}
-
-	declVal := elems.Get(0)
-	if !declVal.Parent.Equal(TList) || !IsConcrete(declVal) {
-		return nil, r.BoruError("var_error", "var: first element must be a list of variable declarations", "var")
-	}
-	decls, _ := AsList(declVal)
-	body := elems.Slice()[1:]
-	// The def census (core/go/def_census.go): the scope rule replaces this
-	// construct with untyped lambda parameters. The finding names the
-	// declared names as written, `[e acc]`.
-	declNames := make([]string, 0, decls.Len())
-	for _, d := range decls.Slice() {
-		declNames = append(declNames, DefName(d))
-	}
-	core.NoteDefCensusUse(r, core.CensusVarConstruct, "["+strings.Join(declNames, " ")+"]", list.Pos())
-
-	var result []Value
-	var varNames []string
-	// varSites holds each declaration NAME token, the site the synthesized
-	// def and __varundef tokens carry (WithPos): a token without a position
-	// gives its bind transition no site — the compile pass keys the twins a
-	// root do body leaves for adoption on the body's token sites, and a
-	// site-less undef twin stayed unplaced, declining every root
-	// `do [var [[[k 1]] …]]` (code-bodies.tsv L197, measured 2026-09-24).
-	var varSites []Value
-
-	for _, decl := range decls.Slice() {
-		switch {
-		case IsWord(decl):
-			_as0, _ := AsWord(decl)
-			name := _as0.Name
-			varNames = append(varNames, name)
-			varSites = append(varSites, decl)
-			result = append(result, WithPos(NewWord("def"), decl), WithPos(NewWord(name), decl), NewEnd())
-
-		case decl.Parent.Equal(TList) && decl.Data != nil:
-			declElems, _ := AsList(decl)
-			if declElems.Len() < 2 {
-				return nil, r.BoruError("var_error", "var: declaration list must have name and value", "var")
-			}
-			var name string
-			if IsWord(declElems.Get(0)) {
-				_as1, _ := AsWord(declElems.Get(0))
-				name = _as1.Name
-			} else if declElems.Get(0).Parent.ConformsTo(TString) {
-				name, _ = AsString(declElems.Get(0))
-			} else {
-				return nil, r.BoruError("var_error", "var: declaration name must be a word or string", "var")
-			}
-			varNames = append(varNames, name)
-			varSites = append(varSites, declElems.Get(0))
-			result = append(result, WithPos(NewWord("def"), declElems.Get(0)), WithPos(NewWord(name), declElems.Get(0)))
-			result = append(result, declElems.Slice()[1:]...)
-			result = append(result, NewEnd())
-
-		case decl.Parent.ConformsTo(TString):
-			name, _ := AsString(decl)
-			varNames = append(varNames, name)
-			varSites = append(varSites, decl)
-			result = append(result, WithPos(NewWord("def"), decl), WithPos(NewWord(name), decl), NewEnd())
-
-		default:
-			return nil, fmt.Errorf("var: invalid declaration: %s", decl.String())
-		}
-	}
-
-	result = append(result, body...)
-
-	// Cleanup via __varundef (not `undef`): the body residual is still on the
-	// stack here, and `undef`'s 2-arg fn-overload form would mis-match it in
-	// check mode (a dynamic-Any residual gradually satisfies TFnUndef). The
-	// dedicated 1-arg word dispatches identically in check and at runtime, which
-	// is what lets a var-body compile to a closure unit.
-	for i := len(varNames) - 1; i >= 0; i-- {
-		result = append(result, WithPos(NewWord("__varundef"), varSites[i]), WithPos(NewWord(varNames[i]), varSites[i]))
-	}
-
-	return result, nil
 }
 
 // ---- fn ----

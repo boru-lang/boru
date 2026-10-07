@@ -103,7 +103,6 @@ var (
 	runForLoop                       = basic.RunForLoop
 	shiftPosFlags                    = basic.ShiftPosFlags
 	undefFnHandler                   = basic.UndefFnHandler
-	varHandler                       = basic.VarHandler
 )
 
 // Behavior structs of the moved Scalar/Time family and timer handles —

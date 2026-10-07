@@ -92,8 +92,8 @@ func TestNUR305NoLaterClaimIsNoAmbiguity(t *testing.T) {
 
 // TestNUR305SpeculativeClaimIsNoWiderWindow: a later candidate that claims
 // the stop token only SPECULATIVELY — a function word admitted at an Any slot
-// for its dispatch's result (a `var` body's `__varundef` cleanup after an
-// `and`, in kg/queries.boru) — offers no wider window of values, so nothing
+// for its dispatch's result (a cleanup unbind after an `and`, the former var
+// construct's in kg/queries.boru) — offers no wider window of values, so nothing
 // is flagged.
 func TestNUR305SpeculativeClaimIsNoWiderWindow(t *testing.T) {
 	sigs := []Signature{

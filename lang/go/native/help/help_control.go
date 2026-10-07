@@ -61,7 +61,7 @@ func init() {
 		Examples: []string{
 			`raise "boom" ; # [boru/user_error]: boom`,
 			`raise bad_input "expected a list" ; # [boru/bad_input]: …`,
-			`do [raise {code: nope/q, message: "m", got: 42}] error [var [[e] e.got print]]`,
+			`do [raise {code: nope/q, message: "m", got: 42}] error [([e] => [e.got print]) apply]`,
 		},
 	})
 
@@ -200,14 +200,17 @@ func init() {
 
 	register(&Entry{
 		Word:    "var",
-		Summary: "Define scoped variables with automatic cleanup.",
-		Description: "Takes a list whose first element is a list of variable declarations " +
-			"and whose remaining elements are the body. Each declaration is either a bare " +
-			"word (takes value from stack) or a [name value] list. Variables are automatically " +
-			"undefined after the body executes.",
+		Summary: "Declare a mutable variable, or assign one already visible in the frame.",
+		Description: "`var NAME value` declares a var in the current scope, or — when a var NAME " +
+			"is visible within the current frame — assigns it in place; `var NAME:Type value` " +
+			"declares a typed var whose assignments are checked against the type. A var is the one " +
+			"binding whose value changes; every other binding is a def. A var holds a value: a " +
+			"function constructor (`var f fn […]`) or a type is refused with var_error, and a var of " +
+			"another frame — a module var inside a fn body, an enclosing fn's var inside a closure — " +
+			"is readable but never assignable.",
 		Notes: []string{
-			"Variables are scoped: they are undefined when the body finishes.",
-			"Bare word declarations consume values from the stack.",
+			"Loop state is the idiom: `var n 0  for 3 [var n (n add 1)]  n` is 3.",
+			"A closure made while a fn-local var is live captures the var's value at creation.",
 		},
 	})
 

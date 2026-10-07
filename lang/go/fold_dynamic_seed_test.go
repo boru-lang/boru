@@ -27,7 +27,7 @@ func TestFoldDynamicSeedAccumulator(t *testing.T) {
 
 	// `(do {n:0})` seed → gradual accumulator → `acc "n" get` + `add` clean.
 	clean := `def f fn [[a:String] [Any] [
-  (do {n: 0}) (iota 3) [ var [[i acc] do {n: [(acc "n" get) 1 add]} ] ] fold
+  (do {n: 0}) (iota 3) [ ([i acc] => [do {n: [(acc "n" get) 1 add]}]) apply ] fold
 ]] end`
 	if n := errCount(clean); n != 0 {
 		t.Errorf("fold over a (do {…}) seed: expected 0 errors, got %d", n)
@@ -36,7 +36,7 @@ func TestFoldDynamicSeedAccumulator(t *testing.T) {
 	// A plain map-literal seed already worked (the accumulator is a concrete
 	// Map); guard it stays clean.
 	clean2 := `def f fn [[a:String] [Any] [
-  {n: 0} (iota 3) [ var [[i acc] (acc "n" get) ] ] fold
+  {n: 0} (iota 3) [ ([i acc] => [(acc "n" get)]) apply ] fold
 ]] end`
 	if n := errCount(clean2); n != 0 {
 		t.Errorf("fold over a map-literal seed: expected 0 errors, got %d", n)

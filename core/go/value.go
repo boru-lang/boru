@@ -504,7 +504,7 @@ const (
 	// CompileQuoteInert, do NOT set it on a dispatch-manipulating meta word whose
 	// quoted operand drives a RE-STEPPING result the VM cannot reproduce by
 	// re-running the handler (CompileResteps). The binding words carry it too:
-	// `def name …` / `undef name` / `__varundef name` quote the NAME of a
+	// `def name …` / `undef name` quote the NAME of a
 	// registry write or removal, and `unpack Export 'mod'` the export it
 	// selects — a key the handler reads, never a literal it bakes; the recorder
 	// reaches none of them through the quoted-operand gates (they run in check
@@ -832,7 +832,7 @@ type CallableSpec struct {
 	// body ONCE PER ELEMENT and keeps each run's installs — `each`, whose
 	// runtime leaks one install per element per body def site, stacked in
 	// element order with the per-element runtime value (measured:
-	// `[10 20] each [var [[r] def x r x]]` leaves x = [20, 10] top-down;
+	// `[10 20] each ([r] => [def x r x])` leaves x = [20, 10] top-down;
 	// the parity oracle's declined rows pin the full population). The twin
 	// regime's compiler reads it as the ARM-RESIDENCY license: a bind
 	// twin noted during this word's suspended body analysis may be
@@ -1184,6 +1184,14 @@ func WithFreshFnIdentity(v Value) Value {
 type CapturedBinding struct {
 	Name  string
 	Value Value
+	// Var marks a capture of a VAR cell (DefEntry.Var). The closure reads
+	// the value the cell held at its construction, as it reads every
+	// capture; `var NAME v` inside it names a var of ANOTHER frame, which the
+	// var word never assigns (design/IMMUTABLE-DEF.1.md §2.3) —
+	// InstallCapturedBinding installs the capture Frame and Var, the pair
+	// bindVar refuses, where a plain capture let the statement declare or
+	// assign a copy silently (2026-10-07).
+	Var bool
 }
 
 // HasForwardSigs reports whether any compiled signature has a non-zero

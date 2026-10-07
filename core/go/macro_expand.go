@@ -173,7 +173,7 @@ func expandMacroWith(r *Registry, fnDef *FnDefInfo, operands []Value) ([]Value, 
 		InstallFrameBinding(r, p.Name, q)
 	}
 	for _, cb := range fnDef.Captured {
-		InstallFrameBinding(r, cb.Name, cb.Value)
+		InstallCapturedBinding(r, cb)
 	}
 
 	// Run the template body → the template token list (its last result).

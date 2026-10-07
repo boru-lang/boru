@@ -62,7 +62,7 @@ def ins fn [[val:Any key:String nd:Any] [Any] [
   if ((key size) eq 0) [ (nd val wev) ] [nd]
 ]] end
 def from-entries fn [[entries:List] [Any] [
-  none entries [ var [[e acc] (acc (e get 0) (e get 1) ins) ] ] fold
+  none entries [ ([e acc] => [(acc (e get 0) (e get 1) ins)]) apply ] fold
 ]] end`
 	if n := errCount(accAsNode); n != 0 {
 		t.Errorf("fold-accumulator-as-node: expected 0 errors, got %d", n)

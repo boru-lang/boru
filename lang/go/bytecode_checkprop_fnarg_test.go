@@ -38,17 +38,15 @@ import module [
   def by-number fn [[b:Any a:Any] [Integer] [(a cmp b)]]
   def srt fn [[comp:Function lst:List] [List] [
     def arr (flex lst)
-    def _ (iota (lst size) each [ var [[i]
-      def c ((arr get i) (arr get 0) comp)
-      0
-    ]])
+    def _ (iota (lst size) each [ ([i] => [def c ((arr get i) (arr get 0) comp)
+      0]) apply])
     (arr slice 0 (lst size))
   ]]
   export "S" {by-number: by-number/v, srt: srt/v}
 ] end
 Test.check-prop "sort-dispatch"
-  [ iota (r.int 0 5) each [ var [[i] r.int 0 12 ] ] ]
-  [ var [[lst] (lst S.srt S.by-number) drop true ] ]
+  [ iota (r.int 0 5) each [ ([i] => [r.int 0 12]) apply ] ]
+  [ ([lst] => [(lst S.srt S.by-number) drop true]) apply ]
   25 1 0
 end`
 	// Full compilation: no compile failure, no fallback island.

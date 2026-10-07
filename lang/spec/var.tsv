@@ -41,18 +41,21 @@ var n 0 def inc fn [[] [Integer] [var n 7 n]] (inc)	ERROR:var_error	nor assign i
 def f fn [[] [Integer] [var n 1 def g ([] => [n]) var n 2 (g)]] (f)	1	a closure captures the var's value at creation
 var n 0 def mk fn [[] [Function] [([] => [n])]] def g (mk) var n 7 (g)	7	a module var read by a closure stays live (the module is no frame of the closure)
 var acc [] each ([x] => [var acc (push x acc)]) [1 2]	ERROR:var_error	a lambda is a frame: it cannot assign the enclosing var
+def g fn [[][List][var s 5 def f fn [[][Integer][var s 0 s]] [(f) s]]] (g)	ERROR:var_error	a nested fn captures an enclosing fn's var and cannot assign it either (one frame rule)
+def g fn [[][List][var s 5 def f ([] => [var s 0 s]) [(f) s]]] (g)	ERROR:var_error	a lambda inside the fn: the same refusal
+def g fn [[][List][var s 5 def f fn [[][Integer][s add 1]] [(f) s]]] (g)	[6 5]	the captured var is readable
+def g fn [[][List][def s 5 def f fn [[][Integer][var s 0 s]] [(f) s]]] (g)	[0 5]	a captured def is no var: the closure declares its own
 each ([x] => [var y x y]) [1 2]	[1 2]	a var declared inside a lambda is the lambda's own
 # ─────────────────────────────────────────────────────────────────────
-# §4  typed vars — the typed-name form (`var n:Integer 1`) is registered when
-# the `var [[…]]` construct is deleted (basic/go/native_var.go's registration
-# note); until then these rows are a comment, and VarTypedHandler is pinned
-# by basic/go/native_var_test.go.
-# var n:Integer 1 var n 2 n	2	a typed var assigned a conforming value
-# var s:String "a" var s "b" s	'b'	a typed string var
-# var n:Integer 1 var n "x"	ERROR:type_error	an assignment checks the declared type
-# var s:String 1	ERROR:type_error	the declaration checks it too
-# var x 1 var x:Integer 2	ERROR:var_error	a typed re-declaration of a live var is refused
-# def Pos refine Integer var p:Pos 3 var p 4 p	4	a user type names a var's type
+# §4  typed vars — the typed-name form (`var n:Integer 1`) and the string-name
+# form (`var "n" 1`), def's siblings
+var n:Integer 1 var n 2 n	2	a typed var assigned a conforming value
+var s:String "a" var s "b" s	'b'	a typed string var
+var n:Integer 1 var n "x"	ERROR:type_error	an assignment checks the declared type
+var s:String 1	ERROR:type_error	the declaration checks it too
+var x 1 var x:Integer 2	ERROR:var_error	a typed re-declaration of a live var is refused
+def Pos refine Integer var p:Pos 3 var p 4 p	4	a user type names a var's type
+var "n" 1 var "n" 2 n	2	a string name declares and assigns like a quoted one
 # ─────────────────────────────────────────────────────────────────────
 # §5  a var holds a value
 var T 1	ERROR:var_error	a capitalised name is a type

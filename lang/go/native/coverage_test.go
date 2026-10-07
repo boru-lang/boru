@@ -1013,47 +1013,6 @@ func TestConvertWithSettingsMap(t *testing.T) {
 // Var edge cases
 // ========================
 
-func TestVarStringName(t *testing.T) {
-	r, err := DefaultRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	registerIOWords(r)
-	// 5 var [["x"] x mul x]
-	result := runBoru(t, r, []Value{
-		NewInteger(5),
-		NewWord("var"), NewList([]Value{
-			NewList([]Value{NewString("x")}),
-			NewWord("x"), NewWord("mul"), NewWord("x"),
-		}),
-	})
-	_as29, _ := AsInteger(result[0])
-	if len(result) != 1 || _as29 != 25 {
-		t.Errorf("expected 25, got %v", result)
-	}
-}
-
-func TestVarWithDefault(t *testing.T) {
-	r, err := DefaultRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	registerIOWords(r)
-	// var [[[x 10]] x add 1]
-	result := runBoru(t, r, []Value{
-		NewWord("var"), NewList([]Value{
-			NewList([]Value{
-				NewList([]Value{NewWord("x"), NewInteger(10)}),
-			}),
-			NewWord("x"), NewWord("add"), NewInteger(1),
-		}),
-	})
-	_as30, _ := AsInteger(result[0])
-	if len(result) != 1 || _as30 != 11 {
-		t.Errorf("expected 11, got %v", result)
-	}
-}
-
 // ========================
 // Print / format tests
 // ========================

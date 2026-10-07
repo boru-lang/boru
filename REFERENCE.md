@@ -1370,7 +1370,7 @@ restricted words refuse. See
 | `def` | Define a word | `def x 42` |
 | `undef` | Remove the latest definition | `undef x` |
 | `fn` | Create typed function | `fn [[Integer] [Integer] [dup mul]]` |
-| `var` | Scoped variable block | `5 var [[x] mul x x]` returns `25` |
+| `var` | Declare a mutable variable, or assign one in place | `var n 0  var n (n add 1)  n` returns `1` |
 | `args` | Current `fn` args list (inside body) | `args . 0` |
 | `quote` | Prevent evaluation of next token | `quote [add 1 2]` |
 | `referent` | What a quoted atom's name refers to | `def x 5  (quote x) referent` returns `5` |
@@ -3072,7 +3072,8 @@ Use `do [...] error [...]` to catch them — a successful body skips
 the handler and its value passes through. The error branch is
 **stack-neutral**: it leaves exactly the handler's result, like the
 success path. Inside the handler the caught Error is on the stack —
-bind it with `var [[e] …]`, read fields with `get`, or ignore it (an
+bind it with a lambda (`error [([e] => […]) apply]`), read fields with
+`get`, or ignore it (an
 unconsumed error is dropped, not leaked beneath the result); an empty
 handler `error []` passes the Error through as the result. Dispatch
 on the code with `case`:

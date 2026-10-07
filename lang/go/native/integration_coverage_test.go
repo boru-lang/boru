@@ -10,127 +10,27 @@ import (
 
 // === 1. var word ===
 
-func TestIntegVarWithValueAssignment(t *testing.T) {
+func TestIntegVarWordDeclareAssign(t *testing.T) {
 	r, _ := DefaultRegistry()
 	registerIOWords(r)
-	// var [[x 10]] x end => 10
-	varBody := NewList([]Value{
-		NewList([]Value{
-			NewList([]Value{NewWord("x"), NewInteger(10)}),
-		}),
+	// var x 10 var x 11 x => 11 — a declaration, an in-place assignment, a read
+	result := runBoru(t, r, []Value{
+		NewWord("var"), NewWord("x"), NewInteger(10),
+		NewWord("var"), NewWord("x"), NewInteger(11),
 		NewWord("x"),
 	})
-	result := runBoru(t, r, []Value{NewWord("var"), varBody})
-	_as0, _ := AsInteger(result[0])
-	if len(result) != 1 || _as0 != 10 {
-		t.Errorf("var [[x 10]] x = %v, want 10", result)
+	v, _ := AsInteger(result[0])
+	if len(result) != 1 || v != 11 {
+		t.Errorf("var x 10 var x 11 x = %v, want 11", result)
 	}
-}
-
-func TestIntegVarWithTypeValue(t *testing.T) {
-	r, _ := DefaultRegistry()
-	registerIOWords(r)
-	// var [[x Integer]] x end  — x is the Integer type literal
-	varBody := NewList([]Value{
-		NewList([]Value{
-			NewList([]Value{NewWord("x"), NewTypeLiteral(TInteger)}),
-		}),
-		NewWord("x"),
+	// var f fn […] — a var holds a value, never a function constructor
+	// (the keyword form is registered only to refuse, var_error).
+	err := runBoruError(t, r, []Value{
+		NewWord("var"), NewWord("f"), NewWord("fn"),
+		NewList([]Value{NewList([]Value{}), NewList([]Value{}), NewList([]Value{NewInteger(1)})}),
 	})
-	result := runBoru(t, r, []Value{NewWord("var"), varBody})
-	if len(result) != 1 {
-		t.Fatalf("expected 1 result, got %d", len(result))
-	}
-}
-
-func TestIntegVarMultipleDecls(t *testing.T) {
-	r, _ := DefaultRegistry()
-	registerIOWords(r)
-	// var [[[x 2] [y 3]] x add y]
-	varBody := NewList([]Value{
-		NewList([]Value{
-			NewList([]Value{NewWord("x"), NewInteger(2)}),
-			NewList([]Value{NewWord("y"), NewInteger(3)}),
-		}),
-		NewWord("x"), NewWord("add"), NewWord("y"),
-	})
-	result := runBoru(t, r, []Value{NewWord("var"), varBody})
-	_as1, _ := AsNumber(result[0])
-	if len(result) != 1 || _as1 != 5 {
-		t.Errorf("var [[[x 2] [y 3]] x add y] = %v, want 5", result)
-	}
-}
-
-func TestIntegVarStringName(t *testing.T) {
-	r, _ := DefaultRegistry()
-	registerIOWords(r)
-	// 42 var [["myvar"] myvar]  — string name, takes value from stack
-	varBody := NewList([]Value{
-		NewList([]Value{NewString("myvar")}),
-		NewWord("myvar"),
-	})
-	result := runBoru(t, r, []Value{NewInteger(42), NewWord("var"), varBody})
-	_as2, _ := AsInteger(result[0])
-	if len(result) != 1 || _as2 != 42 {
-		t.Errorf("42 var [[\"myvar\"] myvar] = %v, want 42", result)
-	}
-}
-
-func TestIntegVarNestedDoBlock(t *testing.T) {
-	r, _ := DefaultRegistry()
-	registerIOWords(r)
-	// var [[[x 10]] do [x add 5]]
-	varBody := NewList([]Value{
-		NewList([]Value{
-			NewList([]Value{NewWord("x"), NewInteger(10)}),
-		}),
-		NewWord("do"), NewList([]Value{NewWord("x"), NewWord("add"), NewInteger(5)}),
-	})
-	result := runBoru(t, r, []Value{NewWord("var"), varBody})
-	_as3, _ := AsNumber(result[0])
-	if len(result) != 1 || _as3 != 15 {
-		t.Errorf("var [[[x 10]] do [x add 5]] = %v, want 15", result)
-	}
-}
-
-func TestIntegVarErrorInvalidDecl(t *testing.T) {
-	r, _ := DefaultRegistry()
-	registerIOWords(r)
-	// var [[42] x] — number as declaration should fail
-	varBody := NewList([]Value{
-		NewList([]Value{NewInteger(42)}),
-		NewWord("x"),
-	})
-	err := runBoruError(t, r, []Value{NewWord("var"), varBody})
-	if err == nil {
-		t.Error("expected error for invalid var declaration")
-	}
-}
-
-func TestIntegVarEmptyList(t *testing.T) {
-	r, _ := DefaultRegistry()
-	registerIOWords(r)
-	// var [] — empty list should fail
-	varBody := NewList([]Value{})
-	err := runBoruError(t, r, []Value{NewWord("var"), varBody})
-	if err == nil {
-		t.Error("expected error for empty var list")
-	}
-}
-
-func TestIntegVarDeclListTooShort(t *testing.T) {
-	r, _ := DefaultRegistry()
-	registerIOWords(r)
-	// var [[[x]] x] — decl list with only name, no value => error
-	varBody := NewList([]Value{
-		NewList([]Value{
-			NewList([]Value{NewWord("x")}),
-		}),
-		NewWord("x"),
-	})
-	err := runBoruError(t, r, []Value{NewWord("var"), varBody})
-	if err == nil {
-		t.Error("expected error for declaration list with only 1 element")
+	if err == nil || !strings.Contains(err.Error(), "var_error") {
+		t.Errorf("var f fn […]: err = %v, want var_error", err)
 	}
 }
 
@@ -1500,24 +1400,6 @@ func TestIntegDoMapWithNonListValues(t *testing.T) {
 	_as45, _ := AsInteger(xVal)
 	if _as45 != 42 {
 		t.Errorf("do {x:42}.x = %v, want 42", xVal)
-	}
-}
-
-func TestIntegVarWithDoBlock(t *testing.T) {
-	r, _ := DefaultRegistry()
-	registerIOWords(r)
-	// var [[[a 3] [b 4]] do [a add b]]
-	varBody := NewList([]Value{
-		NewList([]Value{
-			NewList([]Value{NewWord("a"), NewInteger(3)}),
-			NewList([]Value{NewWord("b"), NewInteger(4)}),
-		}),
-		NewWord("do"), NewList([]Value{NewWord("a"), NewWord("add"), NewWord("b")}),
-	})
-	result := runBoru(t, r, []Value{NewWord("var"), varBody})
-	_as46, _ := AsNumber(result[0])
-	if len(result) != 1 || _as46 != 7 {
-		t.Errorf("var [[[a 3] [b 4]] do [a add b]] = %v, want 7", result)
 	}
 }
 

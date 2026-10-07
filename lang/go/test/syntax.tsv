@@ -578,31 +578,31 @@ def "bar" 42 bar undef "bar" bar		undefined_word
 # === var - scoped variable definitions ===
 
 # Basic var: take x from stack
-5 var [[x] x mul x]	25
+5 ([x] => [x mul x]) apply	25
 
 # var with inline value
-var [[[x 2]] x mul x]	4
+(([x] => [x mul x]) 2)	4
 
 # var with multiple variables from stack
-3 5 var [[x y] x add y]	8
+3 5 ([x y] => [x add y]) apply	8
 
 # var with mixed inline and stack variables
-10 var [[[x 2] y] x add y]	12
+10 ([y] => [def x 2 x add y]) apply	12
 
 # var cleans up: word is undefined after var — errors
-5 var [[x] x mul x] x		undefined_word
+5 ([x] => [x mul x]) apply x		undefined_word
 
 # var with arithmetic body
-7 var [[n] n mul n add n]	56
+7 ([n] => [n mul n add n]) apply	56
 
 # var with single inline value in body
-var [[[a 3] [b 4]] a mul a add b mul b]	52
+(([a b] => [a mul a add b mul b]) 3 4)	52
 
 # var preserves existing definitions
-def foo 99 5 var [[x] x add foo] foo	104 99
+def foo 99 (5 ([x] => [x add foo]) apply) foo	104 99
 
 # Nested var does not leak — errors
-3 var [[x] x add 1] x		undefined_word
+3 ([x] => [x add 1]) apply x		undefined_word
 
 # === def with function signatures (fn word) ===
 
@@ -995,7 +995,7 @@ def double x:Integer => [x mul 2] end double 7	14
 def d [x:Integer] => [x mul 2] end d 3	6
 def f x:Integer => [x mul 2] def g y:Integer => [y add 1] g (f 5)	11
 # parenless lambda as a higher-order argument
-filter p:Any => [p.value gt 3] [1 2 3 4 5]	[4 5]
+filter p:Any => [p gt 3] [1 2 3 4 5]	[4 5]
 # currying: the chain nests right-associatively, and afn's body slot
 # captures parens RAW (per-call code), so the inner lambda constructs
 # inside the outer body with x bound
@@ -1127,9 +1127,9 @@ none has a/q	false
 do [ raise "boom" ] error [ "recovered" ]	'recovered'
 def result (do [ raise "boom" ] error [ "recovered" ]) end result	'recovered'
 do [ 42 ] error [ "fallback" ]	42
-do [ raise "boom" ] error [ var [[e] e.message] ]	'boom'
+do [ raise "boom" ] error [ ([e] => [e.message]) apply ]	'boom'
 do [ raise "boom" ] error [ dot code ]	user_error
-do [raise {code: nope/q, message: "m", got: 42}] error [var [[e] e.got]]	42
+do [raise {code: nope/q, message: "m", got: 42}] error [([e] => [e.got]) apply]	42
 
 # === swapped arguments get a dedicated hint (finding 2) ===
 def wp fn [[p:String t:Map] [Map] [t]] wp {a:1} "collect"		swap_hint

@@ -57,7 +57,7 @@ import module [def secret fn [[n:Integer] [Integer] [n add 1]] def pub fn [[n:In
 # `lim` resolves in module A and the unit still lands in the caller's program.
 # Its SEMANTICS are also pinned on both engines by
 # lang/go/function_value_scope_test.go ("filter Function form").
-import module [def lim fn [[n:Integer] [Integer] [2]] def big fn [[e:Map] [Boolean] [(e dot value) gt (lim 0)]] export "A" {big: big/v}] end def lim fn [[n:Integer] [Integer] [100]] filter A.big [1 2 3 4]	[3 4]	a cross-module predicate in a NATIVE callback slot resolves `lim` in its OWN module (2), not the caller's (100)
+import module [def lim fn [[n:Integer] [Integer] [2]] def big fn [[e:Integer] [Boolean] [e gt (lim 0)]] export "A" {big: big/v}] end def lim fn [[n:Integer] [Integer] [100]] filter A.big [1 2 3 4]	[3 4]	a cross-module predicate in a NATIVE callback slot resolves `lim` in its OWN module (2), not the caller's (100)
 #
 # The negative: scope travels with the VALUE, it does not open the module.
 import module [def hidden fn [[n:Integer] [Integer] [n add 1]] def only fn [[n:Integer] [Integer] [hidden n]] export "A" {only: only/v}] end hidden 5	ERROR:undefined_word	a module-private word stays private — the importer cannot reach `hidden`, only the exported value can

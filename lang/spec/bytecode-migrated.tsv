@@ -38,7 +38,7 @@ def Comparable surface {cmp: (fnsig [[Self Self] [Integer]])} Integer exposes Co
 5 do [7] error [drop 9] add "z"	5 '7z'
 do [7] error [drop 9] add 1	8
 5 do [9] add 1	5 10
-def xs [{ok:true} {ok:false}] def _ (xs each [ var [[r] def ok (r "ok" get) def res (if ok [1] [2]) def _2 res 0 ] ]) 9	9
+def xs [{ok:true} {ok:false}] def _ (xs each [ ([r] => [def ok (r "ok" get) def res (if ok [1] [2]) def _2 res 0]) apply ]) 9	9
 def m {ok:true} def ok (m get "ok") if ok [ 1 print ] [ 2 print ] 7	7
 def d fn [[n:Integer] [Integer] [n mul 2]] def m {double: d/v} m.double 21	42
 def m {x: 5} m.x eq 5	true

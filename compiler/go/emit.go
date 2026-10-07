@@ -945,13 +945,13 @@ type emitDynBind struct {
 	// the (root-only) global write-back. -1 — the sentinel set at the two
 	// construction sites — is every unstamped def.
 	residentTwin int
-	// undef marks the TEARDOWN half of a var param's balanced
-	// per-iteration pair (`__varundef r` — RecordDynUndef's event, riding
-	// the dyn-bind kind so every event walk already routes it): no value
-	// operand, no stack effect; stamped, it lowers to OpBindResident's
-	// undef arm popping the live binding per element; unstamped it lowers
-	// to nothing, and the name-keyed walks (the dyn-scope bind detector,
-	// the def-site fn resolver) skip it — an undef binds nothing.
+	// undef marks a TEARDOWN event — a speculative `undef`'s placed
+	// transition (recordSpecUndef), riding the dyn-bind kind so every event
+	// walk already routes it: no value operand, no stack effect; stamped,
+	// it lowers to OpBindResident's undef arm popping the live binding per
+	// element; unstamped it lowers to nothing, and the name-keyed walks
+	// (the dyn-scope bind detector, the def-site fn resolver) skip it — an
+	// undef binds nothing.
 	undef bool
 	// typeInstall marks a TYPE binding's push (RecordTypeInstall's event,
 	// riding the dyn-bind kind for the same reason the undef half does):
@@ -3467,7 +3467,7 @@ func (es *EmitState) MultiRunBodyGuard(r *core.Registry, bodyID string) func() {
 	// fails its identity fence and adopts nothing.
 	//
 	// The clobber is not about what the nested body BINDS — measured
-	// 2026-09-02, `fold [ var [[a b] ([1] each [add 1]) (a add b)] ] [1 2] 0`
+	// 2026-09-02, `fold ([a b] => [([1] each [add 1]) (a add b)]) [1 2] 0`
 	// declined although the nested body binds nothing at all, and the same
 	// shape with `filter` (which does not route through
 	// analyseHigherOrderBodyVals) compiled. Every caller of that function
@@ -3544,27 +3544,9 @@ func (es *EmitState) MultiRunBodyGuard(r *core.Registry, bodyID string) func() {
 	}
 }
 
-// RecordDynUndef notes an `undef`-shaped teardown at its stream position
-// (the interface doc in core/go/emit_recorder.go) — today only inside an
-// arm-resident body compile (armResidentDepth, the each-unit bracket),
-// where the var-param pair's undef half needs its event seat so the
-// bridge can pair the BindUndef twin and the unit can tear the binding
-// down per element. Everywhere else this records nothing: no other
-// consumer exists, and the event's absence keeps every other lane's
-// event streams untouched. Nil-safe.
-func (es *EmitState) RecordDynUndef(name string, pos core.SrcPos) {
-	if es == nil || !es.Active() || name == "" || (es.armResidentDepth == 0 && !es.inKeepDefsUnit()) {
-		return
-	}
-	es.appendEvent(EmitEvent{kind: evDynBind, dyn: &emitDynBind{
-		name: name, srcSeq: -1, pos: pos, residentTwin: -1, undef: true,
-	}})
-	es.noteBindHazard(name)
-}
-
 // RecordTypeInstall notes a TYPE binding's push at its stream position
-// (the interface doc in core/go/emit_recorder.go) — like RecordDynUndef,
-// today only inside an arm-resident body compile (armResidentDepth, the
+// (the interface doc in core/go/emit_recorder.go) — today only inside an
+// arm-resident body compile (armResidentDepth, the
 // each-unit bracket), where the BindTypeInstall twin needs a def-site
 // event for the bridge to pair against and the unit needs an op to
 // install the node per element.
@@ -7009,7 +6991,7 @@ func (es *EmitState) AdoptResidentTwins(body core.Value) {
 // and the ledgered witnesses are (`(Integer gt 10)`, `(Integer lt 20)` read
 // nothing per-element) — but the bridge must PROVE it, because the opposite
 // shape is ordinary boru: measured 2026-09-11,
-// `[10 20] each [var [[e] def ZB (Integer gt e) 7]]` leaves TWO different
+// `[10 20] each ([e] => [def ZB (Integer gt e) 7])` leaves TWO different
 // `ZB` nodes stacked, so 15 fails against the top and passes against the one
 // below it. Replaying one node there would be a silent wrong answer.
 //
@@ -7530,7 +7512,7 @@ func (es *EmitState) NoteLiveRead(v *core.Value, name string, pos core.SrcPos) {
 		// interpreter raises (Program.LiveReadNames). A read that HAS a
 		// compiled home is another binding of the same name — a param or
 		// a capture of the reading unit, a produced value, a carried slot
-		// — and keeps it: the frontier's `xs each [var [[a] (a comp)]]`
+		// — and keeps it: the frontier's `xs each ([a] => [(a comp)])`
 		// over `([a:Integer] => [a mul 2])` seated the lambda's own param
 		// live and missed it in the registry (measured 2026-09-24).
 		if es.liveReadNames == nil {
@@ -15795,7 +15777,7 @@ func (es *EmitState) bodyRebindsBoundName(v core.Value) bool {
 	for i, t := range toks {
 		if w, ok := t.Data.(core.WordInfo); ok {
 			switch w.Name {
-			case "def", "var", "undef", "__varundef":
+			case "def", "var", "undef":
 				if i+1 >= len(toks) {
 					return true
 				}
@@ -19779,18 +19761,10 @@ func bailPoint(d deoptPoint) deoptPoint {
 	return d
 }
 
-// inKeepDefsUnit reports whether the innermost open unit is a KEEP-DEFS
-// body unit (fnUnitRec.keepsDefs): its var pairs need their undef half's
-// event so planKeepDefs can pair the halves.
-func (es *EmitState) inKeepDefsUnit() bool {
-	n := len(es.openUnitRecs)
-	return n > 0 && es.fnRecs[es.openUnitRecs[n-1]].keepsDefs
-}
-
-// planKeepDefs stamps the var-pair skip on a KEEP-DEFS unit's def sites
-// before the unit is planned: a def whose name the same unit also UNDEFS
-// (`var`'s balanced teardown, RecordDynUndef's event) is a frame-local
-// pair the interpreter nets to nothing, so neither half touches the
+// planKeepDefs stamps the def/undef-pair skip on a KEEP-DEFS unit's def
+// sites before the unit is planned: a def whose name the same unit also
+// UNDEFS (a speculative undef's event) is a frame-local pair the
+// interpreter nets to nothing, so neither half touches the
 // registry — the def keeps its previous lowering (emitDynBind.keepSkip)
 // and the name never joins the leak (keepDefsUnitNames). At the root the
 // arm-resident bridge may still pair both halves with their twins, and a
@@ -20397,7 +20371,7 @@ func (es *EmitState) deoptStatementStart(rec *fnUnitRec, seq int, name string, f
 				if w, ok := collectingWordBefore(rec.body, events, contTok); ok {
 					// The token is collected forward by the word before
 					// it — its dispatch (`print [j]`, `size [j]`) or a body
-					// it runs inline (`var [[] [j]]`): the statement begins
+					// it runs inline (`do [[j]]`): the statement begins
 					// at the word, where an island started at the token
 					// lost it (NUR361).
 					d.start = w

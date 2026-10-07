@@ -24,8 +24,6 @@ package core
 //	leak-read      a read of a binding a block made, after the block ended
 //	               (`if c [def w 1] [def w 2] w`). Becomes `undefined_word`.
 //	undef          a use of `undef`, which the rule removes.
-//	var-construct  a use of the `var [[names] body]` construct, which the rule
-//	               replaces with untyped lambda parameters.
 //
 // Only the check pass records (the interpreter's run is never a census),
 // and only the first record of a (class, name, site) — a fn body is analysed
@@ -52,7 +50,6 @@ const (
 	CensusShadow       DefCensusClass = "shadow"
 	CensusLeakRead     DefCensusClass = "leak-read"
 	CensusUndef        DefCensusClass = "undef"
-	CensusVarConstruct DefCensusClass = "var-construct"
 )
 
 // DefCensusEntry is one finding: the site of the binding or read the class
@@ -225,7 +222,7 @@ func (r *Registry) noteReadCensus(name string, pos SrcPos) {
 }
 
 // NoteDefCensusUse records a use of a construct the rule removes — `undef`
-// or the `var [[…]]` binder — at pos, for the language layer's handlers.
+// or the `var` word — at pos, for the language layer's handlers.
 func NoteDefCensusUse(r *Registry, class DefCensusClass, name string, pos SrcPos) {
 	if r == nil || r.Check == nil {
 		return

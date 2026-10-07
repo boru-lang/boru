@@ -185,7 +185,7 @@ func mutableInstanceRef(v core.Value) bool {
 // name (body defs are body-local and module-mutating meta words decline
 // compilation), so the value passed at OpPushClosure equals every per-run
 // lookup the interpreter makes — a capture is exact. This is the accumulator
-// shape: `def acc (flex [0])  … each [ var [[x] (acc set 0 …)] ]`.
+// shape: `def acc (flex [0])  … each ([x] => [(acc set 0 …)])`.
 // Scoped to mutable instances ONLY — fn values, module exports, and bakeable
 // consts keep their existing paths.
 func moduleScopeMutableCaptures(r *core.Registry, bodyToks []core.Value, existing []core.CapturedBinding) []core.CapturedBinding {
@@ -194,7 +194,7 @@ func moduleScopeMutableCaptures(r *core.Registry, bodyToks []core.Value, existin
 		have[cb.Name] = true
 	}
 	bodyLocals := map[string]bool{}
-	core.CollectBodyLocalDefs(bodyToks, bodyLocals)
+	core.CollectBodyLocalDefs(r, bodyToks, bodyLocals)
 	out := existing
 	seen := map[string]bool{}
 	core.WalkBodyWords(bodyToks, func(w core.WordInfo, _ core.Value) {

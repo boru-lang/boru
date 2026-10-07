@@ -57,7 +57,7 @@ import module [
   def f fn [
     [mat:Any] [List] [
       def k (MatrixUtil.cols mat)
-      (iota k) each [var [[j] j]]
+      (iota k) each ([j] => [j])
     ]
   ]
   export "M" { f: f/v }
@@ -72,7 +72,7 @@ import module [
   import "boru:matrix-util"
   def diag fn [
     [mat:Any] [List] [
-      (iota (MatrixUtil.rows mat)) each [var [[j] MatrixUtil.elem mat j j]]
+      (iota (MatrixUtil.rows mat)) each ([j] => [MatrixUtil.elem mat j j])
     ]
   ]
   export "M" { diag: diag/v }

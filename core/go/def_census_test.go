@@ -314,7 +314,7 @@ func TestDefCensusUsesAndBookkeeping(t *testing.T) {
 	done := r.Check.Begin()
 	defer done()
 	r.Defs.EnterScope(ScopeBlock)
-	NoteDefCensusUse(r, CensusVarConstruct, "[e]", SrcPos{Row: 2, Col: 3})
+	NoteDefCensusUse(r, CensusUndef, "e", SrcPos{Row: 2, Col: 3})
 	r.Defs.LeaveScope()
 	NoteDefCensusUse(r, CensusUndef, "a", SrcPos{Row: 2, Col: 1})
 	NoteDefCensusUse(r, CensusUndef, "a", SrcPos{Row: 2, Col: 1}) // deduped
@@ -332,7 +332,7 @@ func TestDefCensusUsesAndBookkeeping(t *testing.T) {
 	for i, e := range ds {
 		got[i] = string(e.Class) + ":" + e.Name
 	}
-	want := []string{"undef:c", "undef:a", "undef:b", "var-construct:[e]", "undef:d"}
+	want := []string{"undef:c", "undef:a", "undef:b", "undef:e", "undef:d"}
 	if len(got) != len(want) {
 		t.Fatalf("census %v, want %v (sorted by site, then class)", got, want)
 	}

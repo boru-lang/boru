@@ -1018,7 +1018,20 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 	// Gather candidate positions once and try to pick a signature
 	// whose arity matches and whose declared types are compatible
 	// with (or at least not contradicted by) the actual carrier
-	// args. TAny carriers are treated as wildcards.
+	// args. TAny carriers are treated as wildcards. The positions come
+	// back in TAPE order (the stack run, then the forward run) and are
+	// scored in SIGNATURE order (SigOrderPositions): SigArgMatches indexes
+	// the candidate's own positions, where the forward run leads and the
+	// stack run follows top-down. Scored in tape order, `doc get (k)` — a
+	// Map on the stack, a strict-Any key written forward — held its
+	// receiver against get's KEY slot, so every receiver-typed overload
+	// read incompatible and the None-receiver `[Any None]` (an Any key)
+	// won on the receiver alone: a None carrier for a field read whose
+	// run answers a Map, and a downstream user poly committed its Any arm
+	// on it ('leaf' for the interpreter's 'map'; TestUserPolyAnyWrapperDispatch,
+	// 2026-10-07). The receiver-on-the-stack idiom had only ever reached
+	// the fallback pass below (nothing compatible), whose ReturnsFn-bearing
+	// pick happened to model the read.
 	best := fallback
 	bestMatch := -1
 	// Scan all signatures and pick the best fit. Scoring:
@@ -1035,13 +1048,13 @@ func checkModeAssumeSig(e *core.Engine, w core.WordInfo, fn *core.FnDefInfo, fal
 			continue
 		}
 		n := s.TotalArgs()
-		pos, _ := checkModeFallbackPositionsFor(e, s, w)
-		if len(pos) != n {
+		sp, sn := checkModeFallbackPositionsFor(e, s, w)
+		if len(sp) != n {
 			continue
 		}
 		score := 0
 		compatible := true
-		for j, p := range pos {
+		for j, p := range core.SigOrderPositions(sp, sn) {
 			av := e.Tape.At(p)
 			if av.Parent.Equal(core.TAny) {
 				continue

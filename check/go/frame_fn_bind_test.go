@@ -64,3 +64,23 @@ func TestRunFnBodyOnceCallsFnValueCapture(t *testing.T) {
 		t.Errorf("the call leaves the lambda's one result, got %v", out)
 	}
 }
+
+// TestRunFnBodyOnceCapturedVarReads: a captured VAR (core.CapturedBinding.Var)
+// is bound on the analysis frame as a frame binding marked Var — the pair the
+// var word refuses to assign, as on the run's frame
+// (core.InstallCapturedBinding) — and the body reads its value as it reads
+// every capture.
+func TestRunFnBodyOnceCapturedVarReads(t *testing.T) {
+	r := zzmsReg(t)
+	done := r.Check.Begin()
+	defer done()
+	body := []core.Value{core.NewWord("s")}
+	captures := []core.CapturedBinding{{Name: "s", Value: core.NewInteger(5), Var: true}}
+	out := RunFnBodyOnce(r, "h", nil, body, nil, captures, true)
+	if len(out) != 1 || out[0].String() != "5" {
+		t.Errorf("the body reads the captured var's value, got %v", out)
+	}
+	if r.Defs.Has("s") {
+		t.Error("the frame binding comes off with the body")
+	}
+}

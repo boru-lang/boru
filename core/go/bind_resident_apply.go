@@ -7,7 +7,7 @@ package core
 // per-invocation unit, once per invocation, with the RUNTIME value —
 // because a multi-run body's ledger entry is one generalized
 // carrier-valued capture that cannot represent N per-element installs
-// (measured: `[10 20] each [var [[r] def x r x]]` leaks x = [20, 10]
+// (measured: `[10 20] each ([r] => [def x r x])` leaks x = [20, 10]
 // top-down where the ledger holds one dynamic carrier).
 //
 // The install arm goes through InstallDef — the interpreter's OWN

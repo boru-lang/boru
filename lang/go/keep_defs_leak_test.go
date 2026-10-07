@@ -76,7 +76,7 @@ func TestDoBodyDefLeaksToTheEnclosingScope(t *testing.T) {
 		`[1 2] each [def x 5] x add 1`,
 		`fold [ def x 5 ] [10 20] 0  x add 1`,
 		`scan [ def x 5 ] [10 20]  x add 1`,
-		`[10 20] each [ var [[r] def x r x] ] end x`,
+		`[10 20] each [ def x end x ] end x`,
 		`def t 0 end for 3 [[1] each [def t 5] drop] end t`,
 		`def t 0 end for 3 [[1 2] each [def t (t add i)] drop] end t`,
 		`def f fn [[][Integer][def t 0 [1 2] each [def t (t add 1)] drop t]] end f`,
@@ -87,12 +87,12 @@ func TestDoBodyDefLeaksToTheEnclosingScope(t *testing.T) {
 		// A var pair inside the body nets to nothing: its def half never
 		// installs or leaks, and a lambda's own param of the leaked name is
 		// its own binding — never a live read of the registry (the frontier
-		// row `xs each [var [[a] (a comp)]]`, measured 2026-09-24).
-		`def a 7 end [1 2] each [var [[a] a]] end a`,
-		`import module [ def use fn [[comp:Function xs:List] [List] [ xs each [ var [[a] (a comp)] ] ]] export "S" {use: use/v} ] end S.use ([a:Integer] => [a mul 2]) [1 2 3]`,
-		`def a 7 end def f fn [[][Integer][do [var [[[a 1]] a add 1]]]] end f end a`,
-		`def a 7 end for 2 [do [var [[[a 1]] a add 1]]] end a`,
-		`def f fn [[][Integer][do [var [[[a 1]] a add 1]]]] end f`,
+		// row `xs each ([a] => [(a comp)])`, measured 2026-09-24).
+		`def a 7 end [1 2] each ([a] => [a]) end a`,
+		`import module [ def use fn [[comp:Function xs:List] [List] [ xs each [ ([a] => [(a comp)]) apply ] ]] export "S" {use: use/v} ] end S.use ([a:Integer] => [a mul 2]) [1 2 3]`,
+		`def a 7 end def f fn [[][Integer][do [(([a] => [a add 1]) 1)]]] end f end a`,
+		`def a 7 end for 2 [do [(([a] => [a add 1]) 1)]] end a`,
+		`def f fn [[][Integer][do [(([a] => [a add 1]) 1)]]] end f`,
 		// A flex a multi-run body MUTATES, read back after it: the pass holds
 		// a re-modelled carrier with no compiled home, so the read seats live
 		// on the registry's cell (code-bodies.tsv L190, module-composition L92).

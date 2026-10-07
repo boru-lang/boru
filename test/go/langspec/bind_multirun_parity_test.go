@@ -89,7 +89,7 @@ var parityShapes = []parityShape{
 	// multi-run bodies (the latch's bodyID fence).
 	{name: "each-literal-def", src: "[1 2 3] each [def x 5]",
 		probes: []string{"x"}},
-	{name: "each-elem-valued-def", src: "[10 20] each [ var [[r] def x r x] ]",
+	{name: "each-elem-valued-def", src: "[10 20] each [ ([r] => [def x r x]) apply ]",
 		probes: []string{"x", "r"}},
 	{name: "each-zero-iterations", src: "[] each [def x 5]",
 		probes: []string{"x"}},
@@ -99,13 +99,12 @@ var parityShapes = []parityShape{
 		probes: []string{"_u"}},
 	{name: "each-nested-multirun", src: "[1] each [[2 3] each [def x 5] 0]",
 		probes: []string{"x"}, declined: "twin regime:"},
-	// The regime's LAST corpus compile failure, graduated: the var-param pair
-	// places both halves in-arm (RecordDynUndef's teardown event pairs
-	// the BindUndef twin), element-dependent defs re-push from
-	// force-promoted slots, and every probe — count, values, order, the
-	// pair's net zero — is measured interpreter-equal.
+	// The regime's LAST corpus compile failure, graduated (as a var-construct
+	// body; now the lambda form): element-dependent defs re-push from
+	// force-promoted slots, and every probe — count, values, order — is
+	// measured interpreter-equal.
 	{name: "row-41-verbatim",
-		src:    `def xs [{ok:true} {ok:false}] def _ (xs each [ var [[r] def ok (r "ok" get) def res (if ok [1] [2]) def _2 res 0 ] ]) 9`,
+		src:    `def xs [{ok:true} {ok:false}] def _ (xs each [ ([r] => [def ok (r "ok" get) def res (if ok [1] [2]) def _2 res 0]) apply ]) 9`,
 		probes: []string{"xs", "_", "ok", "res", "_2", "r"}},
 
 	// --- The TYPE half of the same bridge (the fifty-third increment). A
@@ -121,7 +120,9 @@ var parityShapes = []parityShape{
 		probes: []string{"A", "B", "x"}},
 	// The screen's negative: the type expression reads the body's OWN var
 	// param, so each element mints a different node — measured, 15 fails
-	// against the top `ZB` and passes against the one below it. Replaying
+	// against the top `ZB` and passes against the one below it (the body
+	// binds the element with the stack-bound `def e end` — a lambda frame
+	// could not re-def the type per element). Replaying
 	// one captured node would answer that read wrongly, so the bridge
 	// declines and the whole program declines. Graduation = an op that
 	// REBUILDS the type per element instead of replaying one. Since NUR308
@@ -132,7 +133,7 @@ var parityShapes = []parityShape{
 	// def declines as the compile-time word it is, failing the body's unit,
 	// and the each declines as the code-body word before the bridge is
 	// reached (reclassified in review both times, the parity unchanged).
-	{name: "each-type-def-element-dependent", src: `[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]`,
+	{name: "each-type-def-element-dependent", src: `[10 20] each [ def e end def ZB (Integer gt e) 7 ]`,
 		probes: []string{"ZB", "e"}, declined: "code-body word each (Stage 2)"},
 
 	// --- The sibling multi-run words, graduated on the same mechanism.
@@ -144,7 +145,7 @@ var parityShapes = []parityShape{
 	// the family shares a mechanism.
 	{name: "fold-literal-def", src: "fold [ def x 5 ] [10 20] 0",
 		probes: []string{"x"}},
-	{name: "fold-elem-valued-def", src: "fold [ var [[a b] def x b (a add b)] ] [10 20] 0",
+	{name: "fold-elem-valued-def", src: "fold [ ([a b] => [def x b (a add b)]) apply ] [10 20] 0",
 		probes: []string{"x", "a", "b"}},
 	// The fold ACCUMULATOR FIXED POINT: a list accumulator widens between
 	// analysis rounds, so the body is analysed more than once and every
@@ -152,13 +153,13 @@ var parityShapes = []parityShape{
 	// is placed; the superseded rows describe no runtime transition and the
 	// placement gate exempts them (MultiRunBodyGuard). Before that, this
 	// shape declined — the row is the regression pin.
-	{name: "fold-list-accumulator", src: "fold [ var [[k acc] (push k acc) ]] [1 2] []",
+	{name: "fold-list-accumulator", src: "fold [ ([k acc] => [(push k acc)]) apply] [1 2] []",
 		probes: []string{"k", "acc"}},
-	{name: "scan-elem-valued-def", src: "scan [ var [[a b] def x 5 (a add b)] ] [10 20]",
+	{name: "scan-elem-valued-def", src: "scan [ ([a b] => [def x 5 (a add b)]) apply ] [10 20]",
 		probes: []string{"x", "a", "b"}},
 	// outer's multi-run population is the PAIR GRID, not a flat element
 	// list — a different count through the same mechanism.
-	{name: "outer-pair-def", src: "outer [ var [[a b] def x 5 (a add b)] ] [1 2] [3 4]",
+	{name: "outer-pair-def", src: "outer [ ([a b] => [def x 5 (a add b)]) apply ] [1 2] [3 4]",
 		probes: []string{"x"}},
 	// The graduations' other half: enabling arm-resident compilation for a
 	// word must not weaken the fences that keep its unsupported populations
@@ -175,10 +176,10 @@ var parityShapes = []parityShape{
 	// which would pin the wrong gate. (Its nested-multi-run shape declines
 	// there too, so the bodyID fence is pinned on fold below rather than
 	// twice-over on a word that never reaches it.)
-	{name: "outer-read-after", src: "outer [ var [[a b] def x 5 (a add b)] ] [1 2] [3 4]  x add 1",
+	{name: "outer-read-after", src: "outer [ def b end def a end def x 5 (a add b) ] [1 2] [3 4]  x add 1",
 		probes: []string{"x"}},
 	{name: "fold-nested-multirun",
-		src:    "fold [ var [[a b] ([1] each [def x 5]) (a add b)] ] [1 2] 0",
+		src:    "fold [ def b end def a end ([1] each [def x 5]) (a add b) ] [1 2] 0",
 		probes: []string{"x"}, declined: "twin regime:"},
 
 	// --- The NESTED multi-run frontier, and the trap set for its fix.
@@ -198,18 +199,18 @@ var parityShapes = []parityShape{
 	// one that never declined, so the graduation is attributed to the gate and
 	// not to the words involved.
 	{name: "nested-multirun-binds-nothing",
-		src:    "fold [ var [[a b] ([1] each [add 1]) (a add b)] ] [1 2] 0",
+		src:    "fold [ def b end def a end ([1] each [add 1]) (a add b) ] [1 2] 0",
 		probes: []string{"a", "b"}},
 	// The nested word here carries NO BodyMultiRunKeepsDefs and so can never
 	// adopt — it declined purely by writing the latch on its way past.
 	{name: "nested-unflagged-multirun-word",
-		src:    "[1 2] each [ var [[r] def x r (for-each [add 1] [1 2]) x] ]",
+		src:    "[1 2] each [ def r end def x r (for-each [add 1] [1 2]) x ]",
 		probes: []string{"x", "r"}},
 	// The control that was never affected: `filter` types its result without
 	// running the body, so it does not route through
 	// analyseHigherOrderBodyVals and never touched the latch.
 	{name: "nested-non-multirun-word-compiles",
-		src:    "[1 2] each [ var [[r] def x r (filter [gt 1] [1 2]) x] ]",
+		src:    "[1 2] each [ def r end def x r (filter [gt 1] [1 2]) drop x ]",
 		probes: []string{"x", "r"}},
 
 	// THE MEMO HAZARD — this row exists to fail a WRONG fix, and it is the
@@ -238,10 +239,10 @@ var parityShapes = []parityShape{
 	// The single-dispatch control is the attribution: it COMPILES, so the
 	// compile failure below is the memo hit and not the aliasing.
 	{name: "aliased-body-single-dispatch",
-		src:    "def q quote [ var [[r] def x r x] ]  ([10 20] each q)",
+		src:    "def q quote [ def r end def x r x ]  ([10 20] each q)",
 		probes: []string{"x", "r", "q"}},
 	{name: "aliased-body-memo-hit",
-		src:    "def q quote [ var [[r] def x r x] ]  ([10 20] each q)  ([30 40] each q)",
+		src:    "def q quote [ def r end def x r x ]  ([10 20] each q)  ([30 40] each q)",
 		probes: []string{"x", "r", "q"}, declined: "twin regime:"},
 	// foldaxis — the rows that could NOT be written before NUR115's discharge
 	// (2026-09-02). The word's structural ReturnsFn never analysed its body,
@@ -258,24 +259,24 @@ var parityShapes = []parityShape{
 	// must be zero on both sides (a replayed check-pass twin would install
 	// once); the empty rank-2 list is the gradual-Any element arm.
 	{name: "foldaxis-axis0-def",
-		src:    `import "boru:array-util"  ArrayUtil.foldaxis 0 [var [[a b] def x 5 (a add b)]] [[1 2] [3 4]]`,
+		src:    `import "boru:array-util"  ArrayUtil.foldaxis 0 [ def b end def a end def x 5 (a add b) ] [[1 2] [3 4]]`,
 		probes: []string{"x", "a", "b"}},
 	{name: "foldaxis-axis1-elem-valued-def",
-		src:    `import "boru:array-util"  ArrayUtil.foldaxis 1 [var [[a b] def x b (a add b)]] [[1 2 3] [4 5 6]]`,
+		src:    `import "boru:array-util"  ArrayUtil.foldaxis 1 [ def b end def a end def x b (a add b) ] [[1 2 3] [4 5 6]]`,
 		probes: []string{"x", "a", "b"}},
 	{name: "foldaxis-zero-run-lanes",
-		src:    `import "boru:array-util"  ArrayUtil.foldaxis 1 [var [[a b] def x 5 (a add b)]] [[1] [2]]`,
+		src:    `import "boru:array-util"  ArrayUtil.foldaxis 1 [ def b end def a end def x 5 (a add b) ] [[1] [2]]`,
 		probes: []string{"x", "a", "b"}},
 	{name: "foldaxis-empty",
-		src:    `import "boru:array-util"  ArrayUtil.foldaxis 0 [var [[a b] def x 5 (a add b)]] []`,
+		src:    `import "boru:array-util"  ArrayUtil.foldaxis 0 [ def b end def a end def x 5 (a add b) ] []`,
 		probes: []string{"x", "a", "b"}},
 	// The graduation's other half, as for every sibling: the read-after row
 	// is parity, and the fence must still REJECT a nested multi-run body.
 	{name: "foldaxis-read-after",
-		src:    `import "boru:array-util"  ArrayUtil.foldaxis 0 [var [[a b] def x 5 (a add b)]] [[1 2] [3 4]]  x add 1`,
+		src:    `import "boru:array-util"  ArrayUtil.foldaxis 0 [ def b end def a end def x 5 (a add b) ] [[1 2] [3 4]]  x add 1`,
 		probes: []string{"x"}},
 	{name: "foldaxis-nested-multirun",
-		src:    `import "boru:array-util"  ArrayUtil.foldaxis 1 [var [[a b] ([1] each [def x 5]) (a add b)]] [[1 2] [3 4]]`,
+		src:    `import "boru:array-util"  ArrayUtil.foldaxis 1 [ def b end def a end ([1] each [def x 5]) (a add b) ] [[1 2] [3 4]]`,
 		probes: []string{"x"}, declined: "twin regime:"},
 }
 

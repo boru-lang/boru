@@ -194,21 +194,13 @@ type EmitRecorder interface {
 	// against the wrong run. r is the noting registry, for the
 	// module-registry fence. Inactive: plain no-op.
 	MultiRunBodyGuard(r *Registry, bodyID string) func()
-	// RecordDynUndef notes an `undef`-shaped teardown at its stream
-	// position — today only the var-param cleanup (`__varundef`) inside
-	// a multi-run body's compiled unit, where the balanced per-iteration
-	// def/undef pair must both execute per element for interpreter
-	// parity (the pair's ledger notes carry Pos 0:0, so position-based
-	// bridging cannot see them; the recorder pairs them by name and
-	// order instead). Inactive: no-op.
-	RecordDynUndef(name string, pos SrcPos)
 	// NoteVarAssign marks the next RecordDynBind of name as a var
 	// ASSIGNMENT (core.AssignVar, the var word): inside a unit the bind
 	// lowers to a replace of the name's cell, not a push of a binding.
 	NoteVarAssign(name string)
 	// RecordTypeInstall notes a TYPE binding's push at its stream position
-	// — like RecordDynUndef, today only inside a multi-run body's compiled
-	// unit, where the arm-residency bridge needs a def-site event to pair
+	// — today only inside a multi-run body's compiled unit, where the
+	// arm-residency bridge needs a def-site event to pair
 	// the BindTypeInstall twin against. A type install is otherwise a
 	// purely check-time product (the mint happens once and the compiled
 	// stream carries nothing for it), so outside that bracket this records
@@ -780,7 +772,6 @@ func (inactiveEmit) BodyAnalysisGuard() func()                              { re
 func (inactiveEmit) CondBodyGuard() func()                                  { return func() {} }
 func (inactiveEmit) KeepDefsBodyGuard(*Registry, string) func()             { return func() {} }
 func (inactiveEmit) MultiRunBodyGuard(*Registry, string) func()             { return func() {} }
-func (inactiveEmit) RecordDynUndef(string, SrcPos)                          {}
 func (inactiveEmit) NoteVarAssign(string)                                   {}
 func (inactiveEmit) RecordTypeInstall(string, DefEntry, SrcPos)             {}
 func (inactiveEmit) FnBodyGuard() func()                                    { return func() {} }

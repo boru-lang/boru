@@ -81,7 +81,7 @@ func TestItemsOverDynamicReceiverFoldCompiles(t *testing.T) {
 	crossmodCompiles(t, `import "boru:struct-util"
 def drop-first fn [[nd:Map] [Map] [
   ({} ((nd "kids" get) StructUtil.items) [
-    var [[pair acc] acc set ((pair get 0)) (pair get 1) ]
+    ([pair acc] => [acc set ((pair get 0)) (pair get 1)]) apply
   ] fold)
 ]]
 (drop-first {kids: {a:1 b:2}})`)

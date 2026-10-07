@@ -45,18 +45,18 @@ func TestNUR361NestedGradualReadGuarded(t *testing.T) {
 		`each [var [[q] def v (mk) v]] [1]`,
 		`each [var [[q] def v (mk) [v]]] [1]`,
 		`each [var [[q] def v (mk) if true [[v]] [[]]]] [1]`,
-		`each [var [[] def v (mk) v]] [1]`,
+		`each [def v (mk) v] [1]`,
 		`each [var [[q] def v (mk) if true [v] [0]]] [1]`,
-		`def h fn [[q:Any] [Any] [def v (mk) if q [v] [0] drop var [[] def w (mk) if q [w] [0]]]] end h true`,
+		`def h fn [[q:Any] [Any] [def v (mk) if q [v] [0] drop def w (mk) if q [w] [0]]] end h true`,
 		`0 fold [var [[q] def v (mk) v]] [1]`,
-		`0 fold [var [[] def v (mk) [v]]] [1]`,
+		`0 fold [def v (mk) [v]] [1]`,
 		`def h fn [[] [Any] [each [var [[q] def v (mk) v]] [1]]] end h`,
-		`def h fn [[q:Any] [Any] [var [[] def v (mk) [v]]]] end h 1`,
-		`def h fn [[q:Any] [Any] [var [[] def v (mk) v add 1]]] end h 1`,
+		`def h fn [[q:Any] [Any] [def v (mk) [v]]] end h 1`,
+		`def h fn [[q:Any] [Any] [def v (mk) v add 1]] end h 1`,
 		`def h fn [[q:Any] [Any] [if true [def v (mk) [v]] [0]]] end h 1`,
 		`def h fn [[q:Any] [Any] [if true [def v (mk) v] [0]]] end h 1`,
 		`def h fn [[q:Any] [Any] [for 1 [def v (mk) [v]]]] end h 1`,
-		`var [[] def v (mk) [v]]`,
+		`def v (mk) [v]`,
 		`if true [def v (mk) [v]] [0]`,
 		`for 1 [def v (mk) [v]]`,
 	} {
@@ -86,20 +86,20 @@ func TestNUR361GuardOnlyOnTheReadsPath(t *testing.T) {
 
 // TestNUR361WordCollectedListIsland pins the island a read inside a list
 // token takes when the word BEFORE the token collects it — its dispatch
-// (`print [v]`, `size [v]`) or a body it runs inline (`var [[] [v]]`): the
+// (`print [v]`, `size [v]`) or a body run inline (`def v (mk) [v]`): the
 // statement begins at the word. The island began at the token and lost the
-// word — `[1]` compiled `[[5]]`, and `var [[] [v]]` answered the var's own
+// word — `[1]` compiled `[[5]]`, and the inline `[v]` answered the def's own
 // argument list `[[] [5]]`.
 func TestNUR361WordCollectedListIsland(t *testing.T) {
 	for _, body := range []string{
 		`def v (mk) end size [v]`,
 		`def v (mk) end print [v]`,
-		`def v (mk) end var [[] [v]]`,
-		`def v (mk) end var [[] [v] 1]`,
-		`def v (mk) end var [[] [v]] 3`,
+		`def v (mk) end [v]`,
+		`def v (mk) end [v] 1`,
+		`def v (mk) end [v] 3`,
 		`def h fn [[q:Any][Any][def v (mk) size [v]]] end h 0`,
 		`def h fn [[q:Any][Any][def v (mk) print [v] 1]] end h 0`,
-		`def h fn [[q:Any][Any][def v (mk) var [[] [v]]]] end h 0`,
+		`def h fn [[q:Any][Any][def v (mk) [v]]] end h 0`,
 	} {
 		requireCompiledParity(t, nur361Fn+body)
 		requireCompiledParity(t, nur361Data+body)

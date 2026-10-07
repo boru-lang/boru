@@ -81,8 +81,8 @@ def inc word [add 1] for 4 [i inc]	1 2 3 4
 for 3 [(def x word [i mul 2] x)]	0 2 4
 
 # === For + var (scoped binding inside body) ===
-for 3 [i var [[x] x add x]]	0 2 4
-for 3 [i var [[x] x mul x add 1]]	1 2 5
+for 3 [i ([x] => [x add x]) apply]	0 2 4
+for 3 [i ([x] => [x mul x add 1]) apply]	1 2 5
 
 # === For + do (evaluate list) ===
 for 3 [do [i add 1]]	1 2 3

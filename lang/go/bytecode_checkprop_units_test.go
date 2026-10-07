@@ -137,7 +137,7 @@ func TestCheckPropMemberFnGenVariesNotConstant(t *testing.T) {
 	// run. A correct varying generator refutes it (ok=false); the miscompile
 	// left it un-refuted (ok=true — always 9). Pinned under BOTH pipelines.
 	src := `import "boru:test" end
-def res (Test.check-prop "varies" [r.int 1 9] [ var [[n] (n eq 9) ] ] 12 1 0)
+def res (Test.check-prop "varies" [r.int 1 9] [ ([n] => [(n eq 9)]) apply ] 12 1 0)
 res get "ok"`
 	for _, mode := range []string{"compiled", "interp"} {
 		a, err := New()

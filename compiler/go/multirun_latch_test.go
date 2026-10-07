@@ -15,7 +15,6 @@ import (
 func TestMultiRunBodyGuardLatch(t *testing.T) {
 	var nilES *EmitState
 	nilES.MultiRunBodyGuard(nil, "b")()
-	nilES.RecordDynUndef("x", core.SrcPos{})
 
 	r, err := core.NewRegistry()
 	if err != nil {

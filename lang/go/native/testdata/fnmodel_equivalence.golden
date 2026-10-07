@@ -17,9 +17,6 @@ WORD __folder
   [] barrier=0 returns=[Scalar/Micron/Pathon]
 WORD __pa
   [] barrier=0
-WORD __varundef
-  [Scalar/String] barrier=1 runcheck
-  [Scalar/Atom] barrier=1 runcheck quote={0}
 WORD add
   [Node/Map Any Ideal/Service] barrier=3 +returnsfn
   [Node/Map Any Ideal/Patrun] barrier=3 +returnsfn
@@ -956,10 +953,11 @@ WORD var
   [Scalar/Atom Scalar/Atom Node/List] barrier=3 runcheck noeval={2} quote={0,1}
   [Scalar/Atom Scalar/Atom Node/List] barrier=3 runcheck noeval={2} quote={0,1}
   [Scalar/Atom Scalar/Atom Node/Map] barrier=3 runcheck quote={0,1}
+  [Node/Map Any] barrier=2 runcheck noevalmap={0}
   [Scalar/String Scalar/Atom] barrier=2 runcheck quote={1}
+  [Scalar/String Any] barrier=2 runcheck
   [Scalar/Atom Scalar/Atom] barrier=2 runcheck quote={0,1}
   [Scalar/Atom Any] barrier=2 runcheck quote={0}
-  [Node/List] barrier=1 runcheck noeval={0} returns=[Any]
 WORD walk
   [Node/Map Any Any Any] barrier=4 noeval={2,3} +returnsfn
   [Type/Function Type/Function Any] barrier=3 returns=[Any]

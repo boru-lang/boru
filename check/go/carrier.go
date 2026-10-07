@@ -3035,6 +3035,12 @@ func runFnBodyOnce(r *core.Registry, name string, paramNames []string, body, arg
 	// matching runtime dispatch.
 	for _, cb := range captures {
 		bindFrameValue(r, cb.Name, cb.Value)
+		if cb.Var {
+			// A captured var is a var of another frame — readable, never
+			// assigned — on the analysis frame as on the run's
+			// (core.InstallCapturedBinding).
+			r.Defs.MarkTopVar(cb.Name, nil)
+		}
 	}
 
 	// Bind named parameters as simple defs (carrier-typed).

@@ -39,6 +39,20 @@ func InstallFrameBinding(r *Registry, name string, body Value) {
 	r.Defs.MarkTopFrame(name)
 }
 
+// InstallCapturedBinding installs a lexical capture into the frame being
+// entered: a frame binding (InstallFrameBinding), marked Var as well when
+// the captured cell was a var (CapturedBinding.Var). The closure reads the
+// value the var held at its construction; the var word refuses to assign an
+// entry that is both Frame and Var — a var of another frame is readable,
+// never assignable (design/IMMUTABLE-DEF.1.md §2.3), the module's and an
+// enclosing fn's alike.
+func InstallCapturedBinding(r *Registry, cb CapturedBinding) {
+	InstallFrameBinding(r, cb.Name, cb.Value)
+	if cb.Var {
+		r.Defs.MarkTopVar(cb.Name, nil)
+	}
+}
+
 // InstallVar declares name as a var in the current scope — `var NAME v`
 // where no var NAME is visible within the frame (§2.3): installDef's push,
 // with the entry marked Var (varType for the typed form, nil untyped). A
@@ -549,7 +563,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 				return nil, err
 			}
 			for _, cb := range fnDefCopy.Captured {
-				InstallFrameBinding(r, cb.Name, cb.Value)
+				InstallCapturedBinding(r, cb)
 			}
 			for i, p := range s.Params {
 				if p.Name != "" {
@@ -607,7 +621,7 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		// wins). Captures are appended to `names` so the
 		// synthesized undef tail tears them down alongside params.
 		for _, cb := range fnDefCopy.Captured {
-			InstallFrameBinding(r, cb.Name, cb.Value)
+			InstallCapturedBinding(r, cb)
 			names = append(names, cb.Name)
 		}
 

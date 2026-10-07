@@ -760,7 +760,7 @@ Quotation is **implicit** for code-body positions via `NoEvalArgs`:
 - `fn` body: function definition bodies
 - Control words: `if`, `for` branches/bodies
 - Higher-order words: `each`, `fold`, `scan`, `outer`, `inner` code-body args
-- `do`, `call`, `module`, `var`: list bodies executed as sub-programs
+- `do`, `call`, `module`: list bodies executed as sub-programs
 
 The `NoEvalArgs` field on `Signature` marks arg positions where list
 auto-evaluation is suppressed. Unlike `QuoteArgs`, it does NOT affect

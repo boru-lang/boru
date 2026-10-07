@@ -2031,77 +2031,65 @@ def foo 1 def foo 2 foo undef foo foo   => 2 1
 
 #### `var`
 
-Define scoped variables. `var` takes one list argument whose first
-element is a list of variable declarations and whose remaining
-elements form the body. After the body executes, all variables are
-automatically undefined.
+Declare a mutable variable, or assign one in place. `var NAME value`
+declares a var in the current scope; when a var NAME is already visible
+within the current frame — declared in the current scope, in an enclosing
+block of the same frame, or at the module scope when no frame is open —
+the statement assigns it. A var is the one binding whose value changes;
+every other binding is a `def`.
 
-*Signature:* `[list] -> [results...]`
+*Signatures:*
+- `[word any] -> []` — the quoted name
+- `[string any] -> []` — a string name
+- `[map any] -> []` — the typed name, `var n:Integer 0`
+
 *Precedence:* forward
 
-Each declaration is one of:
-
-| Form       | Meaning                             |
-|------------|-------------------------------------|
-| `x`        | Bare word — takes value from stack  |
-| `[x 2]`    | List — defines x with value 2       |
-
-The expansion `var [[x] body...]` is equivalent to
-`def x end body... undef x`.
-
-**Variable from stack:**
+**Declare, assign, read:**
 
 ```
-5 var [[x] x mul x]                    => 25
+var n 0  var n (n add 1)  n            => 1
 ```
 
-Here `x` is bound to 5 (the top of the stack). The body `x mul x`
-computes 5 * 5 = 25. After execution, `x` is undefined.
-
-**Inline value:**
+**Loop state:**
 
 ```
-var [[[x 2]] x mul x]                  => 4
+var n 0  for 3 [var n (n add 1)]  n    => 3
+var total 0
+each [ total add var total end total ] [1 2 3]  drop
+total                                  => 6
 ```
 
-`x` is bound to 2 directly inside the declaration.
-
-**Multiple variables:**
-
-```
-3 5 var [[x y] x add y]               => 8
-```
-
-`x` binds to the top of the stack (5), `y` to the next (3).
-Wait — each `def name end` in the expansion peels the topmost value:
-first `x` gets 5, then `y` gets 3.
-
-**Mixed inline and stack:**
+A quotation body runs in the frame that wrote it and may assign that
+frame's var (`var total` with nothing written after the name takes its
+value from the stack). A lambda is a frame of its own:
 
 ```
-10 var [[[x 2] y] x add y]            => 12
+var acc [] each ([x] => [var acc (push x acc)]) [1 2]   => error: var_error (a lambda reads acc but cannot assign it)
 ```
 
-`x` = 2 (inline), `y` = 10 (from stack).
-
-**Variables do not leak:**
+**A typed var checks every assignment:**
 
 ```
-5 var [[x] x mul x] (quote x)         => 25 x
+var n:Integer 1  var n 2  n            => 2
+var n:Integer 1  var n "x"             => error: type_error
+var x 1  var x:Integer 2               => error: var_error (a typed re-declaration of a live var)
 ```
 
-After `var` completes, `x` reverts to an undefined word; the explicit
-`(quote x)` produces the trailing atom in the example above. A bare `x`
-at this point would raise `undefined_word`.
+**A var holds a value:** a function constructor (`var f fn […]`, `var C
+class {…}`) or a type literal is refused with `var_error`; use `def`. A
+function value computed at run time is stored and dispatches when read,
+as any fn value does.
 
-**Preserves existing definitions:**
+**Frames:** a var of another frame — a module var inside a fn body, an
+enclosing fn's var inside a closure — is readable but never assignable
+(`var_error`). A closure made while a fn-local var is live captures the
+var's value at creation.
 
-```
-def foo 99
-5 var [[x] x add foo] foo             => 104 99
-```
-
-`foo` remains defined after `var` completes.
+**Block-local names** are lambda parameters, not vars: `3 4 ([a b] =>
+[a add b]) apply` binds `a` to the top of the stack (4) and `b` to the
+next (3) for the body's extent, and `(([x y] => [add x y]) 2 10)` binds
+them to written arguments. Both are undefined afterwards.
 
 ### Function Words
 

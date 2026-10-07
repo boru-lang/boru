@@ -2415,7 +2415,7 @@ func ErrorHandler(args []Value, _ map[string]Value, _ []Value, r *Registry) ([]V
 		return nil, err
 	}
 	// Stack-neutrality (decision DX report finding 6): the caught error
-	// is PUSHED so the handler can bind it (`var [[e] …]`, `get code`,
+	// is PUSHED so the handler can bind it (`([e] => […]) apply`, `get code`,
 	// `dup`, …), but a handler that ignores it must not leak it beneath
 	// its result — `def r do [risky] error ["fallback"]` used to bind r
 	// to the error's neighbour and auto-print the stray error. If the

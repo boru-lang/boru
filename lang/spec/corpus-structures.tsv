@@ -6,7 +6,7 @@
 1 add 2	3	structure
 10 mod 3	1	structure
 2 pow 8	256	structure
-3 4 var [[a b] a add b]	7	structure
+3 4 ([a b] => [a add b]) apply	7	structure
 42 is Integer	true	structure
 5 dup add	10	structure
 ["a" "b" "c"] reverse	['c' 'b' 'a']	structure

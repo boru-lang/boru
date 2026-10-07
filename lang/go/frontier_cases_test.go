@@ -224,7 +224,7 @@ var frontierCases = []frontierCase{
 		// Module-scope check-prop with a DIRECT rand-call gen body: the gen
 		// body's member-fn-arrival dispatch declines (sound), so the
 		// per-iteration gen run adds unattributed interpreter entries.
-		src := "import \"boru:test\" end\ndef res (Test.check-prop \"x\" [r.int 1 9] [ var [[k] (`v${k}`) eq `v${k}` ] ] 5 1 0)\nres get \"ok\""
+		src := "import \"boru:test\" end\ndef res (Test.check-prop \"x\" [r.int 1 9] [ ([k] => [(`v${k}`) eq `v${k}`]) apply ] 5 1 0)\nres get \"ok\""
 		return fcNoUnattributedInterp(func(a *Boru) error {
 			_, err := a.RunCompiledStrict(src)
 			return err

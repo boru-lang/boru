@@ -61,11 +61,10 @@ func TestDefCensusPrograms(t *testing.T) {
 		// A loop body's arm defining a name it reads in the same arm: the
 		// model's bookkeeping between analysis rounds is no read of it.
 		{"an arm's def read in the arm, in a loop body", `def f fn [[k:Integer] [List] [for 2 [if (k gt 0) [def issue 1 (push issue [])] [[]]]]] f 1`, ""},
-		{"an arm's def read in the arm, in a fold body", `def f fn [[k:Integer] [Map] [fold [var [[c acc] if (k gt 0) [def issue 1 {issues:issue}] [{issues:1}]]] [1 2] {issues:[]}]] f 1`, "var-construct:[c acc]"},
+		{"an arm's def read in the arm, in a fold lambda", `def f fn [[k:Integer] [Map] [fold ([c acc] => [if (k gt 0) [def issue 1 {issues:issue}] [{issues:1}]]) [1 2] {issues:[]}]] f 1`, ""},
 		{"a type alias redefined", `def Foo Integer def Foo String 1 is Foo`, "rebind:Foo"},
 		{"a type minted twice", `def Rec {a:Integer} def Rec {b:Integer} 1`, "rebind:Rec"},
 		{"undef", `def a 1 undef a`, "undef:a"},
-		{"the var construct", `fold [var [[e acc] acc add e]] [1 2] 0`, "var-construct:[e acc]"},
 		// A repeat import of one native module is a cache no-op today
 		// (edge-modules-1.tsv), as the rule has it; a second module bound to
 		// the same namespace is a rebind.

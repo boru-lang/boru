@@ -43,9 +43,9 @@ import "testing"
 func TestPropSpecDeclarativeSurfaceCompiles(t *testing.T) {
 	stage1aCompiles(t, `import "boru:test" end
 def specs [
-  (Test.prop "ge1" [ (r.int 1 6) ] [ var [[x] (x gte 1) ] ])
+  (Test.prop "ge1" [ (r.int 1 6) ] [ ([x] => [(x gte 1)]) apply ])
 ]
-def _ (specs each [ var [[s] (s Test.run-property end) 0 ] ])
+def _ (specs each [ ([s] => [(s Test.run-property end) 0]) apply ])
 Test.fail-count end`)
 }
 
@@ -55,11 +55,11 @@ Test.fail-count end`)
 func TestPropSpecMultiSpecParity(t *testing.T) {
 	stage1aCompiles(t, `import "boru:test" end
 def specs [
-  (Test.prop "ge1"  [ (r.int 1 6) ]           [ var [[x] (x gte 1) ] ])
-  (Test.prop "str"  [ r.string "abc" 4 ]      [ var [[s] ((s size) lte 4) ] ])
-  (Test.prop "one"  [ [10 20 30] r.one-of ]   [ var [[n] (n gte 10) ] ])
+  (Test.prop "ge1"  [ (r.int 1 6) ]           [ ([x] => [(x gte 1)]) apply ])
+  (Test.prop "str"  [ r.string "abc" 4 ]      [ ([s] => [((s size) lte 4)]) apply ])
+  (Test.prop "one"  [ [10 20 30] r.one-of ]   [ ([n] => [(n gte 10)]) apply ])
 ]
-def _ (specs each [ var [[s] (s Test.run-property end) 0 ] ])
+def _ (specs each [ ([s] => [(s Test.run-property end) 0]) apply ])
 Test.fail-count end`)
 }
 
@@ -70,14 +70,12 @@ Test.fail-count end`)
 func TestPropSpecFailingPropertyParity(t *testing.T) {
 	stage1aCompiles(t, `import "boru:test" end
 def specs [
-  (Test.prop "always-fails" [ (r.int 1 6) ] [ var [[x] (x gt 100) ] ])
+  (Test.prop "always-fails" [ (r.int 1 6) ] [ ([x] => [(x gt 100)]) apply ])
 ]
-def _ (specs each [ var [[s]
-  def res (s Test.run-property end)
+def _ (specs each [ ([s] => [def res (s Test.run-property end)
   (res "ok" get) print
   (res "failing-input" get) print
-  0
-] ])
+  0]) apply ])
 Test.fail-count end`)
 }
 
@@ -87,7 +85,7 @@ Test.fail-count end`)
 // path already bakes — pinned to guard it against the new dynamic-body handling.
 func TestCheckPropImperativeLiteralCompiles(t *testing.T) {
 	stage1aCompiles(t, `import "boru:test" end
-def res (Test.check-prop "ge0" [ (r.int 0 9) ] [ var [[x] (x gte 0) ] ] 20 1 0)
+def res (Test.check-prop "ge0" [ (r.int 0 9) ] [ ([x] => [(x gte 0)]) apply ] 20 1 0)
 (res "ok" get)`)
 }
 
@@ -100,6 +98,6 @@ def res (Test.check-prop "ge0" [ (r.int 0 9) ] [ var [[x] (x gte 0) ] ] 20 1 0)
 func TestCheckPropBareAnyBodiesStaySound(t *testing.T) {
 	stage1aSound(t, `import "boru:test" end
 def wrap fn [[g:Any pr:Any] [Map] [ Test.check-prop "n" g pr 5 1 0 ]]
-def res (wrap [ (r.int 1 3) ] [ var [[x] (x gte 1) ] ])
+def res (wrap [ (r.int 1 3) ] [ ([x] => [(x gte 1)]) apply ])
 (res "ok" get)`)
 }

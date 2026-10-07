@@ -10,8 +10,9 @@ import (
 
 // TestStampServiceFilterLambda pins the mini-s3 bucket-list wall: an
 // ANONYMOUS service handler whose body runs `filter` with a CAPTURING
-// lambda over a convert/slice chain on the callback entry's dynamic
-// `.value`. Two fixes carry it: (1) every closure/stored probe inherits
+// lambda over a convert/slice chain on the callback's dynamic element (the
+// list's key string — the callback protocol hands the element). Two fixes
+// carry it: (1) every closure/stored probe inherits
 // the detached stamp's gradual-nesting modality (probe and real must
 // judge the SAME unit — forkForProbe / tryReturnedClosure /
 // compileStoredBody); (2) RecordPolyCall resolves an un-stepped
@@ -43,7 +44,7 @@ module [
       def prefix (join "" [req.bucket "/"])
       def plen (size prefix)
       filter ([e:Any] => [
-        def kk e.value
+        def kk e
         if ((objects get kk) eq None) [ false ] [
           if ((size kk) lt plen) [ false ] [
             (convert String (slice 0 plen (convert Bytes kk))) eq prefix

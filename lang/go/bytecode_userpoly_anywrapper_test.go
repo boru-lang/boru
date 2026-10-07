@@ -21,6 +21,20 @@ import (
 // value — exactly like the interpreter. compile == interpret MUST hold, and the
 // re-match must pick the RIGHT arm (a Map value → the Map arm, a leaf → the Any
 // arm), not merely bias to one.
+//
+// The same rows pin a second fix (2026-10-07), reached once the construct
+// `var [[k] …]` became the applied lambda `([k] => […]) apply`: the lambda's
+// param generalises to a STRICT Any at the apply site, so `doc get (k)` — a
+// Map on the stack, the strict-Any key written forward — matches no overload
+// and takes the no-match recovery (checkModeAssumeSig), which scored its
+// candidates in TAPE order against SIGNATURE-order slots: the receiver was
+// held against get's key slot, every receiver-typed overload read
+// incompatible, and the None-receiver `[Any None]` won on the receiver
+// alone. Its None carrier then let hop's `nk (cv)` commit the Any arm
+// statically ('leaf' for the interpreter's 'map'). The recovery now scores
+// in signature order (core.SigOrderPositions) and picks the Node overload,
+// whose ReturnsFn models the read as a dynamic Any, so the user poly
+// re-matches at run time.
 func TestUserPolyAnyWrapperDispatch(t *testing.T) {
 	const defs = `def nk fn [ [v:Map] [String] ["map"] [v:Any] [String] ["leaf"] ]
 def hop fn [[cv:Any] [String] [ nk (cv) ]]
@@ -30,17 +44,17 @@ def hop fn [[cv:Any] [String] [ nk (cv) ]]
 		// Compiled used to return "leaf"; must be "map" on both surfaces.
 		{"map through Any wrapper in each body",
 			defs + `def doc {meta: {age: 36}}
-(each [ var [[k] (hop (doc get (k))) ] ] (keys doc))`, "map"},
+(each [ ([k] => [(hop (doc get (k)))]) apply ] (keys doc))`, "map"},
 		// The complement — a leaf (Integer) value through the same wrapper must
 		// still dispatch to the Any arm, proving the re-match picks the right arm
 		// rather than always biasing to Map.
 		{"leaf through Any wrapper in each body",
 			defs + `def doc {age: 36}
-(each [ var [[k] (hop (doc get (k))) ] ] (keys doc))`, "leaf"},
+(each [ ([k] => [(hop (doc get (k)))]) apply ] (keys doc))`, "leaf"},
 		// Through a fold body (the other higher-order path).
 		{"map through Any wrapper in fold body",
 			defs + `def doc {meta: {age: 36}}
-(fold [ var [[k acc] (push (hop (doc get (k))) acc) ]] (keys doc) [])`, "map"},
+(fold [ ([k acc] => [(push (hop (doc get (k))) acc)]) apply] (keys doc) [])`, "map"},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

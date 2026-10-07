@@ -30,7 +30,7 @@ import (
 
 // defCensusRowCeiling is the number of corpus rows with at least one finding
 // of a class other than `shadow`, measured 2026-10-06.
-const defCensusRowCeiling = 151
+const defCensusRowCeiling = 144 // 151 -> 144 on 2026-10-07: the `var [[…]]` construct is gone (design/IMMUTABLE-DEF.1.md §5 phase 1), and with it the var-construct class's seven corpus rows; the construct rows rewritten as lambdas or stack-bound-def bodies add no finding of another class.
 
 // defCensusClasses is the report's column order: the rule's verdicts from
 // error to removal, then the legal shadow.

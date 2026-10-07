@@ -26,27 +26,27 @@ func TestClosureBodyUnappliedFnValueSound(t *testing.T) {
 	// interpreter's paren). want is the program RESIDUAL (a slice), single wrapped.
 	strict := []struct{ name, src, want string }{
 		{"each captured comparator apply",
-			`def f fn [[comp:Function][List][ [1 2] each [ var [[x] (x x comp) ] ] ]] cmp/v f`, "[[0 0]]"},
+			`def f fn [[comp:Function][List][ [1 2] each [ ([x] => [(x x comp)]) apply ] ]] cmp/v f`, "[[0 0]]"},
 		{"fold captured comparator apply",
-			`def f fn [[comp:Function][Integer][ 0 fold [ var [[acc x] (x x comp) ] ] [1 2] ]] cmp/v f`, "[0]"},
+			`def f fn [[comp:Function][Integer][ 0 fold [ ([acc x] => [(x x comp)]) apply ] [1 2] ]] cmp/v f`, "[0]"},
 		{"scan captured comparator apply",
-			`def f fn [[comp:Function][List][ scan [ var [[acc x] (acc x comp) ] ] [3 1 2] ]] cmp/v f`, "[[3 -1 1]]"},
+			`def f fn [[comp:Function][List][ scan [ ([acc x] => [(acc x comp)]) apply ] [3 1 2] ]] cmp/v f`, "[[3 -1 1]]"},
 		{"each comparator apply, asymmetric args (arg-order gate)",
-			`def f fn [[comp:Function][List][ [3 1] each [ var [[x] (x 2 comp) ] ] ]] cmp/v f`, "[[1 -1]]"},
+			`def f fn [[comp:Function][List][ [3 1] each [ ([x] => [(x 2 comp)]) apply ] ]] cmp/v f`, "[[1 -1]]"},
 		{"fn-body comparator apply",
 			`def f fn [[comp:Function a:Integer b:Integer][Integer][ (a b comp) ]] 5 3 cmp/v f`, "[-1]"},
 		{"3-arg trailing apply",
 			`def g fn [[f:Function][Integer][ def a 1 def b 2 def c 3 (a b c f) ]] def add3 fn [[x:Integer y:Integer z:Integer][Integer][(x add (y add z))]] add3/v g`, "[6]"},
 		{"lambda (compiled-closure) comparator apply",
-			`def f fn [[comp:Function][List][ [3 1] each [ var [[x] (x 2 comp) ] ] ]] ([b:Any a:Any] => [(a cmp b)]) f`, "[[1 -1]]"},
+			`def f fn [[comp:Function][List][ [3 1] each [ ([x] => [(x 2 comp)]) apply ] ]] ([b:Any a:Any] => [(a cmp b)]) f`, "[[1 -1]]"},
 		{"trailing apply with a DYNAMIC arg (comp still the fn, not the leading dynamic)",
-			`def f fn [[comp:Function][List][ def arr (flex [5 3]) [0 1] each [ var [[x] ((arr get x) 4 comp) ] ] ]] cmp/v f`, "[[1 -1]]"},
+			`def f fn [[comp:Function][List][ def arr (flex [5 3]) [0 1] each [ ([x] => [((arr get x) 4 comp)]) apply ] ]] cmp/v f`, "[[1 -1]]"},
 		// The comparator apply BOUND TO A DEF-LOCAL (`def c (a b comp)`) then consumed
 		// by `if (c gt 0)` — an INTERMEDIATE apply, not the body's trailing residual.
 		// Recorded as a RecordDynApply EVENT so it seats like any computed result; this
 		// is the def-bound-dynamic-apply leaf that gates 8/11 comparison sorts.
 		{"def-bound comparator apply feeding an if (2 dynamic args)",
-			`def f fn [[comp:Function][List][ def arr (flex [3 1 2]) [0 1] each [ var [[i] def c ((arr get i) (arr get (i add 1)) comp) if (c gt 0) [9] [0] ] ] ]] cmp/v f`, "[[9 0]]"},
+			`def f fn [[comp:Function][List][ def arr (flex [3 1 2]) [0 1] each [ ([i] => [def c ((arr get i) (arr get (i add 1)) comp) if (c gt 0) [9] [0]]) apply ] ]] cmp/v f`, "[[9 0]]"},
 		{"def-bound comparator apply, result used twice",
 			`def f fn [[comp:Function][Integer][ def c (5 3 comp) (c add c) ]] cmp/v f`, "[2]"},
 		// A branch ARM whose result is an ENCLOSING-scope value-def (`[g]` / `[c]`) — the

@@ -198,50 +198,12 @@ func TestW9DefTypedDepScalarDynamicUncompilable(t *testing.T) {
 	}
 }
 
-// --- undefFnHandler / varHandler / fnHandler direct guards ---
+// --- undefFnHandler / fnHandler direct guards ---
 
 func TestW9UndefFnHandlerNonSpec(t *testing.T) {
 	r := seam5Reg(t)
 	if _, err := undefFnHandler([]Value{NewAtom("x"), NewInteger(5)}, nil, nil, r); err == nil {
 		t.Fatal("undef fn: non-spec second arg must error")
-	}
-}
-
-func TestW9VarHandlerNotAList(t *testing.T) {
-	r := seam5Reg(t)
-	if _, err := varHandler([]Value{NewInteger(5)}, nil, nil, r); err == nil {
-		t.Fatal("var: non-list arg must error")
-	}
-}
-
-func TestW9VarHandlerNonConcreteList(t *testing.T) {
-	r := seam5Reg(t)
-	// A List CARRIER has Parent==TList (passes the is-a-list check) but is
-	// not concrete → the concrete-list guard fires.
-	if _, err := varHandler([]Value{NewCarrier(TList)}, nil, nil, r); err == nil {
-		t.Fatal("var: non-concrete list must error")
-	}
-}
-
-func TestW9VarHandlerStringNameDecl(t *testing.T) {
-	r := seam5Reg(t)
-	// decl = ["v" 5] — the name comes from a string.
-	decl := NewList([]Value{NewString("v"), NewInteger(5)})
-	decls := NewList([]Value{decl})
-	outer := NewList([]Value{decls, NewWord("v")})
-	if _, err := varHandler([]Value{outer}, nil, nil, r); err != nil {
-		t.Fatalf("var with string-named decl: %v", err)
-	}
-}
-
-func TestW9VarHandlerBadDeclName(t *testing.T) {
-	r := seam5Reg(t)
-	// decl = [1 2] — the name element is neither a word nor a string.
-	decl := NewList([]Value{NewInteger(1), NewInteger(2)})
-	decls := NewList([]Value{decl})
-	outer := NewList([]Value{decls, NewWord("x")})
-	if _, err := varHandler([]Value{outer}, nil, nil, r); err == nil {
-		t.Fatal("var: a non-word/non-string decl name must error")
 	}
 }
 

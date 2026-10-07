@@ -183,7 +183,7 @@ func TestEdgeFindingForwardAcrossErrorResidual(t *testing.T) {
 	// it compiles with parity. This is the decision prop_test summary-each shape
 	// (`each [ … if ok [print] [print] 0 ]` over dynamic-typed results).
 	mustCompileWithParity(t,
-		`def xs [{ok:true} {ok:false}] def _ (xs each [ var [[r] def ok (r "ok" get) def res (if ok [1] [2]) def _2 res 0 ] ]) 9`,
+		`def xs [{ok:true} {ok:false}] def _ (xs each [ ([r] => [def ok (r "ok" get) def res (if ok [1] [2]) def _2 res 0]) apply ]) 9`,
 		"[9]")
 	mustCompileWithParity(t,
 		`def m {ok:true} def ok (m get "ok") if ok [ 1 print ] [ 2 print ] 7`,

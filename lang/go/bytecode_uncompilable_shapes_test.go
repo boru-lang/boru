@@ -33,7 +33,7 @@ func TestUncompilableShapesNowCompile(t *testing.T) {
 	// mutates a captured container — was "code-body word each (Stage 2)".
 	mustCompileWithParity(t,
 		`def cells (flex {})`+
-			` iota 3 each [ var [[i] cells set (convert String i) (i mul 10) drop 0 ] ]`+
+			` iota 3 each [ ([i] => [cells set (convert String i) (i mul 10) drop 0]) apply ]`+
 			` drop (cells get "2")`,
 		"[20]")
 
@@ -45,7 +45,7 @@ func TestUncompilableShapesNowCompile(t *testing.T) {
 	// the store-based C above never touches.
 	mustCompileWithParity(t,
 		`def cells (make List [1 2 3])`+
-			` def _fill (iota 3 each [ var [[i] cells 0 i set end 0 ] ])`+
+			` def _fill (iota 3 each ([i] => [cells 0 i set drop 0]))`+
 			` [_fill cells]`,
 		"[[[0 0 0] [1 2 3]]]")
 }

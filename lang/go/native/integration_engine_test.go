@@ -1598,26 +1598,6 @@ func TestEngineDisjunct(t *testing.T) {
 	}
 }
 
-func TestEngineVar(t *testing.T) {
-	r, err := DefaultRegistry()
-	if err != nil {
-		t.Fatal(err)
-	}
-	registerIOWords(r)
-	// 5 var [[x] x mul x]
-	varBody := NewList([]Value{
-		NewList([]Value{NewWord("x")}),
-		NewWord("x"), NewWord("mul"), NewWord("x"),
-	})
-	result := runBoru(t, r, []Value{
-		NewInteger(5), NewWord("var"), varBody,
-	})
-	_as96, _ := AsInteger(result[0])
-	if len(result) != 1 || _as96 != 25 {
-		t.Errorf("5 var [[x] x mul x] = %v, want 25", result)
-	}
-}
-
 func TestEngineAddStrings(t *testing.T) {
 	r, err := DefaultRegistry()
 	if err != nil {

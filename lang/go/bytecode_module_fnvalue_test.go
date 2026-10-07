@@ -23,7 +23,7 @@ import (
 func TestModuleFnValueAsArg(t *testing.T) {
 	const prelude = `import module [
   def by-num fn [[b:Any a:Any] [Integer] [(a cmp b)]]
-  def mapcmp fn [[comp:Function xs:List] [List] [ xs each [ var [[x] (x 5 comp) ] ] ]]
+  def mapcmp fn [[comp:Function xs:List] [List] [ xs each [ ([x] => [(x 5 comp)]) apply ] ]]
   def cmp1 fn [[comp:Function p:Integer] [Integer] [ (p 5 comp) ]]
   export "M" {by-num: by-num/v, mapcmp: mapcmp/v, cmp1: cmp1/v}
 ] end `

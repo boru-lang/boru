@@ -837,10 +837,10 @@ user still gets an answer while the case is open:
     refusals — NUR368. Surfaced by voxgig-boru/decision, whose evaluators
     return a stored fn `then` / leaf `result` as data for the caller to
     apply.
-  - A var-binding `each` nested in a TOP-LEVEL var-binding `each` body
+  - A lambda-bodied `each` nested in a TOP-LEVEL lambda-bodied `each` body
     declines with NUR330's string ("twin regime: a bind transition has no
     stream placement"), outside the `Rand.map-from` shape listed above:
-    `print (each [ var [[n] (each [ var [[m] m ]] [1]) ]] [1])` declines;
+    `print (each ([n] => [(each ([m] => [m]) [1])]) [1])` declines;
     the interpreter prints `[[1]]`. The same nesting inside a fn body
     compiles and agrees. Surfaced by voxgig-boru/aless's smoke suite (its
     fixture walk is now a fn).
@@ -880,7 +880,7 @@ user still gets an answer while the case is open:
     answers agree. `def count-big fn [[xs:List] [Integer] [def n 0 for (xs
     size) [def idx i def x (xs idx get) if (x 5 gt) [def n (n 1 add)] []]
     end n]]`, then a `Test.prop` property body that calls `count-big xs`
-    and also folds `xs each [ var [[x] (if (x 5 gt) [1] [0]) ] ]`: the
+    and also folds `xs each ([x] => [(if (x 5 gt) [1] [0])])`: the
     property body is reported "did not compile codebody @ 3:44"; rename
     the callback's `x` to `y` and it stamps. Both answer `ok: true`.
     Surfaced by voxgig-boru/decision (its `eval-table-*` loops bind `rule`;
@@ -889,7 +889,7 @@ user still gets an answer while the case is open:
     contains an interpolated template string, refuses the program:
     "operand of unknown provenance or not statically materialisable at
     test-check-prop". ``def run fn [[] [] [ def res (Test.check-prop "p" [
-    5 ] [ var [[k] def s `g ${k}` (s size) gt 0 ] ] 2 1 0) print (res "ok"
+    5 ] [ ([k] => [def s `g ${k}` (s size) gt 0]) apply ] 2 1 0) print (res "ok"
     get) ]] run`` prints `true` on the interpreter, and `boru check` is
     clean. Any `${…}` triggers it; the same call at the top level, or in
     the fn with a plain string (`def s "g"`), compiles and prints `true`.
@@ -899,7 +899,7 @@ user still gets an answer while the case is open:
     interpolated template string refuses the program: "unannotated or
     opaque word test-prop" at top level (in a list literal or not),
     "code-body word test-prop (Stage 2)" inside a fn body. ``def p
-    (Test.prop "a" [ (r.int 0 12) ] [ var [[v] (`<${v}>` size) gte 3 ] ])``
+    (Test.prop "a" [ (r.int 0 12) ] [ ([v] => [(`<${v}>` size) gte 3]) apply ])``
     then `print ((p Test.run-property) get "ok")` prints `true` on the
     interpreter, and `boru check` is clean; so does the generator
     ``[ `<${(r.int 0 12)}>` ]``. Any interpolation triggers it, even of a

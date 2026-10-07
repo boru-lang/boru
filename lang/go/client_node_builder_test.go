@@ -105,7 +105,7 @@ func TestNoneDynamicCarrierNoPanic(t *testing.T) {
 	}()
 	src := `def ins fn [[v:Any nd:Any] [Any] [ if (nd eq none) [ do {v: [v]} ] [nd] ]] end
 def build fn [[entries:List] [Any] [
-  none entries [ var [[e acc] (acc (e get 0) ins) ] ] fold
+  none entries [ ([e acc] => [(acc (e get 0) ins)]) apply ] fold
 ]] end`
 	// Must not panic; the build helper is a clean gradual builder.
 	if n := errCountFor(t, src); n != 0 {

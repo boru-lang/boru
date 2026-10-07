@@ -493,46 +493,29 @@ func bodyUndefs(tokens []core.Value) bool {
 	return false
 }
 
-// bodyDefNames collects the names a token body binds with `def` (and the
-// `var` splice's declarations), nested lists included: the names whose
-// rebinding by the body is the body's own act, not a dependency moving
-// under a keep-defs stamp (stampDetachedSig).
+// bodyDefNames collects the names a token body binds with `def` or `var`,
+// nested lists included: the names whose rebinding by the body is the
+// body's own act, not a dependency moving under a keep-defs stamp
+// (stampDetachedSig).
 func bodyDefNames(tokens []core.Value) map[string]bool {
 	names := map[string]bool{}
 	var walk func(toks []core.Value)
-	addDecl := func(decl core.Value) {
-		switch {
-		case core.IsWord(decl):
-			w, _ := core.AsWord(decl)
-			names[w.Name] = true
-		case decl.Parent.Equal(core.TList) && core.IsConcrete(decl):
-			if dl, err := core.AsList(decl); err == nil && dl.Len() > 0 && core.IsWord(dl.Get(0)) {
-				w, _ := core.AsWord(dl.Get(0))
-				names[w.Name] = true
-			}
-		case decl.Parent.ConformsTo(core.TString):
-			s, _ := core.AsString(decl)
-			names[s] = true
-		}
-	}
 	walk = func(toks []core.Value) {
 		for i, tok := range toks {
 			if core.IsWord(tok) {
 				w, _ := core.AsWord(tok)
 				switch w.Name {
-				case "def":
-					if i+1 < len(toks) && core.IsWord(toks[i+1]) {
-						nw, _ := core.AsWord(toks[i+1])
-						names[nw.Name] = true
-					}
-				case "var":
-					if i+1 < len(toks) && toks[i+1].Parent.Equal(core.TList) && core.IsConcrete(toks[i+1]) {
-						if vl, err := core.AsList(toks[i+1]); err == nil && vl.Len() > 0 && vl.Get(0).Parent.Equal(core.TList) && core.IsConcrete(vl.Get(0)) {
-							if decls, err := core.AsList(vl.Get(0)); err == nil {
-								for _, d := range decls.Slice() {
-									addDecl(d)
-								}
+				case "def", "var":
+					// The quoted-word, atom and string-name forms all bind NAME.
+					if i+1 < len(toks) {
+						name := bindNameToken(toks[i+1])
+						if name == "" {
+							if str, err := core.AsString(toks[i+1]); err == nil {
+								name = str
 							}
+						}
+						if name != "" {
+							names[name] = true
 						}
 					}
 				}

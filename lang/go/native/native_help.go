@@ -474,14 +474,12 @@ func inferExact(name string, sig Signature) []string {
 		return []string{"Any"}
 
 	// Definition
-	case "def", "undef":
+	case "def", "undef", "var":
 		return nil
 	case "fn":
 		return []string{"Word/Function"}
 	case "args":
 		return []string{"Node/List"}
-	case "var":
-		return []string{"Any"}
 
 	// Control flow
 	case "do":

@@ -47,8 +47,7 @@ func TestS2ADeclarationsByWordAndShape(t *testing.T) {
 			"(Atom Any)": key, "(Atom Atom Any Node)": key, "(Atom Atom Any)": key, "(Atom Atom Map)": key,
 			"(String Atom Any Node)": inert, "(String Atom Any)": inert, "(String Atom Map)": inert,
 		},
-		"undef":      {"(Atom)": key, "(Atom FunctionSignature)": key},
-		"__varundef": {"(Atom)": key},
+		"undef": {"(Atom)": key, "(Atom FunctionSignature)": key},
 		// Quoted data the handler consumes verbatim, or a key it reads.
 		"describe": {"(Atom)": inert},
 		"unpack":   {"(Atom Map)": inert, "(Atom String)": key},
@@ -121,8 +120,8 @@ func TestS2ADeclarationsByWordAndShape(t *testing.T) {
 	// 28 quoted + 7 fn-operand = the 35 signatures the census counted, under
 	// 33 shapes (def's two Map-keyword shapes register twice each, one per
 	// constructor).
-	if seen != 35 {
-		t.Errorf("pinned %d signatures, want 35 (the census's S2a worklist)", seen)
+	if seen != 34 {
+		t.Errorf("pinned %d signatures, want 34 (the census's S2a worklist, less the deleted var construct's __varundef)", seen)
 	}
 }
 
@@ -134,7 +133,7 @@ func TestS2AWordsStillMatchTheCensusRelevance(t *testing.T) {
 	if err != nil {
 		t.Fatal(err)
 	}
-	for _, word := range []string{"def", "undef", "__varundef", "describe", "unpack", "xml-attr", "usurp", "stack-args", "forward-args", "force-arity", "valof", "apply", "mini", "parse", "emit"} {
+	for _, word := range []string{"def", "undef", "describe", "unpack", "xml-attr", "usurp", "stack-args", "forward-args", "force-arity", "valof", "apply", "mini", "parse", "emit"} {
 		fd := reg.Lookup(word)
 		if fd == nil {
 			t.Fatalf("%s: not registered", word)

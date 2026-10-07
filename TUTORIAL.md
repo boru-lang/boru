@@ -581,24 +581,39 @@ for bounds (`T extends Number`), defaults, recursion via `Self`,
 and inference.
 
 
-## 14. Scoped variables with `var`
+## 14. Mutable variables with `var`
 
-`var` introduces local names that are automatically un-defined at
-the end of the block. Bare-word declarations pop from the stack
-(top into the first listed name, etc. — matching the argument-order
-rule):
+A `def` binds a name once. `var` declares the one kind of binding
+whose value changes in place: `var NAME value` declares a var in the
+current scope, and the same statement over a var that is already
+visible in the current frame **assigns** it. Loop state is the idiom:
+
+```
+boru> var n 0  for 3 [var n (n add 1)]  n              # returns 3
+boru> var total 0  each [ total add var total end total ] [1 2 3]  drop total   # returns 6
+```
+
+A quotation body runs in the frame that wrote it, so it may assign that
+frame's var: the `each` body above adds the element to `total`, assigns
+the sum back (`var total` with nothing written after the name takes its
+value from the stack — `end` closes the statement) and leaves the running
+total as the body's result. A lambda is a frame of its own: `each ([x] =>
+[var total (total add x)]) [1 2 3]` is a `var_error` — the lambda reads
+`total` but cannot assign it. Accumulate with `fold` instead.
+
+A typed var checks every assignment: `var n:Integer 0  var n "x"` is a
+`type_error`. A var holds a *value* — `var f fn […]` is refused (use
+`def`) — and a var of another frame (a module var inside a fn body, an
+enclosing fn's var inside a closure) is readable but never assignable.
+
+To bind names for the extent of one block, use a lambda's parameters:
+they are the block's own and vanish with it. Bare `=>` parameters are
+`Any`, and the arguments bind top-of-stack first:
 
 ```
 boru> import "boru:math-util"
-boru> 3 4 var [[a b] (a mul a) add (b mul b) MathUtil.sqrt]   # returns 5.0
-```
-
-The first element of the list is the binding list. The remaining
-elements are the body. `a` here binds to `4` (top of stack), `b` to
-`3`. Inline values:
-
-```
-boru> var [[[x 2] [y 10]] add x y]               # returns 12
+boru> 3 4 ([a b] => [(a mul a) add (b mul b) MathUtil.sqrt]) apply   # returns 5.0
+boru> (([x y] => [add x y]) 2 10)                                     # returns 12
 ```
 
 

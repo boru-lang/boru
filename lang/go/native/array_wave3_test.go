@@ -429,7 +429,7 @@ func TestW3CheckArrayReturns(t *testing.T) {
 		`foldaxis 1 [add] [[1 2] [3 4]]`,     // foldaxisReturnsFn (analysing, NUR115)
 		`foldaxis 1 [add 0.5] [[1 2] [3 4]]`, // foldaxis accumulator widening fixed point
 		`foldaxis 0 [add] []`,                // foldaxis empty rank-2: gradual-Any element arm
-		`foldaxis 1 [var [[a b] (if (b gt 1) ["s"] [b])]] [[1 2] [3 4]]`, // foldaxis disjunct accumulator arm
+		`foldaxis 1 ([a b] => [(if (b gt 1) ["s"] [b])]) [[1 2] [3 4]]`, // foldaxis disjunct accumulator arm
 		`outer [mul] [1 2] [3 4]`,       // outerReturnsFn
 		`inner [mul] [add] [1 2] [3 4]`, // innerReturnsFn
 	}

@@ -89,6 +89,9 @@ func TestTryRecordRegionDeclines(t *testing.T) {
 		{"word with nothing after it", func() {
 			tryRecordRegion(regionTape(core.NewWord("pair")), reg, w, 0)
 		}},
+		// A fn VALUE at the lead (a lambda applied in a paren group) is a
+		// nameless word: a LeadWord descriptor could not resolve it live.
+		{"nameless lead", func() { tryRecordRegion(full, reg, core.WordInfo{ArgCount: -1}, 0) }},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

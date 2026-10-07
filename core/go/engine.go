@@ -7542,7 +7542,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	}
 	var names []string
 	for _, cb := range captures {
-		InstallFrameBinding(e.Registry, cb.Name, cb.Value)
+		InstallCapturedBinding(e.Registry, cb)
 		names = append(names, cb.Name)
 	}
 

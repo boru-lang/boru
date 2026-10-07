@@ -191,7 +191,7 @@ func Extract(file, src string) []Example {
 
 // isSetupLine reports whether a non-result code line is shared state for
 // later examples in the same block. True for binding / side-effecting
-// statements (`def`, `undef`, and the `… import end` / `use` module
+// statements (`def`, `var`, `undef`, and the `… import end` / `use` module
 // forms) and for continuation lines of a multi-line statement still open
 // (setupOpen > 0). Other bare expressions are unasserted illustrations
 // and must not pile onto a following example's stack.
@@ -204,8 +204,9 @@ func isSetupLine(code string, setupOpen int) bool {
 		first = first[:sp]
 	}
 	switch first {
-	case "def", "undef", "use", "context", "set", "ctx-set", "import":
-		// `import "mod"` (forward form) and the binding statements.
+	case "def", "var", "undef", "use", "context", "set", "ctx-set", "import":
+		// `import "mod"` (forward form) and the binding statements (`var`
+		// declares the one binding whose value changes in place).
 		return true
 	}
 	// A module-import statement in prefix order — `import "mod"` or

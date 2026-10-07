@@ -9,6 +9,8 @@ import (
 // TestBranchArmSideEffectLeftover pins the fix for a branch arm that leaves an IGNORED
 // side-effect call's result BELOW its single trailing result. A 0-return swap helper
 // applied in an `each`-driven `if` arm — `[ arr i j swap-at end 0 ]` — leaves a value
+// (the body binds its element with `def i end`, the stack-valued def: a lambda
+// body would count the leftovers as returns) and
 // on the sim stack the fragment analysis already netted out (residualN==1, the trailing
 // `0`), so the arm declined "branch leaves extra values". The lowerer now DROPS the
 // ignored side-effect results (they already ran). This is the pancake/tim sort-chain
@@ -18,7 +20,7 @@ import (
 func TestBranchArmSideEffectLeftover(t *testing.T) {
 	const swapMod = `import module [
   def sw fn [[j:Integer i:Integer a:FlexList] [] [ def t (a get i) a set i (a get j) end a set j t end ]]
-  def srt fn [[xs:List] [List] [ def arr (flex xs) def _ (iota 3 each [ var [[i] if ((arr get i) gt (arr get (i add 1))) [ arr (i add 1) i sw end 0 ] [0] ] ]) (node arr) ]]
+  def srt fn [[xs:List] [List] [ def arr (flex xs) def _ (iota 3 each [ def i end if ((arr get i) gt (arr get (i add 1))) [ arr (i add 1) i sw end 0 ] [0] ]) (node arr) ]]
   export "M" {srt: srt/v}
 ] end `
 	strict := []struct{ name, src, want string }{
@@ -32,9 +34,9 @@ func TestBranchArmSideEffectLeftover(t *testing.T) {
 		// The each leaves the whole arm residual and trims to the top per iteration, so
 		// the arm compiles as a variadic multi-value (fragMulti) — the heap/intro leaf.
 		{"multi-value arm: one computed value then a const",
-			`(iota 3 each [ var [[i] if (i lt 5) [ (i add 100) end 0 ] [7] ] ])`, "[[0 0 0]]"},
+			`(iota 3 each [ def i end if (i lt 5) [ (i add 100) end 0 ] [7] ])`, "[[0 0 0]]"},
 		{"multi-value arm: two computed values then a const",
-			`(iota 3 each [ var [[i] if (i lt 1) [ (i add 100) end (i add 200) end 0 ] [7] ] ])`, "[[0 7 7]]"},
+			`(iota 3 each [ def i end if (i lt 1) [ (i add 100) end (i add 200) end 0 ] [7] ])`, "[[0 7 7]]"},
 	}
 	for _, c := range strict {
 		t.Run(c.name, func(t *testing.T) {

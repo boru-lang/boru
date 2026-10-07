@@ -7,9 +7,8 @@ import (
 	core "github.com/boru-lang/boru/core/go"
 )
 
-// The var word's typed-name form (VarTypedHandler), reachable through its
-// deferred signature once the `var [[…]]` construct is gone (native_var.go's
-// registration note) and pinned here meanwhile: the annotation must name a
+// The var word's typed-name form (VarTypedHandler), def's sibling, pinned
+// at the handler: the annotation must name a
 // type; the declaration and every assignment check the value against it; a
 // typed re-declaration of a live var is refused.
 func TestVarTypedHandler(t *testing.T) {
@@ -82,13 +81,15 @@ func TestVarTypedHandler(t *testing.T) {
 	if err := call(VarWordHandler, NewAtom("n"), core.NewCarrier(TString)); err == nil {
 		t.Error("a carrier of another type is refused")
 	}
-	// The deferred forms: the typed-name map form and the string-name form,
-	// def's siblings, each check-mode and all-forward.
-	deferred := VarWordDeferredSignatures()
-	if len(deferred) != 2 || !deferred[0].Args[0].Equal(TMap) || !deferred[0].NoEvalMapArgs[0] ||
-		!deferred[1].Args[0].Equal(TString) || deferred[0].BarrierPos != -1 || deferred[1].BarrierPos != -1 ||
-		!deferred[0].RunInCheckMode() || !deferred[1].RunInCheckMode() {
-		t.Errorf("the deferred forms: %+v", deferred)
+	// The three forms, def's siblings in def's order — the typed-name map
+	// form, the string name, the quoted name — each check-mode and
+	// all-forward.
+	sigs := varWordSignatures
+	if len(sigs) != 3 || !sigs[0].Args[0].Equal(TMap) || !sigs[0].NoEvalMapArgs[0] ||
+		!sigs[1].Args[0].Equal(TString) || !sigs[2].Args[0].Equal(TAtom) || !sigs[2].QuoteArgs[0] ||
+		sigs[0].BarrierPos != -1 || sigs[1].BarrierPos != -1 || sigs[2].BarrierPos != -1 ||
+		!sigs[0].RunInCheckMode() || !sigs[1].RunInCheckMode() || !sigs[2].RunInCheckMode() {
+		t.Errorf("the var word's forms: %+v", sigs)
 	}
 	// A unify that answers with the type's own node keeps the value.
 	if err := call(VarTypedHandler, typed("f", NewTypeLiteral(TNumber)), NewInteger(3)); err != nil {
@@ -96,5 +97,29 @@ func TestVarTypedHandler(t *testing.T) {
 	}
 	if v, _ := r.Defs.Top("f"); core.IsBareTypeNode(v) || v.String() != "3" {
 		t.Errorf("the value, not the type node, is held: %v", v)
+	}
+}
+
+// TestVarWordRefusesCapturedVar pins the frame rule on a CAPTURED var
+// (core.InstallCapturedBinding: a frame binding marked Var): the closure
+// reads the var's value, and `var NAME v` over it is a var_error — a var of
+// another frame, the module's and an enclosing fn's alike. A captured DEF
+// of the same name is no var: the statement declares the closure's own.
+func TestVarWordRefusesCapturedVar(t *testing.T) {
+	r := newTestRegistry(t)
+	core.InstallCapturedBinding(r, core.CapturedBinding{Name: "s", Value: NewInteger(5), Var: true})
+	_, err := VarWordHandler([]Value{NewAtom("s"), NewInteger(0)}, nil, nil, r)
+	if err == nil || !strings.Contains(err.Error(), "cannot assign a var of an enclosing frame") {
+		t.Fatalf("assigning a captured var: %v, want the frame rule's var_error", err)
+	}
+	if v, _ := r.Defs.Top("s"); v.String() != "5" || r.Defs.Depth("s") != 1 {
+		t.Errorf("the captured value must stand: %v depth %d", v, r.Defs.Depth("s"))
+	}
+	core.InstallCapturedBinding(r, core.CapturedBinding{Name: "d", Value: NewInteger(5)})
+	if _, err := VarWordHandler([]Value{NewAtom("d"), NewInteger(0)}, nil, nil, r); err != nil {
+		t.Fatalf("a var over a captured def declares: %v", err)
+	}
+	if e, ok := r.Defs.TopEntry("d"); !ok || !e.Var || r.Defs.Depth("d") != 2 {
+		t.Errorf("the closure's own var shadows the captured def: %+v depth %d", e, r.Defs.Depth("d"))
 	}
 }

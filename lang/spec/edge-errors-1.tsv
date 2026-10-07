@@ -59,7 +59,7 @@ do [do [raise inner_c "i"]] error [dot code] eq inner_c/q	true	do-without-error 
 # (dropped) FOUND MISCOMPILE — `5 do [raise aa "x"] error [drop 9] add 1`: compiled `14 1` vs interpreted `5 10` (forward collection reaches across the error-handler residual boundary). Reproducer in design/EDGE-SPEC-FINDINGS.0.md.
 # (dropped) do/error handler shape compiles with an OpFallback island (sound); kept out of the corpus to hold islandGate=1
 # (dropped) empty-handler error shape islands (sound); same disposition as :60
-do [raise aa "x"] error [var [[e] e.code]] eq aa/q	true	var-binding the caught Error works like any handler read
+do [raise aa "x"] error [([e] => [e.code]) apply] eq aa/q	true	lambda-binding the caught Error works like any handler read
 do [1 2 3] error [drop 0] add	1 5	a multi-value success residual passes through untouched
 #
 # ─────────────────────────────────────────────────────────────────────

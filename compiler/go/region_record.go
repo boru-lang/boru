@@ -83,6 +83,15 @@ func tryRecordRegion(win core.CollectWindow, reg *core.Registry, w core.WordInfo
 	if reg == nil || win == nil || at < 0 || at >= win.Len() {
 		return
 	}
+	// A fn VALUE at the lead — a lambda applied in a paren group,
+	// `(([a b] => [a add b]) 1 2)` — reaches the collection walk as a word
+	// with no name. A LeadWord descriptor resolves its lead live BY NAME, so
+	// there is nothing to record for it (Validate refuses the nameless
+	// descriptor: code-bodies.tsv's applied-lambda rows, 2026-10-07); the
+	// value's own apply lowering owns the dispatch.
+	if w.Name == "" {
+		return
+	}
 	es, _ := reg.Check.Recorder().(*EmitState)
 	if es == nil || !es.Active() || es.SuspendedNow() {
 		return

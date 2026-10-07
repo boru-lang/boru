@@ -1841,7 +1841,7 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	// Install lexical captures first so params (installed below)
 	// shadow same-named captures — innermost binding wins.
 	for _, cb := range captures {
-		InstallFrameBinding(r, cb.Name, cb.Value)
+		InstallCapturedBinding(r, cb)
 		names = append(names, cb.Name)
 	}
 

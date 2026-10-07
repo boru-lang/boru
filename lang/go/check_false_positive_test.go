@@ -165,7 +165,7 @@ func loadImportedLib(t *testing.T, lib string) *Boru {
 // the variadic / fn-value / dynamic seams it already skips.
 func TestCheckNoFalsePositiveCrossModuleZeroReturnHelper(t *testing.T) {
 	lib := `def validate fn [[name:String lst:List] [] [
-  def _ (iota (lst size) each [ var [[i] if (((lst get i) is Integer) not) [ raise bad_input name ] [0] ] ])
+  def _ (iota (lst size) each [ ([i] => [if (((lst get i) is Integer) not) [ raise bad_input name ] [0]]) apply ])
 ]]
 def mysort fn [[lst:List] [List] [
   lst "mysort" validate

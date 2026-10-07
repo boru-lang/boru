@@ -145,14 +145,13 @@ func gen(r *rand.Rand, c cat, depth int, scope []string) *gnode {
 			return &gnode{op: "eachtail", cat: cList, ecat: cInt, n: r.Intn(6),
 				kids: []*gnode{genLitList(r), ebody}}
 		case 6:
-			// `(<litList> each [var [[v] <body using v> <lit>]])` — the var-block
-			// closure-body idiom (a let-binding plus a trailing throwaway literal,
-			// so each element maps to the literal). `var` SPLICES its body, so it
-			// declines inside the closure probe and the each body bakes as an
-			// interpreted const the handler runs per element — the path the var
-			// clean-compile failure path enabled. The body still executes
-			// (side effects / errors are compared for taxonomy parity), but the
-			// mapped value is the trailing literal.
+			// `(<litList> each ([v] => [<body using v> drop <lit>]))` — the
+			// lambda-callback idiom (a parameter binding plus a trailing
+			// throwaway literal, so each element maps to the literal; the
+			// body's own value is dropped, since a lambda body answers exactly
+			// one value). The body still executes (side effects / errors are
+			// compared for taxonomy parity), but the mapped value is the
+			// trailing literal.
 			vbody := gen(r, cInt, depth-1, append(append([]string{}, scope...), "v"))
 			return &gnode{op: "eachvar", cat: cList, ecat: cInt, n: r.Intn(6),
 				kids: []*gnode{genLitList(r), vbody}}
@@ -1027,12 +1026,12 @@ func render(n *gnode, scope []string) string {
 		return "(" + render(n.kids[0], scope) + " each [" + render(n.kids[1], nil) +
 			" " + fmt.Sprint(n.n) + "])"
 	case "eachvar":
-		// kids[0] = the literal list to iterate; kids[1] = the var-block body
-		// (an Integer expression that may reference the bound `v`); n = the
-		// trailing throwaway literal each element maps to.
+		// kids[0] = the literal list to iterate; kids[1] = the lambda body (an
+		// Integer expression that may reference the bound `v`), dropped; n =
+		// the trailing throwaway literal each element maps to.
 		vscope := append(append([]string{}, scope...), "v")
-		return "(" + render(n.kids[0], scope) + " each [var [[v] " +
-			render(n.kids[1], vscope) + " " + fmt.Sprint(n.n) + "]])"
+		return "(" + render(n.kids[0], scope) + " each ([v] => [" +
+			render(n.kids[1], vscope) + " drop " + fmt.Sprint(n.n) + "]))"
 	case "scan":
 		return "(" + render(n.kids[0], scope) + " scan [" + n.cmp + "])"
 	case "filter":

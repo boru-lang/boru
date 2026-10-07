@@ -1,3 +1,3 @@
 # Template harness higher-order each (plan Phase 5): a code-body each reading
 # an enclosing binding through the Stage-C dyn-scope route.
-import "boru:test" end Test.test "t" [1 eq 1] end Test.results each [ var [[r] (r get "ok")] ]	[true]
+import "boru:test" end Test.test "t" [1 eq 1] end Test.results each [ ([r] => [(r get "ok")]) apply ]	[true]

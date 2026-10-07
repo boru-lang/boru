@@ -6,7 +6,6 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | word | literal | lambda | named-fn | factory | container | module-export | computed |
 |---|---|---|---|---|---|---|---|
 | `__arm` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
-| `__varundef` | ✓ 13/14 | — | — | — | — | — | — |
 | `afn` | ✓ 13/14 | ✓ 13/14 | n/a | ✓ 11/14 | ✓ 12/14 | n/a | ✓ 13/14 |
 | `apply` | n/a | ✓ 14/14 | ✓ 13/14 | ✓ 4/14 | ✓ 14/14 | ✓ 12/14 | n/a |
 | `behave` | ✓ 13/14 | n/a | ✓ 13/14 | ✓ 12/14 | ✓ 13/14 | ✓ 12/14 | n/a |
@@ -53,7 +52,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 | `unpack` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | n/a |
 | `usurp` | ✓ 14/14 | ✓ 14/14 | ✓ 13/14 | ✓ 8/14 | ✓ 8/14 | ✓ 12/14 | n/a |
 | `valof` | ✓ 14/14 | — | — | — | — | — | — |
-| `var` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 12/14 |
+| `var` | ✓ 14/14 | ✓ 12/14 | ✓ 13/14 | ✓ 10/14 | ✓ 10/14 | ✓ 12/14 | ✓ 14/14 |
 | `walk` | ✓ 11/14 | ✓ 11/14 | ✓ 10/14 | ✓ 6/14 | ✓ 6/14 | ✓ 6/14 | ✓ 11/14 |
 | `while` | ✓ 13/14 | n/a | n/a | n/a | n/a | n/a | ✓ 13/14 |
 | `with-decimal` | ✓ 14/14 | n/a | n/a | n/a | n/a | n/a | ✓ 14/14 |
@@ -62,7 +61,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Cells
 
-- pass: 189
+- pass: 193
 - failed: 1
 - islanded: 2
 - DIVERGED: 0
@@ -70,7 +69,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - HUNG: 0
 - check-reject: 0
 - invalid: 0
-- n/a: 120
+- n/a: 115
 - n/a-STALE: 0
 - empty: 0
 
@@ -82,7 +81,6 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 
 ## Call-form variants that are not green
 
-- `__varundef` literal · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `afn` literal · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `afn` lambda · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `afn` factory · for-body — **declined** — fn 'mk' redefined inside a conditional body (branch/loop) shadows an outer overload
@@ -94,7 +92,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `apply` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `apply` factory · fn-body — **declined** — fn zzvfn: result above a literal (Stage 3)
 - `apply` factory · lambda-body — **declined** — fn zzvlam: result above a literal (Stage 3)
-- `apply` factory · do-body — **declined** — unconsumed fn-value carrier in residual (closure render)
+- `apply` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `apply` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `apply` factory · if-then — **declined** — stack discipline: result operand of (…fn) is not on top
 - `apply` factory · if-else — **declined** — stack discipline: result operand of (…fn) is not on top
@@ -299,7 +297,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `scan` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `stack-args` named-fn · for-body — **declined** — fn 'sub2' redefined inside a conditional body (branch/loop) shadows an outer overload
 - `stack-args` factory · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)
-- `stack-args` factory · do-body — **declined** — unconsumed fn-value carrier in residual (closure render)
+- `stack-args` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `stack-args` factory · do-catch — **declined** — do: variadic result promoted to frame slots (runtime count differs from the static seat)
 - `stack-args` factory · if-then — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `stack-args` factory · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
@@ -307,7 +305,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `stack-args` factory · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `stack-args` factory · module-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `stack-args` container · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)
-- `stack-args` container · do-body — **declined** — unconsumed fn-value carrier in residual (closure render)
+- `stack-args` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `stack-args` container · do-catch — **declined** — do: variadic result promoted to frame slots (runtime count differs from the static seat)
 - `stack-args` container · if-then — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `stack-args` container · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
@@ -332,8 +330,19 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `usurp` container · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` module-export · for-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `usurp` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `var` computed · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
-- `var` computed · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `var` lambda · for-body — **interp-reject** — [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:45   1 | for 2 [var f ([n:Integer…
+- `var` lambda · each-body — **interp-reject** — each: element 1: [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:57   1 | [10 20]…
+- `var` named-fn · for-body — **declined** — fn 'inc' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `var` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `var` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `var` factory · for-body — **interp-reject** — [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:80   1 | for 2 [def mk fn [[][Fun…
+- `var` factory · each-body — **interp-reject** — each: element 1: [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:92   1 | [10 20]…
+- `var` container · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `var` container · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
+- `var` container · for-body — **interp-reject** — [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:64   1 | for 2 [def m {f: ([n:Int…
+- `var` container · each-body — **interp-reject** — each: element 1: [boru/signature_error]: cannot call `f` — no signature matches the arguments   --> 1:76   1 | [10 20]…
+- `var` module-export · for-body — **declined** — fn 'f' redefined inside a conditional body (branch/loop) shadows an outer overload
+- `var` module-export · each-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `walk` literal · lambda-body — **interp-reject** — [boru/type_error]: zzvlam: expected 1 return value(s), got 2 — [{a:1 b:[2 3]} 5]   --> 1:117   1 | def zzvlam ([] => […
 - `walk` literal · for-body — **declined** — stack discipline: result operand of size is not on top
 - `walk` literal · prefix-stack — **interp-reject** — [boru/walk_error]: walk: hook must be a quotation list or a lambda   --> 1:25   1 | 7 def acc (flex []) end walk {mode: …
@@ -385,7 +394,7 @@ _Rows: every declaration-relevant word of the default registry. Columns: the ope
 - `word` named-fn · each-body — **declined** — fn each$body: arm-resident def `dbl` of unknown provenance
 - `word` factory · fn-body — **declined** — unconsumed fn-value carrier in residual (closure render)
 - `word` factory · lambda-body — **declined** — fn zzvlam: unapplied fn-value in body residual (dynamic apply not compiled in a fn body)
-- `word` factory · do-body — **declined** — unconsumed fn-value carrier in residual (closure render)
+- `word` factory · do-body — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` factory · do-catch — **declined** — twin regime: a bind transition has no stream placement (a multi-run-body or post-trap twin), so the rollback would lose …
 - `word` factory · if-then — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)
 - `word` factory · if-else — **declined** — branch leaves extra values (Stage 2 lowers single-result branches)

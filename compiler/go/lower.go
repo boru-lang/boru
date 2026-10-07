@@ -1296,7 +1296,7 @@ func (lw *lowerer) emitDeoptsBefore(p core.SrcPos) {
 		}
 		if d.id != "" && d.slot < 0 && d.live == nil && lw.topEvents != nil && producerAhead(lw.topEvents, lw.topIdx, d.seq) && lw.armReadSites(d.id) {
 			// The read's value is produced inside the statement the point
-			// would test before (`var [[] def v (mk) [v]]`), where its test
+			// would test before (`do [def v (mk) [v]]`), where its test
 			// reads a home not yet written: no island can start there, so
 			// the read is guarded where it happens (NUR361).
 			continue

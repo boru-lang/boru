@@ -2098,29 +2098,30 @@ func TestCodequoteCompilesNative(t *testing.T) {
 }
 
 // Found via the voxgig-boru/decision project's diverge.sh (--force-compile over
-// suites that use `each [var [[v] … 0]]`). `var` is a block-with-locals (let)
-// word: its handler SPLICES def/body/undef tokens onto the tape for the engine
-// to re-step. RunInCheckMode lets the recorder FOLLOW that splice, so the inline
-// let lowers as its body's events with the bound names as promoted value-def
-// locals — exactly as a hand-written `def NAME val end … undef NAME` compiles.
-// The body's words (including a fn param/loop-var/capture referenced inside it)
-// resolve to their VM frame slots because they record into the SAME open unit,
-// so the historical frame-local divergence cannot arise.
+// suites that use `each ([v] => [… 0])`). A block with locals is a lambda
+// call — its params are frame slots of its own unit — and a mutable cell is
+// the `var` word, a replace of the name's cell (design/IMMUTABLE-DEF.1.md
+// §2.3). Both lower inside the open unit, so the historical frame-local
+// divergence (a body's words resolving against the registry where the VM
+// holds the frame) cannot arise.
 func TestVarCompilesAsLet(t *testing.T) {
-	// Top-level `var` compiles as a let, byte-identical to the interpreter.
+	// A top-level lambda call and the var word both compile, byte-identical to
+	// the interpreter.
 	for _, c := range []struct {
 		src  string
 		want string
 	}{
-		{`5 var [[v] v add 1]`, "[6]"},
-		{`def r (5 var [[v] v 0]) r`, "[0 5]"},
+		{`5 ([v] => [v add 1]) apply`, "[6]"},
+		{`def r (5 ([v] => [v drop 0]) apply) r`, "[0]"},
+		{`var v 5 end var v (v add 1) end v`, "[6]"},
+		{`var n 0 end for 3 [var n (n add 1)] end n`, "[3]"},
 	} {
 		prog, _, _, cerr := mustNew(t).CompileCheck(c.src)
 		if cerr != nil {
 			t.Fatalf("%q: unexpected check error %v", c.src, cerr)
 		}
 		if prog == nil {
-			t.Errorf("%q: expected a compiled Program (var compiles as a let)", c.src)
+			t.Errorf("%q: expected a compiled Program (a lambda call / the var word compiles)", c.src)
 		}
 		got, compiled, err := mustNew(t).RunCompiled(c.src)
 		if noteCompileDefect(t, c.src, got, err) {
@@ -2137,17 +2138,17 @@ func TestVarCompilesAsLet(t *testing.T) {
 		}
 	}
 
-	// A `var` block inside an `each` body compiles as the closure's let, including
-	// the CAPTURING case (the body names a fn param `a`): the param records to its
+	// A lambda inside an `each` compiles as its own closure unit, including the
+	// CAPTURING case (the body names a fn param `a`): the param records to its
 	// closure capture slot, so the compiled run matches the interpreter — the very
 	// frame-local divergence the const-bake path could not handle.
 	for _, c := range []struct {
 		src  string
 		want string
 	}{
-		{`def xs [1 2 3] (xs each [var [[v] v mul 2]])`, "[[2 4 6]]"},
-		{`def xs [1 2 3] (xs each [var [[v] v 0]])`, "[[0 0 0]]"},
-		{`def f0 fn [[a:Integer] [Integer] [(size ([0] each [var [[v] a 2]]))]] (f0 2)`, "[1]"},
+		{`def xs [1 2 3] (xs each ([v] => [v mul 2]))`, "[[2 4 6]]"},
+		{`def xs [1 2 3] (xs each ([v] => [v drop 0]))`, "[[0 0 0]]"},
+		{`def f0 fn [[a:Integer] [Integer] [(size ([0] each ([v] => [a drop 2])))]] (f0 2)`, "[1]"},
 	} {
 		got, compiled, err := mustNew(t).RunCompiled(c.src)
 		if noteCompileDefect(t, c.src, got, err) {
@@ -2165,18 +2166,14 @@ func TestVarCompilesAsLet(t *testing.T) {
 		}
 	}
 
-	// A var-body that REACHES INTO the each element (`s get a/q`, where `s` is the
-	// element carrier) compiles to its closure unit and is byte-identical to the
-	// interpreter ([1 2]). This row previously DECLINED, but the compile failure was the
-	// var-cleanup `undef s` mis-dispatching to the 2-arg `undef name fnUndefSpec`
-	// form (the dynamic-Any body residual gradually matched TFnUndef in check
-	// mode) and erroring — NOT, as once believed, a `get`-rejects-under-typed-map
-	// imprecision. With the cleanup routed through the 1-arg-only `__varundef`
-	// (native_definition.go) the body analyses cleanly and compiles. The broader
-	// armed-body-error soundness gate in AnalyseFnBody (a GENUINE check-mode body
-	// error still marks the program uncompilable) is exercised by the whole-corpus
-	// differential.
-	const reach = `def data [{a:1} {a:2}] (data each [var [[s] (s dot a/q)]])`
+	// A lambda body that REACHES INTO the each element (`s get a/q`, where `s` is
+	// the element carrier) compiles to its closure unit and is byte-identical to
+	// the interpreter ([1 2]). (As a `var [[s] …]` body this row once DECLINED on
+	// the construct's own cleanup dispatch; the construct is gone — the lambda
+	// is the shape.) The broader armed-body-error soundness gate in
+	// AnalyseFnBody (a GENUINE check-mode body error still marks the program
+	// uncompilable) is exercised by the whole-corpus differential.
+	const reach = `def data [{a:1} {a:2}] (data each ([s] => [(s dot a/q)]))`
 	prog, _, _, cerr := mustNew(t).CompileCheck(reach)
 	if cerr != nil {
 		t.Fatalf("reach each-var: unexpected check error %v", cerr)
@@ -2263,7 +2260,7 @@ func TestInterpStringRuntimePartCompiles(t *testing.T) {
 	// time) rather than declining the program. Compiled == interp, no carrier leak,
 	// and the interpolation itself is native — no string-interp island.
 	const src = `def rs [{name:"a"} {name:"b"}]
-(rs each [var [[r] def nm (r "name" get) ` + "`x ${nm}`" + ` ]])`
+(rs each ([r] => [def nm (r "name" get) ` + "`x ${nm}`" + ` ]))`
 	prog, reason, _, _ := mustNew(t).CompileCheck(src)
 	if prog == nil {
 		t.Fatalf("a runtime-valued interpolation must now compile via OpInterp, declined: %s", reason)

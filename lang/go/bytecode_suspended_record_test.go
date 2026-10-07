@@ -24,25 +24,23 @@ module [
   import "boru:string-util"
   def split-seg fn [ [s:String] [List] [
     def out (flex [])
-    def res (do {cur:[""] q:[""]} (iota (s size)) [ var [[i acc]
-      def ch  (slice i (i add 1) s)
+    def res (do {cur:[""] q:[""]} (iota (s size)) [ ([i acc] => [def ch  (slice i (i add 1) s)
       def cur (acc get "cur")
       def q   (acc get "q")
       if (q eq "")
         [ if (ch eq ",")
             [ def _ (out push cur)  do {cur:[""] q:[""]} ]
             [ do {cur:[(StringUtil.concat [cur ch])] q:[""]} ] ]
-        [ do {cur:[(StringUtil.concat [cur ch])] q:[q]} ]
-    ] ] fold)
+        [ do {cur:[(StringUtil.concat [cur ch])] q:[q]} ]]) apply ] fold)
     def _2 (out push (res get "cur"))
     slice 0 (out size) out
   ] ]
   def mid fn [ [seg:String acc:String] [String] [
-    def parts ((split-seg seg) each [ var [[a] (StringUtil.trim a) ] ])
+    def parts ((split-seg seg) each [ ([a] => [(StringUtil.trim a)]) apply ])
     StringUtil.concat [acc "/" (StringUtil.concat parts {sep:","})]
   ] ]
   def join-segs fn [ [xs:List] [String] [
-    ("" xs [ var [[seg acc] (mid seg acc) ] ] fold)
+    ("" xs [ ([seg acc] => [(mid seg acc)]) apply ] fold)
   ] ]
   export "M" { run: join-segs/v }
 ] import

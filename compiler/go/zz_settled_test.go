@@ -27,7 +27,6 @@ func TestInactiveEmitMethods(t *testing.T) {
 	e.CondBodyGuard()()
 	e.KeepDefsBodyGuard(nil, "")()
 	e.MultiRunBodyGuard(nil, "b")()
-	e.RecordDynUndef("x", core.SrcPos{})
 	e.FnBodyGuard()()
 	e.BindRegistry(nil)
 

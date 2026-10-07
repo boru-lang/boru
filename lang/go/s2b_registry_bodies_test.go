@@ -81,7 +81,7 @@ func TestSingleOverloadUserFnOverImpreciseOperandCompiles(t *testing.T) {
 	pre := `import module [def go fn [[m:Map k:String d:Any][Any][def v (m get k) if (v is None) [d] [v]]] def nd fn [[s:String][String][s]] def ds fn [[xs:List][List][xs]] `
 	for _, c := range []struct{ body, call, want string }{
 		{`def f fn [[raw:Map][Map][def al (each [nd] (go raw "aliases" [])) {aliases:(ds al)}]]`, `def b (K.f {aliases:["x"]}) end b.aliases`, "[['x']]"},
-		{`def f fn [[raw:Map][Map][{aliases:(ds (each [var [[a] nd a]] (go raw "aliases" [])))}]]`, `def b (K.f {aliases:["x" "y"]}) end b.aliases`, "[['x' 'y']]"},
+		{`def f fn [[raw:Map][Map][{aliases:(ds (each ([a] => [nd a]) (go raw "aliases" [])))}]]`, `def b (K.f {aliases:["x" "y"]}) end b.aliases`, "[['x' 'y']]"},
 		{`def f fn [[raw:Map][Map][def al (each [nd] (go raw "aliases" [])) {aliases:(ds al)}]]`, `def b (K.f {aliases:[]}) end b.aliases`, "[[]]"},
 	} {
 		src := pre + c.body + ` export "K" {f: f/v}] end ` + c.call

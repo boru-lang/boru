@@ -19,7 +19,7 @@ var frameStateWords = map[string]bool{
 	"def": true, "undef": true, // bind / unbind in scope
 	"fn": true, "afn": true, // construct an inner fn (reads baseline)
 	"do": true, "call": true, "eval": true, // run code in the current scope
-	"var":    true,                                 // scoped temporaries desugar to def
+	"var":    true,                                 // declare / assign a var in scope
 	"word":   true,                                 // splice unevaluated code into the stream
 	"module": true, "import": true, "export": true, // module-scope binding
 	"usurp": true, "behave": true, // word / type-behavior modification
@@ -266,7 +266,7 @@ func ComputeCaptures(r *Registry, sig *FnSig) []CapturedBinding {
 			paramNames[p.Name] = true
 		}
 	}
-	// Names bound by a `def NAME …` (or `var [[NAME …] …]`) INSIDE this body are
+	// Names bound by a `def NAME …` (or `var NAME …`) INSIDE this body are
 	// the body's OWN locals — the closure-body compile promotes them to frame
 	// slots, so they are never captures, even though an analysis sub-engine run of
 	// the body leaves them bound in r ABOVE the enclosing-fn baseline (which would
@@ -274,7 +274,7 @@ func ComputeCaptures(r *Registry, sig *FnSig) []CapturedBinding {
 	// body-local-value-def leaf: an each body `[def j (cur get 0) j]` must capture
 	// only `cur` (the genuine enclosing binding), not its own `j`.
 	bodyLocals := map[string]bool{}
-	CollectBodyLocalDefs(sig.Body(), bodyLocals)
+	CollectBodyLocalDefs(r, sig.Body(), bodyLocals)
 	seen := map[string]Value{}
 	WalkBodyWords(sig.Body(), func(w WordInfo, _ Value) {
 		if w.Name == "" || paramNames[w.Name] || bodyLocals[w.Name] {
@@ -318,23 +318,42 @@ func ComputeCaptures(r *Registry, sig *FnSig) []CapturedBinding {
 // body's closure (each, fold, …) is analysed inside the specialised analysis
 // and takes plain ComputeCaptures. The decline is a no-op outside a
 // specialised analysis.
+//
+// A fn VALUE is a frame of its own, so a captured VAR cell is marked as one
+// (CapturedBinding.Var): the value reads as every capture does, and `var
+// NAME v` inside the value is a var of another frame — never an assignment
+// (§2.3). Plain ComputeCaptures leaves the mark off: a CODE body (each,
+// fold, …) is the frame that wrote it, where `var t 1` on a later run
+// assigns the cell the first run declared — the unit compiled for it keeps
+// the capture assignable as before.
 func ComputeFnValueCaptures(r *Registry, sig *FnSig) []CapturedBinding {
 	out := ComputeCaptures(r, sig)
-	for _, cb := range out {
+	for i, cb := range out {
 		if r.Check.SpecParamNames[cb.Name] {
 			r.Check.SpecDeclined = true
 		}
+		_, out[i].Var = IsVarBinding(r, cb.Name)
 	}
 	return out
 }
 
-// collectBodyLocalDefs gathers the names a body binds for ITSELF — `def NAME …`
-// at any non-closure depth, plus `var [[NAME …] …]` temporaries — into locals.
-// These are frame-locals of the body being analysed, NOT captures (see
-// ComputeCaptures). It recurses into list / paren tokens but NOT into a nested
-// FnDefInfo (an inner closure owns its own locals + capture analysis), mirroring
+// CollectBodyLocalDefs gathers the names a body binds for ITSELF — `def NAME …`
+// at any non-closure depth, plus the var cells the body DECLARES (`var NAME …`
+// over a name that is not a visible var) — into locals. These are
+// frame-locals of the body being analysed, NOT captures (see ComputeCaptures).
+// It recurses into list / paren tokens but NOT into a nested FnDefInfo (an
+// inner closure owns its own locals + capture analysis), mirroring
 // walkBodyValue's descent rules.
-func CollectBodyLocalDefs(body []Value, locals map[string]bool) {
+//
+// `var NAME …` over a var that is ALREADY visible on r is bindVar's ASSIGNMENT
+// arm (the name's top binding is a var): the statement replaces that cell in
+// place and binds nothing of the body's own, so the body reads and assigns it
+// live, as the interpreter does. Counted as a local it became a fresh slot of
+// the body's unit, and the enclosing fn's read after the body lost its
+// provenance — `def f fn [[xs:List] [Integer] [var s 0 def _ (each [var s (s
+// add 1)] xs) s]]` declined compiled (var.tsv L36, 2026-10-07). r is the
+// registry the body is analysed on; nil knows no vars.
+func CollectBodyLocalDefs(r *Registry, body []Value, locals map[string]bool) {
 	for i := 0; i < len(body); i++ {
 		v := body[i]
 		if v.Quoted {
@@ -345,42 +364,37 @@ func CollectBodyLocalDefs(body []Value, locals map[string]bool) {
 		}
 		if w, err := AsWord(v); err == nil {
 			switch w.Name {
-			case "def":
-				// def NAME … — NAME is the next bare-word token.
+			case "def", "var":
+				// def NAME … / var NAME … — NAME is the next bare-word token.
 				if i+1 < len(body) {
-					if nw, nerr := AsWord(body[i+1]); nerr == nil && nw.Name != "" {
+					if nw, nerr := AsWord(body[i+1]); nerr == nil && nw.Name != "" &&
+						!(w.Name == "var" && assignsVisibleVar(r, nw.Name)) {
 						locals[nw.Name] = true
-					}
-				}
-			case "var":
-				// var [[NAME …] body] — the decl list's first element holds the
-				// temporary names; they desugar to `def NAME` at run time.
-				if i+1 < len(body) && body[i+1].Parent.Equal(TList) && body[i+1].Data != nil {
-					if outer, lerr := AsList(body[i+1]); lerr == nil {
-						elems := outer.Slice()
-						if len(elems) > 0 && elems[0].Parent.Equal(TList) && elems[0].Data != nil {
-							if decls, derr := AsList(elems[0]); derr == nil {
-								for _, d := range decls.Slice() {
-									if dw, dwe := AsWord(d); dwe == nil && dw.Name != "" {
-										locals[dw.Name] = true
-									}
-								}
-							}
-						}
 					}
 				}
 			}
 		}
 		if v.Parent.Equal(TList) && v.Data != nil {
 			if lst, lerr := AsList(v); lerr == nil {
-				CollectBodyLocalDefs(lst.Slice(), locals)
+				CollectBodyLocalDefs(r, lst.Slice(), locals)
 			}
 		} else if IsParenExpr(v) {
 			if toks, perr := AsParenExpr(v); perr == nil {
-				CollectBodyLocalDefs(toks, locals)
+				CollectBodyLocalDefs(r, toks, locals)
 			}
 		}
 	}
+}
+
+// assignsVisibleVar reports whether `var name …` on r assigns an existing
+// var — the name's top binding is a var cell (bindVar's rule) — rather than
+// declaring one.
+func assignsVisibleVar(r *Registry, name string) bool {
+	if r == nil {
+		return false
+	}
+	_, isVar := IsVarBinding(r, name)
+	return isVar
 }
 
 // MergeCaptures combines per-sig capture lists into a single

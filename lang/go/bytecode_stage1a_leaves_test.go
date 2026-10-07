@@ -52,7 +52,7 @@ func stage1aCompiles(t *testing.T, src string) {
 // stats accumulator idiom. Must compile and match the interpreter.
 func TestFlexCaptureInEachBodyCompiles(t *testing.T) {
 	stage1aCompiles(t, `def acc (flex [0])
-def _ ([1 2 3] each [ var [[x] (acc set 0 ((acc get 0) add x)) drop 0 ] ])
+def _ ([1 2 3] each [ ([x] => [(acc set 0 ((acc get 0) add x)) drop 0]) apply ])
 (acc get 0)`)
 }
 
@@ -60,7 +60,7 @@ def _ ([1 2 3] each [ var [[x] (acc set 0 ((acc get 0) add x)) drop 0 ] ])
 // freeze the first value) — the accumulated sum pins the shared identity.
 func TestFlexCaptureSharedAcrossIterations(t *testing.T) {
 	stage1aSound(t, `def acc (flex [1])
-def _ ([2 3 4] each [ var [[x] (acc set 0 ((acc get 0) mul x)) drop 0 ] ])
+def _ ([2 3 4] each [ ([x] => [(acc set 0 ((acc get 0) mul x)) drop 0]) apply ])
 (acc get 0)`)
 }
 
@@ -76,7 +76,7 @@ def specs [
   { name: "b"
     cases: [ { in: [ (make Box {v:2}) ] out: 2 } ] }
 ]
-def outs (specs each [ var [[s] (((s get "cases") get 0) get "out") ] ])
+def outs (specs each [ ([s] => [(((s get "cases") get 0) get "out")]) apply ])
 outs`)
 }
 

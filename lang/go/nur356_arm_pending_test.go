@@ -50,9 +50,6 @@ func TestNUR356ArmPendingLiteralDeclines(t *testing.T) {
 		{`def c true end if c [[print "q" 2]] [3] end print "a"`, "[[2]]"},
 		{`def c true end def f fn [[] [Any] [if c [[print "q" 2]] [3] end print "a"]] end f`, "[[2]]"},
 		{`def c true end for 2 [if c [[print "q" 2]] [3] end print "a"]`, "[[2] [2]]"},
-		// A var body's parameter is unbound before the body's residual is
-		// evaluated: the interpreter's read of it fails.
-		{`def cid "a" end each [var [[e] if (e eq cid) [[e]] [[]]]] ["a" "b"]`, "ERROR:undefined word: e"},
 		// A code-body slot takes the literal raw: each runs it per element.
 		{`def c true end [3 4] each (if c [[print "q" 1]] [[5]])`, "[[1 1]]"},
 		// A call whose param contract refuses it at run time reports the
@@ -69,8 +66,8 @@ func TestNUR356ArmPendingLiteralDeclines(t *testing.T) {
 // the literal at once (the program's, a fn frame's, a loop iteration's, an
 // enclosing literal's element run), a committed word or a def takes it, a
 // literal of scalars evaluates to itself, a `case` block ends where it is
-// evaluated, and a var body's teardown unbinds a name the literal does not
-// read.
+// evaluated, and a lambda's parameter stays bound while its arm's literal
+// is evaluated.
 func TestNUR356ArmPendingLiteralCompiles(t *testing.T) {
 	const x = `def x 1 end def c true end `
 	for _, tc := range []struct{ src, want string }{
@@ -86,7 +83,11 @@ func TestNUR356ArmPendingLiteralCompiles(t *testing.T) {
 		{x + `do [if c [[x]] [0]] end def x 2 end`, "[[1]]"},
 		{`def x 1 end def c 1 end case c [1 [[x]] 2 [3]] end def x 2 end`, "[1 [1]]"},
 		{`def c true end if c [[print "q" 2]] [3] end`, "[[2]]"},
-		{`def cid "a" end each [var [[e] def efrom (e get "from") def eto (e get "to") if (efrom eq cid) [[eto]] [if (eto eq cid) [[efrom]] [[]]]]] [{from:"a" to:"b"} {from:"c" to:"a"} {from:"x" to:"y"}]`, "[[['b'] ['c'] []]]"},
+		// A lambda's parameter is the body's own frame binding, live while the
+		// arm's literal is evaluated (the var construct's teardown unbound it
+		// first, so this shape used to fail the interpreter's read).
+		{`def cid "a" end each ([e] => [if (e eq cid) [[e]] [[]]]) ["a" "b"]`, "[[['a'] []]]"},
+		{`def cid "a" end each ([e] => [def efrom (e get "from") def eto (e get "to") if (efrom eq cid) [[eto]] [if (eto eq cid) [[efrom]] [[]]]]) [{from:"a" to:"b"} {from:"c" to:"a"} {from:"x" to:"y"}]`, "[[['b'] ['c'] []]]"},
 	} {
 		agreeOnBothLanes(t, tc.src, tc.want)
 	}

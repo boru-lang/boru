@@ -45,7 +45,7 @@ func TestRecordParam_FieldRecoverySound(t *testing.T) {
 // still recovers its type. compile == interpret either way.
 func TestRecordParam_CapturedFieldRecoverySound(t *testing.T) {
 	const src = `def C refine Record [x:Integer]
-		def f fn [[c:C] [List] [ iota 2 each [ var [[i] (c get "x") add i ] ] ]]
+		def f fn [[c:C] [List] [ iota 2 each [ ([i] => [(c get "x") add i]) apply ] ]]
 		def ok {x:10}
 		ok f`
 	recSound(t, src)

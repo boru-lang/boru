@@ -1483,3 +1483,142 @@ workaround; a program-defined comparator still islands
 **Proposed verdict:** resolve by fix.
 
 ---
+
+## NUR384 — a fn a computed body bound, applied with only the `do`'s result beneath the read, declines compiled {#nur384}
+
+**Status:** Pending · **Recorded:** 2026-10-07 (design/IMMUTABLE-DEF.1.md §5 phase 1, the `var` construct's removal) · measured on both lanes · loud (compile_failed)
+
+```
+def g fn [[][Integer][7]] end
+def x 0 end
+def mk fn [[][List][quote [def x g/v]]] end
+do (mk) end x/v apply
+  interpreted   7
+  compiled      compile_failed: unmatched dispatch recovered at apply
+```
+
+The `/v` read after the computed body is a GRADUAL Integer carrier
+(compiler `computedLeakGradual` keeps the pre-body tag as the bound), so
+`apply`'s `[Function]` slot misses it statically and the dispatch takes the
+no-match recovery (check `checkModeAssumeSig`). The recovery's rematch
+(core `TryRecordUnmatchedDispatchTrap`) needs a rendered window as wide as
+the word's widest overload — `[Reach Any]`, two operands — and the second
+operand here is the computed `do`'s own result, which has no rendering; it
+declines, the imprecise-carrier poly declines (`apply` re-steps its
+result), and the row falls to the interpreter. With a value beneath the
+read (`5 x/v apply`, `10 3 x/v apply`) the window renders and the rematch
+defers the dispatch to the interpreter at run time, so those rows compile.
+
+The row compiled until 2026-10-07 by accident: the recovery scored its
+candidate overloads in TAPE order against SIGNATURE-order slots, read the
+`do` result as `[Reach Any]`'s second operand, and poly-recorded a
+two-operand window the interpreter's dispatch never examines — the same
+mis-scoring that had `doc get (k)` assume get's None-receiver overload and
+commit a user poly's Any arm on a Map (`TestUserPolyAnyWrapperDispatch`).
+Scoring in signature order (`core.SigOrderPositions`) removed both. Pinned
+by lang `nur333_334_kept_defs_test.go` as counted ledger debt
+(`compileDefectCeiling` 334 → 335).
+
+**Proposed verdict:** resolve by fix — a dynamic fn-value apply whose
+window the model cannot render wants the interpreter's own match over the
+live stack (the `OpCallDynFrame` family), or the computed-leak read wants
+the untyped modality (dynamic Any) so the gradual `apply` event owns it.
+
+---
+
+## NUR385 — a root `each` body assigning a var from a `dup`'d stack value declines compiled {#nur385}
+
+**Status:** Pending · **Recorded:** 2026-10-07 (found writing TUTORIAL §14's running-total example) · measured on both lanes · loud (compile_failed)
+
+```
+var total 0  each [ total add dup var total ] [1 2 3]  drop total
+  interpreted   6
+  compiled      compile_failed: residual value of unknown provenance
+
+def f fn [[xs:List] [Integer] [var total 0  each [ total add dup var total ] xs  drop total]] f [1 2 3]
+  both lanes    6
+var total 0  each [ total add var total end total ] [1 2 3]  drop total
+  both lanes    6
+```
+
+The body adds the element to the var, duplicates the sum, assigns one copy
+back (`var total` with nothing written after the name takes its value from
+the stack) and leaves the other as the body's result. At the program ROOT
+the compiled lane cannot seat the body's residual — the `dup`'d value that
+feeds the stack-sourced assignment has no provenance the root's model
+tracks — and declines; the same body inside a fn compiles, and the `end`
+spelling (the assignment closed by `end`, the result read afresh) compiles
+at the root. The tutorial uses the `end` spelling.
+
+**Proposed verdict:** resolve by fix — a stack-sourced var assignment in a
+root body should seat like the same assignment in a fn body.
+
+---
+
+## NUR386 — a fn body's var refusal is a check stop compiled, not the run's trap {#nur386}
+
+**Status:** Pending · **Recorded:** 2026-10-07 (design/IMMUTABLE-DEF.1.md §5 phase 1, the frame rule made uniform) · measured on both lanes · loud (compile_failed)
+
+```
+var n 0 def inc fn [[] [Integer] [var n (n add 1)]] (inc)
+def g fn [[][List][var s 5 def f fn [[][Integer][var s 0 s]] [(f) s]]] (g)
+  interpreted   var_error: cannot assign a var of an enclosing frame
+  compiled      compile_failed: the check pass stopped at [fn_body_error] fn body analysis error for f: var_error: …
+
+var acc [] each ([x] => [var acc (push x acc)]) [1 2]
+def g fn [[][List][var s 5 [(each ([x] => [var s (s add x)]) [1 2]) s]]] (g)
+  both lanes    var_error: cannot assign a var of an enclosing frame (a trap at the site)
+```
+
+The frame rule (§2.3) refuses `var NAME v` over a var of another frame — the
+module's from a fn body, an enclosing fn's from a closure (the capture
+carries the cell's kind, `core.CapturedBinding.Var`, since 2026-10-07; a plain
+capture had let the closure declare or assign a copy silently). A CALLBACK
+lambda's body is compiled as a unit while the refusal is met, so
+`varRuntimeRaise` records the trap the run raises (`RecordUnitTrapErr`). A
+NAMED fn's body, or a def-bound lambda's, meets it in the check pass's body
+analysis with recording paused: the handler's error is the analysis's
+`fn_body_error`, the compile stops, and the row is the interpreter's — the
+error-row doctrine wants a compiled trap at the call site instead. Counted
+in lang's compile-defect ledger (`compileDefectCeiling` 335 → 337) and by
+the corpus as check-error rows (var.tsv §3).
+
+**Proposed verdict:** resolve by fix — a var refusal met in a fn body's
+analysis should record the unit's trap as the callback path does.
+
+---
+
+## NUR387 — a container-read fn value bound inside a fn body and applied in stack form compiles as data {#nur387}
+
+**Status:** Pending · **Recorded:** 2026-10-07 (found writing the sweep's var cells, design/IMMUTABLE-DEF.1.md §5 phase 1) · measured on both lanes · SILENT (a wrong value)
+
+```
+def zzvfn fn [[] [] [def m {f: ([n:Integer] => [n add 1])} end def f m.f end 2 f]] zzvfn
+def zzvfn fn [[] [] [def m {f: ([n:Integer] => [n add 1])} end var f m.f end 2 f]] zzvfn
+  interpreted   3
+  compiled      2 fn (Integer)          — the read pushes the fn as data
+
+def m {f: ([n:Integer] => [n add 1])} end var f m.f end 2 f        both lanes 3   (the program root)
+def zzvfn fn [[] [] [def m {…} end var f m.f end f 2]] zzvfn        both lanes 3   (the forward form)
+def zzvfn fn [[] [] [var f ([n:Integer] => [n add 1]) end 2 f]] zzvfn   both lanes 3 (a lambda literal)
+def zzvfn fn [[] [] [def inc fn n:Integer Integer [n add 1] end var f inc/v end 2 f]] zzvfn   both lanes 3
+```
+
+Inside a fn body, a `def` or `var` bound to a fn value READ FROM A MAP
+FIELD and then applied in the stack form (`2 f`) compiles to a push of the
+value: the unit treats the bare read as data where the interpreter
+dispatches the fn it holds over the 2 beneath. The same statement at the
+program root, in the forward form (`f 2`), or over a lambda literal or a
+named fn's `/v` dispatches on both lanes; wrapped in a paren group or a
+splice the compiled run bails loudly instead (NUR123's guard, "gradual read
+`f` holds a fn the interpreter dispatches here and the unit could not
+re-step"), so the silent case is the fn-body unit's slot read, which that
+guard does not cover. The sweep's def and var cells use the forward form
+(the def cells always did), so neither exercises it; the programs above
+are the pin.
+
+**Proposed verdict:** resolve by fix — a unit's bare read of a slot whose
+value may be a fn must dispatch (or bail as the dyn-scope read does), the
+container-read fn value included.
+
+---

@@ -25,7 +25,6 @@ __arm	factory	def mk fn [[][Function][([] => [1 add 2])]] end __arm (mk)	n/a
 __arm	container	def m {f: ([] => [1 add 2])} end __arm m.f	n/a
 __arm	module-export	import module [def three fn [[][Integer][1 add 2]] export "M" {three: three/v}] end __arm M.three	n/a
 __arm	computed	def body (quote [1 add 2]) end __arm body
-__varundef	literal	def x 5 end __varundef x end 1
 afn	literal	def f ([x:Integer] afn [x mul 2]) end f 5
 afn	lambda	def f ([x:Integer] => [x mul 2]) end f 5
 afn	named-fn	def inc fn n:Integer Integer [n add 1] end def f ([x:Integer] afn inc/v) end f 5	n/a
@@ -294,13 +293,13 @@ usurp	container	def m {s: ([a:Integer b:Integer] => [a sub b])} end usurp (m.s) 
 usurp	module-export	import module [def sub2 fn [[a:Integer b:Integer][Integer][a sub b]] export "M" {sub2: sub2/v}] end usurp (M.sub2/v) 10 3
 usurp	computed	def b (quote [sub]) end usurp b 10 3	n/a
 valof	literal	def n 5 end valof n
-var	literal	var [[[a 1] [b 2]] a add b]
-var	lambda	var ([] => [1])	n/a
-var	named-fn	def inc fn n:Integer Integer [n add 1] end var inc/v	n/a
-var	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end var (mk)	n/a
-var	container	def m {f: ([n:Integer] => [n add 1])} end var m.f	n/a
-var	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end var M.inc	n/a
-var	computed	def body (quote [[[a 1] [b 2]] a add b]) end var body
+var	literal	var a 1 end var b 2 end var a (a add b) end a
+var	lambda	var f ([n:Integer] => [n add 1]) end f 5
+var	named-fn	def inc fn n:Integer Integer [n add 1] end var f inc/v end f 5
+var	factory	def mk fn [[][Function][([n:Integer] => [n add 1])]] end var f (mk) end f 5
+var	container	def m {f: ([n:Integer] => [n add 1])} end var f m.f end f 5
+var	module-export	import module [def inc fn n:Integer Integer [n add 1] export "M" {inc: inc/v}] end var f M.inc/v end f 5
+var	computed	def v (1 add 1) end var a v end var a (a add v) end a
 walk	literal	def acc (flex []) end walk {mode: "depth"} {a:1 b:[2 3]} [dot path acc swap push] end size acc
 walk	lambda	def acc (flex []) end walk {mode: "depth"} {a:1 b:[2 3]} (m:Any => [acc push m.path]) end size acc
 walk	named-fn	def acc (flex []) end def h fn [[m:Any][Any][acc push m.path]] end walk {mode: "depth"} {a:1 b:[2 3]} h/v end size acc

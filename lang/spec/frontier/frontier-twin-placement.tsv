@@ -67,4 +67,4 @@
 # exact condition under which a twin can be noted at all. The row moved to
 # lang/spec/module-sift.tsv.
 [10 20] each [drop import "boru:math-util" end MathUtil.cbrt 2]	[1.2599210498948732 1.2599210498948732]	shape 1: an import inside an each body
-[10 20] each [ var [[e] def ZB (Integer gt e) 7] ]	[7 7]	shape 2: a type def inside an each body whose bound READS the element
+[10 20] each [ def e end def ZB (Integer gt e) 7 ]	[7 7]	shape 2: a type def inside an each body whose bound READS the element

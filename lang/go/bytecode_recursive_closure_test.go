@@ -29,7 +29,7 @@ func TestRecursionThroughClosure(t *testing.T) {
   def go fn [[hi:Integer lo:Integer a:FlexList] [FlexList] [
     def cnt ((hi sub lo) add 1)
     if (cnt lte 1) [ a ] [
-      def _r (iota 2 each [ var [[v] def blo (lo add v) def _x (if (blo lt hi) [ a hi blo go ] [ a ]) 0 ] ])
+      def _r (iota 2 each [ ([v] => [def blo (lo add v) def _x (if (blo lt hi) [ a hi blo go ] [ a ]) 0]) apply ])
       a
     ]
   ]]
@@ -41,7 +41,7 @@ func TestRecursionThroughClosure(t *testing.T) {
 			`import module [
   def go fn [[n:Integer a:FlexList] [FlexList] [
     if (n lte 0) [ a ] [
-      def _r (0 fold [ var [[acc v] def _x (if (v lt n) [ a (n sub 1) go ] [ a ]) acc ] ] [0 1])
+      def _r (0 fold [ ([acc v] => [def _x (if (v lt n) [ a (n sub 1) go ] [ a ]) acc]) apply ] [0 1])
       a
     ]
   ]]

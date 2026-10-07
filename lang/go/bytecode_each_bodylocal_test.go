@@ -26,7 +26,7 @@ func TestEachBodyLocalValueDef(t *testing.T) {
 		{"computed body-local in each", `def g fn [[][Integer][def _ ([1] each [def j (5 add 1) j]) 5]] (g)`, "[5]"},
 		{"const body-local in each (regression)", `def g fn [[][Integer][def _ ([1] each [def j 5 j]) 5]] (g)`, "[5]"},
 		{"body-local + genuine capture (cur)", `def f fn [[n:Integer][Integer][ def cur (flex [9]) def _ (iota n each [def j (cur get 0) j]) (cur get 0)]] (f 3)`, "[9]"},
-		{"var-block loop yielding a result (sort idiom)", `def f fn [[][Integer][ def cur (flex [5]) def _ ([1] each [var [[t] def j (cur get 0) (cur set 0 (j add 1)) j]]) (cur get 0)]] (f)`, "[6]"},
+		{"lambda loop yielding a result (sort idiom)", `def f fn [[][Integer][ def cur (flex [5]) def _ ([1] each ([t] => [def j (cur get 0) (cur set 0 (j add 1)) drop j])) (cur get 0)]] (f)`, "[6]"},
 		{"multiple body-local defs", `def g fn [[][List][ [1 2] each [def a (5 add 1) def b (a mul 2) (a add b)] ]] (g)`, "[[18 18]]"},
 		{"genuine enclosing capture (not a body-local)", `def f fn [[][List][ def acc 100 ([1 2] each [acc add 1]) ]] (f)`, "[[101 101]]"},
 		{"body-local AND capture together", `def f fn [[][List][ def acc 10 ([1 2] each [def j (acc add 1) (j mul 2)]) ]] (f)`, "[[22 22]]"},

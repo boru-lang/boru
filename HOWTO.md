@@ -627,27 +627,35 @@ while its body builds). See **[Reference: Generic
 types](REFERENCE.md#generic-types)**.
 
 
-## Use scoped variables
+## Use a mutable variable
 
-`var` binds local names that are auto-cleared after the block.
-Bare-word declarations pop from the stack:
+`var NAME value` declares a var in the current scope; the same statement
+over a var already visible in the current frame assigns it in place.
+Everything else is a `def`, bound once:
+
+```
+var n 0  for 3 [var n (n add 1)]  n   # returns 3
+```
+
+A typed var checks each assignment (`var n:Integer 0  var n "x"` is a
+`type_error`), and a var holds a value, never a function constructor or
+a type.
+
+## Bind names for one block
+
+A lambda's parameters are the block's own and vanish with it. Bare
+parameters are `Any`; arguments bind top-of-stack first:
 
 ```
 import "boru:math-util"
-3 4 var [[a b] (a mul a) add (b mul b) MathUtil.sqrt]    # returns 5.0
+3 4 ([a b] => [(a mul a) add (b mul b) MathUtil.sqrt]) apply    # returns 5.0
 ```
 
-`a` gets the topmost value (4) and `b` gets the next (3), matching
-the argument-order rule. Inline values are also accepted:
+`a` gets the topmost value (4) and `b` the next (3), matching the
+argument-order rule. Call a lambda with written arguments instead:
 
 ```
-var [[[x 2] [y 10]] add x y]          # returns 12
-```
-
-Mix the two:
-
-```
-10 var [[[x 2] y] add x y]            # returns 12 — x=2 inline, y=10 from stack
+(([x y] => [add x y]) 2 10)           # returns 12
 ```
 
 
@@ -682,7 +690,7 @@ the stack empty (no throwaway sentinel needed), and it produces no result:
 ```
 def Box (class {sum: 0})
 def b (make Box {})
-[1 2 3] for-each [var [[x] b (b.sum x add) "sum" set]]
+[1 2 3] for-each [([x] => [b (b.sum x add) "sum" set]) apply]
 b.sum                         # returns 6
 ```
 
@@ -907,11 +915,11 @@ property body:
 import "boru:test"
 Test.check-prop "pair-of-strings"
   [r.list-of [r.string "abc" 6] 2]    # ONE List of two strings
-  [var [[pair]
+  [([pair] => [
     def a (pair.0)                    # destructure the compound input
     def b (pair.1)
     (pair size) 2 eq                  # property over the pair
-  ]]
+  ]) apply]
   20 1 0
 end
 ```

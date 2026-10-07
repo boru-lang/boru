@@ -27,17 +27,28 @@ import (
 // same recorder hooks a def rebind records (a loop-carried store, a new
 // value-def epoch), so a read after the assignment compiles to the new value.
 //
-// REGISTRATION, while the `var [[…]]` construct still shares the name: only
-// the quoted-name form below is registered. The construct's one-list
-// signature and a two-argument form whose first slot a STACK value could
-// fill (a String name, a typed-name Map) make the forward/stack split of
-// `var [[a b] …]` depend on gradual operands — ten kg programs declined
-// "forward/stack split depends on a gradual operand" the moment those forms
-// were registered beside it. A quoted-name slot captures a forward Word
-// only, so it never competes. varWordDeferredSignatures join
-// varWordSignatures when the construct is deleted (phase 1's last step,
-// after kg's sites are rewritten).
+// REGISTRATION mirrors def's: the typed-name form first (a Map sorts
+// before the name forms, as def's does), then the string and quoted names.
+// (While the `var [[…]]` construct shared the name, only the quoted-name
+// form was registered: the construct's one-list signature beside a form a
+// STACK value could fill made `var [[a b] …]`'s forward/stack split depend on
+// gradual operands. The construct is gone — design/IMMUTABLE-DEF.1.md §5
+// phase 1 — and the three forms are one word again.)
 var varWordSignatures = []Signature{
+	{
+		// Typed-name binding: var name:Type value.
+		Args:          []*Type{TMap, TAny},
+		NoEvalMapArgs: map[int]bool{0: true},
+		Impl:          Go(VarTypedHandler, RunInCheck()),
+		Returns:       []*Type{},
+		BarrierPos:    -1,
+	},
+	{
+		Args:       []*Type{TString, TAny},
+		Impl:       Go(VarWordHandler, RunInCheck()),
+		Returns:    []*Type{},
+		BarrierPos: -1,
+	},
 	{
 		Args:       []*Type{TAtom, TAny},
 		QuoteArgs:  map[int]bool{0: true},
@@ -47,30 +58,6 @@ var varWordSignatures = []Signature{
 		// The quoted operand is the NAME of a registry write, as def's.
 		CompileEffect: CompileQuoteKey,
 	},
-}
-
-// VarWordDeferredSignatures are the var word's typed-name and string-name
-// forms (`var n:Integer 0`, `var "n" 0`), def's siblings; see the
-// registration note above for why they wait on the construct's removal,
-// when they join varWordSignatures. VarTypedHandler is reachable through
-// them, and until then through its own tests.
-func VarWordDeferredSignatures() []Signature {
-	return []Signature{
-		{
-			// Typed-name binding: var name:Type value. Sorts first as def's does.
-			Args:          []*Type{TMap, TAny},
-			NoEvalMapArgs: map[int]bool{0: true},
-			Impl:          Go(VarTypedHandler, RunInCheck()),
-			Returns:       []*Type{},
-			BarrierPos:    -1,
-		},
-		{
-			Args:       []*Type{TString, TAny},
-			Impl:       Go(VarWordHandler, RunInCheck()),
-			Returns:    []*Type{},
-			BarrierPos: -1,
-		},
-	}
 }
 
 // VarWordHandler is `var NAME value`.
@@ -137,6 +124,17 @@ func bindVar(r *Registry, name string, varType *Type, typeName string, v Value, 
 			fmt.Sprintf("var %s: a var holds a value: use def for a type", name), "var")
 	}
 	if top, has := r.Defs.TopEntry(name); has && top.Var {
+		if top.Frame {
+			// A CAPTURED var (core.InstallCapturedBinding): the closure
+			// reads the value the enclosing fn's var held at its
+			// construction and assigns it no more than a fn body assigns
+			// a module var — one frame rule for both. A plain capture let
+			// this statement declare or assign a copy of the cell silently
+			// (var.tsv §3, 2026-10-07).
+			detail := fmt.Sprintf("var %s: cannot assign a var of an enclosing frame (a closure reads the var it captured but does not assign it)", name)
+			varRuntimeRaise(r, "var_error", detail, pos)
+			return nil, r.BoruError("var_error", detail, "var")
+		}
 		if !r.Defs.InCurrentFrame(top.Scope) {
 			// The frame rule is the check pass's: a compiled unit keeps no
 			// frame scope on the registry, so the compiled lane raises this

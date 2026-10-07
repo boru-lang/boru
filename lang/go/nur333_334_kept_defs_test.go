@@ -1,6 +1,7 @@
 package lang
 
 import (
+	"fmt"
 	"strings"
 	"testing"
 )
@@ -144,11 +145,28 @@ func TestNUR334ValReadAfterComputedBody(t *testing.T) {
 		{g + `def f fn [[b:List][Any][def t 0 do b drop t/v]] end f (quote [def t g/v 1])`, "[fn t]"},
 		{g + `def f fn [[b:List][Any][def t 0 do b drop [t/v]]] end f (quote [def t g/v 1])`, "[[fn t]]"},
 		{g + `def x 0 end def mk fn [[][List][quote [def x g/v]]] end do (mk) end [x/v]`, "[[fn x]]"},
-		{g + `def x 0 end def mk fn [[][List][quote [def x g/v]]] end do (mk) end x/v apply`, "[7]"},
 		{`def C class {a:1} end def f fn [[b:List][Any][def t 0 do b drop t/v]] end f (quote [def t C 1])`, "[C]"},
 		{`def C class {a:1} end def x 0 end def mk fn [[][List][quote [def x C]]] end do (mk) end [x/v]`, "[[C]]"},
 	} {
 		agreeOnBothLanes(t, c.src, c.want)
+	}
+	// The fn the body bound, APPLIED with nothing rendered beneath it: the
+	// read is a gradual Integer carrier (computedLeakGradual keeps the
+	// pre-body tag as the bound), `apply`'s Function slot misses it, and the
+	// no-match recovery's rematch cannot render a window that holds the
+	// computed `do`'s own result under the read — so the row declines
+	// (NUR384; the compile-defect ledger counts it). It compiled until
+	// 2026-10-07 only through the recovery scoring its candidates in tape
+	// order against signature-order slots, which read the `do` result as the
+	// `[Reach Any]` overload's second operand and poly-recorded that
+	// two-operand window; scored in signature order no overload is
+	// compatible. A value beneath the read (`5 x/v apply`, the rows above)
+	// renders, and the rematch defers the dispatch to the interpreter.
+	src := g + `def x 0 end def mk fn [[][List][quote [def x g/v]]] end do (mk) end x/v apply`
+	gotC, _, errC, gotI, errI := runBothEngines(t, src)
+	requireCompileDefect(t, src, gotC, errC)
+	if errI != nil || fmt.Sprint(gotI) != "[7]" {
+		t.Errorf("%s: interpreter %v / %v, want [7]", src, gotI, errI)
 	}
 }
 

@@ -12,10 +12,10 @@ import (
 //
 //   - a read nested in a body the unit or the root runs inline — a `var`
 //     body, a branch arm, a loop body — whose statement is no body token of
-//     the unit (`each [var [[q] def v (mk) v]] xs`: `[[fn v]]` compiled, the
+//     the unit (`each ([q] => [def v (mk) v]) xs`: `[[fn v]]` compiled, the
 //     interpreter's `[[5]]`);
 //   - a read whose value is produced inside the SAME statement as the read
-//     (`var [[] def v (mk) [v]]`, `if c [def v (mk) [v]] [0]`): the point's
+//     (`do [def v (mk) [v]]`, `if c [def v (mk) [v]] [0]`): the point's
 //     test ran at the statement's start, before the producer, over a value
 //     home not yet written, and never fired.
 //
@@ -304,7 +304,7 @@ func (es *EmitState) guardDroppedReads(owner *fnUnitRec, points []deoptPoint) {
 // collectingWordBefore reports the position of the word before body token
 // tok when that word collects the token forward: the word's own event takes
 // the value the token makes (`print [j]`, `size [j]`), or no event makes the
-// token at all — the word runs it inline as a body (`var [[] [j]]`), where a
+// token at all — the word runs it inline as a body (`do [[j]]`), where a
 // list literal is made at its own token. A word whose event takes something
 // else (`do b drop [j]` — drop takes the run's value) is its own statement.
 // A deopt point on a read inside the token then begins its statement at the

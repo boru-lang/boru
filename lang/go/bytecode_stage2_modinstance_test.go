@@ -33,7 +33,7 @@ import "testing"
 func TestModuleScopeMapInstanceEachCompiles(t *testing.T) {
 	stage1aCompiles(t, `def build fn [[] [Map] [{a: 10}]]
 def fix (build)
-def ys ([1 2 3] each [var [[x] x add (fix get "a")]])
+def ys ([1 2 3] each ([x] => [x add (fix get "a")]))
 ys`)
 }
 
@@ -41,7 +41,7 @@ ys`)
 func TestModuleScopeMapInstanceFoldCompiles(t *testing.T) {
 	stage1aCompiles(t, `def build fn [[] [Map] [{a: 5}]]
 def fix (build)
-def s (0 [1 2 3] [var [[x acc] acc add (x add (fix get "a"))]] fold)
+def s (0 [1 2 3] ([x acc] => [acc add (x add (fix get "a"))]) fold)
 s`)
 }
 
@@ -50,7 +50,7 @@ s`)
 func TestModuleScopeListInstanceEachCompiles(t *testing.T) {
 	stage1aCompiles(t, `def build fn [[] [List] [[100 200]]]
 def fix (build)
-def ys ([0 1] each [var [[i] (fix get i)]])
+def ys ([0 1] each ([i] => [(fix get i)]))
 ys`)
 }
 
@@ -60,7 +60,7 @@ ys`)
 func TestModuleScopeInstanceIdentityBodySound(t *testing.T) {
 	stage1aSound(t, `def build fn [[] [Map] [{a: 3}]]
 def fix (build)
-def firsts ([1 2] each [var [[x] fix]])
+def firsts ([1 2] each ([x] => [fix]))
 (firsts size)`)
 }
 
@@ -68,6 +68,6 @@ def firsts ([1 2] each [var [[x] fix]])
 // sound and unchanged (the widened predicate never fires here — const-bakeable
 // and frame-local operands keep their existing paths).
 func TestPlainEachBodyNoInstanceSound(t *testing.T) {
-	stage1aSound(t, `def ys ([1 2 3] each [var [[x] x mul 2]])
+	stage1aSound(t, `def ys ([1 2 3] each ([x] => [x mul 2]))
 ys`)
 }

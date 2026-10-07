@@ -77,10 +77,10 @@ func TestNarrowingSkipsPolymorphicDisjunctSlot(t *testing.T) {
 func TestEachOverDynamicCollectionIsNotAStrictMap(t *testing.T) {
 	mod := `import module [def ds fn xs:List List [sort xs] export "M" {ds:ds/v}] end `
 	for _, src := range []string{
-		mod + `def f fn raw:Map Map [ {a:(M.ds (each [var [[a] a]] raw.aliases))} ] end f {aliases:["y" "x"]}`,
+		mod + `def f fn raw:Map Map [ {a:(M.ds (each ([a] => [a]) raw.aliases))} ] end f {aliases:["y" "x"]}`,
 		mod + `def f fn raw:Map List [ (M.ds (each [a] raw.aliases)) ] end f {aliases:["y" "x"]}`,
 		`def f fn raw:Map List [ (each [a] raw.aliases) ] end f {aliases:["x"]}`,
-		`def f fn raw:Any List [ (each [var [[a] a]] raw) ] end f ["x"]`,
+		`def f fn raw:Any List [ (each ([a] => [a]) raw) ] end f ["x"]`,
 	} {
 		if diags := checkDiagCodes(t, src); len(diags) != 0 {
 			t.Errorf("%q: plain check reports %v; want none", src, diags)

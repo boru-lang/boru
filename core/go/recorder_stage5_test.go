@@ -23,7 +23,6 @@ func TestInactiveEmitMethodArms(t *testing.T) {
 	e.CondBodyGuard()()
 	e.KeepDefsBodyGuard(nil, "")()
 	e.MultiRunBodyGuard(nil, "b")()
-	e.RecordDynUndef("x", SrcPos{})
 	e.DeclineSpeculativeUndef("x")
 	e.RecordSpeculativeUndef("x", SrcPos{})
 	e.NoteLiveRead(nil, "x", SrcPos{})
