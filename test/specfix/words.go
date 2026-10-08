@@ -622,10 +622,12 @@ func registerEngSpecDefinition(r *core.Registry) {
 		}},
 	})
 
-	// __pa — engine-internal args-frame cleanup marker emitted by
-	// core.InstallFnDef's expansion. Pops the top args frame from the
-	// per-fn-call argsStack. The production version lives at
-	// lang/go/engine/native_definition.go::popArgsHandler.
+	// __pa — the args-frame pop as a word: pops the top args frame from
+	// the per-fn-call argsStack. core.InstallFnDef's expansion emitted it
+	// into every fn frame's tail until 2026-10-08 (the frame's DefCleanup
+	// marker does the pop itself now); the word stays for the corpus
+	// rows that call it. The production version lives at
+	// basic/go/native_definition.go::PopArgsHandler.
 	r.RegisterNativeFunc(core.NativeFunc{
 		Name: "__pa",
 

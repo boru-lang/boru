@@ -504,11 +504,13 @@ func trimUnnamedArgs(result []core.Value, nret, unnamed int) []core.Value {
 // (which dispatches through stepWord → its registered ReturnsFn) and unlike an
 // anonymous lambda (spliceAnonCheckResult, analysis-only), a called fn value
 // previously fell through to execFnDefSig, whose inline body splice leaks the
-// per-call `__pa` (Args/FnBaseline pop) token into the TOP-LEVEL residual —
-// declined by the emitter as "context-dependent word __pa". Routing through
-// BuildFnBodyReturnsFn ARMS the body analysis via StartFnCompile, so the body
-// (with its `__pa` tail) is captured INSIDE its own CALL_USER unit and the
-// call site records a CALL_USER — identical to the named-fn path. See
+// frame's per-call teardown into the TOP-LEVEL residual — at the time a
+// `__pa` (Args/FnBaseline pop) token, declined by the emitter as
+// "context-dependent word __pa"; since 2026-10-08 the frame's DefCleanup
+// marker. Routing through BuildFnBodyReturnsFn ARMS the body analysis via
+// StartFnCompile, so the body (with its frame tail) is captured INSIDE its
+// own CALL_USER unit and the call site records a CALL_USER — identical to
+// the named-fn path. See
 // design/legacy/boru-bytecode-stage3-inlining-plan.0.ignore "THE shared crux:
 // body-bearing fn-VALUE dispatch (__pa)".
 func SpliceFnValueCheckResult(e *core.Engine, valIdx, nArgs int, fnDef core.FnDefInfo, sig *core.FnSig, args []core.Value) error {

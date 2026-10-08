@@ -9,7 +9,7 @@ package core
 
 import "testing"
 
-func w8dc(r *Registry) Value { return NewDefCleanup(DefCleanupInfo{Registry: r}) }
+func w8dc(r *Registry) Value { return NewDefCleanup(DefCleanupInfo{Registry: r, PopFrame: true}) }
 
 // --- fn_frame_probe.go ------------------------------------------------------
 
@@ -30,14 +30,13 @@ func TestW8ProbeTailCallNegativeStart(t *testing.T) {
 
 func TestW8ProbeTailCallForwardArms(t *testing.T) {
 	r := w8reg(t)
-	pa := NewWord("__pa")
 	cases := []struct {
 		name string
 		tape []Value
 	}{
 		{"dc-at-tape-end", []Value{NewWord("f"), w8dc(r)}},
-		{"no-pa-after-dc", []Value{NewWord("f"), w8dc(r), NewInteger(1)}},
-		{"no-close-after-tail", []Value{NewWord("f"), w8dc(r), pa, NewInteger(1)}},
+		{"truncation-only-marker", []Value{NewWord("f"), NewDefCleanup(DefCleanupInfo{Registry: r}), NewCloseParen()}},
+		{"no-close-after-tail", []Value{NewWord("f"), w8dc(r), NewInteger(1)}},
 	}
 	for _, c := range cases {
 		t.Run(c.name, func(t *testing.T) {

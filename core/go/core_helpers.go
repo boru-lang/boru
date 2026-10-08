@@ -364,8 +364,8 @@ func WrapperUnderName(r *Registry, name string, fnDef FnDefInfo) (Value, bool) {
 
 // buildFnBodyHandler produces the dispatch Handler for one boru fn
 // signature. Rather than computing a final result, the handler returns
-// a PAREN-WRAPPED TOKEN SEQUENCE — `( unnamed-args… body DefCleanup __pa
-// undef-tail… ReturnCheck )` — that execMatch splices back onto the
+// a PAREN-WRAPPED TOKEN SEQUENCE — `( unnamed-args… body DefCleanup
+// ReturnCheck )` — that execMatch splices back onto the
 // stack to be RE-STEPPED inline. Named params and lexical captures are
 // installed as defs up front (captures first so params shadow them);
 // the paren keeps the whole expansion atomic so an outer forward can't
@@ -395,8 +395,9 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 	needsFrameState := fnDefCopy.Gen != nil || bodyNeedsFrameState(r, s.Body())
 	// For a leaf body (!needsFrameState) the ENTIRE token expansion is
 	// constant per signature except the unnamed-arg cells: frame open,
-	// body, and the cleanup tail (nil-snapshot DefCleanup, __pa, undef
-	// pairs, zero-Pos ReturnCheck) never vary between calls. Build that
+	// body, and the cleanup tail (the nil-snapshot DefCleanup carrying
+	// the names to tear down, the zero-Pos ReturnCheck) never vary
+	// between calls. Build that
 	// skeleton ONCE here and per call only copy it with the arg values
 	// patched in — the old per-call rebuild minted ~7 ID-stamped tokens
 	// per frame (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5). The per-call
@@ -531,8 +532,8 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		r.PushFnBaseline(r.Defs.Snapshot())
 
 		// Push args list onto the args stack for access via the
-		// "args" word (args.0, args.1, etc.). Paired with __pa
-		// at the body tail, which also pops the FnBaseline.
+		// "args" word (args.0, args.1, etc.). Paired with the frame
+		// marker at the body tail, which also pops the FnBaseline.
 		argsCopy := make([]Value, len(args))
 		copy(argsCopy, args)
 		argsList := NewList(argsCopy)
@@ -592,9 +593,9 @@ func buildFnBodyHandler(r *Registry, name string, s FnSig, fnDefCopy FnDefInfo, 
 		// mutated here, so the previous intermediate make+copy was a
 		// redundant per-call allocation (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5).
 		result = append(result, s.Body()...)
-		// The canonical cleanup tail: DefCleanup (undoes body-local
-		// defs), __pa (pops Args + FnBaseline), the undef pairs for
-		// captures+params, and the ReturnCheck when returns are
+		// The canonical cleanup tail: the DefCleanup marker (undoes
+		// body-local defs, pops Args + FnBaseline, tears down the
+		// captures+params) and the ReturnCheck when returns are
 		// declared (Pos left zero — execMatch stamps the call site).
 		result = AppendFrameTail(result, FrameTailSpec{
 			Registry:       r,

@@ -45,8 +45,8 @@ func ReorderForwardCandidates(tape *Tape, pointer int) []Value {
 	for i := pointer + 1; i < tape.Len() && len(written) < 4; i++ {
 		v := tape.At(i)
 		// An engine marker ends the written tuple exactly as it ends the
-		// stack one below: a fn frame's tail markers (the DefCleanup `__dc`,
-		// the pop-args `__pa`) sit right after the body's last token, and a
+		// stack one below: a fn frame's tail marker (the DefCleanup `__dc`)
+		// sits right after the body's last token, and a
 		// no-match there used to list `__dc (a __DC)` as the argument the
 		// caller supplied — a marker no one wrote, in a user-facing note.
 		if !IsConcrete(v) || IsWord(v) || IsParenExpr(v) || IsForward(v) ||

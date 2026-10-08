@@ -323,10 +323,13 @@ func TestReStepLandingErrorArms(t *testing.T) {
 	}
 
 	// The ISLAND rung: a boru-bodied 0-arg value the VM cannot take, whose
-	// body does not resolve here. The island IS the interpreter's re-step, so
-	// whatever it raises is the member's own error and surfaces stamped at the
-	// landing — the same discipline as the two rungs above, at the rung that
-	// runs the interpreter rather than the VM.
+	// body names a word that does not resolve here. The island IS the
+	// interpreter's re-step, so whatever it raises is the member's own error
+	// and surfaces stamped at the landing — the same discipline as the two
+	// rungs above, at the rung that runs the interpreter rather than the VM.
+	// (Until 2026-10-08 a body of `9` alone raised here too: the frame tail
+	// stepped the `__pa` word, unregistered on this bare registry. The tail
+	// is a marker now, so the body itself has to fail.)
 	islandRaiser := core.FnDefInfo{
 		Name: "island-raiser",
 		Signatures: []core.Signature{{
@@ -335,7 +338,7 @@ func TestReStepLandingErrorArms(t *testing.T) {
 			// NOT a single-word body: that shape is a trivial DELEGATION
 			// wrapper, which vmNativeApplicable admits, and the value would
 			// take the native rung instead of this one.
-			Impl: core.Boru([]core.Value{core.NewInteger(9)}),
+			Impl: core.Boru([]core.Value{core.NewWord("zz-island-unresolved"), core.NewInteger(9)}),
 		}},
 	}
 	if vmNativeApplicable(r, islandRaiser) {

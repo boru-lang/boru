@@ -3,9 +3,10 @@ package core
 import "testing"
 
 // Synthetic-tape tests for the shell-variant elision mechanism: the
-// scanned tail's effects must equal the parked markers' effects (state
-// pops + undefs), the marker tokens must vanish, and the shell — the
-// frame's open paren, ReturnCheck, and close paren — must survive.
+// scanned tail's effects must equal the parked marker's effects (the
+// truncation, the state pops, the teardown), the marker must vanish, and
+// the shell — the frame's open paren, ReturnCheck, and close paren — must
+// survive.
 
 func TestElideTailFrameRunsTeardownAndKeepsShell(t *testing.T) {
 	f := newProbeFixture(t)
@@ -21,12 +22,12 @@ func TestElideTailFrameRunsTeardownAndKeepsShell(t *testing.T) {
 	// eager DefCleanup must truncate it exactly like the parked one.
 	snap := f.r.Defs.Snapshot()
 	InstallDef(f.r, "loc", NewInteger(9))
-	dc := NewDefCleanup(DefCleanupInfo{Snapshot: snap, Registry: f.r})
+	dc := frameMarker(f.r, snap, "n")
 
-	// (ₘ 1 f __DC __pa undef n __RC )
+	// (ₘ 1 f __DC __RC )
 	tokens := []Value{
 		NewFrameOpen(f.meta), NewInteger(1), NewWord("f"),
-		dc, NewWord("__pa"), f.und, NewWord("n"), f.rc, NewCloseParen(),
+		dc, f.rc, NewCloseParen(),
 	}
 	e := NewTop(f.r)
 	e.Tape = NewTape(tokens, 8)
@@ -51,10 +52,10 @@ func TestElideTailFrameRunsTeardownAndKeepsShell(t *testing.T) {
 		t.Error("body-local def not truncated by the eager DefCleanup")
 	}
 	if _, bound := f.r.Defs.Top("n"); bound {
-		t.Error("param binding not undefined by the eager undef tail")
+		t.Error("param binding not torn down by the eager teardown")
 	}
 
-	// Tape: markers gone, shell intact — (ₘ 1 f __RC )
+	// Tape: marker gone, shell intact — (ₘ 1 f __RC )
 	isInt := func(v Value) bool { return v.Parent.Equal(TInteger) && IsConcrete(v) }
 	want := []func(Value) bool{IsFrameOpen, isInt, IsWord, IsReturnCheck, IsCloseParen}
 	if e.Tape.Len() != len(want) {
@@ -76,11 +77,11 @@ func TestElideTailFrameNoReturnCheck(t *testing.T) {
 	if err := f.r.Args.Push(NewList(nil)); err != nil {
 		t.Fatal(err)
 	}
-	dc := NewDefCleanup(DefCleanupInfo{Snapshot: f.r.Defs.Snapshot(), Registry: f.r})
+	dc := frameMarker(f.r, f.r.Defs.Snapshot())
 
-	// (ₘ f __DC __pa )  — no declared returns, no params.
+	// (ₘ f __DC )  — no declared returns, no params.
 	tokens := []Value{
-		NewFrameOpen(f.meta), NewWord("f"), dc, NewWord("__pa"), NewCloseParen(),
+		NewFrameOpen(f.meta), NewWord("f"), dc, NewCloseParen(),
 	}
 	e := NewTop(f.r)
 	e.Tape = NewTape(tokens, 8)
@@ -139,13 +140,20 @@ func TestTCOEligibleGates(t *testing.T) {
 	if e.tcoEligible(base, sig, muts-1) {
 		t.Error("binding mutations during auto-eval must decline")
 	}
-	// Capitalised teardown names decline (type-retire path) even when
-	// the callee would rebind them.
-	capScan := base
-	capScan.UndefNames = []string{"Foo"}
-	capSig := &Signature{Impl: &BoruImpl{FnFrame: &FnFrameMeta{Name: "f", InstallNames: []string{"Foo"}}}}
-	if e.tcoEligible(capScan, capSig, muts) {
-		t.Error("capitalised teardown names must decline (type-retire path)")
+	// A name's spelling no longer matters: the marker tears every name
+	// down the same way (UninstallFrameBinding), so a builtin-shadowing
+	// param the callee rebinds is eligible. (The stepped `undef name`
+	// tail used to send such names down undef's reserved-word arm, and
+	// the gate declined them to match it.)
+	shadowScan := base
+	shadowScan.Names = []string{"add"}
+	if f.r.builtinWords == nil {
+		f.r.builtinWords = map[string]bool{}
+	}
+	f.r.builtinWords["add"] = true
+	shadowSig := &Signature{Impl: &BoruImpl{FnFrame: &FnFrameMeta{Name: "f", InstallNames: []string{"add"}}}}
+	if !e.tcoEligible(shadowScan, shadowSig, muts) {
+		t.Error("a builtin-shadowing teardown name the callee rebinds must be eligible")
 	}
 }
 
@@ -157,7 +165,7 @@ func TestTCOEligibleNameCoverage(t *testing.T) {
 	muts := f.r.Defs.Mutations()
 
 	// A torn-down param the callee rebinds is covered…
-	scan := frameTailScan{Meta: f.meta, TailStart: 0, UndefNames: []string{"n"}}
+	scan := frameTailScan{Meta: f.meta, TailStart: 0, Names: []string{"n"}}
 	rebinds := &Signature{Impl: &BoruImpl{FnFrame: &FnFrameMeta{Name: "g", InstallNames: []string{"n"}}}}
 	if !e.tcoEligible(scan, rebinds, muts) {
 		t.Error("a param the callee rebinds must be eligible")

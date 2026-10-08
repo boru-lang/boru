@@ -76,15 +76,22 @@ together when you touch one of these sites.
 
 | Stack | Field | Push site | Pop site | Read site |
 | --- | --- | --- | --- | --- |
-| Args list | `Registry.Args` | `InstallFnDef` handler / `execFnDefSig` body splice / `CallBoru` | `__pa` token in the synthesized body tail / `CallBoru` inline cleanup | `args` native word |
-| Body-local def cleanup | (per-call `defSnapshot` local) | same | `DefCleanupInfo` marker (`stepDefCleanup`) / `CallBoru` inline cleanup | closure capture analysis (via `FnBaselines`) |
-| Enclosing-fn baseline | `Registry.FnBaselines` | same (alongside `defSnapshot`) | piggybacks on `__pa` and on `CallBoru`'s inline cleanup | `ComputeCaptures` (`fn_capture.go`) |
+| Args list | `Registry.Args` | `InstallFnDef` handler / `execFnDefSig` body splice / `CallBoru` | the frame's `DefCleanupInfo` marker (`stepDefCleanup`, `PopFrameArgs`) / `CallBoru` inline cleanup | `args` native word |
+| Body-local def cleanup | (per-call `defSnapshot` local) | same | the same marker (`truncateFrameDefs`) / `CallBoru` inline cleanup | closure capture analysis (via `FnBaselines`) |
+| Enclosing-fn baseline | `Registry.FnBaselines` | same (alongside `defSnapshot`) | piggybacks on the marker's `PopFrameArgs` and on `CallBoru`'s inline cleanup | `ComputeCaptures` (`fn_capture.go`) |
+
+The spliced frame's tail is ONE marker (`__DC`, then the `ReturnCheck`
+when returns are declared): stepping it evaluates the in-frame
+residual, truncates the body-local defs, pops the Args list and the
+baseline together, and uninstalls the captures+params it carries
+(`DefCleanupInfo.Names`, newest first). Until 2026-10-08 the pop was a
+`__pa` word and each uninstall an `undef name` pair stepped as tokens;
+the `__pa` word is still registered but nothing emits it.
 
 A `break`/`continue` escaping a live spliced frame discards the
-frame's tail before it executes; the flow resolvers therefore run
+frame's marker before it executes; the flow resolvers therefore run
 `unwindLiveFrames` (`fn_frame.go`) over the discarded region, which
-replays each open frame's canonical tail (`__DC`, `__pa`, the
-force-forward `undef` pairs, innermost-first) so all three stacks
+replays each open frame's marker (innermost-first) so all three stacks
 stay balanced. Without it the dead callee's args list shadows the
 caller's `args` for the rest of the loop.
 

@@ -209,7 +209,7 @@ func TestResidualBottomUpAndBoundaryArms(t *testing.T) {
 // The residual-eval ERROR arm leaves the frame's parked tail to the run's
 // fault return: the frame is still open on the tape when the marker's
 // evaluation raises, so Engine.faultReturn replays its tail once —
-// truncation, the __pa Args/baseline pop, the undef pairs — as it does
+// truncation, the Args/baseline pop, the capture/param teardown — as it does
 // for every other error raised inside a live frame (NUR201). The pins are
 // TestRunErrorUnwindsFrameOnceAfterResidualError and
 // TestRunErrorUnwindsLiveFrame (fn_frame_unwind_test.go); the end-to-end

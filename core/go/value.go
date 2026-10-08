@@ -3123,12 +3123,28 @@ func NewReturnCheck(info ReturnCheckInfo) Value {
 	return NewValueRaw(TReturnCheck, info)
 }
 
-// DefCleanupInfo holds a snapshot of DefStacks lengths taken before fn body
-// execution. When the engine encounters a DefCleanup marker, it pops any
-// defs that were added during body execution back to the snapshot state.
+// DefCleanupInfo is the payload of a fn frame's cleanup marker (`__DC`,
+// fn_frame.go). Stepping the marker closes the frame in one Go-side pass:
+// a computing body's residual evaluates in-frame (EvalResidual), the
+// body-local defs installed since Snapshot pop (unless SkipCleanup), and —
+// for a frame marker (PopFrame) — the per-call Args list and FnBaseline
+// pop and the captures+params in Names uninstall, newest first. The pop
+// and the uninstalls were the `__pa` word and the `undef name` pairs the
+// tail used to step as tokens, a word dispatch each; the marker does the
+// same work as structure (stepDefCleanup).
 type DefCleanupInfo struct {
 	Snapshot map[string]int
 	Registry *Registry
+	// PopFrame marks a frame's tail marker: after the truncation it pops
+	// Registry's per-call Args list and FnBaseline (PopFrameArgs) and
+	// uninstalls Names. A marker without it only truncates — the shape
+	// TruncateFrameDefs builds for a body region run outside a frame.
+	PopFrame bool
+	// Names are the frame's installed captures+params in INSTALL order
+	// (captures first, then named params — buildFnBodyHandler's order);
+	// the marker uninstalls them in reverse. Read by the tail probe for
+	// the eager-teardown coverage gate (tcoEligible).
+	Names []string
 	// SkipCleanup marks a frame whose body provably installs no
 	// body-local defs (buildFnBodyHandler's bodyNeedsFrameState analysis):
 	// the marker stays on the tape so the frame shape and the

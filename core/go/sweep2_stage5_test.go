@@ -119,11 +119,11 @@ func TestSweepTCOEligibleEvalResidualPendingBelow(t *testing.T) {
 
 func TestSweepProbeTailCallPendingResidualBelow(t *testing.T) {
 	f := newProbeFixture(t)
-	// (ₘ [pending] f __DC __pa )  — the pending plain list below the call
+	// (ₘ [pending] f __DC )  — the pending plain list below the call
 	// marks both ValuesBelow and PendingEvalBelow.
 	tokens := []Value{
 		NewFrameOpen(f.meta), pendingList(NewInteger(1)), NewWord("f"),
-		f.dc, NewWord("__pa"), NewCloseParen(),
+		f.dc, NewCloseParen(),
 	}
 	e := NewTop(f.r)
 	e.Tape = NewTape(tokens, 8)
