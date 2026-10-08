@@ -6252,7 +6252,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	foreignReg := FnHomeForeign(e.Registry, &fnDef)
 	if len(fnDef.Signatures) > 0 && (fnDef.Anonymous || !foreignReg) {
 		reg, _ := FnHome(e.Registry, &fnDef)
-		fn = compileFnDef(reg, fnDef)
+		fn = compiledFnDefFor(reg, fnDef)
 	}
 	if fn == nil && fnDef.Name != "" {
 		reg, _ := FnHome(e.Registry, &fnDef)
@@ -6266,7 +6266,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 		// body still runs with module scope — execFnDefSig /
 		// ExecFnDefSigStackMatch receive fnDef.Registry, and the
 		// sub-registry branch below handles handler-bearing matches.
-		fn = compileFnDef(fnDef.Registry, fnDef)
+		fn = compiledFnDefFor(fnDef.Registry, fnDef)
 	}
 	if fn == nil {
 		e.Pointer++

@@ -1112,19 +1112,26 @@ type FnDefInfo struct {
 	ident *fnIdent
 }
 
-// fnIdent is a fn value's identity token — allocated for its ADDRESS
-// alone, never read.
+// fnIdent is a fn value's identity token — allocated for its ADDRESS,
+// which is what `eq` compares.
 //
-// The one byte is load-bearing. An empty struct is zero-sized, and Go
-// gives every zero-sized allocation the same address (runtime.zerobase),
-// so `&fnIdent{}` would hand every function in the program one shared
-// token and make them all eq. A single byte forces distinct addresses.
+// It must not be zero-sized: Go gives every zero-sized allocation the same
+// address (runtime.zerobase), so `&fnIdent{}` would hand every function in
+// the program one shared token and make them all eq. Its fields keep the
+// addresses distinct.
 type fnIdent struct {
 	// closure is the identity SEQUENCE of the compiled closure this token
 	// stands in for (NewFunctionIdentified): two tokens with the same
 	// non-zero sequence are one function, however many bridges minted
 	// them. Zero for an interpreter-minted fn, which identifies by ADDRESS.
 	closure uint64
+	// dispatch caches the interpreter's compiled dispatch form of the
+	// function (compileFnDef's result) for the registry that built it —
+	// see compiledFnDefFor. The token is the one reference every copy of
+	// the value shares, so the cache follows the function wherever its
+	// copies go (an instance's method slot, a list of callbacks, the tape)
+	// and dies with it. Atomic: forked engines apply one value concurrently.
+	dispatch atomic.Pointer[compiledFnDef]
 }
 
 // FnIdentity is a fn value's identity token handed out OPAQUELY, so a value
