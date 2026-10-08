@@ -37,6 +37,14 @@ func osMunmap(b []byte) error {
 	return windows.UnmapViewOfFile(uintptr(unsafe.Pointer(&b[0])))
 }
 
-func osMsync(b []byte) error {
-	return windows.FlushViewOfFile(uintptr(unsafe.Pointer(&b[0])), uintptr(len(b)))
+// osMsync writes the view's dirty pages to the file and then flushes the
+// file handle. FlushViewOfFile alone hands the pages to the system cache
+// without promising they reach stable storage; FlushFileBuffers on the
+// backing handle is what makes the pair equivalent to msync(MS_SYNC), the
+// durability MmapRegion's Flush and Close document.
+func osMsync(f *os.File, b []byte) error {
+	if err := windows.FlushViewOfFile(uintptr(unsafe.Pointer(&b[0])), uintptr(len(b))); err != nil {
+		return err
+	}
+	return windows.FlushFileBuffers(windows.Handle(f.Fd()))
 }

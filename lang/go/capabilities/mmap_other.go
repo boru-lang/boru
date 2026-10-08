@@ -14,4 +14,4 @@ var errMmapUnsupported = errors.New("memory-mapped files are not supported on th
 
 func osMmapFile(*os.File, int, bool) ([]byte, error) { return nil, errMmapUnsupported }
 func osMunmap([]byte) error                          { return nil }
-func osMsync([]byte) error                           { return nil }
+func osMsync(*os.File, []byte) error                 { return nil }

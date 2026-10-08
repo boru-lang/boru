@@ -160,3 +160,50 @@ func TestDeleteEachSweepsNamespacesAfterFailure(t *testing.T) {
 		}
 	}
 }
+
+// TestMacKeychainSetVerifiesCurrentServiceOnly pins the write's round-trip
+// check to the service the write went to. Get sweeps the legacy namespaces,
+// so with a legacy credential beside a write that `security -i` silently
+// dropped, a sweeping check would pass on the legacy value (equal) or have
+// the sweeping Delete erase the legacy credential (different). Either way
+// the write must fail loudly and touch nothing in the other namespaces.
+func TestMacKeychainSetVerifiesCurrentServiceOnly(t *testing.T) {
+	for _, legacy := range []string{"v", "other"} {
+		t.Run("legacy="+legacy, func(t *testing.T) {
+			dir := t.TempDir()
+			log := filepath.Join(dir, "deletes")
+			t.Setenv("BORU_STUB_LEGACY", legacy)
+			t.Setenv("BORU_STUB_DELETE_LOG", log)
+			stubBin(t, dir, "security", `
+svc=""
+for a in "$@"; do
+  if [ "$want" = 1 ]; then svc="$a"; want=0; fi
+  [ "$a" = -s ] && want=1
+done
+case "$1" in
+-i) cat > /dev/null; exit 0;;
+find-generic-password)
+  if [ "$svc" = aql ]; then printf '%s\n' "$BORU_STUB_LEGACY"; exit 0; fi
+  echo "could not be found" >&2; exit 44;;
+delete-generic-password) printf '%s\n' "$svc" >> "$BORU_STUB_DELETE_LOG"; exit 0;;
+esac
+exit 3
+`)
+			prependPath(t, dir)
+			var k macKeychain
+			// The sweeping read does see the legacy credential ...
+			if got, err := k.Get("alias"); err != nil || got != legacy {
+				t.Fatalf("Get = %q, %v; want the legacy value", got, err)
+			}
+			// ... but the write's check must not: the write went nowhere.
+			err := k.Set("alias", "v")
+			if err == nil || !strings.Contains(err.Error(), "could not read it back") {
+				t.Fatalf("Set = %v; want the read-back failure", err)
+			}
+			if _, statErr := os.Stat(log); !os.IsNotExist(statErr) {
+				data, _ := os.ReadFile(log)
+				t.Fatalf("a failed write must not delete anything; deletes = %q", data)
+			}
+		})
+	}
+}

@@ -211,13 +211,16 @@ func (k *macKeychain) Set(alias, value string) error {
 	// `security -i` exits 0 even when a sub-command fails, so confirm the
 	// value round-trips. If a macOS build parses the escaping differently
 	// this fails loudly (and cleans up) instead of leaving a corrupted
-	// credential.
-	got, err := k.Get(alias)
+	// credential. The check reads and cleans up the CURRENT service only:
+	// Get sweeps the legacy namespaces too, so a silently failed write
+	// beside a legacy credential would pass the check on the legacy value
+	// (or, mismatching, have the sweeping Delete erase that credential).
+	got, err := macGet(keyringService, alias)
 	if err != nil {
 		return fmt.Errorf("security: stored %q but could not read it back: %w", alias, err)
 	}
 	if got != value {
-		_ = k.Delete(alias)
+		_ = macDelete(keyringService, alias)
 		return fmt.Errorf("security: stored value for %q did not round-trip; refusing to keep a corrupted entry (use --backend=file)", alias)
 	}
 	return nil
