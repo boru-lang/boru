@@ -428,6 +428,10 @@ func TestLoopAnnotations(t *testing.T) {
 	if IsLoopRegion(nil) || IsLoopRegion([]Value{NewInteger(1)}) || IsLoopRegion([]Value{NewMark("p")}) || !IsLoopRegion([]Value{mark}) {
 		t.Fatal("IsLoopRegion")
 	}
+	// The sealing paren's payload is never type content.
+	if (LoopOpenInfo{}).IsTypeContent(nil) {
+		t.Fatal("LoopOpenInfo is not type content")
+	}
 }
 
 // TestDrivenLoopIterationBudget: every iteration runs on a step budget of its

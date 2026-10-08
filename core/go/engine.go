@@ -496,14 +496,13 @@ func (e *Engine) unwindLiveLoops() {
 		if info.Cont == nil || !e.marks[info.To] {
 			continue
 		}
+		// A driven loop is abandoned whole (loop.go); a counted loop pops
+		// its index; a while loop installed nothing.
 		if info.Cont.Driver != nil {
 			e.abandonDrivenLoop(info)
-			continue
+		} else if info.Cont.WhileCond == nil && info.Cont.IterName != "" {
+			popIterLevels(info.Cont, true)
 		}
-		if info.Cont.WhileCond != nil || info.Cont.IterName == "" {
-			continue
-		}
-		popIterLevels(info.Cont, true)
 	}
 }
 
