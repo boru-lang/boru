@@ -752,3 +752,58 @@ func TestSwappedForwardArgsReorderHint(t *testing.T) {
 		t.Errorf("no stack-form reorder hint in: %v", err)
 	}
 }
+
+// A named fn VALUE whose body names a binding word (`do` is in
+// frameStateWords) takes the splice branch's FULL frame: the fn-entry
+// baseline snapshot and the cleanup snapshot, so a def the body installs is
+// truncated at the tail. Its leaf twin — the same body without the binding
+// word — takes neither, and a push a native makes from Go inside it persists
+// (the unified leaf rule TestCallBoruArms pins for CallBoru). Pinned here
+// because core's own suite reached only the leaf arm of execFnDefSig.
+func TestNamedFnValueBodyNamingABindingWordTakesTheFullFrame(t *testing.T) {
+	r := covRegistry(t, func(r *Registry) {
+		r.RegisterNativeFunc(NativeFunc{
+			Name: "w4-leak",
+			Signatures: []Signature{{
+				Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
+					reg.Defs.Push("w4$leaked", NewInteger(9))
+					return nil, nil
+				}),
+				Returns: []*Type{}, BarrierPos: 0,
+			}},
+		})
+		r.RegisterNativeFunc(NativeFunc{
+			Name: "do",
+			Signatures: []Signature{{
+				Impl:    Go(func(_ []Value, _ map[string]Value, _ []Value, _ *Registry) ([]Value, error) { return nil, nil }),
+				Returns: []*Type{}, BarrierPos: 0,
+			}},
+		})
+	})
+	params := []FnParam{{Name: "x", Type: TInteger}}
+	full := namedFnVal("leaky", params, []*Type{TInteger},
+		parenBody(NewWord("w4-leak"), NewWord("do"), NewWord("x")))
+	out, err := NewTop(r).Run([]Value{full, NewInteger(4)})
+	if err != nil {
+		t.Fatalf("full frame: %v", err)
+	}
+	if got := renderAll(out); got != "4" {
+		t.Errorf("full frame got %q, want 4", got)
+	}
+	if _, bound := r.Defs.Top("w4$leaked"); bound {
+		t.Error("a def installed inside a body naming a binding word must be truncated at the frame's tail")
+	}
+	leaf := namedFnVal("leafy", params, []*Type{TInteger},
+		parenBody(NewWord("w4-leak"), NewWord("x")))
+	out, err = NewTop(r).Run([]Value{leaf, NewInteger(5)})
+	if err != nil {
+		t.Fatalf("leaf frame: %v", err)
+	}
+	if got := renderAll(out); got != "5" {
+		t.Errorf("leaf frame got %q, want 5", got)
+	}
+	if _, bound := r.Defs.Top("w4$leaked"); !bound {
+		t.Error("a leaf body takes no cleanup snapshot, so a Go-side push inside it persists")
+	}
+	r.Defs.Pop("w4$leaked")
+}
