@@ -12,7 +12,7 @@ package core
 //   forward:  everything between the call region and the enclosing
 //             frame's close paren is close-parens of groups opened
 //             inside the frame, followed by exactly the frame's own
-//             cleanup tail (__DC __pa undef-pairs [__RC]);
+//             cleanup tail (__DC [__RC]);
 //   backward: everything between the frame's marked open paren and
 //             the call region is inert — open parens of those same
 //             groups and concrete values. Anything PENDING below
@@ -60,9 +60,10 @@ type frameTailScan struct {
 	TailStart int          // index of the frame's __DC marker
 	RCIdx     int          // index of the frame's ReturnCheck; -1 when none
 	CloseIdx  int          // index of the frame's close paren
-	// UndefNames are the tail's undef-pair names in tail (reverse-
-	// install) order — the captures+params an eager teardown undefs.
-	UndefNames []string
+	// Names are the frame marker's captures+params (DefCleanupInfo.Names,
+	// install order) — what an eager teardown uninstalls. The marker's
+	// own slice, not a copy: the probe runs on every fn-body dispatch.
+	Names []string
 	// ValuesBelow is true when concrete values sit between the frame
 	// open and the call region. Inert for a teardown that leaves the
 	// frame's shell in place; a full frame replacement must nest
@@ -105,8 +106,9 @@ func (e *Engine) probeTailCall(sortedIndices []int, n int) (frameTailScan, bool)
 		return scan, false
 	}
 
-	// Forward half: )* __DC __pa (undef name)* [__RC] ) — anything
-	// else, at any point, is not a tail.
+	// Forward half: )* __DC [__RC] ) — anything else, at any point, is
+	// not a tail. The marker must be a FRAME marker (PopFrame): a
+	// truncation-only marker closes no frame.
 	i := e.Pointer + 1
 	closersAhead := 0
 	for i < e.Tape.Len() && IsCloseParen(e.Tape.At(i)) {
@@ -116,27 +118,13 @@ func (e *Engine) probeTailCall(sortedIndices []int, n int) (frameTailScan, bool)
 	if i >= e.Tape.Len() || !IsDefCleanup(e.Tape.At(i)) {
 		return scan, false
 	}
+	dc, _ := AsDefCleanup(e.Tape.At(i))
+	if !dc.PopFrame {
+		return scan, false
+	}
 	scan.TailStart = i
+	scan.Names = dc.Names
 	i++
-	if i >= e.Tape.Len() {
-		return scan, false
-	}
-	if w, err := AsWord(e.Tape.At(i)); err != nil || w.Name != "__pa" {
-		return scan, false
-	}
-	i++
-	for i+1 < e.Tape.Len() {
-		u, err := AsWord(e.Tape.At(i))
-		if err != nil || u.Name != "undef" || !u.ForceForward {
-			break
-		}
-		nm, err := AsWord(e.Tape.At(i + 1))
-		if err != nil {
-			return scan, false
-		}
-		scan.UndefNames = append(scan.UndefNames, nm.Name)
-		i += 2
-	}
 	if i < e.Tape.Len() && IsReturnCheck(e.Tape.At(i)) {
 		scan.RCIdx = i
 		i++

@@ -23,6 +23,11 @@ var frameStateWords = map[string]bool{
 	"word":   true,                                 // splice unevaluated code into the stream
 	"module": true, "import": true, "export": true, // module-scope binding
 	"usurp": true, "behave": true, // word / type-behavior modification
+	// NOT listed: `unpack`. It binds from Go, outside a leaf frame's
+	// sight, and that is the pinned discipline — a fn-body unpack rebinds
+	// an outer name past the call on both lanes
+	// (lang/go TestUnpackUnprovenSourceCompiles). Listing it here would
+	// make the frame clean those bindings up and diverge from the VM.
 }
 
 // bodyNeedsFrameState reports whether a fn body may install a body-local
@@ -44,7 +49,7 @@ var frameStateWords = map[string]bool{
 // non-macro (the same assumption recursion's forward refs rely on).
 func bodyNeedsFrameState(r *Registry, body []Value) bool {
 	needs := false
-	seen := map[string]bool{} // guards mutually-recursive macros
+	var seen map[string]bool // guards mutually-recursive macros; built on the first splice word
 	var walk func([]Value)
 	walk = func(toks []Value) {
 		walkBodyTokens(toks, func(w WordInfo, _ Value) {
@@ -62,9 +67,21 @@ func bodyNeedsFrameState(r *Registry, body []Value) bool {
 			if !ok {
 				return
 			}
+			// A name bound to a binding word's VALUE — `def mydef def/v`, a
+			// module wrapper delegating to one, a word-extension clone of one
+			// — installs into this frame exactly as the word itself would,
+			// so it is the word for this rule (Codex P1 on #532: the CallBoru
+			// path's unconditional snapshots used to cover the alias).
+			if fd, isFn := bound.Data.(FnDefInfo); isFn && fnValueIsBindingWord(r, &fd) {
+				needs = true
+				return
+			}
 			info, ok := bound.Data.(SpliceInfo)
 			if !ok {
 				return
+			}
+			if seen == nil {
+				seen = map[string]bool{}
 			}
 			seen[w.Name] = true
 			walk(SpliceExpand(info.Data))
@@ -417,4 +434,40 @@ func MergeCaptures(perSig [][]CapturedBinding) []CapturedBinding {
 		out[i] = CapturedBinding{Name: n, Value: seen[n]}
 	}
 	return out
+}
+
+// fnValueIsBindingWord reports whether a Function value stands for one of
+// frameStateWords: the word's own dispatch table reached as a value (`def
+// mydef def/v` — the alias keeps the word's IDENTITY token, the same one
+// `mydef/v def/v eq` compares, while `def` renames the stored value), a
+// trivial-delegation wrapper whose single body word is one (what `import`
+// and `unpack` produce), or a word-extension clone of one
+// (FnDefInfo.Extends). The identity walk over the binding words runs only
+// for a value made of native signatures: a user fn's body-runner sigs can
+// never be a native word's table, and user fns are what bodies call.
+func fnValueIsBindingWord(r *Registry, fd *FnDefInfo) bool {
+	if frameStateWords[fd.Name] || frameStateWords[fd.Extends] {
+		return true
+	}
+	native, anySig := fd.ident != nil, false
+	for i := range fd.Signatures {
+		if target, ok := trivialDelegationTarget(&fd.Signatures[i]); ok && frameStateWords[target] {
+			return true
+		}
+		anySig = true
+		if _, isGo := fd.Signatures[i].Impl.(*GoImpl); !isGo {
+			native = false
+		}
+	}
+	if !native || !anySig {
+		return false
+	}
+	for w := range frameStateWords {
+		if top, ok := r.Defs.Top(w); ok {
+			if tfd, isFn := top.Data.(FnDefInfo); isFn && tfd.ident == fd.ident {
+				return true
+			}
+		}
+	}
+	return false
 }

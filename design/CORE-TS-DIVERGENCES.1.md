@@ -318,10 +318,15 @@ Two prerequisites had to be found, and neither was a missing capability:
    sentinel and derives `MaxForwardArgs`, so it subsumes the three
    partial fixes that preceded it.
 2. The fixture registry needs **`__pa` and `undef`**, which every fn
-   body's frame tail emits (`AppendFrameTail`, `fn_frame.go:193`) and
+   body's frame tail emitted (`AppendFrameTail`, `fn_frame.go`) and
    which **basic** registers, not core. The MECHANISMS are core's own
    (the args stack, the def table); only the words are basic's, so these
-   are fixtures rather than a port.
+   are fixtures rather than a port. *(Update 2026-10-08: the Go frame
+   tail no longer steps either word — the frame's `DefCleanup` marker
+   pops the args frame and tears the params down itself
+   (`stepDefCleanup`), so a bare core registry runs a boru-bodied fn
+   without them. The fixtures stay for the corpus rows that call the
+   words directly.)*
 
 Worth stating plainly: this closed a real parity gap — user-defined
 function semantics had NO rows at all before, on either engine — and moved

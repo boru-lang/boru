@@ -97,12 +97,13 @@ func (e *Engine) tcoEligible(scan frameTailScan, sig *Signature, defMutsBefore i
 	if e.Registry.Defs.Mutations() != defMutsBefore {
 		return false
 	}
-	// The synthesized undef tail must be replicable by UninstallDef
-	// alone: a capitalised name takes undef's type-retire path, and a
-	// builtin-shadowing name would ERROR at the parked token — both
-	// decline so eager teardown matches the token-by-token behaviour
-	// exactly. Each name must ALSO be one the callee immediately
-	// reinstalls (see coverage below).
+	// Each name the frame's marker tears down must be one the callee
+	// immediately reinstalls (see coverage below). The teardown itself is
+	// the marker's own operation (UninstallFrameBinding) for every name,
+	// so nothing about a name's spelling can make the eager replay differ
+	// from the parked one. (Until 2026-10-08 the tail stepped `undef
+	// name` pairs, and a capitalised or builtin-shadowing name took a
+	// different path in undef's handler, so both declined here.)
 	covered := func(name string) bool {
 		for _, n := range sig.FnFrame().InstallNames {
 			if n == name {
@@ -111,8 +112,8 @@ func (e *Engine) tcoEligible(scan frameTailScan, sig *Signature, defMutsBefore i
 		}
 		return false
 	}
-	for _, name := range scan.UndefNames {
-		if IsCapitalisedName(name) || e.Registry.IsBuiltinWord(name) || !covered(name) {
+	for _, name := range scan.Names {
+		if !covered(name) {
 			return false
 		}
 	}
@@ -189,48 +190,33 @@ func (e *Engine) returnsConform(scan frameTailScan, sig *Signature) bool {
 	return true
 }
 
-// teardownFrameState executes the scanned frame tail's REGISTRY
-// effects eagerly — the same operations the parked markers would have
-// performed, via the same helpers. Tape edits are the caller's
-// business: the shell variant deletes just the marker run, the full
-// replacement deletes the whole frame after the callee's tokens are
-// in hand.
+// teardownFrameState executes the scanned frame marker's REGISTRY
+// effects eagerly — stepping the marker is exactly the parked teardown:
+// the multi-token in-frame residual eval first (the eager teardown must
+// not change WHERE a residual container's names resolve), the
+// body-local def truncation, the Args/FnBaseline pop, the capture/param
+// teardown. Tape edits are the caller's business: the shell variant
+// deletes just the marker, the full replacement deletes the whole frame
+// after the callee's tokens are in hand.
 func (e *Engine) teardownFrameState(scan frameTailScan) error {
-	// __DC: truncate body-local defs to the frame's entry snapshot
-	// (running the multi-token in-frame residual eval first, exactly as
-	// the parked marker would — the eager teardown must not change WHERE
-	// a residual container's names resolve).
-	if err := e.stepDefCleanup(e.Tape.At(scan.TailStart), scan.TailStart); err != nil {
-		return err
-	}
-	// __pa: pop the per-call Args list and FnBaseline, paired.
-	if err := PopFrameArgs(e.Registry); err != nil {
-		return err
-	}
-	// The undef tail: captures+params, already in reverse install
-	// order in the scan. The gate proved every name takes undef's
-	// plain UninstallDef path.
-	for _, name := range scan.UndefNames {
-		UninstallFrameBinding(e.Registry, name)
-	}
-	return nil
+	return e.stepDefCleanup(e.Tape.At(scan.TailStart), scan.TailStart)
 }
 
-// elideTailFrame is the SHELL variant: run the frame tail's registry
-// effects eagerly, then delete the marker run from the tape. The
+// elideTailFrame is the SHELL variant: run the frame marker's registry
+// effects eagerly, then delete the marker from the tape. The
 // frame's ReturnCheck (when present) and close paren are deliberately
 // kept; the callee splices into the shell at the call region as usual.
 // Used for frames with inert values parked below the call — the shell
 // keeps them, so leftover-value semantics are identical to nesting.
 //
 // All tape edits here sit strictly AHEAD of the pointer (the marker
-// run lies beyond the call region), so the pointer, the matched arg
+// lies beyond the call region), so the pointer, the matched arg
 // positions, and every index below them are untouched.
 func (e *Engine) elideTailFrame(scan frameTailScan) error {
 	if err := e.teardownFrameState(scan); err != nil {
 		return err
 	}
-	// Delete the executed markers; keep the ReturnCheck (when
+	// Delete the executed marker; keep the ReturnCheck (when
 	// declared) and the frame's close paren — the shell.
 	end := scan.RCIdx
 	if end < 0 {

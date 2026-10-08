@@ -681,8 +681,8 @@ lambdas. Don't expect to capture caller args; pass them explicitly.
 - The "enclosing-fn baseline" — the def-depth snapshot at each
   currently-active fn entry — lives on `Registry.FnBaselines`. Pushed
   in lockstep with the per-call args-stack push and the existing
-  body-local-def cleanup snapshot; popped by `__pa`'s handler at body
-  exit and by `CallBoru`'s inline cleanup.
+  body-local-def cleanup snapshot; popped by the frame's `DefCleanup`
+  marker at body exit and by `CallBoru`'s inline cleanup.
 - Captures and named params are installed via `InstallFrameBinding`
   (not `InstallDef`) — captures BEFORE params so params shadow same-
   named captures. `InstallFrameBinding` SHADOWS (pushes a fresh
@@ -691,9 +691,10 @@ lambdas. Don't expect to capture caller args; pass them explicitly.
   signature collide with a live caller binding (the classic comparator
   threaded through a `/v`-parked Function arg) must stack on top and
   tear back down to the caller's level, not destroy it at install time.
-  Cleanup is the existing `DefCleanup` + `undef` tail in the
-  synthesized body; capture names are appended to the cleanup list at
-  install time so they tear down uniformly. See
+  Cleanup is the frame's `DefCleanup` marker at the end of the
+  synthesized body, which carries the names to tear down; capture names
+  are appended to that list at install time so they tear down
+  uniformly. See
   `design/legacy/ACCESSOR-SPLIT-AND-CLEANUP-BUG.ignore`.
 
 ### Sharp edge: 0-arg lambdas as values vs as calls

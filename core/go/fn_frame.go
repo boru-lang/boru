@@ -13,13 +13,20 @@ import "fmt"
 //
 // A frame on the tape is:
 //
-//	(ₘ  unnamed-args…  body…  __DC  __pa  undef n₁ … undef nₖ  [__RC]  )
+//	(ₘ  unnamed-args…  body…  __DC  [__RC]  )
 //
-// where (ₘ is a FrameOpenInfo-marked open paren, __DC is the
-// DefCleanup marker (truncates body-local defs to the entry snapshot),
-// __pa pops the per-call Args list and FnBaseline, the undef pairs
-// tear down captures+params (reverse install order), and __RC is the
-// ReturnCheck when returns are declared.
+// where (ₘ is a FrameOpenInfo-marked open paren, __DC is the frame's
+// DefCleanup marker and __RC is the ReturnCheck when returns are
+// declared. Stepping __DC closes the frame in one Go-side pass
+// (stepDefCleanup): the in-frame residual evaluates, body-local defs
+// truncate to the entry snapshot, the per-call Args list and FnBaseline
+// pop, and the captures+params (DefCleanupInfo.Names) uninstall in
+// reverse install order. Until 2026-10-08 the pop was a `__pa` word and
+// each uninstall an `undef name` pair stepped as tokens — a full word
+// dispatch per name per call, the largest per-call cost left on every
+// kind of fn call once the frame's snapshots were gone; the marker does
+// the same work as structure, and a frame with k named params is k·2+1
+// tokens shorter.
 
 // FnFrameMeta identifies one compiled fn overload across the frames it
 // splices. The SAME pointer is attached to the compiled Signature
@@ -131,7 +138,7 @@ func AsFrameOpen(v Value) (FrameOpenInfo, error) {
 
 // FrameTailSpec describes one frame's synthesized cleanup tail.
 type FrameTailSpec struct {
-	// Registry receives the DefCleanup truncation and __pa pops.
+	// Registry receives the DefCleanup truncation and the frame's pops.
 	Registry *Registry
 	// Snapshot is the def-depth snapshot taken AFTER captures+params
 	// were installed (so DefCleanup tears down only body-local defs —
@@ -144,7 +151,7 @@ type FrameTailSpec struct {
 	// Snapshot map. See buildFnBodyHandler's bodyNeedsFrameState.
 	SkipCleanup bool
 	// Names are the installed captures+params in install order; the
-	// tail undefs them in reverse.
+	// marker uninstalls them in reverse.
 	Names []string
 	// Returns / UnnamedCount / FuncName / Pos populate the ReturnCheck;
 	// no ReturnCheck is emitted when Returns is empty. A zero Pos means
@@ -198,25 +205,19 @@ func ResidualEvalsInFrame(anonymous bool, body []Value) bool {
 }
 
 // AppendFrameTail appends the canonical frame cleanup tail to tokens:
-// the DefCleanup marker, the __pa word, the undef pairs for
-// captures+params (reverse install order, force-forward so undef takes
-// the name word that follows rather than a same-typed value from the
-// prefix stack), and the ReturnCheck when returns are declared. The
-// frame's close paren is NOT appended — callers own the (ₘ … ) pair.
+// the frame's DefCleanup marker (carrying the snapshot, the Args/baseline
+// pop and the captures+params to uninstall) and the ReturnCheck when
+// returns are declared. The frame's close paren is NOT appended —
+// callers own the (ₘ … ) pair.
 func AppendFrameTail(tokens []Value, spec FrameTailSpec) []Value {
 	tokens = append(tokens, NewDefCleanup(DefCleanupInfo{
 		Snapshot:     spec.Snapshot,
 		Registry:     spec.Registry,
 		SkipCleanup:  spec.SkipCleanup,
 		EvalResidual: spec.EvalResidual,
+		PopFrame:     true,
+		Names:        spec.Names,
 	}))
-	tokens = append(tokens, NewWord("__pa"))
-	for i := len(spec.Names) - 1; i >= 0; i-- {
-		tokens = append(tokens,
-			NewWordModified("undef", -1, false, true),
-			NewWord(spec.Names[i]),
-		)
-	}
 	if len(spec.Returns) > 0 {
 		tokens = append(tokens, NewReturnCheck(ReturnCheckInfo{
 			FuncName:       spec.FuncName,
@@ -230,12 +231,20 @@ func AppendFrameTail(tokens []Value, spec FrameTailSpec) []Value {
 	return tokens
 }
 
-// PopFrameArgs is the Go-side expression of the synthesized __pa
-// token: pop the per-call Args list and, in lockstep, the enclosing-fn
-// baseline pushed at fn entry (closure-capture detection on subsequent
-// fn constructions reads the baseline, so the two must move together —
-// see eng/go/CLAUDE.md "Per-Call Stacks"). The __pa word's handler
-// delegates here; an eager frame teardown can call it directly.
+// spentFrameMarker is what a frame's DefCleanup marker becomes once it
+// has closed its frame (stepDefCleanup): a truncation-only marker with
+// nothing left to do, so the close-paren sweep and any replay over the
+// region step it as a no-op. One shared Value — the cell is overwritten
+// by copy, and nothing keys on a marker's identity (the probe declines
+// it on PopFrame, the unwind and the sweep step it to nothing).
+var spentFrameMarker = NewDefCleanup(DefCleanupInfo{SkipCleanup: true})
+
+// PopFrameArgs pops the per-call Args list and, in lockstep, the
+// enclosing-fn baseline pushed at fn entry (closure-capture detection on
+// subsequent fn constructions reads the baseline, so the two must move
+// together — see eng/go/CLAUDE.md "Per-Call Stacks"). The frame marker
+// (stepDefCleanup) and CallBoru's inline cleanup call it; the `__pa`
+// word's handler delegates here too.
 func PopFrameArgs(r *Registry) error {
 	if _, err := r.Args.Pop(); err != nil {
 		return err
@@ -249,8 +258,8 @@ func PopFrameArgs(r *Registry) error {
 // stepped (below the pointer) but their synthesized tail not yet reached —
 // before a flow-control rewrite (break/continue) discards the region.
 // Without this, a break/continue escaping a spliced fn body discards the
-// frame's `__DC __pa undef…` tail unexecuted, LEAKING the per-call Args
-// list, FnBaseline, and param/capture bindings: the enclosing loop's next
+// frame's `__DC` marker unexecuted, LEAKING the per-call Args list,
+// FnBaseline, and param/capture bindings: the enclosing loop's next
 // iteration then reads the dead callee's `args` and bindings (found via
 // the module-fnvalue-boundary continue row — the callee's leaked args
 // list shadowed the caller's for the rest of the loop).
@@ -291,17 +300,19 @@ func (e *Engine) unwindLiveFrames(from, to int) {
 	}
 }
 
-// unwindFrameTail replays the canonical cleanup tail of the frame opened
-// at openIdx: the __DC marker (body-local def truncation), the __pa word
-// (Args + FnBaseline pop), and the force-forward `undef name` pairs
-// (capture/param teardown), exactly as AppendFrameTail laid them out.
-// Only DIRECT children of the frame paren are executed (depth 1) — a
-// nested live frame's tail is unwound by its own unwindLiveFrames entry,
-// innermost-first. The __DC anchor is unambiguous: DefCleanupInfo is a
-// machine-generated payload no user source can produce, and the tail's
-// undef words carry ForceForward, distinguishing them from user-written
-// undef tokens in the (skipped) body region. The ReturnCheck, if any, is
-// deliberately NOT executed — an aborted body has no returns to check.
+// unwindFrameTail replays the cleanup marker of the frame opened at
+// openIdx — body-local def truncation, the Args + FnBaseline pop, the
+// capture/param teardown — exactly as stepping it would. Only a DIRECT
+// child of the frame paren is executed (depth 1) — a nested live frame's
+// marker is unwound by its own unwindLiveFrames entry, innermost-first.
+// The __DC anchor is unambiguous: DefCleanupInfo is a machine-generated
+// payload no user source can produce, so user-written tokens in the
+// (skipped) body region — an `undef name` among them — are never
+// executed. A marker the main loop already stepped is SPENT in place
+// (stepDefCleanup) and replays as a no-op, so a frame abandoned between
+// its marker and its close paren pops nothing twice. The ReturnCheck, if
+// any, is deliberately NOT executed — an aborted body has no returns to
+// check.
 func (e *Engine) unwindFrameTail(openIdx, to int) {
 	depth := 0
 	for j := openIdx; j < to; j++ {
@@ -320,16 +331,6 @@ func (e *Engine) unwindFrameTail(openIdx, to int) {
 			// flow resolver, so the in-frame residual eval is skipped —
 			// markerIdx -1 disables the scan and no error is possible.
 			_ = e.stepDefCleanup(v, -1)
-		case depth == 1 && IsWord(v):
-			w, _ := AsWord(v)
-			switch {
-			case w.Name == "__pa":
-				_ = PopFrameArgs(e.Registry)
-			case w.Name == "undef" && w.ForceForward && j+1 < to && IsWord(e.Tape.At(j+1)):
-				nw, _ := AsWord(e.Tape.At(j + 1))
-				UninstallFrameBinding(e.Registry, nw.Name)
-				j++
-			}
 		}
 	}
 }

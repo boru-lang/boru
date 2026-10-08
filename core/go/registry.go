@@ -642,6 +642,13 @@ func (r *Registry) PutSubEngine(e *Engine) {
 	}
 	e.ElemEvalRecordable = false
 	e.ContainerRun = false
+	// A CallBoru run (callBoruNamed) configures the engine as NewTop
+	// would; nothing of that may idle in the pool either.
+	e.IsTop = false
+	e.StartAt = 0
+	e.debugLabel = ""
+	e.DeferResidual = false
+	e.stepLimit = StepLimitFor(r, DefaultSubStepLimit)
 	// Release any Values still held in the forward-collection scratch
 	// buffers before the engine idles in the pool. rearrangeForForward
 	// leaves the last call's collected args (which can be large list/map
@@ -1800,10 +1807,23 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	var tokens []Value
 	var names []string
 
+	// A LEAF body — one that binds nothing and constructs no inner fn
+	// (bodyNeedsFrameState, the test buildFnBodyHandler's fast path makes
+	// at construction) — needs neither DefTable snapshot: the fn-entry
+	// baseline is read only by an inner fn construction, and the
+	// def-cleanup scan undoes only body-local defs. Each snapshot copies
+	// every bound name, so the pair was the second largest cost of a
+	// module-fn call after the fresh tape (the leaf path below).
+	leaf := !bodyNeedsFrameState(r, sig.Body())
 	// Push the fn-entry baseline before installing anything. Inner
 	// fn constructions inside this body consult TopFnBaseline to
-	// identify enclosing-fn-local bindings.
-	r.PushFnBaseline(r.Defs.Snapshot())
+	// identify enclosing-fn-local bindings; a leaf pushes a nil entry,
+	// which keeps the per-call stacks balanced (eng/go/CLAUDE.md).
+	if leaf {
+		r.PushFnBaseline(nil)
+	} else {
+		r.PushFnBaseline(r.Defs.Snapshot())
+	}
 
 	// Retag typed-container args so the args stack (args.N) and unnamed body
 	// pushes carry the {:T}/[:T] tag too, not just the named binding — a body
@@ -1853,14 +1873,18 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	// stepping starts after it (arguments are inert — the sub-engine twin
 	// of FrameOpenInfo.ArgSpan; design/legacy/ARG-SEMANTICS-UNIFICATION.0.ignore).
 	unnamedCount := len(tokens)
-	body := make([]Value, len(sig.Body()))
-	copy(body, sig.Body())
-	tokens = append(tokens, body...)
+	// append COPIES the shared body into tokens' backing array; the
+	// intermediate make+copy this used to do was a second copy per call.
+	tokens = append(tokens, sig.Body()...)
 
 	// Snapshot DefStacks lengths before body execution so we can
 	// clean up any defs created during body execution (Issue 2
-	// from BORU-DX-REPORT: def leakage from fn bodies).
-	defSnapshot := r.Defs.Snapshot()
+	// from BORU-DX-REPORT: def leakage from fn bodies). A leaf body
+	// cannot create one (see above).
+	var defSnapshot map[string]int
+	if !leaf {
+		defSnapshot = r.Defs.Snapshot()
+	}
 
 	// Evaluate in a sub-engine with higher step limit for complex bodies.
 	//
@@ -1873,11 +1897,30 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	// the pending container is swept below, AFTER the teardown, in the
 	// scope the consumer would have evaluated it in — the tape's answer.
 	deferResidual := !ResidualEvalsInFrame(sig.Anonymous, sig.Body())
-	sub := NewTop(r)
+	// The body runs on a POOLED sub-engine (the registry's engine pool,
+	// runPooledSub's seam): a fresh NewTop engine per call allocated and
+	// zeroed a DefaultTapeInitialFloor-entry tape every time — ~100 KB and
+	// the largest single cost of a module-fn call. The pool's engines are
+	// built with the sub-engine limit and no top-ness, so the call sets
+	// what NewTop would have and clears it again before parking the
+	// engine (runPooledAt's discipline). The results alias the pooled
+	// tape, which the next reuse overwrites, so they are copied out.
+	sub := r.TakeSubEngine()
+	sub.IsTop = true
+	sub.stepLimit = StepLimitFor(r, DefaultStepLimit)
 	sub.StartAt = unnamedCount
 	sub.debugLabel = label
 	sub.DeferResidual = deferResidual
 	result, err := sub.Run(tokens)
+	if len(result) > 0 {
+		result = append([]Value(nil), result...)
+	}
+	sub.IsTop = false
+	sub.stepLimit = StepLimitFor(r, DefaultSubStepLimit)
+	sub.StartAt = 0
+	sub.debugLabel = ""
+	sub.DeferResidual = false
+	r.PutSubEngine(sub)
 
 	// Cleanup: pop args stack, undef named params + captures, then
 	// clean up any defs that were created during body execution. A
@@ -1897,19 +1940,21 @@ func (r *Registry) callBoruNamed(sig *FnSig, args []Value, captures []CapturedBi
 	// to avoid mutating DefStacks during iteration (UninstallDef
 	// triggers InstallFnDef → Register → upsertFnDef which can
 	// modify DefStacks entries for other names).
-	var toClean []string
-	for _, name := range r.Defs.Names() {
-		if r.Defs.Depth(name) > defSnapshot[name] {
-			toClean = append(toClean, name)
+	if !leaf {
+		var toClean []string
+		for _, name := range r.Defs.Names() {
+			if r.Defs.Depth(name) > defSnapshot[name] {
+				toClean = append(toClean, name)
+			}
 		}
-	}
-	for _, name := range toClean {
-		target := defSnapshot[name]
-		// Pop entries down to the snapshot length. Use a bounded
-		// loop to avoid infinite looping if UninstallDef's rebuild
-		// creates new entries.
-		for attempts := 0; attempts < 100 && r.Defs.Depth(name) > target; attempts++ {
-			UninstallDef(r, name)
+		for _, name := range toClean {
+			target := defSnapshot[name]
+			// Pop entries down to the snapshot length. Use a bounded
+			// loop to avoid infinite looping if UninstallDef's rebuild
+			// creates new entries.
+			for attempts := 0; attempts < 100 && r.Defs.Depth(name) > target; attempts++ {
+				UninstallDef(r, name)
+			}
 		}
 	}
 

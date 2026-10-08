@@ -116,6 +116,7 @@ list only by becoming **Resolved** (the record is then deleted) or
 | [NUR381](#nur381) | A `var`-bound name in a plain map literal inside an `if` arm of a fold body resolves to a same-named top-level def INTERPRETED; compiled reads the `var` (silent; the interpreter's side) | downstream: voxgig-boru/trie (found 2026-10-02, recorded 2026-10-05) |
 | [NUR382](#nur382) | A FILE-module fn whose `each` callback forward-applies its `Function` param to another param raises `signature_error` compiled; the interpreter answers (loud) | downstream: the voxgig-boru interpreter-entry pass (found 2026-10-02, recorded 2026-10-05) |
 | [NUR383](#nur383) | A module-made closure bound by a program-level `def` and read by `/v` in a property body fails the property compiled (`undefined word: q`); the interpreter passes it (loud) | downstream: voxgig-boru/sort (found 2026-10-02, recorded 2026-10-05) |
+| [NUR384](#nur384) | A name a fn-body `unpack` binds for the FIRST time stays bound past the call interpreted and is undefined compiled (loud on the VM's side; a rebound outer name agrees on both lanes) | the interpreter fn-kind inlining pass (2026-10-08) |
 
 Pending records normally use a compact form (rule / divergence /
 evidence / documentation status, plus a proposed verdict where one is
@@ -1481,5 +1482,37 @@ workaround; a program-defined comparator still islands
 (design/COMPILABLE-SUBSET.md §5, U12).
 
 **Proposed verdict:** resolve by fix.
+
+---
+
+## NUR384 — a name a fn-body `unpack` binds for the first time is bound past the call interpreted and undefined compiled {#nur384}
+
+**Status:** Pending · **Recorded:** 2026-10-08 · measured at ed8a805 on both lanes · the binding persists on the interpreter's side (silent), the VM raises (loud)
+
+```
+def g fn [[d:Map][Integer][unpack [a b] d  a add b]]  g {a:1 b:2}  b
+  interpreted   3 2
+  compiled      [boru/undefined_word]: undefined word: b
+```
+
+The same with a def-bound lambda (`def g ([d:Map] => [unpack [a b] d  a add b])
+g {a:1 b:2}  b`) and with the fn value applied through `each` (`each g/v
+[{a:1 b:2}]  b`: interpreted `[[3] 2]`, compiled undefined). An OUTER name
+the body's unpack REBINDS agrees on both lanes — it is rebound past the
+call, the discipline `lang/go` `TestUnpackUnprovenSourceCompiles` pins —
+and a fn value applied through `apply` leaves a new name unbound on both
+lanes. Found while pooling the interpreter's module-fn call and giving the
+fn-value path the named path's leaf-frame rule (a frame whose body names
+no binding word takes no cleanup snapshot): `unpack` binds from Go, outside
+that rule's sight, so every interpreter path leaves its new names bound
+past the call — the named path since the speed plan's leaf fast path, the
+fn-value and CallBoru paths since 2026-10-08, with the four shapes above
+answering the same before and after. The VM's run-time-bound unpack
+(NoteRuntimeBind's stub installs) does not reach the caller's scope after
+the call.
+
+**Proposed verdict:** the pinned discipline is the whole unpack set binding
+past the call, so resolve by fix on the VM's side — or narrow the discipline
+on both lanes together.
 
 ---

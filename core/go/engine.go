@@ -444,7 +444,7 @@ func (e *Engine) SetSource(src string) {
 //
 // The unwind is the frame's error-path contract: the error abandons the
 // tape, so a spliced frame whose open paren has stepped but whose cleanup
-// tail (`__DC __pa undef…`, fn_frame.go) has not — the callee that raised,
+// marker (`__DC`, fn_frame.go) has not — the callee that raised,
 // and every caller frame still open beneath it — would otherwise keep
 // its per-call state on the registry: the body-local defs, the Args list
 // and FnBaseline, the captures and params. A `do` trapping the error
@@ -1722,7 +1722,11 @@ func (e *Engine) Run(input []Value) (result []Value, runErr error) {
 	// up a fresh tape every execution. Falls back to a fresh tape when
 	// the existing buffer is too small. Per-run scratch state is cleared
 	// so nothing leaks across reuses.
-	if !(e.ReuseTape && e.Tape != nil && e.Tape.Reload(prog)) {
+	if e.ReuseTape && e.Tape != nil && e.Tape.Reload(prog) {
+		// The reused tape's ceiling came from its first program; this one
+		// gets at least what a fresh tape would have given it.
+		e.Tape.EnsureBoundsFor(len(prog), e.Registry.TapeConfig)
+	} else {
 		e.Tape = NewTapeWith(prog, e.Registry.TapeConfig, e.tapeWarn)
 	}
 	// Per-run scratch state is cleared on EVERY entry (not only the
@@ -6252,7 +6256,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 	foreignReg := FnHomeForeign(e.Registry, &fnDef)
 	if len(fnDef.Signatures) > 0 && (fnDef.Anonymous || !foreignReg) {
 		reg, _ := FnHome(e.Registry, &fnDef)
-		fn = compileFnDef(reg, fnDef)
+		fn = compiledFnDefFor(reg, fnDef)
 	}
 	if fn == nil && fnDef.Name != "" {
 		reg, _ := FnHome(e.Registry, &fnDef)
@@ -6266,7 +6270,7 @@ func (e *Engine) execFnDefLiteral(valIdx int) error {
 		// body still runs with module scope — execFnDefSig /
 		// ExecFnDefSigStackMatch receive fnDef.Registry, and the
 		// sub-registry branch below handles handler-bearing matches.
-		fn = compileFnDef(fnDef.Registry, fnDef)
+		fn = compiledFnDefFor(fnDef.Registry, fnDef)
 	}
 	if fn == nil {
 		e.Pointer++
@@ -6915,8 +6919,8 @@ func (e *Engine) ExecFnDefSigStackMatch(valIdx int, fnDef FnDefInfo, resolved []
 	// BYTECODE EMITTER is active (a `fn` literal resolved from a map / module
 	// export, e.g. `ParseLang.parse_json 'x' {}`) is dispatched like a named
 	// user fn: through buildFnBodyReturnsFn (spliceFnValueCheckResult), which
-	// arms the body compile so the per-call `__pa` tail is captured inside its
-	// own CALL_USER unit instead of leaking into the top-level residual.
+	// arms the body compile so the body's frame is captured inside its own
+	// CALL_USER unit instead of leaking into the top-level residual.
 	//
 	// Gated on an ACTIVE emit state so it only changes the COMPILE path, never
 	// the pure type-check pass: buildFnBodyReturnsFn runs AnalyseFnBody, which
@@ -7376,7 +7380,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		args[i].Undefined = false
 	}
 
-	if capturedReg != nil && (!capturedReg.SameHome(e.Registry) || e.Registry.Lookup("__pa") == nil) {
+	if capturedReg != nil && !capturedReg.SameHome(e.Registry) {
 		// Execute in the captured module's registry via CallBoru.
 		// Pass the FnDef's lexical captures so the body sees them as
 		// defs (alongside the module-registry's own bindings).
@@ -7387,11 +7391,10 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 		// frame path a named fn call does — one fewer sub-engine per call,
 		// and flow-control/def-cleanup semantics identical to named
 		// dispatch (the TCO-STAGED Stage-5 residual flip; boundary rows in
-		// lang/spec/module-fnvalue-boundary.tsv). Gated on the frame
-		// protocol being EXECUTABLE: the splice tail's `__pa` word is
-		// registered by the language layer, so a bare kernel registry (an
-		// eng-only embedder, the kernel test harnesses) keeps the CallBoru
-		// path, whose per-call cleanup is Go-side and needs no words.
+		// lang/spec/module-fnvalue-boundary.tsv). This used to be gated
+		// on the language layer's `__pa` word being registered, because
+		// the splice tail stepped it; the frame's cleanup is a marker now
+		// (fn_frame.go), executable on a bare kernel registry too.
 		var captures []CapturedBinding
 		var fnLabel string
 		if valIdx < e.Tape.Len() {
@@ -7470,11 +7473,23 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	var tokens []Value
 	tokens = append(tokens, NewFrameOpen(fnValueFrameMeta))
 
+	// A LEAF body — one that binds nothing and constructs no inner fn
+	// (bodyNeedsFrameState) — takes the fast path buildFnBodyHandler's
+	// named dispatch has had since the speed plan: no fn-entry baseline
+	// snapshot, no def-cleanup snapshot, no cleanup scan at the tail. Each
+	// snapshot copies every bound name, and they were the largest cost of
+	// applying a lambda, closure or method value.
+	leaf := !bodyNeedsFrameState(e.Registry, sig.Body())
 	// Push the fn-entry baseline before installing anything. Inner
 	// fn/afn constructions inside this body consult TopFnBaseline
-	// to identify enclosing-fn-local bindings. Paired with __pa
-	// below, which pops the baseline.
-	e.Registry.PushFnBaseline(e.Registry.Defs.Snapshot())
+	// to identify enclosing-fn-local bindings. Paired with the frame
+	// marker's pop at the tail; a leaf pushes a nil entry so the
+	// per-call stacks stay balanced.
+	if leaf {
+		e.Registry.PushFnBaseline(nil)
+	} else {
+		e.Registry.PushFnBaseline(e.Registry.Defs.Snapshot())
+	}
 
 	// Retag typed-container args so the args stack (args.N) and unnamed body
 	// pushes carry the {:T}/[:T] tag too, not just the named binding — a body
@@ -7528,7 +7543,12 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	// buildFnBodyHandler. (This tail historically omitted the
 	// DefCleanup marker; it is synthesized by the shared
 	// AppendFrameTail now, so the two splice paths cannot diverge.)
-	defSnapshot := e.Registry.Defs.Snapshot()
+	// A leaf body has none to tear down: the marker rides with
+	// SkipCleanup, as the named path's does.
+	var defSnapshot map[string]int
+	if !leaf {
+		defSnapshot = e.Registry.Defs.Snapshot()
+	}
 
 	// Append the sig's body tokens directly: append COPIES them into
 	// tokens' backing array, and sig.Body() (the shared BoruImpl.Body) is
@@ -7539,6 +7559,7 @@ func (e *Engine) execFnDefSig(valIdx int, sig *FnSig, args []Value, capturedReg 
 	tokens = AppendFrameTail(tokens, FrameTailSpec{
 		Registry:       e.Registry,
 		Snapshot:       defSnapshot,
+		SkipCleanup:    leaf,
 		Names:          names,
 		Returns:        sig.Returns,
 		ReturnPatterns: sig.ReturnPatterns,
@@ -8733,9 +8754,22 @@ func isPendingResidualContainer(v Value) bool {
 	return false
 }
 
-// stepDefCleanup removes defs that were created during fn body execution.
-// The DefCleanupInfo carries a snapshot of DefStacks lengths taken before
-// the body ran. Any defs added since are popped via UninstallDef.
+// stepDefCleanup steps a fn frame's cleanup marker: the in-frame residual
+// evaluation (EvalResidual), the truncation of the defs created during the
+// body's execution back to the marker's snapshot (unless SkipCleanup), and
+// — for a frame marker (PopFrame) — the per-call Args/FnBaseline pop and
+// the teardown of the frame's captures+params, newest first. The last two
+// used to be the `__pa` word and the `undef name` pairs stepped after the
+// marker; they are the same registry operations (PopFrameArgs,
+// UninstallFrameBinding — what CallBoru's inline cleanup and the eager
+// tail-call teardown always ran), done here without a dispatch each.
+//
+// markerIdx is the marker's tape index, or -1 from a replay that will
+// discard the region (unwindFrameTail). A frame marker pops ONCE: the
+// main loop leaves the stepped marker on the tape until the frame's close
+// paren sweeps it (stepCloseParen) and the implicit-end re-run can step it
+// again, so the cell is overwritten with a spent marker — truncation-only,
+// nothing left to pop — before the pops run.
 func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 	info, _ := AsDefCleanup(val)
 	if info.EvalResidual {
@@ -8775,10 +8809,11 @@ func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 				ev, err = e.autoEvalList(v, true)
 			}
 			if err != nil {
-				// The error unwinds the run, and the frame's remaining
-				// parked tail (__pa, the undef pairs) never steps: the
-				// run's fault return replays it — this frame is still
-				// open on the tape — so a do-error trap upstream resumes
+				// The error unwinds the run, and the marker's remaining
+				// work (the truncation, the pops, the teardown) never
+				// runs here: the run's fault return replays the marker —
+				// this frame is still open on the tape, and the marker is
+				// not yet spent — so a do-error trap upstream resumes
 				// without the callee's params/args/locals bound in the
 				// caller's scope (faultReturn).
 				return err
@@ -8786,21 +8821,34 @@ func (e *Engine) stepDefCleanup(val Value, markerIdx int) error {
 			if e.containerEscaped() {
 				// A break/continue escaped the residual literal (NUR358):
 				// the frame is still open on the tape, so the resolution's
-				// unwind replays this marker's truncation with the rest of
-				// its tail (unwindLiveFrames) — truncating here too would
-				// pop the caller's bindings.
+				// unwind replays this marker — truncation, pops, teardown
+				// (unwindLiveFrames) — and it is left unspent for that;
+				// closing the frame here too would pop the caller's
+				// bindings.
 				return nil
 			}
 			ev.Eval = false
 			e.Tape.Set(i, ev)
 		}
 	}
-	if info.SkipCleanup {
-		// The frame installs no body-local defs — nothing to truncate,
-		// and no Names() scan to pay (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5).
+	if !info.SkipCleanup {
+		// A SkipCleanup frame installs no body-local defs — nothing to
+		// truncate, and no Names() scan to pay
+		// (design/legacy/INTERPRETER-SPEED-PLAN.10.ignore #5).
+		truncateFrameDefs(info)
+	}
+	if !info.PopFrame {
 		return nil
 	}
-	truncateFrameDefs(info)
+	if markerIdx >= 0 {
+		e.Tape.Set(markerIdx, spentFrameMarker)
+	}
+	if err := PopFrameArgs(info.Registry); err != nil {
+		return err
+	}
+	for i := len(info.Names) - 1; i >= 0; i-- {
+		UninstallFrameBinding(info.Registry, info.Names[i])
+	}
 	return nil
 }
 

@@ -412,12 +412,14 @@ func coreSpecRegistry(t *testing.T) *Registry {
 		BarrierPos: BarrierAllForward,
 	})
 	// __pa pops the per-call args frame. It is NOT a core word — basic/go
-	// registers it (native_definition.go) — but every boru fn body's frame
-	// tail emits it (AppendFrameTail, fn_frame.go:193), so a bare core
-	// registry cannot run a boru-bodied fn without it. That is the reason
-	// the engine's fn-dispatch surface was unreachable from this corpus,
-	// and it is a fixture rather than a port: the MECHANISM is core's
-	// (PopFrameArgs), only the word is basic's.
+	// registers it (native_definition.go). Every boru fn body's frame tail
+	// emitted it until 2026-10-08, which is why a bare core registry could
+	// not run a boru-bodied fn without the fixture; the frame's DefCleanup
+	// marker does the pop itself now (stepDefCleanup), so the fixture is
+	// kept for the dispatch rows that use it as an empty-result word
+	// (core/spec/dispatch.tsv's `bothq __pa …` block). A fixture rather
+	// than a port: the MECHANISM is core's (PopFrameArgs), only the word
+	// is basic's.
 	r.Register("__pa", Signature{
 		Returns: []*Type{},
 		Impl: Go(func(_ []Value, _ map[string]Value, _ []Value, reg *Registry) ([]Value, error) {
@@ -425,10 +427,11 @@ func coreSpecRegistry(t *testing.T) *Registry {
 		}),
 		BarrierPos: 0,
 	})
-	// undef removes a def binding. Like __pa it is a basic-layer word that
-	// the frame tail emits — one per named param, `/q`-marked so the NAME
-	// is captured rather than dispatched — over a mechanism core already
-	// owns (DefTable.Pop).
+	// undef removes a def binding. Like __pa it is a basic-layer word over
+	// a mechanism core already owns (DefTable.Pop); the frame tail emitted
+	// one `undef name` pair per named param until 2026-10-08 (the marker
+	// tears the names down itself now), and the corpus still calls it as
+	// a word.
 	//
 	// The name slot is TAtom, as basic/go's own `undef` declares it
 	// (native_definition.go). That is not decoration: /q capture is

@@ -6,9 +6,9 @@ import (
 )
 
 // Direct kernel pins for unwindLiveFrames / unwindFrameTail (fn_frame.go):
-// a flow-control rewrite discarding a region must replay the canonical
-// cleanup tail of every frame still OPEN in it — __DC truncation, the
-// __pa Args/FnBaseline pop, and the force-forward undef pairs — and must
+// a flow-control rewrite discarding a region must replay the cleanup
+// marker of every frame still OPEN in it — the __DC truncation, the
+// Args/FnBaseline pop, and the capture/param teardown — and must
 // NOT touch completed frames, user-written undef tokens, or nested
 // content below the frame's own paren depth. The language-level twins
 // (break/continue through live frames) live in
@@ -176,7 +176,7 @@ func TestUnwindIgnoresUserUndefTokens(t *testing.T) {
 		t.Error("unwind executed a USER undef token from the skipped body")
 	}
 	if _, ok, _ := r.Args.Top(); ok {
-		t.Error("frame tail __pa not replayed")
+		t.Error("frame marker's Args pop not replayed")
 	}
 }
 
@@ -206,7 +206,7 @@ func TestUnwindClampsRegionAndHandlesOpenEndedFrame(t *testing.T) {
 
 	e.unwindLiveFrames(0, e.Tape.Len()+10) // over-long region clamps
 	if _, ok, _ := r.Args.Top(); ok {
-		t.Error("open-ended live frame's __pa not replayed")
+		t.Error("open-ended live frame's Args pop not replayed")
 	}
 }
 

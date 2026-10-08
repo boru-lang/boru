@@ -183,16 +183,29 @@ func NewTapeWith(vals []Value, cfg TapeConfig, warn func(string)) *Tape {
 // fallback island in a loop does not allocate a tape per execution. The
 // grow budget and exhaustion/warn flags reset to their original state;
 // vals is copied, so the caller's slice is never mutated.
+//
+// Only the previous program's LOGICAL cells are cleared — the prefix below
+// the old gap and the tail above it — not the whole capacity. That relies
+// on the tape's one storage invariant: every gap cell is zero. MoveGap,
+// Remove and Splice zero the cells they vacate, grow starts from fresh
+// memory, and Insert/Splice/Set only ever write logical cells, so nothing
+// stale can sit inside the gap. Clearing the full 1024-entry floor on
+// every reload was a fifth of an `each` over a fn value and of a `do`
+// body on the interpreter (each callback is one pooled reload).
 func (t *Tape) Reload(vals []Value) bool {
 	if cap(t.buf) < len(vals) {
 		return false
 	}
 	n := cap(t.buf)
 	t.buf = t.buf[:n]
-	copy(t.buf, vals)
-	for i := len(vals); i < n; i++ {
-		t.buf[i] = Value{} // clear stale entries in the gap region
+	lo := len(vals)
+	if t.gapStart > lo {
+		zero(t.buf[lo:t.gapStart]) // the old prefix the new program does not overwrite
 	}
+	if tail := max(t.gapEnd, lo); tail < n {
+		zero(t.buf[tail:n]) // the old tail above the gap
+	}
+	copy(t.buf, vals)
 	t.gapStart = len(vals)
 	t.gapEnd = n
 	t.forwards = countForwards(vals)
@@ -200,6 +213,20 @@ func (t *Tape) Reload(vals []Value) bool {
 	t.exhausted = false
 	t.warned = [3]bool{}
 	return true
+}
+
+// EnsureBoundsFor raises the tape's growth ceiling to what a FRESH tape
+// for a program of progLen entries under cfg would have. A reused tape —
+// a pooled sub-engine's, the VM's island engine's — keeps the ceiling it
+// was built with, derived from its FIRST program's length; a later, longer
+// program that fits the grown buffer would otherwise run under a lower
+// ceiling than the fresh-tape path grants it and exhaust earlier (Codex
+// P2 on #532). A ceiling the tape already exceeds is left alone.
+func (t *Tape) EnsureBoundsFor(progLen int, cfg TapeConfig) {
+	initial, maxGrows, factor := cfg.Resolve(progLen)
+	if ceil := GrowthCeiling(initial, maxGrows, factor); ceil > t.maxCap {
+		t.maxCap = ceil
+	}
 }
 
 // Exhausted reports whether the tape hit its growth ceiling. The engine

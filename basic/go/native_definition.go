@@ -2319,11 +2319,19 @@ func ArgsHandler(_ []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value
 	return []Value{top}, nil
 }
 
+// PopArgsHandler is the `__pa` word: the frame's Args/FnBaseline pop as a
+// word. The spliced frame tail stepped it after every fn body until
+// 2026-10-08; the frame's DefCleanup marker does the pop itself now
+// (core.stepDefCleanup), so no engine path emits the word any more. It
+// stays registered as the word form of the same operation — the kernel's
+// spec corpus and the compile-refusal screens (`args`/`__pa` are
+// context-dependent words) name it.
 func PopArgsHandler(_ []Value, _ map[string]Value, _ []Value, r *Registry) ([]Value, error) {
 	// The Args pop and the FnBaseline pop must move together (closure-
 	// capture detection on subsequent fn constructions reads the
 	// baseline). core.PopFrameArgs is the single home of that pairing,
-	// shared with any eager frame teardown, so the two cannot drift.
+	// shared with the frame marker and CallBoru's inline cleanup, so the
+	// three cannot drift.
 	if err := core.PopFrameArgs(r); err != nil {
 		return nil, err
 	}
