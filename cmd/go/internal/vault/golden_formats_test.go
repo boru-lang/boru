@@ -16,6 +16,18 @@ import (
 
 const goldenPass = "golden-fixture-passphrase"
 
+// shippedKDFCost restores the production scrypt cost for a test over data
+// encrypted at that cost. kdf_cost_test.go lowers the package's cost for
+// every other test; the fixtures under ../wire/testdata were written by real
+// encoders at 2^15 (the cost keyringFormat pins), and a lowered cost reads
+// every one of them as a wrong passphrase.
+func shippedKDFCost(t *testing.T) {
+	t.Helper()
+	old := scryptN
+	scryptN = 1 << 15
+	t.Cleanup(func() { scryptN = old })
+}
+
 func wireGolden(t *testing.T, name string) []byte {
 	t.Helper()
 	data, err := os.ReadFile(filepath.Join("..", "wire", "testdata", name))
@@ -30,6 +42,7 @@ func wireGolden(t *testing.T, name string) []byte {
 // written under one of the magics this project has shipped; all of them must
 // open, because on somebody's disk they still exist.
 func TestEveryShippedKeyringStillDecrypts(t *testing.T) {
+	shippedKDFCost(t)
 	want := []byte("golden\t" + base64.StdEncoding.EncodeToString([]byte("golden-secret")) + "\n")
 	for _, f := range []string{"keyring.vltk1.golden", "keyring.boruk.golden", "keyring.aqlk.golden"} {
 		got, err := decryptBlob(wireGolden(t, f), goldenPass)
@@ -51,6 +64,7 @@ func TestEveryShippedKeyringStillDecrypts(t *testing.T) {
 // which are worse to lose: they are the backups people keep precisely so a
 // vault can be rebuilt.
 func TestEveryShippedExportBundleStillOpens(t *testing.T) {
+	shippedKDFCost(t)
 	want := []byte(`{"version":2,"aliases":[]}`)
 	for _, f := range []string{"export.vltx1.golden", "export.borux.golden", "export.aqlx.golden"} {
 		blob := wireGolden(t, f)
