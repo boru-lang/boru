@@ -183,16 +183,29 @@ func NewTapeWith(vals []Value, cfg TapeConfig, warn func(string)) *Tape {
 // fallback island in a loop does not allocate a tape per execution. The
 // grow budget and exhaustion/warn flags reset to their original state;
 // vals is copied, so the caller's slice is never mutated.
+//
+// Only the previous program's LOGICAL cells are cleared — the prefix below
+// the old gap and the tail above it — not the whole capacity. That relies
+// on the tape's one storage invariant: every gap cell is zero. MoveGap,
+// Remove and Splice zero the cells they vacate, grow starts from fresh
+// memory, and Insert/Splice/Set only ever write logical cells, so nothing
+// stale can sit inside the gap. Clearing the full 1024-entry floor on
+// every reload was a fifth of an `each` over a fn value and of a `do`
+// body on the interpreter (each callback is one pooled reload).
 func (t *Tape) Reload(vals []Value) bool {
 	if cap(t.buf) < len(vals) {
 		return false
 	}
 	n := cap(t.buf)
 	t.buf = t.buf[:n]
-	copy(t.buf, vals)
-	for i := len(vals); i < n; i++ {
-		t.buf[i] = Value{} // clear stale entries in the gap region
+	lo := len(vals)
+	if t.gapStart > lo {
+		zero(t.buf[lo:t.gapStart]) // the old prefix the new program does not overwrite
 	}
+	if tail := max(t.gapEnd, lo); tail < n {
+		zero(t.buf[tail:n]) // the old tail above the gap
+	}
+	copy(t.buf, vals)
 	t.gapStart = len(vals)
 	t.gapEnd = n
 	t.forwards = countForwards(vals)
